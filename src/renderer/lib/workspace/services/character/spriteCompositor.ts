@@ -131,7 +131,17 @@ export class SpriteCompositor {
      */
     public async occlusion(layers: CompositeLayers, grid = 48): Promise<boolean[]> {
         const bitmaps = await Promise.all(layers.map(id => (id ? this.decode(id) : Promise.resolve(null))));
-        const drawn = bitmaps.map(bitmap => (bitmap ? sampleAlpha(bitmap, grid) : null));
+        const present = bitmaps.filter(Boolean) as ImageBitmap[];
+        if (present.length === 0) {
+            return new Array(layers.length).fill(false);
+        }
+        // Sample in *canvas* space, not per layer: a small accessory centred on a tall body covers a
+        // few cells, and stretching each layer to fill the grid would say it covers all of them.
+        const canvas = {
+            width: Math.max(...present.map(bitmap => bitmap.width)),
+            height: Math.max(...present.map(bitmap => bitmap.height)),
+        };
+        const drawn = bitmaps.map(bitmap => (bitmap ? sampleAlpha(bitmap, canvas, grid) : null));
         const covered = new Array(grid * grid).fill(false);
         const result = new Array(layers.length).fill(false);
         // Walk top-down accumulating opaque coverage, so each layer is asked about what is already
@@ -183,8 +193,16 @@ export class SpriteCompositor {
     }
 }
 
-/** Per-cell "this layer paints here" / "this layer is solid here" masks, on a `grid`×`grid` lattice. */
-function sampleAlpha(bitmap: ImageBitmap, grid: number): { visible: boolean[]; opaque: boolean[] } {
+/**
+ * Per-cell "this layer paints here" / "this layer is solid here" masks, on a `grid`×`grid` lattice
+ * laid over the whole canvas — the layer is placed inside it centred and to scale, the way the stack
+ * draws it.
+ */
+function sampleAlpha(
+    bitmap: ImageBitmap,
+    canvasSize: { width: number; height: number },
+    grid: number,
+): { visible: boolean[]; opaque: boolean[] } {
     const canvas = new OffscreenCanvas(grid, grid);
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     const visible = new Array(grid * grid).fill(false);
@@ -192,7 +210,9 @@ function sampleAlpha(bitmap: ImageBitmap, grid: number): { visible: boolean[]; o
     if (!ctx) {
         return { visible, opaque };
     }
-    ctx.drawImage(bitmap, 0, 0, grid, grid);
+    const w = (bitmap.width / canvasSize.width) * grid;
+    const h = (bitmap.height / canvasSize.height) * grid;
+    ctx.drawImage(bitmap, (grid - w) / 2, (grid - h) / 2, w, h);
     const { data } = ctx.getImageData(0, 0, grid, grid);
     for (let cell = 0; cell < grid * grid; cell++) {
         const alpha = data[cell * 4 + 3];
