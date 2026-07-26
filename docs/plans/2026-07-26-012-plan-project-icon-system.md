@@ -125,8 +125,7 @@ export type ProjectIconSet = {
 | iOS | 1024 | 0 | **`#FFFFFF`（已裁决：默认白，可改）** | 系统自己圆角；**必须无 alpha** |
 | web | 512 → 32 / 180 | 0 | favicon 透明；apple-touch 同 iOS 规则（不透明） | |
 
-`inset` / `background` 一旦被作者动过就记进 `specs`，没动过的保持"跟随默认"（不写死，
-将来默认值调整能自动惠及旧工程）。
+这些默认值在**首次烘焙时就写死进 `specs`**，不留"跟随默认"的悬空状态——理由见 §3.4 最后一条。
 
 ### 3.3 烘焙在作者时（已裁决），但只烘焙到"平台母版"这一层
 
@@ -156,7 +155,34 @@ resources/icons/
 - 面板打开时指纹不符 → **静默重烘焙**（作者感知不到）。
 - preflight 指纹不符（例如有人在 Studio 之外覆盖了源文件）→ `icon-stale` warning。
 
-### 3.4 UI：输入是一格，平台行是结果
+### 3.4 派生产物是隐式工程资产，要进 VCS
+
+烘焙结果**不是缓存**。它们和母版一样是工程内容：随 `.nlspkg` 导出、进 Lore 版本库、
+在别人的机器上直接可用而不必重烘焙。
+
+- **位置已经对了**：`shouldExcludeProjectPackagePath` 只排除 `.nlstudio/`、`editor/cache/`、
+  `editor/assets/remote/`、`exports/`；`resources/icons/derived/` 走的是普通工程路径，
+  打包和版本库自动带上。**绝不能挪进 `.nlstudio/`。**
+- **"隐式"= 不进资源注册表**：不给 UUID、不写 `assets.metadata.*.json`、不进
+  `assets/content/`。理由有二：那份 metadata 本身是受版本控制的文件，每次重烘焙都会
+  搅出无意义 diff；而且注册了就意味着这些图会出现在资源选择器里，谁都能把 iOS 图标
+  当背景图用。它们是工程文件，不是作者管理的资源。
+
+而只要东西进了 VCS，**确定性就成了硬需求**——否则每次打开工程都是一屏假 diff：
+
+| 规则 | 做法 |
+|---|---|
+| 字节稳定 | PNG 不写 `tIME`/`tEXt`；canvas 编码器本身不写时间戳，但仍按下一条兜底 |
+| **写前比对** | 新字节 hash 与磁盘上现有文件相同 → **不写**。不碰 mtime，不产生空提交 |
+| 指纹用内容 | `fingerprint` 只由 `hash(源字节) + 配方` 组成，**不含 `updatedAt`/mtime** |
+| 配置稳定 | `baked` / `specs` 的键**排序后**写入，msgpack 编码顺序才不会跳动 |
+| **默认值冻结** | 烘焙时把当时生效的默认 `inset`/`background` **写死进 `specs`**，不留"跟随默认" |
+
+最后一条是被 VCS 需求反推出来的，和直觉相反、值得记一笔：本来"没动过的旋钮跟随默认值"
+更优雅（将来调默认值能自动惠及旧工程），但那意味着**队友的 Studio 版本不同，
+烘焙结果就不同**——他一开工程就产生一批他没动过的 diff。可复现性优先于自动升级。
+
+### 3.5 UI：输入是一格，平台行是结果
 
 Assets 子页改成两块，**不加任何解释性文本**（沿用既有铁律）：
 
@@ -182,7 +208,7 @@ Assets 子页改成两块，**不加任何解释性文本**（沿用既有铁律
 - 复用组件：`Slider`、`EnhancedInput`、`controlButtonClass()`、`AssetSelector`、
   `iconPreview.ts` 的 `.icns` 抽取。**不新增依赖，不加 chip/徽章/空态插画/`title` tooltip。**
 
-### 3.5 母版过小（已裁决：照常出片 + warning）
+### 3.6 母版过小（已裁决：照常出片 + warning）
 
 低于目标画布就放大出片，preflight 报 `icon-low-resolution` warning；面板上那一格自己就是糊的，
 一眼可见。**不再回退到 Electron 默认图标**——D6 的"我明明配了却没生效"是现在最迷惑的行为。
@@ -205,7 +231,7 @@ Assets 子页改成两块，**不加任何解释性文本**（沿用既有铁律
 |---|---|---|
 | **WI1** | 共享模型 + 规范化 + 迁移。一个读取器，renderer/preflight/artifactCompiler 三处共用（治 D8） | 新 `src/shared/types/projectIcons.ts`；改 `project.ts`、`ProjectService.ts`、`preflight.ts`、`gameRuntimeArtifactCompiler.ts` |
 | **WI2** | 纯几何：`(源尺寸, 目标, spec) → {画布, 绘制矩形, 底色, 是否压平}`。renderer 烘焙和 main 降采样共用同一份，保证"所见=所出" | 新 `src/shared/utils/iconRecipe.ts` + 单测 |
-| **WI3** | 作者时烘焙器（renderer/canvas）：保比例 fit、inset、压平、逐级折半降采样、`.icns` 抽取、写 `derived/`、指纹 | 新 `.../project/iconBake.ts`；扩 `ProjectService`（`writeRaw` 已有） |
+| **WI3** | 作者时烘焙器（renderer/canvas）：保比例 fit、inset、压平、逐级折半降采样、`.icns` 抽取、写 `derived/`、内容指纹。**含 §3.4 全部确定性规则：写前比对、键排序、默认值冻结** | 新 `.../project/iconBake.ts`；扩 `ProjectService`（`writeRaw` 已有） |
 | **WI4** | 构建端改成消费烘焙产物：桌面交派生 1024 PNG（native 容器覆盖则原样透传）；`writeScaledIcons` 退化为纯降采样（治 D3/D4） | `GameBuildManager.ts`、`mobileIcons.ts` |
 | **WI5** | web 目标图标：favicon 32 + apple-touch 180，`index.html` 写 link 标签（治 D1） | `webShell.ts`、`gameRuntimeArtifactCompiler.ts` |
 | **WI6** | preflight 改造：`icon-missing` 降为"一条，没有母版"；新增 `icon-low-resolution`、`icon-stale`；`.ico`/`.icns` 也校验尺寸（治 D5/D6） | `preflight.ts`、`gameBuild.ts`、`build.ts` i18n |
@@ -222,6 +248,9 @@ Assets 子页改成两块，**不加任何解释性文本**（沿用既有铁律
   产物里 `.exe` 图标、`favicon.png`/`apple-touch-icon.png`、APK 里 mipmap 各 slot 都是母版。
 - iOS 产物 PNG 用 `python -c` 读 IHDR 颜色类型确认**无 alpha 通道**。
 - 老工程（有独立 win/mac 图标的）打开 → 迁移成 master + override，出片与迁移前一致。
+- **VCS 空转测试**：烘焙一次后 `git status` 干净 → 关掉工程重开、再进 Assets 页 → **`git status`
+  仍然干净**（面板打开触发的重烘焙必须写前比对、一个字节都不落盘）。这是最容易做错的一条。
+- 派生文件随 `.nlspkg` 导出：导出→在别的目录导入→六格立刻有图且**没有触发重烘焙**。
 - **UI 验收由 orchestrator 亲眼看**（铁令）：agent 报告、截图、测试绿都不算。
 - 隔离树审计：`git archive HEAD | tar -x` 到干净树上跑 `yarn lint` + `yarn build:apps:dev`，
   报告里贴命令、退出码、`git status`（应为空）。
