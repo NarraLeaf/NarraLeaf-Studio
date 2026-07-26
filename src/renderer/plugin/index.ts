@@ -12,6 +12,10 @@ import type {
     BlueprintInspectorParamSelectOption,
     BlueprintNodeDef,
 } from "@/lib/ui-editor/blueprint-nodes/types";
+import type {
+    RuntimeBlueprintNodeContext,
+    RuntimeBlueprintNodeExecute,
+} from "@/lib/ui-editor/runtime/plugins/runtimePluginApi";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules";
 import {
     AssetExtensions,
@@ -53,6 +57,37 @@ export type {
     BlueprintNodeExecuteFn,
     BlueprintNodePinDef,
 } from "@/lib/ui-editor/blueprint-nodes/types";
+
+/**
+ * A blueprint node as a *plugin* writes it: the editor's full palette metadata,
+ * but with the narrowed execute of `narraleaf-studio/runtime`.
+ *
+ * The host's own `BlueprintNodeDef.execute` receives a `BehaviorNodeExecutionContext`,
+ * which carries `hostAdapter` — and through it every host API: saves, localization,
+ * quit. A plugin node reaching that would be exercising powers its manifest never
+ * declared and the user never approved. So a plugin's execute gets the very same
+ * capability-gated context its runtime entry gets, in both targets: one node module
+ * can be shared by the studio and runtime entries, and neither is the privileged one.
+ *
+ * The editor is an environment that backs no game, so the gated domains on
+ * `ctx.game` (`saves`, `store`, `state`, …) are absent while a node runs in Studio.
+ * Nodes must degrade rather than assume them — the same discipline a plugin already
+ * needs for the web export versus the desktop shell.
+ */
+export type PluginBlueprintNodeDef = Omit<BlueprintNodeDef, "execute"> & {
+    execute: RuntimeBlueprintNodeExecute;
+};
+
+/**
+ * The context a {@link PluginBlueprintNodeDef}'s execute receives — `params`,
+ * `resolveInput`, the event slot, and the capability-gated `game`. Nothing else:
+ * this is the whole of a node's reach.
+ *
+ * Structurally identical to the runtime entry's `RuntimeBlueprintNodeContext`,
+ * re-named rather than re-exported so the two type packages do not collide.
+ */
+export type PluginBlueprintNodeContext = RuntimeBlueprintNodeContext;
+
 export type {
     AccordionItemProps,
     AccordionProps,
@@ -262,9 +297,9 @@ export type PluginServices = {
     };
     blueprintNodes: {
         /** Session-persistent: returns `void` (node defs cannot be removed once registered). */
-        register(def: BlueprintNodeDef): void;
+        register(def: PluginBlueprintNodeDef): void;
         /** Session-persistent: returns `void` (node defs cannot be removed once registered). */
-        registerMany(defs: BlueprintNodeDef[]): void;
+        registerMany(defs: PluginBlueprintNodeDef[]): void;
         registerDynamicSelectOptionsSource(
             sourceId: string,
             provider: () => BlueprintInspectorParamSelectOption[],

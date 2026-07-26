@@ -32,24 +32,30 @@ function nodesFor(catalog: unknown) {
     return new Map(defs.map(def => [def.type, def] as const));
 }
 
-/** Minimal execution context: inspector params plus wired input pins. */
+/**
+ * Minimal execution context: inspector params, wired input pins, and the
+ * capability-gated `game` - which is all a plugin node ever sees. Note there is
+ * no `hostAdapter` to fake: the narrowed context has no route to the host API.
+ */
 function ctx(params: Record<string, unknown> = {}, inputs: Record<string, unknown> = {}) {
     return {
         params,
         resolveInput: (pinId: string) => inputs[pinId],
-        hostAdapter: {
-            blueprintRuntime: {
-                hostApi: {
-                    persistence: {
-                        get: async (key: string) => persistence[key],
-                        set: async (key: string, value: unknown) => {
-                            persistence[key] = value;
-                        },
-                    },
+        game: {
+            log: () => undefined,
+            store: {
+                get: async (key: string) => persistence[key] ?? null,
+                set: async (key: string, value: unknown) => {
+                    persistence[key] = value;
                 },
             },
         },
     } as never;
+}
+
+/** The same context minus plugin storage, i.e. what the editor hands a node. */
+function ctxWithoutStore(params: Record<string, unknown> = {}) {
+    return { params, resolveInput: () => undefined, game: { log: () => undefined } } as never;
 }
 
 async function run(catalog: unknown, type: string, params?: Record<string, unknown>, inputs?: Record<string, unknown>) {
@@ -245,5 +251,20 @@ describe("degradation", () => {
         const result = await run(V2_CATALOG, `${P}.getVariantCount`, { galleryItemId: "art.a" });
 
         expect(result.outputValues?.count).toBe(3);
+    });
+
+    it("reads as locked and swallows writes when plugin storage is unavailable", async () => {
+        // The editor backs no runtime capability, so app.game.store is absent
+        // there. A gallery previewed in Studio must render, not throw.
+        const defs = nodesFor(V2_CATALOG);
+        const read = await defs.get(`${P}.isUnlocked`)!.execute(
+            ctxWithoutStore({ galleryItemId: "art.a" }),
+        ) as { outputValues?: Record<string, unknown> };
+        expect(read.outputValues?.unlocked).toBe(false);
+
+        await expect(defs.get(`${P}.add`)!.execute(
+            ctxWithoutStore({ galleryItemId: "art.a" }),
+        )).resolves.toEqual({ nextPort: "next" });
+        expect(persistence).toEqual({});
     });
 });

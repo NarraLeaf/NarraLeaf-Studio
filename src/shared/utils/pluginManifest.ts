@@ -312,6 +312,13 @@ function validateRuntimeCapabilities(value: unknown): PluginRuntimeCapability[] 
             capabilities.push(capability as PluginRuntimeCapability);
         }
     }
+    // Writing a variable lets you observe what you wrote, so `state.write` alone
+    // would understate the plugin's reach in the install prompt. Implying the
+    // read half keeps the prompt honest and lets the runtime hand out one
+    // coherent `state` object instead of a half-populated one.
+    if (capabilities.includes("state.write") && !capabilities.includes("state.read")) {
+        capabilities.push("state.read");
+    }
     return capabilities;
 }
 

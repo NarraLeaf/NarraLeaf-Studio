@@ -2,7 +2,7 @@ import crypto from "crypto";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { derivePackKey, runtimeSupportPath } from "@narraleaf/encryption";
 import {
     openSealedBundle,
@@ -15,10 +15,20 @@ import { UI_GRAPH_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/graph"
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY } from "@shared/types/blueprint/graph";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
-import { compileGameRuntimeArtifact, type GameRuntimeArtifactCompileInput } from "./gameRuntimeArtifactCompiler";
+import type { NormalizedPluginManifestV2, PluginBuildDependencyContribution } from "@shared/types/plugins";
+import { buildDependencySourcePath } from "../../../../../buildWorker/pluginBuildDependencies";
+import {
+    compileGameRuntimeArtifact,
+    type GameRuntimeArtifactCompileInput,
+    type GameRuntimePluginSource,
+} from "./gameRuntimeArtifactCompiler";
 
 const ASSET_ID = "00000000-0000-4000-8000-000000000123";
 const REMOTE_ASSET_ID = "00000000-0000-4000-8000-000000000456";
+const SIDECAR_PLUGIN_ID = "acme.sidecar-plugin";
+const SIDECAR_ID = `${SIDECAR_PLUGIN_ID}.bridge`;
+const SIDECAR_DEPENDENCY_ID = `${SIDECAR_PLUGIN_ID}.redist`;
+const SIDECAR_PLATFORM_KEY = "windows-x64";
 const DISPLAYABLE_ANIMATION_FROM_EXPLICIT_PARAM = "__displayableAnimationFromExplicit";
 const CURRENT_ICON_PLATFORM = process.platform === "darwin"
     ? "macos"
@@ -34,6 +44,7 @@ describe("game runtime artifact compiler", () => {
     });
 
     afterEach(async () => {
+        vi.unstubAllGlobals();
         // The protected-store test process.dlopen()s the packed bindings.node; on
         // Windows a loaded native module cannot be unlinked until the process
         // exits, so a plain rm throws EPERM on that one file. Retry briefly, then
@@ -149,7 +160,11 @@ describe("game runtime artifact compiler", () => {
             name: "Sample Plugin",
             version: "1.0.0",
             entries: { runtime: "runtime.js" },
-            contributes: { blueprintNodes: ["acme.sample-plugin.node"], widgets: [], runtimeData: [], locales: [] },
+            contributes: {
+                blueprintNodes: ["acme.sample-plugin.node"],
+                widgets: [], runtimeData: [], locales: [],
+                runtimeCapabilities: [], sidecars: [], buildDependencies: [],
+            },
             permissions: [],
         };
         const result = await compileGameRuntimeArtifact({
@@ -158,6 +173,7 @@ describe("game runtime artifact compiler", () => {
                 manifest,
                 entry: "runtime.js",
                 entryPath: path.join(pluginInstallDir, "runtime.js"),
+                installPath: pluginInstallDir,
             }],
         });
 
@@ -169,6 +185,155 @@ describe("game runtime artifact compiler", () => {
             manifest,
             entryRelativePath: "plugins/acme.sample-plugin/runtime.js",
         }]);
+    });
+
+    it("copies a plugin sidecar for the platform being built and records it in the pack", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        const pluginInstallDir = path.join(tempDir, "plugins", SIDECAR_PLUGIN_ID);
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        const manifest = await writeSidecarPlugin({
+            installDir: pluginInstallDir,
+            files: { "bin/win-x64/tool.exe": "MZ fake executable" },
+            entry: "bin/win-x64/tool.exe",
+            include: ["bin/win-x64/tool.exe"],
+        });
+
+        const result = await compileGameRuntimeArtifact({
+            ...previewCompileInput(projectPath, runtimeDistDir, 47340),
+            sidecarPlatformKey: SIDECAR_PLATFORM_KEY,
+            runtimePlugins: [pluginSource(manifest, pluginInstallDir)],
+        });
+
+        await expect(fs.readFile(
+            path.join(result.appDir, "sidecars", SIDECAR_PLUGIN_ID, SIDECAR_ID, "bin", "win-x64", "tool.exe"),
+            "utf-8",
+        )).resolves.toBe("MZ fake executable");
+        // The pack carries the spawn contract flattened out of the manifest, with
+        // an app-dir-relative entry the runtime can hand to spawn().
+        expect(result.pack.plugins[0].sidecars).toEqual([{
+            id: SIDECAR_ID,
+            entry: `sidecars/${SIDECAR_PLUGIN_ID}/${SIDECAR_ID}/bin/win-x64/tool.exe`,
+            kind: "executable",
+            autostart: "onGameStart",
+            startupTimeoutMs: 5000,
+            shutdownTimeoutMs: 3000,
+            restart: { maxRetries: 3, backoffMs: 1000 },
+        }]);
+    });
+
+    it("refuses to ship a sidecar file that does not match its declared digest", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        const pluginInstallDir = path.join(tempDir, "plugins", SIDECAR_PLUGIN_ID);
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        // An install directory is an ordinary folder: anything on the host can
+        // swap the binary after the install-time check passed.
+        const manifest = await writeSidecarPlugin({
+            installDir: pluginInstallDir,
+            files: { "bin/tool.exe": "a binary somebody swapped in" },
+            entry: "bin/tool.exe",
+            include: ["bin/tool.exe"],
+            sha256: { "bin/tool.exe": sha256OfText("the binary the plugin author published") },
+        });
+
+        await expect(compileGameRuntimeArtifact({
+            ...previewCompileInput(projectPath, runtimeDistDir, 47341),
+            sidecarPlatformKey: SIDECAR_PLATFORM_KEY,
+            runtimePlugins: [pluginSource(manifest, pluginInstallDir)],
+        })).rejects.toThrow(
+            new RegExp(`Sidecar "${SIDECAR_ID}" of plugin "${SIDECAR_PLUGIN_ID}".+bin/tool\\.exe.+sha256`, "s"),
+        );
+    });
+
+    it("resolves a dep: include through the build dependency cache", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        const pluginInstallDir = path.join(tempDir, "plugins", SIDECAR_PLUGIN_ID);
+        const hostUserDataDir = path.join(tempDir, "userData");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        // Pre-place the verified bytes in the cache, the way an author on an
+        // offline machine would; the compile must not reach the network.
+        const dependencyBytes = "redistributable library bytes";
+        const dependencySha256 = sha256OfText(dependencyBytes);
+        const sourcePath = buildDependencySourcePath(hostUserDataDir, dependencySha256);
+        await fs.mkdir(path.dirname(sourcePath), { recursive: true });
+        await fs.writeFile(sourcePath, dependencyBytes, "utf-8");
+        const fetchMock = vi.fn();
+        vi.stubGlobal("fetch", fetchMock);
+
+        const manifest = await writeSidecarPlugin({
+            installDir: pluginInstallDir,
+            files: { "bin/tool.exe": "MZ fake executable" },
+            entry: "bin/tool.exe",
+            include: ["bin/tool.exe", `dep:${SIDECAR_DEPENDENCY_ID}/bin/redist.dll`],
+            buildDependencies: [{
+                id: SIDECAR_DEPENDENCY_ID,
+                targets: {
+                    [SIDECAR_PLATFORM_KEY]: {
+                        url: "https://example.invalid/redist.dll",
+                        sha256: dependencySha256,
+                        archive: "none",
+                        // Laid out beside the executable: a Windows binary looks
+                        // for its libraries in its own directory.
+                        fileName: "bin/redist.dll",
+                    },
+                },
+            }],
+        });
+
+        const result = await compileGameRuntimeArtifact({
+            ...previewCompileInput(projectPath, runtimeDistDir, 47342),
+            sidecarPlatformKey: SIDECAR_PLATFORM_KEY,
+            hostUserDataDir,
+            runtimePlugins: [pluginSource(manifest, pluginInstallDir)],
+        });
+
+        const sidecarDir = path.join(result.appDir, "sidecars", SIDECAR_PLUGIN_ID, SIDECAR_ID);
+        await expect(fs.readFile(path.join(sidecarDir, "bin", "redist.dll"), "utf-8"))
+            .resolves.toBe(dependencyBytes);
+        await expect(fs.readFile(path.join(sidecarDir, "bin", "tool.exe"), "utf-8"))
+            .resolves.toBe("MZ fake executable");
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("skips a sidecar the plugin ships nothing for on this platform, rather than failing", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        const pluginInstallDir = path.join(tempDir, "plugins", SIDECAR_PLUGIN_ID);
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        const manifest = await writeSidecarPlugin({
+            installDir: pluginInstallDir,
+            files: { "bin/linux-x64/tool": "ELF fake executable" },
+            entry: "bin/linux-x64/tool",
+            include: ["bin/linux-x64/tool"],
+            platformKey: "linux-x64",
+        });
+
+        const result = await compileGameRuntimeArtifact({
+            ...previewCompileInput(projectPath, runtimeDistDir, 47343),
+            sidecarPlatformKey: SIDECAR_PLATFORM_KEY,
+            runtimePlugins: [pluginSource(manifest, pluginInstallDir)],
+        });
+
+        // A platform the plugin does not support is a supported shape: the pack
+        // says "no sidecar" and the plugin's runtime degrades. Preflight is what
+        // warns the author; the compile does not fail.
+        expect(result.pack.plugins[0].sidecars).toBeUndefined();
+        await expect(fs.access(path.join(result.appDir, "sidecars"))).rejects.toThrow();
     });
 
     it("produces an empty plugin list when no runtime plugins are supplied", async () => {
@@ -300,7 +465,11 @@ describe("game runtime artifact compiler", () => {
             name: "Sample Plugin",
             version: "1.0.0",
             entries: { runtime: "runtime.js" },
-            contributes: { blueprintNodes: ["acme.sample-plugin.node"], widgets: [], runtimeData: [], locales: [] },
+            contributes: {
+                blueprintNodes: ["acme.sample-plugin.node"],
+                widgets: [], runtimeData: [], locales: [],
+                runtimeCapabilities: [], sidecars: [], buildDependencies: [],
+            },
             permissions: [],
         };
 
@@ -311,6 +480,7 @@ describe("game runtime artifact compiler", () => {
                 manifest,
                 entry: "runtime.js",
                 entryPath: path.join(pluginInstallDir, "runtime.js"),
+                installPath: pluginInstallDir,
             }],
         });
 
@@ -455,6 +625,79 @@ describe("game runtime artifact compiler", () => {
             .rejects.toThrow(/requires a preview control channel/);
     });
 });
+
+function sha256OfText(content: string): string {
+    return crypto.createHash("sha256").update(Buffer.from(content, "utf-8")).digest("hex");
+}
+
+function pluginSource(manifest: NormalizedPluginManifestV2, installDir: string): GameRuntimePluginSource {
+    return {
+        manifest,
+        entry: "runtime.js",
+        entryPath: path.join(installDir, "runtime.js"),
+        installPath: installDir,
+    };
+}
+
+/**
+ * A plugin package that ships one sidecar: its runtime entry plus every
+ * package-relative file the target includes, written to disk, and the manifest
+ * the compiler reads. `sha256` defaults to the files' real digests, so a test
+ * that passes it deliberately is describing a package that has been tampered
+ * with since it was installed.
+ */
+async function writeSidecarPlugin(input: {
+    installDir: string;
+    files: Record<string, string>;
+    entry: string;
+    include: string[];
+    sha256?: Record<string, string>;
+    platformKey?: string;
+    buildDependencies?: PluginBuildDependencyContribution[];
+}): Promise<NormalizedPluginManifestV2> {
+    await fs.mkdir(input.installDir, { recursive: true });
+    await fs.writeFile(path.join(input.installDir, "runtime.js"), "export default {};", "utf-8");
+    for (const [relativePath, content] of Object.entries(input.files)) {
+        const filePath = path.join(input.installDir, ...relativePath.split("/"));
+        await fs.mkdir(path.dirname(filePath), { recursive: true });
+        await fs.writeFile(filePath, content, "utf-8");
+    }
+    const declared = input.sha256 ?? Object.fromEntries(
+        Object.entries(input.files).map(([relativePath, content]) => [relativePath, sha256OfText(content)]),
+    );
+    return {
+        manifestVersion: 2,
+        id: SIDECAR_PLUGIN_ID,
+        name: "Sidecar Plugin",
+        version: "1.0.0",
+        entries: { runtime: "runtime.js" },
+        contributes: {
+            blueprintNodes: [],
+            widgets: [],
+            runtimeData: [],
+            locales: [],
+            runtimeCapabilities: [],
+            sidecars: [{
+                id: SIDECAR_ID,
+                kind: "executable",
+                transport: "stdio-jsonl",
+                autostart: "onGameStart",
+                startupTimeoutMs: 5000,
+                shutdownTimeoutMs: 3000,
+                restart: { maxRetries: 3, backoffMs: 1000 },
+                targets: {
+                    [input.platformKey ?? SIDECAR_PLATFORM_KEY]: {
+                        entry: input.entry,
+                        include: input.include,
+                        sha256: declared,
+                    },
+                },
+            }],
+            buildDependencies: input.buildDependencies ?? [],
+        },
+        permissions: [],
+    };
+}
 
 function previewCompileInput(
     projectPath: string,
