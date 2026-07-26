@@ -255,6 +255,40 @@ Assets 子页改成两块，**不加任何解释性文本**（沿用既有铁律
 - 隔离树审计：`git archive HEAD | tar -x` 到干净树上跑 `yarn lint` + `yarn build:apps:dev`，
   报告里贴命令、退出码、`git status`（应为空）。
 
+## 6.1 实测记录（2026-07-26，worktree 实例，CDP 9226 / reload 5596 / debug 9227）
+
+测试工程：`D:/Temp/nls-icontest`（NLDemo 的副本），种入**旧五槽配置** + 一张
+**800×400 非正方形、四角全透明**的 PNG（`resources/icons/app-icon-windows.png`），
+然后在 app 里打开 项目 ▸ 图标。
+
+| 检查 | 结果 |
+|---|---|
+| 迁移 | `icons` 变成 v2：master = 那张 windows 图，六个 spec 的 `inset` 全为 0，`ios.background = "#FFFFFF"`，7 条 `baked` |
+| 烘焙产物 | 7 个文件全部生成：5 个 1024、favicon 32、apple-touch 180 |
+| **非正方形不再拉伸** | 位图量测：1024 画布里图形 924×512，`top=256`——2:1 原比例，上下留白居中 |
+| **inset 精确** | macOS 调到 10% 后：图形 739×410、`left=143`、`top=307`，与 `1024×0.8` 的计算逐像素吻合 |
+| **iOS 无 alpha** | 解码 IHDR：`colorType=2`（truecolour，**根本没有 alpha 通道**），角像素 `[255,255,255]` |
+| 其余目标保留透明 | windows/linux/macos/android/favicon 均 `colorType=6`，603318 个透明像素 |
+| **重开不写盘** | 第二次进面板：7 个文件 **sha 与 mtime 全部未变**，`.nlproj` md5 未变 |
+| 单点重烘焙 | 只改 macOS 的 inset → **只有 `macos.png` 重写**，其余 6 个未动 |
+| PNG 无时间戳 | 全部产物不含 `tIME`/`tEXt` chunk |
+| **web 端到端** | 真跑一次 web 构建：产物里 `favicon.png` + `apple-touch-icon.png` 与烘焙产物 **md5 相同**，`index.html` 两个 link 标签都在 |
+
+**实测抓出、单测抓不到的两个缺陷**（已修，见 commit `5dca4461`）：
+
+1. **iOS 图标"不透明"不等于"没有 alpha 通道"。** canvas 的 `toBlob` 永远输出
+   colorType 6，所以压白之后的 iOS 图标每个像素都不透明、却**仍带 alpha 通道**——
+   Apple 的校验器卡的是通道的存在，不是透明度，照样会拒。修法：opaque 输出改为
+   手写 PNG truecolour 编码（逐行 Paeth，固定选择，字节可复现）。
+   顺带引入 `PROJECT_ICON_BAKE_FORMAT`：源和配方都没变时，没有任何指纹能察觉
+   "编码器变了"，不盖这个版本戳，旧工程会永远停在旧产物上。
+2. **inset 滑块是死的。** 它是受控 input，我只给了 `onValueCommit` 没给
+   `onValueChange`，于是 React 每次渲染都把滑块拽回旧值——拖动时滑块不动，
+   提交时提交的还是原来的数。修法：拖动期间用本地草稿值。
+
+**未验**：桌面（electron-builder）与移动端（APK/IPA）产物未在本轮真跑；
+面板的**视觉**未验收——worktree 实例的窗口是 `hidden`，只有用户点开窗口才能看。
+
 ## 7. 裁决记录（2026-07-26，用户）
 
 | 问题 | 裁决 |
