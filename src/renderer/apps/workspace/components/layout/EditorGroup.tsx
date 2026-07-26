@@ -530,9 +530,13 @@ export function EditorGroup({ group }: EditorGroupProps) {
                 </div>
             )}
 
-            {/* Editor Content with payload support */}
+            {/* Editor Content with payload support. Every editor tab sizes itself to h-full and
+                brings its own scroller, so this host must never scroll: a scrollbar here steals ~8px
+                of client width from the tab, which re-clamps any absolutely-positioned overlay inside
+                it, which removes the scrollbar again — a self-sustaining oscillation that ends with
+                Chrome's ResizeObserver loop guard stranding the overlay outside its container. */}
             <div
-                className="flex-1 min-h-0 overflow-auto outline-none"
+                className="flex-1 min-h-0 overflow-hidden outline-none"
                 tabIndex={-1}
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={handleEditorBodyClick}

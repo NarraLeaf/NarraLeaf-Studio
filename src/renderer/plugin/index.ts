@@ -221,6 +221,11 @@ export type PluginServices = {
             registerGroup(group: ActionGroup): PluginCleanup;
         };
         editors: {
+            /**
+             * The editor group clips its content host, so a tab component must size itself to the
+             * host (`h-full`) and bring its own scroller for anything taller — overflowing content
+             * is not scrolled for it.
+             */
             open<TPayload = unknown>(tab: EditorTabDefinition<TPayload>, groupId?: string): void;
             close(tabId: string, groupId?: string): void;
         };
