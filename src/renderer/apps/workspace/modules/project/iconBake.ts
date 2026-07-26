@@ -166,7 +166,13 @@ export async function renderIconOutput(
     context.imageSmoothingQuality = "high";
     context.drawImage(artwork, plan.x, plan.y, plan.width, plan.height);
 
-    return canvasToPngBytes(canvas);
+    // An output that forbids alpha must not merely be opaque - it must carry no
+    // alpha channel at all. Apple's asset validator rejects an icon that has
+    // one even when every pixel is fully opaque, and canvas.toBlob always
+    // encodes RGBA, so these are re-encoded as PNG truecolour.
+    return output.opaque
+        ? encodeOpaquePng(context.getImageData(0, 0, plan.canvas, plan.canvas))
+        : canvasToPngBytes(canvas);
 }
 
 /**
@@ -221,4 +227,110 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
     const buffer = new ArrayBuffer(bytes.byteLength);
     new Uint8Array(buffer).set(bytes);
     return buffer;
+}
+
+/**
+ * Encode RGBA image data as a PNG with no alpha channel (colour type 2).
+ *
+ * Hand-rolled because the platform gives no way to ask canvas for one: toBlob
+ * emits colour type 6 whatever the pixels say. Every row uses the Paeth filter
+ * - one fixed choice rather than a heuristic, so the same pixels always produce
+ * the same bytes, which is what keeps these files quiet in version control.
+ */
+async function encodeOpaquePng(image: ImageData): Promise<Uint8Array> {
+    const { width, height, data } = image;
+    const stride = width * 3;
+    const raw = new Uint8Array((stride + 1) * height);
+    const current = new Uint8Array(stride);
+    const previous = new Uint8Array(stride);
+
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const source = (y * width + x) * 4;
+            const target = x * 3;
+            current[target] = data[source];
+            current[target + 1] = data[source + 1];
+            current[target + 2] = data[source + 2];
+        }
+        const rowStart = y * (stride + 1);
+        raw[rowStart] = 4;
+        for (let i = 0; i < stride; i++) {
+            const left = i >= 3 ? current[i - 3] : 0;
+            const up = previous[i];
+            const upLeft = i >= 3 ? previous[i - 3] : 0;
+            raw[rowStart + 1 + i] = (current[i] - paethPredictor(left, up, upLeft)) & 0xff;
+        }
+        previous.set(current);
+    }
+
+    const header = new Uint8Array(13);
+    new DataView(header.buffer).setUint32(0, width);
+    new DataView(header.buffer).setUint32(4, height);
+    header[8] = 8;  // bit depth
+    header[9] = 2;  // colour type: truecolour, no alpha
+    return concatBytes([
+        new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+        pngChunk("IHDR", header),
+        pngChunk("IDAT", await deflate(raw)),
+        pngChunk("IEND", new Uint8Array(0)),
+    ]);
+}
+
+function paethPredictor(a: number, b: number, c: number): number {
+    const p = a + b - c;
+    const pa = Math.abs(p - a);
+    const pb = Math.abs(p - b);
+    const pc = Math.abs(p - c);
+    return pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+}
+
+/** zlib-wrapped deflate, which is the framing PNG's IDAT expects. */
+async function deflate(bytes: Uint8Array): Promise<Uint8Array> {
+    const stream = new Blob([toArrayBuffer(bytes)]).stream().pipeThrough(new CompressionStream("deflate"));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+function pngChunk(type: string, data: Uint8Array): Uint8Array {
+    const body = new Uint8Array(4 + data.length);
+    for (let i = 0; i < 4; i++) {
+        body[i] = type.charCodeAt(i);
+    }
+    body.set(data, 4);
+    const chunk = new Uint8Array(8 + data.length + 4);
+    const view = new DataView(chunk.buffer);
+    view.setUint32(0, data.length);
+    chunk.set(body, 4);
+    view.setUint32(chunk.length - 4, crc32(body));
+    return chunk;
+}
+
+let crcTable: Uint32Array | null = null;
+
+function crc32(bytes: Uint8Array): number {
+    if (!crcTable) {
+        crcTable = new Uint32Array(256);
+        for (let n = 0; n < 256; n++) {
+            let c = n;
+            for (let k = 0; k < 8; k++) {
+                c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+            }
+            crcTable[n] = c >>> 0;
+        }
+    }
+    let crc = 0xffffffff;
+    for (const byte of bytes) {
+        crc = crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+    }
+    return (crc ^ 0xffffffff) >>> 0;
+}
+
+function concatBytes(parts: Uint8Array[]): Uint8Array {
+    const total = parts.reduce((sum, part) => sum + part.length, 0);
+    const result = new Uint8Array(total);
+    let offset = 0;
+    for (const part of parts) {
+        result.set(part, offset);
+        offset += part.length;
+    }
+    return result;
 }

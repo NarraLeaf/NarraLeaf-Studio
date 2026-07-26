@@ -99,6 +99,17 @@ export const PROJECT_ICON_OUTPUTS: readonly ProjectIconOutput[] = [
 /** Largest inset the panel offers. Past a quarter of the canvas an icon reads as a dot. */
 export const MAX_ICON_INSET = 0.25;
 
+/**
+ * Bumped whenever the bake would produce different bytes from identical inputs
+ * - a new encoder, a changed filter choice, a fix to how the artwork is placed.
+ *
+ * It exists because nothing else in the fingerprint can notice: the source and
+ * the recipe are unchanged, so without this a Studio update that improves the
+ * output would leave every existing project carrying the old one, silently and
+ * forever.
+ */
+export const PROJECT_ICON_BAKE_FORMAT = 1;
+
 /** What an `opaque` output paints under artwork whose spec kept transparency. */
 export const DEFAULT_OPAQUE_BACKGROUND = "#FFFFFF";
 
@@ -241,6 +252,7 @@ export function projectIconFingerprint(input: {
 }): string {
     const { sourceHash, spec, output } = input;
     const recipe = [
+        `v${PROJECT_ICON_BAKE_FORMAT}`,
         output.id,
         output.size,
         output.opaque ? "opaque" : "alpha",
