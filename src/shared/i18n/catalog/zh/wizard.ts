@@ -89,6 +89,7 @@ export const wizard = {
         },
         projectLocation: "项目位置",
         projectLocationPlaceholder: "输入项目位置…",
+        browseLocation: "选择文件夹…",
         validatingDirectory: "正在校验目录…",
         directoryWillBeCreated: "创建项目时将自动创建该目录",
         versionControlSystem: "版本控制系统",
