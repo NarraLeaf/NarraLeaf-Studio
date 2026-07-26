@@ -181,7 +181,7 @@ export function UITemplateStoreModal({
             onClick={onClose}
         >
             <div
-                className="flex h-[32rem] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-edge bg-surface shadow-xl"
+                className="flex h-[32rem] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-edge bg-surface-raised shadow-xl"
                 onClick={event => event.stopPropagation()}
             >
                 <div className="flex items-center gap-2 border-b border-edge px-3 py-2.5">

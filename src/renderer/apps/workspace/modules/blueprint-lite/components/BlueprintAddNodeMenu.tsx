@@ -317,7 +317,7 @@ export function BlueprintAddNodeMenu({
             <div
                 role="presentation"
                 className={[
-                    "fixed z-[101] flex max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-md border bg-surface shadow-xl",
+                    "fixed z-[101] flex max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-md border bg-surface-raised shadow-xl",
                     connectMode ? "border-primary/50 ring-1 ring-primary/20" : "border-edge",
                 ].join(" ")}
                 style={{ left: layout.left, top: layout.top, width: MENU_W, maxHeight: layout.maxHeight }}
