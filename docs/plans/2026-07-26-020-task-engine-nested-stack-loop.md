@@ -1,7 +1,7 @@
 ---
 title: "task(engine): 嵌套栈的 loop 信息在 snapshot 里被丢掉，Dev Mode 拿不到当前轮次"
 type: task
-status: ready
+status: done
 date: 2026-07-26
 repo: narraleaf-react
 blocked-by-this: 2026-07-26-019-task-ui-u4-dev-mode-console.md (A-9)
@@ -80,3 +80,26 @@ U4 验收（`2026-07-26-019` §7.1）唯一的红。orchestrator 在引擎源码
 不是从执行者报告采信的。判据当初写成 `n/3` 是照着类型声明写的——
 **没有验证这个字段在嵌套之后还活着**，属于判据的错；在引擎改之前
 Studio 那边就显示声明次数，不假装满足。
+
+
+---
+
+## 完成记录（2026-07-26）
+
+**引擎侧**：`narraleaf-react` 分支 `fix/nested-stack-loop-snapshot` → 已并入 `dev_nomen`（merge `2bb927b`），
+版本 `0.19.1`，CHANGELOG 已写（含 breaking 说明）。改动就是提案的那两处：
+`branches?: StackFrameSnapshot[][]` → `StackSnapshot[]`，
+`map(s => s.snapshot().frames)` → `map(s => s.snapshot())`。
+两个单测钉住它：嵌套 count loop 的 counter、嵌套栈的 tag，都**从父级 snapshot 读**而不是直接问嵌套模型。
+`npm run lint` 0、`tsc --noEmit` 0、`vitest` 11/11。
+
+**Studio 侧**：`findReportedLoop` 改成向 branches 递归下降；两处按老形状取值的地方跟着改
+（分支当前行的 `branches[i][0]`、找并发帧的递归）。单测 14/14。
+
+**判据全部满足，且是在真机上驱动出来的**（不是照类型推断）：
+夹具 `Nesting Lab` 的 repeat 逐轮读作 **`Repeat 1/3` → `2/3` → `3/3`**，然后播放头离开循环进入 parallel。
+U4 的 A-9 由红转绿，`--phase=fixture` 5/5。
+
+**还欠一步（用户的活）**：`narraleaf-react@0.19.1` 需要发布，之后把 Studio 的
+`package.json` 从 `^0.18.0` 提上去。目前是把本地 build 的 dist 拷进 `node_modules` 验证的，
+`yarn install` 会把它冲掉。
