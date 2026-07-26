@@ -24,6 +24,20 @@ export const assets = {
             other: "Delete {count} items?",
         },
         confirmMessage: "Everything inside a selected group is deleted too. This cannot be undone.",
+        /** The delete button in the reference warning — danger-coloured, never the keyboard default. */
+        action: "Delete",
+        /** A delete the service refused after the author had already confirmed it. */
+        failedTitle: "Failed to delete",
+    },
+    /**
+     * Swapping the file behind an asset record. The record keeps its id, so every reference follows;
+     * nothing here should suggest the author has to relink anything.
+     */
+    replace: {
+        confirmTitle: "Replace the contents of {name}?",
+        confirmAction: "Replace",
+        failedTitle: "Failed to replace asset contents",
+        remoteUnsupported: "Remote assets have no local file to replace.",
     },
     /** Asset category labels, keyed by the `AssetType` enum value. */
     types: {
@@ -123,6 +137,12 @@ export const assets = {
         filePathParsingFailed: "File path parsing failed.",
         noMatchingFiles: "No matching files were found in the dropped folder.",
         moreFailures: "…and {count} more.",
+        /** The import strip's failure list — files the run could not read, kept for a retry. */
+        failedCount: {
+            one: "{count} file failed",
+            other: "{count} files failed",
+        },
+        retry: "Retry",
         remoteTitle: "Import Remote Asset",
         remoteDescription: "Paste a direct link to the remote asset",
         remoteInvalidUrl: "Please enter a valid URL",
@@ -132,6 +152,7 @@ export const assets = {
         newGroup: "New Group",
         newSubGroup: "New Sub-Group",
         importAssets: "Import Assets…",
+        replaceContent: "Replace File…",
         copyCount: {
             one: "Copy {count} item",
             other: "Copy {count} items",
