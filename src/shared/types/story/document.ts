@@ -32,7 +32,13 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
 // so the two migrations need not run together, or even in the same session. A row whose derived id
 // names no pose compiles to a diagnostic — which is the point: the model this replaced answered an
 // unresolvable differential with an arbitrary other image.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 10 as const;
+// v11 is a burned number. It added a `{action:"plugin"}` marker block for plugin compile passes;
+// that feature was withdrawn (designed against a Studio that has since moved, and never validated
+// by a consumer), but the number stays spent: documents saved while it existed carry
+// `schemaVersion: 11`, and `assertSupportedStoryDocument` refuses anything newer than this
+// constant. Since v11's migration was a pure no-op bump, such a document is shape-identical to a
+// v10 one, so keeping the number costs nothing and reclaiming it would lock those projects out.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 11 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
