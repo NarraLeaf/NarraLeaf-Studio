@@ -146,6 +146,7 @@ for (const entry of Object.values(variantAssets)) { if (有图) return 它; }  /
 | PSD 地位 | **一次性导入向导** | 不常驻 PSD、不做双向同步；只保留层路径指纹用于重导重连（§5） |
 | tag-based（预合成组合矩阵） | **不做**——那是裸用 NLR 的能力，对 Studio 隐形 | 三选一变**二选一**：预合成差分集 / 分层立绘 |
 | 编辑器野心 | **核心 + 诊断** | 含组合浏览器与诊断；不含自动眨眼/口型、不含构建期预烘焙 |
+| 建好后能否改档 | **可以冷切换，两档之间不做转换** | `kind` 可改；改档即清空该角色的外观数据并重建，不提供 preset↔layered 的任何自动转换。改档必须二次确认并说明"现有差分会全部丢失"，且要先查引用（故事行引用的 pose/tags 会全部失效，须给出受影响行数） |
 
 ---
 
@@ -243,49 +244,72 @@ story-motion 选择器、资产总览的角色分组卡。
 
 ---
 
-## 4. L0 引擎卡（前置，阻断全部后续）
+## 4. L0 引擎卡 —— **已完成，待发布**
 
-仓库 `../narraleaf-react`，分支从 `dev_nomen` 开。目标版本 **0.18.0**。
-按 `engine-changelog-rule`：CHANGELOG 必须写，且对齐上一个 tag 以来的全部公开面。
+仓库 `../narraleaf-react`，分支 `feat/layered-shared-axis` 已合入 `dev_nomen`
+（`96c4b2a` 代码 + `843210d` publish 提交）。**0.18.0 尚未上 npm**，见 §4.3。
 
-**E1 层与 tag 组解耦（阻断级，治 G1）**
+### 4.1 实际改动（比原计划小得多）
 
-`LayerSlot` 增加对象形态，纯增量、向后兼容：
+原方案要给 `LayerSlot` 加一个 `{ variants, declares?: boolean }` 对象形态。落地时发现
+**不需要任何新概念**：把「组」的身份从*层*改成*tag 集合*就够了。
 
 ```ts
-type LayerVariantSlot = {
-    variants: Record<string, string | null>;
-    /** false = 只消费该 tag 组，不声明它。默认 true。 */
-    declares?: boolean;
-};
+// normalizeSrcDefinition 里的一行
+groups: src.layers.filter(Image.isLayerVariants).map(slot => Object.keys(slot)),
+// ↓ 改成按 tag 集合去重
+groups: Image.collectLayerGroups(src.layers),
 ```
 
-- `normalizeSrcDefinition`（`image.ts:713-731`）只从 `declares !== false` 的层收集 `groups`。
-- 唯一性校验（`image.ts:770-778`）只对声明层执行；跟随层的每个 tag 必须能在某个声明层里找到，
-  否则报「跟随了未声明的 tag 组」——这条新错误要有明确文案。
-- `resolveLayerSlot`（`image.ts:295-308`）对象形态查 `variants`，其余分支不变。
-- `getAllLayerSrc`（`image.ts:315-333`）遍历**全部** variants 映射，含跟随层。
-- 裸 `Record<tag, src>` 等价于 `{ variants, declares: true }`，现有用法与现有测试零改动。
+于是「提供同一组 tag 的层，由同一个组驱动」：
 
-**E2 作用域层**（E1 的自然结果，无新语法）
+```ts
+layers: [
+    {uniform: "u_body.png", casual: "c_body.png"},
+    {uniform: null,         casual: "jacket.png"},   // 仅私服有外套
+    {happy: "brows_happy.png", angry: "brows_angry.png"},
+    {happy: "mouth_happy.png", angry: "mouth_angry.png"},
+    {happy: null,              angry: "vein.png"},
+],
+defaults: ["uniform", "happy"],   // 每个"组"一个默认值，不是每层
+```
 
-`{ declares: false, variants: { uniform: null, casual: "jacket.png" } }` = 仅私服有外套。
-这条使 §3.2 的「form 降级为普通轴」成立。
+`char(["angry"])` 一次带动下面三层，服装不动。**跟随层就是普通的 variants 层**，所以
+`getAllLayerSrc` 原封不动就已经覆盖它们——G2 的预加载缺口对 Studio 自动消失，一行没改。
 
-**E3 预加载**（E1 顺带解决）
+- E1 ✅ 组按 tag 集合去重（`collectLayerGroups`）
+- E2 ✅ 作用域层 = 跟随层里把不该画的 tag 写成 `null`，无新语法（示例中的外套层）
+- E3 ✅ 预加载天然覆盖；`LayerResolver` 的不可枚举性写进了它的 JSDoc（保留为逃生舱的已知限制）
+- E4 ⬜ 层偏移，**未做**（用户裁决：纯性能问题不要引入新概念），留 0.19 性能卡
+- 顺带 ✅ `DevTools.getLayerSrcs(image, tags?)`——分层图没有单一 src（G5），编辑器宿主原本
+  无处可读。走 `DevTools` 静态类，不扩公开面。
 
-E1 之后 Studio 完全不需要 `LayerResolver`，模型保持纯声明式（也就不需要在编译期生成闭包）。
-resolver 层的预加载缺口（G2）**保留为已知限制**，但要写进 `LayerResolver` 的 JSDoc——
-裸用 NLR 的开发者有权知道。新增测试：跟随层的 src 全部进预加载表。
+**兼容性**：去重只合并 tag 集合**完全相同**的层，而这种层在旧规则下一律抛错，
+所以没有任何"曾经能跑"的配置被重新解释——只是原先抛错的现在能加载。
 
-**E4 层偏移（P2，本轮不做，登记）**
+**新的易犯错误**：跟随层只写半组 tag（`{angry: "vein.png"}`）会声明出一个新组并与原组撞 tag。
+错误文案现在会点名该 tag 并说明"提供同一 tag 集合的层共享一个组"。
 
-支持 `{ src, offset: [x, y], size: [w, h] }` 让裁剪层可用。收益是 §1.2 G3 里那份内存
-（58–192MB/角色 → 按实际内容裁剪后通常降一个数量级）。本轮以「等画布 + 编辑器诊断」兜住，
-留作 0.19 的性能卡。
+### 4.2 验证
 
-**验收**：新增单测覆盖——多层共享一轴、跟随层预加载、跟随未声明 tag 报错、旧形态零回归；
-`build:dev` + postbuild `--target-dir` 拷进 Studio 跑现有 `storyCompiler` 回归。
+- 全量 `vitest`：**347/347 通过**（32 个文件）。新增 5 条测试锁定共享组、跟随层预加载、
+  每组一个默认值、以及"不同 tag 集合共享 tag 仍然报错"。
+- `eslint` 全 `src/` 干净；`prepublishOnly`（lint + 生产构建 + 声明）通过，
+  `getLayerSrcs` 已进 `dist/game/nlcore/elements/built-in/DevTools.d.ts` 与 `dist/main.js`。
+- 改动量：3 个文件，+129 / −8。
+
+### 4.3 发布卡在 npm 令牌上（需要用户处理）
+
+`npm publish` 被拒：
+
+```
+403 Two-factor authentication is required to publish this package
+    but an automation token was specified
+```
+
+`NPM_TOKEN`（User 作用域，40 字符 `npm_` 开头）本身有效——注入后 401 变 403——但它
+**没有勾选 Bypass 2FA**。铸新令牌与改 2FA 设置属于凭据操作，须由用户本人完成。
+registry 上仍是 0.17.1，0.18.0 未发布，本地 `dev_nomen` 已就绪。
 
 ---
 
