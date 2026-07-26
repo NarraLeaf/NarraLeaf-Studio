@@ -10,16 +10,32 @@ export interface ProjectIconPreview {
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
+/**
+ * The bytes a browser can actually decode, plus the media type to hand it.
+ * Everything passes through unchanged except .icns, which is a container no
+ * browser reads - that gets unpacked to its largest embedded PNG.
+ */
+export function extractIconPixels(
+    bytes: Uint8Array,
+    mediaType: string,
+    filePath: string,
+): { bytes: Uint8Array; mediaType: string; extractedFromIcns: boolean } {
+    const extension = extname(filePath).replace(/^\./, "").toLowerCase();
+    const icns = extension === "icns" || mediaType === "image/icns";
+    const extracted = icns ? extractLargestPngFromIcns(bytes) : null;
+    return extracted
+        ? { bytes: extracted, mediaType: "image/png", extractedFromIcns: true }
+        : { bytes, mediaType, extractedFromIcns: false };
+}
+
 export async function createProjectIconPreview(
     bytes: Uint8Array,
     mediaType: string,
     filePath: string,
 ): Promise<ProjectIconPreview> {
-    const extension = extname(filePath).replace(/^\./, "").toLowerCase();
-    const icns = extension === "icns" || mediaType === "image/icns";
-    const previewBytes = icns ? extractLargestPngFromIcns(bytes) ?? bytes : bytes;
-    const previewMediaType = icns && previewBytes !== bytes ? "image/png" : mediaType;
-    const blob = new Blob([toArrayBuffer(previewBytes)], { type: previewMediaType });
+    const pixels = extractIconPixels(bytes, mediaType, filePath);
+    const previewMediaType = pixels.mediaType;
+    const blob = new Blob([toArrayBuffer(pixels.bytes)], { type: previewMediaType });
     const url = URL.createObjectURL(blob);
 
     try {
@@ -29,7 +45,7 @@ export async function createProjectIconPreview(
             mediaType: previewMediaType,
             width: dimensions.width,
             height: dimensions.height,
-            extractedFromIcns: icns && previewBytes !== bytes,
+            extractedFromIcns: pixels.extractedFromIcns,
         };
     } catch {
         return {
@@ -37,7 +53,7 @@ export async function createProjectIconPreview(
             mediaType: previewMediaType,
             width: null,
             height: null,
-            extractedFromIcns: icns && previewBytes !== bytes,
+            extractedFromIcns: pixels.extractedFromIcns,
         };
     }
 }

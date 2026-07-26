@@ -13,6 +13,7 @@ import {
     type GameRuntimeProjectIconPlatform,
 } from "@shared/types/gameRuntime";
 import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
+import { readProjectIconSet, resolveIconFile, resolveIconSource } from "@shared/types/projectIcons";
 import type { ProjectConfigData } from "@shared/utils/nlproj";
 import {
     createSealedBundle,
@@ -132,13 +133,6 @@ type AssetMetadataRecord = {
     hash?: unknown;
     ext?: unknown;
     source?: unknown;
-};
-
-type ProjectIconConfigRecord = {
-    path?: unknown;
-    sourceName?: unknown;
-    mediaType?: unknown;
-    updatedAt?: unknown;
 };
 
 export async function compileGameRuntimeArtifact(
@@ -534,57 +528,51 @@ async function copyProjectIcon(input: {
 }
 
 /**
- * Best-effort favicon for the web export: the first configured project icon
- * that is a PNG (browsers cannot read .icns/.ico-from-icns reliably, and the
- * conversion tooling lives in electron-builder, which the web path never
- * touches). Missing or non-PNG icons simply mean no favicon.
+ * The web export's favicon: the icon set's own baked one. Web used to have no
+ * icon of its own and borrowed whichever desktop slot happened to hold a PNG,
+ * so a project that only configured mobile icons shipped no favicon at all.
+ *
+ * A project that has not baked yet falls back to the master, and is skipped
+ * unless that master is already a PNG - the link tag in the generated HTML
+ * declares image/png, and Studio does no conversion on this path.
  */
 async function copyWebFavicon(input: {
     projectPath: string;
     appDir: string;
     projectConfig: ProjectConfigData | null;
 }): Promise<boolean> {
-    const platforms: GameRuntimeProjectIconPlatform[] = ["windows", "linux", "macos"];
-    for (const platform of platforms) {
-        const icon = getProjectIconConfig(input.projectConfig, platform);
-        if (!icon || !icon.path.toLowerCase().endsWith(".png")) {
-            continue;
-        }
-        try {
-            const sourcePath = resolveProjectRelativePath(input.projectPath, icon.path);
-            await fs.copyFile(sourcePath, path.join(input.appDir, WEB_FAVICON_FILENAME));
-            return true;
-        } catch {
-            continue;
-        }
+    const icon = resolveIconFile(readProjectIconSet(input.projectConfig), "web-favicon");
+    if (!icon || !icon.path.toLowerCase().endsWith(".png")) {
+        return false;
     }
-    return false;
+    try {
+        const sourcePath = resolveProjectRelativePath(input.projectPath, icon.path);
+        await fs.copyFile(sourcePath, path.join(input.appDir, WEB_FAVICON_FILENAME));
+        return true;
+    } catch {
+        return false;
+    }
 }
 
+/**
+ * The icon file this platform ships, read through the shared model so the
+ * legacy five-slot shape and the master model resolve identically here and in
+ * the build's preflight.
+ */
 function getProjectIconConfig(
     projectConfig: ProjectConfigData | null,
     platform: GameRuntimeProjectIconPlatform,
 ): { path: string; sourceName?: string; mediaType?: string } | null {
-    const metadata = projectConfig?.metadata;
-    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    const set = readProjectIconSet(projectConfig);
+    const file = resolveIconFile(set, platform);
+    if (!file) {
         return null;
     }
-    const rawIcons = (metadata as Record<string, unknown>).icons;
-    if (!rawIcons || typeof rawIcons !== "object" || Array.isArray(rawIcons)) {
-        return null;
-    }
-    const rawIcon = (rawIcons as Record<string, ProjectIconConfigRecord>)[platform];
-    if (!rawIcon || typeof rawIcon !== "object") {
-        return null;
-    }
-    const iconPath = readString(rawIcon.path);
-    if (!iconPath) {
-        return null;
-    }
+    const source = resolveIconSource(set, platform);
     return {
-        path: iconPath,
-        sourceName: readString(rawIcon.sourceName),
-        mediaType: readString(rawIcon.mediaType),
+        path: file.path,
+        sourceName: source?.sourceName,
+        mediaType: file.baked ? "image/png" : source?.mediaType,
     };
 }
 
