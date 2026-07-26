@@ -93,7 +93,7 @@ describe("generic verbs (bible B3)", () => {
                 action: "character",
                 operation: "enter",
                 characterId: "c1",
-                formName: "smile",
+                pose: "t1",
                 transform: { preset: "left", durationMs: 300 },
                 transition: { kind: "fadeIn" },
             },
