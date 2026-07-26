@@ -13,7 +13,6 @@ import { parsePluginStoreOwner } from "@shared/utils/pluginStorage";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
 import { IProjectDependencyService, Services, WorkspaceContext } from "../services";
-import { StoryService } from "../story/StoryService";
 import { ProjectService } from "./ProjectService";
 import { FileSystemService } from "./FileSystem";
 import { BlueprintNodeCatalogService } from "../ui-editor/BlueprintNodeCatalogService";
@@ -150,7 +149,8 @@ export class ProjectDependencyService
         this.collectBlueprintNodeUsage(usage, authoritative);
         this.collectWidgetUsage(usage, authoritative);
         await this.collectStorageUsage(usage);
-        await this.collectStoryActionUsage(usage, authoritative);
+        // Story-action usage is added once plugin story actions become a real,
+        // referenceable extension point (registration + story-doc reference model).
 
         return buildDependencyTable({
             usage,
@@ -230,40 +230,6 @@ export class ProjectDependencyService
         collect(document.elements);
         for (const component of document.components ?? []) {
             collect(component.elements);
-        }
-    }
-
-    /**
-     * Hard dependencies from `{action:"plugin"}` marker blocks: a project that authored one only
-     * makes sense while its owning plugin is installed (the plugin's compile pass is what gives the
-     * block meaning), so the block records `pluginId` directly and we attribute from that. Loads
-     * every story so unopened ones still count; a story that fails to load is skipped, not fatal.
-     */
-    private async collectStoryActionUsage(usage: DependencyUsageRecord[], authoritative: Set<string>): Promise<void> {
-        let story: StoryService;
-        try {
-            story = this.getContext().services.get<StoryService>(Services.Story);
-        } catch {
-            return;
-        }
-        for (const pluginId of story.getContributingPluginIds()) {
-            authoritative.add(pluginId);
-        }
-
-        for (const entry of story.listStories()) {
-            let document;
-            try {
-                document = await story.loadStory(entry.id);
-            } catch {
-                continue;
-            }
-            for (const scene of Object.values(document.scenes)) {
-                for (const block of Object.values(scene.blocks)) {
-                    if (block.kind === "action" && block.payload.action === "plugin") {
-                        usage.push({ pluginId: block.payload.pluginId, kind: "storyAction", id: block.payload.actionId, hard: true });
-                    }
-                }
-            }
         }
     }
 

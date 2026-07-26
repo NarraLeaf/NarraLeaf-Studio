@@ -302,9 +302,6 @@ function formatAction(payload: StoryActionPayload, scene: StoryScene, document?:
                     : undefined;
         return `/camera ${payload.operation}${amount === undefined ? "" : ` ${amount}`}`;
     }
-    if (payload.action === "plugin") {
-        return `/${payload.actionId}`;
-    }
     return `/effect ${payload.effect}`;
 }
 
