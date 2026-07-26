@@ -80,6 +80,32 @@ type CharacterLayer = { id; name; axisId: string | null;   // null = 恒定层
   **preset 档体验不退化；layered 档本卡只做最小可用**（能建、能存、能编译），
   完整层栈编辑器是 L2。
 
+## 3.5 进度（2026-07-26）
+
+**已落地**（`cb738f3b`，**树尚未编译通过**）：WI-1、WI-2、WI-3、WI-4、WI-5。
+即模型、服务、角色存储版本与迁移、故事文档 v9→v10 与迁移、共享解析、摘要、编译器双档路径。
+
+- 行内表情 token 无需特殊处理：引擎的 `TextEventAppearance = ImageSrc | Color | string[]`
+  已经接受 tag 数组，分层角色直接传 tag。
+- 编译器分层路径：`getImage` 的 `src` 放宽为「url/颜色 或 分层定义」——Image 的 src 形状在
+  构造时固定，所以整栈必须在第一次触碰该角色时就位；之后的行只改 tag。
+
+**未做**：WI-6 全部（约 155 个类型错误，全部集中在编辑面）：
+
+| 文件 | 错误数 | 性质 |
+|---|---|---|
+| `CharacterEditor.tsx` | 69 | form/group/variant 编辑器，需按两档重写 |
+| `storyCompiler.integration.test.ts` | 19 | 夹具用旧 summary 形状 |
+| `StorySceneEditorRows.tsx` | 14 | 行徽章 + 差分摘要 |
+| `CharacterAppearancePicker.tsx` | 10 | 选择器（`__default__` 哨兵一并删） |
+| `VariantsPanel.tsx` / `FormsPanel` / `PreviewPanel` / `CharacterPropertiesEditor` | 16 | 面板 |
+| `storySceneBlockUtils(.test)` / `StorySceneActionInspector` / `ExpressionPopover` / `richText` / `storySceneEditorTypes` / `commands/specs/character` | 16 | 行摘要与指令 spec |
+| `storyStageSnapshot.ts` / `ReferenceService` / `characterSchema` / `storyCommandContext` / `PropertiesPanel` / 2 个测试 | 11 | 机械替换 |
+
+**下一步的建议顺序**：先 `ReferenceService` + `storyStageSnapshot` + `characterSchema` +
+`storyCommandContext`（纯机械，解锁一批）→ 行摘要族（`storySceneBlockUtils` 等）→
+`CharacterAppearancePicker` → `CharacterEditor` 重写（最大一块）→ 测试夹具。
+
 ## 4. 判据
 
 1. `yarn lint`（tsc）全绿；`yarn test` 相对本机既有 8–9 条 win32 失败**无新增**。
