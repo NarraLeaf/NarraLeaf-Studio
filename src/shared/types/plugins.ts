@@ -1,4 +1,8 @@
-import type { PluginInstallPermission, PluginIdentity } from "./pluginPermissions";
+import type {
+    PluginIdentity,
+    PluginInstallPermission,
+    PluginRuntimeCapability,
+} from "./pluginPermissions";
 
 export const PluginManifestVersion = 2;
 
@@ -41,6 +45,90 @@ export type PluginLocaleContribution = {
     messages: string;
 };
 
+/**
+ * Desktop platform/arch key a sidecar or build dependency ships binaries for,
+ * spelled `<platform>-<arch>` (e.g. `windows-x64`, `macos-arm64`).
+ *
+ * Only the three desktop platforms are addressable: web has no process to spawn
+ * and the mobile shells are WebViews. A plugin that declares nothing for the
+ * platform being built simply has no sidecar there, and its runtime must degrade
+ * rather than assume one exists.
+ */
+export type PluginBinaryPlatformKey = string;
+
+export type PluginSidecarTargetContribution = {
+    /** Executable (or, for `kind: "node"`, the .js file) to run. Must appear in `include`. */
+    entry: string;
+    /**
+     * Everything shipped for this platform. Entries are package-relative paths,
+     * or `dep:<buildDependencyId>/<path>` to pull an artifact produced by a
+     * declared build dependency (that is how third-party redistributables that
+     * we may not vendor ourselves reach the pack).
+     */
+    include: string[];
+    /**
+     * `sha256` of every package-relative entry in `include`, hex. Verified at
+     * install and again at pack time, so a tampered package fails to install
+     * instead of silently shipping a different binary. `dep:` entries are covered
+     * by the build dependency's own digest instead.
+     */
+    sha256: Record<string, string>;
+};
+
+/**
+ * One native child process the plugin ships inside the author's game.
+ *
+ * This is the heaviest thing a plugin can declare — it is code that reaches the
+ * player's machine — so it is deliberately explicit: per-platform binaries,
+ * mandatory digests, and a derived install permission the author sees by name.
+ */
+export type PluginSidecarContribution = {
+    /** Prefixed with the plugin id, like every other contributed identifier. */
+    id: string;
+    /** `executable` spawns the binary directly; `node` runs it under the game's own Electron as Node. */
+    kind: "executable" | "node";
+    /** v1 speaks newline-delimited JSON over stdio; stderr stays a plain log channel. */
+    transport: "stdio-jsonl";
+    /** `onGameStart` spawns with the window; `onRequest` waits for the first call. */
+    autostart: "onGameStart" | "onRequest";
+    /** How long the handshake may take before the sidecar counts as unavailable. */
+    startupTimeoutMs: number;
+    /** Grace period between the shutdown message and SIGTERM. */
+    shutdownTimeoutMs: number;
+    restart: { maxRetries: number; backoffMs: number };
+    targets: Record<PluginBinaryPlatformKey, PluginSidecarTargetContribution>;
+};
+
+/**
+ * One external binary fetched at build time rather than vendored in the plugin
+ * package — the answer for redistributables whose license lets the *game* ship
+ * them but does not let a public plugin registry mirror them.
+ */
+export type PluginBuildDependencyTargetContribution =
+    | {
+        url: string;
+        /** Mandatory. Doubles as the cache key, so re-pointing the URL at identical bytes never re-downloads. */
+        sha256: string;
+        archive: "zip";
+        /** Archive-internal path -> path inside the produced dependency directory. */
+        files: Record<string, string>;
+    }
+    | {
+        url: string;
+        sha256: string;
+        archive: "none";
+        /** Name the downloaded file takes inside the produced dependency directory. */
+        fileName: string;
+    };
+
+export type PluginBuildDependencyContribution = {
+    /** Prefixed with the plugin id. Referenced from sidecar `include` as `dep:<id>/<path>`. */
+    id: string;
+    /** Shown to the author at install and in build logs; say what the binaries are. */
+    description?: string;
+    targets: Record<PluginBinaryPlatformKey, PluginBuildDependencyTargetContribution>;
+};
+
 export type PluginContributes = {
     /** Blueprint node types this plugin provides (editor def + runtime execute). */
     blueprintNodes?: string[];
@@ -58,6 +146,17 @@ export type PluginContributes = {
      * editor-only plugin state cannot leak into a shipped game by accident.
      */
     runtimeData?: string[];
+    /**
+     * Capability domains the `runtime` entry may use. Each maps 1:1 onto a
+     * namespace on `app.game`, and an undeclared domain is absent from that
+     * object rather than present-and-throwing — so what the install prompt
+     * listed and what the plugin can reach are the same set by construction.
+     */
+    runtimeCapabilities?: PluginRuntimeCapability[];
+    /** Native child processes shipped inside the author's game. */
+    sidecars?: PluginSidecarContribution[];
+    /** External binaries fetched (and cached) at build time. */
+    buildDependencies?: PluginBuildDependencyContribution[];
 };
 
 export type PluginManifestV2 = Omit<PluginIdentity, "id" | "name" | "version"> & Required<Pick<PluginIdentity, "id" | "name" | "version">> & {

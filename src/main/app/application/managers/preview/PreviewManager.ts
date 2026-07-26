@@ -7,7 +7,12 @@ import chokidar, { type FSWatcher } from "chokidar";
 import { WebSocket } from "ws";
 import { App } from "@/app/app";
 import type { DevModeConsoleLogPayload } from "@shared/types/devMode";
+import {
+    currentGameBuildPlatform,
+    normalizeGameBuildArch,
+} from "@shared/types/gameBuild";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
+import { buildDependencyPlatformKey } from "../build/preflight";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
 import { type GameRuntimeArtifactCompileResult } from "./compiler/gameRuntimeArtifactCompiler";
@@ -38,6 +43,16 @@ export function formatPreviewProcessOutput(chunk: Buffer): string | null {
         return null;
     }
     return text.replace(/^\n+|\n+$/g, "");
+}
+
+/**
+ * The `<platform>-<arch>` key a preview's sidecars are taken from: this host's,
+ * because the preview runner is this host's own Electron. A production build
+ * picks the key from the target being packaged instead.
+ */
+export function hostSidecarPlatformKey(): string {
+    const platform = currentGameBuildPlatform();
+    return buildDependencyPlatformKey(platform, normalizeGameBuildArch(platform, process.arch));
 }
 
 export function resolvePreviewRunnerBinaryForApp(
@@ -149,6 +164,15 @@ export class PreviewManager {
                 runtimePlugins: pluginSelection.selected,
                 mode: "preview",
                 encryptionKey,
+                // A preview runs on this machine, so it ships this machine's
+                // sidecars. Without this the preview would be the one shell that
+                // silently lacks them, and testing a sidecar would mean a full
+                // production build every time - which is exactly the loop a
+                // preview exists to avoid.
+                sidecarPlatformKey: hostSidecarPlatformKey(),
+                // `dep:` sidecar includes resolve through the build dependency
+                // cache, so the compile needs its root even in preview.
+                hostUserDataDir: this.app.getUserDataDir(),
             });
             session.artifact = artifact;
             this.emitVerbose(

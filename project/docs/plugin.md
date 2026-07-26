@@ -268,7 +268,7 @@ type RuntimePluginApp = {
 行为约束：
 
 - node type 必须以插件 ID 为前缀，且必须在 manifest `contributes.blueprintNodes` 中声明；跨插件同名注册会抛错（该插件记为加载失败）。
-- `register` 只读取 `type`/`displayName`/`execute`，可以直接传入与 studio entry 共享的完整 `BlueprintNodeDef` 对象。
+- `register` 只读取 `type`/`displayName`/`execute`，可以直接传入与 studio entry 共享的完整 `PluginBlueprintNodeDef` 对象。两个 entry 的 execute 收到同一个窄上下文（`params` / `resolveInput` / 事件槽 / `signal` / `game`），宿主的 `hostAdapter` 不在其中。
 - 游戏环境是进程级一次性加载：`setup` 没有 cleanup 语义，返回值被忽略。loader 按 `pluginId@version:entryUrl` 幂等缓存，StrictMode 双调用与 Dev Mode live reload 不会重复执行 setup。
 - 单个插件加载失败只记录日志并跳过，不阻断游戏启动，也不阻断其他插件。
 
@@ -280,7 +280,7 @@ type RuntimePluginApp = {
 
 ```text
 my-plugin/
-  src/nodes.ts      ← BlueprintNodeDef[]（单一来源）
+  src/nodes.ts      ← PluginBlueprintNodeDef[]（单一来源）
   src/main.tsx      ← studio entry: app.services.blueprintNodes.registerMany(nodes)
   src/runtime.ts    ← runtime entry: app.game.blueprintNodes.registerMany(nodes)
 ```
@@ -417,7 +417,7 @@ type PluginApp = {
 | 蓝图节点 | 元数据 + palette + 编辑器预览 execute | 游戏 execute（`game.blueprintNodes`，须声明于 `contributes.blueprintNodes`） |
 | 动态 select 选项源 | ✅ | — |
 | story action | ✅ palette + slash chooser 动作（创建标准故事块） | —（故事级逻辑经 Blueprint 块 + 插件蓝图节点执行） |
-| assets / storage（项目级 JSON） | ✅ | —（运行时数据经 `ctx.hostAdapter` 的 persistence 在 execute 时访问） |
+| assets / storage（项目级 JSON） | ✅ | ✅ `game.data`（随包发布的只读副本）+ `game.store`（须声明 `runtimeCapabilities: ["store"]`） |
 | React host externals | react / react-dom / react-dom-client / jsx | react / react-dom / jsx（无 react-dom/client） |
 | privileged（fs/bash/permissions） | ✅ | 永不提供 |
 | transform 字段 / transition 预设 | ⬜（等待核心预设系统，见设计文档决策记录） | ⬜ |
