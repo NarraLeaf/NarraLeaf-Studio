@@ -1715,6 +1715,12 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
         return script ? [recordStatement(ctx, script, block)] : [];
     }
 
+    if (payload.action === "plugin") {
+        // A plugin marker block emits nothing on its own; its owner's compile pass reads it and
+        // attaches the before/after statements (see the pluginInjections wiring in compileBlock).
+        return [];
+    }
+
     if (payload.action === "wait") {
         const chain = payload.mode === "click"
             ? Control.waitForClick()
