@@ -26,6 +26,17 @@ import { MagicTagManager, MagicTagTemplate, MagicTagPreview } from "./MagicTagMa
 import { ProjectService } from "./ProjectService";
 import { UuidService } from "./UuidService";
 import { AssetLockManager, AssetLockReason } from "../assets/AssetLockManager";
+import {
+    collectAssetReferences,
+    describeBlockedDelete,
+    type AssetDeleteOptions,
+    type AssetReferenceLookup,
+    type AssetReferenceReport,
+} from "../assets/assetDeleteGuard";
+// Type-only: the reference index scans stories, blueprints, UI documents and characters, several of
+// which read assets. A value import here would close that loop; the instance is resolved from the
+// service registry at call time instead.
+import type { ReferenceService } from "../references/ReferenceService";
 import { dirname } from "@shared/utils/path";
 
 interface AssetsEvents {
@@ -394,12 +405,28 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         return this.getGroupAssetsManager().createGroup(type, name, parentGroupId);
     }
 
+    /**
+     * Delete a group and everything it contains.
+     *
+     * The reference check happens here, at the enumeration stage, over every asset the cascade would
+     * remove — including the contents of nested groups. Checking per asset inside the cascade would
+     * be too late: by the time the third file was refused the first two would already be gone.
+     */
     public async deleteGroup<T extends AssetType>(
-        type: T, 
-        groupId: string, 
-        recursive: boolean = false
+        type: T,
+        groupId: string,
+        recursive: boolean = false,
+        options?: AssetDeleteOptions,
     ): Promise<RequestStatus<void>> {
-        return this.getGroupAssetsManager().deleteGroup(type, groupId, recursive);
+        const groupManager = this.getGroupAssetsManager();
+        const blocked = await this.findDeleteBlocker(groupManager.collectGroupAssets(type, groupId, recursive), options);
+        if (blocked) {
+            return { success: false, error: blocked };
+        }
+
+        // Cleared as a set above; the per-asset guard inside the cascade would only re-ask the same
+        // question once per file.
+        return groupManager.deleteGroup(type, groupId, recursive, { allowReferenced: true });
     }
 
     public async renameGroup<T extends AssetType>(
@@ -463,10 +490,63 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         return this.getAssetsMetadataManager().renameAsset(asset, newName);
     }
 
+    /**
+     * The reverse lookup behind the delete guard, exposed so the panel can draw its warning from the
+     * same reading the guard enforces — two independent lookups would eventually disagree, and the
+     * one the author sees is not the one that decides.
+     */
+    public async findAssetReferences(assetIds: readonly string[]): Promise<AssetReferenceReport> {
+        return collectAssetReferences(this.getReferenceLookup(), assetIds);
+    }
+
+    /**
+     * The reference index, or null when it is not registered in this workspace. Resolved at call
+     * time rather than at init: the index scans stories, blueprints, UI documents and characters,
+     * several of which read assets, so depending on it here would be a cycle.
+     */
+    private getReferenceLookup(): AssetReferenceLookup | null {
+        try {
+            return this.getContext().services.get<ReferenceService>(Services.Reference) ?? null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * The guard itself: the single point every delete passes through.
+     *
+     * It used to live in `useAssetActions`, which meant a group cascade — and any programmatic
+     * delete — walked straight past it. Semantics per the ruling: block by default, and let a caller
+     * that has actually asked the author come through with `allowReferenced`. The service never
+     * shows UI; it only refuses.
+     *
+     * Returns the reason to refuse, or null to proceed.
+     */
+    private async findDeleteBlocker(
+        assets: readonly Asset<AssetType, AssetSource>[],
+        options?: AssetDeleteOptions,
+    ): Promise<string | null> {
+        if (options?.allowReferenced || assets.length === 0) {
+            return null;
+        }
+
+        const report = await this.findAssetReferences(assets.map(asset => asset.id));
+        if (report.checked && report.references.size === 0) {
+            return null;
+        }
+        return describeBlockedDelete(report, new Map(assets.map(asset => [asset.id, asset.name])));
+    }
+
     // Asset operations
     public async deleteAsset<T extends AssetType>(
-        asset: Asset<T, AssetSource>
+        asset: Asset<T, AssetSource>,
+        options?: AssetDeleteOptions,
     ): Promise<RequestStatus<void>> {
+        const blocked = await this.findDeleteBlocker([asset], options);
+        if (blocked) {
+            return { success: false, error: blocked };
+        }
+
         let result: RequestStatus<void>;
         if (asset.source === AssetSource.Remote) {
             result = await this.getRemoteAssetsManager().deleteAsset(asset as Asset<T, AssetSource.Remote>);

@@ -26,6 +26,8 @@ export const assets = {
         confirmMessage: "Everything inside a selected group is deleted too. This cannot be undone.",
         /** The delete button in the reference warning — danger-coloured, never the keyboard default. */
         action: "Delete",
+        /** A delete the service refused after the author had already confirmed it. */
+        failedTitle: "Failed to delete",
     },
     /**
      * Swapping the file behind an asset record. The record keeps its id, so every reference follows;
