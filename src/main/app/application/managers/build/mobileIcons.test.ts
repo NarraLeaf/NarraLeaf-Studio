@@ -47,6 +47,19 @@ function pngOfSize(width: number, height: number): Buffer {
     return bytes;
 }
 
+/**
+ * How Xcode writes the icons it compiles into an app bundle: a private `CgBI`
+ * chunk ahead of IHDR. The iOS shell template ships exactly these, so this shape
+ * is not hypothetical - it is what every iOS icon slot actually looks like.
+ */
+function appleOptimizedPngOfSize(width: number, height: number): Buffer {
+    const cgbi = Buffer.alloc(16);
+    cgbi.writeUInt32BE(4, 0);
+    cgbi.write("CgBI", 4, "ascii");
+    const png = pngOfSize(width, height);
+    return Buffer.concat([png.subarray(0, 8), cgbi, png.subarray(8)]);
+}
+
 async function makeTemplateZip(entries: Record<string, Buffer>): Promise<Buffer> {
     const output = new BufferZipOutput();
     await writeZip(
@@ -62,10 +75,25 @@ describe("readPngSize", () => {
         expect(readPngSize(pngOfSize(144, 144))).toEqual({ width: 144, height: 144 });
     });
 
+    it("reads dimensions past a chunk that precedes IHDR", () => {
+        // The iOS template's slots all look like this; treating them as
+        // unreadable failed every iOS build that configured an app icon.
+        expect(readPngSize(appleOptimizedPngOfSize(120, 120))).toEqual({ width: 120, height: 120 });
+    });
+
     it("rejects anything that is not a readable PNG", () => {
         expect(readPngSize(Buffer.alloc(24))).toBeNull();
         expect(readPngSize(Buffer.from("too short"))).toBeNull();
         expect(readPngSize(pngOfSize(0, 10))).toBeNull();
+    });
+
+    it("stops rather than looping on a chunk length past the end of the file", () => {
+        const truncated = Buffer.concat([
+            Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+            Buffer.from([0xff, 0xff, 0xff, 0xff]),
+            Buffer.from("junk", "ascii"),
+        ]);
+        expect(readPngSize(truncated)).toBeNull();
     });
 });
 
