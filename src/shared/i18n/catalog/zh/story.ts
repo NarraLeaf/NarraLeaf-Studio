@@ -328,7 +328,7 @@ export const story = {
         loadingScene: "正在加载故事场景…",
         notFound: "未找到故事或场景",
         addRow: "点击或输入以添加一行…",
-        emptyHint: "这个场景是空的。在新行里输入 {{trigger}} 挑一条指令，或者直接写一句旁白。",
+        emptyHint: "这个场景是空的。在新行里输入 {trigger} 挑一条指令，或者直接写一句旁白。",
         emptyExampleBg: "设置背景",
         emptyExampleShow: "让角色登场",
         emptyExampleSay: "给他一句台词",
