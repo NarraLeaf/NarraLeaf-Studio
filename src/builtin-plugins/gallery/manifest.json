@@ -23,9 +23,6 @@
     ],
     "runtimeData": [
       "narraleaf.gallery.items"
-    ],
-    "runtimeCapabilities": [
-      "store"
     ]
   },
   "permissions": []

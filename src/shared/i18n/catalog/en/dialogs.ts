@@ -52,9 +52,6 @@ export const dialogs = {
     noun: {
         item: "item",
         layer: "layer",
-        pose: "pose",
-        axis: "axis",
-        tag: "tag",
         character: "character",
         group: "group",
         story: "story",

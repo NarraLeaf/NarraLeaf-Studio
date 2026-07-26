@@ -10,7 +10,6 @@ import {
     GAME_RUNTIME_CLOSE_REQUESTED_CHANNEL,
     GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL,
     GAME_RUNTIME_PROTOCOL,
-    GAME_RUNTIME_SIDECAR_MESSAGE_CHANNEL,
     type GameRuntimePackV1,
 } from "@shared/types/gameRuntime";
 import { getMimeType } from "@shared/utils/fs";
@@ -31,7 +30,6 @@ import {
     RuntimePersistenceStore,
     RuntimeSaveStore,
 } from "./runtimeStorage";
-import { collectPackSidecars, SidecarHost } from "./sidecarHost";
 
 const appDir = __dirname;
 
@@ -78,13 +76,7 @@ let controlServer: WebSocketServer | null = null;
 let resources: RuntimeResources | null = null;
 let saveStore: RuntimeSaveStore | null = null;
 let persistenceStore: RuntimePersistenceStore | null = null;
-let sidecarHost: SidecarHost | null = null;
-/**
- * Set once the quit has already drained everything that needs draining (queued
- * storage writes, running sidecars), so the second pass through `before-quit`
- * does not start over.
- */
-let runtimeQuitDrained = false;
+let runtimeStorageFlushedForQuit = false;
 /**
  * Set once the app has started quitting (Quit Application node, window-all-closed, preview
  * shutdown). The window-close guard stands aside while this is true, so a programmatic quit never
@@ -165,42 +157,14 @@ void app.whenReady().then(async () => {
     applyRuntimeAppIdentity(pack);
     applyRuntimeMenu(pack);
     registerRuntimeProtocol(allowHttp);
-    sidecarHost = createSidecarHost(pack);
     registerRuntimeIpc();
     startPreviewControlServer(pack);
     // Confine the renderer to the app protocol before it loads any document
     // unless the project opted into HTTP.
     installRuntimeNetworkPolicy(session.defaultSession, allowHttp);
     mainWindow = createWindow(pack);
-    // After the window exists so a sidecar's first event has somewhere to land,
-    // and unawaited so a slow handshake never delays the game's first paint.
-    sidecarHost.startAutostart();
     await mainWindow.loadURL(`${GAME_RUNTIME_PROTOCOL}://runtime/index.html`);
 });
-
-/**
- * Sidecars are addressed by the plugin that shipped them, but the pack - not the
- * caller - decides what exists: {@link collectPackSidecars} is the only source of
- * declarations, so an id this build never packaged has nothing to spawn.
- */
-function createSidecarHost(pack: GameRuntimePackV1): SidecarHost {
-    return new SidecarHost(collectPackSidecars(pack), {
-        appDir,
-        userDataDir,
-        execPath: process.execPath,
-        mode: pack.mode,
-        game: { name: pack.project.name, version: pack.project.version ?? null },
-        log: (level, message) => {
-            const sink = level === "error" ? "error" : level === "warning" ? "warn" : "log";
-            console[sink](`[GameRuntime] ${message}`);
-        },
-        send: message => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send(GAME_RUNTIME_SIDECAR_MESSAGE_CHANNEL, message);
-            }
-        },
-    });
-}
 
 app.on("window-all-closed", () => {
     app.quit();
@@ -210,50 +174,23 @@ app.on("before-quit", event => {
     // From here on every window close is part of the quit, not a user close, so the close guard
     // must stand aside (it also lets the quit-and-flush dance below re-close without re-prompting).
     isQuitting = true;
-    // Two things can outlive the decision to quit: debounced storage writes that
-    // have not reached disk, and sidecar processes that have not been told to
-    // stop. Both are drained on this one held-open pass rather than on separate
-    // ones - a second `before-quit` path would race this one's re-quit.
-    if (!runtimeQuitDrained) {
-        const pendingWrites = saveStore?.hasPendingWrites() === true || persistenceStore?.hasPendingWrites() === true;
-        const runningSidecars = sidecarHost?.needsShutdown() === true;
-        if (pendingWrites || runningSidecars) {
-            event.preventDefault();
-            void Promise.allSettled([
-                saveStore?.flush(),
-                persistenceStore?.flush(),
-                // Polite first (`bye`), then SIGTERM, then SIGKILL - all inside
-                // the sidecar's own declared shutdown timeout, and bounded, so a
-                // wedged sidecar cannot trap the quit.
-                sidecarHost?.shutdownAll(),
-            ]).then(() => {
-                runtimeQuitDrained = true;
-                app.quit();
-            });
-            return;
-        }
-        runtimeQuitDrained = true;
+    // Save/persistence writes are debounced; hold the quit open until every
+    // queued write has reached disk, then quit again.
+    if (!runtimeStorageFlushedForQuit && (saveStore?.hasPendingWrites() || persistenceStore?.hasPendingWrites())) {
+        event.preventDefault();
+        void Promise.allSettled([
+            saveStore?.flush(),
+            persistenceStore?.flush(),
+        ]).then(() => {
+            runtimeStorageFlushedForQuit = true;
+            app.quit();
+        });
+        return;
     }
     controlServer?.close();
     controlServer = null;
     void resources?.dispose();
     resources = null;
-});
-
-/**
- * Last line of defence against an orphaned sidecar. `before-quit` does the
- * graceful shutdown, but it can be skipped (a second quit path, a preventDefault
- * elsewhere, an exception in a listener) and `will-quit`/`exit` cannot: the only
- * thing that runs here is a synchronous SIGKILL of anything still breathing.
- *
- * A sidecar is also expected to exit on stdin EOF, which covers the one case no
- * handler can - the game's process dying without running any of its own code.
- */
-app.on("will-quit", () => {
-    sidecarHost?.killAllSync();
-});
-process.on("exit", () => {
-    sidecarHost?.killAllSync();
 });
 
 async function readPack(): Promise<GameRuntimePackV1> {
@@ -704,42 +641,6 @@ function registerRuntimeIpc(): void {
     ipcMain.handle("runtime:persistence:getValue", (_event, key: string) => persistence.getValue(key));
     ipcMain.handle("runtime:persistence:setValue", (_event, key: string, value: unknown) => persistence.setValue(key, value));
     ipcMain.handle("runtime:persistence:removeValue", (_event, key: string) => persistence.removeValue(key));
-
-    // Sidecar control.
-    //
-    // SECURITY POSTURE, stated plainly: the `pluginId` on these calls is what the
-    // caller said it was, and this process CANNOT check it. Runtime plugins are
-    // same-origin ES modules sharing one renderer realm - they can read each
-    // other's closures, so nothing in the renderer can prove which plugin a call
-    // came from. Adding a check here would only look like a boundary.
-    //
-    // The boundary that does hold is upstream of the caller: `requireSidecarHost`
-    // resolves against the sidecars THIS PACK DECLARED, so the worst a plugin can
-    // do with another plugin's id is talk to a process the game already ships and
-    // the player already approved at install. No id reaches spawn(), no path from
-    // the renderer names an executable, and an undeclared id has nothing to hit.
-    ipcMain.handle("runtime:sidecar:start", (_event, pluginId: string, sidecarId: string) =>
-        requireSidecarHost().start(pluginId, sidecarId));
-    ipcMain.handle("runtime:sidecar:stop", (_event, pluginId: string, sidecarId: string) =>
-        requireSidecarHost().stop(pluginId, sidecarId));
-    ipcMain.handle(
-        "runtime:sidecar:request",
-        (_event, pluginId: string, sidecarId: string, method: string, params?: unknown) =>
-            requireSidecarHost().request(pluginId, sidecarId, method, params),
-    );
-    ipcMain.on(
-        "runtime:sidecar:notify",
-        (_event, pluginId: string, sidecarId: string, method: string, params?: unknown) => {
-            requireSidecarHost().notify(pluginId, sidecarId, method, params);
-        },
-    );
-}
-
-function requireSidecarHost(): SidecarHost {
-    if (!sidecarHost) {
-        throw new Error("Sidecar host accessed before initialization");
-    }
-    return sidecarHost;
 }
 
 function startPreviewControlServer(pack: GameRuntimePackV1): void {

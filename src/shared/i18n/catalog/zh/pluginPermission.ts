@@ -14,8 +14,8 @@ export const pluginPermission = {
     install: {
         type: "插件安装请求",
         title: "{requester} 请求安装 {plugin}",
-        body1: "Studio 已识别出本次安装将授予的内容：",
-        body2: "同意安装即表示授予该插件版本下列全部内容，请仅安装您信任的插件",
+        body1: "Studio 为本次安装识别出以下特权控制：",
+        body2: "同意安装即表示授予该插件版本所列出的权限，请仅安装您信任的插件",
         source: "来源：{source}",
     },
     filesystem: {
@@ -49,28 +49,6 @@ export const pluginPermission = {
         read: "读取访问",
         write: "写入访问",
         readwrite: "读写访问",
-    },
-    permissions: {
-        section: {
-            sidecar: "原生程序",
-            sidecarNote: "此插件会在你构建的游戏中附带并运行一个原生程序",
-            buildDependency: "构建时下载",
-            runtime: "游戏内能力",
-            studio: "Studio 权限",
-        },
-        sidecarPlatforms: "运行平台：{platforms}",
-        buildDependencyHosts: "下载来源：{hosts}",
-        runtimeCapability: {
-            store: "在玩家的存档旁保存自己的数据",
-            events: "获知游戏进程（场景、对话、选项、存档）",
-            stateRead: "读取剧情变量",
-            stateWrite: "修改剧情变量",
-            savesRead: "读取玩家的存档列表与存档信息",
-            savesWrite: "覆盖玩家的存档，并读取存档（会替换当前进度）",
-            uiOverlay: "在游戏画面上叠加显示内容",
-            assets: "解析游戏内置资源的地址",
-            locale: "读取并跟随游戏语言",
-        },
     },
     button: {
         dontAllow: "不允许",

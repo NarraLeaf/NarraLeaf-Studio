@@ -13,13 +13,9 @@
  * are resolved by the host's own data resolver, which only knows built-in node
  * types - a pure plugin node's execute would never run and its outputs would
  * always be empty.
- *
- * The unlock record is read and written through `app.game.store`, the
- * capability-gated plugin storage declared as `store` in the manifest. No other
- * host power is touched.
  */
 
-import type { PluginBlueprintNodeDef } from "narraleaf-studio/plugin";
+import type { BlueprintNodeDef } from "narraleaf-studio/plugin";
 import {
     findArtwork,
     isArtworkUnlocked,
@@ -51,7 +47,7 @@ const PARAM_VARIANT = "galleryVariantId";
 const PIN_ARTWORK_ID = "artworkId";
 const PIN_INDEX = "index";
 
-type ExecuteCtx = Parameters<PluginBlueprintNodeDef["execute"]>[0];
+type ExecuteCtx = Parameters<BlueprintNodeDef["execute"]>[0];
 
 /** Reads the authored catalog. Target-specific; see the module comment. */
 export type GalleryCatalogReader = () => unknown;
@@ -118,26 +114,12 @@ function readIndex(value: unknown): number {
     return Number.isFinite(parsed) ? parsed : 0;
 }
 
-/**
- * Read the persisted unlock record.
- *
- * `app.game.store` is the plugin's own persistent area beside the player's saves
- * - it survives starting a new game, which is exactly what unlocked CGs need. It
- * is absent wherever the environment cannot back the `store` capability, notably
- * the editor, where there is no player at all. Reading then degrades to "nothing
- * unlocked" so a gallery previews as a locked grid instead of throwing.
- */
-async function readStoredUnlocked(ctx: ExecuteCtx): Promise<unknown> {
-    return ctx.game.store ? await ctx.game.store.get(RUNTIME_UNLOCKED_KEY) : null;
-}
-
-/** Writes are dropped with a warning when the store is absent; see readStoredUnlocked. */
-async function writeStoredUnlocked(ctx: ExecuteCtx, variantIds: string[]): Promise<void> {
-    if (!ctx.game.store) {
-        ctx.game.log("warning", "gallery unlocks are not persisted here: plugin storage is unavailable");
-        return;
+function getHostApi(ctx: ExecuteCtx) {
+    const hostApi = ctx.hostAdapter.blueprintRuntime?.hostApi;
+    if (!hostApi) {
+        throw new Error("Gallery nodes require game host APIs");
     }
-    await ctx.game.store.set(RUNTIME_UNLOCKED_KEY, variantIds);
+    return hostApi;
 }
 
 /**
@@ -174,16 +156,17 @@ function resolveTargetVariants(ctx: ExecuteCtx, artwork: GalleryArtwork): Galler
     return variant ? [variant] : [];
 }
 
-export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): PluginBlueprintNodeDef[] {
+export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): BlueprintNodeDef[] {
     const catalog = (): GalleryArtwork[] => normalizeGalleryCatalog(readCatalog());
 
     /** Unlock reads are always catalog-aware; see readUnlockedVariantIds. */
     const readUnlocked = async (ctx: ExecuteCtx, artworks: GalleryArtwork[]): Promise<Set<string>> => {
-        return readUnlockedVariantIds(await readStoredUnlocked(ctx), artworks);
+        const stored = await getHostApi(ctx).persistence.get(RUNTIME_UNLOCKED_KEY);
+        return readUnlockedVariantIds(stored, artworks);
     };
 
     const writeUnlocked = async (ctx: ExecuteCtx, unlocked: Set<string>): Promise<void> => {
-        await writeStoredUnlocked(ctx, Array.from(unlocked));
+        await getHostApi(ctx).persistence.set(RUNTIME_UNLOCKED_KEY, Array.from(unlocked));
     };
 
     const setVariantsLocked = async (ctx: ExecuteCtx, mode: "add" | "remove") => {
@@ -242,7 +225,7 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
             isLatent: true,
             pins: [execIn, execNext],
             execute: async ctx => {
-                await writeStoredUnlocked(ctx, []);
+                await getHostApi(ctx).persistence.set(RUNTIME_UNLOCKED_KEY, []);
                 return { nextPort: "next" };
             },
         },

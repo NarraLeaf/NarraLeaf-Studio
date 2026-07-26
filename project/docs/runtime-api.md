@@ -68,21 +68,19 @@ type RuntimeWidgetRendererDef = {
 - `type` 必须以插件 ID 为前缀（`${plugin.id}.`）。
 - `type` 必须在 manifest `contributes.blueprintNodes` 中声明，否则注册抛错——静态校验（pack 编译）依赖 contributes 判断"项目用到的节点是否有运行时提供方"。
 - 跨插件注册同名 type 抛错（该插件记为加载失败）。
-- `register` 只读取 `type`、`displayName`、`execute`，可以直接传入与 studio entry 共享的完整 `PluginBlueprintNodeDef` 对象（多余字段被忽略）。
+- `register` 只读取 `type`、`displayName`、`execute`，可以直接传入与 studio entry 共享的完整 `BlueprintNodeDef` 对象（多余字段被忽略）。
 
-execute 内通过 `ctx.game` 访问游戏宿主能力——就是 `setup(app)` 收到的那个 `app.game`：
+execute 内通过执行上下文访问游戏宿主能力：
 
 ```ts
 execute: async ctx => {
-  // 未声明的域在对象上不存在（不是会抛错的方法），所以判存即降级。
-  await ctx.game.store?.set("key", value);   // 需声明 runtimeCapabilities: ["store"]
+  const hostApi = ctx.hostAdapter.blueprintRuntime?.hostApi;
+  await hostApi?.persistence.set(`${PLUGIN_ID}.key`, value);   // 跨存档持久化
   return { nextPort: "next" };
 },
 ```
 
-`ctx` **不是**宿主的 `BehaviorNodeExecutionContext`：它只有 `params`（inspector 参数值）、`resolveInput`（读数据输入针脚）、`eventName` / `eventPayload`、`signal`（中断）、`game`。宿主上下文携带的 `hostAdapter` 被刻意挡在外面——经由它可以够到存档、本地化、退出应用的全套宿主 API，而这条路径没有 manifest 声明、没有安装提示。插件能碰到的一切都必须经过 `ctx.game`，`contributes` 因此才是插件权力的真实清单。执行语义（isLatent、回滚清理）仍由宿主的 blueprint 运行时统一处理。
-
-同一份定义也会被 studio entry 注册进编辑器目录，编辑器同样只传这个窄上下文；编辑器背不动任何运行时能力，所以那里 `ctx.game` 的门控域全部缺席。
+`ctx` 是共享行为图解释器的 `BehaviorNodeExecutionContext`：`params`（inspector 参数值）、`blueprintLocals`、`eventPayload`、`signal`（中断）、`trace` 等。执行语义（isLatent、回滚清理）由宿主的 blueprint 运行时统一处理。
 
 ### game.widgets
 

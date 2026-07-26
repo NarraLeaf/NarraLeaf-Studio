@@ -67,8 +67,6 @@ import { computeStoryStageSnapshot } from "@/lib/ui-editor/runtime/game/storySta
 import { sceneVariableDefs, savedVariableDefs } from "@shared/types/story";
 import { resolveStagePreloadTarget } from "@/lib/ui-editor/runtime/game/resolveDefaultLaunchScene";
 import { NlrStageLayer, type NlrStageSession } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
-import { RuntimePluginOverlayLayer } from "@/lib/ui-editor/runtime/plugins/RuntimePluginOverlayLayer";
-import type { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
 import {
     clearDevModeSavePreviewImages,
     registerDevModeSavePreviewImage,
@@ -158,14 +156,6 @@ export type GameAppProps = {
     renderPlaceholder?: () => ReactNode;
     /** Host overlays (e.g. debug tools) rendered as siblings above the frame. */
     renderOverlays?: (ctx: GameAppOverlayContext) => ReactNode;
-    /**
-     * Runtime plugin capability backends for this environment. The shell builds
-     * it before the plugins load (setup runs during boot); GameApp attaches the
-     * live blueprint runtime and NarraLeaf session to it as they come up, and
-     * renders the plugins' overlays. Absent for hosts that load no plugins (the
-     * workspace story preview).
-     */
-    pluginHost?: RuntimePluginHostController;
 };
 
 /**
@@ -176,23 +166,13 @@ export type GameAppProps = {
  * differ only in the injected GameAppHost.
  */
 export function GameApp(props: GameAppProps): ReactNode {
-    const { host, rendererRegistry, getScale, renderFrame, renderPlaceholder, renderOverlays, pluginHost } = props;
+    const { host, rendererRegistry, getScale, renderFrame, renderPlaceholder, renderOverlays } = props;
     const bundle = host.bundle;
     const core = useBlueprintRuntimeCore(bundle, {
         persistenceAdapter: host.persistenceAdapter,
         onDebugEvent: host.onDebugEvent,
         disposeMessage: host.disposeMessage,
     });
-    // Runtime plugins reach story variables and the player's language through the
-    // blueprint runtime, so those capabilities only become real once it exists.
-    // Re-attaches on a bundle swap (Dev Mode live reload); the plugins' own
-    // subscriptions live on the controller and are untouched by it.
-    useEffect(() => {
-        if (!pluginHost || !core) {
-            return;
-        }
-        return pluginHost.attachRuntime({ scope: core.scopeBridge, bundle });
-    }, [bundle, core, pluginHost]);
     // First-launch language pick: when no stored locale is valid for this project,
     // match the system language against the configured locales and persist it.
     // The stored value stays authoritative afterwards (player choice wins).
@@ -816,10 +796,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             }
         }
         await host.saveStore.write(id, liveGame.serialize(), capture, metadata);
-        // Host-side, after the write landed: every shell reports it the same way,
-        // and a failed write never announces a save that does not exist.
-        pluginHost?.emitSaveWritten(id);
-    }, [host.saveStore, pluginHost, reportSaveCaptureFailure, requireActiveLiveGame]);
+    }, [host.saveStore, reportSaveCaptureFailure, requireActiveLiveGame]);
 
     const loadSave = useCallback(async (id: string) => {
         const liveGame = requireActiveLiveGame("Load Save");
@@ -838,20 +815,6 @@ export function GameApp(props: GameAppProps): ReactNode {
     const deleteSave = useCallback(async (id: string) => {
         await host.saveStore.remove(id);
     }, [host.saveStore]);
-
-    // `saves.write` for runtime plugins: the very same paths the Save Game /
-    // Load Save nodes take, so a plugin save is indistinguishable from an
-    // authored one. Screenshots are left off — the plugin API takes no capture
-    // flag, and a capture the caller never asked for is a cost, not a default.
-    useEffect(() => {
-        if (!pluginHost) {
-            return;
-        }
-        return pluginHost.attachSaveActions({
-            write: (id, metadata) => writeSave(id, metadata),
-            load: id => loadSave(id),
-        });
-    }, [loadSave, pluginHost, writeSave]);
 
     const listSaveIds = useCallback(async (): Promise<string[]> => {
         return host.saveStore.listIds();
@@ -1729,10 +1692,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrLiveGameSessionIdRef.current = null;
         choiceRuntimeRef.current = null;
         clearCurrentDialogNametag();
-        // The previous environment is gone; drop its engine subscriptions. The
-        // next onLiveGameReady re-attaches, and plugin listeners never move.
-        pluginHost?.detachSession();
-    }, [clearCurrentDialogNametag, detachTextReadTracker, nlrSession?.id, pluginHost]);
+    }, [clearCurrentDialogNametag, detachTextReadTracker, nlrSession?.id]);
 
     useEffect(() => {
         if (!host.ready || !core || !hostAdapterBundle) {
@@ -2030,12 +1990,6 @@ export function GameApp(props: GameAppProps): ReactNode {
                 }
                 nlrLiveGameRef.current = liveGame;
                 nlrLiveGameSessionIdRef.current = sessionId;
-                // Hand the new environment to the runtime plugin host. Called
-                // per session, so a relaunch or hot reload re-binds the engine
-                // events under the plugins' existing listeners.
-                if (nlrSession?.compiled) {
-                    pluginHost?.attachSession({ liveGame, compiled: nlrSession.compiled });
-                }
                 // Play-head stream for the Dev Mode story-runtime panel: mirror the current action id
                 // and fan it out to panel subscribers. Re-bound per session; the fan-out set is stable.
                 nlrCurrentActionTokenRef.current?.cancel();
@@ -2109,16 +2063,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         <MotionConfig reducedMotion="never">
             <div className="nl-motion-keep relative h-full w-full overflow-hidden">
                 {nlrStageLayer}
-                {/* Runtime plugin overlays: above the game stage, below the app surface
-                    system (menus, save screens, every authored page). This is as low as a
-                    HOST-rendered layer can go — NarraLeaf renders the dialogue inside the
-                    Player and its only injection point (Player children) is itself stacked
-                    above that dialogue, so there is no DOM position under it to occupy. */}
-                {pluginHost ? (
-                    <div className="pointer-events-none absolute inset-0" style={{ zIndex: 5 }}>
-                        <RuntimePluginOverlayLayer store={pluginHost.overlays} log={host.log} />
-                    </div>
-                ) : null}
                 {/* Surface system starts only after the NLR environment boot preload finishes. */}
                 <div className="pointer-events-none absolute inset-0 z-10">
                     <AnimatePresence

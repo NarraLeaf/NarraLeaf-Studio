@@ -8,7 +8,7 @@ import { FilterSystem, FilterConfig, ActiveFilter } from "../assets/components/F
 import { PanelComponentProps } from "../types";
 import { useWorkspace } from "../../context";
 import { Character } from "@/lib/workspace/services/character/Character";
-import { CharacterAppearanceKind, CharacterGroup } from "@/lib/workspace/services/character/types";
+import { CharacterGroup } from "@/lib/workspace/services/character/types";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -20,9 +20,7 @@ import { useCharacterFocus } from "./state/useCharacterFocus";
 type MenuTarget =
     | { type: "panel" }
     | { type: "character"; character: Character }
-    | { type: "group"; group: CharacterGroup }
-    /** The kind picker that stands in front of "new character" - see {@link kindItems}. */
-    | { type: "new-character"; groupId?: string };
+    | { type: "group"; group: CharacterGroup };
 
 type CharacterItem = {
     id: string;
@@ -283,7 +281,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         setMenuState(prev => ({ ...prev, visible: false }));
     }, []);
 
-    const handleCreateCharacter = useCallback(async (kind: CharacterAppearanceKind, groupId?: string) => {
+    const handleCreateCharacter = useCallback(async (groupId?: string) => {
         if (!characterService || !inputDialog) return;
         const name = await inputDialog.show({
             title: t("characters.panel.newCharacter"),
@@ -293,7 +291,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
             description: t("characters.panel.newCharacterDescription"),
         });
         if (!name) return;
-        const character = characterService.createCharacter(name, kind);
+        const character = characterService.createCharacter(name);
         if (groupId) {
             characterService.assignCharacterToGroup(character.profile.getId(), groupId);
         }
@@ -392,26 +390,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         closeMenu();
     }, [characterService, context, loadCharacters, closeMenu, t]);
 
-    // The appearance kind is fixed when the character is created and the two kinds share no data,
-    // so it has to be asked before the name rather than switched afterwards.
-    const kindItems = useCallback((groupId?: string): ContextMenuItemDef[] => ([
-        {
-            id: "new-character-preset",
-            label: t("characters.editor.kind.preset"),
-            onClick: () => handleCreateCharacter("preset", groupId),
-        },
-        {
-            id: "new-character-layered",
-            label: t("characters.editor.kind.layered"),
-            onClick: () => handleCreateCharacter("layered", groupId),
-        },
-    ]), [handleCreateCharacter, t]);
-
     const buildContextMenu = useCallback((target: MenuTarget): ContextMenuDef => {
-        if (target.type === "new-character") {
-            return kindItems(target.groupId);
-        }
-
         if (target.type === "character") {
             const profile = target.character.profile.getProfile();
             const item = filteredCharacters.find(c => c.id === profile.id);
@@ -455,7 +434,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                 {
                     id: "create-character-in-group",
                     label: t("characters.panel.addCharacter"),
-                    submenu: kindItems(target.group.id),
+                    onClick: () => handleCreateCharacter(target.group.id),
                 },
                 {
                     id: "rename-group",
@@ -475,7 +454,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
             {
                 id: "panel-new-character",
                 label: t("characters.panel.newCharacter"),
-                submenu: kindItems(),
+                onClick: () => handleCreateCharacter(),
             },
             {
                 id: "panel-new-group",
@@ -548,9 +527,9 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                 />
                 <div className="flex items-center gap-2">
                     <button
-                        onClick={(event) => { event.stopPropagation(); handleMenuOpen(event, { type: "new-character" }); }}
+                        onClick={(event) => { event.stopPropagation(); handleCreateCharacter(); }}
                         className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors"
-                        aria-label={t("characters.panel.addCharacter")}
+                        title={t("characters.panel.addCharacter")}
                     >
                         <UserPlus className="w-4 h-4" />
                     </button>
@@ -627,10 +606,10 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                                                     <button
                                                         onClick={(event) => {
                                                             event.stopPropagation();
-                                                            handleMenuOpen(event, { type: "new-character", groupId: group.id });
+                                                            handleCreateCharacter(group.id);
                                                         }}
                                                         className="inline-flex items-center justify-center p-1.5 rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors"
-                                                        aria-label={t("characters.panel.addCharacter")}
+                                                        title={t("characters.panel.addCharacter")}
                                                     >
                                                         <UserPlus className="w-3 h-3" />
                                                     </button>

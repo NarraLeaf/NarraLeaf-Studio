@@ -14,15 +14,7 @@ function manifest(runtimeData: string[]): NormalizedPluginManifestV2 {
         name: "Sample Plugin",
         version: "1.0.0",
         entries: { runtime: "runtime.js" },
-        contributes: {
-            blueprintNodes: [],
-            widgets: [],
-            runtimeData,
-            locales: [],
-            runtimeCapabilities: [],
-            sidecars: [],
-            buildDependencies: [],
-        },
+        contributes: { blueprintNodes: [], widgets: [], runtimeData, locales: [] },
         permissions: [],
     };
 }

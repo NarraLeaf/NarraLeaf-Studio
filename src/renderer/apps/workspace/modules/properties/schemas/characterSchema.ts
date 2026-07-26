@@ -82,9 +82,8 @@ export const characterPropertySchema = (t: TranslateFn) =>
             type: "select",
             label: t("characters.properties.defaultPose"),
             placeholder: t("characters.properties.selectDefaultPose"),
-            // A layered character has no poses at all - what it starts in is one default tag per
-            // axis, set beside the axes in the editor - so the row is absent rather than empty.
-            hidden: (ctx) => ctx.character.profile.appearance.getKind() !== "preset",
+            // A layered character has no single default to pick here — each axis carries its own —
+            // so the row collapses to the follow-first option rather than offering a wrong control.
             options: (ctx): SelectOption[] => [
                 { value: "", label: t("characters.properties.followFirstPose") },
                 ...ctx.poses.map((pose) => ({ value: pose.id, label: pose.name })),
