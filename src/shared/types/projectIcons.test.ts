@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { fnv1a64BytesHex } from "@shared/utils/contentHash";
+import { fnv1a64BytesHex, fnv1aHex } from "@shared/utils/contentHash";
 import {
     DEFAULT_OPAQUE_BACKGROUND,
     MAX_ICON_INSET,
+    PROJECT_ICON_BAKE_FORMAT,
     PROJECT_ICON_OUTPUTS,
     PROJECT_ICON_TARGET_DEFAULTS,
     createProjectIconSet,
@@ -179,6 +180,13 @@ describe("project icon set", () => {
                 spec: { ...withMeta.spec, override: { ...withMeta.spec.override, updatedAt: "2027-01-01", sourceName: "b.png" } },
             };
             expect(projectIconFingerprint(later)).toBe(projectIconFingerprint(withMeta));
+        });
+
+        it("carries the bake format, so an encoder change invalidates old output", () => {
+            expect(projectIconFingerprint({ sourceHash: "aa", spec, output }))
+                .toContain(fnv1aHex([
+                    `v${PROJECT_ICON_BAKE_FORMAT}`, output.id, output.size, "alpha", "0.1000", "none",
+                ].join("|")));
         });
 
         it("tracks the resolved background, so an opaque output re-bakes when its colour changes", () => {

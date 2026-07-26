@@ -65,6 +65,10 @@ export function ProjectAssetsSection({ projectService, uiService, onConfigChange
     const [previews, setPreviews] = useState<Partial<Record<ProjectIconOutputId | "master", string>>>({});
     const [selected, setSelected] = useState<ProjectIconTarget | null>(null);
     const [busy, setBusy] = useState(false);
+    // The slider is a controlled input: without a live draft React re-renders it
+    // back to the persisted value on every change, so the thumb never follows
+    // the drag and the commit reads the old number.
+    const [insetDraft, setInsetDraft] = useState<number | null>(null);
     const urlsRef = useRef<string[]>([]);
 
     const releaseUrls = useCallback(() => {
@@ -166,7 +170,10 @@ export function ProjectAssetsSection({ projectService, uiService, onConfigChange
                         target={target}
                         url={previews[outputsForTarget(target)[0].id]}
                         selected={selected === target}
-                        onClick={() => setSelected(selected === target ? null : target)}
+                        onClick={() => {
+                            setInsetDraft(null);
+                            setSelected(selected === target ? null : target);
+                        }}
                     />
                 ))}
             </div>
@@ -202,16 +209,20 @@ export function ProjectAssetsSection({ projectService, uiService, onConfigChange
                     <div className="flex items-center gap-3">
                         <span className="shrink-0 text-xs text-fg-muted">{t("project.assets.inset")}</span>
                         <Slider
-                            value={Math.round(spec.inset * 100)}
+                            value={insetDraft ?? Math.round(spec.inset * 100)}
                             min={0}
                             max={Math.round(MAX_ICON_INSET * 100)}
                             step={1}
                             disabled={busy}
-                            onValueCommit={value => editSpec(selected, { inset: value / 100 })}
+                            onValueChange={setInsetDraft}
+                            onValueCommit={value => {
+                                setInsetDraft(null);
+                                editSpec(selected, { inset: value / 100 });
+                            }}
                             aria-label={t("project.assets.inset")}
                         />
                         <span className="w-8 shrink-0 text-right text-xs tabular-nums text-fg-muted">
-                            {Math.round(spec.inset * 100)}%
+                            {insetDraft ?? Math.round(spec.inset * 100)}%
                         </span>
                     </div>
 
