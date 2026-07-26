@@ -1,7 +1,9 @@
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
+import zlib from "zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { encodeOpaquePng, pngHasAlphaChannel } from "@shared/utils/pngOpaque";
 
 // nativeImage is a main-process API with no standalone implementation; the
 // resize contract is what this module depends on, so that is what is faked.
@@ -24,7 +26,7 @@ vi.mock("electron", () => ({
     },
 }));
 
-const { readIconSlotSizes, readPngSize, writeScaledIcons } = await import("./mobileIcons");
+const { readIconSlotSizes, readPngSize, stripAlphaChannel, writeScaledIcons } = await import("./mobileIcons");
 const { BufferZipOutput, writeZip } = await import("../../../../buildWorker/mobile/zipWriter");
 
 const tempDirs: string[] = [];
@@ -164,6 +166,29 @@ describe("writeScaledIcons", () => {
         ], outputDir);
 
         expect(resize).toHaveBeenCalledWith({ width: 24, height: 48, quality: "good" });
+    });
+
+    it("strips the alpha channel an opaque target must not carry", async () => {
+        // nativeImage.toPNG() always encodes RGBA, so an iOS icon that arrives
+        // alpha-free would otherwise leave with a channel again - and be
+        // rejected on upload for having one.
+        const rgba = new Uint8Array(4 * 4 * 4).fill(200);
+        for (let i = 3; i < rgba.length; i += 4) {
+            rgba[i] = 255;
+        }
+        const opaquePng = Buffer.from(await encodeOpaquePng(rgba, 4, 4, bytes => zlib.deflateSync(bytes)));
+        const withAlpha = Buffer.from(opaquePng);
+        // Colour type 6 is what the real encoder emits; the helper only reads it.
+        expect(pngHasAlphaChannel(opaquePng)).toBe(false);
+        withAlpha[25] = 6;
+        expect(pngHasAlphaChannel(withAlpha)).toBe(true);
+        expect(pngHasAlphaChannel(await stripAlphaChannel(opaquePng))).toBe(false);
+    });
+
+    it("leaves a PNG that already has no alpha channel untouched", async () => {
+        const rgba = new Uint8Array(2 * 2 * 4).fill(120);
+        const png = Buffer.from(await encodeOpaquePng(rgba, 2, 2, bytes => zlib.deflateSync(bytes)));
+        expect((await stripAlphaChannel(png)).equals(png)).toBe(true);
     });
 
     it("takes the direct path when the source is already square", async () => {

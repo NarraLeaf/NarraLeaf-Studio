@@ -1,6 +1,8 @@
 import fs from "fs/promises";
 import path from "path";
+import zlib from "zlib";
 import { nativeImage } from "electron";
+import { decodePngToRgba, encodeOpaquePng, pngHasAlphaChannel } from "@shared/utils/pngOpaque";
 // Relative on purpose: "@/" means src/main here but src/renderer under vitest.
 import { parseZipIndex, readEntryBytes } from "../../../../buildWorker/mobile/zipModel";
 
@@ -78,6 +80,7 @@ export async function writeScaledIcons(
     sourceIconPath: string,
     slots: MobileIconSlot[],
     outputDir: string,
+    options: { opaque?: boolean } = {},
 ): Promise<Record<string, string>> {
     const source = nativeImage.createFromPath(sourceIconPath);
     if (source.isEmpty()) {
@@ -98,10 +101,33 @@ export async function writeScaledIcons(
             ? resized
             : centreOnTransparentCanvas(resized, width, height);
         const outputPath = path.join(outputDir, `${index}-${path.basename(slot)}`);
-        await fs.writeFile(outputPath, fitted.toPNG());
+        // nativeImage.toPNG() always encodes RGBA, so an iOS icon that arrived
+        // here alpha-free would leave with an alpha channel again - and be
+        // rejected on upload for carrying one. Strip it back off.
+        const png = options.opaque ? await stripAlphaChannel(fitted.toPNG()) : fitted.toPNG();
+        await fs.writeFile(outputPath, png);
         written[slot] = outputPath;
     }
     return written;
+}
+
+/**
+ * Re-encode a PNG without its alpha channel. Safe only because the pixels are
+ * already opaque by the time this runs - the alpha lane is dropped, never
+ * composited, so nothing has to know whether the bitmap was premultiplied.
+ */
+export async function stripAlphaChannel(png: Buffer): Promise<Buffer> {
+    if (!pngHasAlphaChannel(png)) {
+        return png;
+    }
+    const decoded = decodePngToRgba(png, data => zlib.inflateSync(data));
+    const encoded = await encodeOpaquePng(
+        decoded.rgba,
+        decoded.width,
+        decoded.height,
+        data => zlib.deflateSync(data),
+    );
+    return Buffer.from(encoded);
 }
 
 /**
