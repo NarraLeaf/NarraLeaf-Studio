@@ -32,7 +32,7 @@ import { readPublishedPluginData } from "../../pluginRuntimeData";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 import { getMimeType } from "@shared/utils/fs";
 import { sanitizeProjectFileName } from "@shared/utils/nlproj";
-import { WEB_FAVICON_FILENAME, writeWebShellFiles } from "./webShell";
+import { WEB_APPLE_TOUCH_FILENAME, WEB_FAVICON_FILENAME, writeWebShellFiles } from "./webShell";
 
 const ASSET_TYPES = ["image", "audio", "video", "json", "blueprint", "font", "other"] as const;
 // "native.js" and "gate.js" are opaque support modules of @narraleaf/encryption
@@ -217,11 +217,9 @@ export async function compileGameRuntimeArtifact(
                 appDir,
                 projectConfig,
             });
-        const hasFavicon = shell === "web" && await copyWebFavicon({
-            projectPath: input.projectPath,
-            appDir,
-            projectConfig,
-        });
+        const webIcons = shell === "web"
+            ? await copyWebIcons({ projectPath: input.projectPath, appDir, projectConfig })
+            : { hasFavicon: false, hasAppleTouchIcon: false };
         const packPlugins = await copyRuntimePlugins({
             appDir,
             projectPath: input.projectPath,
@@ -271,7 +269,7 @@ export async function compileGameRuntimeArtifact(
             await fs.writeFile(packPath, packJson);
         }
         if (shell === "web") {
-            await writeWebShellFiles({ appDir, pack, hasFavicon });
+            await writeWebShellFiles({ appDir, pack, ...webIcons });
         } else {
             await fs.writeFile(
                 path.join(appDir, "package.json"),
@@ -528,30 +526,44 @@ async function copyProjectIcon(input: {
 }
 
 /**
- * The web export's favicon: the icon set's own baked one. Web used to have no
- * icon of its own and borrowed whichever desktop slot happened to hold a PNG,
- * so a project that only configured mobile icons shipped no favicon at all.
+ * The web export's own icons. Web used to have no icon of its own and borrowed
+ * whichever desktop slot happened to hold a PNG, so a project that configured
+ * only mobile icons shipped no favicon at all.
  *
  * A project that has not baked yet falls back to the master, and is skipped
- * unless that master is already a PNG - the link tag in the generated HTML
- * declares image/png, and Studio does no conversion on this path.
+ * unless that master is already a PNG - the link tags declare image/png and
+ * Studio does no conversion on this path.
  */
-async function copyWebFavicon(input: {
+async function copyWebIcons(input: {
     projectPath: string;
     appDir: string;
     projectConfig: ProjectConfigData | null;
-}): Promise<boolean> {
-    const icon = resolveIconFile(readProjectIconSet(input.projectConfig), "web-favicon");
-    if (!icon || !icon.path.toLowerCase().endsWith(".png")) {
-        return false;
-    }
-    try {
-        const sourcePath = resolveProjectRelativePath(input.projectPath, icon.path);
-        await fs.copyFile(sourcePath, path.join(input.appDir, WEB_FAVICON_FILENAME));
-        return true;
-    } catch {
-        return false;
-    }
+}): Promise<{ hasFavicon: boolean; hasAppleTouchIcon: boolean }> {
+    const set = readProjectIconSet(input.projectConfig);
+    const copy = async (outputId: "web-favicon" | "web-apple-touch", fileName: string): Promise<boolean> => {
+        const icon = resolveIconFile(set, outputId);
+        if (!icon || !icon.path.toLowerCase().endsWith(".png")) {
+            return false;
+        }
+        try {
+            await fs.copyFile(
+                resolveProjectRelativePath(input.projectPath, icon.path),
+                path.join(input.appDir, fileName),
+            );
+            return true;
+        } catch {
+            return false;
+        }
+    };
+    return {
+        hasFavicon: await copy("web-favicon", WEB_FAVICON_FILENAME),
+        // Only when it was actually baked: falling back to a master that keeps
+        // its transparency would hand Safari the very icon this file exists to
+        // avoid, composited onto black on the home screen.
+        hasAppleTouchIcon: set.baked["web-apple-touch"]
+            ? await copy("web-apple-touch", WEB_APPLE_TOUCH_FILENAME)
+            : false,
+    };
 }
 
 /**
