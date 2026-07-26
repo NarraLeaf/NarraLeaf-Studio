@@ -1,7 +1,6 @@
 /** `storySnapshot` - 场景快照（变量快照）侧边栏及其 Dev Mode 启动守卫。 */
 export const storySnapshot = {
     empty: "打开一个故事场景以管理其快照。",
-    none: "暂无快照。",
     getStarted: "添加一个快照以设置启动值。",
     noVariables: "此场景没有可用变量。",
     add: "添加快照",

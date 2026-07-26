@@ -13,7 +13,6 @@ export const launcher = {
         openProject: "打开项目",
         import: "导入",
         recentTitle: "最近项目",
-        empty: "还没有最近打开的项目",
         openFolder: "打开文件夹",
         importProject: "导入项目",
         openNamed: "打开 {name}",
