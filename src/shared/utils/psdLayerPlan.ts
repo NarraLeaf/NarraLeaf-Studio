@@ -1,4 +1,4 @@
-import type { BlendResolution, PsdLayerNode } from "@shared/types/psdImport";
+import type { BlendResolution, PsdBakeTarget, PsdLayerNode } from "@shared/types/psdImport";
 
 /** A leaf of the PSD tree — the only thing that can become a Studio layer. */
 export type PsdLeaf = {
@@ -55,8 +55,33 @@ export function flattenLeaves(layers: PsdLayerNode[], group: string | null = nul
  * `normal` changes how the pixels combine, which a plain stack cannot do.
  */
 export function unsupportedBlends(leaves: PsdLeaf[]): PsdLeaf[] {
-    return leaves.filter(leaf => isUnsupportedBlend(leaf.blendMode));
+    // A hidden layer is dropped whatever its blend mode, so asking the author about one would be
+    // asking them to decide the fate of something that is not being imported either way.
+    return leaves.filter(leaf => !leaf.hidden && isUnsupportedBlend(leaf.blendMode));
 }
+
+/**
+ * Why a leaf did not become art.
+ *
+ * `clip-base-dropped` is Photoshop's own rule showing through: a clipped layer is only visible where
+ * its base is, so when the base is not imported the clip has nothing to sit on. Importing it anyway
+ * would turn a blush clipped to a face into a rectangle across the whole sprite, so it is left out —
+ * but named, because silently losing art is the one thing this wizard must not do.
+ */
+export type PsdDropReason = "hidden" | "blend-skipped" | "clip-base-dropped";
+
+/** A leaf flattened onto another rather than becoming a layer of its own. */
+export type PsdAttachment = { leaf: PsdLeaf; clip: boolean };
+
+/**
+ * One layer the import will build, bottom first.
+ *
+ * The wizard renders this and the builder walks it, so what the author is shown and what is created
+ * cannot drift apart.
+ */
+export type PlannedSlot =
+    | { kind: "constant"; name: string; leaf: PsdLeaf }
+    | { kind: "switch"; axis: string; options: { tag: string; leaf: PsdLeaf }[] };
 
 export type ImportPlan = {
     /** Top-level group name → the axis it becomes. Groups with one layer are not axes. */
@@ -66,7 +91,11 @@ export type ImportPlan = {
     /** Leaves that are actually going to be baked, after skips. */
     baking: PsdLeaf[];
     /** Leaves left out, with why. */
-    dropped: { leaf: PsdLeaf; reason: "hidden" | "blend-skipped" }[];
+    dropped: { leaf: PsdLeaf; reason: PsdDropReason }[];
+    /** The layers to build, in stack order. */
+    slots: PlannedSlot[];
+    /** Leaves flattened onto another, keyed by the joined path of the layer they land on. */
+    attachments: Record<string, PsdAttachment[]>;
 };
 
 /**
@@ -78,10 +107,15 @@ export type ImportPlan = {
  *
  * Hidden layers are dropped rather than imported invisible: Photoshop hides work-in-progress, and an
  * imported layer nobody can see is indistinguishable from a bug.
+ *
+ * A clipped layer never becomes a layer or a tag of its own. Photoshop's clipping mask says it is
+ * part of the layer beneath it — treating it as a sibling would both misplace the art and, inside a
+ * group, invent a tag for something that was never a differential.
  */
 export function planImport(leaves: PsdLeaf[], blendResolutions: Record<string, BlendResolution>): ImportPlan {
     const dropped: ImportPlan["dropped"] = [];
     const kept: PsdLeaf[] = [];
+    const keptPaths = new Set<string>();
     for (const leaf of leaves) {
         if (leaf.hidden) {
             dropped.push({ leaf, reason: "hidden" });
@@ -93,10 +127,59 @@ export function planImport(leaves: PsdLeaf[], blendResolutions: Record<string, B
             continue;
         }
         kept.push(leaf);
+        keptPaths.add(joinPath(leaf.path));
+    }
+
+    // What each clipped layer clips to: the nearest layer below that is not itself clipped, whether
+    // or not it survived. Looking *past* a dropped base would silently move the art onto some other
+    // layer, which is a worse outcome than leaving it out and saying so.
+    const clipBase = new Map<string, PsdLeaf | null>();
+    let beneath: PsdLeaf | null = null;
+    for (const leaf of leaves) {
+        if (leaf.clipping) {
+            clipBase.set(joinPath(leaf.path), beneath);
+        } else {
+            beneath = leaf;
+        }
+    }
+
+    const attachments: Record<string, PsdAttachment[]> = {};
+    const bases: PsdLeaf[] = [];
+    // Where a leaf's pixels end up. A leaf that is flattened onto another inherits that layer's host,
+    // so a clip whose base was itself merged down still lands on real art instead of nowhere.
+    const host = new Map<string, PsdLeaf>();
+    const attach = (target: PsdLeaf, leaf: PsdLeaf, clip: boolean): void => {
+        const key = joinPath(target.path);
+        attachments[key] = [...(attachments[key] ?? []), { leaf, clip }];
+        host.set(joinPath(leaf.path), target);
+    };
+
+    for (const leaf of kept) {
+        if (leaf.clipping) {
+            const base = clipBase.get(joinPath(leaf.path)) ?? null;
+            const target = base && keptPaths.has(joinPath(base.path)) ? host.get(joinPath(base.path)) : null;
+            if (target) {
+                attach(target, leaf, true);
+            } else {
+                dropped.push({ leaf, reason: "clip-base-dropped" });
+            }
+            continue;
+        }
+        if (isUnsupportedBlend(leaf.blendMode) && blendResolutions[joinPath(leaf.path)] === "merge") {
+            const below = bases[bases.length - 1];
+            if (below) {
+                attach(below, leaf, false);
+                continue;
+            }
+            // Nothing underneath to merge into: it becomes a plain layer of its own rather than
+            // vanishing, which is the least surprising outcome for the bottom of the stack.
+        }
+        bases.push(leaf);
+        host.set(joinPath(leaf.path), leaf);
     }
 
     const byGroup = new Map<string, PsdLeaf[]>();
-    for (const leaf of kept) {
+    for (const leaf of bases) {
         if (!leaf.group) continue;
         byGroup.set(leaf.group, [...(byGroup.get(leaf.group) ?? []), leaf]);
     }
@@ -106,11 +189,32 @@ export function planImport(leaves: PsdLeaf[], blendResolutions: Record<string, B
         .map(([name, members]) => ({ name, tags: members.map(member => member.name) }));
     const axisNames = new Set(axes.map(axis => axis.name));
 
+    // One slot per constant leaf, one per axis at the position its first member holds — so the
+    // stack order the author sees is the order the art sits in.
+    const slots: PlannedSlot[] = [];
+    const emitted = new Set<string>();
+    for (const leaf of bases) {
+        if (leaf.group && axisNames.has(leaf.group)) {
+            if (emitted.has(leaf.group)) continue;
+            emitted.add(leaf.group);
+            slots.push({
+                kind: "switch",
+                axis: leaf.group,
+                options: (byGroup.get(leaf.group) ?? []).map(member => ({ tag: member.name, leaf: member })),
+            });
+            continue;
+        }
+        slots.push({ kind: "constant", name: leaf.name, leaf });
+    }
+
+    const droppedPaths = new Set(dropped.map(entry => joinPath(entry.leaf.path)));
     return {
         axes,
-        constants: kept.filter(leaf => !leaf.group || !axisNames.has(leaf.group)),
-        baking: kept,
+        constants: bases.filter(leaf => !leaf.group || !axisNames.has(leaf.group)),
+        baking: leaves.filter(leaf => !droppedPaths.has(joinPath(leaf.path))),
         dropped,
+        slots,
+        attachments,
     };
 }
 
@@ -132,28 +236,22 @@ export function canMergeBlendMode(mode: string): boolean {
 }
 
 /**
- * What to bake, once the author's blend decisions are in.
+ * What to bake, read straight off the plan.
  *
- * A merged layer is attached to the nearest kept layer *below* it, which is what "merge down" means
- * in Photoshop and the only reading that survives an engine which just stacks.
+ * One bake target per slot entry — a constant layer, or one per tag of an axis — carrying whatever
+ * the plan attached to it. Deriving this from the plan rather than re-reading the author's decisions
+ * is what keeps the bake and the mapping the wizard displayed from drifting apart.
  */
-export function toBakeTargets(
-    plan: ImportPlan,
-    blendResolutions: Record<string, BlendResolution>,
-): { path: string[]; mergeFrom?: string[][] }[] {
-    const targets: { path: string[]; mergeFrom?: string[][] }[] = [];
-    for (const leaf of plan.baking) {
-        const unsupported = isUnsupportedBlend(leaf.blendMode);
-        if (unsupported && blendResolutions[joinPath(leaf.path)] === "merge") {
-            const below = targets[targets.length - 1];
-            if (below) {
-                below.mergeFrom = [...(below.mergeFrom ?? []), leaf.path];
-                continue;
-            }
-            // Nothing underneath to merge into: it becomes a plain layer of its own rather than
-            // vanishing, which is the least surprising outcome for the bottom of the stack.
-        }
-        targets.push({ path: leaf.path });
-    }
-    return targets;
+export function toBakeTargets(plan: ImportPlan): PsdBakeTarget[] {
+    const attachmentsFor = (leaf: PsdLeaf): PsdBakeTarget => {
+        const attached = plan.attachments[joinPath(leaf.path)] ?? [];
+        return attached.length === 0
+            ? { path: leaf.path }
+            : { path: leaf.path, mergeFrom: attached.map(entry => ({ path: entry.leaf.path, clip: entry.clip })) };
+    };
+    return plan.slots.flatMap(slot => (
+        slot.kind === "constant"
+            ? [attachmentsFor(slot.leaf)]
+            : slot.options.map(option => attachmentsFor(option.leaf))
+    ));
 }

@@ -38,13 +38,33 @@ export type PsdDocument = {
 export type BlendResolution = "merge" | "skip";
 
 /**
- * One output layer. `mergeFrom` are layers the author chose to flatten onto this one, bottom first,
- * each combined with its own blend mode — which is what makes a `multiply` shadow survive an import
- * into an engine that only stacks.
+ * A layer flattened onto another during the bake, with its own blend mode.
+ *
+ * `clip` is Photoshop's clipping mask: the source is restricted to the target layer's own alpha
+ * before it is composited, so a blush clipped to a face stops at the edge of the face. It is not the
+ * author's choice — the PSD says so — which is why it rides along with the merge rather than being
+ * one more thing the wizard asks about.
+ */
+export type PsdMergeSource = {
+    path: string[];
+    clip?: boolean;
+};
+
+/**
+ * One output layer. `mergeFrom` are layers flattened onto this one, bottom first, each combined with
+ * its own blend mode — which is what makes a `multiply` shadow survive an import into an engine that
+ * only stacks.
  */
 export type PsdBakeTarget = {
     path: string[];
-    mergeFrom?: string[][];
+    mergeFrom?: PsdMergeSource[];
+    /**
+     * What to call the baked file, before sanitising. The asset library takes an asset's name from
+     * the file it imported, so this is where `<character>_<layer>_<tag>` gets decided — the Photoshop
+     * layer name alone would land a stack of "Happy.png"s in the library with nothing to tell them
+     * apart. A file name, never a path: the output directory stays the main process's business.
+     */
+    name?: string;
 };
 
 export type PsdBakeRequest = {
@@ -72,13 +92,30 @@ export type PsdBakedLayer = {
 };
 
 /**
+ * Where one PSD layer ended up in the character. The layer path is the reconnect key: it survives
+ * everything the author can do in Studio afterwards, because Studio renames ids-first and never
+ * writes back to the PSD.
+ */
+export type PsdFingerprintSlot = {
+    path: string[];
+    /** The Studio layer this PSD layer feeds. */
+    layerId: string;
+    /** The tag it feeds, when that layer is bound to an axis. Absent for a constant layer. */
+    tagId?: string;
+};
+
+/**
  * Enough to recognise the same PSD again without keeping it. The plan is explicit that Studio does
  * not hold on to the file — this is what lets a re-import reconnect to the layers it already made.
+ *
+ * `slots` is the mapping memory, and it is the whole reason this record exists: a second import of
+ * the same PSD refreshes the art in place, leaving the author's renames, stack order and axis
+ * bindings alone. Without it a re-import could only mean "build it all again".
  */
 export type PsdFingerprint = {
     fileName: string;
     width: number;
     height: number;
-    layerPaths: string[][];
+    slots: PsdFingerprintSlot[];
     importedAt: number;
 };
