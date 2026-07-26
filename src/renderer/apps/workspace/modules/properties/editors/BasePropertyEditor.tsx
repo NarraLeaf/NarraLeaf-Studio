@@ -134,8 +134,6 @@ export function BasePropertyEditor<T extends AssetType>({ asset, onChange, child
                                 onClick={() => handleRemoveTag(tag)}
                                 className="hover:text-primary cursor-default"
                                 disabled={saving}
-                                title={t("properties.tags.remove")}
-                                aria-label={t("properties.tags.removeAria", { tag })}
                             >
                                 <X className="w-3 h-3" />
                             </button>
@@ -161,8 +159,6 @@ export function BasePropertyEditor<T extends AssetType>({ asset, onChange, child
                     <button
                         onClick={handleAddTag}
                         disabled={!newTag.trim() || saving}
-                        title={t("properties.tags.add")}
-                        aria-label={t("properties.tags.add")}
                         className="px-2 py-1.5 bg-primary/20 hover:bg-primary/30 text-primary rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-default"
                     >
                         <Plus className="w-4 h-4" />

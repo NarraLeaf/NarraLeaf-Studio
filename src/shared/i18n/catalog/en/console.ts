@@ -15,6 +15,7 @@ export const console = {
     exportSuccess: "Exported {label} logs to {path}",
     exportFailed: "Failed to export logs: {error}",
     emptyFiltered: "No lines match the current filters",
+    emptyChannel: "No {label} output yet",
     entryEmpty: "(empty)",
     outputFallback: "output",
     channels: {

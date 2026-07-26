@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, Ellipsis, Plus } from "lucide-react";
+import { Check, Ellipsis, Languages, Plus } from "lucide-react";
 import type { PanelComponentProps } from "../types";
 import { ContextMenu, Progress, type ContextMenuDef } from "@/lib/components/elements";
 import { useWorkspace } from "../../context";
@@ -391,9 +391,12 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                     <p className="text-2xs leading-snug text-fg-subtle">
                         {t("workspace.localization.panel.languagesHint")}
                     </p>
-                    {/* No languages: no list. The "+ Add language" row directly below is the action,
-                        so a bordered box repeating it is a second copy of the same button. */}
-                    {locales.length === 0 ? null : (
+                    {locales.length === 0 ? (
+                        <div className="flex flex-col items-center gap-2 rounded-md border border-edge-subtle px-3 py-6 text-center text-2xs text-fg-subtle">
+                            <Languages className="h-5 w-5" />
+                            {t("workspace.localization.panel.empty")}
+                        </div>
+                    ) : (
                         <div className="flex flex-col gap-1">
                             {locales.map(locale => {
                                 const isSource = locale.code === config?.sourceLocale;

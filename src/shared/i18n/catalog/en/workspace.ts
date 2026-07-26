@@ -8,6 +8,7 @@ export const workspace = {
         panel: {
             languagesTitle: "Languages",
             languagesHint: "Languages of the game itself. The source language is the one you write in; every other language is translated against it.",
+            empty: "No languages yet. Add the source language first.",
             addLanguage: "Add language",
             codePlaceholder: "Code (en, ja, zh-CN…)",
             namePlaceholder: "Display name",
@@ -32,6 +33,7 @@ export const workspace = {
             storyLabel: "Source",
             sourceUi: "Interface text",
             sourceKeys: "Named keys",
+            emptyUi: "No interface text is marked for localization yet. Enable \"Localize text\" on a text or button widget.",
             modeTranslate: "Translate",
             modeReview: "Review",
             filterAll: "All",
@@ -76,6 +78,7 @@ export const workspace = {
         panel: {
             languagesTitle: "Voice languages",
             languagesHint: "Languages you have voice-over for. Independent of text languages, so you can voice a game in Japanese while its text stays English.",
+            empty: "No voice languages yet. Add one, then assign imported audio to your lines.",
             addLanguage: "Add voice language",
             codePlaceholder: "Code (ja, en, zh-CN…)",
             namePlaceholder: "Display name",
@@ -202,6 +205,7 @@ export const workspace = {
         // Notification center (bell in the control bar; ring-buffered history of all toasts).
         notifications: {
             title: "Notifications",
+            empty: "No notifications yet.",
             clearAll: "Clear",
         },
         // The custom background dialog (opened from Settings or the command palette).
