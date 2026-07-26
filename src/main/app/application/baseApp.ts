@@ -280,6 +280,22 @@ export class BaseApp {
         return this.resolveExistingResource("app-icon-mac.png", "app-icon.png", "app-icon.icns");
     }
 
+    /**
+     * The icon a packaged game wears when its project sets none: NarraLeaf's
+     * own mark, not Electron's default and not the mobile shell's placeholder.
+     * A game that ships looking like the framework it was built with is a
+     * worse answer than one that looks like the engine it runs on.
+     *
+     * `opaque` selects the pre-flattened variant, committed alongside because
+     * iOS and apple-touch icons must carry no alpha channel and the build
+     * deliberately does no compositing of its own.
+     */
+    public getDefaultGameIconPath(opaque = false): string | null {
+        return opaque
+            ? this.resolveExistingResource("app-icon-opaque.png", "app-icon.png")
+            : this.resolveExistingResource("app-icon.png", "app-icon.ico");
+    }
+
     public getDistDir(): string {
         return path.resolve(this.getAppPath(), "dist");
     }
