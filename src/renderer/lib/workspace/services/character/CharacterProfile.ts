@@ -1,25 +1,26 @@
-import { CharacterAppearance, AssetChangeCallback } from "./CharacterAppearance";
-import { CharacterEditorProfile, ICharacterAppearance, PortraitCrop } from "./types";
+import { CharacterAppearance, AssetChangeCallback, emptyAppearance } from "./CharacterAppearance";
+import { CharacterAppearanceKind, CharacterEditorProfile, ICharacterAppearance, PortraitCrop } from "./types";
 
 export interface CharacterProfileConfig extends CharacterEditorProfile {
     appearance: ICharacterAppearance;
 }
 
 export class CharacterProfile {
-    public static create(id:string, name: string): CharacterProfile {
+    /**
+     * The sprite kind is fixed at creation because the two kinds share no data — see
+     * {@link CharacterAppearance.setKind} for what changing it later costs.
+     */
+    public static create(id: string, name: string, kind: CharacterAppearanceKind = "preset"): CharacterProfile {
         const defaultProfile: CharacterProfileConfig = {
             id,
             name,
             description: "",
             tags: [],
-            defaultForm: null,
             attributes: {},
             thumbnail: null,
             nicknames: [],
             groupId: undefined,
-            appearance: {
-                forms: [],
-            },
+            appearance: emptyAppearance(kind),
         };
         return new CharacterProfile(defaultProfile);
     }
@@ -28,7 +29,6 @@ export class CharacterProfile {
         const clonedConfig: CharacterProfileConfig = {
             ...config,
             tags: [...config.tags],
-            defaultForm: config.defaultForm ?? null,
             attributes: { ...config.attributes },
             nicknames: [...config.nicknames],
             groupId: config.groupId,
@@ -84,15 +84,6 @@ export class CharacterProfile {
 
     public getTags(): string[] {
         return this.profile.tags;
-    }
-
-    public getDefaultForm(): string | null {
-        return this.profile.defaultForm ?? null;
-    }
-
-    public setDefaultForm(name: string | null): void {
-        this.profile.defaultForm = name ?? null;
-        this.notifyChange();
     }
 
     public addTag(tag: string): void {
@@ -184,7 +175,6 @@ export class CharacterProfile {
             name: this.profile.name,
             description: this.profile.description,
             tags: [...this.profile.tags],
-            defaultForm: this.profile.defaultForm ?? null,
             attributes: { ...this.profile.attributes },
             thumbnail: this.profile.thumbnail,
             nicknames: [...this.profile.nicknames],

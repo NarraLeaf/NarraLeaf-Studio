@@ -989,7 +989,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         return {
             character: activeCharacter,
             thumbnailUrl,
-            forms: [...activeCharacter.profile.appearance.getForms()],
+            poses: activeCharacter.profile.appearance.getPoses().map(pose => ({ id: pose.id, name: pose.name })),
         };
     }, [activeCharacter, thumbnailUrl, characterVersion]);
 

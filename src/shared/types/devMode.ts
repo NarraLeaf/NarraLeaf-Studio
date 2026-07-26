@@ -75,21 +75,34 @@ export type DevModeCharacterSummary = {
     id: string;
     /** Author-facing display name. Empty when the character is unnamed - never falls back to `id`, which is a UUID. */
     name: string;
-    defaultForm?: string | null;
-    forms?: DevModeCharacterFormSummary[];
+    appearance: CharacterAppearanceSummary;
 };
 
-export type DevModeCharacterFormSummary = {
-    name: string;
-    groups: DevModeCharacterVariantGroupSummary[];
-    variantAssets: Record<string, { assetId: string; name?: string }>;
-};
-
-export type DevModeCharacterVariantGroupSummary = {
-    name: string;
-    defaultVariant: string | null;
-    variants: { name: string }[];
-};
+/**
+ * A character's appearance as everything outside the character service sees it: the compiler, the
+ * story editor's badges, the dev-mode bundle. Ids are what rows store and what the engine receives
+ * as tags; `name` is only ever displayed.
+ */
+export type CharacterAppearanceSummary =
+    | {
+          kind: "preset";
+          poses: { id: string; name: string; assetId: string | null }[];
+          defaultPoseId: string | null;
+      }
+    | {
+          kind: "layered";
+          canvas: { width: number; height: number } | null;
+          axes: { id: string; name: string; tags: { id: string; name: string }[]; defaultTagId: string | null }[];
+          /** Bottom to top, matching the stacking order the engine draws. */
+          layers: {
+              id: string;
+              name: string;
+              axisId: string | null;
+              assetId?: string | null;
+              options?: Record<string, string | null>;
+              hidden?: boolean;
+          }[];
+      };
 
 export type DevModeStoryLibrary = {
     index: StoryLibraryIndex;

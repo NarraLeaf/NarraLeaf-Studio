@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Trash2 } from "lucide-react";
-import type { StoryCharacterVariantSelection, StoryInlineEvent } from "@shared/types/story";
+import type { StoryCharacterTagSelection, StoryInlineEvent } from "@shared/types/story";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { useTranslation } from "@/lib/i18n";
@@ -57,11 +57,11 @@ export function ExpressionPopover(props: {
 
     const expression = props.value.expression;
 
-    const setAppearance = (next: { formName: string | undefined; variants: StoryCharacterVariantSelection | undefined }) => {
+    const setAppearance = (next: { pose: string | undefined; tags: StoryCharacterTagSelection | undefined }) => {
         if (!characterId) {
             return;
         }
-        props.onChange({ ...props.value, expression: { characterId, formName: next.formName, variants: next.variants } });
+        props.onChange({ ...props.value, expression: { characterId, pose: next.pose, tags: next.tags } });
     };
     const setSound = (assetId: string | undefined) => {
         const { sound, ...rest } = props.value;
@@ -83,8 +83,8 @@ export function ExpressionPopover(props: {
             {props.character ? (
                 <CharacterAppearancePicker
                     character={props.character}
-                    formName={expression?.formName}
-                    variants={expression?.variants}
+                    pose={expression?.pose}
+                    tags={expression?.tags}
                     onChange={setAppearance}
                 />
             ) : (

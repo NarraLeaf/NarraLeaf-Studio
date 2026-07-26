@@ -64,7 +64,7 @@ describe("projectSceneTimeline", () => {
         };
         const rows = projectSceneTimeline(
             scene([dialogue], ["d"]),
-            new Map([["c1", { id: "c1", name: "Alice" }]]),
+            new Map([["c1", { id: "c1", name: "Alice", appearance: { kind: "preset", poses: [], defaultPoseId: null } }]]),
         );
         expect(rows[0]!.summary).toBe("Alice: hi");
     });
