@@ -3,7 +3,7 @@ import type { CSSProperties, ReactNode, RefObject, MouseEvent } from "react";
 import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Hash, Image, List, Music, Play, Plus, Route, Trash2, TriangleAlert, UserRoundPlus, Variable, Video } from "lucide-react";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
 import { useSortable } from "@dnd-kit/sortable";
-import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryCharacterVariantSelection, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
+import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryCharacterTagSelection, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
 import { resolveVariantEntry, selectCharacterVariantNames } from "@shared/utils/characterVariant";
 import { HeadThumbnail } from "@/apps/workspace/modules/characters/editors/components/HeadThumbnail";
 import type { NormalizedCrop } from "@/lib/utils/headCrop";
@@ -2458,7 +2458,7 @@ function CharacterSelectTrigger(props: {
 function getBadgeImageSpec(
     block: StoryBlock,
     appearance: CharacterAppearanceRef | undefined,
-): { characterId: string; formName?: string; variants?: StoryCharacterVariantSelection; resolveVariant: boolean } | null {
+): { characterId: string; formName?: string; variants?: StoryCharacterTagSelection; resolveVariant: boolean } | null {
     if (block.kind === "action" && block.payload.action === "character" && block.payload.characterId) {
         return { characterId: block.payload.characterId, formName: block.payload.formName, variants: block.payload.variants, resolveVariant: true };
     }
@@ -2480,7 +2480,7 @@ function getBadgeImageSpec(
 function resolveCharacterBadgeImage(
     character: Character,
     formName: string | undefined,
-    variants: StoryCharacterVariantSelection | undefined,
+    variants: StoryCharacterTagSelection | undefined,
 ): { asset: Asset<AssetType.Image> | null; frame?: NormalizedCrop } {
     const forms = character.profile.appearance.getForms();
     const form = forms.find(candidate => candidate.name === formName)

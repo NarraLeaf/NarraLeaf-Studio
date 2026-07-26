@@ -106,8 +106,9 @@ export const story = {
         createNew: "Create new layer",
     },
     appearance: {
-        noForms: "This character has no forms defined.",
-        form: "Form",
+        noPoses: "This character has no poses yet.",
+        noAxes: "This character has no layer axes yet.",
+        unchanged: "unchanged",
         appearance: "Appearance",
         default: "Default",
         preview: "Preview",
