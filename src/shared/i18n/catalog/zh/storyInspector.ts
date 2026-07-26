@@ -1,7 +1,6 @@
 import type { LocaleNamespace } from "../types";
 
 export const storyInspector = {
-    closeEditor: "关闭编辑器",
     noEditableFields: "此动作暂无可编辑的字段",
     textId: "文本 ID",
     advanced: "高级",

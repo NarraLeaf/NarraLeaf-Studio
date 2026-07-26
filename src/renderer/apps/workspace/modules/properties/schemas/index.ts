@@ -19,3 +19,8 @@ export {
     scenePropertySchema,
 } from "./sceneSchema";
 
+export {
+    type StorySceneEditorContext,
+    storyScenePropertySchema,
+} from "./storySceneSchema";
+
