@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from "react";
-import { AlignLeft, BookOpen, Camera, Check, ChevronDown, ChevronRight, FileText, Image as ImageIcon, ListPlus, MonitorPlay, Plus, SlidersHorizontal, StretchVertical, Trash2, Variable } from "lucide-react";
+import { AlignLeft, BookOpen, Camera, Check, ChevronDown, ChevronRight, FileText, Image as ImageIcon, ListPlus, MonitorPlay, Plus, StretchVertical, Trash2, Variable } from "lucide-react";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
@@ -30,8 +30,13 @@ import { StoryVariablesPanel, STORY_VARIABLES_PANEL_ID } from "../../story-varia
 import { StorySnapshotPanel, STORY_SNAPSHOT_PANEL_ID, getSelectedSnapshotId, setSelectedSnapshotId } from "../../story-snapshots";
 import { InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
-import { StoryInspectorPanel } from "./StoryInspectorPanel";
-import { publishStoryInspectorState, STORY_INSPECTOR_PANEL_ID } from "./storyInspectorBridge";
+import { publishStoryInspectorState } from "./storyInspectorBridge";
+import {
+    isSameStoryBlockSelection,
+    isStoryBlockSelectionData,
+    STORY_BLOCK_SELECTION_TYPE,
+    type StoryBlockSelection,
+} from "./storySelection";
 import { stopVoiceAudition } from "./voiceAudition";
 import { STORY_DENSITY_METRICS, StoryEditorTextStyleProvider, storyEditorRootStyle } from "./storyEditorTextStyle";
 import { StoryRowActionsContext, type StoryRowActions } from "./storyRowActions";
@@ -713,16 +718,15 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         });
     }, [active, editor.activeBlockId, editor.context, editor.document?.name, editor.isInitialized, editor.scene?.name, payload?.sceneId, payload?.storyId]);
 
-    // Tracks whether this tab has revealed the inspector panel for the current open session, so the
-    // reveal fires once on open rather than on every republish. Reset whenever the panel is (re)registered
-    // (a kept-alive tab re-registers hidden on re-activation), keeping it in sync with actual visibility.
-    // The block id the inspector panel is currently shown for (null = hidden). Tracking the id, not a
-    // bare boolean, lets an inspector→inspector switch (Enter on a different row, never passing through
-    // idle) re-reveal the panel after a manual hide instead of a dead Enter (WI-0 #2). `lastInspectorSig`
-    // gates the republish to real changes of the inspected block, so typing in another row — which
-    // rewrites the whole scene snapshot every keystroke — no longer re-renders the panel (WI-0 #7).
-    const shownInspectorBlockRef = useRef<string | null>(null);
-    const lastInspectorSigRef = useRef<{ blockId: string; payload: unknown; characters: unknown; sceneList: string } | null>(null);
+    // Gates the bridge republish to real changes of what the rail draws, so typing in another row —
+    // which rewrites the whole scene snapshot every keystroke — does not re-render the panel.
+    const lastInspectorSigRef = useRef<{
+        blockId: string | null;
+        payload: unknown;
+        characters: unknown;
+        sceneList: string;
+        sceneMeta: string;
+    } | null>(null);
     // Latest controller handle, read by the bridge's published callbacks so they never edit through a
     // stale scene snapshot. The republish gate below fires only when the inspected block changes, so
     // between republishes an untracked scene change (a quickParam click or a drag on another row) would
@@ -887,114 +891,137 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         }
     }, [active, editor.activeBlockId, editor.editorMode.kind, editor.scrollContainerRef, scrollRowIntoView]);
 
-    // The right-sidebar inspector (WI-1). Registered like the other three dynamic panels; its body reads
-    // the selection from the per-tab bridge below rather than a static payload.
+    /**
+     * The right rail follows the selected row (U2 WI-1).
+     *
+     * Two things are published from here, and the split matters:
+     *
+     *  - the *subject*, as the app-wide selection (`storyBlock`), which is what makes the properties
+     *    panel show this tab's inspector at all. It addresses the row; it does not carry it.
+     *  - the *content*, through the per-tab bridge: the block itself, the scene, and the controller
+     *    callbacks that edit them.
+     *
+     * Neither one shows or hides a panel. The rail's contents used to be driven by `editorMode`
+     * ("inspector") plus manual `panels.show/hide`, which is what made it possible to select a row and
+     * have the rail keep showing the *previous* one, to have it jump to Story Variables when a panel
+     * was hidden underneath the author, and to have a second Enter on the same row do nothing at all.
+     * There is nothing to reveal now: the panel is already there because the selection is.
+     *
+     * With no row focused the subject is the scene (`blockId: null`) — the panel then renders the
+     * scene's own fields, so it is never empty and never has to explain itself.
+     */
     useEffect(() => {
         if (!active || !editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
             return;
         }
-        const uiService = editor.context.services.get<UIService>(Services.UI);
-        shownInspectorBlockRef.current = null;
-        lastInspectorSigRef.current = null;
-        const unregister = uiService.panels.register({
-            id: STORY_INSPECTOR_PANEL_ID,
-            title: t("story.sceneEditor.inspectorPanel"),
-            icon: <SlidersHorizontal className="w-4 h-4" />,
-            position: PanelPosition.Right,
-            component: StoryInspectorPanel,
-            defaultVisible: false,
-            order: 13,
-            payload: {
-                tabId,
+        const store = editor.context.services.get<UIService>(Services.UI).getStore();
+        const scene = editor.scene;
+        const storyDocument = editor.document;
+        if (!scene || !storyDocument) {
+            return;
+        }
+        const blockId = editor.activeBlockId && scene.blocks[editor.activeBlockId] ? editor.activeBlockId : null;
+        const block = blockId ? scene.blocks[blockId] ?? null : null;
+
+        // Republish only when something the panel renders changes. Editing any row rewrites the scene
+        // snapshot (and so `editor.scene`/`editor.document` identity) every keystroke, so gating on the
+        // selected block's payload keeps the panel from re-rendering on unrelated typing. The panel also
+        // draws the speaker dropdown from `characters`, the jump-target dropdown from the scene list, and
+        // — with no row selected — the scene's own name/description/background, so all four are in the
+        // signature. `characters` re-identifies only on a character edit, and the two string signatures
+        // read ids/names only, so they stay stable under row typing while catching real edits.
+        const sceneList = Object.values(storyDocument.scenes).map(entry => `${entry.id}:${entry.name}`).join("|");
+        const sceneMeta = JSON.stringify([scene.name, scene.description ?? "", scene.defaultBackgroundAssetId ?? ""]);
+        // A block's payload is a fresh object on every edit to it (updateBlockPayload reassigns) and is
+        // untouched by edits to other rows, so its reference is a cheap version token.
+        const sig = { blockId, payload: block?.payload ?? null, characters: editor.characters, sceneList, sceneMeta };
+        const previous = lastInspectorSigRef.current;
+        if (
+            !previous
+            || previous.blockId !== sig.blockId
+            || previous.payload !== sig.payload
+            || previous.characters !== sig.characters
+            || previous.sceneList !== sig.sceneList
+            || previous.sceneMeta !== sig.sceneMeta
+        ) {
+            lastInspectorSigRef.current = sig;
+            publishStoryInspectorState(tabId, {
                 storyId: payload.storyId,
                 sceneId: payload.sceneId,
-            },
-        });
-        return () => {
-            publishStoryInspectorState(tabId, null);
-            uiService.panels.hide(STORY_INSPECTOR_PANEL_ID);
-            unregister();
-        };
-    }, [active, editor.context, editor.isInitialized, payload?.sceneId, payload?.storyId, tabId, t]);
-
-    useEffect(() => {
-        if (!active || !editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
-            return;
+                scene,
+                document: storyDocument,
+                characters: editor.characters,
+                block,
+                // Route through editorRef (the latest controller), not the render-time `editor`, so an
+                // edit made after an untracked scene change still records the current scene as its undo
+                // snapshot rather than the one captured at the last republish.
+                onUpdatePayload: nextPayload => {
+                    if (blockId) {
+                        editorRef.current.updateBlockPayloadFor(blockId, nextPayload);
+                    }
+                },
+                onClose: () => editorRef.current.closeInspector(),
+                onSetDialogueCharacter: characterId => {
+                    const target = blockId ? editorRef.current.scene?.blocks[blockId] : null;
+                    if (target) {
+                        editorRef.current.setDialogueSpeaker(target, characterId ? { characterId } : null);
+                    }
+                },
+                generateTextId: () => editorRef.current.uuidService?.generate() ?? crypto.randomUUID(),
+                onCreateLayer: nextBeforeBlockId => editorRef.current.createLayerBeforeBlock(nextBeforeBlockId),
+                onUpdateScene: patch => editorRef.current.updateSceneMetadata(patch),
+            });
         }
-        const uiService = editor.context.services.get<UIService>(Services.UI);
-        uiService.panels.updatePayload(STORY_INSPECTOR_PANEL_ID, {
+
+        // Claim the rail for this row. Written only when the store does not already say so, so a
+        // republish (a keystroke elsewhere in the scene) does not emit a selection event — but a
+        // selection made somewhere else in the app, e.g. clicking an asset, IS taken back the next time
+        // the author touches a row. `selectionRevision` is what makes re-clicking the *same* row count
+        // as touching it.
+        const selection: StoryBlockSelection = {
+            editor: "story",
             tabId,
             storyId: payload.storyId,
             sceneId: payload.sceneId,
-            storyName: editor.document?.name,
-            sceneName: editor.scene?.name,
-        });
-    }, [active, editor.context, editor.document?.name, editor.isInitialized, editor.scene?.name, payload?.sceneId, payload?.storyId, tabId]);
+            blockId,
+        };
+        const current = store.getSelection();
+        const isOurs = current.type === STORY_BLOCK_SELECTION_TYPE
+            && isStoryBlockSelectionData(current.data)
+            && isSameStoryBlockSelection(current.data, selection);
+        if (!isOurs) {
+            store.setSelection({ type: STORY_BLOCK_SELECTION_TYPE, data: selection });
+        }
+    }, [
+        active,
+        editor.activeBlockId,
+        editor.characters,
+        editor.context,
+        editor.document,
+        editor.isInitialized,
+        editor.scene,
+        editor.selectionRevision,
+        payload?.sceneId,
+        payload?.storyId,
+        tabId,
+    ]);
 
-    // Bridge the controller's inspector state to the (out-of-subtree) panel: when a row's inspector is
-    // open (editorMode "inspector") publish that block plus the edit callbacks and reveal the panel; when
-    // it closes, clear the bridge (empty state) and hide the panel — Enter opens, Escape closes, the row
-    // stays selected either way, so the interaction contract is preserved with the card relocated.
+    // Hand the rail back when this tab stops owning it (closed, or another editor focused). Clearing
+    // only our own selection keeps a click on an asset — which legitimately took the rail — untouched.
     useEffect(() => {
         if (!active || !editor.context) {
             return;
         }
-        const uiService = editor.context.services.get<UIService>(Services.UI);
-        const mode = editor.editorMode;
-        const inspectorBlock = mode.kind === "inspector" ? editor.scene?.blocks[mode.blockId] ?? null : null;
-        if (inspectorBlock && editor.document && payload?.sceneId) {
-            // Republish only when something the panel renders changes. Editing any row rewrites the scene
-            // snapshot (and so `editor.scene`/`editor.document` identity) every keystroke, so gating on the
-            // inspected block's payload keeps the panel from re-rendering on unrelated typing (#7). But the
-            // panel also draws the speaker dropdown from `characters` and the jump-target dropdown from the
-            // scene list, and neither is in the block payload — so a character or scene rename must republish
-            // too. `characters` re-identifies only on a character edit (not on typing), and the scene-list
-            // signature reads just ids+names, so both stay stable under row typing while catching real edits.
-            const sceneList = Object.values(editor.document.scenes).map(scene => `${scene.id}:${scene.name}`).join("|");
-            // A block's payload is a fresh object on every edit to it (updateBlockPayload reassigns) and is
-            // untouched by edits to other rows, so its reference is a cheap version token — a payload compare
-            // replaces the per-keystroke JSON.stringify of the payload while keeping the same gate (WI-0 #7).
-            const sig = { blockId: inspectorBlock.id, payload: inspectorBlock.payload, characters: editor.characters, sceneList };
-            const prev = lastInspectorSigRef.current;
-            if (!prev || prev.blockId !== sig.blockId || prev.payload !== sig.payload || prev.characters !== sig.characters || prev.sceneList !== sig.sceneList) {
-                lastInspectorSigRef.current = sig;
-                const blockId = inspectorBlock.id;
-                publishStoryInspectorState(tabId, {
-                    block: inspectorBlock,
-                    document: editor.document,
-                    sceneId: payload.sceneId,
-                    characters: editor.characters,
-                    // Route through editorRef (the latest controller), not the render-time `editor`, so an
-                    // edit made after an untracked scene change still records the current scene as its undo
-                    // snapshot rather than the one captured at the last republish (WI-0).
-                    onUpdatePayload: nextPayload => editorRef.current.updateBlockPayloadFor(blockId, nextPayload),
-                    onClose: () => editorRef.current.closeInspector(),
-                    onSetDialogueCharacter: characterId => {
-                        const block = editorRef.current.scene?.blocks[blockId];
-                        if (block) {
-                            editorRef.current.setDialogueSpeaker(block, characterId ? { characterId } : null);
-                        }
-                    },
-                    generateTextId: () => editorRef.current.uuidService?.generate() ?? crypto.randomUUID(),
-                    onCreateLayer: nextBeforeBlockId => editorRef.current.createLayerBeforeBlock(nextBeforeBlockId),
-                });
-            }
-            // Show on a fresh open — a different row than the panel is showing. An inspector→inspector
-            // switch after the author manually hid the panel then re-reveals it, rather than a dead Enter
-            // (#2). A republish of the same block after a manual hide is left hidden, respecting the hide.
-            if (shownInspectorBlockRef.current !== inspectorBlock.id) {
-                uiService.panels.show(STORY_INSPECTOR_PANEL_ID);
-                shownInspectorBlockRef.current = inspectorBlock.id;
-            }
-        } else {
+        const store = editor.context.services.get<UIService>(Services.UI).getStore();
+        return () => {
             lastInspectorSigRef.current = null;
             publishStoryInspectorState(tabId, null);
-            if (shownInspectorBlockRef.current !== null) {
-                uiService.panels.hide(STORY_INSPECTOR_PANEL_ID);
-                shownInspectorBlockRef.current = null;
+            const current = store.getSelection();
+            if (current.type === STORY_BLOCK_SELECTION_TYPE && isStoryBlockSelectionData(current.data) && current.data.tabId === tabId) {
+                store.setSelection({ type: null, data: null });
             }
-        }
-    }, [active, editor.characters, editor.context, editor.document, editor.editorMode, editor.scene, payload?.sceneId, tabId]);
+        };
+    }, [active, editor.context, tabId]);
 
     useEffect(() => {
         const handleCreateRequest = (event: Event) => {
