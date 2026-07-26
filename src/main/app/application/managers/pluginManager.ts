@@ -88,16 +88,21 @@ export class PluginManager {
         manifest: NormalizedPluginManifestV2;
         entry: string;
         entryPath: string;
+        installPath: string;
     }>> {
         await this.initialize();
         return Object.values(this.getRecords())
             .filter(record => this.toListItem(record).status === "enabled" && record.manifest.entries.runtime)
             .map(record => {
                 const entry = record.manifest.entries.runtime!.replace(/\\/g, "/");
+                const installPath = path.resolve(record.installPath);
                 return {
                     manifest: record.manifest,
                     entry,
-                    entryPath: path.resolve(record.installPath, ...entry.split("/")),
+                    entryPath: path.resolve(installPath, ...entry.split("/")),
+                    // Sidecar `include` paths are package-relative, so the pack
+                    // compiler needs the package root, not just the entry file.
+                    installPath,
                 };
             });
     }
