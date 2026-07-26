@@ -20,6 +20,7 @@ import {
     Crop,
     Eye,
     EyeOff,
+    FileImage,
     Grid3x3,
     ImagePlus,
     Layers,
@@ -35,6 +36,7 @@ import { useWorkspace } from "@/apps/workspace/context";
 import { EditorComponentProps } from "../../types";
 import { LayerStackPreview, type PreviewLayer } from "./components/LayerStackPreview";
 import { CombinationGrid } from "./components/CombinationGrid";
+import { PsdImportWizard } from "./components/PsdImportWizard";
 import { combinationKey, enumerateCombinations } from "@/lib/workspace/services/character/characterCombinations";
 
 type CharacterEditorPayload = { character: Character };
@@ -104,6 +106,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
     const [dragLayerId, setDragLayerId] = useState<string | null>(null);
     const [occluded, setOccluded] = useState<Record<string, boolean>>({});
     const [grid, setGrid] = useState(false);
+    const [psdOpen, setPsdOpen] = useState(false);
     const dragRef = useRef<string | null>(null);
     const anchorRef = useRef<HTMLElement | null>(null);
     const anchorMemo = useMemo(() => ({ current: anchorRef.current }), [slot]);
@@ -299,6 +302,13 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                     onClick={() => setGrid(true)}
                                 >
                                     <Grid3x3 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                    className={ICON_BTN}
+                                    aria-label={t("characters.editor.psd.title")}
+                                    onClick={() => setPsdOpen(true)}
+                                >
+                                    <FileImage className="w-3.5 h-3.5" />
                                 </button>
                             </>
                         ) : null}
@@ -603,6 +613,13 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                     )}
                 </div>
             </div>
+
+            <PsdImportWizard
+                open={psdOpen}
+                onClose={() => setPsdOpen(false)}
+                appearance={appearance}
+                characterName={character.profile.getProfile().name}
+            />
 
             <AssetSelector
                 visible={slot !== null}

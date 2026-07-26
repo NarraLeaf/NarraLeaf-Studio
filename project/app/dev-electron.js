@@ -270,6 +270,28 @@ function broadcastReload(target = 'all') {
     });
 
     /**
+     * Build & watch the PSD import worker (forked by utilityProcess by the
+     * character editor's import wizard). Without this, `yarn dev` leaves
+     * dist/main/psdWorker.js missing and every import fails with
+     * "PSD worker exited before answering" — the same shape of hole the
+     * compile worker below documents.
+     */
+    const buildPsdImportWorker = () => watchBuild({
+        entryPoints: [path.join(rootDir, 'src', 'main', 'buildWorker', 'psdWorker.ts')],
+        outfile: path.join(distDir, 'main', 'psdWorker.js'),
+        platform: 'node',
+        format: 'cjs',
+        bundle: true,
+        // ag-psd is pure JS and bundles fine; keep this list in sync with build-main.js.
+        external: ['electron'],
+        sourcemap: true,
+        target: ['node18'],
+    }, () => {
+        // No Electron restart: the worker is spawned fresh per job.
+        console.log('[psdWorker] built.');
+    });
+
+    /**
      * Build & watch the artifact compile worker (forked by utilityProcess for
      * preview launches and the pre-package compile). Without this, `yarn dev`
      * leaves dist/main/compileWorker.js missing and every preview launch fails
@@ -392,6 +414,7 @@ function broadcastReload(target = 'all') {
     await Promise.all([
         buildMainProcess(),
         buildGameBuildWorker(),
+        buildPsdImportWorker(),
         buildArtifactCompileWorker(),
         buildPreloadScript(),
         buildRenderers(),
