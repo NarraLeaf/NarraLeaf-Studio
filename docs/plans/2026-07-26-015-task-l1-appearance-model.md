@@ -122,6 +122,47 @@ type CharacterLayer = { id; name; axisId: string | null;   // null = 恒定层
 4. 改一个 pose / tag 的显示名，故事行引用不失效（D2）。
 5. 删掉一个轴的 tag，该轴所有层的 `options` 同步收缩（D1 不变式）。
 
+## 4.5 验收结果（2026-07-26，orchestrator 亲手驱动 + 亲自读图）
+
+补做上一轮欠下的那笔账。实例：worktree `D:/Temp/nls-layered` @ `feat/layered-sprite-l2`（develop
+`b695f1ed`），`NLS_DEV_RELOAD_PORT=5601` + CDP 9401。工程用的是 `D:/Dev/test/nlstudio/demo3`
+的**副本**（`D:/Temp/nls-l1-verify/demo3`，去掉 `dist/`），真工程一个字节没动。
+
+上一轮说"新建/打开项目走原生对话框，CDP 驱不动"——那条是错的：
+`app.addRecentProject(name, path)` 与 `workspace.launch({projectPath})` 两个桥都在，
+worktree 实例的空项目列表可以直接播种。**占用窗口（`visibilityState === "hidden"`）
+不影响 `Page.captureScreenshot`**，只影响虚拟列表的首次测量——重截一次即可。
+
+| # | 判据 | 结果 | 证据 |
+|---|---|---|---|
+| 1 | lint / test 无新增失败 | ✅ 见 §3.5 基线 | — |
+| 2 | 既有项目迁移：角色变 preset、故事行可解析、无静默错图 | ⚠️ 见 F6 | 角色库 `version: 1`，三个角色全部变 pose 列表；故事 `schemaVersion` 9→10 落盘；Dev Mode 实跑到第 3 行，Nattou 立绘正确 |
+| 3 | 新建 layered 角色、两轴四层、存盘重载、`/face` 增量 | ✅ 数据/行为通过，**建档路径缺失见 F2** | 切 Expression 一次：`Brows`+`Mouth` 两层的 `img.src` 同时变（1524×344→815×332 / 82×43 两张不同 blob），`Body` 与常量层 `Badge` 的 src 逐字节不变；切 Clothing 只有 `Body` 变，表情保持 Angry；全量重启后层栈完整复原 |
+| 4 | 改 pose 显示名，故事行引用不失效 | ✅ 行为通过，**改名 UI 缺失见 F3** | 行里存 `pose: "pirx6y3"`，把 pose 名从 `Nattou` 改成 `Summer Uniform` 后行摘要与徽章照常，落盘 id 不变 |
+| 5 | 删轴的 tag，该轴所有层 `options` 同步收缩 | ✅ 行为通过，**删 tag UI 缺失见 F3** | 删 `Casual` 后 `Body.options` 由 2 项收缩为 1 项，Expression 两层不受影响 |
+
+迁移报告的"多组 form"告警确实会弹（见 F5 的形态）：`demo3` 本身没有多组 form，
+临时造了一份 `demo3b` 副本给 Nattou 的 `Normal` 加了第二个组，通知中心里出现
+"…please check the result: Nattou › Normal"。
+
+`legacyPoseId` 两侧一致（实测 `p` + fnv1a(`form`+NUL+`variant`) == 落盘 id），
+所以两个迁移确实解耦。
+
+### 发现的缺陷
+
+| # | 缺陷 | 位置 | 归属 |
+|---|---|---|---|
+| **F1** | 三条新 i18n 词条用 `{{name}}`，而本仓的插值语法是 `{name}`，于是预览头部字面显示 `{4} drawn` / `Off-canvas: {…}` | `catalog/{en,zh}/characters.ts` 的 `editor.layerCount`、`editor.canvasMismatch` | 微卡（同类旧债：`story.emptyHint` 的 `{{trigger}}`，来自 `83fea6f1`，一并修） |
+| **F2** | **没有任何入口能建 layered 角色**：`CharacterService.createCharacter(name, kind)` 支持，`CharacterPanel.tsx:294` 永远只传 name → 一律 preset；`setKind` 也无 UI 调用方 | `CharacterPanel.tsx` | L2 |
+| **F3** | pose / 轴 / tag / 层**全都不能改名**，tag 也不能删：`CharacterAppearance.rename`/`removeTag` 在 UI 里没有调用方，编辑器建出来的东西永远叫 "New axis"/"New layer" | `CharacterEditor.tsx` | L2 |
+| **F4** | 属性面板对 layered 角色仍渲染 preset 专属的「默认姿态」下拉（显示"Follow first pose"） | `CharacterPropertiesEditor.tsx:96,533` | L2 |
+| **F5** | 迁移告警是**硬编码英文**且走 `showError`（红色错误），卡里说的是"标黄" | `CharacterService.ts:199-202` | 微卡 |
+| **F6** | v9→v10 只在 `formName` **和** variant 都在时才写 `pose`。老行大量是「只有 variants、没有 formName」（`demo3` 唯一那行就是），于是选择被**整个丢掉**、静默回落到默认 pose——正是本卡要消灭的"静默错图" | `storyModel.ts:406-415` | 需裁决，见下 |
+
+**F6 裁决（用户 2026-07-26）：放弃兼容，不为现有测试工程的形状定方向。**
+迁移保持独立——不读角色库、不补 `defaultForm`、不写哨兵。老行少写了 `formName` 就是少写了，
+迁移后回落默认 pose，作者自己重指。这条不再是待办。
+
 ## 5. 明确不做（留给后续卡）
 
 - 层栈编辑器、实时合成预览、诊断面板（L2）

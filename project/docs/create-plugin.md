@@ -81,8 +81,20 @@ Manifest 字段：
 | `publisher` | `string` | 可选。 |
 | `description` | `string` | 可选。 |
 | `entries` | `{ studio?: string; runtime?: string }` | 至少声明一个 target；每个值必须是包内相对路径。未知 key 会被拒绝。 |
-| `contributes` | `{ blueprintNodes?: string[]; widgets?: string[] }` | 插件提供的蓝图节点 / widget type 声明（必须以插件 ID 为前缀）。注册未声明的类型会抛错；打包时 Studio 用它静态校验项目用到的类型是否有运行时提供方。省略等同空数组。 |
-| `permissions` | `PluginInstallPermission[]` | 可选，默认 `[]`。仅作用于 studio 入口。 |
+| `contributes` | 见下 | 插件声明的一切。**这是插件能力的唯一真相源**——安装权限从它派生，运行时 API 按它门控。 |
+| `permissions` | `PluginInstallPermission[]` | 可选，默认 `[]`。**只能手写 `filesystem` 与 `api` 两种**（studio 入口的特权控制）；`runtime` / `sidecar` / `buildDependency` 三种由 `contributes` 派生，手写会被判为清单错误。 |
+
+`contributes` 的七个键：
+
+| 键 | 类型 | 说明 |
+|---|---|---|
+| `blueprintNodes` | `string[]` | 蓝图节点 type（必须以插件 ID 为前缀）。注册未声明的类型会抛错。 |
+| `widgets` | `string[]` | widget type，同上。 |
+| `runtimeData` | `string[]` | 随游戏发布的插件存储命名空间，runtime 侧 `app.game.data.readJson` 只能读这里列出的。 |
+| `locales` | `PluginLocaleContribution[]` | Studio 界面语言包。 |
+| `runtimeCapabilities` | `PluginRuntimeCapability[]` | runtime 入口要用的能力域，九选若干：`store` / `events` / `state.read` / `state.write` / `saves.read` / `saves.write` / `ui.overlay` / `assets` / `locale`。**未声明的域在 `app.game` 上不存在**（不是抛错的桩）。 |
+| `sidecars` | `PluginSidecarContribution[]` | 随作者的游戏附带并运行的原生子进程。声明它本身就是权限请求，无需再声明能力。 |
+| `buildDependencies` | `PluginBuildDependencyContribution[]` | 构建时下载/校验/缓存的外部二进制。 |
 
 entry 不能是绝对路径，不能包含 `..`、`.`、空字节、`?` 或 `#`。声明的入口文件必须实际存在。
 
@@ -101,6 +113,9 @@ type PluginInstallPermission =
       capability: string;
     };
 ```
+
+派生出来的另外三种（`runtime` / `sidecar` / `buildDependency`）不要写进 `permissions`——
+校验器会拒绝。理由：一个能力若能在两个地方声明，安装提示所说的和插件实际能做的迟早会分叉。
 
 当前可实际用于插件特权 facade 的 API capability：
 
@@ -183,19 +198,21 @@ export default defineRuntimePlugin({
 });
 ```
 
-`app.game.blueprintNodes.register` 只读取 `type`、`displayName`、`execute` 三个字段，所以可以直接传入与 studio 入口共享的完整 `BlueprintNodeDef` 对象。node type 必须以插件 ID 为前缀。
+`app.game.blueprintNodes.register` 只读取 `type`、`displayName`、`execute` 三个字段，所以可以直接传入与 studio 入口共享的完整 `PluginBlueprintNodeDef` 对象。node type 必须以插件 ID 为前缀。
 
 推荐把节点定义放进 `src/nodes.ts` 由两个入口共同 import：studio 入口注册完整定义（palette + 编辑器预览），runtime 入口注册游戏 execute。这样 execute 逻辑只写一次。内建 Gallery 插件（`src/builtin-plugins/gallery/`）是参照实现。
 
-execute 内通过执行上下文访问游戏宿主能力（如 persistence）：
+execute 拿到的 `ctx` 只有 `params` / `resolveInput` / `eventName` / `eventPayload` / `signal` / `game`。宿主能力一律走 `ctx.game`——也就是 `setup(app)` 收到的同一个能力门控对象，manifest 里 `contributes.runtimeCapabilities` 声明什么就有什么：
 
 ```ts
 execute: async ctx => {
-  const hostApi = ctx.hostAdapter.blueprintRuntime?.hostApi;
-  await hostApi?.persistence.set(`${PLUGIN_ID}.key`, value);
+  // 未声明（或本环境背不动）的域在对象上不存在，不是会抛错的方法——所以要判存降级。
+  await ctx.game.store?.set("key", value);   // 需声明 "store"
   return { nextPort: "next" };
 },
 ```
+
+编辑器本身没有游戏可读，因此节点在 Studio 内预览执行时 `ctx.game` 上的门控域全部缺席，节点必须能降级运行。
 
 ## 构建要求
 

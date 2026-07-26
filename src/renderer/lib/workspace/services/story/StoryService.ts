@@ -94,8 +94,6 @@ export class StoryService extends Service<StoryService> implements IStoryService
     private readonly autoSaveDelay = 800;
     private readonly storyAssetLocks = new Map<StoryId, Map<string, StoryAssetLockEntry>>();
     private readonly pluginActions = new Map<string, StoryPluginActionRegistration>();
-    /** actionId -> owning plugin id, so the dependency scanner can mark contributors authoritative. */
-    private readonly pluginActionOwners = new Map<string, string>();
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
@@ -480,7 +478,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         return this.events.on("animationsChanged", handler);
     }
 
-    public registerPluginAction(registration: StoryPluginActionRegistration, ownerPluginId?: string): () => void {
+    public registerPluginAction(registration: StoryPluginActionRegistration): () => void {
         const actionId = registration.id.trim();
         if (!actionId) {
             throw new RendererError("Plugin action id is required");
@@ -490,9 +488,6 @@ export class StoryService extends Service<StoryService> implements IStoryService
         }
         const normalized = { ...registration, id: actionId };
         this.pluginActions.set(actionId, normalized);
-        if (ownerPluginId) {
-            this.pluginActionOwners.set(actionId, ownerPluginId);
-        }
         this.emitPluginActionsChanged();
         return () => {
             this.unregisterPluginAction(actionId);
@@ -500,18 +495,11 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     public unregisterPluginAction(actionId: string): boolean {
-        const id = actionId.trim();
-        const removed = this.pluginActions.delete(id);
-        this.pluginActionOwners.delete(id);
+        const removed = this.pluginActions.delete(actionId.trim());
         if (removed) {
             this.emitPluginActionsChanged();
         }
         return removed;
-    }
-
-    /** Plugin ids that currently contribute at least one story action (for dependency scanning). */
-    public getContributingPluginIds(): string[] {
-        return [...new Set(this.pluginActionOwners.values())];
     }
 
     public getPluginAction(actionId: string): StoryPluginActionRegistration | undefined {

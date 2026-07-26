@@ -517,11 +517,6 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
         if (payload.action === "nvl") return translate("story.describe.nvl");
         if (payload.action === "blueprint") return translate("story.describe.blueprint");
         if (payload.action === "camera") return describeCamera(payload);
-        // Re-applied while merging U4: develop restored this branch in `describeBlock` after this
-        // file was cut from it, and taking the refactor wholesale would have dropped it silently -
-        // a plugin row would have fallen through to the effect string and rendered its `effect` as
-        // undefined. The action id is all a plugin row has to identify itself with.
-        if (payload.action === "plugin") return payload.actionId;
         return translate("story.describe.effect", { effect: payload.effect });
     }
     if (block.kind === "control") {

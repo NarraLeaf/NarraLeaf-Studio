@@ -1,10 +1,22 @@
 import fs from "fs/promises";
 import { constants as fsConstants } from "fs";
 import path from "path";
-import type { GameBuildDesktopPlatform, GameBuildMobilePlatform } from "@shared/types/gameBuild";
+import type { GameBuildArch, GameBuildDesktopPlatform, GameBuildMobilePlatform } from "@shared/types/gameBuild";
 import { readProjectIconSet, resolveIconFile } from "@shared/types/projectIcons";
+import type {
+    NormalizedPluginManifestV2,
+    PluginBuildDependencyTargetContribution,
+    PluginSidecarContribution,
+    PluginSidecarTargetContribution,
+} from "@shared/types/plugins";
 import type { ProjectConfigData } from "@shared/utils/nlproj";
 import type { MobileShellOrientation } from "@/buildWorker/mobile/mobileShellManifest";
+// Relative rather than "@/": preflight is unit-tested, and the test runner only
+// aliases "@" to the renderer tree - a value import through it would not resolve.
+import {
+    buildDependencySourcePath,
+    probePluginBuildDependency,
+} from "../../../../buildWorker/pluginBuildDependencies";
 
 /**
  * The checks a production build applies to a project, factored out of
@@ -162,6 +174,156 @@ export async function readPngIconSize(
     } finally {
         await handle?.close();
     }
+}
+
+/** One external binary a shipping plugin needs for one platform being built. */
+export type BuildDependencyRequirement = {
+    pluginId: string;
+    dependencyId: string;
+    /** `<platform>-<arch>`, the key the plugin declared the target under. */
+    platformKey: string;
+    target: PluginBuildDependencyTargetContribution;
+};
+
+/** A requirement this host can neither find cached nor fetch. */
+export type BuildDependencyGap = BuildDependencyRequirement & {
+    /** Why the fetch could not happen (transport error, HTTP 404, …). */
+    reason: string;
+    /** Where the author saves the file by hand to build with no network. */
+    cachePath: string;
+};
+
+/**
+ * The build dependencies the shipping plugins declare for the platforms being
+ * built. A plugin that declares nothing for a platform simply has no dependency
+ * there - that is a supported shape, not an omission, so it yields nothing.
+ */
+export function collectBuildDependencyRequirements(
+    manifests: NormalizedPluginManifestV2[],
+    platformKeys: string[],
+): BuildDependencyRequirement[] {
+    const requirements: BuildDependencyRequirement[] = [];
+    for (const manifest of manifests) {
+        for (const dependency of manifest.contributes.buildDependencies) {
+            for (const platformKey of platformKeys) {
+                const target = dependency.targets[platformKey];
+                if (target) {
+                    requirements.push({
+                        pluginId: manifest.id,
+                        dependencyId: dependency.id,
+                        platformKey,
+                        target,
+                    });
+                }
+            }
+        }
+    }
+    return requirements;
+}
+
+/** The platform key a desktop target's binaries are declared under. */
+export function buildDependencyPlatformKey(platform: GameBuildDesktopPlatform, arch: GameBuildArch): string {
+    return `${platform}-${arch}`;
+}
+
+/**
+ * Which required dependencies this host could not obtain. Probes rather than
+ * downloads: preflight runs while the build dialog is open, and pulling tens of
+ * megabytes to render it would be worse than the problem it reports.
+ */
+export async function checkBuildDependencies(
+    userDataDir: string,
+    requirements: BuildDependencyRequirement[],
+): Promise<BuildDependencyGap[]> {
+    // Probed together: each probe can sit out its own timeout, and a project
+    // with several dependencies would otherwise stall the dialog by their sum.
+    const probes = await Promise.all(requirements.map(async requirement => ({
+        requirement,
+        availability: await probePluginBuildDependency({ userDataDir, target: requirement.target }),
+    })));
+    return probes.flatMap(({ requirement, availability }) => availability.status === "unavailable"
+        ? [{
+            ...requirement,
+            reason: availability.reason,
+            cachePath: buildDependencySourcePath(userDataDir, requirement.target.sha256),
+        }]
+        : []);
+}
+
+/** One sidecar a shipping plugin would contribute to one platform being built. */
+export type SidecarRequirement = {
+    pluginId: string;
+    sidecarId: string;
+    kind: PluginSidecarContribution["kind"];
+    /** `<platform>-<arch>`, the key the sidecar's binaries are declared under. */
+    platformKey: string;
+    /** Absent when the plugin ships no binaries for this platform key. */
+    target?: PluginSidecarTargetContribution;
+};
+
+/**
+ * Every (sidecar, platform being built) pair the shipping plugins imply -
+ * including the pairs a plugin declares nothing for.
+ *
+ * Deliberately unlike collectBuildDependencyRequirements, which yields only
+ * declared targets: a missing build dependency is nothing to report, while a
+ * missing sidecar target IS the finding. A plugin whose sidecar exists on
+ * Windows and not on Linux still packages, and the game still runs - whatever
+ * that sidecar provided is simply gone from the Linux build, silently, unless
+ * somebody says so before the author ships it.
+ */
+export function collectSidecarRequirements(
+    manifests: NormalizedPluginManifestV2[],
+    platformKeys: string[],
+): SidecarRequirement[] {
+    const requirements: SidecarRequirement[] = [];
+    for (const manifest of manifests) {
+        for (const sidecar of manifest.contributes.sidecars) {
+            for (const platformKey of platformKeys) {
+                const target = sidecar.targets[platformKey];
+                requirements.push({
+                    pluginId: manifest.id,
+                    sidecarId: sidecar.id,
+                    kind: sidecar.kind,
+                    platformKey,
+                    ...(target ? { target } : {}),
+                });
+            }
+        }
+    }
+    return requirements;
+}
+
+/**
+ * Whether packaging this sidecar on `hostPlatform` would strip its executable
+ * bit, leaving an artifact whose sidecar cannot run.
+ *
+ * NTFS carries no POSIX mode: Node reports 0666 for every file, and
+ * electron-builder writes that straight into the dmg/AppImage it produces. The
+ * binary ships intact and unrunnable, and nothing about the build says so - the
+ * failure surfaces on a player's machine as a feature that never starts. There
+ * is no fix from a Windows host for the formats the packager owns, so this is
+ * an error rather than a warning; the way through is to build that target on
+ * that platform.
+ *
+ * `kind: "node"` sidecars are exempt: they run under the game's own Electron as
+ * Node, which needs no executable bit on the .js file.
+ */
+export function sidecarLosesExecBit(
+    requirement: SidecarRequirement,
+    hostPlatform: GameBuildDesktopPlatform,
+): boolean {
+    if (hostPlatform !== "windows" || requirement.kind !== "executable" || !requirement.target) {
+        return false;
+    }
+    const targetPlatform = sidecarTargetPlatform(requirement.platformKey);
+    return targetPlatform === "macos" || targetPlatform === "linux";
+}
+
+/** The platform half of a `<platform>-<arch>` key. */
+export function sidecarTargetPlatform(platformKey: string): string {
+    const separator = platformKey.indexOf("-");
+    return separator === -1 ? platformKey : platformKey.slice(0, separator);
 }
 
 export type OutputDirCheck = "ok" | "not-writable" | "not-empty";
