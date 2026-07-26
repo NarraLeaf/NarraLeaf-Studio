@@ -2,7 +2,8 @@ import { RendererError, throwException } from "@shared/utils/error";
 import { decodeProjectConfig, encodeProjectConfig, findProjectConfigFileName } from "@shared/utils/nlproj";
 import { ProjectDependencyTable, normalizeProjectDependencyTable } from "@shared/types/pluginDependencies";
 import { basename, extname, join } from "@shared/utils/path";
-import { ProjectConfig, ProjectIconConfig, ProjectIconPlatform, ProjectMetadata, Resolution } from "../../project/project";
+import { ProjectConfig, ProjectMetadata, Resolution } from "../../project/project";
+import { normalizeProjectIconSet, type ProjectIconSet, type ProjectIconSource } from "@shared/types/projectIcons";
 import {
     BuildConfiguration,
     LocalizationConfiguration,
@@ -24,16 +25,15 @@ import { IProjectService, Services, WorkspaceContext } from "../services";
 import { FileSystemService } from "./FileSystem";
 import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 
-export const PROJECT_ICON_PICKER_EXTENSIONS: Record<ProjectIconPlatform, string[]> = {
-    macos: ["icns", "png", "jpg", "jpeg", "webp"],
-    windows: ["ico", "png", "jpg", "jpeg", "webp"],
-    linux: ["png", "svg", "jpg", "jpeg", "webp"],
-    // PNG only: the repack reads the source's pixels to scale it into the
-    // shell's launcher slots, and the native icon containers (.icns/.ico) and
-    // SVG are not readable that way.
-    android: ["png"],
-    ios: ["png"],
-};
+/**
+ * What the author may hand Studio as an icon. One list for every slot, not one
+ * per platform: the bake re-renders whatever it is into each target's PNG, so
+ * the old per-platform restrictions (Android and iOS took PNG only, because the
+ * repack scaled the raw file straight into the shell) no longer buy anything.
+ * Every entry is something the renderer can decode - .icns through the largest
+ * PNG embedded in it, the rest natively.
+ */
+export const PROJECT_ICON_PICKER_EXTENSIONS = ["png", "svg", "webp", "jpg", "jpeg", "ico", "icns"];
 
 const ICON_MEDIA_TYPES: Record<string, string> = {
     icns: "image/icns",
@@ -334,79 +334,130 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
         return applied;
     }
 
-    public async importProjectIcon(platform: ProjectIconPlatform): Promise<{
-        platform: ProjectIconPlatform;
-        sourcePath: string;
-        projectPath: string;
-        relativePath: string;
-        icon: ProjectIconConfig;
-        bytes: Uint8Array;
-    } | null> {
-        const pickerExtensions = PROJECT_ICON_PICKER_EXTENSIONS[platform];
-        const selection = await appPrivilegedFacade.fs.selectFile(pickerExtensions, false);
+    /** The project's icon set, migrated from the legacy five-slot shape if needed. */
+    public getProjectIconSet(): ProjectIconSet {
+        return normalizeProjectIconSet(this.getProjectConfig().metadata?.icons);
+    }
+
+    /** Persist a change to the icon set. The updater receives a normalized set. */
+    public async updateProjectIconSet(updater: (set: ProjectIconSet) => ProjectIconSet): Promise<ProjectIconSet> {
+        let applied: ProjectIconSet = this.getProjectIconSet();
+        await this.updateProjectConfig(config => {
+            applied = updater(normalizeProjectIconSet(config.metadata?.icons));
+            return {
+                ...config,
+                metadata: { ...config.metadata, icons: applied },
+            };
+        });
+        return applied;
+    }
+
+    /**
+     * Ask for an image and copy it into `resources/icons/source/`. `slot` is
+     * "master" or a target that wants its own artwork; the stored file is named
+     * after the slot, so re-importing replaces rather than accumulates. Returns
+     * null when the picker was dismissed.
+     */
+    public async importProjectIconSource(slot: string): Promise<{ source: ProjectIconSource; bytes: Uint8Array } | null> {
+        const selection = await appPrivilegedFacade.fs.selectFile(PROJECT_ICON_PICKER_EXTENSIONS, false);
         if (!selection.success) {
             throw new RendererError(selection.error ?? "Failed to open icon file picker");
         }
-        const selectedPaths = throwException(selection.data);
-        const sourcePath = selectedPaths[0];
+        const sourcePath = throwException(selection.data)[0];
         if (!sourcePath) {
             return null;
         }
 
         const extension = normalizeIconExtension(sourcePath);
-        if (!pickerExtensions.includes(extension)) {
-            throw new RendererError(`Unsupported ${platform} icon file: .${extension || "unknown"}`);
+        if (!PROJECT_ICON_PICKER_EXTENSIONS.includes(extension)) {
+            throw new RendererError(`Unsupported icon file: .${extension || "unknown"}`);
         }
 
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         const bytes = throwException(await filesystemService.readRaw(sourcePath));
-        const iconDir = this.getContext().project.resolve(ProjectNameConvention.ProjectIcons);
-        throwException(await filesystemService.createDir(iconDir));
+        throwException(await filesystemService.createDir(
+            this.getContext().project.resolve(ProjectNameConvention.ProjectIconSources),
+        ));
 
-        const relativeSegments = ProjectNameConvention.ProjectIcon(platform, extension);
-        const projectPath = this.getContext().project.resolve(relativeSegments);
-        throwException(await filesystemService.writeRaw(projectPath, bytes));
+        // A slot holds one file. Importing a .svg over a .png would otherwise
+        // leave the old one behind, tracked and dead.
+        await this.removeIconSourceSiblings(slot, extension);
 
-        const relativePath = relativeSegments.join("/");
-        const icon: ProjectIconConfig = {
-            path: relativePath,
-            sourceName: basename(sourcePath),
-            mediaType: ICON_MEDIA_TYPES[extension] ?? "application/octet-stream",
-            updatedAt: new Date().toISOString(),
-        };
-
-        await this.updateProjectConfig(config => {
-            const metadata = { ...(config.metadata as Record<string, unknown>) };
-            const icons = normalizeProjectIcons(metadata.icons);
-            icons[platform] = icon;
-            metadata.icons = icons;
-            return {
-                ...config,
-                metadata: metadata as ProjectConfig["metadata"],
-            };
-        });
+        const relativeSegments = ProjectNameConvention.ProjectIconSource(slot, extension);
+        throwException(await filesystemService.writeRaw(
+            this.getContext().project.resolve(relativeSegments),
+            bytes,
+        ));
 
         return {
-            platform,
-            sourcePath,
-            projectPath,
-            relativePath,
-            icon,
             bytes,
+            source: {
+                path: relativeSegments.join("/"),
+                sourceName: basename(sourcePath),
+                mediaType: ICON_MEDIA_TYPES[extension] ?? "application/octet-stream",
+                updatedAt: new Date().toISOString(),
+            },
         };
     }
 
-    public async readProjectIcon(platform: ProjectIconPlatform): Promise<Uint8Array | null> {
-        const icon = getProjectIconConfig(this.getProjectConfig(), platform);
-        if (!icon?.path) {
+    /** Read a source or baked icon's bytes, or null when it is not on disk. */
+    public async readProjectIconFile(relativePath: string): Promise<Uint8Array | null> {
+        if (!relativePath.trim()) {
             return null;
         }
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
-        const read = await filesystemService.readRaw(this.getContext().project.resolve(icon.path));
-        if (!read.ok) {
-            return null;
+        const read = await filesystemService.readRaw(this.getContext().project.resolve(relativePath));
+        return read.ok ? read.data : null;
+    }
+
+    /**
+     * Write a baked icon, but only when its bytes actually differ from what is
+     * already there. The baked files are version-controlled project content, so
+     * an unconditional write would stamp a fresh mtime - and, on a checkout
+     * whose encoder differs by a byte, a diff - every time the panel opened.
+     * Returns whether anything was written.
+     */
+    public async writeProjectIconBake(relativePath: string, bytes: Uint8Array): Promise<boolean> {
+        const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+        const absolutePath = this.getContext().project.resolve(relativePath);
+        const existing = await filesystemService.readRaw(absolutePath);
+        if (existing.ok && sameBytes(existing.data, bytes)) {
+            return false;
         }
-        return read.data;
+        throwException(await filesystemService.createDir(
+            this.getContext().project.resolve(ProjectNameConvention.ProjectIconDerived),
+        ));
+        throwException(await filesystemService.writeRaw(absolutePath, bytes));
+        return true;
+    }
+
+    /** Whether a source or baked icon is on disk. */
+    public async projectIconFileExists(relativePath: string): Promise<boolean> {
+        if (!relativePath.trim()) {
+            return false;
+        }
+        const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+        const exists = await filesystemService.isFileExists(this.getContext().project.resolve(relativePath));
+        return exists.ok && exists.data;
+    }
+
+    /** Delete a file under the project's icon directory, ignoring a missing one. */
+    public async deleteProjectIconFile(relativePath: string): Promise<void> {
+        const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+        const absolutePath = this.getContext().project.resolve(relativePath);
+        const exists = await filesystemService.isFileExists(absolutePath);
+        if (exists.ok && exists.data) {
+            await filesystemService.deleteFile(absolutePath);
+        }
+    }
+
+    private async removeIconSourceSiblings(slot: string, keepExtension: string): Promise<void> {
+        for (const extension of PROJECT_ICON_PICKER_EXTENSIONS) {
+            if (extension === keepExtension) {
+                continue;
+            }
+            await this.deleteProjectIconFile(ProjectNameConvention.ProjectIconSource(slot, extension).join("/"));
+        }
     }
 
     /** The project's recorded plugin dependency table, or undefined when unused. */
@@ -474,43 +525,18 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
     }
 }
 
-export function getProjectIconConfig(config: ProjectConfig, platform: ProjectIconPlatform): ProjectIconConfig | null {
-    const metadata = config.metadata as Record<string, unknown>;
-    const icons = normalizeProjectIcons(metadata.icons);
-    return icons[platform] ?? null;
-}
-
-function normalizeProjectIcons(value: unknown): Partial<Record<ProjectIconPlatform, ProjectIconConfig>> {
-    if (!value || typeof value !== "object") {
-        return {};
-    }
-
-    const icons = value as Record<string, unknown>;
-    const normalized: Partial<Record<ProjectIconPlatform, ProjectIconConfig>> = {};
-    for (const platform of Object.keys(PROJECT_ICON_PICKER_EXTENSIONS) as ProjectIconPlatform[]) {
-        const raw = icons[platform];
-        if (!raw || typeof raw !== "object") {
-            continue;
-        }
-        const record = raw as Record<string, unknown>;
-        if (typeof record.path !== "string" || !record.path.trim()) {
-            continue;
-        }
-        normalized[platform] = {
-            path: record.path,
-            sourceName: typeof record.sourceName === "string" ? record.sourceName : basename(record.path),
-            mediaType: typeof record.mediaType === "string" ? record.mediaType : mediaTypeFromPath(record.path),
-            updatedAt: typeof record.updatedAt === "string" ? record.updatedAt : "",
-        };
-    }
-    return normalized;
-}
-
 function normalizeIconExtension(sourcePath: string): string {
     return extname(sourcePath).replace(/^\./, "").toLowerCase();
 }
 
-function mediaTypeFromPath(sourcePath: string): string {
-    const extension = normalizeIconExtension(sourcePath);
-    return ICON_MEDIA_TYPES[extension] ?? "application/octet-stream";
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+    if (a.byteLength !== b.byteLength) {
+        return false;
+    }
+    for (let i = 0; i < a.byteLength; i++) {
+        if (a[i] !== b[i]) {
+            return false;
+        }
+    }
+    return true;
 }

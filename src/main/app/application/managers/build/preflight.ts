@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import { constants as fsConstants } from "fs";
 import path from "path";
 import type { GameBuildDesktopPlatform, GameBuildMobilePlatform } from "@shared/types/gameBuild";
+import { readProjectIconSet, resolveIconFile } from "@shared/types/projectIcons";
 import type { ProjectConfigData } from "@shared/utils/nlproj";
 import type { MobileShellOrientation } from "@/buildWorker/mobile/mobileShellManifest";
 
@@ -58,14 +59,17 @@ export function readMobileOrientation(projectConfig: ProjectConfigData | null): 
  */
 export type GameBuildIconPlatform = GameBuildDesktopPlatform | GameBuildMobilePlatform;
 
-/** Read the configured icon path for a platform from project metadata. */
+/**
+ * The icon file a platform ships: its baked PNG, or the author's raw source
+ * when the project has never baked. Reads through the shared icon model, so a
+ * project still holding the legacy five-slot shape resolves the same way here,
+ * in the artifact compiler, and in the panel.
+ */
 export function readIconPath(
     projectConfig: ProjectConfigData | null,
     platform: GameBuildIconPlatform,
 ): string | undefined {
-    const icons = (projectConfig?.metadata as { icons?: Record<string, { path?: unknown }> } | undefined)?.icons;
-    const raw = icons?.[platform]?.path;
-    return typeof raw === "string" && raw.trim() ? raw.trim() : undefined;
+    return resolveIconFile(readProjectIconSet(projectConfig), platform)?.path;
 }
 
 /** Resolve a project-relative path, refusing to escape the project root. */
