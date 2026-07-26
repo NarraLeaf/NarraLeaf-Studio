@@ -197,14 +197,38 @@ describe("projectExecutionContext", () => {
                 frames: [{
                     actionId: null,
                     branches: [
-                        [{ actionId: "s-right" }],
-                        [{ actionId: "s-left" }],
+                        { frames: [{ actionId: "s-right" }] },
+                        { frames: [{ actionId: "s-left" }] },
                     ],
                 }],
             },
             async: [],
         };
         expect(contextFor("left", stack).branches.map(b => b.sentence)).toEqual(["right line", "left line"]);
+    });
+
+    /**
+     * The round a `/repeat` is ON only ever arrives nested: the loop is its own StackModel, handed
+     * up as a branch of the frame that waits on it. Before engine 0.19.1 `branches` carried bare
+     * frame lists and the nested `loop` never made it out, so this could not have passed.
+     */
+    it("finds a loop the engine reports inside a branch, not only on the root stack", () => {
+        const stack: StackViewLike = {
+            root: {
+                frames: [{
+                    actionId: null,
+                    branches: [
+                        { frames: [{ actionId: "s-left" }], loop: { counter: 1, limit: 3 } },
+                    ],
+                }],
+            },
+            async: [],
+        };
+        // It lands ON the Repeat rung, not in orphanRound: the chain has a repeat to claim it, which
+        // is the whole user-visible point — the rung stops saying only how many rounds were authored.
+        const repeat = contextFor("left", stack).chain.find(rung => rung.pill === "Repeat");
+        // counter counts COMPLETED iterations, so the round being watched is counter + 1.
+        expect(repeat?.round).toEqual({ current: 2, limit: 3 });
     });
 
     it("has no branch list when the play head is not inside a concurrent container", () => {

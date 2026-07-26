@@ -129,8 +129,15 @@ export function blockIdForActionId(
  */
 export type StackFrameLike = {
     actionId: string | null;
-    /** Present on a concurrent group (`Control.all` / `any`): one frame list per branch. */
-    branches?: StackFrameLike[][];
+    /**
+     * Present on a concurrent group (`Control.all` / `any`): one whole snapshot per branch.
+     *
+     * It was `StackFrameLike[][]` — only each branch's frames — because that is what the engine
+     * handed over before 0.19.1, and it is why a `/repeat`'s round was unreachable: a repeat runs
+     * its body in a nested stack, whose `loop` lived on the snapshot object that got reduced to
+     * `.frames` here.
+     */
+    branches?: StackLike[];
 };
 
 export type StackLike = {
@@ -150,10 +157,7 @@ export type ExecutionContextRung = {
     pill: string;
     /** How many rounds this repeat is authored to run (from the document). */
     times?: number;
-    /**
-     * The round it is ON — 1-based, `2/3`. Only present when the engine reports a loop for it, which
-     * today it does not for a `/repeat` row: see {@link findReportedLoop}.
-     */
+    /** The round it is ON — 1-based, `2/3`. Present when the engine reports a loop for it. */
     round?: { current: number; limit?: number };
 };
 
@@ -178,22 +182,42 @@ export type ExecutionContextView = {
 };
 
 /**
- * The loop the engine is reporting, if any — root first, then the async stacks.
+ * The loop the engine is reporting, if any — root first, then the async stacks, then *inside* the
+ * branches of either.
  *
- * A `/repeat` row does NOT surface here, and that is an engine limitation rather than an oversight:
- * `Control.repeat` runs its body in a nested StackModel handed to the parent as
- * `wait.stackModels`, and `StackModel.snapshot()` maps those to `snapshot().frames` — dropping the
- * nested stack's `loop` on the floor. The root stack is `$root`, never the loop, so `root.loop` is
- * empty for every repeat an author can write in a scene. Measured on the running app, not inferred.
- *
- * The reading is kept because it costs nothing and is correct the moment the engine reports nested
- * stacks whole; until then a repeat rung shows the round count it is authored for, from the document.
+ * The descent is the whole point. A `/repeat` runs its body in a nested StackModel that reaches this
+ * panel only as a parent frame's `branches` entry, so the root stack is `$root` and never the loop:
+ * until engine 0.19.1 `branches` carried bare frame lists and the nested `loop` was dropped on the
+ * way out, which is why a repeat rung could show the round count it was *authored* for and never the
+ * one it was *on*. Now that a branch arrives whole, the counter is one recursive lookup away.
  */
 function findReportedLoop(stack: StackViewLike | null): StackLike["loop"] | null {
     if (!stack) {
         return null;
     }
-    return stack.root.loop ?? stack.async.find(entry => entry.loop)?.loop ?? null;
+    for (const entry of [stack.root, ...stack.async]) {
+        const found = findLoopInStack(entry);
+        if (found) {
+            return found;
+        }
+    }
+    return null;
+}
+
+/** A stack's own loop, else the first loop any of its branches (or their branches) reports. */
+function findLoopInStack(stack: StackLike): StackLike["loop"] | null {
+    if (stack.loop) {
+        return stack.loop;
+    }
+    for (const frame of stack.frames) {
+        for (const branch of frame.branches ?? []) {
+            const nested = findLoopInStack(branch);
+            if (nested) {
+                return nested;
+            }
+        }
+    }
+    return null;
 }
 
 /** The concurrent container (`parallel` / `race`) nearest the play head, or null. */
@@ -295,7 +319,7 @@ export function projectExecutionContext(input: {
     const reported = stack ? findBranchingFrame(stack.root.frames)?.branches ?? null : null;
     const branches: ExecutionContextBranch[] = concurrent && scene
         ? concurrent.childrenIds.map((childId, index) => {
-            const fromEngine = blockIdForActionId(bindings, reported?.[index]?.[0]?.actionId ?? null);
+            const fromEngine = blockIdForActionId(bindings, reported?.[index]?.frames?.[0]?.actionId ?? null);
             const target = fromEngine ?? firstSpokenRow(scene, childId);
             return {
                 index: index + 1,
@@ -317,7 +341,7 @@ function findBranchingFrame(frames: readonly StackFrameLike[]): StackFrameLike |
     }
     for (const frame of frames) {
         for (const branch of frame.branches ?? []) {
-            const nested = findBranchingFrame(branch);
+            const nested = findBranchingFrame(branch.frames);
             if (nested) {
                 return nested;
             }
