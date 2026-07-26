@@ -616,6 +616,14 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
         return;
     }
 
+    // The dialog only describes what the package will contain, and the pipeline
+    // reads the manifest from disk - so this has to too. The cached copy only
+    // tracks writes this window made, which let the Content section keep
+    // reporting encrypted assets after the setting was turned off elsewhere.
+    // Best-effort: an unreadable manifest falls back to the cache rather than
+    // blocking the dialog, and preflight still judges the file itself.
+    await projectService.reloadProjectConfig().catch(() => undefined);
+
     const projectConfig = projectService.getProjectConfig();
     const projectPath = context.project.getConfig().projectPath;
     const hostResult = await getInterface().getPlatform();

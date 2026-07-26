@@ -32,7 +32,7 @@ import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTi
 import { useTranslation } from "@/lib/i18n";
 import type { Translator } from "@shared/i18n";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ChevronRight, ExternalLink, Image as ImageIcon, Mic, Music, Palette, Play, Square, Trash2, Video, X } from "lucide-react";
+import { ChevronRight, ExternalLink, Image as ImageIcon, Mic, Music, Palette, Play, Square, Trash2, Video } from "lucide-react";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { useWorkspace } from "@/apps/workspace/context";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
@@ -51,7 +51,7 @@ import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/
 import { StoryActionBlueprintPreviewCard } from "./StoryActionBlueprintPreviewCard";
 import { ConditionEditor } from "./ConditionEditor";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
-import { describeBlock, getBlockBadgeInfo } from "./storySceneBlockUtils";
+import { describeBlockSubject, getBlockBadgeInfo } from "./storySceneBlockUtils";
 import { useStoryVoiceState } from "./useStoryVoiceState";
 import { CharacterAppearancePicker } from "./CharacterAppearancePicker";
 import { DisplayableTargetField } from "./DisplayableTargetField";
@@ -420,13 +420,39 @@ export function ActionInspector(props: {
     generateTextId: () => string;
     onCreateLayer: (beforeBlockId: StoryBlockId) => string | null;
 }) {
-    const { t } = useTranslation();
+    const { context, isInitialized } = useWorkspace();
     const block = props.block;
     const { label, icon: Icon, iconColor } = getBlockBadgeInfo(block);
+    const assetsService = useMemo(
+        () => (context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null),
+        [context, isInitialized],
+    );
+    /** Names, not ids: an asset id in the heading tells the author nothing about what they picked. */
+    const resolveAssetName = useCallback((assetId: string): string | null => {
+        const table = assetsService?.getAssets();
+        if (!table) {
+            return null;
+        }
+        for (const byId of Object.values(table)) {
+            const asset = (byId as Record<string, { name?: string }> | undefined)?.[assetId];
+            if (asset?.name) {
+                return asset.name;
+            }
+        }
+        return null;
+    }, [assetsService]);
+    const subject = describeBlockSubject(
+        block,
+        props.characters,
+        resolveAssetName,
+        props.document.scenes[props.sceneId],
+        props.document.scenes,
+    );
 
     return (
-        // Fills the right-sidebar panel container (WI-1): the property editor that once expanded inline
-        // under the row, now the panel body — so no floating-card chrome of its own.
+        // The body of the properties panel: no floating-card chrome, and no close button either — the
+        // rail follows the selection now, so there is nothing here to dismiss. Escape still reaches the
+        // controller (the row keeps its selection, the editor leaves inspector mode).
         <div
             onKeyDown={event => {
                 if (event.key === "Escape") {
@@ -444,16 +470,8 @@ export function ActionInspector(props: {
                 </span>
                 <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium text-fg">{label}</div>
-                    <div className="truncate text-xs text-fg-subtle">{describeBlock(block, props.characters, props.document.scenes[props.sceneId], props.document.scenes)}</div>
+                    <div className="truncate text-xs text-fg-subtle">{subject}</div>
                 </div>
-                <button
-                    type="button"
-                    className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted transition-colors hover:border-edge-strong hover:text-fg"
-                    title={t("storyInspector.closeEditor")}
-                    onClick={props.onClose}
-                >
-                    <X className="h-3.5 w-3.5" />
-                </button>
             </div>
             <InspectorFields
                 block={block}
