@@ -23,6 +23,14 @@ export const assets = {
             other: "删除 {count} 项？",
         },
         confirmMessage: "所选分组内的全部内容也会一并删除，且无法撤销。",
+        action: "删除",
+        failedTitle: "删除失败",
+    },
+    replace: {
+        confirmTitle: "替换 {name} 的文件内容？",
+        confirmAction: "替换",
+        failedTitle: "替换素材内容失败",
+        remoteUnsupported: "远程素材没有可替换的本地文件。",
     },
     types: {
         image: "图片",
@@ -109,6 +117,11 @@ export const assets = {
         filePathParsingFailed: "文件路径解析失败",
         noMatchingFiles: "拖入的文件夹中没有可导入的文件",
         moreFailures: "…还有 {count} 个",
+        failedCount: {
+            one: "{count} 个文件失败",
+            other: "{count} 个文件失败",
+        },
+        retry: "重试",
         remoteTitle: "导入远程素材",
         remoteDescription: "粘贴远程素材的直接链接",
         remoteInvalidUrl: "请输入有效的 URL",
@@ -118,6 +131,7 @@ export const assets = {
         newGroup: "新建分组",
         newSubGroup: "新建子分组",
         importAssets: "导入素材…",
+        replaceContent: "替换文件…",
         copyCount: {
             one: "复制 {count} 项",
             other: "复制 {count} 项",

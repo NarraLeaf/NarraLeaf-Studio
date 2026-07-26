@@ -33,6 +33,24 @@ export function useAssetObjectUrl(assetId?: string | null) {
         error: null,
     });
     const urlRef = useRef<string | null>(null);
+    /**
+     * Bumped when this asset's bytes are replaced. Everything downstream of this hook — story rows,
+     * character variants, widget fills — addresses the asset by id, and the id survives a
+     * replacement, so without a second key the effect below would never re-run and every one of them
+     * would keep the pre-replacement picture until the tab was remounted.
+     */
+    const [contentGeneration, setContentGeneration] = useState(0);
+
+    useEffect(() => {
+        if (!assetsService || !assetId) {
+            return;
+        }
+        return assetsService.getEvents().on("updated", asset => {
+            if (asset.id === assetId) {
+                setContentGeneration(generation => generation + 1);
+            }
+        });
+    }, [assetsService, assetId]);
 
     useEffect(() => {
         if (!assetId) {
@@ -194,7 +212,7 @@ export function useAssetObjectUrl(assetId?: string | null) {
         return () => {
             cancelled = true;
         };
-    }, [assetId, assetsService]);
+    }, [assetId, assetsService, contentGeneration]);
 
     useEffect(() => {
         return () => {
