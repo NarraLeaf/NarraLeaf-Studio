@@ -1,83 +1,101 @@
-import type { StoryCharacterVariantSelection } from "@shared/types/story";
+import type { CharacterAppearanceSummary } from "@shared/types/devMode";
 
 /**
- * The minimal form shape needed to resolve a differential selection to variant names: just the
- * variant groups. Both the story compiler's `DevModeCharacterSummary` form and the editor's
- * `CharacterForm` satisfy it structurally, which is what lets the two share one selection rule.
- */
-export type VariantSelectForm = {
-    groups?: ReadonlyArray<{
-        name: string;
-        defaultVariant?: string | null;
-        variants?: ReadonlyArray<{ name: string }>;
-    }>;
-};
-
-/**
- * The ordered variant names a differential selection resolves to (one per group).
+ * The asset a `preset` character's pose selection resolves to, or null.
  *
- * An array selection is already ordered and taken verbatim. A record selection reads each group's
- * explicit choice, else its default, else its first variant. Extracted verbatim from the story
- * compiler so the editor's variant-aware avatars pick the exact same asset the runtime would — the
- * compiler now calls this, so its behaviour is unchanged.
+ * Null is a real answer. The model this replaced walked the selection for the first variant that
+ * happened to carry an asset and, failing that, returned *any* entry in the map — so a differential
+ * that did not exist rendered as some other differential, and the author saw a working sprite
+ * instead of a missing one. A selection that names nothing resolvable now resolves to nothing, and
+ * the caller reports it.
  */
-export function selectCharacterVariantNames(
-    form: VariantSelectForm,
-    variants: StoryCharacterVariantSelection | undefined,
-): string[] {
-    if (Array.isArray(variants)) {
-        return variants;
-    }
-    const selected: string[] = [];
-    for (const group of form.groups ?? []) {
-        const explicit = variants?.[group.name];
-        const fallback = group.defaultVariant ?? group.variants?.[0]?.name;
-        const choice = explicit || fallback;
-        if (choice) {
-            selected.push(choice);
-        }
-    }
-    return selected;
-}
-
-/**
- * The first resolvable stored entry for an ordered variant selection: the earliest named variant that
- * satisfies `hasAsset`, else any satisfying entry in the map. This is the one fallback rule shared by
- * everything that turns a differential selection into a concrete asset — the runtime lookup, the
- * editor avatar's id, and the editor avatar's `Asset` object all walk the map the same way.
- */
-export function resolveVariantEntry<T>(
-    variantAssets: Record<string, T> | undefined,
-    variantNames: readonly string[],
-    hasAsset: (entry: T) => boolean,
-): T | null {
-    if (!variantAssets) {
+export function resolvePoseAssetId(
+    appearance: CharacterAppearanceSummary | undefined,
+    poseId: string | undefined,
+): string | null {
+    if (appearance?.kind !== "preset") {
         return null;
     }
-    for (const name of variantNames) {
-        const entry = variantAssets[name];
-        if (entry && hasAsset(entry)) {
-            return entry;
-        }
+    const wanted = poseId ?? appearance.defaultPoseId ?? appearance.poses[0]?.id;
+    if (!wanted) {
+        return null;
     }
-    for (const entry of Object.values(variantAssets)) {
-        if (hasAsset(entry)) {
-            return entry;
-        }
-    }
-    return null;
+    return appearance.poses.find(pose => pose.id === wanted)?.assetId ?? null;
 }
 
 /**
- * The first resolvable asset id for an ordered variant selection. Generic over how a stored entry
- * exposes its id — the compiler keys `assetId`, the editor `data.id` — so both the runtime lookup and
- * the editor avatar share one fallback rule (see {@link resolveVariantEntry}).
+ * Fill a partial tag selection out to every axis of a `layered` character.
+ *
+ * A partial selection is what an expression row stores — only the axes the author touched — because
+ * the engine's tag switching is itself incremental: changing the mood leaves the outfit alone. An
+ * entry row has to pose the whole character, so it resolves through here first.
  */
-export function resolveVariantAssetId<T>(
-    variantAssets: Record<string, T> | undefined,
-    variantNames: readonly string[],
-    getAssetId: (entry: T) => string | null | undefined,
+export function resolveTagSelection(
+    appearance: CharacterAppearanceSummary | undefined,
+    partial: Record<string, string> | undefined,
+): Record<string, string> {
+    if (appearance?.kind !== "layered") {
+        return {};
+    }
+    const resolved: Record<string, string> = {};
+    for (const axis of appearance.axes) {
+        const declared = axis.defaultTagId;
+        const valid = declared && axis.tags.some(tag => tag.id === declared) ? declared : null;
+        const tagId = valid ?? axis.tags[0]?.id;
+        if (tagId) {
+            resolved[axis.id] = tagId;
+        }
+    }
+    for (const [axisId, tagId] of Object.entries(partial ?? {})) {
+        const axis = appearance.axes.find(candidate => candidate.id === axisId);
+        if (axis?.tags.some(tag => tag.id === tagId)) {
+            resolved[axisId] = tagId;
+        }
+    }
+    return resolved;
+}
+
+/**
+ * One src per layer slot, bottom to top, for a layered character under the given tags. `null`
+ * entries are layers that draw nothing.
+ *
+ * Editor surfaces that want a single image have to composite these in order: a layered character
+ * has no one asset to show, which is also why the engine's own `Image.getSrcURL` returns null for
+ * one.
+ */
+export function resolveLayerAssetIds(
+    appearance: CharacterAppearanceSummary | undefined,
+    selection: Record<string, string>,
+): (string | null)[] {
+    if (appearance?.kind !== "layered") {
+        return [];
+    }
+    return appearance.layers
+        .filter(layer => !layer.hidden)
+        .map(layer => {
+            if (!layer.axisId) {
+                return layer.assetId ?? null;
+            }
+            const tagId = selection[layer.axisId];
+            return (tagId ? layer.options?.[tagId] : null) ?? null;
+        });
+}
+
+/**
+ * A single asset id to stand for a character in a list, a badge or a picker row.
+ *
+ * For a preset character that is the pose itself. For a layered one there is no such asset, so this
+ * answers with the bottom-most layer that draws something — enough to tell two characters apart in
+ * a 24px badge, and deliberately not pretending to be the composite. Surfaces that need the real
+ * thing composite {@link resolveLayerAssetIds}.
+ */
+export function representativeAssetId(
+    appearance: CharacterAppearanceSummary | undefined,
+    selection: { poseId?: string; tags?: Record<string, string> },
 ): string | null {
-    const entry = resolveVariantEntry(variantAssets, variantNames, candidate => Boolean(getAssetId(candidate)));
-    return entry ? getAssetId(entry) ?? null : null;
+    if (appearance?.kind === "preset") {
+        return resolvePoseAssetId(appearance, selection.poseId);
+    }
+    const resolved = resolveTagSelection(appearance, selection.tags);
+    return resolveLayerAssetIds(appearance, resolved).find(assetId => Boolean(assetId)) ?? null;
 }

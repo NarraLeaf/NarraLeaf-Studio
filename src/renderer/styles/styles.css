@@ -322,6 +322,23 @@ select:focus {
 }
 
 /*
+ * The base surface paint, asserted opaquely — for a layer that is stacked ON another base surface
+ * and has to hide it (the project panel's slide-in sub-page over its own overview list). Such a
+ * layer cannot use `bg-surface`: the rule above clears that fill under a wallpaper, and a
+ * transparent lid over a still-mounted sibling shows the sibling straight through it.
+ *
+ * The same colour `bg-surface` resolves to, so nothing moves when no wallpaper is set. With one
+ * set, this layer stops being a window onto the backdrop for as long as it is up — the same trade
+ * menus and dialogs already make, and the only way to occlude at all.
+ *
+ * Not a `bg-surface` companion class: the wallpaper rule outranks a single class selector, so an
+ * element carrying both would still be cleared. This replaces it.
+ */
+.nl-opaque-surface {
+    background-color: rgb(var(--nl-surface));
+}
+
+/*
  * The editor's reading surfaces: the story editor's prose area, the inspector's field area and the
  * Dev Mode debug panel body. Same sunken paint they were pinned to, with its alpha taken from the
  * `editor.surfaceOpacity` setting instead of from the token.

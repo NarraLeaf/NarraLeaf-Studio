@@ -51,7 +51,7 @@ import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
 import { type GameRuntimeArtifactCompileResult } from "../preview/compiler/gameRuntimeArtifactCompiler";
 import { compileGameRuntimeArtifactInWorker } from "../preview/compiler/compileGameRuntimeArtifactInWorker";
-import { buildWebIndexHtml, WEB_FAVICON_FILENAME } from "../preview/compiler/webShell";
+import { buildWebIndexHtml, WEB_APPLE_TOUCH_FILENAME, WEB_FAVICON_FILENAME } from "../preview/compiler/webShell";
 import { formatPreviewProcessOutput } from "../preview/PreviewManager";
 import { selectRuntimePluginsForPack, type RuntimePluginPackSelection } from "../preview/selectRuntimePlugins";
 import type {
@@ -239,17 +239,50 @@ export class GameBuildManager {
             }
         }
         // Only icons for platforms actually being built are worth reporting.
-        for (const target of [...desktopTargets, ...mobileTargets]) {
-            const icon = await checkIcon(normalizedProjectPath, projectConfig, target.platform);
-            if (icon.status === "ok") {
+        // "Missing" is reported once rather than per platform: with one master
+        // behind every target, five copies of the same sentence said nothing
+        // five times.
+        const iconChecks = await Promise.all(
+            [...desktopTargets, ...mobileTargets].map(async target => ({
+                platform: target.platform,
+                check: await checkIcon(normalizedProjectPath, projectConfig, target.platform),
+            })),
+        );
+        if (iconChecks.length > 0 && iconChecks.every(({ check }) => check.status === "missing")) {
+            findings.push({ code: "icon-missing", severity: "warning", section: "identity" });
+        }
+        for (const { platform, check } of iconChecks) {
+            if (check.status === "unusable") {
+                findings.push({
+                    code: "icon-unusable",
+                    severity: "warning",
+                    section: "identity",
+                    detail: { platform },
+                });
                 continue;
             }
-            findings.push({
-                code: icon.status === "missing" ? "icon-missing" : "icon-unusable",
-                severity: "warning",
-                section: "identity",
-                detail: { platform: target.platform },
-            });
+            if (check.status !== "ok") {
+                continue;
+            }
+            if (check.lowResolution) {
+                findings.push({
+                    code: "icon-low-resolution",
+                    severity: "warning",
+                    section: "identity",
+                    detail: { platform, minimum: String(MIN_ICON_SIZE) },
+                });
+            }
+            // An un-baked icon still ships, but it skipped the per-platform
+            // recipe - no inset, and on iOS no flattening - so what lands on
+            // the device is not what the panel drew.
+            if (!check.baked) {
+                findings.push({
+                    code: "icon-stale",
+                    severity: "warning",
+                    section: "identity",
+                    detail: { platform },
+                });
+            }
         }
 
         const pluginSelection = await this.selectRuntimePlugins(normalizedProjectPath, projectConfig);
@@ -562,8 +595,10 @@ export class GameBuildManager {
 
     /**
      * Resolve the configured app icon for a target platform into a worker
-     * `iconPath`. Missing or too-small icons are a console warning, not a
-     * failure: electron-builder then ships the default Electron icon.
+     * `iconPath`. An absent or corrupt icon falls back to NarraLeaf's mark - an
+     * icon that is merely smaller than the packager's floor still ships,
+     * upscaled, because a blurry version of the author's icon beats a packaged
+     * game wearing somebody else's logo.
      */
     private async resolveTargetIcon(
         session: BuildSession,
@@ -573,16 +608,26 @@ export class GameBuildManager {
     ): Promise<{ iconPath?: string }> {
         const icon = await checkIcon(projectPath, projectConfig, platform);
         if (icon.status === "ok") {
+            if (icon.lowResolution) {
+                this.emit(session, {
+                    level: "warning",
+                    source: "Build",
+                    message: `the ${platform} icon is smaller than ${MIN_ICON_SIZE}×${MIN_ICON_SIZE}; `
+                        + "it ships upscaled",
+                });
+            }
             return { iconPath: icon.iconPath };
         }
+        const fallback = this.app.getDefaultGameIconPath();
         this.emit(session, {
             level: "warning",
             source: "Build",
-            message: icon.status === "missing"
-                ? `no usable ${platform} app icon configured; using the default Electron icon`
-                : `the ${platform} icon is invalid or smaller than ${MIN_ICON_SIZE}×${MIN_ICON_SIZE}; using the default Electron icon`,
+            message: (icon.status === "missing"
+                ? `no ${platform} app icon configured; `
+                : `the ${platform} icon could not be read; `)
+                + (fallback ? "using the NarraLeaf icon" : "using the default Electron icon"),
         });
-        return {};
+        return fallback ? { iconPath: fallback } : {};
     }
 
     /**
@@ -672,7 +717,11 @@ export class GameBuildManager {
             // decode, and it stays plain in shell-config (the bootstrap file).
             ...(input.contentKey ? { contentKey: input.contentKey } : {}),
         };
+        // The mobile shells serve the compiled web site, so its icon files are
+        // already staged; the entry document just has to reference the ones
+        // that exist.
         const hasFavicon = await fileExists(path.join(site.appDir, WEB_FAVICON_FILENAME));
+        const hasAppleTouchIcon = await fileExists(path.join(site.appDir, WEB_APPLE_TOUCH_FILENAME));
 
         const job: GameBuildWorkerMobileJob = {
             sourceDir: site.appDir,
@@ -681,7 +730,7 @@ export class GameBuildManager {
             productName: identity.productName,
             appDirBaseName: identity.artifactBaseName,
             orientation,
-            indexHtmlOverride: buildWebIndexHtml(site.pack, { hasFavicon, variant: "mobile" }),
+            indexHtmlOverride: buildWebIndexHtml(site.pack, { hasFavicon, hasAppleTouchIcon, variant: "mobile" }),
             shellConfigJson: JSON.stringify(shellConfig),
         };
 
@@ -753,9 +802,10 @@ export class GameBuildManager {
 
     /**
      * Scale the configured app icon into this template's icon slots. A missing
-     * or unusable icon is a warning, not a failure: the repack then leaves the
+     * or corrupt icon is a warning, not a failure: the repack then leaves the
      * shell's placeholder icons in place, mirroring how a desktop build falls
-     * back to the default Electron icon.
+     * back to the default Electron icon. A merely small one still ships, for
+     * the reason given on resolveTargetIcon.
      */
     private async resolveMobileIcons(
         session: BuildSession,
@@ -768,23 +818,32 @@ export class GameBuildManager {
             entryPrefix?: string;
         },
     ): Promise<{ iconPngBySlot?: Record<string, string> }> {
+        // iOS must ship an icon with no alpha channel at all, so its fallback is
+        // the pre-flattened NarraLeaf mark and its scaled slots get the channel
+        // stripped after nativeImage re-adds it.
+        const opaque = input.platform === "ios";
         const icon = await checkIcon(input.projectPath, input.projectConfig, input.platform);
-        if (icon.status !== "ok") {
+        let sourceIconPath = icon.status === "ok" ? icon.iconPath : null;
+        if (!sourceIconPath) {
+            sourceIconPath = this.app.getDefaultGameIconPath(opaque);
             this.emit(session, {
                 level: "warning",
                 source: "Build",
-                message: icon.status === "missing"
-                    ? `no usable ${input.platform} app icon configured; using the shell's placeholder icon`
-                    : `the ${input.platform} icon is invalid or smaller than ${MIN_ICON_SIZE}×${MIN_ICON_SIZE}; `
-                        + "using the shell's placeholder icon",
+                message: (icon.status === "missing"
+                    ? `no ${input.platform} app icon configured; `
+                    : `the ${input.platform} icon could not be read; `)
+                    + (sourceIconPath ? "using the NarraLeaf icon" : "using the shell's placeholder icon"),
             });
-            return {};
+            if (!sourceIconPath) {
+                return {};
+            }
         }
         const slots = readIconSlotSizes(await fs.readFile(input.templatePath), input.slots, input.entryPrefix);
         const iconPngBySlot = await writeScaledIcons(
-            icon.iconPath,
+            sourceIconPath,
             slots,
             path.join(input.projectPath, ".nlstudio", "build", "mobile-icons", input.platform),
+            { opaque },
         );
         return { iconPngBySlot };
     }

@@ -690,7 +690,7 @@ function JsonEditorPortal({
         <div
             ref={panelRef}
             data-blueprint-json-editor-scope={scopeId}
-            className="rounded-md border border-edge bg-surface p-2 text-xs text-fg shadow-2xl"
+            className="rounded-md border border-edge bg-surface-raised p-2 text-xs text-fg shadow-2xl"
             style={style}
             onMouseDownCapture={stopFlowNodePointerBubble}
             onPointerDownCapture={stopFlowNodePointerBubble}

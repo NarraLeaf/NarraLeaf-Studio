@@ -25,9 +25,16 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
 // the scene/saved arms, replacing the old `storageKey`. The migration renames the field on every
 // persistent ref with the identical value (a persistent variable's id equals its storage key), so
 // old references keep resolving unchanged - `storyVariableRefKey` collapses to `scope:variableId`.
-// v10 adds the `{action:"plugin"}` marker block for plugin compile passes. Purely additive - no
+// v10 follows the character appearance rework: a character no longer has forms, so a row can no
+// longer name one. `formName` + `variants` become `pose` (a preset character's pose id) or `tags`
+// (a layered character's tag per axis). The migration derives the pose id from the old
+// `(formName, variantName)` pair with the same deterministic function the character migration used,
+// so the two migrations need not run together, or even in the same session. A row whose derived id
+// names no pose compiles to a diagnostic — which is the point: the model this replaced answered an
+// unresolvable differential with an arbitrary other image.
+// v11 adds the `{action:"plugin"}` marker block for plugin compile passes. Purely additive - no
 // existing document changes shape - so the migration only bumps the version (no rewrite step).
-export const STORY_DOCUMENT_SCHEMA_VERSION = 10 as const;
+export const STORY_DOCUMENT_SCHEMA_VERSION = 11 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -324,8 +331,14 @@ export type StoryActionPayload =
           characterId?: string;
           assetId?: string;
           objectName?: string;
-          formName?: string;
-          variants?: StoryCharacterVariantSelection;
+          /** `preset` character: which finished sprite to show. */
+          pose?: string;
+          /**
+           * `layered` character: the tag chosen on each axis. Deliberately partial on `expression` —
+           * it names only the axes the author touched, and the engine leaves the rest alone, so
+           * changing the mood keeps the outfit. `enter` resolves it out to every axis first.
+           */
+          tags?: StoryCharacterTagSelection;
           /** `setName` — the label shown from this row on. Empty is legal: some reveals hide the name again. */
           displayName?: string;
           transition?: StoryTransitionRef;
@@ -663,13 +676,13 @@ export type StoryInterpolationRef =
  * closed set of side effects the instant the typewriter reveals it — the editor analogue of NLR's
  * `TextEvent`. It is NOT a general action escape hatch; only an expression switch and/or a sound
  * effect. `expression` targets the speaking character (the row's `characterId`) and reuses the
- * `formName`/`variants` selection every `/show` `/face` action already uses.
+ * `pose`/`tags` selection every `/show` `/face` action already uses.
  */
 export type StoryInlineEvent = {
     expression?: {
         characterId: string;
-        formName?: string;
-        variants?: StoryCharacterVariantSelection;
+        pose?: string;
+        tags?: StoryCharacterTagSelection;
     };
     sound?: { assetId: string };
 };
@@ -737,7 +750,8 @@ export type StoryLayerRef =
     | { kind: "default"; layer: "background" | "displayable" }
     | { kind: "custom"; sourceBlockId?: StoryBlockId; name?: string };
 
-export type StoryCharacterVariantSelection = string[] | Record<string, string>;
+/** Tag id per axis id. Partial selections are legal and mean "leave every other axis alone". */
+export type StoryCharacterTagSelection = Record<string, string>;
 
 export type StoryConditionRef =
     | {

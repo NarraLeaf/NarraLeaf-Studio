@@ -10,8 +10,6 @@ export const properties = {
         storyMotion: "故事动效",
         scene: "场景",
         character: "角色",
-        noSelection: "未选择任何项目",
-        noSelectionHint: "选择一个项目以查看其属性",
     },
     scene: {
         title: "界面属性",

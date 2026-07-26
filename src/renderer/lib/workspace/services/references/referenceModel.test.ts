@@ -417,18 +417,37 @@ describe("extractVoiceAssetReferences", () => {
 });
 
 describe("extractCharacterAssetReferences", () => {
-    it("covers the profile thumbnail and every form variant", () => {
+    it("covers the profile thumbnail and every appearance image", () => {
         const references = extractCharacterAssetReferences([
             {
                 id: "c1",
                 name: "Inko",
                 thumbnailAssetId: "thumb-1",
-                forms: [{ name: "School", variantAssetIds: { happy: "happy-1", sad: null } }],
+                appearanceAssets: [
+                    { slot: "pose:p1", detail: "Happy", assetId: "happy-1" },
+                    { slot: "pose:p2", detail: "Sad", assetId: null },
+                ],
             },
         ]);
 
         expect(references.map(reference => reference.assetId).sort()).toEqual(["happy-1", "thumb-1"]);
-        expect(references.find(reference => reference.assetId === "happy-1")?.detail).toBe("School › happy");
+        expect(references.find(reference => reference.assetId === "happy-1")?.detail).toBe("Happy");
+    });
+
+    it("keeps a layered character's per-tag images apart", () => {
+        const references = extractCharacterAssetReferences([
+            {
+                id: "c1",
+                name: "Inko",
+                appearanceAssets: [
+                    { slot: "layer:l1:t1", detail: "Mouth › Happy", assetId: "mouth-happy" },
+                    { slot: "layer:l1:t2", detail: "Mouth › Angry", assetId: "mouth-angry" },
+                ],
+            },
+        ]);
+
+        // One layer, two tags, two references — a slot key naming only the layer would collapse them.
+        expect(references.map(reference => reference.id)).toEqual(["char:c1:layer:l1:t1", "char:c1:layer:l1:t2"]);
     });
 });
 

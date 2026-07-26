@@ -106,8 +106,9 @@ export const story = {
         createNew: "Create new layer",
     },
     appearance: {
-        noForms: "This character has no forms defined.",
-        form: "Form",
+        noPoses: "This character has no poses yet.",
+        noAxes: "This character has no layer axes yet.",
+        unchanged: "unchanged",
         appearance: "Appearance",
         default: "Default",
         preview: "Preview",
@@ -354,7 +355,6 @@ export const story = {
         emptyOpenManual: "Open the command manual",
         variablesPanel: "Story Variables",
         snapshotsPanel: "Scene Snapshots",
-        inspectorPanel: "Inspector",
     },
     preview: {
         label: "Preview",
@@ -558,6 +558,7 @@ export const story = {
         choice: "Choice",
         option: "Option",
         setBackground: "Set background {value}",
+        missingAsset: "Missing asset",
         unassigned: "unassigned",
         characterFallback: "character",
         charOp: {

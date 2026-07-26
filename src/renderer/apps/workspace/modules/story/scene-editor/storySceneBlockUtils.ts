@@ -36,12 +36,19 @@ export function buildDialogueAppearances(scene: StoryScene): Map<StoryBlockId, C
             } else if (block.payload.operation === "enter") {
                 // An entrance shows the character and sets the whole appearance, placement included — its
                 // own block is the row the group-header dropdown rewrites (WI-3, M3.1).
-                current.set(characterId, { formName: block.payload.formName, variants: block.payload.variants, position, positionSourceId: block.id, shown: true });
+                current.set(characterId, { pose: block.payload.pose, tags: block.payload.tags, position, positionSourceId: block.id, shown: true });
             } else if (block.payload.operation === "expression") {
-                // An expression changes the form/variant but not where the character stands, so the
-                // accumulated placement (and the row that owns it) is preserved.
+                // An expression changes the appearance but not where the character stands, so the
+                // accumulated placement (and the row that owns it) is preserved. Tags merge rather
+                // than replace: the row names only the axes it changes, exactly as the engine treats
+                // them, so the outfit an earlier row chose has to survive a mood change here.
                 const previous = current.get(characterId);
-                current.set(characterId, { ...previous, formName: block.payload.formName, variants: block.payload.variants, shown: true });
+                current.set(characterId, {
+                    ...previous,
+                    pose: block.payload.pose ?? previous?.pose,
+                    tags: previous?.tags || block.payload.tags ? { ...previous?.tags, ...block.payload.tags } : undefined,
+                    shown: true,
+                });
             } else if (block.payload.operation === "move" && position) {
                 // A placement move relocates the character and becomes the row the dropdown rewrites —
                 // including the case where the group-header dropdown authored this `/move` for a speaker
@@ -596,6 +603,46 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
         return describeDeclaration(block);
     }
     return block.payload.text.value || translate("story.describe.note");
+}
+
+/**
+ * {@link describeBlock} for the right rail's subject line: the same sentence, with asset ids resolved
+ * to asset names.
+ *
+ * A row can say `Set background 4b645b59-1723-4ac9-98ab-e6859b837bef` because the *payload* stores an
+ * id and `describeBlock` is pure — it has no way to reach the asset table. In the list that is
+ * tolerable (a background row also paints the picture); as the heading of the panel naming what the
+ * author is editing, it is nothing but noise. So the resolver is a parameter: this stays pure, and the
+ * caller, which is in React and has the service, supplies the lookup.
+ *
+ * Only the two payloads that can hold a bare id are handled here — every other branch of
+ * `describeBlock` already resolves through a name with a named fallback.
+ */
+export function describeBlockSubject(
+    block: StoryBlock,
+    characters: Character[],
+    resolveAssetName: (assetId: string) => string | null,
+    scene?: StoryScene,
+    scenes?: Record<StorySceneId, StoryScene>,
+): string {
+    if (block.kind === "action") {
+        const payload = block.payload;
+        if (payload.action === "setBackground") {
+            const named = payload.assetId
+                ? resolveAssetName(payload.assetId) ?? translate("story.background.missingImage")
+                : null;
+            return translate("story.describe.setBackground", {
+                value: named ?? payload.color ?? translate("story.describe.unassigned"),
+            });
+        }
+        if (payload.action === "audio") {
+            const named = payload.assetId
+                ? resolveAssetName(payload.assetId) ?? translate("story.describe.missingAsset")
+                : null;
+            return `${payload.operation} ${payload.objectName || named || translate("story.describe.unassigned")}`;
+        }
+    }
+    return describeBlock(block, characters, scene, scenes);
 }
 
 export function getEmptyTextPlaceholder(block: StoryBlock): string {

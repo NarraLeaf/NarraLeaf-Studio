@@ -8,7 +8,7 @@ import type { Character } from "@/lib/workspace/services/character/Character";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { AssetsMap } from "@/lib/workspace/services/assets/types";
 import { listSceneDisplayableTargets } from "../../story-motion/storyMotionPreviewTarget";
-import type { StoryCommandContext, StoryCommandNamedRef, StoryCommandStageObjects, StoryCommandVariableEntry } from "./storyCommandResolution";
+import type { StoryCommandAppearanceRef, StoryCommandContext, StoryCommandNamedRef, StoryCommandStageObjects, StoryCommandVariableEntry } from "./storyCommandResolution";
 
 /**
  * Project a live project onto the flat, name-keyed view the command line resolves against.
@@ -127,10 +127,20 @@ export function buildStoryCommandContext(input: {
     /** Blueprint-declared persistent (game-level) variables from the M-VAR registry; empty when none. */
     persistentVariables?: readonly VariableRegistryEntry[];
 }): StoryCommandContext {
-    const formsByCharacterId: Record<string, string[]> = {};
+    // What a `/show` row can name after the character: a preset character's poses, a layered one's
+    // tags (across every axis — the engine resolves each against the group that owns it, so the
+    // command surface does not have to ask which axis the author meant).
+    const appearanceByCharacterId: Record<string, StoryCommandAppearanceRef[]> = {};
     const characters: StoryCommandNamedRef[] = input.characters.map(character => {
         const id = character.profile.getId();
-        formsByCharacterId[id] = character.profile.appearance.getForms().map(form => form.name);
+        const appearance = character.profile.appearance;
+        appearanceByCharacterId[id] = appearance.getKind() === "preset"
+            ? appearance.getPoses().map(pose => ({ id: pose.id, name: pose.name }))
+            // Every tag of every axis, flat: the engine resolves a tag against the group that owns
+            // it, so a row never has to say which axis the author meant. The `axisId` rides along
+            // because the stored payload does have to.
+            : appearance.getAxes().flatMap(axis =>
+                axis.tags.map(tag => ({ id: tag.id, name: tag.name, axisId: axis.id })));
         return { id, name: character.profile.getName() };
     });
 
@@ -148,7 +158,7 @@ export function buildStoryCommandContext(input: {
         // special case, just another table this projection carries.
         labels: sceneLabelNames(input.scene),
         variables: variableEntries(input.document, input.scene, input.persistentVariables ?? []),
-        formsByCharacterId,
+        appearanceByCharacterId,
         stageObjects: collectStageObjects(input.document, input.sceneId, input.scene),
     };
 }
