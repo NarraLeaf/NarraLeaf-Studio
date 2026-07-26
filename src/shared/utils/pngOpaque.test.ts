@@ -1,6 +1,6 @@
 import zlib from "zlib";
 import { describe, expect, it } from "vitest";
-import { decodePngToRgba, encodeOpaquePng, pngHasAlphaChannel } from "./pngOpaque";
+import { decodePngToRgba, encodeOpaquePng, encodeRgbaPng, pngHasAlphaChannel } from "./pngOpaque";
 
 const deflate = (bytes: Uint8Array) => zlib.deflateSync(bytes);
 const inflate = (bytes: Uint8Array) => new Uint8Array(zlib.inflateSync(bytes));
@@ -90,5 +90,20 @@ describe("pngHasAlphaChannel", () => {
         expect(pngHasAlphaChannel(rgba)).toBe(true);
         rgba[25] = 4;
         expect(pngHasAlphaChannel(rgba)).toBe(true);
+    });
+});
+
+describe("encodeRgbaPng", () => {
+    it("keeps the alpha lane and round-trips through the decoder", async () => {
+        const rgba = new Uint8Array([
+            10, 20, 30, 40, 50, 60, 70, 80,
+            90, 100, 110, 120, 130, 140, 150, 160,
+        ]);
+        const png = await encodeRgbaPng(rgba, 2, 2, deflate);
+        expect(pngHasAlphaChannel(png)).toBe(true);
+
+        const decoded = decodePngToRgba(png, inflate);
+        expect(decoded).toMatchObject({ width: 2, height: 2, hadAlpha: true });
+        expect([...decoded.rgba]).toEqual([...rgba]);
     });
 });

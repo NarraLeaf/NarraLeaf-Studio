@@ -2,6 +2,7 @@ import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/u
 import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
 import { BlueprintPersistenceProjectRef, RequestStatus } from "./ipcEvents";
+import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "./menu";
 import { FsRequestResult, PlatformInfo } from "./os";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults, WorkspaceViewRequest } from "./window";
@@ -148,6 +149,10 @@ export interface RendererPreloadedInterface {
 
     // Workspace
     selectFolder(): Promise<RequestStatus<{ path: string | null }>>;
+    /** Pick a PSD through the native dialog and read its layer tree. */
+    openPsd(): Promise<RequestStatus<{ filePath: string | null; document: PsdDocument | null }>>;
+    /** Bake the chosen layers to full-canvas PNGs. */
+    bakePsd(request: PsdBakeRequest): Promise<RequestStatus<{ layers: PsdBakedLayer[] }>>;
     workspace: {
         launch(props: WindowProps[WindowAppType.Workspace], closeCurrentWindow?: boolean): Promise<RequestStatus<void>>;
         /**

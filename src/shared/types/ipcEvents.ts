@@ -35,6 +35,7 @@ import type {
     MenuActionId,
     NativeMenuModel,
 } from "./menu";
+import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
 import type {
     RevisionId,
     VcsAvailability,
@@ -109,6 +110,8 @@ export enum IPCEventType {
     workspaceOpenRecent = "workspace.openRecent",
     workspaceSelectFolder = "workspace.selectFolder",
     workspaceClose = "workspace.close",
+    psdOpen = "psd.open",
+    psdBake = "psd.bake",
     workspaceExportProjectPackage = "workspace.projectPackage.export",
     workspaceImportProjectPackage = "workspace.projectPackage.import",
     workspaceExportConsoleLogs = "workspace.console.exportLogs",
@@ -792,6 +795,25 @@ export type IPCWorkspaceEvents = {
             replaceCurrentWindow?: boolean;
         };
         response: void;
+    };
+    [IPCEventType.psdOpen]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {};
+        response: {
+            filePath: string | null;
+            document: PsdDocument | null;
+        };
+    };
+    [IPCEventType.psdBake]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {
+            request: PsdBakeRequest;
+        };
+        response: {
+            layers: PsdBakedLayer[];
+        };
     };
     [IPCEventType.workspaceSelectFolder]: {
         type: IPCMessageType.request,
