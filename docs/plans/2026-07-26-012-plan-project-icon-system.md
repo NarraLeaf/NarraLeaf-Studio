@@ -1,7 +1,7 @@
 ---
 title: "plan: 工程图标系统 — 一张母版，六个目标"
 type: plan
-status: ready
+status: merged
 date: 2026-07-26
 branch: feat/project-icon-system
 ---
@@ -288,6 +288,33 @@ Assets 子页改成两块，**不加任何解释性文本**（沿用既有铁律
 
 **未验**：桌面（electron-builder）与移动端（APK/IPA）产物未在本轮真跑；
 面板的**视觉**未验收——worktree 实例的窗口是 `hidden`，只有用户点开窗口才能看。
+
+## 6.2 缺省图标：所有发行产物落到 NarraLeaf 图标（2026-07-26 追加）
+
+用户追加要求：项目没配图标时，**六条目标的产物都要戴 NarraLeaf 的图标**，而不是
+Electron 默认图标 / shell 占位图 / 干脆没有。
+
+- 资源：既有的 `resources/app-icon.png`（1024，透明）+ 新增committed 的
+  `resources/app-icon-opaque.png`（1024，**colorType 2 无 alpha**，压白）。
+  后者是为了 iOS 和 apple-touch——构建端因此**永远不需要做 alpha 合成**
+  （`nativeImage` 的位图在不同平台上预乘与否不一致，做错了是道说不清来源的光晕）。
+  `electron-builder.yml` 的 `extraResources` 已经是 `resources/**/*`，打包自动带上。
+- 解析点只有一处：`App.getDefaultGameIconPath(opaque?)`，由 GameBuildManager 和
+  compile-worker 包装层注入——产物编译器跑在主进程之外，自己够不到 Electron 的资源路径。
+
+**顺带补上一个前一轮的洞**：`nativeImage.toPNG()` 同样永远输出 RGBA，所以那张
+辛苦做成无 alpha 的 `ios.png` **一被缩进 shell 的 icon slot 就又长回了 alpha 通道**
+——修在了 IPA 实际读取的那层之上。现在 PNG 编解码抽到 `src/shared/utils/pngOpaque.ts`
+（渲染层用 `CompressionStream`、主进程用 `zlib`，滤波固定 Paeth，字节一致），
+opaque 目标出 slot 前统一剥掉通道。
+
+实测（测试工程 `D:/Temp/nls-icontest2`，**完全没有图标配置**）：
+
+| 检查 | 结果 |
+|---|---|
+| preflight | 只报**一条** `icon-missing`（不再每平台一条） |
+| web 产物 | `favicon.png` 与 `resources/app-icon.png` **md5 相同**；`apple-touch-icon.png` 与 `app-icon-opaque.png` **md5 相同**；两个 link 标签都在 |
+| Windows 产物 | 真跑 `win dir` 构建，从 `Demo.exe` 抽出图标：主色 `77,182,207`、覆盖率 13.0%，与 `app-icon.png`（同色、13.6%）一致——**不是 Electron 默认图标** |
 
 ## 7. 裁决记录（2026-07-26，用户）
 

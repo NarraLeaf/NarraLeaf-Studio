@@ -1216,10 +1216,14 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                     gridTemplateColumns: `${TIMELINE_LEFT_COL_PX}px ${timelineWidth}px`,
                                 }}
                             >
-                                <div className="sticky left-0 top-0 z-40 flex h-8 items-center border-r border-b border-edge bg-surface px-3 text-xs font-medium text-fg-muted">
+                                {/* The ruler, its corner and the property gutter are `bg-surface-sunken`,
+                                    not `bg-surface`: they are sticky, so they have to hide the tracks
+                                    sliding under them, and a base surface is cleared to transparent
+                                    under a workspace wallpaper (see styles.css). */}
+                                <div className="sticky left-0 top-0 z-40 flex h-8 items-center border-r border-b border-edge bg-surface-sunken px-3 text-xs font-medium text-fg-muted">
                                     {t("motion.property")}
                                 </div>
-                                <div className="sticky top-0 z-30 h-8 border-b border-edge bg-surface" onPointerDown={startPlayheadDrag}>
+                                <div className="sticky top-0 z-30 h-8 border-b border-edge bg-surface-sunken" onPointerDown={startPlayheadDrag}>
                                     {buildTicks(pxPerMs, timelineWidth, timelineViewport, STORY_MOTION_FPS).map(tick => (
                                         <div key={tick.timeMs} className="absolute top-0 h-full border-l border-edge" style={{ left: tick.timeMs * pxPerMs }}>
                                             <span className="ml-1 text-2xs text-fg-subtle">{tick.label}</span>
@@ -1231,7 +1235,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                 </div>
                                 {tracks.map(track => (
                                     <Fragment key={track.id}>
-                                        <div className="group sticky left-0 z-20 flex h-[34px] items-center gap-2 border-r border-b border-edge-subtle bg-surface px-3 text-xs text-fg-muted">
+                                        <div className="group sticky left-0 z-20 flex h-[34px] items-center gap-2 border-r border-b border-edge-subtle bg-surface-sunken px-3 text-xs text-fg-muted">
                                             <span className="min-w-0 flex-1 truncate">{getStoryMotionPropertyMeta(track.property).label}</span>
                                             <button
                                                 type="button"
