@@ -182,7 +182,7 @@ export function StoryMotionPicker(props: {
             )}
 
             {pickerOpen ? (
-                <div className="mt-2 rounded-lg border border-edge bg-surface p-2 shadow-xl">
+                <div className="mt-2 rounded-lg border border-edge bg-surface-raised p-2 shadow-xl">
                     <div className="flex items-center gap-2">
                         <EnhancedInput
                             className="flex-1"

@@ -96,7 +96,10 @@ export function ProjectPanel({ panelId, payload }: PanelComponentProps<ProjectPa
                 {activeItem && sectionProps ? (
                     <motion.div
                         key={activeItem.id}
-                        className="absolute inset-0 z-10 bg-surface shadow-[-8px_0_24px_rgba(0,0,0,0.35)]"
+                        // `.nl-opaque-surface`, not `bg-surface`: this slides over the overview list,
+                        // which stays mounted underneath, so its fill has to survive the wallpaper
+                        // rule that clears every base surface (see styles.css). Same colour either way.
+                        className="absolute inset-0 z-10 nl-opaque-surface shadow-[-8px_0_24px_rgba(0,0,0,0.35)]"
                         initial={{ x: "100%" }}
                         animate={{ x: 0 }}
                         exit={{ x: "100%" }}
