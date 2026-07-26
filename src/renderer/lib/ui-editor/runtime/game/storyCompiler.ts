@@ -32,7 +32,7 @@ import {
 import type { MaskPattern } from "narraleaf-react";
 import { blink, vignette } from "narraleaf-react/built-in";
 import type { DevModeCharacterSummary } from "@shared/types/devMode";
-import { resolveVariantAssetId, selectCharacterVariantNames } from "@shared/utils/characterVariant";
+import { resolvePoseAssetId, resolveTagSelection } from "@shared/utils/characterVariant";
 import type {
     StoryActionPayload,
     StoryAnimationAsset,
@@ -43,7 +43,7 @@ import type {
     StoryAnimationTrackProperty,
     StoryBlock,
     StoryBlockId,
-    StoryCharacterVariantSelection,
+    StoryCharacterTagSelection,
     StoryConditionRef,
     StoryControlPayload,
     StoryDisplayableTargetRef,
@@ -1103,7 +1103,7 @@ async function resolveSnapshotImageSource(ctx: SceneCompileContext, record: Stag
     if (source.type === "color") {
         return source.color;
     }
-    return resolveCharacterImageUrl(ctx, source.characterId, source.formName, source.variants, blockId);
+    return resolveCharacterImageUrl(ctx, source.characterId, source.pose, blockId);
 }
 
 /** Re-apply a snapshot record's residual effects as instant (duration 0) statements. */
@@ -1519,11 +1519,18 @@ async function compileEventRun(
     }
 
     if (event.expression) {
-        const { characterId, formName, variants } = event.expression;
+        const { characterId, pose, tags } = event.expression;
         if (!characterId) {
             diagnostic(ctx, "warning", blockId, "Inline event: expression has no character; expression skipped.");
         } else {
-            const src = await resolveCharacterImageUrl(ctx, characterId, formName, variants, blockId);
+            // A layered character switches by tag, which `TextEventAppearance` accepts alongside a
+            // src — and the tags stay partial here for the same reason a `/face` row's do.
+            const layeredTags = ctx.characterSummaries.get(characterId)?.appearance.kind === "layered"
+                ? Object.values(tags ?? {})
+                : null;
+            const src: string | string[] | null = layeredTags?.length
+                ? layeredTags
+                : await resolveCharacterImageUrl(ctx, characterId, pose, blockId);
             if (src) {
                 // Address the portrait through the shared stage-name rule, exactly as the character's
                 // `/show` does (see `characterStageName`). An expression run carries only a characterId,
@@ -1855,9 +1862,35 @@ async function compileCharacterStageAction(
         return statements;
     }
 
+    // A layered character is one Image built from its whole stack; what a row changes is the tags,
+    // never the src. `enter` resolves the selection out to every axis because it has to pose the
+    // whole character; `expression` sends only the axes the row touched, so switching the mood
+    // leaves the outfit exactly as an earlier row put it.
+    const layeredSrc = payload.assetId ? null : await resolveCharacterLayeredSrc(ctx, payload.characterId, block.id);
+    if (layeredSrc) {
+        const appearance = ctx.characterSummaries.get(payload.characterId!)?.appearance;
+        const image = getImage(ctx, name, { autoFit: true, src: layeredSrc as never });
+        const selection = payload.operation === "enter"
+            ? resolveTagSelection(appearance, payload.tags)
+            : payload.tags ?? {};
+        const tags = Object.values(selection);
+        if (payload.operation === "enter") {
+            const chain = image.char(tags as never).show(createShowTransform(payload.transform, ctx, block.id) as any);
+            statements.push(recordStatement(ctx, chain, block));
+            return statements;
+        }
+        if (tags.length === 0) {
+            diagnostic(ctx, "warning", block.id, `Expression for ${payload.characterId || name} selects no tag; nothing changes.`);
+            return statements;
+        }
+        const chain = image.char(tags as never, createTransition(payload.transition, ctx, block.id) as any);
+        statements.push(recordStatement(ctx, chain, block));
+        return statements;
+    }
+
     const src = payload.assetId
         ? await resolveAsset(ctx, payload.assetId, "image", block.id)
-        : await resolveCharacterImageUrl(ctx, payload.characterId, payload.formName, payload.variants, block.id);
+        : await resolveCharacterImageUrl(ctx, payload.characterId, payload.pose, block.id);
     if (!src) {
         diagnostic(ctx, "warning", block.id, `Character image source not found for ${payload.characterId || name}.`);
         return statements;
@@ -2288,7 +2321,12 @@ function getCharacter(ctx: SceneCompileContext, characterId: string | undefined,
     return character;
 }
 
-function getImage(ctx: SceneCompileContext, objectName: string, options?: { layer?: Layer; autoFit?: boolean; src?: string; initialProps?: Record<string, unknown> }): Image {
+/**
+ * `src` is either a url/colour or a layered definition — the engine takes both, and a layered
+ * character's stack has to reach the constructor because an Image's src shape is fixed there. What
+ * a later row changes is the tags, never the src.
+ */
+function getImage(ctx: SceneCompileContext, objectName: string, options?: { layer?: Layer; autoFit?: boolean; src?: string | { layers: unknown[]; defaults: string[] }; initialProps?: Record<string, unknown> }): Image {
     const name = normalizeObjectName(objectName);
     const existing = ctx.images.get(name);
     if (existing) {
@@ -3049,27 +3087,78 @@ function falseCondition(): boolean {
     return false;
 }
 
+/**
+ * The single image a `preset` character's pose selection resolves to.
+ *
+ * Null when the pose names nothing — deliberately, and unlike the model this replaced, which fell
+ * back to any image the character happened to own and so made a missing differential look like a
+ * working one. Callers turn null into a diagnostic.
+ *
+ * A layered character has no single image; see {@link resolveCharacterLayeredSrc}.
+ */
 async function resolveCharacterImageUrl(
     ctx: SceneCompileContext,
     characterId: string | undefined,
-    formName: string | undefined,
-    variants: StoryCharacterVariantSelection | undefined,
+    pose: string | undefined,
     blockId: string,
 ): Promise<string | null> {
     if (!characterId) {
         return null;
     }
-    const summary = ctx.characterSummaries.get(characterId);
-    const forms = summary?.forms ?? [];
-    const form = forms.find(candidate => candidate.name === formName)
-        ?? forms.find(candidate => candidate.name === summary?.defaultForm)
-        ?? forms[0];
-    if (!form) {
+    const appearance = ctx.characterSummaries.get(characterId)?.appearance;
+    const assetId = resolvePoseAssetId(appearance, pose);
+    return assetId ? resolveAsset(ctx, assetId, "image", blockId) : null;
+}
+
+/**
+ * A layered character's stack as the engine's `src`, or null when the character is not layered (or
+ * has no layer that draws anything).
+ *
+ * Every layer bound to an axis becomes a variants map keyed by tag id. The engine identifies a tag
+ * group by its tag *set*, so all the layers on one axis collapse onto that axis's single group —
+ * which is exactly what makes one `char(["angry"])` move the brows and the mouth together, and why
+ * the appearance model keeps each bound layer's option map complete.
+ */
+async function resolveCharacterLayeredSrc(
+    ctx: SceneCompileContext,
+    characterId: string | undefined,
+    blockId: string,
+): Promise<{ layers: (string | null | Record<string, string | null>)[]; defaults: string[] } | null> {
+    const appearance = characterId ? ctx.characterSummaries.get(characterId)?.appearance : undefined;
+    if (appearance?.kind !== "layered") {
         return null;
     }
-    const variantNames = selectCharacterVariantNames(form, variants);
-    const assetId = resolveVariantAssetId(form.variantAssets, variantNames, entry => entry.assetId);
-    return assetId ? resolveAsset(ctx, assetId, "image", blockId) : null;
+
+    const layers: (string | null | Record<string, string | null>)[] = [];
+    for (const layer of appearance.layers) {
+        if (layer.hidden) continue;
+        if (!layer.axisId) {
+            const url = layer.assetId ? await resolveAsset(ctx, layer.assetId, "image", blockId) : null;
+            if (url) {
+                layers.push(url);
+            }
+            continue;
+        }
+        const axis = appearance.axes.find(candidate => candidate.id === layer.axisId);
+        if (!axis || axis.tags.length === 0) continue;
+        const variants: Record<string, string | null> = {};
+        for (const tag of axis.tags) {
+            const assetId = layer.options?.[tag.id] ?? null;
+            variants[tag.id] = assetId ? await resolveAsset(ctx, assetId, "image", blockId) : null;
+        }
+        layers.push(variants);
+    }
+    if (layers.length === 0) {
+        return null;
+    }
+
+    // A default naming a group no layer emitted is a tag the engine has never heard of, and it
+    // rejects the whole image for it.
+    const emitted = new Set(
+        layers.flatMap(layer => (typeof layer === "object" && layer !== null ? Object.keys(layer) : [])),
+    );
+    const defaults = Object.values(resolveTagSelection(appearance, undefined)).filter(tagId => emitted.has(tagId));
+    return { layers, defaults };
 }
 
 async function resolveAsset(ctx: SceneCompileContext, assetId: string, assetType: StoryAssetKind, blockId: string): Promise<string | null> {

@@ -81,7 +81,7 @@ describe("computeStoryStageSnapshot", () => {
         expect(alice.objectName).toBe("char-alice");
         expect(alice.visible).toBe(true);
         expect(alice.autoFit).toBe(true);
-        expect(alice.source).toEqual({ type: "character", characterId: "char-alice", formName: undefined, variants: undefined });
+        expect(alice.source).toEqual({ type: "character", characterId: "char-alice", pose: undefined, tags: undefined });
         expect(alice.props).toEqual(expect.objectContaining({
             opacity: 1,
             zoom: 0.5,
@@ -100,7 +100,7 @@ describe("computeStoryStageSnapshot", () => {
         // row-precise launch, which is the one place this snapshot is the whole truth.
         const document = baseDocument({
             enter: block("enter", "action", { action: "character", operation: "enter", characterId: "char-alice" }),
-            face: block("face", "action", { action: "character", operation: "expression", characterId: "char-alice", formName: "angry" }),
+            face: block("face", "action", { action: "character", operation: "expression", characterId: "char-alice", pose: "pose-angry" }),
             rename: block("rename", "action", { action: "character", operation: "setName", characterId: "char-alice", displayName: "Alice" }),
             target: say("target"),
         }, ["enter", "face", "rename", "target"]);
@@ -109,7 +109,7 @@ describe("computeStoryStageSnapshot", () => {
         expect(result.displayables).toHaveLength(1);
         const alice = result.displayables[0];
         expect(alice.visible).toBe(true);
-        expect(alice.source).toEqual({ type: "character", characterId: "char-alice", formName: "angry", variants: undefined });
+        expect(alice.source).toEqual({ type: "character", characterId: "char-alice", pose: "pose-angry", tags: undefined });
     });
 
     it("does not conjure a stage record for a character only ever renamed", () => {

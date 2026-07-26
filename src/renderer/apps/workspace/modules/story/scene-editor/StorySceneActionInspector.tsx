@@ -1329,7 +1329,7 @@ function CharacterActionEditor(props: {
         // Auto-fill the stage name with the character's name, unless the author set a custom one.
         const autofill = !payload.objectName || payload.objectName === previousName || payload.objectName === payload.characterId;
         const objectName = autofill ? nextCharacter?.profile.getName() ?? payload.objectName : payload.objectName;
-        onChange({ ...payload, characterId, objectName, formName: undefined, variants: undefined });
+        onChange({ ...payload, characterId, objectName, pose: undefined, tags: undefined });
     }, [onChange, payload, props.characters]);
 
     // A rename touches the speaker label and nothing else - no portrait, so no stage name, appearance,
@@ -1371,9 +1371,9 @@ function CharacterActionEditor(props: {
                 <Section title={t("storyInspector.section.appearance")}>
                     <CharacterAppearancePicker
                         character={selectedCharacter}
-                        formName={payload.formName}
-                        variants={payload.variants}
-                        onChange={next => onChange({ ...payload, formName: next.formName, variants: next.variants })}
+                        pose={payload.pose}
+                        tags={payload.tags}
+                        onChange={next => onChange({ ...payload, pose: next.pose, tags: next.tags })}
                     />
                 </Section>
             ) : (

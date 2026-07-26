@@ -13,7 +13,7 @@ const CONTEXT: StoryCommandContext = {
     scenes: [{ id: "s1", name: "Chapter 2" }],
     labels: ["intro", "retry"],
     variables: [{ name: "gold", ref: { scope: "scene", variableId: "v1" }, valueType: "number" }],
-    formsByCharacterId: { c1: ["smile", "angry"] },
+    appearanceByCharacterId: { c1: [{ id: "t1", name: "smile" }, { id: "t2", name: "angry" }] },
     stageObjects: { image: ["hero", "portrait"], text: ["title"], layer: ["fx"], video: ["intro"], audio: ["sound", "music"], vfx: ["rain"] },
 };
 

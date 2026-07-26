@@ -1,10 +1,10 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode, RefObject, MouseEvent } from "react";
 import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Hash, Image, List, Music, Play, Plus, Route, Trash2, TriangleAlert, UserRoundPlus, Variable, Video } from "lucide-react";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
 import { useSortable } from "@dnd-kit/sortable";
-import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryCharacterVariantSelection, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
-import { resolveVariantEntry, selectCharacterVariantNames } from "@shared/utils/characterVariant";
+import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryCharacterTagSelection, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
+import { representativeAssetId } from "@shared/utils/characterVariant";
 import { HeadThumbnail } from "@/apps/workspace/modules/characters/editors/components/HeadThumbnail";
 import type { NormalizedCrop } from "@/lib/utils/headCrop";
 import { useWorkspace } from "@/apps/workspace/context";
@@ -1032,16 +1032,13 @@ function GroupExpressionMember({ block, characters }: { block: StoryBlock; chara
         if (block.kind !== "action" || block.payload.action !== "character") {
             return "";
         }
+        // Ids, not names: resolving them to labels needs the character record, which this row
+        // summary does not take. The inspector and the picker show the names.
         const parts: string[] = [];
-        if (block.payload.formName) {
-            parts.push(block.payload.formName);
+        if (block.payload.pose) {
+            parts.push(block.payload.pose);
         }
-        const variants = block.payload.variants;
-        if (Array.isArray(variants)) {
-            parts.push(...variants);
-        } else if (variants) {
-            parts.push(...Object.values(variants));
-        }
+        parts.push(...Object.values(block.payload.tags ?? {}));
         return parts.join(" · ") || t("story.describe.charOp.expression");
     }, [block, t]);
 
@@ -2458,40 +2455,43 @@ function CharacterSelectTrigger(props: {
 function getBadgeImageSpec(
     block: StoryBlock,
     appearance: CharacterAppearanceRef | undefined,
-): { characterId: string; formName?: string; variants?: StoryCharacterVariantSelection; resolveVariant: boolean } | null {
+): { characterId: string; pose?: string; tags?: StoryCharacterTagSelection; resolveVariant: boolean } | null {
     if (block.kind === "action" && block.payload.action === "character" && block.payload.characterId) {
-        return { characterId: block.payload.characterId, formName: block.payload.formName, variants: block.payload.variants, resolveVariant: true };
+        return { characterId: block.payload.characterId, pose: block.payload.pose, tags: block.payload.tags, resolveVariant: true };
     }
     if (block.kind === "nodeAction" && block.payload.action === "dialogue" && block.payload.characterId) {
         // Only a *shown* appearance pictures an avatar — a placement-only appearance (a `/move` on a
         // never-shown speaker, used by the group-header dropdown) must not invent a look (WI-3, M3.1).
-        return { characterId: block.payload.characterId, formName: appearance?.formName, variants: appearance?.variants, resolveVariant: appearance?.shown === true };
+        return { characterId: block.payload.characterId, pose: appearance?.pose, tags: appearance?.tags, resolveVariant: appearance?.shown === true };
     }
     return null;
 }
 
 /**
- * The sprite `Asset` + portrait frame for a character's form/variants, resolved against the exact
- * selection rule the runtime uses (shared `selectCharacterVariantNames` / `resolveVariantEntry`). The
- * frame is the form's own portrait override, else the profile default; `undefined` lets the badge fall
- * back to the automatic head crop. The `Asset` object (not just its id) is returned because a
- * differential sprite is a *project* asset and loads through the asset library, not the editor store.
+ * The sprite `Asset` + portrait frame a character badge should picture, resolved against the same
+ * rule the runtime uses (shared `representativeAssetId`). The frame is the pose's own portrait
+ * override, else the profile default; `undefined` lets the badge fall back to the automatic head
+ * crop. The `Asset` object (not just its id) is returned because a sprite is a *project* asset and
+ * loads through the asset library, not the editor store.
+ *
+ * A layered character has no single sprite, so the badge shows its bottom-most drawing layer — a
+ * 24px badge only has to tell two characters apart, and compositing the real stack is the sprite
+ * compositor's job (L4). It is deliberately not a lie about which differential is showing: the row
+ * text carries that.
  */
 function resolveCharacterBadgeImage(
     character: Character,
-    formName: string | undefined,
-    variants: StoryCharacterVariantSelection | undefined,
+    pose: string | undefined,
+    tags: StoryCharacterTagSelection | undefined,
+    lookupAsset: (assetId: string) => Asset<AssetType.Image> | null,
 ): { asset: Asset<AssetType.Image> | null; frame?: NormalizedCrop } {
-    const forms = character.profile.appearance.getForms();
-    const form = forms.find(candidate => candidate.name === formName)
-        ?? forms.find(candidate => candidate.name === character.profile.getDefaultForm())
-        ?? forms[0];
-    if (!form) {
-        return { asset: null };
-    }
-    const variantNames = selectCharacterVariantNames(form, variants);
-    const entry = resolveVariantEntry(form.variantAssets, variantNames, candidate => Boolean(candidate.data?.id));
-    return { asset: entry?.data ?? null, frame: form.portrait ?? character.profile.getPortrait() };
+    const appearance = character.profile.appearance;
+    const summary = appearance.getKind() === "preset"
+        ? { kind: "preset" as const, poses: appearance.getPoses().map(p => ({ id: p.id, name: p.name, assetId: p.assetId })), defaultPoseId: appearance.getDefaultPoseId() }
+        : { kind: "layered" as const, canvas: appearance.getCanvas(), axes: appearance.getAxes(), layers: appearance.getLayers() };
+    const assetId = representativeAssetId(summary, { poseId: pose, tags });
+    const frame = (pose ? appearance.getPose(pose)?.portrait : undefined) ?? character.profile.getPortrait();
+    return { asset: assetId ? lookupAsset(assetId) : null, frame };
 }
 
 /**
@@ -2507,8 +2507,19 @@ function useCharacterBadgeImage(
 ): { url: string | null; frame?: NormalizedCrop; showingSprite: boolean } {
     const spec = getBadgeImageSpec(block, appearance);
     const character = spec ? characters.find(next => next.profile.getId() === spec.characterId) : undefined;
+    // The appearance stores asset ids; the badge cache needs the `Asset` record to fetch bytes, so
+    // the id is resolved against the live library here rather than embedded in the character store
+    // (which is what the old variant slots did, and what made a renamed or replaced asset go stale).
+    const { context, isInitialized } = useWorkspace();
+    const lookupAsset = useCallback((assetId: string): Asset<AssetType.Image> | null => {
+        if (!context || !isInitialized) {
+            return null;
+        }
+        const assets = context.services.get<AssetsService>(Services.Assets).getAssets();
+        return assets?.[AssetType.Image]?.[assetId] ?? null;
+    }, [context, isInitialized]);
     const resolved = character && spec?.resolveVariant
-        ? resolveCharacterBadgeImage(character, spec.formName, spec.variants)
+        ? resolveCharacterBadgeImage(character, spec.pose, spec.tags, lookupAsset)
         : { asset: null as Asset<AssetType.Image> | null, frame: undefined };
     const thumbnailId = character?.profile.getThumbnail() ?? null;
     const source: BadgeImageSource | null = resolved.asset
