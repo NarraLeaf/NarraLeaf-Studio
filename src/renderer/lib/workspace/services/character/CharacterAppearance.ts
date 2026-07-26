@@ -4,6 +4,7 @@ import {
     CharacterLayer,
     CharacterNamed,
     CharacterPose,
+    CharacterSnapshot,
     CharacterTagSelection,
     ICharacterAppearance,
     LayeredAppearance,
@@ -29,7 +30,7 @@ function newId(prefix: string): string {
 
 export function emptyAppearance(kind: CharacterAppearanceKind): ICharacterAppearance {
     return kind === "layered"
-        ? { kind: "layered", canvas: null, axes: [], layers: [] }
+        ? { kind: "layered", canvas: null, axes: [], layers: [], snapshots: [] }
         : { kind: "preset", poses: [], defaultPoseId: null };
 }
 
@@ -51,6 +52,11 @@ function cloneAppearance(appearance: ICharacterAppearance): ICharacterAppearance
                 axisId: layer.axisId ?? null,
                 assetId: layer.assetId ?? null,
                 options: layer.options ? { ...layer.options } : undefined,
+            })),
+            snapshots: (appearance.snapshots ?? []).map(snapshot => ({
+                id: snapshot.id,
+                name: snapshot.name,
+                tags: { ...snapshot.tags },
             })),
         };
     }
@@ -445,6 +451,33 @@ export class CharacterAppearance {
         this.notifyAssetChange(options[tagId] ?? null, assetId);
         layer.options = { ...options, [tagId]: assetId };
         this.notifyChange();
+    }
+
+    public getSnapshots(): CharacterSnapshot[] {
+        return this.layered?.snapshots ?? [];
+    }
+
+    /**
+     * Name the combination currently being looked at. The selection is resolved first, so a snapshot
+     * always names a complete look rather than a partial one that would drift when a default changes.
+     */
+    public createSnapshot(name: string, tags: CharacterTagSelection): CharacterSnapshot | null {
+        const layered = this.layered;
+        if (!layered) return null;
+        const snapshot: CharacterSnapshot = { id: newId("s"), name, tags: this.resolveTagSelection(tags) };
+        layered.snapshots = [...(layered.snapshots ?? []), snapshot];
+        this.notifyChange();
+        return snapshot;
+    }
+
+    public removeSnapshot(snapshotId: string): boolean {
+        const layered = this.layered;
+        if (!layered?.snapshots) return false;
+        const index = layered.snapshots.findIndex(snapshot => snapshot.id === snapshotId);
+        if (index === -1) return false;
+        layered.snapshots.splice(index, 1);
+        this.notifyChange();
+        return true;
     }
 
     /** Every axis's default tag, keyed by axis id. An axis with no tags contributes nothing. */
