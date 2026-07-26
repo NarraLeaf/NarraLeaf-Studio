@@ -50,6 +50,8 @@ function describeRuntimeCapability(capability: PluginRuntimeCapability): string 
             return "change story variables";
         case "saves.read":
             return "read the player's save list and metadata";
+        case "saves.write":
+            return "overwrite the player's saves and load them";
         case "ui.overlay":
             return "draw on top of the game";
         case "assets":

@@ -183,19 +183,21 @@ export default defineRuntimePlugin({
 });
 ```
 
-`app.game.blueprintNodes.register` 只读取 `type`、`displayName`、`execute` 三个字段，所以可以直接传入与 studio 入口共享的完整 `BlueprintNodeDef` 对象。node type 必须以插件 ID 为前缀。
+`app.game.blueprintNodes.register` 只读取 `type`、`displayName`、`execute` 三个字段，所以可以直接传入与 studio 入口共享的完整 `PluginBlueprintNodeDef` 对象。node type 必须以插件 ID 为前缀。
 
 推荐把节点定义放进 `src/nodes.ts` 由两个入口共同 import：studio 入口注册完整定义（palette + 编辑器预览），runtime 入口注册游戏 execute。这样 execute 逻辑只写一次。内建 Gallery 插件（`src/builtin-plugins/gallery/`）是参照实现。
 
-execute 内通过执行上下文访问游戏宿主能力（如 persistence）：
+execute 拿到的 `ctx` 只有 `params` / `resolveInput` / `eventName` / `eventPayload` / `signal` / `game`。宿主能力一律走 `ctx.game`——也就是 `setup(app)` 收到的同一个能力门控对象，manifest 里 `contributes.runtimeCapabilities` 声明什么就有什么：
 
 ```ts
 execute: async ctx => {
-  const hostApi = ctx.hostAdapter.blueprintRuntime?.hostApi;
-  await hostApi?.persistence.set(`${PLUGIN_ID}.key`, value);
+  // 未声明（或本环境背不动）的域在对象上不存在，不是会抛错的方法——所以要判存降级。
+  await ctx.game.store?.set("key", value);   // 需声明 "store"
   return { nextPort: "next" };
 },
 ```
+
+编辑器本身没有游戏可读，因此节点在 Studio 内预览执行时 `ctx.game` 上的门控域全部缺席，节点必须能降级运行。
 
 ## 构建要求
 

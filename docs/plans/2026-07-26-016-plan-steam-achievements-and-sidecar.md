@@ -95,7 +95,9 @@ appDir/
         "entry": "bin/win-x64/nl-steam-bridge.exe",
         "include": [
           "bin/win-x64/nl-steam-bridge.exe",              // 插件包内
-          "dep:narraleaf.steam-achievements.sdk/steam_api64.dll"   // 构建时依赖产物，见 Part B
+          // ⚠️ dep: 的落点 = include 路径去掉 `dep:<id>/` 前缀。要让 DLL 与 exe **同目录**
+          // （Windows 按 exe 所在目录搜索 DLL），必须由依赖的 files 映射把它放到 bin/win-x64/ 下。
+          "dep:narraleaf.steam-achievements.sdk/bin/win-x64/steam_api64.dll"
         ],
         "sha256": { "bin/win-x64/nl-steam-bridge.exe": "…" }
       },
@@ -151,6 +153,28 @@ appDir/
 - **Steam 覆盖层归属游戏 exe，不归 sidecar。** 成就 toast 由 Steam 客户端在被 hook 的游戏进程上绘制。
   这条必须**真机验证**，不能假定（§13 验收项）。
 
+### 6.1 实现后新发现的边界（打包落地时暴露，非事前预料）
+
+- **一次构建多个桌面目标时，sidecar 一个都不发。** 打包管线目前一个 `appDir` 服务所有桌面目标
+  （`GameBuildWorkerConfig.appDir` 是单值），而 sidecar 是按 `<platform>-<arch>` 分的。
+  同时勾选 Windows 和 macOS 时，实现选择**发一条构建警告并一个都不打包**——把 Windows 的 exe
+  塞进 .app 里比不塞更糟。真正的修法是每目标一个 appDir，属打包管线改造，未做。
+- **`sidecar-crossbuild-exec-bit` 当前被遮蔽。** `hostCanBuildTarget("windows", "macos")` 本来就是
+  false，`unbuildable-platform` 会先报。这条实现了但在 Windows 宿主上观察不到，
+  等交叉构建被放开时才成为生效消息。**§13 的验收项 8 因此今天无法执行。**
+- **插件 zip 不带执行位，比 §6 那条更早也更普遍。** §6 只写了「构建期交叉编译丢执行位」，
+  但**安装期**就已经丢了：`../Plugins/scripts/lib/zip.mjs` 与 Studio 的 `extractPluginZip`
+  都不记录/还原 file mode，从注册表装的插件其 sidecar 在 macOS/Linux 上落地 0644，
+  **根本 spawn 不起来**。来源不止一条（注册表 zip、本地目录安装、构建暂存），逐个去修容易漏，
+  所以 S3 在 **spawn 前**统一补：posix 上 stat 看 owner-exec 位，缺了就 chmod 补齐
+  （只在文件已授读的位上补执行，不放宽可见性）；chmod 失败不吞，直接判定该 sidecar 不可用。
+  源头（zip 写入端）仍值得单独修，那是另一张卡。
+- ~~**预览编译不带 sidecar**（`PreviewManager` 没有传 `sidecarPlatformKey`），所以 **Dev Mode 目前
+  无法验证 sidecar**。~~ **已在 S3 补上**：预览按宿主平台的 `<platform>-<arch>` 打包 sidecar，
+  并把 `hostUserDataDir` 一并传下去（`dep:` include 要走构建依赖缓存）。遗留一条：预览编译里
+  sidecar 拷贝失败（缺 `dep:` 产物、摘要不符）会让**整次预览启动失败**，而不是降级成「本次没有
+  sidecar」——生产构建那样报错是对的，预览不是。
+
 ### 7. 运行时托管（游戏主进程）
 
 新增 `src/runtime/main/sidecarHost.ts`：
@@ -187,6 +211,43 @@ type SidecarHandle = {
 
 ## Part B — M-BUILDDEP：构建时二进制依赖
 
+### 7.1 实现后发现：M-BUILDDEP 对 Steam 这个用例基本落空
+
+**Steamworks SDK 在 Valve 合作伙伴登录之后**，无鉴权下载永远拿不到。也就是说构建时依赖
+下载缓存这条「主打功能」，对它当初被设计出来所服务的那一个插件，唯一可走的是 §10 的
+**手动放置缓存**路径——功能退化成一份文档步骤。
+
+这不代表 M-BUILDDEP 白做（公开可下载的二进制依赖仍然受益），但**Steam 插件的 README 必须
+把手动放置写成正路，而不是降级路径**。若最终只剩手动放置，值得重新评估这条依赖是否该改为
+「插件 studio 入口自己问用户要 SDK 路径」——那本来就是 §8 里划给插件自己的一条。
+
+### 7.2 实现后发现：安装期就丢执行位（比 §6 那条更早更普遍）
+
+插件 zip 不携带文件 mode（注册表的 `zip.mjs` 与 Studio 的 `extractPluginZip` 都不设），
+安装路径上也没有 chmod。**从注册表装的插件，其 sidecar 在 macOS/Linux 上落地是 0644，
+根本 spawn 不起来。** §6 只标了游戏构建交叉编译那一种。
+修法：spawn 前在 posix 上确保 entry 可执行——来源不止一条（注册表 zip / 本地目录 / 构建暂存），
+逐个源头修容易漏，spawn 前是所有路径的必经处。
+
+### 7.3 实现后发现：`steam_appid.txt` 作者无处安放
+
+开发期 `SteamAPI_Init` 需要它位于 sidecar 的 cwd（`<userData>/sidecars/...`），而 runtime 插件
+API 没有文件系统，作者只能手工去找那个路径。**正解是别让作者管**：sidecar 是原生进程，自己有
+文件系统——由插件在握手后把 App ID 告诉它，sidecar 自行设置 `SteamAppId` 环境变量或写出
+`steam_appid.txt`。App ID 本来就在插件的目录数据里。
+
+### 7.4 其余待办（实现期暴露）
+
+- **线协议要对账。** Steam 插件先于 `sidecarHost.ts` 写完，`req`/`res`/`event` 及全部字段名是
+  插件侧的提案。S3 落地后**必须逐字段对齐**，否则两边各说各话。
+- **`avgrate` 统计目前不可达**：它要 `UpdateAvgRateStat(name, count, sessionLength)`，
+  §11.3 的节点表没有这个形状。要么补节点，要么把 `avgrate` 从数据模型里删掉——
+  留着一个只写镜像、永远同步不到 Steam 的类型是骗人的。
+- **插件读不到项目的发行语言**（`PluginServices` 上没有项目服务），所以 §11.2 的本地化缺失校验
+  只能对着目录自带的 `locales` 列表做。要做成对着项目做，得给 studio 插件面加只读项目信息。
+- **类型包要发布**：插件对着分支生成的 0.3.0 `.d.ts` 才编译得过，已发布的 `narraleaf-studio@0.2.0`
+  早于窄 ctx / `store` / `sidecar`。插件 manifest 里的 `studioVersion` 是猜的，发版时填真数。
+
 ### 8. 职责边界（已裁决）
 
 Studio 的职责是：**让插件声明构建时二进制依赖，并在项目构建时下载、校验、缓存**。
@@ -211,7 +272,7 @@ Studio 的职责**不是**替插件张罗依赖。三条路径的归属：
         "sha256": "…",                              // 必填，无则拒绝
         "archive": "zip",                           // "zip" | "none"
         "files": {                                  // 归档内路径 → 依赖产物内相对路径
-          "redistributable_bin/win64/steam_api64.dll": "steam_api64.dll"
+          "redistributable_bin/win64/steam_api64.dll": "bin/win-x64/steam_api64.dll"  // 必须与 sidecar exe 同目录
         }
       }
     }
@@ -301,7 +362,7 @@ type SteamStat = {
 | 节点 | 说明 |
 |---|---|
 | `Unlock Achievement (id)` | 解锁；**同时写本地镜像**，Steam 不在也有效 |
-| `Is Achievement Unlocked (id) → bool` | 读**本地镜像**（同步，可用于分支） |
+| `Is Achievement Unlocked (id) → bool` | 读**本地镜像**。⚠️ **不是同步的**：`app.game.store` 是异步的，节点因此 `isLatent`，**用不了内联剧情表达式**，只能在 event/macro 图里用 |
 | `Indicate Achievement Progress (id, cur, max)` | Steam 的 "3/10" toast |
 | `Set Stat / Add Stat / Get Stat` | 统计量 |
 | `Steam Available → bool` | sidecar 握手成功且 `SteamAPI_Init` 成功 |
@@ -366,7 +427,8 @@ itch/web 版、Dev Mode、没开 Steam 的开发机全部可用，且作者能�
 5. Web 目标构建：产物中无 `sidecars/`，游戏可启动，成就走本地镜像。
 6. 篡改插件包内 exe 一个字节 → 安装被拒，报指纹不符。
 7. 断网 + 清空 `build-deps` 缓存 → 构建报 error 并给出手动放置路径；把文件放进去后构建通过。
-8. Windows 宿主勾选 macOS 目标 → preflight 报 `sidecar-crossbuild-exec-bit` 且**阻断构建**。
+8. ~~Windows 宿主勾选 macOS 目标 → preflight 报 `sidecar-crossbuild-exec-bit` 且阻断构建。~~
+   **今天不可执行**：`unbuildable-platform` 先于它触发（见 §6.1）。等交叉构建放开后再验。
 
 ## 15. 明确不做
 

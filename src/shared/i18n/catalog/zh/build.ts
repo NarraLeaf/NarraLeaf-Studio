@@ -102,6 +102,13 @@ export const build = {
         "icon-low-resolution": "{platform} 图标小于 {minimum}×{minimum}，将放大后出片",
         "icon-stale": "{platform} 图标尚未烘焙，请打开 项目 ▸ 图标 生成",
         "plugins-invalid": "插件校验失败：\n{errors}",
+        "build-dependency-unavailable":
+            "{plugin} 在 {platform} 上需要构建依赖 {dependency}，本机没有缓存，也无法从 {url} 获取（{reason}）。"
+            + "可自行下载并另存为 {path}，即可离线构建",
+        "sidecar-target-missing": "{plugin} 没有为 {platform} 提供 {sidecar} 程序，它所支撑的功能在这份产物里不会生效",
+        "sidecar-crossbuild-exec-bit":
+            "Windows 无法给文件加上可执行位，{plugin} 的 {sidecar} 程序进入 {platform} 产物后将无法运行。"
+            + "请在 {targetPlatform} 机器上构建该目标",
         "encryption-key-unavailable": "资源保护已开启，但无法取得密钥",
         "web-unprotected": "资源保护对 Web 导出不生效，其文件以明文发布",
         "mobile-template-missing": "移动端外壳模板不可用：{reason}",
