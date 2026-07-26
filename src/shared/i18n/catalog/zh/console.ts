@@ -16,7 +16,6 @@ export const console = {
     exportSuccess: "已将 {label} 日志导出到 {path}",
     exportFailed: "导出日志失败：{error}",
     emptyFiltered: "没有符合当前筛选的日志",
-    emptyChannel: "还没有 {label} 输出",
     entryEmpty: "（空）",
     outputFallback: "输出",
     channels: {

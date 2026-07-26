@@ -216,10 +216,10 @@ export function StoryVariablesPanel({ payload }: PanelComponentProps<StoryVariab
         <div className="flex flex-col gap-4 overflow-y-auto p-3">
             <div className="flex flex-col gap-2">
                 <SectionHeader title={t("storyVars.scene.title")} hint={t("storyVars.scene.hint")} onAdd={addScene} />
+                {/* An empty scope lists nothing. The + in the header above it is the action, and a
+                    line saying the list is empty would only be describing the list. */}
                 <div className="flex flex-col gap-1.5">
-                    {sceneRows.length === 0 ? (
-                        <div className="text-2xs text-fg-subtle">{t("storyVars.scene.empty")}</div>
-                    ) : (
+                    {sceneRows.length === 0 ? null : (
                         sceneRows.map(row => (
                             <VariableRowEditor
                                 key={row.id}
@@ -240,9 +240,7 @@ export function StoryVariablesPanel({ payload }: PanelComponentProps<StoryVariab
             <div className="flex flex-col gap-2">
                 <SectionHeader title={t("storyVars.saved.title")} hint={t("storyVars.saved.hint")} onAdd={addSaved} />
                 <div className="flex flex-col gap-1.5">
-                    {savedRows.length === 0 ? (
-                        <div className="text-2xs text-fg-subtle">{t("storyVars.saved.empty")}</div>
-                    ) : (
+                    {savedRows.length === 0 ? null : (
                         savedRows.map(row => (
                             <VariableRowEditor
                                 key={row.id}
