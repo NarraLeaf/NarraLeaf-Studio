@@ -12,7 +12,6 @@ export const launcher = {
         openProject: "Open Project",
         import: "Import",
         recentTitle: "Recent Projects",
-        empty: "No recent projects yet.",
         openFolder: "Open Folder",
         importProject: "Import Project",
         openNamed: "Open {name}",
