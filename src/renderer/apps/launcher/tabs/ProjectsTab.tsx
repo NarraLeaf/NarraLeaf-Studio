@@ -393,7 +393,6 @@ function MissingProjectDialog({
             onClose={onClose}
             title={t("launcher.projects.missing.dialogTitle")}
             size="sm"
-            fullWindowOverlay
             footer={
                 <div className="flex items-center gap-2">
                     <button

@@ -163,3 +163,18 @@
 **Studio 侧未提交**：10 文件（package.json / build-main.js / GameBuildManager.ts / runMobileRepack.ts(.test) / protocol.ts / mobileShellManifest.ts / gameBuild.ts / en·zh build.ts），待用户定夺提交方式。
 
 **旁支（非本卡）**：全仓 CI `yarn lint` 另被**既有** renderer/NLR 缺口阻塞（M5 用 narraleaf-react 0.16 API，pin 仍 ^0.15）——已开后台任务，修 = bump `^0.16.0` + 全量复验。
+
+### P5 · Windows 宿主复验 — ✅ 完成（2026-07-25）
+
+§1 矩阵第 3 层「加密·Studio@Windows / Android·iOS」由「🟡 理论可行未实测」转为**已实测**。全部证据来自 Windows 宿主本机，外部工具而非 Studio 自家解析器。
+
+- **真 app 端到端**：隔离 worktree 起 dev Studio，新建工程 → 打开「加密资源」→ 构建对话框选 Android+iOS → 12 秒出两包。控制台依次打出 `asset protection enabled; protecting the mobile payload` / `using the debug shell template` / `signed …apk` / `wrote …ipa; the package is unsigned`。
+- **密文断言**：外部 `unzip` 解包后 APK 与 IPA 的 www 载荷各 12/12 文件 `isProtectedPayload` 为真、两平台密文逐字节相同；`shell-config.json` 明文且含 `contentKey`，schema 仍为 1；共享的 `staging-web` 站点在磁盘上保持 12/12 明文（web 导出不变量成立）。
+- **真·解码对拍（Windows 上的最强证据）**：用壳所嵌同源解码器源码在本机编译出 driver，拿包内 `shell-config.json` 的 `contentKey` 解 Windows 产出的载荷 → `index.html`/`pack.json`/`renderer.js`/`web.js` 全部解回正确内容，任意区间单独解码与全量一致；错 key 不产明文；明文构建的载荷报「未编码」。
+- **签名**：自写的独立 APK v2 verifier（Python `cryptography`，非 Studio 代码）重算分块摘要并验签通过，signer `CN=NarraLeaf Debug`；翻一个字节即报 digest MISMATCH（反向对照成立）。
+- **非加密回归**：关掉开关重建 → `shell-config` 无 `contentKey`、载荷 12/12 明文且与 staging 站点逐字节相同、签名照旧有效。
+- **宿主无关性证据**：iOS 可执行位 `-rwxr-xr-x` 在 Windows 产出里照样正确（mode 取自模板 zip 的 external attributes，不取本地文件系统）；zip 条目名全正斜杠，无反斜杠泄漏；`.so` 保持 deflated、`resources.arsc` 保持 stored。
+- **打包版 Studio**：`prepare-mobile-shell.js` 在 Windows 上跑通并产出 `resources/mobile-shell/{android,ios,manifest.json}`，与 `extraResources` + `resolveResource` 的布局对得上（按代码核对，未跑完整 `pack-electron`）。
+- **未覆盖**：真机/模拟器安装运行（本机无 Android SDK/adb，无 iOS）。运行时解码正确性此前已由 iOS 模拟器实跑 + 壳仓 CI 覆盖，本轮补的是「Windows 产出的字节能被同一解码器解开」。
+
+**顺带修掉的缺陷（非 Windows 特有）**：iOS 模板图标槽是 Xcode 编译过的 PNG（IHDR 前多一个私有 chunk），`readPngSize` 只看偏移 12 → `readIconSlotSizes` 抛错 → **配了 app icon 的 iOS 构建整体失败**（两个包都不产出，实机复现）。修复为按 chunk 走到 IHDR；修后重建，Android 5 槽 + iOS 4 槽全部替换成作者图标且尺寸正确（120/180/152/76），载荷仍全保护、签名仍有效。提交在 worktree `D:/Temp/nls-winmobile` 分支 `test/win-mobile-encrypted-build`（`c0d18493`，含 2 条新测试），**未合入 develop**。
