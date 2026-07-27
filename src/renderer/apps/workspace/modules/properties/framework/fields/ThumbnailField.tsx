@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, memo } from "react";
+import { ImagePlus } from "lucide-react";
 import { ThumbnailFieldDefinition } from "../types";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { ImageCropper } from "@/apps/workspace/modules/assets/components/ImageCropper";
@@ -373,10 +374,18 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
                     ) : thumbnailId ? (
                         <div className="absolute inset-0 flex items-center justify-center text-fg-muted" />
                     ) : (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center space-y-1">
-                            <div>{t("properties.thumbnail.empty")}</div>
-                            <div className="text-2xs text-fg-subtle">{t("properties.thumbnail.emptyHint")}</div>
-                        </div>
+                        /* The empty frame IS the way in — it opens the same picker the Select
+                           button does — rather than two lines explaining that there is no
+                           thumbnail and which button to press. */
+                        <button
+                            type="button"
+                            onClick={() => setSelectorOpen(true)}
+                            disabled={isSaving}
+                            aria-label={t("properties.thumbnail.selectTitle")}
+                            className="absolute inset-0 flex items-center justify-center text-fg-subtle transition-colors hover:bg-fill-subtle hover:text-fg-muted disabled:opacity-50"
+                        >
+                            <ImagePlus className="h-6 w-6" />
+                        </button>
                     )}
                 </div>
                 {error && <div className="text-xs text-danger">{error}</div>}

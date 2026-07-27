@@ -60,11 +60,9 @@ export function NotificationsPanel() {
                 )}
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
-                {history.length === 0 ? (
-                    <div className="px-4 py-8 text-center text-sm text-fg-subtle">
-                        {t("workspace.shell.notifications.empty")}
-                    </div>
-                ) : (
+                {/* Nothing has been notified: the panel is blank. There is no action to offer here —
+                    entries arrive on their own — and a line reporting the blank is the blank again. */}
+                {history.length === 0 ? null : (
                     history.map(entry => {
                         const meta = TYPE_META[entry.type] ?? TYPE_META[NotificationType.Info];
                         return (

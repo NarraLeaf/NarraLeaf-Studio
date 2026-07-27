@@ -47,7 +47,6 @@ export const characters = {
         hasImage: "已设图",
         noImage: "未设图",
         drawsNothing: "不绘制",
-        noCanvas: "尚未确定画布尺寸",
         layerCount: "绘制 {count} 层",        hideLayer: "隐藏",
         showLayer: "显示",
         lockLayer: "锁定",
@@ -148,8 +147,6 @@ export const characters = {
         thumbnail: "缩略图",
         preview: "预览",
         select: "选择",
-        noThumbnail: "暂无缩略图",
-        selectHint: "点击“选择”来指定一张",
         thumbnailAlt: "缩略图",
         color: "颜色",
         namePlaceholder: "角色名称",
@@ -162,7 +159,6 @@ export const characters = {
         cropThumbnailTitle: "裁剪缩略图",
         removeTag: "移除标签",
         removeTagAria: "移除标签 {tag}",
-        noTags: "尚无标签",
         addTagPlaceholder: "添加标签…",
         addTag: "添加标签",
         error: {
@@ -180,7 +176,6 @@ export const characters = {
         collapse: "折叠形态",
         default: "默认",
         formActions: "形态操作",
-        empty: "还没有形态，点击 + 创建一个",
         groupCount: {
             one: "{count} 个分组",
             other: "{count} 个分组",
@@ -220,8 +215,6 @@ export const characters = {
         deleteGroup: "删除分组",
         groupPrefix: "分组：{name}",
         selectForm: "从左侧选择一个形态",
-        noVariants: "还没有差分，请使用上方的按钮添加",
-        groupNoVariants: "还没有差分，点击“+”添加",
         variantCount: {
             one: "{count} 个差分",
             other: "{count} 个差分",
