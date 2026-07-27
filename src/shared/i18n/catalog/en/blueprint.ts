@@ -624,6 +624,7 @@ export const blueprint = {
         getSliderNormalizedValue: "Get Slider Normalized Value",
         getSliderRange: "Get Slider Range",
         getSliderValue: "Get Slider Value",
+        getSpeakerAvatar: "Get Speaker Avatar",
         getText: "Get Text",
         getTextAlign: "Get Text Align",
         getTextColor: "Get Text Color",

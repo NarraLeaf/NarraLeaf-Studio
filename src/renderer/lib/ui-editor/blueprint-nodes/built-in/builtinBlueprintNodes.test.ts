@@ -105,6 +105,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_GAME_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_GET_GLOBAL_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR,
     BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS,
     BLUEPRINT_NODE_TYPE_GAME_CLEAR_TEXT_READ,
     BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE,
@@ -237,6 +238,7 @@ import { blueprintNodeRegistry } from "../BlueprintNodeRegistry";
 import { registerCoreBlueprintNodes } from "../registerCoreBlueprintNodes";
 import { isValidBlueprintPinConnection } from "../connectionPolicy";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
+import { toBlueprintImageAsset, type BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
 import { resolveSliderRuntimeValue, type UISliderRuntimeValue } from "@shared/types/ui-editor/slider";
 import { executeGraph } from "../../behavior-graph/GraphExecutor";
@@ -331,6 +333,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     getHistory: async () => [],
                     restoreHistory: async () => undefined,
                     getNametag: () => null,
+                    getSpeakerAvatar: () => null,
                     getNotifications: () => [],
                     getChoiceCount: () => 0,
                     isNvlMode: () => false,
@@ -450,6 +453,7 @@ function createPageNavigationHostAdapter(
                     getHistory: async () => [],
                     restoreHistory: async () => undefined,
                     getNametag: () => null,
+                    getSpeakerAvatar: () => null,
                     getNotifications: () => [],
                     getChoiceCount: () => 0,
                     isNvlMode: () => false,
@@ -485,6 +489,7 @@ function createGameSaveHostAdapter(options: {
     history?: Array<Record<string, unknown>>;
     restoredIds?: Array<string | undefined>;
     nametag?: string | null;
+    speakerAvatar?: BlueprintImageAsset | null;
     notifications?: Array<{ id: string; message: string }>;
     choiceCount?: number;
     nvlMode?: boolean;
@@ -564,6 +569,7 @@ function createGameSaveHostAdapter(options: {
                         options.restoredIds?.push(id);
                     },
                     getNametag: () => options.nametag ?? null,
+                    getSpeakerAvatar: () => options.speakerAvatar ?? null,
                     getNotifications: () => options.notifications ?? [],
                     getChoiceCount: () => options.choiceCount ?? 0,
                     isNvlMode: () => options.nvlMode ?? false,
@@ -1530,6 +1536,48 @@ describe("built-in blueprint nodes", () => {
             blueprintLocals: localsFromNametag,
         });
         expect(localsFromNametag.nametag).toBe("Alice");
+
+        // Get Speaker Avatar is a PURE node, so its `execute` is never called - the value comes from
+        // the resolver branch alone. Without that branch the pin silently reads `undefined` and the
+        // dialog quietly shows no avatar, which is why this asserts through `resolveDataPinValue`.
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        avatar: {
+                            type: BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR,
+                            params: {},
+                        },
+                    },
+                    edges: [],
+                },
+                "avatar",
+                "avatar",
+                {},
+                undefined,
+                0,
+                { hostAdapter: createGameSaveHostAdapter({ speakerAvatar: toBlueprintImageAsset("asset-avatar-angry") }) },
+            ),
+        ).toEqual({ kind: "imageAsset", assetId: "asset-avatar-angry" });
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        avatar: {
+                            type: BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR,
+                            params: {},
+                        },
+                    },
+                    edges: [],
+                },
+                "avatar",
+                "avatar",
+                {},
+                undefined,
+                0,
+                { hostAdapter: createGameSaveHostAdapter({}) },
+            ),
+        ).toBeNull();
 
         expect(
             resolveDataPinValue(

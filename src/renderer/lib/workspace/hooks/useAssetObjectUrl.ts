@@ -6,6 +6,10 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { AssetType, AssetData } from "@/lib/workspace/services/assets/assetTypes";
 import { getInterface } from "@/lib/app/bridge";
 import { resolveDevModeSavePreviewImageUrl } from "@/lib/ui-editor/runtime/devModeSavePreviewAssets";
+import {
+    isCharacterAvatarAssetId,
+    resolveCharacterAvatarAssetUrl,
+} from "@/lib/ui-editor/runtime/characterAvatarAssets";
 import { resolveGameRuntimeAssetUrl } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
 
 interface AssetObjectUrlState {
@@ -78,6 +82,25 @@ export function useAssetObjectUrl(assetId?: string | null) {
                 metadata: null,
                 loading: false,
                 error: null,
+            });
+            return;
+        }
+
+        // A dialog avatar the mounted compile already resolved. This has to come before every
+        // other arm: it is the swap that must not flash, and in Dev Mode the ordinary arm costs
+        // two IPC hops. A synthetic (baked) avatar id stops here either way - it has no record in
+        // the asset library, so falling through would spend that round trip only to be told so.
+        const avatarUrl = resolveCharacterAvatarAssetUrl(assetId);
+        if (avatarUrl || isCharacterAvatarAssetId(assetId)) {
+            if (urlRef.current) {
+                URL.revokeObjectURL(urlRef.current);
+                urlRef.current = null;
+            }
+            setState({
+                url: avatarUrl,
+                metadata: null,
+                loading: false,
+                error: avatarUrl ? null : `Avatar is not available in this session: ${assetId}`,
             });
             return;
         }

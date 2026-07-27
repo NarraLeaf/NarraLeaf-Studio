@@ -10,6 +10,7 @@ import {
     BLUEPRINT_GAME_CHOICE_COUNT_STATE_KEY,
     BLUEPRINT_GAME_NAMETAG_STATE_KEY,
     BLUEPRINT_GAME_NOTIFICATIONS_STATE_KEY,
+    BLUEPRINT_GAME_SPEAKER_AVATAR_STATE_KEY,
     BLUEPRINT_GAME_NVL_MODE_STATE_KEY,
     BLUEPRINT_GAME_TEXT_READ_STATE_KEY,
     BLUEPRINT_TEXT_READ_PERSISTENCE_KEY,
@@ -278,6 +279,11 @@ export type BlueprintHostApiRuntime = {
         /** Jump back to a history entry by id; omit the id to undo the last entry. */
         restoreHistory: (id?: string) => Promise<void>;
         getNametag: () => string | null;
+        /**
+         * The speaking character's dialog avatar, or null. Already keyed on the differential the
+         * character is currently wearing - the engine resolves it off the live portrait element.
+         */
+        getSpeakerAvatar: () => BlueprintImageAsset | null;
         getNotifications: () => BlueprintGameNotification[];
         getChoiceCount: () => number;
         isNvlMode: () => boolean;
@@ -330,6 +336,7 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onGetHistory?: () => Promise<BlueprintGameHistoryEntry[]> | BlueprintGameHistoryEntry[];
     onRestoreHistory?: (id?: string) => Promise<void> | void;
     onGetNametag?: () => string | null;
+    onGetSpeakerAvatar?: () => BlueprintImageAsset | null;
     onGetNotifications?: () => BlueprintGameNotification[];
     onGetChoiceCount?: () => number;
     onIsNvlMode?: () => boolean;
@@ -1372,6 +1379,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onGetHistory,
         onRestoreHistory,
         onGetNametag,
+        onGetSpeakerAvatar,
         onGetNotifications,
         onGetChoiceCount,
         onIsNvlMode,
@@ -2568,6 +2576,18 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 try {
                     const value = onGetNametag ? onGetNametag() : scope.globalGet(BLUEPRINT_GAME_NAMETAG_STATE_KEY);
                     return normalizeBlueprintNametag(value);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getSpeakerAvatar: () => {
+                const cap = "game.getSpeakerAvatar";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const value = onGetSpeakerAvatar
+                        ? onGetSpeakerAvatar()
+                        : scope.globalGet(BLUEPRINT_GAME_SPEAKER_AVATAR_STATE_KEY);
+                    return normalizeBlueprintImageAssetValue(value);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
