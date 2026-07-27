@@ -118,9 +118,7 @@ luminosity）的 merge 按钮直接 disabled，只能 skip。
 ## 6. 明确不做
 
 - 常驻 PSD、双向同步、增量回流——母卡已裁决不做。
-- 规模守卫（图层数/单层像素/总体积上限提示）：仍未做，登记在 §8。
-- 合并落点跨组：`toBakeTargets` 把 merge 挂到下方最近的一个**叶子**上，而组会塌成多个叶子
-  （一个 tag 一个），所以一个压在组上方的 multiply 只会并进最上面那个 tag。见 §8。
+- `dissolve`：随机且抖动图案未公开，只能 skip。见 §8。
 
 ## 7. 向导验收（2026-07-26，orchestrator 亲手驱动 + 亲自读图）
 
@@ -179,10 +177,69 @@ fixture 用 `ag-psd` 的 `writePsdBuffer` 现造，64×64，`children` 自下而
 **基线**：五个 tsconfig 全绿；vitest 2433 通过 / 8 失败，8 条仍是 win32 既有基线（未新增失败）。
 PSD 相关单测从 24 条增到 **38** 条（plan 20 / bake 13 / blend 5），另加 builder 11 条。
 
-## 8. 留下的口子
+## 8. §7 之后补的三件事（口子已收）
 
-- **规模守卫**：一份 60 层的 PSD 会造 60 个资产、每个都是全画布 PNG，向导现在一句提示都没有。
-- **合并落点跨组**（§6 第三条）：压在一个组上方的 multiply 只会并进该组最上面那个 tag，
-  别的 tag 得不到这层阴影。fixture 特意把 `Shade` 放在组下方绕开了这一点，所以本轮**没有验**它。
-  正确做法多半是「并进该组每一个 tag」，但那是改 `toBakeTargets` 的语义，单独一卡。
-- **非可分离模式只能 skip**：hue/saturation/color/luminosity 的层现在只能丢，不能保留。
+上一轮 §8 记的三个口子已全部做掉，验收见 §9。
+
+**1. 合并落点跨组** —— 这是三件里唯一的真缺陷。`toBakeTargets` 把 merge 挂到下方最近的一个
+**叶子**上，而一个组会塌成多个叶子（一个 tag 一个），所以压在组上方的 multiply 只并进最上面那个
+tag：作者一切差分，阴影就没了。改成**并进该组的每一个 tag**——PS 里它就压在整个组上方，
+哪个 tag 亮着它都在。实现上只需在 `planImport` 里把 `bases[last]` 换成「与它同组的全部 base」；
+组的叶子在 `flattenLeaves` 里是连续的，而 merge 叶又排在它们之后，所以此刻 `bases` 已经收齐整组。
+代价要认：阴影像素会**按 tag 存一份**，宽轴上的大调整层是真占盘。
+
+**2. 非可分离混合模式** —— 原来的判断是「做错了比不做更糟」，但 W3C 合成规范把
+hue/saturation/color/luminosity 写死了（`Lum`/`ClipColor`/`SetLum`/`Sat`/`SetSat`），
+Photoshop 实现的就是它，照抄即可，不是近似。顺带补了 PS 自己的 darkerColor/lighterColor
+（整像素择一）。`blendOver` 改成每像素先算出整条 RGB 三元组，再走 Porter-Duff。
+**`dissolve` 仍然拒绝**——它是随机的，PS 的抖动图案没有公开，每次烘焙都会不一样。
+
+一个测试上的坑：`saturation` 的结果饱和度**不一定**等于源的饱和度——`SetLum` 会把通道顶出色域，
+规范的 `ClipColor` 再把它拉回来，而拉回来的办法就是**降饱和度**。这是正确行为，所以那条性质
+只能用不会溢出的颜色对来验。
+
+**3. 规模守卫** —— `estimateImportCost` 报「N 层 · 约 X MB」，超过 24 层或 256 MB 转警告色。
+不拦截：60 层的立绘是合法的，只有作者能判断。两笔成本在「选择的那一刻」都看不见——
+每层各成一个资产，且每层都烘到**全画布**，所以解码内存是 层数 × 画布，跟每层画了多少无关。
+
+**两张表必须同步**：`MERGEABLE_BLEND_MODES`（shared，向导用来置灰）和 worker 里的 `canMerge`
+（实现）跨进程重复了一份。向导必须在作者点下去**之前**就把做不到的选项灰掉，烘焙后再说太晚，
+所以这份重复是有意的——`blendModes.test.ts` 里那条遍历断言是唯一防止它们漂移的东西。
+
+## 9. 三件事的验收（2026-07-26，orchestrator 亲手驱动 + 亲自读图）
+
+这一轮直接拿 **demo PSD** 验，因为它本来就是为了同时踩满这三条造的：
+`project/demo/make-demo-psd.js` 用工程自带的 `Nattou.png`（1088×1984，真立绘）当底，
+其余全部现画 —— `Warm tint`(剪贴) / `Rim light`(剪贴 + **color**) / `Mood/`{Calm,Angry}(裁过的脸部图) /
+`Shade`(**multiply**，压在组**上方**) / `Grain`(**dissolve**) / `Scratch (WIP)`(隐藏)。
+
+| # | 判据 | 结果 |
+|---|---|---|
+| 1 | 三条拦截行与可合并性 | ✅ `Rim light[color]` 与 `Shade[multiply]` merge **可用**；`Grain[dissolve]` merge **禁用**，只能 skip |
+| 2 | 规模读数 | ✅ 决定前「5 layers · ~41 MB」，决定后「3 layers · ~25 MB」（3 × 1088×1984×4 = 25.9MB），`heavy=false` |
+| 3 | 跨组合并在 UI 上可见 | ✅ 「+ Shade (multiply) merged in」在 Mood 下出现**两次**，每个 tag 一条 |
+| 4 | 跨组合并在像素上成立 | ✅ Calm 与 Angry 在 (544,1500) **完全相同**：`(91,104,151,98)`——正是画上去的阴影色 [92,104,150]。修之前 Calm 在这里是全透明 |
+| 5 | 差分本身仍然只属于自己 | ✅ Angry 在 (749,237) 是 `(214,38,46,255)`（怒气符），Calm 同点全透明 |
+| 6 | 非可分离模式真的合成了 | ✅ Body 在 (200,1000) 是 `(146,176,191,255)`——偏蓝，`color` 模式的 Rim light 进了像素 |
+| 7 | 剪贴仍然把它们关在角色里 | ✅ Body 在 (0,0) α=0；(544,1500) 是 `(237,191,177,254)`（暖调），说明 Warm tint 也进了像素 |
+| 8 | 等画布 | ✅ 三张资产都是 1088×1984 |
+| 9 | 映射与指纹 | ✅ 1 轴 `Mood`{Calm,Angry} + 2 层（Body 常量 / Mood 绑轴且 options 全非空）；指纹三条 slot |
+
+命名：`000-Nattou_Body.png` / `001-Nattou_Mood_Calm.png` / `002-Nattou_Mood_Angry.png`。
+
+![向导：三条决定与两次 merged in](reports/assets/l3-demo-wizard.png)
+![Calm](reports/assets/l3-demo-calm.png)
+![Angry —— 怒气符出现，腿上的阴影还在](reports/assets/l3-demo-angry.png)
+
+**基线**：五个 tsconfig 全绿；vitest 与既有 win32 基线一致（8 条既有失败，无新增）。
+PSD 相关单测 38 → **50** 条（plan 26 / bake 13 / blend 11），另加 builder 11 条。
+
+演示路线写在 `docs/demo-layered-sprite.md`。
+
+## 10. 仍然没做
+
+- **合并落点的存储代价**：并进每个 tag 意味着阴影像素按 tag 各存一份。宽轴 + 大调整层会明显占盘，
+  真正的解法是引擎支持「组之上的一层」，那是引擎卡。
+- `dissolve` 永远只能 skip（除非有人逆出 PS 的抖动图案）。
+- 头像裁剪 `portrait`、preset↔layered 冷切换、Dev Mode 快照合成、预览与合成器摆放不一致 ——
+  都在交接文档 `-025` §3，各自独立成卡。
