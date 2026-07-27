@@ -23,6 +23,12 @@ rm -rf "$ISO"
 mkdir -p "$ISO"
 git archive "$BRANCH" | tar -x -C "$ISO"
 cp yarn.lock "$ISO/"                       # gitignored, but yarn 4 refuses to run without it
+# ...and yarn 4 also refuses with "Couldn't find the node_modules state file" unless this comes
+# along, which only bites the commands run THROUGH yarn (`yarn lint`, `yarn build:*`). Launching
+# with `node project/app/dev-electron.js` directly never needed it, so it stayed missing until a
+# card audit tried to build in one of these trees.
+mkdir -p "$ISO/.yarn"
+[ -f .yarn/install-state.gz ] && cp .yarn/install-state.gz "$ISO/.yarn/"
 
 # A fresh profile every round: probes leave selected rows and open tabs behind, and a state that
 # has been probed can no longer reproduce "nothing selected" (handoff 6.9). Seeded by COPYING the
