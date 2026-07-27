@@ -408,7 +408,12 @@ function DevModeDebugOverlay(props: {
                         aria-label={activePanel === "story" ? t("devMode.runtime.title") : t("devMode.devtools.title")}
                         className={
                             panelFloating
-                                ? "pointer-events-auto absolute z-30 overflow-hidden rounded-lg border border-edge shadow-2xl"
+                                // A plain border rather than a `ring`: the game window has
+                                // narraleaf-react's own Tailwind v4 sheet in it, which is already
+                                // known to neutralise v3 utilities that ride on CSS custom
+                                // properties, and the one line separating this panel from the stage
+                                // under it is not a good place to find out.
+                                ? "pointer-events-auto absolute z-30 overflow-hidden rounded-lg border border-edge-strong shadow-2xl"
                                 : "pointer-events-auto relative z-30 h-full shrink-0 overflow-hidden"
                         }
                         style={panelFloating
