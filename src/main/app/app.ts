@@ -169,6 +169,55 @@ export class App extends BaseApp {
     }
 
     /**
+     * How long to wait for one workspace to write out its pending auto-saves.
+     *
+     * Generous, because it covers a megabyte-plus of JSON on a slow disk, but finite: the renderer
+     * applies its own per-store ceiling, and this is the backstop for a renderer that has stopped
+     * answering at all. Exceeding it costs the last few seconds of edits; waiting forever costs a
+     * window that will not close.
+     */
+    private static readonly FlushPendingSavesTimeoutMs = 15 * 1000;
+
+    /**
+     * Have a workspace write out everything it still owes the disk, and wait for it.
+     *
+     * The renderer's auto-save is debounced, so at any instant there is usually an edit that has
+     * been typed but not written. Once the window is gone, so is the timer that would have written
+     * it - and so is the `app://fs` PUT it would have travelled on. This is the only point where
+     * that debt can still be settled.
+     *
+     * Never throws: a workspace that cannot save is not a reason to refuse to close.
+     */
+    public async flushWorkspacePendingSaves(window: AppWindow<WindowAppType.Workspace>): Promise<void> {
+        if (window.isClosed()) {
+            return;
+        }
+        try {
+            const result = await window.invokeIpcRequest(
+                IPCEventType.workspaceFlushPendingSaves,
+                {},
+                { timeoutMs: App.FlushPendingSavesTimeoutMs },
+            );
+            if (!result.success) {
+                this.logger.warn(`[Workspace] Pending saves could not be flushed: ${result.error}`);
+            } else if (!result.data.flushed) {
+                this.logger.warn("[Workspace] Some stores failed to flush; see the workspace's Storage console channel");
+            }
+        } catch (error) {
+            this.logger.warn(`[Workspace] No answer to the pending-save flush: ${String(error)}`);
+        }
+    }
+
+    /** Flush every open workspace concurrently. Used on the way out of the app. */
+    public async flushAllWorkspacesPendingSaves(): Promise<void> {
+        const workspaces = this.windowManager.getWindows().filter(
+            (window): window is AppWindow<WindowAppType.Workspace> =>
+                !window.isClosed() && window.getWindowType() === WindowAppType.Workspace,
+        );
+        await Promise.allSettled(workspaces.map(window => this.flushWorkspacePendingSaves(window)));
+    }
+
+    /**
      * Decide what closing a workspace means, honouring the user's preferences: confirm first if
      * asked, then either fall back to the launcher or let the close stand (which quits the app
      * when this was the last window).
@@ -180,6 +229,11 @@ export class App extends BaseApp {
                 return;
             }
         }
+
+        // Confirm first, flush second: asking the renderer to write while a modal is up would
+        // block on a dialog, and a user who answers "don't close" should keep their timers running
+        // rather than get a write they did not ask for.
+        await this.flushWorkspacePendingSaves(window);
 
         // The app may have started quitting, or the window may be gone, while the sheet was up.
         // Reopening the launcher now would resurrect a window in the middle of a quit.
@@ -375,8 +429,19 @@ export class App extends BaseApp {
         // forceClose() is deliberate wherever the opener is retired below: opening a project is
         // not a "close this workspace" gesture, so it must skip the close guard's confirm sheet
         // and return-to-launcher, which would otherwise interrupt the open or flash the home
-        // window. Changes auto-save, so nothing is lost.
-        const retireOpener = () => {
+        // window.
+        //
+        // Skipping the close guard also skips the flush it performs, so this does it itself. The
+        // comment that used to sit here said "changes auto-save, so nothing is lost"; the auto-save
+        // is debounced, and forceClosing a workspace 300ms after the last keystroke lost exactly
+        // that keystroke.
+        const retireOpener = async () => {
+            if (opener.isClosed()) {
+                return;
+            }
+            if (opener.getWindowType() === WindowAppType.Workspace) {
+                await this.flushWorkspacePendingSaves(opener as AppWindow<WindowAppType.Workspace>);
+            }
             if (!opener.isClosed()) {
                 opener.forceClose();
             }
@@ -390,7 +455,7 @@ export class App extends BaseApp {
             }
             existing.focus();
             if (openerIsLauncher) {
-                retireOpener();
+                await retireOpener();
             }
             return existing;
         }
@@ -414,7 +479,7 @@ export class App extends BaseApp {
         if ((openerIsLauncher || replaceOpener) && workspaceWindow !== opener) {
             workspaceWindow.onLoadResult(ok => {
                 if (ok) {
-                    retireOpener();
+                    void retireOpener();
                 }
             });
         }

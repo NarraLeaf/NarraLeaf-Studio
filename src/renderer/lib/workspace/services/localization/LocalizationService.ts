@@ -28,6 +28,8 @@ import type { StoryDocument } from "@shared/types/story";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
 import { ILocalizationService, Services, WorkspaceContext } from "../services";
+import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver } from "../autosave/DebouncedSaver";
+import { registerAutoSaver } from "../autosave/SaveStatusService";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { EventEmitter } from "../ui/EventEmitter";
@@ -68,13 +70,18 @@ export class LocalizationService extends Service<LocalizationService> implements
     private keysDocument: LocalizationKeysDocument | null = null;
     private keysDirty = false;
     private readonly events = new EventEmitter<LocalizationServiceEvents>();
-    private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
-    private readonly autoSaveDelay = 800;
+    private readonly autoSaver = new DebouncedSaver({
+        delayMs: DEFAULT_AUTOSAVE_DELAY_MS,
+        maxWaitMs: DEFAULT_AUTOSAVE_MAX_WAIT_MS,
+        save: () => this.writeDirtyDocuments(),
+        onError: err => console.warn("[LocalizationService] auto-save failed", err),
+    });
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
         const projectService = ctx.services.get<ProjectService>(Services.Project);
         await depend([filesystemService, projectService]);
+        await registerAutoSaver(ctx, depend, "localization", "workspace.shell.save.stores.localization", this.autoSaver);
         // Preload the named-key registry: synchronous consumers (widget inspector
         // key pickers, blueprint dynamic options) read it via getKeysIfLoaded().
         void this.loadKeys().catch(() => undefined);
@@ -265,21 +272,27 @@ export class LocalizationService extends Service<LocalizationService> implements
     }
 
     public async flushPendingChanges(): Promise<void> {
-        if (this.autoSaveTimer) {
-            clearTimeout(this.autoSaveTimer);
-            this.autoSaveTimer = null;
-        }
-        const locales = [...this.dirtyLocales];
-        this.dirtyLocales.clear();
-        for (const locale of locales) {
+        await this.autoSaver.flush();
+    }
+
+    /**
+     * The write itself. Only ever reached through {@link autoSaver}, which serialises it.
+     *
+     * Each dirty flag is cleared *after* its write lands, not before: `writeDocument` throws on a
+     * rejected write, and clearing up front meant a locale that failed to save was quietly marked
+     * clean and never written again.
+     */
+    private async writeDirtyDocuments(): Promise<void> {
+        for (const locale of [...this.dirtyLocales]) {
             const document = this.documents.get(locale);
             if (document) {
                 await this.writeDocument(document);
             }
+            this.dirtyLocales.delete(locale);
         }
         if (this.keysDirty && this.keysDocument) {
-            this.keysDirty = false;
             await this.writeKeysDocument(this.keysDocument);
+            this.keysDirty = false;
         }
     }
 
@@ -460,15 +473,7 @@ export class LocalizationService extends Service<LocalizationService> implements
     }
 
     private scheduleAutoSave(): void {
-        if (this.autoSaveTimer) {
-            clearTimeout(this.autoSaveTimer);
-        }
-        this.autoSaveTimer = setTimeout(() => {
-            this.autoSaveTimer = null;
-            void this.flushPendingChanges().catch(err => {
-                console.warn("[LocalizationService] auto-save failed", err);
-            });
-        }, this.autoSaveDelay);
+        this.autoSaver.schedule();
     }
 
     private async ensureLocalizationDir(): Promise<void> {

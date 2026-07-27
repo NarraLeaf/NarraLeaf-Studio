@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Bell, BookText, CircleDot, Keyboard, Loader2, Monitor, Moon, Sun } from "lucide-react";
+import { Bell, BookText, CircleDot, Keyboard, Loader2, Monitor, Moon, Sun, TriangleAlert } from "lucide-react";
 import { useWorkspace } from "../../context";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
+import { SaveStatusService } from "@/lib/workspace/services/autosave/SaveStatusService";
 import { getInterface } from "@/lib/app/bridge";
 import { countSceneTextStats } from "@/lib/workspace/stats/storyTextStats";
 import { getSceneName } from "../story/scene-editor/storySceneBlockUtils";
@@ -65,32 +66,41 @@ export function RunStatusEntry() {
     );
 }
 
-export function UnsavedChangesEntry() {
+/**
+ * The save readout. Silent while everything is on disk; otherwise it reports the worst state across
+ * every auto-saving document store — not just the story, which is all it used to watch.
+ *
+ * `failed` is the state worth the pixels: a write that keeps being rejected retries on a backoff
+ * that never gives up, but the user still needs to know it is happening (their disk is full, their
+ * project lives on a volume that went away). Clicking retries immediately instead of waiting out the
+ * backoff.
+ */
+export function SaveStatusEntry() {
     const { t } = useTranslation();
     const { context } = useWorkspace();
-    const [dirty, setDirty] = useState(false);
+    const saveStatus = context ? context.services.get<SaveStatusService>(Services.SaveStatus) : null;
+    const status = useSyncExternalStore(
+        listener => saveStatus?.onChanged(listener) ?? (() => {}),
+        () => saveStatus?.getStatus() ?? "clean",
+    );
 
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const story = context.services.get<StoryService>(Services.Story);
-        setDirty(story.isDirty());
-        return story.onDirtyChanged(setDirty);
-    }, [context]);
-
-    if (!dirty) {
+    if (status === "clean" || status === "saving") {
+        // "Saving…" would flicker on every 800ms auto-save; the absence of the cell already means
+        // "on disk", and a save in flight is a fraction of a second away from being exactly that.
         return null;
     }
+
+    const failed = status === "failed";
     return (
         <StatusEntry
-            title={t("workspace.shell.statusBar.saveNow")}
+            emphasis={failed}
+            title={t(failed ? "workspace.shell.statusBar.retrySave" : "workspace.shell.statusBar.saveNow")}
             onClick={() => {
-                void context?.services.get<StoryService>(Services.Story).flushPendingChanges();
+                void saveStatus?.retryNow();
             }}
         >
-            <CircleDot className="h-3 w-3" />
-            <span>{t("workspace.shell.statusBar.unsavedChanges")}</span>
+            {failed ? <TriangleAlert className="h-3 w-3" /> : <CircleDot className="h-3 w-3" />}
+            <span>{t(failed ? "workspace.shell.statusBar.saveFailed" : "workspace.shell.statusBar.unsavedChanges")}</span>
         </StatusEntry>
     );
 }

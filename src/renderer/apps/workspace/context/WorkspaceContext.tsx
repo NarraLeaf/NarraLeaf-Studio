@@ -9,6 +9,7 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { translate } from "@/lib/i18n";
 import { Service } from "@/lib/workspace/services/Service";
 import { ensureWorkspaceProjectCanStart } from "@/lib/workspace/startup/workspaceProjectPreflight";
+import { flushPendingSaves } from "@/lib/workspace/services/autosave/flushPendingSaves";
 
 interface WorkspaceProviderProps {
     children: React.ReactNode;
@@ -172,8 +173,22 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
             return { success: true, data: { confirmed } };
         });
 
+        // Registered in the same mount effect as the close guard, and for the same reason: main
+        // blocks the close (and the quit) waiting for this reply. A handler that only exists once
+        // the workspace has finished starting up would leave main sitting out its full timeout
+        // every time someone closes a window during startup - when there is nothing to save at all.
+        const flushToken = getInterface().workspace.onFlushPendingSaves(async () => {
+            const currentContext = contextRef.current;
+            if (!currentContext) {
+                return { success: true, data: { flushed: true } };
+            }
+            const result = await flushPendingSaves(currentContext);
+            return { success: true, data: { flushed: result.flushed } };
+        });
+
         return () => {
             token.cancel();
+            flushToken.cancel();
         };
     }, []);
 

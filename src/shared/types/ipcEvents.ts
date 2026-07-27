@@ -116,6 +116,7 @@ export enum IPCEventType {
     workspaceImportProjectPackage = "workspace.projectPackage.import",
     workspaceExportConsoleLogs = "workspace.console.exportLogs",
     workspaceConfirmClose = "workspace.confirmClose",
+    workspaceFlushPendingSaves = "workspace.flushPendingSaves",
     workspaceResolveAssetUrl = "workspace.resolveAssetUrl",
     workspaceResolveImageAssetUrl = "workspace.resolveImageAssetUrl",
     workspaceBlueprintNavigateFromPreview = "workspace.blueprint.navigateFromPreview",
@@ -877,6 +878,21 @@ export type IPCWorkspaceEvents = {
         consumer: IPCType.Client,
         data: {};
         response: RequestStatus<{ confirmed: boolean }>;
+    };
+    /**
+     * Tells the workspace to write out every auto-save it still owes, and waits for it.
+     *
+     * The main process blocks the window close / the app quit on this reply, which is the whole
+     * point: the renderer's debounced writes go out over IPC, and once the window is torn down there
+     * is nothing left to carry them. `flushed: false` means the workspace could not persist
+     * everything (it says which stores in its own console channel); main proceeds either way rather
+     * than trapping the user in a window that will not close.
+     */
+    [IPCEventType.workspaceFlushPendingSaves]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Client,
+        data: {};
+        response: RequestStatus<{ flushed: boolean }>;
     };
     [IPCEventType.workspaceResolveAssetUrl]: {
         type: IPCMessageType.request,

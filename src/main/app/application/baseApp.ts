@@ -1,5 +1,6 @@
 // Electron
 import { app, dialog, nativeTheme } from "electron/main";
+import { crashReporter } from "electron";
 
 // Utils
 import fs from "fs";
@@ -27,6 +28,7 @@ import { PluginManager } from "./managers/pluginManager";
 import { isMainDevMode, parseMainCommandLine } from "./commandLine";
 import { applyThemeMode, getWindowBackgroundColor } from "./theme";
 import { StudioDebugServer } from "./managers/debug/studioDebugServer";
+import { installFileLogSink } from "./logging/fileLogSink";
 import { APP_DISPLAY_NAME } from "@shared/constants/app";
 
 export interface AppDependencies {
@@ -84,6 +86,7 @@ export class BaseApp {
 
         this.configureCdp();
         this.setupUserDataDir();
+        this.setupLogging();
 
         this.globalState = new GlobalStateManager(this.getUserDataDir());
         this.pluginPermissionManager = new PluginPermissionManager(this.getUserDataDir());
@@ -95,6 +98,8 @@ export class BaseApp {
         this.windowManager = new WindowManager(this);
         this.menuManager = new MenuManager(this);
         this.storageManager = new StorageManager(this);
+
+        this.setupCrashObservability();
 
         void this.prepare().catch((error) => this.failBootstrap(error));
     }
@@ -376,6 +381,48 @@ export class BaseApp {
      * Setup development userData path if running in development mode
      * This must be called before creating managers that depend on userData path
      */
+    /**
+     * Start writing the main-process log to disk, and point Electron's own `logs` path at the same
+     * directory.
+     *
+     * The `setPath` matters more than it looks on macOS: the default is
+     * `~/Library/Logs/<app name>`, which is the *same* directory for the dev build and the packaged
+     * one, so two Studios would interleave their lines into one file. Everything else already lives
+     * under the (dev-specific) userData dir; the logs now do too.
+     */
+    private setupLogging(): void {
+        const logsDir = path.join(this.getUserDataDir(), "logs");
+        installFileLogSink(logsDir);
+        try {
+            this.electronApp.setPath("logs", logsDir);
+        } catch (error) {
+            this.logger.warn("[Logging] Could not redirect Electron's log path:", error);
+        }
+        // Collect native crash dumps next to the log. Never uploaded - this is for the user handing
+        // us a folder, not telemetry.
+        crashReporter.start({ uploadToServer: false });
+    }
+
+    /**
+     * Notice the ways this app can die that are not exceptions.
+     *
+     * A GPU, utility or renderer process dying left no trace at all before this; a hung window
+     * looked identical to a slow one. All of it now reaches the log - which, since
+     * {@link setupLogging}, outlives the process that wrote it. (The renderer and hang cases are
+     * reported by `AppWindow`, which is where those events arrive.)
+     */
+    private setupCrashObservability(): void {
+        this.electronApp.on("child-process-gone", (_event, details) => {
+            if (details.reason === "clean-exit") {
+                return;
+            }
+            this.logger.error(
+                `[Crash] Child process "${details.type}"${details.name ? ` (${details.name})` : ""} exited: `
+                + `${details.reason} (exit code ${details.exitCode})`,
+            );
+        });
+    }
+
     private setupUserDataDir(): void {
         if (!this.electronApp.isPackaged) {
             const userDataPath = path.join(this.getDevTempDir(), "userData-dev");

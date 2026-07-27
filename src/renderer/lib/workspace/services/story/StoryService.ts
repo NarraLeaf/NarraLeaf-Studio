@@ -29,6 +29,8 @@ import {
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
 import { IStoryService, Services, WorkspaceContext, type StoryPluginActionRegistration } from "../services";
+import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver } from "../autosave/DebouncedSaver";
+import { registerAutoSaver } from "../autosave/SaveStatusService";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { UuidService } from "../core/UuidService";
@@ -90,8 +92,12 @@ export class StoryService extends Service<StoryService> implements IStoryService
     private dirty = false;
     private revision = 0;
     private lastSavedRevision = 0;
-    private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
-    private readonly autoSaveDelay = 800;
+    private readonly autoSaver = new DebouncedSaver({
+        delayMs: DEFAULT_AUTOSAVE_DELAY_MS,
+        maxWaitMs: DEFAULT_AUTOSAVE_MAX_WAIT_MS,
+        save: () => this.flush(),
+        onError: err => console.warn("[StoryService] auto-save failed", err),
+    });
     private readonly storyAssetLocks = new Map<StoryId, Map<string, StoryAssetLockEntry>>();
     private readonly pluginActions = new Map<string, StoryPluginActionRegistration>();
 
@@ -101,6 +107,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         const uuidService = ctx.services.get<UuidService>(Services.Uuid);
         const assetsService = ctx.services.get<AssetsService>(Services.Assets);
         await depend([filesystemService, projectService, uuidService, assetsService]);
+        await registerAutoSaver(ctx, depend, "story", "workspace.shell.save.stores.story", this.autoSaver);
 
         await this.ensureStoryDirs();
         await this.loadLibrary();
@@ -266,11 +273,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     public async flushPendingChanges(): Promise<void> {
-        if (this.autoSaveTimer) {
-            clearTimeout(this.autoSaveTimer);
-            this.autoSaveTimer = null;
-        }
-        await this.flush();
+        await this.autoSaver.flush();
     }
 
     public async reloadStory(storyId: StoryId): Promise<StoryDocument> {
@@ -1065,15 +1068,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     private scheduleAutoSave(): void {
-        if (this.autoSaveTimer) {
-            clearTimeout(this.autoSaveTimer);
-        }
-        this.autoSaveTimer = setTimeout(() => {
-            this.autoSaveTimer = null;
-            void this.flush().catch(err => {
-                console.warn("[StoryService] auto-save failed", err);
-            });
-        }, this.autoSaveDelay);
+        this.autoSaver.schedule();
     }
 
     private async flush(): Promise<void> {
