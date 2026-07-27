@@ -65,40 +65,96 @@ function createRun() {
 // --- the window has to actually be visible --------------------------------------------------------
 
 /**
- * Raise one Electron window and make it the only topmost one of that process.
+ * The launch switch that makes all of this cheap. Part of the recipe in `scenarios/_drive.js`.
  *
- * `SetForegroundWindow` from a background process is refused by the Windows foreground lock, so the
- * PowerShell side borrows the current foreground thread's input queue (`AttachThreadInput`) for the
- * call. `windowsHide` matters just as much: without it the spawned console takes the foreground
- * itself and instantly undoes the raise it was spawned to perform, which makes a retry loop
- * strictly worse than a single attempt.
+ * Chromium's Windows occlusion calculator is what turns a covered window into `document.hidden`.
+ * Measured on this machine: a fully covered window flips to hidden at ~2.1s without the switch and
+ * stays visible for the whole probe with it. So an instance launched with it can be measured while
+ * it sits behind the operator's editor, and acceptance never has to touch the foreground.
+ */
+const OCCLUSION_SWITCH = '--disable-features=CalculateNativeWinOcclusion';
+
+/** Set once we force-foreground anything, so the z-order side effects get swept on the way out. */
+let forcedAnything = false;
+
+/**
+ * Ask the OS to make a window measurable.
+ *
+ * Default mode un-minimizes WITHOUT activating and unpins anything an older run left in the
+ * always-on-top band; it cannot move the foreground. `force: true` additionally raises and takes
+ * the foreground, for scenarios that need real physical input — it is not needed to measure, and
+ * the PowerShell side refuses it outright when the window sits on another virtual desktop.
+ *
+ * `windowsHide` is load-bearing: without it the spawned console takes the foreground itself and
+ * undoes the raise it was spawned to perform, which is what made the old retry loop strictly worse
+ * than a single attempt.
  *
  * Scoped by pid AND exact title on purpose — this machine routinely has another session's Studio
- * running, and a title-only sweep will happily pin someone else's window on top of their work.
+ * running, all of them titled `NarraLeaf - workspace`. Without a pid the script does the one thing
+ * that is safe on a stranger's window (drop it out of the topmost band) and refuses the rest.
  */
-function raiseWindow(title, procId) {
+function raiseWindow(title, procId, { force = false, off = false, allowDesktopSwitch = false } = {}) {
     const args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', FOCUS_PS1, '-Title', title];
     if (procId) args.push('-ProcId', String(procId));
+    if (force) args.push('-Force');
+    if (allowDesktopSwitch) args.push('-AllowDesktopSwitch');
+    if (off) args.push('-Off');
+    if (force) forcedAnything = true;
     return execFileSync('powershell.exe', args, { encoding: 'utf8', windowsHide: true }).trim();
 }
 
 /**
+ * Drop every window of the instance out of the always-on-top band.
+ *
+ * Registered on `exit` the moment anything is forced, because the failure that made this necessary
+ * was not a bug in a scenario: it was scenarios ending — normally, or by throwing — and leaving a
+ * Studio window pinned over the operator's work with nothing left running to unpin it.
+ */
+function releaseWindows(procId = process.env.NLS_VERIFY_PID) {
+    // `-Off` unpins every window of the process regardless of title, so one call covers all three.
+    try { return raiseWindow(WINDOWS.workspace, procId, { off: true }); } catch { return null; }
+}
+
+process.on('exit', () => {
+    if (forcedAnything) releaseWindows();
+});
+
+/**
  * Hard guard: refuse to measure a backgrounded window.
  *
- * Raises ONCE and then polls. Re-raising in a loop does not work (see `raiseWindow`), and a second
- * Studio instance driven by another session will push ours back down seconds later, so any single
- * visible sample counts as the guard passing.
+ * The cheap path is the whole point — with `OCCLUSION_SWITCH` on the launch line `document.hidden`
+ * is already false and nothing is spawned, nothing is raised, and the operator's foreground is left
+ * alone. Only a MINIMIZED window still reports hidden with the switch on, and un-minimizing needs
+ * no foreground, so that is all the fallback does. It runs ONCE: re-running it cannot help, and the
+ * old `i % 4` loop meant up to six foreground grabs per call across a dozen calls per scenario.
+ *
+ * Set `NLS_VERIFY_ALLOW_FOCUS=1` to let the guard escalate to a real raise. That is for driving
+ * physical input, not for measuring, and it will still refuse to switch virtual desktops.
  */
 async function assertVisible(driver, windowTitle, procId = process.env.NLS_VERIFY_PID) {
-    for (let i = 0; i < 24; i += 1) {
-        if (windowTitle && i % 4 === 0) {
-            try { raiseWindow(windowTitle, procId); } catch { /* best effort */ }
-        }
-        if (!(await driver.evaluate('document.hidden'))) return true;
-        if (!windowTitle) break;
-        await sleep(500);
+    if (!(await driver.evaluate('document.hidden'))) return true;
+    if (!windowTitle) {
+        throw new Error('document.hidden === true and no window title was given — refusing to measure a backgrounded window');
     }
-    throw new Error(`document.hidden === true${windowTitle ? ` 10s after raising "${windowTitle}"` : ''} — refusing to measure a backgrounded window`);
+
+    for (const force of process.env.NLS_VERIFY_ALLOW_FOCUS === '1' ? [false, true] : [false]) {
+        try { raiseWindow(windowTitle, procId, { force }); } catch { /* best effort */ }
+        for (let i = 0; i < 8; i += 1) {
+            await sleep(500);
+            if (!(await driver.evaluate('document.hidden'))) return true;
+        }
+    }
+
+    const lines = [
+        `document.hidden === true for "${windowTitle}" — refusing to measure a backgrounded window.`,
+        `        Launch the instance with ${OCCLUSION_SWITCH} so a covered window stays measurable,`,
+        '        or un-minimize it. Acceptance deliberately no longer steals the foreground to fix this.',
+    ];
+    if (!procId) {
+        lines.push('        NLS_VERIFY_PID is unset, so the un-minimize fallback refused to act: with no pid it'
+            + " would have matched another session's Studio by title.");
+    }
+    throw new Error(lines.join('\n'));
 }
 
 // --- finding and reaching controls ---------------------------------------------------------------
@@ -360,9 +416,11 @@ const SCENE_GRAPH = function () {
 
 module.exports = {
     WINDOWS,
+    OCCLUSION_SWITCH,
     sleep,
     createRun,
     raiseWindow,
+    releaseWindows,
     assertVisible,
     call,
     probe,
