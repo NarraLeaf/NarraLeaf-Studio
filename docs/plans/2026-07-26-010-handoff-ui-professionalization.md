@@ -126,6 +126,14 @@ U2 / U3b 又添了五个，都是新种类（2026-07-26）：
    另一次我把场景描述写进了真实 demo3。规矩：收尾跑**指纹校验**，写操作先存原值、无论成败都写回。
 8. **窗口 `document.hidden` 时一切计时都是假的**——Electron 后台窗口 rAF 挂起、React commit 推迟，
    同一条延迟量出 5.1s；窗口可见时是 **99/10/105ms**。**量时间前先断言 `document.hidden === false`。**
+   **8b（2026-07-27 修正，读到这条就照新的做）**：当初为了满足 8，验收会去抢前台并把窗口设成
+   TOPMOST 且从不撤销，结果是把机器主人的桌面当成了草稿纸——窗口常驻置顶、每个 `onWindow` 抢一次
+   焦点、窗口被挪到别的虚拟桌面还会把人整个拽回去。**正确做法是起实例时加
+   `--disable-features=CalculateNativeWinOcclusion`（`yarn dev:verify` 已内置）**：关掉 Chromium 的
+   遮挡计算后，被完全遮住的窗口照样报 `hidden=false`（实测不加时 ~2.1s 翻 true，加了全程 false），
+   于是验收可以在窗口埋在编辑器后面时进行，**一次前台都不用抢**。只有**最小化**仍会 hidden，
+   而那个用 `SW_SHOWNOACTIVATE` 还原即可，不激活、不切桌面。`assert.js` 的守卫现在就是这样：
+   缺开关时它**报错并告诉你加开关**，不会再靠抢焦点把自己弄绿。
 9. **我自己的探针污染了持久化视图状态**——探针跑过之后每个场景都存了选中行，
    于是"无选中"这个状态再也复现不出来。规矩：验收用的 profile 留一份 pristine 副本，每轮拷回。
 
@@ -194,7 +202,9 @@ U2 / U3b 又添了五个，都是新种类（2026-07-26）：
 
 - `tools/ui-verify/drive.js`：机械 CDP 驱动（连接/截图/点击/求值）。
   `NODE_PATH=D:/Dev/org/NarraLeaf/NarraLeaf-Studio/node_modules node tools/ui-verify/drive.js targets`
-- `yarn dev` 起（detached Electron，CDP 9222）／`yarn stop --dry-run` 查／`yarn stop` 停
+- **验收用 `yarn dev:verify` 起**（= `yarn dev` + `--disable-features=CalculateNativeWinOcclusion`，
+  见 §6.8b；`yarn dev` 保持原样，因为关掉遮挡计算会让 dev 下的 `document.hidden` 与产品不一致）／
+  `yarn stop --dry-run` 查／`yarn stop` 停
 - 启动器点 "Demo" 进工作区；`First Day`（12 行）是本轮所有基线用的夹具
 - 视口 1400×902 CSS @ dpr 1.25；截图像素 = CSS × 1.25
 - 调试面板是 tween 滑入的，**动画未 settle 时读 rect 会整体偏 380px**——连续两次读数一致再信
@@ -209,7 +219,8 @@ git archive <branch> | tar -x -C <isoDir>
 cp yarn.lock <isoDir>/                     # 被 gitignore，yarn 4 没它会拒绝跑
 mklink /J <isoDir>\node_modules <repo>\node_modules
 cp -r .dev/temp/userData-dev <isoDir>/.dev/temp/     # 再另存一份 pristine，每轮拷回
-NLS_DEV_RELOAD_PORT=<p2> node project/app/dev-electron.js --cdp --cdp-port=<p1>
+NLS_DEV_RELOAD_PORT=<p2> node project/app/dev-electron.js --cdp --cdp-port=<p1> \
+    --disable-features=CalculateNativeWinOcclusion    # 见 §6.8b，不加验收会红并让你加
 ```
 
 停实例**必须带同一个 `NLS_DEV_RELOAD_PORT`**，否则 stop-dev 找不到会话、下次启动报端口占用。

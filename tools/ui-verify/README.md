@@ -2,7 +2,15 @@
 
 Mechanical CDP driver for UI verification runs. Drive only — no assertions, no scenarios.
 
-1. **Start an instance**: `yarn dev` (spawns Electron with `--cdp --cdp-port=9222`). `yarn stop` ends it.
+> **The machine belongs to someone who is using it.** A verification run may not take the foreground,
+> pin a window on top, or drag the operator to another virtual desktop. Start the instance with
+> `yarn dev:verify` (or add `--disable-features=CalculateNativeWinOcclusion` to your own launch line)
+> and none of that is necessary: a covered window keeps reporting `document.hidden === false`, so it
+> can be measured while it sits behind the editor. Without the switch the visibility guard in
+> `assert.js` fails with an error telling you to add it — it will not "fix" the problem by grabbing
+> focus. See the note at the top of `focus.ps1`.
+
+1. **Start an instance**: `yarn dev:verify` (spawns Electron with `--cdp --cdp-port=9222`). `yarn stop` ends it.
 2. **Pick a window**: `node tools/ui-verify/drive.js targets`, then pass a substring of its title/url as
    `--target` (`launcher`, `workspace`, `dev-mode`).
 3. **Drive it**: `shot <name>` / `click <x> <y>` / `keys <spec>...` / `eval <expr>`. Screenshots land in
