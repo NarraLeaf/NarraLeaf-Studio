@@ -1,4 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+    type Dispatch,
+    type PointerEvent as ReactPointerEvent,
+    type ReactNode,
+    type SetStateAction,
+} from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Bug, Check, ChevronsRight } from "lucide-react";
 import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFrame";
@@ -14,6 +24,7 @@ import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBluep
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import { BlueprintRuntimeDebugPanel } from "./BlueprintRuntimeDebugPanel";
 import { StoryRuntimeDebugPanel } from "./StoryRuntimeDebugPanel";
+import type { DevModePanelChrome } from "./DevModePanelChrome";
 import { GameApp } from "@/lib/ui-editor/runtime/app/GameApp";
 import type {
     GameAppBootAction,
@@ -73,6 +84,54 @@ type DevModeDebugPanelId = "none" | "blueprint" | "story";
 /** Width the debug drawer takes off the stage while it is open. */
 const DEBUG_PANEL_WIDTH = 380;
 
+/** Gap kept between a floating panel and the edge of the run area, and the clamp it is held to. */
+const FLOAT_PANEL_MARGIN = 16;
+
+/**
+ * How tall a floating panel is: tall enough to read a timeline in, short enough that it can still be
+ * moved vertically. `h-full` would be a panel that floats and cannot be dragged out of the way in
+ * the one axis that matters, which is the failure this card exists to avoid.
+ */
+const FLOAT_PANEL_HEIGHT = `min(560px, calc(100% - ${FLOAT_PANEL_MARGIN * 2}px))`;
+
+/** Position of a floating panel inside the run area; `null` means "still at the default anchor". */
+type FloatPanelPosition = { x: number; y: number } | null;
+
+function clamp(value: number, min: number, max: number): number {
+    return Math.min(Math.max(value, min), max);
+}
+
+/**
+ * The box a floating panel is clamped inside, and where the panel currently sits in it.
+ *
+ * Read off the DOM rather than tracked in state on purpose: the run area is the panel's own
+ * `offsetParent`, so this is the same box the browser positions it against, and it stays correct
+ * whether the panel is anchored by `right` (its default) or by an explicit `left` from a drag.
+ */
+function measureFloatBounds(panel: HTMLElement | null): {
+    left: number;
+    top: number;
+    minX: number;
+    maxX: number;
+    minY: number;
+    maxY: number;
+} | null {
+    const parent = panel?.offsetParent as HTMLElement | null;
+    if (!panel || !parent) {
+        return null;
+    }
+    const area = parent.getBoundingClientRect();
+    const box = panel.getBoundingClientRect();
+    return {
+        left: box.x - area.x,
+        top: box.y - area.y,
+        minX: FLOAT_PANEL_MARGIN,
+        maxX: Math.max(FLOAT_PANEL_MARGIN, area.width - box.width - FLOAT_PANEL_MARGIN),
+        minY: FLOAT_PANEL_MARGIN,
+        maxY: Math.max(FLOAT_PANEL_MARGIN, area.height - box.height - FLOAT_PANEL_MARGIN),
+    };
+}
+
 /** Studio-only debug tools: floating action button, tools menu, and the live-debug panels. */
 function DevModeDebugOverlay(props: {
     core: BlueprintRuntimeCore;
@@ -86,16 +145,29 @@ function DevModeDebugOverlay(props: {
     /** Owned by DevModeContent so the drawer survives a game-session remount (every timeline jump). */
     activePanel: DevModeDebugPanelId;
     setActivePanel: (update: (previous: DevModeDebugPanelId) => DevModeDebugPanelId) => void;
+    /** Dock/float mode, owned at the same level and for the same reason as `activePanel`. */
+    panelFloating: boolean;
+    setPanelFloating: Dispatch<SetStateAction<boolean>>;
+    floatPosition: FloatPanelPosition;
+    setFloatPosition: Dispatch<SetStateAction<FloatPanelPosition>>;
 }) {
     const {
         core, bundle, uidoc, activeSurfaceId, widgetRuntimeStore, projectPath, fastForwardToNextChoice, storyRuntime,
         activePanel, setActivePanel,
+        panelFloating, setPanelFloating, floatPosition, setFloatPosition,
     } = props;
     const { t } = useTranslation();
     const [devtoolsMenuOpen, setDevtoolsMenuOpen] = useState(false);
     const [fastForwarding, setFastForwarding] = useState(false);
     const devtoolsFabRef = useRef<HTMLButtonElement>(null);
     const devtoolsMenuRef = useRef<HTMLDivElement>(null);
+    const panelRef = useRef<HTMLDivElement | null>(null);
+    /** Where the panel is being dragged to right now; `null` whenever no drag is in flight. */
+    const [dragPosition, setDragPosition] = useState<FloatPanelPosition>(null);
+    /** Tears down an in-flight title-bar drag (also on unmount, so no listener outlives the panel). */
+    const endDragRef = useRef<(() => void) | null>(null);
+    useEffect(() => () => endDragRef.current?.(), []);
+    const activeFloatPosition = dragPosition ?? floatPosition;
 
     // Mirror the play head to the workspace story editor (row highlight) whenever a story runs, even
     // with the debug panels closed. Coalesced to one forward per frame; the workspace reveals the row
@@ -217,19 +289,148 @@ function DevModeDebugOverlay(props: {
         return () => window.removeEventListener("keydown", onKeyDown);
     }, [devtoolsMenuOpen, activePanel]);
 
+    /**
+     * Drag a floating panel by its title bar.
+     *
+     * Real pointer input: `pointerdown` on the title bar, then `pointermove` / `pointerup` on the
+     * window. HTML5 `draggable` is not an option here — in this repo it needs a `.nl-drag-source`
+     * opt-in, and it would be dragging a *thing* rather than moving a window-like panel.
+     *
+     * Two details that are not incidental:
+     *  - the window listeners are registered in the CAPTURE phase, so a `stopPropagation` anywhere
+     *    inside the running game (whose stage is directly under the panel) cannot swallow the drag;
+     *  - the live position is the overlay's OWN state and is handed to the owner only on release, so
+     *    a drag re-renders the panel and not GameApp — the whole running game — per pointermove.
+     */
+    const handleTitleBarPointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+        if (!panelFloating || event.button !== 0) {
+            return;
+        }
+        // Never steal a press aimed at a control that lives in the title bar (the snapshot select,
+        // the mode toggle). Those are not drag handles.
+        const target = event.target as HTMLElement | null;
+        if (target?.closest('button, [role="button"], [role="switch"], select, input, textarea, [role="combobox"], [role="listbox"]')) {
+            return;
+        }
+        const bounds = measureFloatBounds(panelRef.current);
+        if (!bounds) {
+            return;
+        }
+        endDragRef.current?.();
+
+        const startX = event.clientX;
+        const startY = event.clientY;
+        let moved: { x: number; y: number } | null = null;
+
+        const onMove = (move: PointerEvent): void => {
+            // Clamped every frame, not just at the end: the panel has to stay inside the run area
+            // for the whole gesture, or "drag it past the edge" briefly shows a half-off panel.
+            const next = {
+                x: clamp(bounds.left + (move.clientX - startX), bounds.minX, bounds.maxX),
+                y: clamp(bounds.top + (move.clientY - startY), bounds.minY, bounds.maxY),
+            };
+            moved = next;
+            setDragPosition(next);
+        };
+        const detach = (): void => {
+            window.removeEventListener("pointermove", onMove, true);
+            window.removeEventListener("pointerup", onUp, true);
+            window.removeEventListener("pointercancel", onUp, true);
+            endDragRef.current = null;
+        };
+        function onUp(): void {
+            detach();
+            // A press with no movement is a click on the title bar, not a drag: leave the position
+            // alone rather than pinning the panel to wherever it happened to already be. Both
+            // updates land in one render, so handing the position over never flickers.
+            if (moved) {
+                setFloatPosition(moved);
+            }
+            setDragPosition(null);
+        }
+
+        endDragRef.current = detach;
+        window.addEventListener("pointermove", onMove, true);
+        window.addEventListener("pointerup", onUp, true);
+        window.addEventListener("pointercancel", onUp, true);
+        // Suppress the text selection a press-and-drag across the title would otherwise start.
+        event.preventDefault();
+    }, [panelFloating, setFloatPosition]);
+
+    // Keep a dragged panel inside the run area when the area itself changes (window resize, the
+    // session-error banner appearing). Only ever pulls the panel back in; it never moves one that
+    // still fits.
+    useEffect(() => {
+        const panel = panelRef.current;
+        const parent = panel?.offsetParent as HTMLElement | null;
+        if (!panelFloating || !panel || !parent || typeof ResizeObserver === "undefined") {
+            return;
+        }
+        const reclamp = (): void => {
+            setFloatPosition(previous => {
+                const bounds = measureFloatBounds(panelRef.current);
+                if (!previous || !bounds) {
+                    return previous;
+                }
+                const x = clamp(previous.x, bounds.minX, bounds.maxX);
+                const y = clamp(previous.y, bounds.minY, bounds.maxY);
+                return x === previous.x && y === previous.y ? previous : { x, y };
+            });
+        };
+        const observer = new ResizeObserver(reclamp);
+        observer.observe(parent);
+        return () => observer.disconnect();
+    }, [panelFloating, activePanel, setFloatPosition]);
+
+    const panelChrome = useMemo<DevModePanelChrome>(() => ({
+        floating: panelFloating,
+        onToggleFloating: () => setPanelFloating(previous => !previous),
+        onTitleBarPointerDown: handleTitleBarPointerDown,
+    }), [panelFloating, setPanelFloating, handleTitleBarPointerDown]);
+
     return (
         <>
             <AnimatePresence>
                 {activePanel !== "none" ? (
-                    // A flex sibling of the stage, not an overlay: the stage yields the width and
-                    // re-fits (StageViewportFrame measures its own box), so opening the panel never
-                    // crops what is being debugged. Only the box animates; the body inside keeps its
-                    // full width so the panel's own layout does not reflow on the way in.
+                    // Docked, this is a flex SIBLING of the stage, not an overlay: the stage yields
+                    // the width and re-fits (StageViewportFrame measures its own box), so opening the
+                    // panel never crops what is being debugged. Floating, the very same element goes
+                    // out of flow — which is what hands the width back to the stage, again by the
+                    // frame measuring itself rather than by anyone computing a width for it.
+                    //
+                    // One element across both modes, and one key: two elements cross-fading would put
+                    // two `role="complementary"` boxes in the DOM at once, and everything that looks
+                    // the panel up — assistive tech included — takes the first one it finds.
                     <motion.div
                         key={activePanel}
+                        ref={panelRef}
                         role="complementary"
                         aria-label={activePanel === "story" ? t("devMode.runtime.title") : t("devMode.devtools.title")}
-                        className="pointer-events-auto relative z-30 h-full shrink-0 overflow-hidden"
+                        className={
+                            panelFloating
+                                // A plain border rather than a `ring`: the game window has
+                                // narraleaf-react's own Tailwind v4 sheet in it, which is already
+                                // known to neutralise v3 utilities that ride on CSS custom
+                                // properties, and the one line separating this panel from the stage
+                                // under it is not a good place to find out.
+                                ? "pointer-events-auto absolute z-30 overflow-hidden rounded-lg border border-edge-strong shadow-2xl"
+                                : "pointer-events-auto relative z-30 h-full shrink-0 overflow-hidden"
+                        }
+                        style={panelFloating
+                            ? {
+                                height: FLOAT_PANEL_HEIGHT,
+                                top: activeFloatPosition ? activeFloatPosition.y : FLOAT_PANEL_MARGIN,
+                                // Anchored to the trailing edge until it is dragged — the corner it
+                                // was docked at, and the one place a 380px panel is guaranteed not to
+                                // sit on top of the stage it is there to observe. Both edges are
+                                // always written, so switching anchors is a value change rather than
+                                // a property React has to remember to remove.
+                                left: activeFloatPosition ? activeFloatPosition.x : "auto",
+                                right: activeFloatPosition ? "auto" : FLOAT_PANEL_MARGIN,
+                            }
+                            : undefined}
+                        // Only the box animates; the body inside keeps its full width so the panel's
+                        // own layout does not reflow on the way in.
                         initial={{ width: 0 }}
                         animate={{ width: DEBUG_PANEL_WIDTH }}
                         exit={{ width: 0 }}
@@ -242,6 +443,7 @@ function DevModeDebugOverlay(props: {
                                     scopeBridge={core.scopeBridge}
                                     bundle={bundle}
                                     className="h-full min-h-0 w-full"
+                                    chrome={panelChrome}
                                 />
                             ) : (
                                 <BlueprintRuntimeDebugPanel
@@ -253,6 +455,7 @@ function DevModeDebugOverlay(props: {
                                     widgetRuntimeStore={widgetRuntimeStore}
                                     projectPath={projectPath}
                                     className="h-full min-h-0 w-full"
+                                    chrome={panelChrome}
                                 />
                             )}
                         </div>
@@ -753,6 +956,13 @@ export function DevModeContent(props: DevModeContentProps) {
     // jump relaunches the session, and state owned by the overlay itself would close the very panel
     // the jump was made from.
     const [activePanel, setActivePanel] = useState<DevModeDebugPanelId>("none");
+    // Docked or floating, and where a floating panel was last dropped. Same owner, same reason:
+    // both have to outlive closing the drawer and outlive the session remount a timeline jump
+    // causes, or the mode silently resets under the author every time they jump. Deliberately NOT
+    // persisted across Dev Mode windows — that is the snapshot selector's level of memory, and the
+    // card scopes it there.
+    const [panelFloating, setPanelFloating] = useState(false);
+    const [floatPosition, setFloatPosition] = useState<FloatPanelPosition>(null);
 
     const renderOverlays = useCallback((ctx: GameAppOverlayContext) => {
         if (!ctx.core || !ctx.activeSurface || !bundle) {
@@ -770,9 +980,13 @@ export function DevModeContent(props: DevModeContentProps) {
                 storyRuntime={ctx.storyRuntime}
                 activePanel={activePanel}
                 setActivePanel={setActivePanel}
+                panelFloating={panelFloating}
+                setPanelFloating={setPanelFloating}
+                floatPosition={floatPosition}
+                setFloatPosition={setFloatPosition}
             />
         );
-    }, [bundle, projectPath, activePanel]);
+    }, [bundle, projectPath, activePanel, panelFloating, floatPosition]);
 
     if (!bundle || !host) {
         return (

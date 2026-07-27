@@ -37,6 +37,10 @@ export const devMode = {
         contextRunning: "正在运行",
         currentScene: "当前",
     },
+    panel: {
+        float: "浮动面板",
+        dock: "停靠面板",
+    },
     blueprints: {
         empty: "暂无蓝图",
         openWorkspace: "工作区",
