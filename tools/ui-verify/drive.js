@@ -111,6 +111,40 @@ class UiDriver {
         if (settleMs > 0) await delay(settleMs);
     }
 
+    /**
+     * Press at (x1,y1), move to (x2,y2) in steps, release. Real pointer input, not a DragEvent.
+     *
+     * The steps are not decoration: a press followed by a single jump to the destination is ignored
+     * by anything that arms its drag on the first `mousemove` after `pointerdown`, and by anything
+     * with a movement threshold. The first step is deliberately small for the same reason.
+     *
+     * This drives MOUSE input, which is what a pointer-based drag listens to. It cannot drive HTML5
+     * drag-and-drop — in this repo that needs a `.nl-drag-source` opt-in and a synthesized DragEvent
+     * proves nothing about it (see the html5-drag-requires-opt-in note).
+     */
+    async drag(x1, y1, x2, y2, options = {}) {
+        const { steps = 12, settleMs = 400, holdMs = 90 } = options;
+        const from = { x: Math.round(x1), y: Math.round(y1) };
+        const to = { x: Math.round(x2), y: Math.round(y2) };
+        const base = { button: 'left', modifiers: 0 };
+        await this.client.send('Input.dispatchMouseEvent', { ...base, ...from, type: 'mouseMoved', buttons: 0 });
+        await this.client.send('Input.dispatchMouseEvent', { ...base, ...from, type: 'mousePressed', clickCount: 1, buttons: 1 });
+        await delay(holdMs);
+        for (let i = 1; i <= steps; i += 1) {
+            const t = i / steps;
+            await this.client.send('Input.dispatchMouseEvent', {
+                ...base,
+                type: 'mouseMoved',
+                x: Math.round(from.x + (to.x - from.x) * t),
+                y: Math.round(from.y + (to.y - from.y) * t),
+                buttons: 1,
+            });
+            await delay(20);
+        }
+        await this.client.send('Input.dispatchMouseEvent', { ...base, ...to, type: 'mouseReleased', clickCount: 1, buttons: 0 });
+        if (settleMs > 0) await delay(settleMs);
+    }
+
     /** Press key specs in order, e.g. keys('Escape') or keys('Control+ArrowRight', 'Enter'). */
     async keys(...specs) {
         for (const spec of specs.flat()) {
