@@ -6,10 +6,12 @@ date: 2026-07-26
 branch: feat/dialog-avatar
 ---
 
-> **进度（2026-07-26）**：WI-1 / WI-3 / WI-4 / WI-5 已落，commit `bea454a2`。
-> 运行时链路端到端通了并有测试覆盖：编译期绑 portrait + resolver、host API
-> `game.getSpeakerAvatar()`、`Get Speaker Avatar` 节点（含 pure resolver 分支）、
-> 预加载、同步 assetId→url 注册表。**WI-2 烘焙未做**，见下面「§7 剩余」。
+> **进度（2026-07-27）**：**WI-1～WI-5 全部完成**，本卡收尾。
+> 运行时链路 + 离线烘焙 + 合成 id 三条解析臂 + 打包 + 触发都已落并有测试覆盖。
+> 引擎侧顺带发了 `narraleaf-react@0.19.2`（`<Avatar>` 绕过自己的 image cache、
+> 头像从未进过预加载器——两半都修了）。
+> **下一卡（M2）**：作者 UI —— 逐差分指定覆盖头像、头像轴选择、裁剪框编辑、重烘按钮、
+> 组合数诊断，以及 `defaultAvatarAssetId` 的入口。
 
 # plan: 对话框头像
 
@@ -186,28 +188,22 @@ M2 的 UI 应该把这个数字直接摆在作者眼前。
 preset 的反查是 `currentSrc`(URL) → assetId → poseId。两个 pose 指同一张立绘时反查有歧义，
 取第一个。可接受：它们的立绘本来就一模一样。
 
-## 7. 剩余（WI-2 烘焙及其尾巴）
+## 7. WI-2 落地记录（烘焙及其尾巴）
 
-运行时链路已经通了，但**作者今天还够不到它**：没有烘焙、也没有指定覆盖的界面，
-`resolveCharacterAvatarAssetId` 恒落到角色级默认（而那个字段也还没有 UI）。
-把头像真正交到作者手上还差三件事，按依赖顺序：
-
-1. **烘焙本身**（`modules/characters/avatarBake.ts`）。纯的那半可以照 `iconBake.ts` 抄形状，
-   注入渲染器所以能在 node 里单测：
-   - 逐层 decode → 按「各层原尺寸、居中」画（`drawStack` 的同一条规则）
-   - 裁剪：pose 级 `portrait` > profile 级 `portrait` > `findHeadCrop()`（**已经是纯函数**，
-     签名 `(data, width, height)`，不需要 DOM）
-   - 缩到 256 方图 → PNG → 写 `resources/characters/avatars/<characterId>/<key>.png`
-   - 指纹**不必读源字节**：`Asset.hash` 已经在资产元数据里，指纹 = hash(有序层 hash + 裁剪框 + 边长 + 版本)
-   - `CharacterAppearance.setAvatar(key, { baked: fingerprint })` 回写
-2. **合成 id 的三条解析臂**。derived 文件不在资产库里，所以每个宿主都要认 `character-avatar:`：
-   - packaged：`gameRuntimeArtifactCompiler.ts:459` 的 `copyProjectAssets` 之后加一趟，
-     把 derived 目录扫进 `assetManifest` —— 这样 `bridge.assetUrl()` 零改动就能用
-   - workspace / Dev Mode：`workspaceResolveAssetUrl` 加一臂（Dev Mode 经它中转）
-   - `ProjectService.writeProjectIconBake` 里的目录是写死的，抽一个按 relativePath 建父目录的
-     通用版本，图标那个改成委托
-3. **触发**。照 `bakeProjectIcons` 的「safe to call on every panel open」，
-   在角色编辑器打开/保存时对账；手动重烘按钮留给 M2。
+1. **烘焙**：`avatarBake.ts`（编排，注入渲染器所以能在 node 里单测）+ `avatarRenderer.ts`（canvas 那半）。
+   与 `iconBake.ts` 同形：作者时烘、指纹门控、字节不变不写盘。
+   - 裁剪优先级：pose 级 `portrait` > profile 级 `portrait` > `findHeadCrop()`（纯函数，跑在**合成结果**上
+     ——角色的头未必由最大的那层画）
+   - 裁剪不是方的就**留白而不是拉伸**：把脸压扁比透明边更糟
+   - 指纹**不读源字节**：`Asset.hash` 已在资产元数据里。指纹 = hash(recipe + 边长 + 裁剪框 + 有序层 hash)。
+     **层 id 不入指纹**——重命名层或调轴序不改变画面，为此重烘只会无谓地搅动版本库
+   - 作者给了覆盖的差分**不烘**，并把该键下的旧烘焙删掉
+2. **合成 id 三条臂**：packaged 走打包时多扫一趟 derived 目录进 `assetManifest`；
+   workspace 与 Dev Mode 走 `resolveWorkspaceAssetUrl` 的两个 resolver（授权版与 blob 版都加了臂）。
+   `writeProjectIconBake` 抽成了按 relativePath 建父目录的 `writeProjectDerivedFile`，图标那个改成委托。
+3. **触发**：`useCharacterAvatarBake` 在角色面板打开时对账（照 `bakeProjectIcons` 的
+   「safe to call on every panel open」）。**不挂在每次编辑上**——作者拖裁剪框时编辑是连续的，
+   对每一下都渲染几十张 PNG 是纯浪费。
 
 ## 6. 待决
 
