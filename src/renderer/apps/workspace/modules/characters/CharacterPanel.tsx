@@ -9,7 +9,8 @@ import { PanelComponentProps } from "../types";
 import { useWorkspace } from "../../context";
 import { Character } from "@/lib/workspace/services/character/Character";
 import { CharacterAppearanceKind, CharacterGroup } from "@/lib/workspace/services/character/types";
-import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
+import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
+import { useCharacterAvatarBake } from "./useCharacterAvatarBake";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
@@ -68,6 +69,10 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         if (!context || !isInitialized) return null;
         return context.services.get<CharacterService>(Services.Character);
     }, [context, isInitialized]);
+
+    // Reconcile the baked dialog avatars when the panel opens. An up-to-date project performs
+    // reads only, so the common case leaves the working tree untouched.
+    useCharacterAvatarBake(Boolean(characterService));
 
     const loadCharacters = useCallback(() => {
         if (!characterService) return;

@@ -4,6 +4,7 @@ import type { CharacterAppearanceSummary, DevModeCharacterSummary } from "@share
 import type { StoryAnimationAsset, StoryBlock, StoryDocument, StoryTransitionRef } from "@shared/types/story";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import { compileStudioStoryToNlr } from "@/lib/ui-editor/runtime/game/storyCompiler";
+import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
 
 /** A character with no sprites: enough to be a speaker, which is all these cases need. */
 const EMPTY_APPEARANCE: CharacterAppearanceSummary = { kind: "preset", poses: [], defaultPoseId: null };
@@ -2235,6 +2236,37 @@ describe("dialog avatars", () => {
         // A src the appearance does not know (a sprite swapped by an `/image` row) is not guessed at.
         expect(resolveAvatar(compiled, "char-alice", { currentSrc: "nlr://asset-stranger" }))
             .toBe("nlr://asset-avatar-default");
+    });
+
+    it("resolves a baked avatar through its synthetic id", async () => {
+        const alice: DevModeCharacterSummary = {
+            id: "char-alice",
+            name: "Alice",
+            appearance: {
+                kind: "preset",
+                poses: [{ id: "pose-angry", name: "Angry", assetId: "asset-angry" }],
+                defaultPoseId: "pose-angry",
+                // No override: the bake is the avatar, addressed by the id the baker wrote it under.
+                avatars: { "pose-angry": { baked: true } },
+            },
+        };
+        const requested: string[] = [];
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(enterBlock("char-alice"), ["enter"]),
+            sceneId: "scene-1",
+            characters: [alice],
+            resolveAssetUrl: async assetId => {
+                requested.push(assetId);
+                return `nlr://${assetId}`;
+            },
+        });
+
+        const bakedId = characterAvatarAssetId("char-alice", "pose-angry");
+        expect(requested).toContain(bakedId);
+        expect(resolveAvatar(compiled, "char-alice", { currentSrc: "nlr://asset-angry" }))
+            .toBe(`nlr://${bakedId}`);
+        // And the inverse the dialog bridge maps back through carries it too.
+        expect(compiled.avatarAssetIdByUrl.get(`nlr://${bakedId}`)).toBe(bakedId);
     });
 
     it("answers null rather than substituting the sprite when nothing resolves", async () => {
