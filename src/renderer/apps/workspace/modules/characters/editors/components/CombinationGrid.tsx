@@ -1,4 +1,4 @@
-import { AlertTriangle, Bookmark, X } from "lucide-react";
+import { AlertTriangle, Bookmark, UserRound, X } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import type { Combination, CombinationSet } from "@/lib/workspace/services/character/characterCombinations";
@@ -10,8 +10,11 @@ function Cell(props: {
     character: Character;
     combination: Combination;
     active: boolean;
+    /** True when this look has a hand-drawn avatar rather than a baked one. */
+    overridden: boolean;
     onPick: () => void;
     onName: () => void;
+    onAvatar: (anchor: HTMLElement) => void;
 }) {
     const { t } = useTranslation();
     const { url } = useCompositedSprite(props.character, { tags: props.combination.tags }, CELL_PX);
@@ -43,6 +46,16 @@ function Cell(props: {
                 >
                     <Bookmark className="h-3 w-3" />
                 </button>
+                <button
+                    className={[
+                        "shrink-0 rounded-md p-0.5 hover:text-fg",
+                        props.overridden ? "block text-primary" : "hidden text-fg-muted group-hover/cell:block",
+                    ].join(" ")}
+                    aria-label={t("characters.editor.avatar")}
+                    onClick={event => props.onAvatar(event.currentTarget)}
+                >
+                    <UserRound className="h-3 w-3" />
+                </button>
             </div>
         </div>
     );
@@ -62,8 +75,12 @@ export function CombinationGrid(props: {
     character: Character;
     set: CombinationSet;
     activeKey: string | null;
+    /** Avatar keys whose look the author gave their own artwork. */
+    overriddenAvatarKeys: ReadonlySet<string>;
+    avatarKeyOf: (combination: Combination) => string | null;
     onPick: (combination: Combination) => void;
     onName: (combination: Combination) => void;
+    onAvatar: (combination: Combination, anchor: HTMLElement) => void;
     onClose: () => void;
 }) {
     const { t } = useTranslation();
@@ -92,8 +109,10 @@ export function CombinationGrid(props: {
                         character={props.character}
                         combination={combination}
                         active={combination.key === props.activeKey}
+                        overridden={props.overriddenAvatarKeys.has(props.avatarKeyOf(combination) ?? "")}
                         onPick={() => props.onPick(combination)}
                         onName={() => props.onName(combination)}
+                        onAvatar={anchor => props.onAvatar(combination, anchor)}
                     />
                 ))}
             </div>

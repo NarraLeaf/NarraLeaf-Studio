@@ -39,6 +39,7 @@ import {
 } from "../../../../../buildWorker/pluginBuildDependencies";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 import { getMimeType } from "@shared/utils/fs";
+import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
 import { sanitizeProjectFileName } from "@shared/utils/nlproj";
 import { WEB_APPLE_TOUCH_FILENAME, WEB_FAVICON_FILENAME, writeWebShellFiles } from "./webShell";
 
@@ -252,6 +253,15 @@ export async function compileGameRuntimeArtifact(
             projectPath: input.projectPath,
             assetsDir,
             target,
+        });
+        // Baked character avatars are derived project files, not library assets, so the walk
+        // above never sees them. Without this pass a packaged game resolves every avatar to
+        // nothing: the runtime addresses them by a synthetic id that only the manifest answers.
+        await copyBakedCharacterAvatars({
+            projectPath: input.projectPath,
+            assetsDir,
+            target,
+            manifest: assetManifest,
         });
         // The desktop icon set feeds the window/dock; a web site instead gets
         // a favicon (best-effort - only a configured PNG qualifies).
@@ -507,6 +517,60 @@ async function copyProjectAssets(input: {
         }
     }
     return manifest;
+}
+
+/**
+ * Copy `resources/characters/avatars/<characterId>/<key>.png` into the pack, one manifest entry
+ * per file under the same synthetic id the story compiler resolves.
+ *
+ * Missing directory is not an error: a project whose characters have no avatars simply has none.
+ */
+async function copyBakedCharacterAvatars(input: {
+    projectPath: string;
+    assetsDir: string;
+    target: PackTarget;
+    manifest: Record<string, GameRuntimeAssetManifestEntry>;
+}): Promise<void> {
+    const root = path.join(input.projectPath, "resources", "characters", "avatars");
+    let characterDirs: string[];
+    try {
+        characterDirs = (await fs.readdir(root, { withFileTypes: true }))
+            .filter(entry => entry.isDirectory())
+            .map(entry => entry.name);
+    } catch {
+        return;
+    }
+
+    for (const characterId of characterDirs) {
+        const dir = path.join(root, characterId);
+        const files = (await fs.readdir(dir)).filter(name => name.toLowerCase().endsWith(".png"));
+        for (const fileName of files) {
+            const key = fileName.slice(0, -".png".length);
+            const id = characterAvatarAssetId(characterId, key);
+            const sourcePath = path.join(dir, fileName);
+            let relativePath: string;
+            if (input.target.kind === "sealed") {
+                relativePath = gameRuntimeBundleAssetEntry(id);
+                input.target.writer.add(relativePath, await fs.readFile(sourcePath));
+            } else {
+                // The synthetic id carries characters (`:`) a file name may not, so the copy is
+                // named after the bake path it came from rather than after the id.
+                const flatName = `character-avatar-${characterId}-${fileName}`;
+                relativePath = path.join("assets", flatName).replace(/\\/g, "/");
+                await fs.copyFile(sourcePath, path.join(input.assetsDir, flatName));
+            }
+            input.manifest[id] = {
+                id,
+                type: "image",
+                name: `${characterId}/${key}`,
+                source: "local",
+                relativePath,
+                originalRelativePath: path.relative(input.projectPath, sourcePath).replace(/\\/g, "/"),
+                ext: "png",
+                mimeType: "image/png",
+            };
+        }
+    }
 }
 
 async function copyRuntimePlugins(input: {

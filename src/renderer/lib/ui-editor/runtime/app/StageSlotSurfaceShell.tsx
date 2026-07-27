@@ -65,6 +65,12 @@ export type GameUiSlotHostOptions = {
     getHistoryInGame: () => BlueprintGameHistoryEntry[];
     restoreHistoryInGame: (id?: string) => Promise<void>;
     getCurrentNametag: () => string | null;
+    /**
+     * Invert a dialog-avatar URL back to the asset id it was compiled from. The engine resolves
+     * avatars to URLs; a blueprint pin carries an `ImageAsset`. Absent on hosts with no compiled
+     * story, where there are no avatars to invert.
+     */
+    resolveAvatarAssetId?: (url: string) => string | null;
     getNotificationsInGame: () => BlueprintGameNotification[];
     getChoiceCountInGame: () => number;
     isNvlModeInGame: () => boolean;

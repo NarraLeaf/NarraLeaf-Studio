@@ -416,15 +416,30 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
      * Returns whether anything was written.
      */
     public async writeProjectIconBake(relativePath: string, bytes: Uint8Array): Promise<boolean> {
+        return this.writeProjectDerivedFile(relativePath, bytes);
+    }
+
+    /**
+     * Write a derived project file, but only when its bytes actually differ from what is already
+     * there. Derived files are version-controlled project content (baked icons, baked character
+     * avatars), so an unconditional write would stamp a fresh mtime - and, on a checkout whose
+     * encoder differs by a byte, a diff - every time the panel that reconciles them opened.
+     *
+     * The parent directory is created from the path itself rather than from a fixed constant, so
+     * one derived tree does not have to know about another's layout. Returns whether anything was
+     * written.
+     */
+    public async writeProjectDerivedFile(relativePath: string, bytes: Uint8Array): Promise<boolean> {
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         const absolutePath = this.getContext().project.resolve(relativePath);
         const existing = await filesystemService.readRaw(absolutePath);
         if (existing.ok && sameBytes(existing.data, bytes)) {
             return false;
         }
-        throwException(await filesystemService.createDir(
-            this.getContext().project.resolve(ProjectNameConvention.ProjectIconDerived),
-        ));
+        const parent = relativePath.replace(/\\/g, "/").split("/").slice(0, -1).join("/");
+        if (parent) {
+            throwException(await filesystemService.createDir(this.getContext().project.resolve(parent)));
+        }
         throwException(await filesystemService.writeRaw(absolutePath, bytes));
         return true;
     }

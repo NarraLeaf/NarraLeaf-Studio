@@ -23,6 +23,10 @@ import {
 import type { UISurface } from "@shared/types/ui-editor/document";
 import { toBlueprintImageAsset, type BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import {
+    clearCharacterAvatarAssets,
+    registerCharacterAvatarAssets,
+} from "@/lib/ui-editor/runtime/characterAvatarAssets";
+import {
     BLUEPRINT_GAME_NAMETAG_STATE_KEY,
     BLUEPRINT_GAME_TEXT_READ_STATE_KEY,
     BLUEPRINT_TEXT_READ_PERSISTENCE_KEY,
@@ -608,6 +612,13 @@ export function GameApp(props: GameAppProps): ReactNode {
         return nlrLiveGameRef.current;
     }, [nlrSession?.id]);
 
+    // Read through the *mounted* session's compile, never a captured one: a recompile mints new
+    // avatar URLs, and an inverse from the previous compile would answer with a stale asset id.
+    const resolveAvatarAssetId = useCallback(
+        (url: string): string | null => nlrCompiledRef.current?.avatarAssetIdByUrl.get(url) ?? null,
+        [],
+    );
+
     const {
         getCurrentNametag,
         getNotificationsInGame,
@@ -785,6 +796,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCurrentActionTokenRef.current = null;
         currentActionIdRef.current = null;
         nlrCompiledRef.current = null;
+        clearCharacterAvatarAssets();
         detachTextReadTracker();
         preferenceSnapshotRef.current = {};
         nlrDialogVirtualClickTargetRef.current = null;
@@ -1031,6 +1043,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             getHistoryInGame,
             restoreHistoryInGame,
             getCurrentNametag,
+            resolveAvatarAssetId,
             getNotificationsInGame,
             getChoiceCountInGame,
             isNvlModeInGame,
@@ -1098,6 +1111,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCurrentActionTokenRef.current = null;
         currentActionIdRef.current = null;
         nlrCompiledRef.current = compiled;
+        registerCharacterAvatarAssets(compiled.avatarAssetIdByUrl);
         choiceRuntimeRef.current = null;
         setNlrSession({
             id: sessionId,
@@ -1122,6 +1136,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         deleteSave,
         getChoiceCountInGame,
         getCurrentNametag,
+        resolveAvatarAssetId,
         getGamePreferenceInGame,
         getHistoryInGame,
         getNotificationsInGame,
@@ -1689,6 +1704,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCurrentActionTokenRef.current = null;
         currentActionIdRef.current = null;
         nlrCompiledRef.current = null;
+        clearCharacterAvatarAssets();
         detachTextReadTracker();
         preferenceSnapshotRef.current = {};
         nlrDialogVirtualClickTargetRef.current = null;

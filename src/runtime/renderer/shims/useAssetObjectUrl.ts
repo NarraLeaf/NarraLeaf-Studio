@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { resolveDevModeSavePreviewImageUrl } from "@/lib/ui-editor/runtime/devModeSavePreviewAssets";
+import { resolveCharacterAvatarAssetUrl } from "@/lib/ui-editor/runtime/characterAvatarAssets";
 import { resolveGameRuntimeAssetUrl } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
 
 type AssetObjectUrlState = {
@@ -23,7 +24,11 @@ export function useAssetObjectUrl(assetId?: string | null): AssetObjectUrlState 
             return;
         }
         const previewUrl = resolveDevModeSavePreviewImageUrl(assetId);
-        const runtimeUrl = previewUrl ?? resolveGameRuntimeAssetUrl(assetId);
+        // Avatars first: the mounted compile already resolved them, so this is the swap that must
+        // not cost a round trip.
+        const runtimeUrl = previewUrl
+            ?? resolveCharacterAvatarAssetUrl(assetId)
+            ?? resolveGameRuntimeAssetUrl(assetId);
         setState({
             url: runtimeUrl,
             metadata: null,

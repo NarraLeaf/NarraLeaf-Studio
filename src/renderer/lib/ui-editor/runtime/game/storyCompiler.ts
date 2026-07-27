@@ -32,7 +32,12 @@ import {
 import type { MaskPattern } from "narraleaf-react";
 import { blink, vignette } from "narraleaf-react/built-in";
 import type { DevModeCharacterSummary } from "@shared/types/devMode";
+import type { DialogAvatarResolverContext } from "narraleaf-react";
 import { resolvePoseAssetId, resolveTagSelection } from "@shared/utils/characterVariant";
+import {
+    characterAvatarKeyFromTags,
+    resolveCharacterAvatarAssetId,
+} from "@shared/utils/characterAvatar";
 import type {
     StoryActionPayload,
     StoryAnimationAsset,
@@ -320,6 +325,21 @@ export type CompiledNlrStory = {
      */
     sceneLocalNamespaceNames: Record<string, string>;
     diagnostics: NlrStoryCompileDiagnostic[];
+    /**
+     * The live NLR `Character` per Studio characterId, as this compile built them. Instances are
+     * valid only within this compile — a recompile mints new ones — so a host must resolve through
+     * the current session's `compiled` and never capture them.
+     */
+    characters: Map<string, Character>;
+    /**
+     * Dialog-avatar URL → the asset id it came from.
+     *
+     * The engine resolves an avatar to a *URL* (that is what an `<img>` takes), but a blueprint pin
+     * carries an `ImageAsset`, which is an asset id. This is the inverse of the resolution the
+     * compiler just performed, and it is kept deliberately narrow: only avatar URLs are in it, so
+     * it can never turn an arbitrary stage image back into an id.
+     */
+    avatarAssetIdByUrl: Map<string, string>;
     /** Per-scene element registries, keyed by scene id (normalized object name → element). */
     sceneElements?: Record<string, CompiledSceneElements>;
     /** Continuous stage previews only: why the compiled playback tail ends. */
@@ -383,6 +403,12 @@ type SceneCompileContext = {
     previewEncounteredJump?: { blockId: StoryBlockId; targetSceneId: StorySceneId };
     characters: Map<string, Character>;
     characterSummaries: Map<string, DevModeCharacterSummary>;
+    /** Dialog-avatar lookups resolved to URLs, per character. Built on first portrait binding. */
+    characterAvatars?: Map<string, CompiledCharacterAvatars>;
+    /** Inverse of every avatar resolution this compile performed (url → asset id). */
+    avatarAssetIdByUrl: Map<string, string>;
+    /** Stage sprites already registered as portraits, so a second row does not register them twice. */
+    boundPortraits?: WeakSet<Image>;
     /** Single NLR Persistent (Storable-backed, per-save) holding all "saved" variables. */
     savedPersistent: Persistent<Record<string, StoryLiteralValue>>;
     /** Scene-scope declaration table of this scene (variableId → def), scanned once per compile. */
@@ -470,6 +496,8 @@ export function createEmptyCompiledNlrStory(): CompiledNlrStory {
         scenes: { [EMPTY_SCENE_ID]: nlrScene },
         storyId: EMPTY_STORY_ID,
         sceneId: EMPTY_SCENE_ID,
+        characters: new Map(),
+        avatarAssetIdByUrl: new Map(),
         actionIdBindings: [],
         savedNamespaceName: "",
         sceneLocalNamespaceNames: {},
@@ -488,6 +516,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     const actionIdBindings: NlrActionIdBinding[] = [];
     const sceneElements: Record<string, CompiledSceneElements> = {};
     const characters = new Map<string, Character>();
+    const avatarAssetIdByUrl = new Map<string, string>();
     const characterSummaries = new Map((input.characters ?? []).map(character => [character.id, character]));
     const animations = new Map(Object.entries(input.animations ?? {}));
     const assetUrlCache = new Map<string, string | null>();
@@ -538,6 +567,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             allScenes,
             characters,
             characterSummaries,
+            avatarAssetIdByUrl,
             savedPersistent,
             sceneVariables: sceneVariableDefs(scene),
             savedVariables,
@@ -589,6 +619,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             diagnostics,
             characters,
             characterSummaries,
+            avatarAssetIdByUrl,
             savedPersistent,
             savedVariables,
             persistentDefaults,
@@ -619,6 +650,8 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         savedNamespaceName: DevTools.getNamespaceName(savedPersistent),
         sceneLocalNamespaceNames,
         diagnostics,
+        characters,
+        avatarAssetIdByUrl,
         sceneElements,
     };
 }
@@ -639,6 +672,7 @@ async function buildLaunchEntryScene(params: {
     diagnostics: NlrStoryCompileDiagnostic[];
     characters: Map<string, Character>;
     characterSummaries: Map<string, DevModeCharacterSummary>;
+    avatarAssetIdByUrl: Map<string, string>;
     savedPersistent: Persistent<Record<string, StoryLiteralValue>>;
     savedVariables: Record<string, StorySavedVariableDefinition>;
     persistentDefaults: Record<string, StoryLiteralValue>;
@@ -684,6 +718,7 @@ async function buildLaunchEntryScene(params: {
         previewSingleScene: false,
         characters: params.characters,
         characterSummaries: params.characterSummaries,
+        avatarAssetIdByUrl: params.avatarAssetIdByUrl,
         savedPersistent: params.savedPersistent,
         sceneVariables: sceneVariableDefs(scene),
         savedVariables: params.savedVariables,
@@ -733,6 +768,12 @@ async function buildLaunchEntryScene(params: {
                 src: src ?? undefined,
                 initialProps: snapshotPoseProps(record),
             });
+            // A pre-posed character is on stage before any row of its own runs, so its portrait has
+            // to be registered here too - otherwise a row-precise launch shows the speaker with no
+            // avatar until they next enter or change expression.
+            if (record.source?.type === "character") {
+                await bindCharacterPortrait(ctx, record.source.characterId, image);
+            }
             registrations.push({ element: image, layer });
         } else {
             const text = getText(ctx, record.objectName, {
@@ -880,6 +921,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         previewSingleScene: true,
         characters: new Map(),
         characterSummaries,
+        avatarAssetIdByUrl: new Map(),
         savedPersistent,
         sceneVariables: sceneVariableDefs(scene),
         savedVariables,
@@ -927,6 +969,12 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
                 src: src ?? undefined,
                 initialProps: snapshotPoseProps(record),
             });
+            // A pre-posed character is on stage before any row of its own runs, so its portrait has
+            // to be registered here too - otherwise a row-precise launch shows the speaker with no
+            // avatar until they next enter or change expression.
+            if (record.source?.type === "character") {
+                await bindCharacterPortrait(ctx, record.source.characterId, image);
+            }
             registrations.push({ element: image, layer });
         } else {
             const text = getText(ctx, record.objectName, {
@@ -1039,6 +1087,8 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         savedNamespaceName: DevTools.getNamespaceName(savedPersistent),
         sceneLocalNamespaceNames: { [scene.id]: DevTools.getNamespaceName(previewScene.local) },
         diagnostics,
+        characters: ctx.characters,
+        avatarAssetIdByUrl: ctx.avatarAssetIdByUrl,
         sceneElements: { [scene.id]: { images: ctx.images, texts: ctx.texts, layers: ctx.layers } },
         playbackStop,
     };
@@ -1850,6 +1900,7 @@ async function compileCharacterStageAction(
 
     if (payload.operation === "exit") {
         const image = getImage(ctx, name, { autoFit: true });
+        await bindCharacterPortrait(ctx, payload.characterId, image);
         const chain = compileDisplayableOperation(image, "hide", payload.transform ?? { preset: "fadeOut", durationMs: 250 }, ctx, block.id);
         if (chain) statements.push(recordStatement(ctx, chain, block));
         return statements;
@@ -1857,6 +1908,7 @@ async function compileCharacterStageAction(
 
     if (payload.operation === "move") {
         const image = getImage(ctx, name, { autoFit: true });
+        await bindCharacterPortrait(ctx, payload.characterId, image);
         const chain = compileDisplayableOperation(image, "transform", payload.transform, ctx, block.id);
         if (chain) statements.push(recordStatement(ctx, chain, block));
         return statements;
@@ -1870,6 +1922,7 @@ async function compileCharacterStageAction(
     if (layeredSrc) {
         const appearance = ctx.characterSummaries.get(payload.characterId!)?.appearance;
         const image = getImage(ctx, name, { autoFit: true, src: layeredSrc as never });
+        await bindCharacterPortrait(ctx, payload.characterId, image);
         const selection = payload.operation === "enter"
             ? resolveTagSelection(appearance, payload.tags)
             : payload.tags ?? {};
@@ -1897,6 +1950,7 @@ async function compileCharacterStageAction(
     }
 
     const image = getImage(ctx, name, { autoFit: true, src });
+    await bindCharacterPortrait(ctx, payload.characterId, image);
     if (payload.operation === "enter") {
         // An entering character has no prior image to transition from, so `enter` never uses a
         // transition - its entrance is driven entirely by the show transform. (A transition only
@@ -3159,6 +3213,132 @@ async function resolveCharacterLayeredSrc(
     );
     const defaults = Object.values(resolveTagSelection(appearance, undefined)).filter(tagId => emitted.has(tagId));
     return { layers, defaults };
+}
+
+/**
+ * Everything the dialog-avatar resolver can possibly answer with, resolved to URLs up front.
+ *
+ * The resolver runs inside the dialog's own render and cannot await anything, so nothing may be
+ * resolved lazily. Resolving it all here is also what makes the avatars preloadable — see
+ * {@link bindCharacterPortrait}.
+ */
+type CompiledCharacterAvatars = {
+    /** Avatar key → avatar image URL. */
+    byKey: Map<string, string>;
+    /** Pose sprite URL → pose id: how a preset character's current differential is read back. */
+    poseByUrl: Map<string, string>;
+    /** Shown when no differential resolves an avatar (off-stage, or nothing baked for this look). */
+    fallback: string | null;
+};
+
+async function compileCharacterAvatars(
+    ctx: SceneCompileContext,
+    summary: DevModeCharacterSummary,
+): Promise<CompiledCharacterAvatars> {
+    // Not a block id: avatar assets belong to the character, not to any one row. Diagnostics about
+    // them should point at the character, and `resolveSnapshotImageSource` already sets the
+    // precedent of passing a non-block label here.
+    const blockId = `avatar:${summary.id}`;
+    const byKey = new Map<string, string>();
+    const poseByUrl = new Map<string, string>();
+
+    // Only keys with an entry are worth resolving: a key with neither a bake nor an override
+    // resolves to the character default, which `fallback` already holds.
+    for (const key of Object.keys(summary.appearance.avatars ?? {})) {
+        const assetId = resolveCharacterAvatarAssetId(summary, key);
+        const url = assetId ? await resolveAsset(ctx, assetId, "image", blockId) : null;
+        if (url && assetId) {
+            byKey.set(key, url);
+            ctx.avatarAssetIdByUrl.set(url, assetId);
+        }
+    }
+
+    if (summary.appearance.kind === "preset") {
+        for (const pose of summary.appearance.poses) {
+            const url = pose.assetId ? await resolveAsset(ctx, pose.assetId, "image", blockId) : null;
+            // Two poses sharing one sprite are indistinguishable at runtime - the engine reports a
+            // src, not a pose. First wins; their avatars would have to picture the same thing anyway.
+            if (url && !poseByUrl.has(url)) {
+                poseByUrl.set(url, pose.id);
+            }
+        }
+    }
+
+    const defaultAvatarAssetId = summary.defaultAvatarAssetId?.trim();
+    const fallback = defaultAvatarAssetId
+        ? await resolveAsset(ctx, defaultAvatarAssetId, "image", blockId)
+        : null;
+    if (fallback && defaultAvatarAssetId) {
+        ctx.avatarAssetIdByUrl.set(fallback, defaultAvatarAssetId);
+    }
+    return { byKey, poseByUrl, fallback };
+}
+
+/**
+ * Turn the engine's report of what the character is currently wearing into an avatar URL.
+ *
+ * The two kinds report differently, because they *are* different: a preset character has one src
+ * and the engine hands back that URL; a layered one has no single src (`Image.getSrcURL` returns
+ * null for it) and the engine hands back the active tags instead.
+ */
+function resolveCompiledAvatar(
+    summary: DevModeCharacterSummary,
+    avatars: CompiledCharacterAvatars,
+    context: Pick<DialogAvatarResolverContext, "currentSrc" | "tags">,
+): string | null {
+    const key = summary.appearance.kind === "layered"
+        ? characterAvatarKeyFromTags(summary.appearance, context.tags)
+        : context.currentSrc
+            ? avatars.poseByUrl.get(context.currentSrc) ?? null
+            : null;
+    return (key ? avatars.byKey.get(key) : undefined) ?? avatars.fallback;
+}
+
+/**
+ * Register a character's stage sprite as an NLR portrait and install its dialog-avatar resolver.
+ *
+ * This is the whole of "which differential is the speaker wearing right now". The engine finds the
+ * character's topmost *visible* portrait and hands the resolver that image's live state, so the
+ * answer survives undo, load and skip — which a Studio-side mirror of the story's rows would not,
+ * for exactly the reasons the Is Speaking plan documented about `onCharacterPrompt`.
+ *
+ * A character with no summary (an unnamed temp speaker) is skipped: it has no appearance to key an
+ * avatar on, and `getCharacter` hands those a name-keyed instance that outlives no differential.
+ */
+async function bindCharacterPortrait(
+    ctx: SceneCompileContext,
+    characterId: string | undefined,
+    image: Image,
+): Promise<void> {
+    const summary = characterId ? ctx.characterSummaries.get(characterId) : undefined;
+    if (!summary) {
+        return;
+    }
+    const bound = ctx.boundPortraits ?? (ctx.boundPortraits = new WeakSet());
+    if (bound.has(image)) {
+        return;
+    }
+    bound.add(image);
+
+    const cache = ctx.characterAvatars ?? (ctx.characterAvatars = new Map());
+    let avatars = cache.get(summary.id);
+    if (!avatars) {
+        avatars = await compileCharacterAvatars(ctx, summary);
+        cache.set(summary.id, avatars);
+    }
+    const resolved = avatars;
+
+    const character = getCharacter(ctx, summary.id);
+    character.addPortrait(image);
+    character.setAvatar(context => resolveCompiledAvatar(summary, resolved, context));
+
+    // Deliberately NOT registered with `ctx.nlrScene.preloadImage`. That warms `ImageCacheManager`,
+    // which stores a base64 re-encoding and decodes *that*, reachable only through
+    // `cacheManager.get(url)` — which the engine's `<Image>` uses but its `<Avatar>` does not, and
+    // a Studio Image widget certainly does not. Registering avatars there would buy a fetch, a
+    // base64 blowup, a decode and a retained full-resolution bitmap that every consumer then
+    // ignores. The warm that actually helps is keyed to the URL the widget renders and lives in
+    // `characterAvatarAssets.warmAvatarDecode`, run when the session mounts this compile's table.
 }
 
 async function resolveAsset(ctx: SceneCompileContext, assetId: string, assetType: StoryAssetKind, blockId: string): Promise<string | null> {

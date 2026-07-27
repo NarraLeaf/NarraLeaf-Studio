@@ -57,6 +57,8 @@ export type StoryPreviewGameUiHost = {
         sessionId: string;
         requireLiveGame: (operation: string) => LiveGame;
         getLiveGame: () => LiveGame | null;
+        /** Invert a dialog-avatar URL back to its asset id, from this compile's own inverse. */
+        resolveAvatarAssetId?: (url: string) => string | null;
     }) => StoryPreviewGame;
 };
 
@@ -165,6 +167,7 @@ export function useStoryPreviewGameUi(input: {
         sessionId: string;
         requireLiveGame: (operation: string) => LiveGame;
         getLiveGame: () => LiveGame | null;
+        resolveAvatarAssetId?: (url: string) => string | null;
     }): StoryPreviewGame => {
         if (!bundle) {
             throw new Error("Story preview: bundle is not ready");
@@ -207,6 +210,7 @@ export function useStoryPreviewGameUi(input: {
             closeLayerWithTransition: async () => undefined,
             quitApplication: async () => undefined,
             // The preview renders into a Studio panel, not an application window.
+            resolveAvatarAssetId: gameInput.resolveAvatarAssetId,
             getFullscreen: notAvailable("Get Fullscreen"),
             setFullscreen: notAvailable("Set Fullscreen"),
             startStoryInGame: notAvailable("Start Story"),

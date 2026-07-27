@@ -1,7 +1,35 @@
-import type { CharacterAppearanceSummary, DevModeCharacterSummary } from "@shared/types/devMode";
+import type {
+    CharacterAppearanceSummary,
+    CharacterAvatarSummaryEntry,
+    DevModeCharacterSummary,
+} from "@shared/types/devMode";
 
 function trimmed(value: unknown): string {
     return typeof value === "string" ? value.trim() : "";
+}
+
+/**
+ * The avatar table as the compiler needs it: whether a bake exists, and the author's override.
+ * The bake *fingerprint* is deliberately dropped — it is the baker's bookkeeping, and shipping it
+ * to the runtime would invite someone to compare it there, where the source bytes are long gone.
+ */
+function mapAvatars(raw: unknown): Record<string, CharacterAvatarSummaryEntry> | undefined {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        return undefined;
+    }
+    const avatars: Record<string, CharacterAvatarSummaryEntry> = {};
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+        if (!key || !value || typeof value !== "object") {
+            continue;
+        }
+        const entry = value as { baked?: unknown; overrideAssetId?: unknown };
+        const overrideAssetId = trimmed(entry.overrideAssetId) || null;
+        const baked = typeof entry.baked === "string" && entry.baked.length > 0;
+        if (baked || overrideAssetId) {
+            avatars[key] = { ...(baked ? { baked } : {}), ...(overrideAssetId ? { overrideAssetId } : {}) };
+        }
+    }
+    return Object.keys(avatars).length > 0 ? avatars : undefined;
 }
 
 function named(entry: unknown): { id: string; name: string } | null {
@@ -18,7 +46,13 @@ function mapAppearance(appearance: unknown): CharacterAppearanceSummary {
             canvas?: { width?: unknown; height?: unknown } | null;
             axes?: unknown[];
             layers?: unknown[];
+            avatarAxisIds?: unknown;
+            avatars?: unknown;
         };
+        const avatarAxisIds = (Array.isArray(raw.avatarAxisIds) ? raw.avatarAxisIds : [])
+            .map(trimmed)
+            .filter(Boolean);
+        const avatars = mapAvatars(raw.avatars);
         const width = Number(raw.canvas?.width);
         const height = Number(raw.canvas?.height);
         return {
@@ -59,22 +93,26 @@ function mapAppearance(appearance: unknown): CharacterAppearanceSummary {
                     hidden: rawLayer.hidden === true ? true : undefined,
                 }];
             }),
+            ...(avatarAxisIds.length > 0 ? { avatarAxisIds } : {}),
+            ...(avatars ? { avatars } : {}),
         };
     }
 
-    const raw = appearance as { poses?: unknown[]; defaultPoseId?: unknown };
+    const raw = appearance as { poses?: unknown[]; defaultPoseId?: unknown; avatars?: unknown };
     const poses = (Array.isArray(raw?.poses) ? raw.poses : []).flatMap(entry => {
         const pose = named(entry);
         if (!pose) return [];
         return [{ ...pose, assetId: trimmed((entry as { assetId?: unknown }).assetId) || null }];
     });
     const defaultPoseId = trimmed(raw?.defaultPoseId);
+    const presetAvatars = mapAvatars(raw?.avatars);
     return {
         kind: "preset",
         poses,
         defaultPoseId: defaultPoseId && poses.some(pose => pose.id === defaultPoseId)
             ? defaultPoseId
             : poses[0]?.id ?? null,
+        ...(presetAvatars ? { avatars: presetAvatars } : {}),
     };
 }
 
@@ -97,14 +135,25 @@ export function mapCharacterStoreEntriesToSummaries(entries: readonly unknown[])
         if (!profile || typeof profile !== "object") {
             return [];
         }
-        const raw = profile as { id?: unknown; name?: unknown; appearance?: unknown };
+        const raw = profile as {
+            id?: unknown;
+            name?: unknown;
+            appearance?: unknown;
+            defaultAvatarAssetId?: unknown;
+        };
         const id = trimmed(raw.id);
         if (!id) {
             return [];
         }
+        const defaultAvatarAssetId = trimmed(raw.defaultAvatarAssetId);
         // Left empty when unnamed, never substituted with `id`: `id` is a UUID, and every consumer
         // of `name` treats it as display text (the story compiler feeds it straight to the NLR
         // nametag). Naming the fallback is the compiler's job, not this mapper's.
-        return [{ id, name: trimmed(raw.name), appearance: mapAppearance(raw.appearance) }];
+        return [{
+            id,
+            name: trimmed(raw.name),
+            appearance: mapAppearance(raw.appearance),
+            ...(defaultAvatarAssetId ? { defaultAvatarAssetId } : {}),
+        }];
     });
 }
