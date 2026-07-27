@@ -14,6 +14,7 @@ import type { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge"
 import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import { listBlueprintsForDevTools } from "./blueprintDebugPanelModel";
+import { DevModePanelModeToggle, type DevModePanelChrome } from "./DevModePanelChrome";
 
 type DebugTabId = "blueprints" | "output" | "scope";
 export type BlueprintOutputLogLevel = BlueprintDebugEventLogLevel;
@@ -30,6 +31,8 @@ type BlueprintRuntimeDebugPanelProps = {
     widgetRuntimeStore: WidgetRuntimeStateStore;
     projectPath: string | null;
     className?: string;
+    /** Dock/float mode toggle + title-bar drag, owned by DevModeContent. */
+    chrome?: DevModePanelChrome;
 };
 
 export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProps) {
@@ -42,6 +45,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
         widgetRuntimeStore,
         projectPath,
         className,
+        chrome,
     } = props;
     const { t } = useTranslation();
     const [tab, setTab] = useState<DebugTabId>("output");
@@ -191,13 +195,28 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
         [projectPath, t],
     );
 
-    const rootClass = ["flex h-full min-h-0 shrink-0 flex-col border-l border-edge bg-surface-sunken text-2xs text-fg-muted", className]
+    const rootClass = [
+        "flex h-full min-h-0 shrink-0 flex-col bg-surface-sunken text-2xs text-fg-muted",
+        // See StoryRuntimeDebugPanel: the left hairline is the seam against the stage, and a floating
+        // panel already has a frame of its own.
+        chrome?.floating ? "" : "border-l border-edge",
+        className,
+    ]
         .filter(Boolean)
         .join(" ");
 
     return (
         <div className={rootClass}>
-            <div className="shrink-0 border-b border-edge px-2 py-1.5 text-xs font-medium text-fg">{t("devMode.devtools.title")}</div>
+            {/* Also the drag handle while floating (see StoryRuntimeDebugPanel). */}
+            <div
+                className={`flex shrink-0 items-center justify-between gap-2 border-b border-edge px-2 py-1.5 ${
+                    chrome?.floating ? "cursor-grab select-none active:cursor-grabbing" : ""
+                }`}
+                onPointerDown={chrome?.onTitleBarPointerDown}
+            >
+                <span className="text-xs font-medium text-fg">{t("devMode.devtools.title")}</span>
+                <DevModePanelModeToggle chrome={chrome} />
+            </div>
             <div className="flex shrink-0 border-b border-edge bg-surface-sunken" role="tablist" aria-label={t("devMode.devtools.panelsAria")}>
                 {(
                     [

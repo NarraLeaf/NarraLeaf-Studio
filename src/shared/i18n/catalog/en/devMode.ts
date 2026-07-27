@@ -38,6 +38,13 @@ export const devMode = {
         contextRunning: "Running",
         currentScene: "Current",
     },
+    // The debug drawer's dock/float toggle. Each label names what the click will DO, not the state
+    // it is in - same shape as `devtools.openMenu` / `devtools.closeMenu` above, and the only thing
+    // that tells a reader (or an acceptance run) which mode the panel is currently in.
+    panel: {
+        float: "Float panel",
+        dock: "Dock panel",
+    },
     blueprints: {
         empty: "No blueprints",
         openWorkspace: "Workspace",
