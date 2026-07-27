@@ -261,6 +261,9 @@ export const workspace = {
             openConsole: "Open the console",
             unsavedChanges: "Unsaved changes",
             saveNow: "Save now",
+            saving: "Saving…",
+            saveFailed: "Save failed",
+            retrySave: "Retry saving now",
             resetZoom: "Reset zoom to 100%",
             shortcuts: "Keyboard shortcuts",
             words: "{count} words",
@@ -278,6 +281,28 @@ export const workspace = {
                 notifications: "Notifications",
                 theme: "Theme switcher",
                 zoom: "Zoom level",
+            },
+        },
+        // Save reporting: the sticky toast raised when a file cannot be written, and the lines the
+        // "Storage" console channel carries. A failed write retries on a backoff that never gives
+        // up, so the wording says "still trying" rather than "lost".
+        save: {
+            failedTitle: "Couldn't save {file}",
+            failedDetailTransient: "Still retrying in the background. {error}",
+            failedDetailPermanent: "This one needs your attention — retrying will not help until it is fixed. {error}",
+            retry: "Retry now",
+            consoleFailed: "write failed ({code}, attempt {attempt}): {path} - {error}",
+            consoleRecovered: "write succeeded: {path}",
+            flushFailed: "could not flush {label}: {error}",
+            // Names for the things that auto-save, used when a flush fails.
+            stores: {
+                uiDocument: "interface document",
+                uiGraph: "interface blueprints",
+                story: "story",
+                localization: "localization",
+                voice: "voice library",
+                variables: "variable registry",
+                characters: "characters",
             },
         },
         // Keyboard-shortcut customization (Settings window → Editor) + the "?" cheat sheet overlay.

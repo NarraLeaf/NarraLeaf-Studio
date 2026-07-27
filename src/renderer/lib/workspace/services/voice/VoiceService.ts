@@ -25,6 +25,8 @@ import type { StoryDocument } from "@shared/types/story";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
 import { IVoiceService, Services, WorkspaceContext } from "../services";
+import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver } from "../autosave/DebouncedSaver";
+import { registerAutoSaver } from "../autosave/SaveStatusService";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { EventEmitter } from "../ui/EventEmitter";
@@ -48,13 +50,18 @@ export class VoiceService extends Service<VoiceService> implements IVoiceService
     private readonly documents = new Map<string, VoiceDocument>();
     private readonly dirtyLocales = new Set<string>();
     private readonly events = new EventEmitter<VoiceServiceEvents>();
-    private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
-    private readonly autoSaveDelay = 800;
+    private readonly autoSaver = new DebouncedSaver({
+        delayMs: DEFAULT_AUTOSAVE_DELAY_MS,
+        maxWaitMs: DEFAULT_AUTOSAVE_MAX_WAIT_MS,
+        save: () => this.writeDirtyDocuments(),
+        onError: err => console.warn("[VoiceService] auto-save failed", err),
+    });
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
         const projectService = ctx.services.get<ProjectService>(Services.Project);
         await depend([filesystemService, projectService]);
+        await registerAutoSaver(ctx, depend, "voice", "workspace.shell.save.stores.voice", this.autoSaver);
     }
 
     public async dispose(): Promise<void> {
@@ -215,17 +222,22 @@ export class VoiceService extends Service<VoiceService> implements IVoiceService
     }
 
     public async flushPendingChanges(): Promise<void> {
-        if (this.autoSaveTimer) {
-            clearTimeout(this.autoSaveTimer);
-            this.autoSaveTimer = null;
-        }
-        const locales = [...this.dirtyLocales];
-        this.dirtyLocales.clear();
-        for (const locale of locales) {
+        await this.autoSaver.flush();
+    }
+
+    /**
+     * The write itself. Only ever reached through {@link autoSaver}, which serialises it.
+     *
+     * See `LocalizationService.writeDirtyDocuments`: the dirty flag is cleared after the write
+     * lands, so a rejected write leaves something to retry.
+     */
+    private async writeDirtyDocuments(): Promise<void> {
+        for (const locale of [...this.dirtyLocales]) {
             const document = this.documents.get(locale);
             if (document) {
                 await this.writeDocument(document);
             }
+            this.dirtyLocales.delete(locale);
         }
     }
 
@@ -257,15 +269,7 @@ export class VoiceService extends Service<VoiceService> implements IVoiceService
     }
 
     private scheduleAutoSave(): void {
-        if (this.autoSaveTimer) {
-            clearTimeout(this.autoSaveTimer);
-        }
-        this.autoSaveTimer = setTimeout(() => {
-            this.autoSaveTimer = null;
-            void this.flushPendingChanges().catch(err => {
-                console.warn("[VoiceService] auto-save failed", err);
-            });
-        }, this.autoSaveDelay);
+        this.autoSaver.schedule();
     }
 
     private async ensureVoiceDir(): Promise<void> {

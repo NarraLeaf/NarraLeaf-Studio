@@ -5,7 +5,7 @@ import {
     RunStatusEntry,
     ShortcutsEntry,
     ThemeEntry,
-    UnsavedChangesEntry,
+    SaveStatusEntry,
     WordCountEntry,
     ZoomEntry,
 } from "./entries";
@@ -34,10 +34,13 @@ export const builtInStatusBarEntries: StatusBarEntryModule[] = [
         component: RunStatusEntry,
     },
     {
+        // Id kept from when this cell only watched the story service: it is persisted in the user's
+        // status-bar visibility preferences, and renaming it would silently un-hide the cell for
+        // anyone who had hidden it.
         id: "narraleaf-studio:status-bar/unsaved-changes",
         labelKey: "workspace.shell.statusBar.entries.unsavedChanges",
         alignment: StatusBarAlignment.Left,
-        component: UnsavedChangesEntry,
+        component: SaveStatusEntry,
     },
     {
         id: "narraleaf-studio:status-bar/word-count",

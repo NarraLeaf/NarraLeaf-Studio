@@ -21,8 +21,10 @@ export const console = {
         blueprint: "Blueprint",
         build: "Build",
         story: "Story",
+        storage: "Storage",
         blueprintDescription: "Blueprint runtime and graph diagnostics",
         buildDescription: "Build, packaging, and preview pipeline output",
         storyDescription: "Story scene preview diagnostics and warnings",
+        storageDescription: "Project file writes: failed saves, retries, and recoveries",
     },
 } as const;

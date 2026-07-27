@@ -183,6 +183,12 @@ export interface RendererPreloadedInterface {
             byteLength?: number;
         }>>;
         onConfirmClose(handler: () => Promise<RequestStatus<{ confirmed: boolean }>>): AppEventToken;
+        /**
+         * Write out every pending auto-save and report whether it all landed. Main blocks the close
+         * or the quit on the reply, so this must be registered on mount rather than with the
+         * workspace context - see the note on `onConfirmClose`.
+         */
+        onFlushPendingSaves(handler: () => Promise<RequestStatus<{ flushed: boolean }>>): AppEventToken;
         onResolveAssetUrl(handler: (payload: { assetId: string; assetType?: string }) => Promise<RequestStatus<{ url: string }>>): AppEventToken;
         onResolveImageAssetUrl(handler: (payload: { assetId: string }) => Promise<RequestStatus<{ url: string }>>): AppEventToken;
         onBlueprintNavigateFromPreview(handler: (payload: PreviewStudioBlueprintOpenPayload) => void): AppEventToken;

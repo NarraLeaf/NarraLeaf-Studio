@@ -18,6 +18,8 @@ import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { Service } from "../Service";
 import { Services, IVariableRegistryService, WorkspaceContext } from "../services";
+import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver } from "../autosave/DebouncedSaver";
+import { registerAutoSaver } from "../autosave/SaveStatusService";
 import { UuidService } from "../core/UuidService";
 import { UIGraphService } from "../ui-editor/UIGraphService";
 import { EventEmitter } from "../ui/EventEmitter";
@@ -43,8 +45,12 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
     private dirty = false;
     private revision = 0;
     private lastSavedRevision = 0;
-    private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
-    private readonly autoSaveDelay = 800;
+    private readonly autoSaver = new DebouncedSaver({
+        delayMs: DEFAULT_AUTOSAVE_DELAY_MS,
+        maxWaitMs: DEFAULT_AUTOSAVE_MAX_WAIT_MS,
+        save: () => this.save(this.getRegistry()),
+        onError: err => console.warn("[VariableRegistryService] auto-save failed", err),
+    });
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
@@ -52,6 +58,7 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
         const uuidService = ctx.services.get<UuidService>(Services.Uuid);
         const uiGraphService = ctx.services.get<UIGraphService>(Services.UIGraph);
         await depend([filesystemService, projectService, uuidService, uiGraphService]);
+        await registerAutoSaver(ctx, depend, "variables", "workspace.shell.save.stores.variables", this.autoSaver);
 
         await this.ensureEditorDir();
         await this.load();
@@ -99,10 +106,8 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
         const fs = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         await this.ensureEditorDir();
         const documentPath = this.getDocumentPath();
-        if (this.autoSaveTimer) {
-            clearTimeout(this.autoSaveTimer);
-            this.autoSaveTimer = null;
-        }
+        // This write supersedes whatever the timer was going to do.
+        this.autoSaver.cancel();
         const updated: VariableRegistry = {
             ...registry,
             meta: {
@@ -134,6 +139,11 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
 
     public getEntry(id: string): VariableRegistryEntry | undefined {
         return this.getRegistry().entries[id];
+    }
+
+    /** Write out anything the auto-save timer still owes, and wait for it. */
+    public async flushPendingChanges(): Promise<void> {
+        await this.autoSaver.flush();
     }
 
     public onRegistryChanged(handler: (registry: VariableRegistry) => void): () => void {
@@ -246,15 +256,7 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
     }
 
     private scheduleAutoSave(): void {
-        if (this.autoSaveTimer) {
-            clearTimeout(this.autoSaveTimer);
-        }
-        this.autoSaveTimer = setTimeout(() => {
-            this.autoSaveTimer = null;
-            void this.save(this.getRegistry()).catch(err => {
-                console.warn("[VariableRegistryService] auto-save failed", err);
-            });
-        }, this.autoSaveDelay);
+        this.autoSaver.schedule();
     }
 
     private setDirty(value: boolean): void {
