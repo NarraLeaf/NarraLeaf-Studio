@@ -93,7 +93,12 @@ async function driveToDevMode() {
     }
 
     await onWindow('dev-mode', A.WINDOWS.devmode, async (d) => {
-        const menu = await A.call(d, function () {
+        const stage = () => A.call(d, function () {
+            const tabs = document.querySelector('[role="tablist"]');
+            const panelText = tabs ? (tabs.parentElement.innerText || '') : '';
+            return (document.body.innerText || '').replace(panelText, '').replace(/\s+/g, ' ').trim();
+        });
+        const findMenu = () => A.call(d, function () {
             const el = Array.from(document.querySelectorAll('*'))
                 .find((e) => (e.textContent || '').trim() === 'New Game' && e.children.length === 0);
             if (!el) return null;
@@ -101,12 +106,31 @@ async function driveToDevMode() {
             const cx = Math.round(r.x + r.width / 2);
             const cy = Math.round(r.y + r.height / 2);
             const hit = document.elementFromPoint(cx, cy);
-            return { cx, cy, reachable: Boolean(hit && (hit === el || el.contains(hit))) };
+            return { cx, cy, reachable: Boolean(hit && (hit === el || el.contains(hit) || hit.contains(el))) };
         });
-        if (!menu) return;
-        if (!menu.reachable) throw new Error('SETUP GUARD: "New Game" has a rect but something is on top of it');
-        await d.click(menu.cx, menu.cy);
-        await A.sleep(4000);
+
+        // Poll for EITHER outcome instead of sampling once. This used to be a single look followed by
+        // `if (!menu) return`, which reads "no menu, so we are already past it" — but on a cold tree
+        // it far more often means the menu has not rendered yet. The run then continued with the boot
+        // menu on stage and measured the whole card against it: every number plausible, nothing about
+        // a running scene. Silence is the problem; this either starts the story or says why it could
+        // not. A `story` launch entry boots straight past the menu, so "no menu, story on stage" stays
+        // a legitimate way to finish.
+        let clicks = 0;
+        let last = '';
+        for (let i = 0; i < 44; i += 1) {
+            last = await stage();
+            if (last && !/New Game/.test(last)) return;
+            const menu = await findMenu();
+            if (menu && menu.reachable && clicks < 3) {
+                clicks += 1;
+                await d.click(menu.cx, menu.cy);
+                await A.sleep(2500);
+                continue;
+            }
+            await A.sleep(750);
+        }
+        throw new Error(`SETUP GUARD: the story never reached the stage (clicked "New Game" ${clicks}x); stage="${last.slice(0, 160)}"`);
     });
 }
 

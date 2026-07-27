@@ -151,6 +151,46 @@ const inWindow = (b, win) => b.x >= -1 && b.y >= -1 && b.x + b.w <= win.w + 1 &&
 const fits = (box, area) => box.w <= area.w + 1 && box.h <= area.h + 1;
 const round = (o) => (o ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, typeof v === 'number' ? Math.round(v) : v])) : o);
 
+/** The stage's own text — the window's text minus whatever the debug panel is showing. */
+function stageText(d) {
+    return A.call(d, function () {
+        const tabs = document.querySelector('[role="tablist"]');
+        const panelText = tabs ? (tabs.parentElement.innerText || '') : '';
+        return (document.body.innerText || '').replace(panelText, '').replace(/\s+/g, ' ').trim();
+    });
+}
+
+/**
+ * Wait until the STORY is on stage, not the boot menu.
+ *
+ * `driveToDevMode` clicks New Game and sleeps a fixed 4s, which on a cold tree is not always enough:
+ * the first acceptance run measured the whole docked/floating geometry with the main menu still up,
+ * and every number it produced was still perfectly plausible. Nothing was wrong with the app — the
+ * guard was wrong, because "the stage box exists" is not "the thing worth looking at is on it".
+ * A crop assertion measured against a menu is not measuring what U0-2 was about.
+ */
+async function waitForStoryOnStage(d, tries = 44) {
+    let last = '';
+    for (let i = 0; i < tries; i += 1) {
+        last = await stageText(d);
+        if (last && !/New Game/.test(last)) return last;
+        await A.sleep(750);
+    }
+    throw new Error(`SETUP GUARD: the boot menu is still on stage after ${Math.round(tries * 0.75)}s — the story never started, so nothing here would be measuring a running scene; stage="${last.slice(0, 160)}"`);
+}
+
+/** The timeline row the play head is on, or null. */
+const READ_PLAYHEAD = function () {
+    const tabs = document.querySelector('[role="tablist"]');
+    if (!tabs) return null;
+    const rows = Array.from(tabs.parentElement.querySelectorAll('li, [data-timeline-row], [role="listitem"]'))
+        .map((el) => ({ el, raw: (el.innerText || '').replace(/\s+/g, ' ').trim() }))
+        .filter((r) => /^\d+\s/.test(r.raw));
+    const current = rows.find((r) => /▶/.test(r.raw) || r.el.getAttribute('data-current') === 'true'
+        || /bg-primary/.test(r.el.className || ''));
+    return current ? Number(current.raw.match(/^(\d+)/)[1]) : null;
+};
+
 /** Click the toggle and wait for its accessible name to flip; returns the new reading. */
 async function toggleMode(d, want) {
     const before = await A.call(d, READ_TOGGLE, DOCKED_NAME, FLOATING_NAME);
@@ -176,6 +216,8 @@ async function toggleMode(d, want) {
         await A.sleep(900);
 
         // --- setup guards: prove the things being measured are actually there ---------------------
+        const onStage = await waitForStoryOnStage(d);
+        run.note(`stage at measurement time: "${onStage.slice(0, 90)}"`);
         const first = await A.call(d, READ_LAYOUT);
         if (!first.stage) throw new Error('SETUP GUARD: no StageViewportFrame box in the DOM — the stage never laid out');
         if (!(first.stage.w > 0 && first.stage.h > 0)) throw new Error(`SETUP GUARD: stage box has no size: ${JSON.stringify(first.stage)}`);
@@ -328,20 +370,41 @@ async function toggleMode(d, want) {
             if (!tabs) return null;
             const rows = Array.from(tabs.parentElement.querySelectorAll('li, [data-timeline-row], [role="listitem"]'))
                 .filter((el) => /^\d+\s/.test((el.innerText || '').replace(/\s+/g, ' ').trim()));
+            // Row 10 on purpose: it is one of the BLOCKING rows, so the play head actually stops
+            // there. A non-blocking row is entered and played straight through, and the head
+            // legitimately settles further on — which would look like a jump that missed.
             const el = rows.find((e) => Number((e.innerText || '').trim().match(/^(\d+)/)[1]) === 10) || rows[0];
             if (!el) return null;
             const r = el.getBoundingClientRect();
             const cx = Math.round(r.x + r.width / 2);
             const cy = Math.round(r.y + r.height / 2);
             const hit = document.elementFromPoint(cx, cy);
-            return { cx, cy, reachable: Boolean(hit && (el.contains(hit) || hit === el)) };
+            return {
+                cx, cy,
+                line: Number((el.innerText || '').trim().match(/^(\d+)/)[1]),
+                reachable: Boolean(hit && (el.contains(hit) || hit === el)),
+            };
         });
+        const jumpLine = row ? row.line : null;
         if (!row || !row.reachable) {
             run.check('D-6b', 'float mode survives a timeline jump (game-session remount)', false,
                 row ? 'the timeline row has a rect but is covered' : 'no timeline rows to jump to');
         } else {
+            await waitForStoryOnStage(d);
             await d.click(row.cx, row.cy);
             await A.sleep(3000);
+            // Prove the jump actually RELAUNCHED something before crediting the mode with surviving
+            // it. A jump that quietly did nothing leaves the mode trivially unchanged, and D-6b then
+            // reports "survived a session remount" about a remount that never happened.
+            let landed = null;
+            for (let i = 0; i < 12; i += 1) {
+                landed = await A.call(d, READ_PLAYHEAD);
+                if (landed === jumpLine) break;
+                await A.sleep(700);
+            }
+            if (landed !== jumpLine) {
+                throw new Error(`SETUP GUARD: the timeline jump to row ${jumpLine} never took (play head reads ${landed}) — D-6b would have been green without a session remount ever happening`);
+            }
             const afterJump = await A.call(d, READ_TOGGLE, DOCKED_NAME, FLOATING_NAME);
             const afterLayout = await A.call(d, READ_LAYOUT);
             await d.screenshot('u026-after-jump');
