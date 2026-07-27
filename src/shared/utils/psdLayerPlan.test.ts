@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { PsdLayerNode } from "@shared/types/psdImport";
-import { canMergeBlendMode, flattenLeaves, isUnsupportedBlend, planImport, toBakeTargets, unsupportedBlends } from "./psdLayerPlan";
+import {
+    canMergeBlendMode,
+    estimateImportCost,
+    flattenLeaves,
+    IMPORT_LAYER_WARNING,
+    isUnsupportedBlend,
+    planImport,
+    toBakeTargets,
+    unsupportedBlends,
+} from "./psdLayerPlan";
 
 function leaf(name: string, path: string[], extra: Partial<PsdLayerNode> = {}): PsdLayerNode {
     return {
@@ -227,11 +236,93 @@ describe("unsupportedBlends and hidden layers", () => {
 });
 
 describe("canMergeBlendMode", () => {
-    it("accepts separable modes and refuses the ones that mix channels", () => {
+    it("accepts every mode Studio can reproduce, separable or not", () => {
         expect(canMergeBlendMode("multiply")).toBe(true);
         expect(canMergeBlendMode("softLight")).toBe(true);
-        expect(canMergeBlendMode("hue")).toBe(false);
-        expect(canMergeBlendMode("luminosity")).toBe(false);
+        expect(canMergeBlendMode("hue")).toBe(true);
+        expect(canMergeBlendMode("luminosity")).toBe(true);
+    });
+
+    it("refuses the ones it cannot reproduce faithfully", () => {
+        // Stochastic, and Photoshop's dither pattern is undocumented — every bake would differ.
+        expect(canMergeBlendMode("dissolve")).toBe(false);
+        expect(canMergeBlendMode("passThrough")).toBe(false);
+        expect(canMergeBlendMode("somethingNew")).toBe(false);
+    });
+});
+
+describe("merging onto a group", () => {
+    /** Body, a Mood group of two, and a shadow sitting above the whole group. */
+    function withShadowOverGroup(): PsdLayerNode[] {
+        return [
+            leaf("Body", ["Body"]),
+            {
+                ...leaf("Mood", ["Mood"]),
+                bounds: undefined,
+                children: [leaf("Happy", ["Mood", "Happy"]), leaf("Angry", ["Mood", "Angry"])],
+            },
+            leaf("Shade", ["Shade"], { blendMode: "multiply" }),
+        ];
+    }
+
+    it("lands on every tag of the group, not just the topmost", () => {
+        // In Photoshop the shadow is above the whole group and shows under whichever tag is on.
+        // Attaching it to Angry alone would make the shadow vanish the moment the author picked Happy.
+        const plan = planImport(flattenLeaves(withShadowOverGroup()), { Shade: "merge" });
+        expect(toBakeTargets(plan)).toEqual([
+            { path: ["Body"] },
+            { path: ["Mood", "Happy"], mergeFrom: [{ path: ["Shade"], clip: false }] },
+            { path: ["Mood", "Angry"], mergeFrom: [{ path: ["Shade"], clip: false }] },
+        ]);
+    });
+
+    it("still lands once when the group below is not an axis", () => {
+        const single: PsdLayerNode[] = [
+            { ...leaf("Hat", ["Hat"]), bounds: undefined, children: [leaf("Beret", ["Hat", "Beret"])] },
+            leaf("Shade", ["Shade"], { blendMode: "multiply" }),
+        ];
+        expect(toBakeTargets(planImport(flattenLeaves(single), { Shade: "merge" })))
+            .toEqual([{ path: ["Hat", "Beret"], mergeFrom: [{ path: ["Shade"], clip: false }] }]);
+    });
+
+    it("does not reach past a group member the author skipped", () => {
+        const plan = planImport(flattenLeaves([
+            leaf("Body", ["Body"]),
+            {
+                ...leaf("Mood", ["Mood"]),
+                bounds: undefined,
+                children: [
+                    leaf("Happy", ["Mood", "Happy"]),
+                    leaf("Angry", ["Mood", "Angry"], { hidden: true }),
+                ],
+            },
+            leaf("Shade", ["Shade"], { blendMode: "multiply" }),
+        ]), { Shade: "merge" });
+        // Only one member survived, so Mood is not an axis and the shadow has one place to go.
+        expect(toBakeTargets(plan)).toEqual([
+            { path: ["Body"] },
+            { path: ["Mood", "Happy"], mergeFrom: [{ path: ["Shade"], clip: false }] },
+        ]);
+    });
+});
+
+describe("estimateImportCost", () => {
+    it("counts one asset per tag, and decoded bytes at full canvas", () => {
+        const plan = planImport(flattenLeaves(tree()), {});
+        // Body + Uniform + Casual + Happy + Blush = 5 baked layers.
+        const cost = estimateImportCost(plan, { width: 1024, height: 1024 });
+        expect(cost.layers).toBe(5);
+        // 1024*1024*4 = 4 MB each.
+        expect(cost.megabytes).toBe(20);
+        expect(cost.heavy).toBe(false);
+    });
+
+    it("flags a sheet that is heavy by layer count or by memory", () => {
+        const plan = planImport(flattenLeaves(tree()), {});
+        expect(estimateImportCost(plan, { width: 4000, height: 4000 }).heavy).toBe(true);
+
+        const many = Array.from({ length: IMPORT_LAYER_WARNING + 1 }, (_, i) => leaf(`L${i}`, [`L${i}`]));
+        expect(estimateImportCost(planImport(flattenLeaves(many), {}), { width: 8, height: 8 }).heavy).toBe(true);
     });
 });
 
