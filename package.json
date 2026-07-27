@@ -1,7 +1,7 @@
 {
   "name": "narraleaf-studio",
   "productName": "NarraLeaf Studio",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "description": "IDE for NarraLeaf Projects",
   "homepage": "https://github.com/NarraLeaf/NarraLeaf-Studio#readme",
@@ -31,6 +31,7 @@
     "build:runtime:dev": "node project/build/build-runtime.js --dev",
     "build:shared": "tsc --project src/shared/tsconfig.json",
     "dev": "node project/app/dev-electron.js --cdp --cdp-port=9222",
+    "dev:verify": "node project/app/dev-electron.js --cdp --cdp-port=9222 --disable-features=CalculateNativeWinOcclusion",
     "stop": "node project/app/stop-dev.js",
     "pack-electron": "yarn clean && node project/app/pack-electron.js",
     "clean": "rimraf dist",
