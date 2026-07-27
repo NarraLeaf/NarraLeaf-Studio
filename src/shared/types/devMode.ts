@@ -76,6 +76,18 @@ export type DevModeCharacterSummary = {
     /** Author-facing display name. Empty when the character is unnamed - never falls back to `id`, which is a UUID. */
     name: string;
     appearance: CharacterAppearanceSummary;
+    /** Dialog avatar used when no differential resolves one (speaking off-stage, or nothing baked). */
+    defaultAvatarAssetId?: string | null;
+};
+
+/**
+ * One differential's dialog avatar as the compiler sees it. `baked` present means a derived PNG
+ * exists under `resources/characters/avatars/` for this key; `overrideAssetId` is the author's own
+ * artwork and wins over it.
+ */
+export type CharacterAvatarSummaryEntry = {
+    baked?: boolean;
+    overrideAssetId?: string | null;
 };
 
 /**
@@ -88,11 +100,17 @@ export type CharacterAppearanceSummary =
           kind: "preset";
           poses: { id: string; name: string; assetId: string | null }[];
           defaultPoseId: string | null;
+          /** Dialog avatars keyed by pose id. */
+          avatars?: Record<string, CharacterAvatarSummaryEntry>;
       }
     | {
           kind: "layered";
           canvas: { width: number; height: number } | null;
           axes: { id: string; name: string; tags: { id: string; name: string }[]; defaultTagId: string | null }[];
+          /** Axes the avatar varies with; absent means every axis. */
+          avatarAxisIds?: string[];
+          /** Dialog avatars keyed by the tag combination (see `characterAvatarKey`). */
+          avatars?: Record<string, CharacterAvatarSummaryEntry>;
           /** Bottom to top, matching the stacking order the engine draws. */
           layers: {
               id: string;

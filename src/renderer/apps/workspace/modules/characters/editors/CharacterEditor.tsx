@@ -29,6 +29,7 @@ import {
     Plus,
     Trash2,
     Unlock,
+    UserRound,
     XCircle,
 } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -38,6 +39,7 @@ import { LayerStackPreview, type PreviewLayer } from "./components/LayerStackPre
 import { CombinationGrid } from "./components/CombinationGrid";
 import { PsdImportWizard } from "./components/PsdImportWizard";
 import { combinationKey, enumerateCombinations } from "@/lib/workspace/services/character/characterCombinations";
+import { characterAvatarAxisIds, characterAvatarKey } from "@shared/utils/characterAvatar";
 
 type CharacterEditorPayload = { character: Character };
 
@@ -45,13 +47,18 @@ type CharacterEditorPayload = { character: Character };
 type SlotRef =
     | { kind: "pose"; poseId: string }
     | { kind: "layer"; layerId: string }
-    | { kind: "option"; layerId: string; tagId: string };
+    | { kind: "option"; layerId: string; tagId: string }
+    /** A differential's dialog avatar, keyed the way the baker keys it. */
+    | { kind: "avatar"; avatarKey: string };
 
 /** What the author has selected, which is also what a diagnostic row jumps to. */
 type Focus = { kind: "layer" | "axis"; id: string } | null;
 
 const ROW = "flex items-center gap-2 rounded-md border border-edge bg-fill-subtle px-2 py-1.5 text-xs";
 const ICON_BTN = "p-1 rounded-md text-fg-muted hover:text-fg hover:bg-fill transition-colors";
+/** Same button, lit. Not `ICON_BTN + " text-primary"`: two colour utilities in one class list are
+    decided by stylesheet order, not by the order they are written, so the muted one can win. */
+const ICON_BTN_ON = "p-1 rounded-md text-primary hover:bg-fill transition-colors";
 const CARD = "rounded-md border bg-fill-subtle p-2 space-y-1.5";
 const FOCUSED = "border-primary/60";
 
@@ -155,11 +162,67 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
             appearance.setPoseAsset(slot.poseId, assetId);
         } else if (slot.kind === "layer") {
             appearance.setLayerAsset(slot.layerId, assetId);
+        } else if (slot.kind === "avatar") {
+            // Clearing the override hands the differential back to the baker, so the bake
+            // field is dropped with it - the next reconcile renders one.
+            appearance.setAvatar(slot.avatarKey, assetId ? { overrideAssetId: assetId } : null);
         } else {
             appearance.setLayerOption(slot.layerId, slot.tagId, assetId);
         }
         setSlot(null);
     }, [appearance, slot]);
+
+    /**
+     * Which axes the avatar varies with. An empty declaration means every axis, so the toggle
+     * writes the *effective* set out on the first narrowing rather than starting from nothing -
+     * otherwise turning one axis off would read as turning every other one off at the same time.
+     */
+    const avatarAxisIds = useMemo(
+        () => (appearance && kind === "layered"
+            // Asked of the shared rule rather than re-derived here, so the editor and the baker
+            // cannot disagree about what "no declaration" means.
+            ? characterAvatarAxisIds({
+                kind: "layered",
+                canvas: null,
+                layers: [],
+                axes: appearance.getAxes(),
+                avatarAxisIds: appearance.getAvatarAxisIds(),
+            })
+            : []),
+        [appearance, kind, version],
+    );
+
+    /**
+     * The avatar key a look maps to. Several looks can map to one key: a combination varies on
+     * every axis, while its avatar is keyed only on the avatar axes, so two looks that differ only
+     * in an outfit share an avatar - which is the point of narrowing the axes in the first place.
+     */
+    const avatarKeyOf = useCallback((selection: Record<string, string>): string | null => {
+        if (!appearance || kind !== "layered") return null;
+        return characterAvatarKey({
+            kind: "layered",
+            canvas: null,
+            layers: [],
+            axes: appearance.getAxes(),
+            avatarAxisIds: appearance.getAvatarAxisIds(),
+        }, { tags: selection });
+    }, [appearance, kind, version]);
+
+    const overriddenAvatarKeys = useMemo(
+        () => new Set(Object.entries(appearance?.getAvatars() ?? {})
+            .filter(([, entry]) => entry.overrideAssetId)
+            .map(([key]) => key)),
+        [appearance, version],
+    );
+
+    const toggleAvatarAxis = useCallback((axisId: string) => {
+        if (!appearance) return;
+        const next = avatarAxisIds.includes(axisId)
+            ? avatarAxisIds.filter(id => id !== axisId)
+            : [...avatarAxisIds, axisId];
+        // Every axis back on is the default, which is stored as no declaration at all.
+        appearance.setAvatarAxisIds(next.length === appearance.getAxes().length ? null : next);
+    }, [appearance, avatarAxisIds]);
 
     const openSlot = (next: SlotRef, element: HTMLElement | null) => {
         anchorRef.current = element;
@@ -267,8 +330,14 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                             character={character}
                             set={combinationSet}
                             activeKey={combinationKey(tags)}
+                            overriddenAvatarKeys={overriddenAvatarKeys}
+                            avatarKeyOf={combination => avatarKeyOf(combination.tags)}
                             onPick={combination => { setPreviewTags(combination.tags); setGrid(false); }}
                             onName={combination => void nameCombination(combination.tags)}
+                            onAvatar={(combination, anchor) => {
+                                const key = avatarKeyOf(combination.tags);
+                                if (key) openSlot({ kind: "avatar", avatarKey: key }, anchor);
+                            }}
                             onClose={() => setGrid(false)}
                         />
                     ) : (
@@ -357,6 +426,13 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                         <ImagePlus className="w-3.5 h-3.5" />
                                     </button>
                                     <button
+                                        className={appearance.getAvatar(pose.id)?.overrideAssetId ? ICON_BTN_ON : ICON_BTN}
+                                        aria-label={t("characters.editor.avatar")}
+                                        onClick={event => openSlot({ kind: "avatar", avatarKey: pose.id }, event.currentTarget)}
+                                    >
+                                        <UserRound className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
                                         className={ICON_BTN}
                                         aria-label={t("characters.editor.removePose")}
                                         onClick={() => appearance.removePose(pose.id)}
@@ -393,6 +469,13 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                 onClick={() => appearance.createTag(axis.id, t("characters.editor.newTag"))}
                                             >
                                                 <Plus className="w-3.5 h-3.5" />
+                                            </button>
+                                            <button
+                                                className={avatarAxisIds.includes(axis.id) ? ICON_BTN_ON : ICON_BTN}
+                                                aria-label={t("characters.editor.avatarAxis")}
+                                                onClick={() => toggleAvatarAxis(axis.id)}
+                                            >
+                                                <UserRound className="w-3.5 h-3.5" />
                                             </button>
                                             <button
                                                 className={ICON_BTN}
@@ -656,6 +739,7 @@ const DIAGNOSTIC_KEYS = {
     axisUnused: "characters.editor.diagnostics.axisUnused",
     duplicateTag: "characters.editor.diagnostics.duplicateTag",
     occluded: "characters.editor.diagnostics.occluded",
+    avatarCombinations: "characters.editor.diagnostics.avatarCombinations",
 } as const;
 
 function DiagnosticRow(props: { diagnostic: CharacterDiagnostic; onClick: () => void }) {

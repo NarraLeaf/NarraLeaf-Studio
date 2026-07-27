@@ -1,5 +1,7 @@
 import {
     CharacterAppearanceKind,
+    CharacterAvatarEntry,
+    CharacterAvatarTable,
     CharacterAxis,
     CharacterLayer,
     CharacterNamed,
@@ -35,7 +37,24 @@ export function emptyAppearance(kind: CharacterAppearanceKind): ICharacterAppear
         : { kind: "preset", poses: [], defaultPoseId: null };
 }
 
-/** Defensive clone of a persisted appearance, tolerant of whatever the store actually holds. */
+function cloneAvatars(avatars: CharacterAvatarTable | undefined): CharacterAvatarTable | undefined {
+    if (!avatars) {
+        return undefined;
+    }
+    const cloned: CharacterAvatarTable = {};
+    for (const [key, entry] of Object.entries(avatars)) {
+        cloned[key] = { ...entry };
+    }
+    return cloned;
+}
+
+/**
+ * Defensive clone of a persisted appearance, tolerant of whatever the store actually holds.
+ *
+ * This names every field on purpose (rather than deep-copying) so a malformed store cannot smuggle
+ * shapes past it — which also means **anything added to the model has to be added here**, or it is
+ * silently dropped on the next save.
+ */
 function cloneAppearance(appearance: ICharacterAppearance): ICharacterAppearance {
     if (appearance?.kind === "layered") {
         return {
@@ -67,6 +86,8 @@ function cloneAppearance(appearance: ICharacterAppearance): ICharacterAppearance
                     },
                 }
                 : {}),
+            ...(appearance.avatarAxisIds ? { avatarAxisIds: [...appearance.avatarAxisIds] } : {}),
+            ...(appearance.avatars ? { avatars: cloneAvatars(appearance.avatars) } : {}),
         };
     }
     const preset = appearance as PresetAppearance;
@@ -74,6 +95,7 @@ function cloneAppearance(appearance: ICharacterAppearance): ICharacterAppearance
         kind: "preset",
         poses: (preset?.poses ?? []).map(pose => ({ ...pose })),
         defaultPoseId: preset?.defaultPoseId ?? null,
+        ...(preset?.avatars ? { avatars: cloneAvatars(preset.avatars) } : {}),
     };
 }
 
@@ -158,7 +180,59 @@ export class CharacterAppearance {
                 }
             }
         }
+        // Hand-drawn avatar overrides are ordinary library assets and must be locked like any other.
+        // The bakes are not: they are derived project files addressed by a synthetic id, and they
+        // have no record in the asset library to reference.
+        for (const entry of Object.values(this.getAvatars())) {
+            if (entry.overrideAssetId) ids.add(entry.overrideAssetId);
+        }
         return [...ids];
+    }
+
+    // ---------------------------------------------------------------- avatars
+
+    /** Every differential's dialog avatar, keyed by avatar key. Both kinds carry the same table. */
+    public getAvatars(): CharacterAvatarTable {
+        return this.appearance.avatars ?? {};
+    }
+
+    public getAvatar(key: string): CharacterAvatarEntry | null {
+        return this.getAvatars()[key] ?? null;
+    }
+
+    /**
+     * Write one differential's avatar record, or drop it when nothing is left to remember. Dropping
+     * matters: an empty entry would otherwise tell the compiler a bake exists for a key whose PNG
+     * the baker just deleted.
+     */
+    public setAvatar(key: string, entry: CharacterAvatarEntry | null): void {
+        if (!key) return;
+        const avatars = { ...this.getAvatars() };
+        const next = entry && (entry.baked || entry.overrideAssetId) ? { ...entry } : null;
+        if (next) {
+            avatars[key] = next;
+        } else {
+            delete avatars[key];
+        }
+        this.appearance.avatars = avatars;
+        this.notifyChange();
+    }
+
+    /** Which axes a layered character's avatar varies with. Empty means every axis (see the model). */
+    public getAvatarAxisIds(): string[] {
+        return this.layered?.avatarAxisIds ?? [];
+    }
+
+    public setAvatarAxisIds(axisIds: string[] | null): void {
+        const layered = this.layered;
+        if (!layered) return;
+        const valid = (axisIds ?? []).filter(axisId => layered.axes.some(axis => axis.id === axisId));
+        if (valid.length > 0) {
+            layered.avatarAxisIds = valid;
+        } else {
+            delete layered.avatarAxisIds;
+        }
+        this.notifyChange();
     }
 
     // ---------------------------------------------------------------- preset
