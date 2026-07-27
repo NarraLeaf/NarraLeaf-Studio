@@ -6,6 +6,7 @@ import {
     createPropertyEditorSchema,
 } from "../framework";
 import type { Translator } from "@shared/i18n";
+import { CharacterAvatarField } from "../fields/CharacterAvatarField";
 
 /** Translator function, threaded into schema builders since they run outside React. */
 type TranslateFn = Translator["t"];
@@ -95,6 +96,13 @@ export const characterPropertySchema = (t: TranslateFn) =>
                 ctx.character.profile.appearance.setDefaultPoseId(next);
             },
             order: 50,
+        },
+        {
+            id: "defaultAvatar",
+            type: "custom",
+            label: t("characters.properties.defaultAvatar"),
+            component: CharacterAvatarField,
+            order: 60,
         },
     ],
     showSavingIndicator: false,

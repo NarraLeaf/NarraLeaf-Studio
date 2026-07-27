@@ -1,8 +1,18 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 25 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 26 as const;
 
 /** Global runtime state key mirrored from the active NarraLeaf dialog hook. */
 export const BLUEPRINT_GAME_NAMETAG_STATE_KEY = "game.dialog.nametag" as const;
+
+/**
+ * Global runtime state key holding the speaking character's dialog avatar, as an asset id.
+ *
+ * Mirrored from the engine's own avatar resolution (`useAvatar`), which reads the live portrait
+ * element - so it already accounts for the differential the character is currently wearing, and
+ * for undo, load and skip. Null when nobody is speaking, when the narrator is, or when the current
+ * differential resolves no avatar.
+ */
+export const BLUEPRINT_GAME_SPEAKER_AVATAR_STATE_KEY = "game.dialog.avatar" as const;
 
 /** Global runtime state key mirrored from the NarraLeaf notification slot bridge. */
 export const BLUEPRINT_GAME_NOTIFICATIONS_STATE_KEY = "game.notifications" as const;
@@ -349,6 +359,14 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
         },
         getNametag: {
             capabilityId: "game.getNametag",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: {},
+            output: null,
+        },
+        getSpeakerAvatar: {
+            capabilityId: "game.getSpeakerAvatar",
             purity: "pure",
             callableFromBinding: true,
             async: false,
