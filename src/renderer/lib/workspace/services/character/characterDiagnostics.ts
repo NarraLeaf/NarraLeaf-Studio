@@ -1,10 +1,11 @@
 import type { CharacterAppearance } from "./CharacterAppearance";
+import { characterAvatarAxisIds } from "@shared/utils/characterAvatar";
 
 export type LayerSize = { width: number; height: number };
 
 export type CharacterDiagnostic = {
     /** Which message to render. The editor owns the wording; this module owns the finding. */
-    code: "offCanvas" | "constantNoImage" | "layerNoImage" | "axisNoTags" | "axisUnused" | "duplicateTag" | "occluded";
+    code: "offCanvas" | "constantNoImage" | "layerNoImage" | "axisNoTags" | "axisUnused" | "duplicateTag" | "occluded" | "avatarCombinations";
     severity: "error" | "warning";
     /** What to select when the author clicks the row. */
     target: { kind: "layer" | "axis"; id: string };
@@ -31,6 +32,13 @@ function format(size: LayerSize): string {
  * alpha of every layer intersected, which is the compositor's offscreen pass. Computing it here too
  * would mean two answers to one question.
  */
+/**
+ * Above this many baked avatars the count is worth saying out loud. Not a limit - an author whose
+ * character genuinely needs them should have them - just the point where the number stops being
+ * obvious from the axes on screen.
+ */
+const AVATAR_COMBINATION_BUDGET = 32;
+
 export function collectCharacterDiagnostics(
     appearance: CharacterAppearance,
     sizes: Record<string, LayerSize> = {},
@@ -41,6 +49,13 @@ export function collectCharacterDiagnostics(
     }
     const found: CharacterDiagnostic[] = [];
     const axes = appearance.getAxes();
+    const avatarAxisIds = new Set(characterAvatarAxisIds({
+        kind: "layered",
+        canvas: null,
+        layers: [],
+        axes: appearance.getAxes(),
+        avatarAxisIds: appearance.getAvatarAxisIds(),
+    }));
     const layers = appearance.getLayers();
     // With no declared canvas the *largest* measured layer stands in as the reference. A stack either
     // agrees with itself or it does not, and saying so needs no author input - but the guess has to
@@ -51,6 +66,21 @@ export function collectCharacterDiagnostics(
         .map(layer => sizes[layer.id])
         .filter(Boolean)
         .sort((a, b) => b.width * b.height - a.width * a.height)[0] ?? null;
+
+    // Every avatar axis multiplies into the bake. Three axes of four tags is sixty-four PNGs in the
+    // repository, which is a number the author should meet here rather than in a diff. Reported
+    // against the widest avatar axis, so clicking the row selects the one worth narrowing.
+    const avatarAxes = axes.filter(axis => avatarAxisIds.has(axis.id) && axis.tags.length > 0);
+    const combinations = avatarAxes.reduce((total, axis) => total * axis.tags.length, 1);
+    if (avatarAxes.length > 0 && combinations > AVATAR_COMBINATION_BUDGET) {
+        const widest = [...avatarAxes].sort((a, b) => b.tags.length - a.tags.length)[0];
+        found.push({
+            code: "avatarCombinations",
+            severity: "warning",
+            target: { kind: "axis", id: widest.id },
+            values: { count: String(combinations), name: widest.name },
+        });
+    }
 
     for (const layer of layers) {
         const size = sizes[layer.id];
