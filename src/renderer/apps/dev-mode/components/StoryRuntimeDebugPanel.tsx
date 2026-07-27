@@ -8,6 +8,7 @@ import type { GameAppStoryRuntimeBridge } from "@/lib/ui-editor/runtime/app/Game
 import { buildSceneFlowGraph } from "@/apps/workspace/modules/story-flow/sceneFlowModel";
 import { SceneFlowCanvas } from "@/apps/workspace/modules/story-flow/SceneFlowCanvas";
 import { getStorySceneName, storyRowSentence, type StoryRowLookups } from "@/lib/story/storyRowProjection";
+import { DevModePanelModeToggle, type DevModePanelChrome } from "./DevModePanelChrome";
 import {
     blockIdForActionId,
     listDeclaredStoryVariables,
@@ -59,6 +60,8 @@ type StoryRuntimeDebugPanelProps = {
     scopeBridge: ScopeStoreBridge;
     bundle: DevModeBundle;
     className?: string;
+    /** Dock/float mode toggle + title-bar drag, owned by DevModeContent. */
+    chrome?: DevModePanelChrome;
 };
 
 const SCOPE_LABEL: Record<StoryRuntimeVariableScope, string> = {
@@ -186,7 +189,7 @@ function useCurrentBlockId(storyRuntime: GameAppStoryRuntimeBridge): StoryBlockI
 }
 
 export function StoryRuntimeDebugPanel(props: StoryRuntimeDebugPanelProps): ReactNode {
-    const { storyRuntime, scopeBridge, bundle, className } = props;
+    const { storyRuntime, scopeBridge, bundle, className, chrome } = props;
     const { t } = useTranslation();
     const [tab, setTab] = useState<StoryRuntimeTabId>("variables");
 
@@ -200,7 +203,13 @@ export function StoryRuntimeDebugPanel(props: StoryRuntimeDebugPanelProps): Reac
     // `.nl-editor-surface` rather than `bg-surface-sunken`: the same paint, at the
     // `editor.surfaceOpacity` the author chose for the editor's reading surfaces. Identical at the
     // default 100%.
-    const rootClass = ["nl-editor-surface flex h-full min-h-0 shrink-0 flex-col border-l border-edge text-2xs text-fg-muted", className]
+    const rootClass = [
+        "nl-editor-surface flex h-full min-h-0 shrink-0 flex-col text-2xs text-fg-muted",
+        // Docked, the left hairline is the seam against the stage. Floating, the panel carries its
+        // own frame, and a second line just inside it reads as a rendering fault.
+        chrome?.floating ? "" : "border-l border-edge",
+        className,
+    ]
         .filter(Boolean)
         .join(" ");
 
@@ -249,18 +258,29 @@ export function StoryRuntimeDebugPanel(props: StoryRuntimeDebugPanelProps): Reac
     );
     return (
         <div className={rootClass}>
-            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-edge px-2 py-1.5">
+            {/* Also the drag handle while floating: the press is taken on this row and the owner
+                moves the whole panel. The title stays a DIRECT child so the row keeps its identity
+                as "the title bar" for anything that looks it up by its text. */}
+            <div
+                className={`flex shrink-0 items-center justify-between gap-2 border-b border-edge px-2 py-1.5 ${
+                    chrome?.floating ? "cursor-grab select-none active:cursor-grabbing" : ""
+                }`}
+                onPointerDown={chrome?.onTitleBarPointerDown}
+            >
                 <span className="text-xs font-medium text-fg">{t("devMode.runtime.title")}</span>
-                {snapshots.length > 0 ? (
-                    <Select
-                        className="max-w-[55%] shrink-0"
-                        size="sm"
-                        portalMenu
-                        options={snapshotOptions}
-                        value={context?.snapshotId ?? ""}
-                        onChange={value => onSelectSnapshot(String(value))}
-                    />
-                ) : null}
+                <div className="flex shrink-0 items-center gap-1">
+                    {snapshots.length > 0 ? (
+                        <Select
+                            className="max-w-[13rem] shrink-0"
+                            size="sm"
+                            portalMenu
+                            options={snapshotOptions}
+                            value={context?.snapshotId ?? ""}
+                            onChange={value => onSelectSnapshot(String(value))}
+                        />
+                    ) : null}
+                    <DevModePanelModeToggle chrome={chrome} />
+                </div>
             </div>
 
             {/* No fill of its own: it is a direct child of the panel surface and the paint was the
