@@ -17,12 +17,10 @@ export const storyVars = {
     scene: {
         title: "场景变量",
         hint: "按场景划分，保存于存档文件中",
-        empty: "还没有场景变量",
     },
     saved: {
         title: "存档变量",
         hint: "按存档文件划分，须可序列化",
-        empty: "还没有存档变量",
     },
     persistent: {
         title: "持久变量",
