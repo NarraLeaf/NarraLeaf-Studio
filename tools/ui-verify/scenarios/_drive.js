@@ -8,8 +8,16 @@
  * someone else's uncommitted diff, and lint, tests and screenshots were all green.
  *
  *   1. tools/ui-verify/scenarios/iso-tree.sh <branch> <isoDir>     (prints the junction command)
- *   2. cd <isoDir> && NLS_DEV_RELOAD_PORT=<port> node project/app/dev-electron.js --cdp --cdp-port=<cdp>
- *   3. NLS_VERIFY_PORT=<cdp> NLS_VERIFY_PID=<electron pid> node tools/ui-verify/scenarios/<name>.js
+ *   2. cd <isoDir> && NLS_DEV_RELOAD_PORT=<port> node project/app/dev-electron.js --cdp --cdp-port=<cdp> \
+ *          --disable-features=CalculateNativeWinOcclusion
+ *   3. NLS_VERIFY_PORT=<cdp> NLS_VERIFY_PID=<electron pid> node tools/ui-verify/scenarios/goto-devmode.js
+ *      then the scenario itself — u4 and u5 both assume an instance somebody else navigated.
+ *
+ * That switch in step 2 is not optional. Without it Chromium marks a covered window occluded and
+ * `document.hidden` goes true (~2.1s on this machine), the visibility guard fails, and the only way
+ * back is stealing the foreground — which is what acceptance runs used to do, dozens of times per
+ * scenario, to a person who was trying to work. With it a covered window stays measurable and the
+ * guard never touches the foreground at all. Someone else's desktop is not scratch space.
  *
  * Stop it with the SAME `NLS_DEV_RELOAD_PORT` you started it with, or `stop-dev.js` will target the
  * default port and kill another session's app.

@@ -118,7 +118,19 @@ NLS_VERIFY_PORT=<cdp> NLS_VERIFY_PID=<pid> NLS_VERIFY_PROJECT=<项目副本> \
   "iso-tree.sh 的 rm -rf 跟着 junction 删穿"这个猜想——这里的 `rm -rf` **不跟** junction。
   隔离树 junction 到一份自建的 node_modules 即可，别依赖主检出那份。
 - **项目夹具永远用副本**：`D:/Temp/nls-u4-proj/demo3`（含 Nesting Lab）。
-  **不要碰 `D:/Dev/test/nlstudio/demo3`。**
+  **不要碰 `D:/Dev/test/nlstudio/demo3`**——而且它和本轮夹具**不是同一份**
+  （夹具的 First Day 有 12 行，那份只有 10 行），别拿它去"还原"夹具。
+  干净副本在 `D:/Temp/nls-u4-proj-pristine`。
+- **夹具现在会被验收跑改坏，每轮都要还原**（和 profile 一样）。
+  数据安全那张卡合进来之前，探针的误触几乎永远落不到盘上（纯 800ms trailing debounce、
+  无上限、无关窗刷盘，而验收是直接杀进程）；现在有了原子写 + ~5s 上限 + 关窗刷盘，它落得下去。
+  **已经发生过一次**：某次探针的一个游离按键给一行对白尾部追加了一个文本 run，自动保存忠实地存了，
+  下一轮读到 `OK au`（故事里写的是 `OK {a}`），表现为"时间线丢了内联变量引用"这条判据变红。
+  **应用没有任何问题**，是夹具被改坏了。
+- **`git worktree remove --force` 会顺着 `node_modules` junction 删穿到目标**
+  （`rm -rf` 不会，我拿 canary 分别测过）。本轮它吃掉了主检出的 node_modules，
+  也吃掉了我自己那份的一部分；主检出 13:54 那次被清空多半也是同一原因。
+  **移除 worktree 前先 `cmd /c rmdir "<worktree>\node_modules"` 把 junction 摘掉。**
 - **引擎**：`D:/Dev/org/NarraLeaf/narraleaf-react`，活跃分支 `dev_nomen`，当前 0.19.2 已发布。
   改引擎必须写 CHANGELOG。
 

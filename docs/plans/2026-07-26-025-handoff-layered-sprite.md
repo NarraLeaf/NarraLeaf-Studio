@@ -109,6 +109,9 @@ setCanvas / createAxis / createTag / createLayer / setLayerAxis / setLayerAsset 
   装依赖不碰主检出；本仓 `yarn.lock` 是 gitignore 的。
 - 起停 dev 必须同一组变量：`NLS_DEV_RELOAD_PORT=<port> node project/app/dev-electron.js --cdp --cdp-port=<port>`
   → `NLS_DEV_RELOAD_PORT=<port> node project/app/stop-dev.js`。不带变量会去杀 5588 上别人的实例。
+- **驱动 app 做验收时再加 `--disable-features=CalculateNativeWinOcclusion`**（`yarn dev:verify` 已内置）。
+  没有它，被遮住的窗口约 2.1s 后 `document.hidden` 翻 true，验收就只能靠抢前台/置顶把自己弄绿——
+  那是在拿机器主人的桌面当草稿纸。详见 `tools/ui-verify/README.md` 与 `-010` §6.8b。
 - **develop 常被主检出 checkout 着**。不能在别的 worktree 里 checkout 它。安全推法：
   `git commit-tree HEAD^{tree} -p origin/develop -p HEAD -m "…"` 造 merge commit，
   再 `git push origin <sha>:develop`——全程不碰任何工作树。

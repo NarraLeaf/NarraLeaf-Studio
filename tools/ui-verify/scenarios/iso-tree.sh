@@ -30,6 +30,16 @@ cp yarn.lock "$ISO/"                       # gitignored, but yarn 4 refuses to r
 mkdir -p "$ISO/.yarn"
 [ -f .yarn/install-state.gz ] && cp .yarn/install-state.gz "$ISO/.yarn/"
 
+# THE PROJECT COPY IS NOW MUTABLE BY A RUN. Restore it between rounds the same way the profile is.
+# Until the data-safety card landed, an accidental edit made by a probe almost never reached disk —
+# the autosave was a pure 800ms trailing debounce with no ceiling and no flush on shutdown, and an
+# acceptance run kills the app. With atomic writes, a ~5s ceiling and a shutdown flush, it does.
+# It already happened: a stray keystroke from a probe appended a text run to a dialogue row, the
+# autosave dutifully saved it, and the next run read `OK au` where the story says `OK {a}` — which
+# surfaced as a red assertion about the timeline dropping an inline variable reference. Nothing was
+# wrong with the app. Keep a pristine copy of the project and restore from it, e.g.
+#   NLS_VERIFY_PROJECT=/d/Temp/nls-u4-proj/demo3  restored from  /d/Temp/nls-u4-proj-pristine
+#
 # A fresh profile every round: probes leave selected rows and open tabs behind, and a state that
 # has been probed can no longer reproduce "nothing selected" (handoff 6.9). Seeded by COPYING the
 # main checkout's dev profile (read-only on it), then repointing recents at the project COPY so an
@@ -50,5 +60,6 @@ echo "files:     $(find "$ISO/src" -type f | wc -l) under src/"
 echo
 echo "NEXT — junction node_modules (PowerShell):"
 echo "  cmd /c mklink /J \"$(cygpath -w "$ISO")\\node_modules\" \"D:\\Dev\\org\\NarraLeaf\\NarraLeaf-Studio\\node_modules\""
-echo "THEN — launch:"
-echo "  cd $ISO && NLS_DEV_RELOAD_PORT=5599 node project/app/dev-electron.js --cdp --cdp-port=9228"
+echo "THEN — launch (the occlusion switch is required; without it the visibility guard fails and"
+echo "        acceptance would have to steal the operator's foreground to pass):"
+echo "  cd $ISO && NLS_DEV_RELOAD_PORT=5599 node project/app/dev-electron.js --cdp --cdp-port=9228 --disable-features=CalculateNativeWinOcclusion"
