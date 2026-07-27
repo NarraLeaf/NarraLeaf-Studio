@@ -123,25 +123,46 @@ export function characterAvatarKeyFromTags(
     return characterAvatarKey(appearance, { tags: selection });
 }
 
-/** Every avatar key a character can wear — what the baker enumerates. */
-export function characterAvatarKeys(appearance: CharacterAppearanceSummary | undefined): string[] {
+/** One differential the baker has to render: its key, and the selection that draws it. */
+export type CharacterAvatarTarget = {
+    key: string;
+    selection: { poseId?: string; tags?: Record<string, string> };
+};
+
+/**
+ * Every differential a character can wear an avatar for.
+ *
+ * Returns the *selection* alongside the key rather than the key alone, because the baker has to ask
+ * the appearance what to draw and a key cannot be parsed back into one reliably — a tag id could
+ * contain the separator, and for a layered character the key is sorted while the selection is keyed
+ * by axis.
+ */
+export function characterAvatarTargets(appearance: CharacterAppearanceSummary | undefined): CharacterAvatarTarget[] {
     if (appearance?.kind === "preset") {
-        return appearance.poses.map(pose => pose.id);
+        return appearance.poses.map(pose => ({ key: pose.id, selection: { poseId: pose.id } }));
     }
     if (appearance?.kind !== "layered") {
         return [];
     }
     const axisIds = new Set(characterAvatarAxisIds(appearance));
     const axes = appearance.axes.filter(axis => axisIds.has(axis.id) && axis.tags.length > 0);
-    // Cartesian product of the avatar axes' tags. Sorting happens per combination, not here, so the
-    // key an enumerated combination produces is byte-identical to the one a live tag set produces.
-    let combinations: string[][] = [[]];
+    // Cartesian product of the avatar axes' tags. The key is sorted per combination, not here, so
+    // an enumerated combination produces the byte-identical key a live tag set does.
+    let selections: Record<string, string>[] = [{}];
     for (const axis of axes) {
-        combinations = combinations.flatMap(prefix => axis.tags.map(tag => [...prefix, tag.id]));
+        selections = selections.flatMap(prefix => axis.tags.map(tag => ({ ...prefix, [axis.id]: tag.id })));
     }
-    return combinations
-        .filter(tagIds => tagIds.length > 0)
-        .map(tagIds => [...tagIds].sort().join(AVATAR_KEY_SEPARATOR));
+    return selections
+        .filter(selection => Object.keys(selection).length > 0)
+        .map(selection => ({
+            key: Object.values(selection).sort().join(AVATAR_KEY_SEPARATOR),
+            selection: { tags: selection },
+        }));
+}
+
+/** Every avatar key a character can wear — what the baker enumerates. */
+export function characterAvatarKeys(appearance: CharacterAppearanceSummary | undefined): string[] {
+    return characterAvatarTargets(appearance).map(target => target.key);
 }
 
 function avatarEntry(
