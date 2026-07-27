@@ -147,3 +147,36 @@ D-5a 看到的面板控件名是 `["Defaults","Variables","Context","Timeline","
 ## 5. 交付
 
 分支不要自己合并；报告写到 `docs/plans/reports/`；**报告里不要写"验收通过"**。
+
+## 6. 验收记录（orchestrator 亲验，2026-07-27）
+
+分支 `feat/dev-mode-panel-dock-float` @ `508efa40`，隔离树 `D:/Temp/nls-026-acc`
+（`git archive`，只含被测分支），全新实例，CDP 9228 / reload 9229。
+
+| scenario | 结果 |
+|---|---|
+| `u026-dev-mode-panel-dock-float.js` | **16 绿 / 0 红**（改前 4 绿 / 12 红） |
+| `u4-dev-mode-console.js` | **17 绿 / 0 红**（A-9 `Repeat 1/3` 在 0.19.1 下如期转绿） |
+| `u5-language-and-empty-states.js` | **11 绿 / 0 红** |
+
+关键实测：固定 `area 1020 + panel 380 = win 1400`；浮动 `area 1400 = win 1400`；
+两模式宽高比同为 `1.7778`；拖动 `要 (-220,130) 得 (-220,130)`；
+往窗外猛拖后夹在 `x=16,y=56`；面板两模式均 `rgb(11,13,18)`。
+截图逐张亲看：浮动面板在整幅舞台之上、不透明、不遮对白，立绘完整无裁切。
+
+**u4 的 A-6 与 A-14 是 skip 不是绿**（前者缺存档基线，后者需先打开工作区 Scene Flow 页），
+本次未覆盖，据实记下。
+
+### 6.1 验收过程中改了两处判据/夹具（都是我的错，实现没错）
+
+1. **首轮 16 绿是在主菜单上量出来的。** `driveToDevMode` 点完 New Game 只固定睡 4 秒，
+   冷树上不够，于是整套几何是对着启动菜单量的——每个数都合理，但没有一个是关于运行中场景的。
+   `_drive.js` 原来的写法是看一眼找不到 "New Game" 就 `return`，把"菜单还没渲染"
+   当成了"已经过了菜单"。已改成轮询到故事真上台，够不到就报错；**u4 / u5 共用这条路径**。
+2. **D-6b 曾可能是假绿。** 它声称"浮动模式扛过了 game session 重挂载"，
+   但如果那次时间线跳转根本没跳成，模式当然不变。已加 setup guard：
+   跳转后必须看到播放头真的落在被点的那一行（10），否则整条 run 报错。
+
+另外补了 `scenarios/goto-devmode.js`：u4 / u5 都假设实例已经被驱动到 Dev Mode，
+自己却不驱动，在全新实例上死于 `clickNamed timed out for "^First Day"`——
+看起来像缺了编辑器页签，其实是没人打开过项目。
