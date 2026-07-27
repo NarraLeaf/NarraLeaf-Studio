@@ -151,7 +151,11 @@ export function planImport(leaves: PsdLeaf[], blendResolutions: Record<string, B
     const attach = (target: PsdLeaf, leaf: PsdLeaf, clip: boolean): void => {
         const key = joinPath(target.path);
         attachments[key] = [...(attachments[key] ?? []), { leaf, clip }];
-        host.set(joinPath(leaf.path), target);
+        // A leaf merged onto a whole group has several hosts; the first is the one anything clipped
+        // to it follows, so the choice stays stable rather than depending on iteration order.
+        if (!host.has(joinPath(leaf.path))) {
+            host.set(joinPath(leaf.path), target);
+        }
     };
 
     for (const leaf of kept) {
@@ -168,7 +172,15 @@ export function planImport(leaves: PsdLeaf[], blendResolutions: Record<string, B
         if (isUnsupportedBlend(leaf.blendMode) && blendResolutions[joinPath(leaf.path)] === "merge") {
             const below = bases[bases.length - 1];
             if (below) {
-                attach(below, leaf, false);
+                // When the layer below belongs to a group, the merge lands on *every* member of it.
+                // In Photoshop the shadow sits above the whole group and shows whichever tag is on;
+                // attaching it to the topmost member alone would make the shadow disappear the
+                // moment the author switched to any other tag. A group's leaves are contiguous, and
+                // this leaf comes after all of them, so `bases` already holds the whole group.
+                const group = below.group ? bases.filter(base => base.group === below.group) : [below];
+                for (const target of group) {
+                    attach(target, leaf, false);
+                }
                 continue;
             }
             // Nothing underneath to merge into: it becomes a plain layer of its own rather than
@@ -221,18 +233,58 @@ export function planImport(leaves: PsdLeaf[], blendResolutions: Record<string, B
 /**
  * The blend modes Studio can flatten into pixels.
  *
- * Separable modes only — hue, saturation, colour and luminosity mix channels together, and a
- * subtly-wrong version of those would be worse than refusing them. A layer in one of those can be
- * skipped but not merged, and the wizard has to say so rather than offering a choice it cannot keep.
- * The implementations live in the worker; this list is what the UI needs.
+ * Two families, both implemented from the W3C compositing spec in the worker's `blendModes.ts`:
+ * per-channel ones, and the ones that mix channels together (hue/saturation/colour/luminosity, plus
+ * Photoshop's whole-pixel darker/lighter colour).
+ *
+ * **This list must match `canMerge` in the worker.** It is duplicated because the wizard runs in the
+ * renderer and the implementations run in a utility process, and the wizard has to grey out a choice
+ * it could not keep before the author makes it — after the bake would be too late.
+ *
+ * What stays off the list is anything Studio cannot reproduce faithfully. `dissolve` is the one that
+ * matters: it is stochastic and Photoshop's dither pattern is undocumented, so every bake would
+ * differ. Those layers can only be skipped.
  */
-export const SEPARABLE_BLEND_MODES: readonly string[] = [
+export const MERGEABLE_BLEND_MODES: readonly string[] = [
     "normal", "multiply", "screen", "darken", "lighten", "linearBurn", "linearDodge",
     "colorBurn", "colorDodge", "overlay", "hardLight", "softLight", "difference", "exclusion",
+    "hue", "saturation", "color", "luminosity", "darkerColor", "lighterColor",
 ];
 
 export function canMergeBlendMode(mode: string): boolean {
-    return SEPARABLE_BLEND_MODES.includes(mode);
+    return MERGEABLE_BLEND_MODES.includes(mode);
+}
+
+/**
+ * Above these, the wizard says out loud how big the import is going to be.
+ *
+ * Not a refusal — a sixty-layer sheet is a legitimate thing to import, and the author is the only
+ * one who can judge it. The numbers are worth showing because both costs are invisible at the moment
+ * of choosing: every layer becomes its own asset in the library, and every layer is baked to the
+ * *full* canvas, so decoded memory is layers × canvas regardless of how little each one draws.
+ */
+export const IMPORT_LAYER_WARNING = 24;
+export const IMPORT_MEGABYTE_WARNING = 256;
+
+export type ImportCost = {
+    /** Assets this import will add to the library. */
+    layers: number;
+    /** Decoded RGBA megabytes for the whole stack, which is what the character costs on stage. */
+    megabytes: number;
+    heavy: boolean;
+};
+
+export function estimateImportCost(plan: ImportPlan, canvas: { width: number; height: number }): ImportCost {
+    const layers = plan.slots.reduce(
+        (total, slot) => total + (slot.kind === "constant" ? 1 : slot.options.length),
+        0,
+    );
+    const megabytes = Math.round((canvas.width * canvas.height * 4 * layers) / (1024 * 1024));
+    return {
+        layers,
+        megabytes,
+        heavy: layers > IMPORT_LAYER_WARNING || megabytes > IMPORT_MEGABYTE_WARNING,
+    };
 }
 
 /**

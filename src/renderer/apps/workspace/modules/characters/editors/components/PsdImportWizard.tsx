@@ -16,6 +16,7 @@ import {
 import type { BlendResolution, PsdDocument } from "@shared/types/psdImport";
 import {
     canMergeBlendMode,
+    estimateImportCost,
     flattenLeaves,
     joinPath,
     planImport,
@@ -64,6 +65,7 @@ export function PsdImportWizard(props: {
     const plan = useMemo(() => planImport(leaves, resolutions), [leaves, resolutions]);
     const undecided = blends.filter(leaf => !resolutions[joinPath(leaf.path)]);
     const summary = document ? summarisePlan(props.appearance, plan) : null;
+    const cost = document ? estimateImportCost(plan, document) : null;
 
     const reset = useCallback(() => {
         setFilePath(null);
@@ -218,6 +220,15 @@ export function PsdImportWizard(props: {
                 <div className="space-y-4">
                     <div className="flex items-center gap-2 text-xs">
                         <span className="min-w-0 flex-1 truncate font-medium">{document.fileName}</span>
+                        {cost && (
+                            <span
+                                aria-label={t("characters.editor.psd.cost")}
+                                data-psd-heavy={cost.heavy ? "true" : "false"}
+                                className={cost.heavy ? "text-warning" : "text-fg-subtle"}
+                            >
+                                {t("characters.editor.psd.cost", { layers: cost.layers, megabytes: cost.megabytes })}
+                            </span>
+                        )}
                         <span
                             className="text-fg-subtle"
                             aria-label={t("characters.editor.psd.canvas")}
