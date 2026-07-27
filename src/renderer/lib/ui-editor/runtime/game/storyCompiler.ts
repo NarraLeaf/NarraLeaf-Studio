@@ -409,8 +409,6 @@ type SceneCompileContext = {
     avatarAssetIdByUrl: Map<string, string>;
     /** Stage sprites already registered as portraits, so a second row does not register them twice. */
     boundPortraits?: WeakSet<Image>;
-    /** Avatar URLs already handed to this scene's preloader. */
-    preloadedAvatarUrls?: Set<string>;
     /** Single NLR Persistent (Storable-backed, per-save) holding all "saved" variables. */
     savedPersistent: Persistent<Record<string, StoryLiteralValue>>;
     /** Scene-scope declaration table of this scene (variableId → def), scanned once per compile. */
@@ -3334,17 +3332,13 @@ async function bindCharacterPortrait(
     character.addPortrait(image);
     character.setAvatar(context => resolveCompiledAvatar(summary, resolved, context));
 
-    // An avatar URL only ever lives inside the resolver closure, and the engine says outright that
-    // a resolver's srcs are invisible to its preloader and are fetched on first use. Handing them
-    // to the scene explicitly is what keeps the first line a character speaks from fetching its
-    // avatar mid-dialog.
-    const preloaded = ctx.preloadedAvatarUrls ?? (ctx.preloadedAvatarUrls = new Set());
-    for (const url of [...resolved.byKey.values(), ...(resolved.fallback ? [resolved.fallback] : [])]) {
-        if (!preloaded.has(url)) {
-            preloaded.add(url);
-            ctx.nlrScene.preloadImage(url);
-        }
-    }
+    // Deliberately NOT registered with `ctx.nlrScene.preloadImage`. That warms `ImageCacheManager`,
+    // which stores a base64 re-encoding and decodes *that*, reachable only through
+    // `cacheManager.get(url)` — which the engine's `<Image>` uses but its `<Avatar>` does not, and
+    // a Studio Image widget certainly does not. Registering avatars there would buy a fetch, a
+    // base64 blowup, a decode and a retained full-resolution bitmap that every consumer then
+    // ignores. The warm that actually helps is keyed to the URL the widget renders and lives in
+    // `characterAvatarAssets.warmAvatarDecode`, run when the session mounts this compile's table.
 }
 
 async function resolveAsset(ctx: SceneCompileContext, assetId: string, assetType: StoryAssetKind, blockId: string): Promise<string | null> {

@@ -1,15 +1,38 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
 import {
     clearCharacterAvatarAssets,
     isCharacterAvatarAssetId,
+    isCharacterAvatarDecoded,
     registerCharacterAvatarAssets,
     resolveCharacterAvatarAssetUrl,
 } from "./characterAvatarAssets";
 
+/**
+ * A stand-in for the browser's `Image`, recording which URLs were decoded. The real one is what
+ * holds the decoded bitmap alive; here we only need to know the decode was asked for, against the
+ * URL the widget will actually render.
+ */
+function installFakeImage(): { decoded: string[] } {
+    const decoded: string[] = [];
+    class FakeImage {
+        public src = "";
+        public decode(): Promise<void> {
+            decoded.push(this.src);
+            return Promise.resolve();
+        }
+    }
+    vi.stubGlobal("window", { Image: FakeImage });
+    return { decoded };
+}
+
 describe("characterAvatarAssets", () => {
     beforeEach(() => {
         clearCharacterAvatarAssets();
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
     });
 
     it("inverts the compile's url→id table into a synchronous id→url lookup", () => {
@@ -43,5 +66,34 @@ describe("characterAvatarAssets", () => {
     it("answers null for an unregistered id rather than throwing", () => {
         expect(resolveCharacterAvatarAssetUrl("asset-missing")).toBeNull();
         expect(resolveCharacterAvatarAssetUrl(undefined)).toBeNull();
+    });
+
+    it("decodes against the URL the widget will render, not a re-encoding of it", async () => {
+        const fake = installFakeImage();
+        await registerCharacterAvatarAssets(new Map([["nlr://avatar-angry.png", "asset-angry"]]));
+
+        // The engine's own cache decodes a base64 copy, whose decoded bitmap a plain
+        // `<img src="nlr://...">` can never reach. This one is keyed to the real URL.
+        expect(fake.decoded).toEqual(["nlr://avatar-angry.png"]);
+        expect(isCharacterAvatarDecoded("nlr://avatar-angry.png")).toBe(true);
+    });
+
+    it("drops retained bitmaps when the session unmounts", async () => {
+        const fake = installFakeImage();
+        await registerCharacterAvatarAssets(new Map([["nlr://avatar.png", "asset-a"]]));
+        expect(isCharacterAvatarDecoded("nlr://avatar.png")).toBe(true);
+
+        clearCharacterAvatarAssets();
+
+        // Holding the element is the retention, so releasing it is what frees the bitmap - a
+        // session that never released would leak one full-resolution image per avatar per story.
+        expect(isCharacterAvatarDecoded("nlr://avatar.png")).toBe(false);
+        expect(fake.decoded).toHaveLength(1);
+    });
+
+    it("survives an environment with no DOM", async () => {
+        vi.stubGlobal("window", undefined);
+        await expect(registerCharacterAvatarAssets(new Map([["nlr://a.png", "asset-a"]]))).resolves.toBeUndefined();
+        expect(resolveCharacterAvatarAssetUrl("asset-a")).toBe("nlr://a.png");
     });
 });
