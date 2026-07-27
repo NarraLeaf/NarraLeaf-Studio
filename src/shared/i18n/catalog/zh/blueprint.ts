@@ -625,6 +625,7 @@ export const blueprint = {
         getSliderNormalizedValue: "获取滑块归一化值",
         getSliderRange: "获取滑块范围",
         getSliderValue: "获取滑块值",
+        getSpeakerAvatar: "获取说话人头像",
         getText: "获取文本",
         getTextAlign: "获取文本对齐",
         getTextColor: "获取文本颜色",

@@ -31,6 +31,7 @@ export function DialogSlotSurface(props: {
             <DialogStateBridge
                 core={options.core}
                 getCurrentNametag={options.getCurrentNametag}
+                resolveAvatarAssetId={options.resolveAvatarAssetId}
                 flushDialogElements={runtime.flushSlotElements}
             />
             <StageSlotSurfaceBody options={options} surface={surface} runtime={runtime} />
