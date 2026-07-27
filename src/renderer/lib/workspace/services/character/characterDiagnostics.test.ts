@@ -80,3 +80,45 @@ describe("collectCharacterDiagnostics", () => {
         expect(duplicate).toMatchObject({ severity: "warning", target: { kind: "axis", id: axis.id } });
     });
 });
+
+describe("avatar bake volume", () => {
+    /** N axes of `tagsPerAxis` tags each, every layer filled so nothing else is reported. */
+    function withAxes(count: number, tagsPerAxis: number) {
+        const appearance = new CharacterAppearance(emptyAppearance("layered"));
+        for (let a = 0; a < count; a++) {
+            const axis = appearance.createAxis(`Axis ${a}`)!;
+            const layer = appearance.createLayer(`Layer ${a}`, axis.id)!;
+            for (let tag = 0; tag < tagsPerAxis; tag++) {
+                const created = appearance.createTag(axis.id, `Tag ${tag}`)!;
+                appearance.setLayerOption(layer.id, created.id, `asset-${a}-${tag}`);
+            }
+        }
+        return appearance;
+    }
+
+    it("says nothing while the bake is small", () => {
+        // 2 x 4 = 8 avatars, which the axes on screen already make obvious.
+        expect(codes(withAxes(2, 4))).not.toContain("avatarCombinations");
+    });
+
+    it("reports the count once it stops being obvious from the axes", () => {
+        // 3 x 4 = 64 PNGs in the repository - a number the author should meet here, not in a diff.
+        expect(codes(withAxes(3, 4))).toContain("avatarCombinations");
+    });
+
+    it("counts only the avatar axes, so narrowing them clears it", () => {
+        const appearance = withAxes(3, 4);
+        const [first] = appearance.getAxes();
+        appearance.setAvatarAxisIds([first.id]);
+        expect(codes(appearance)).not.toContain("avatarCombinations");
+    });
+
+    it("names the widest axis, which is the one worth narrowing", () => {
+        const appearance = withAxes(3, 4);
+        const [, , third] = appearance.getAxes();
+        appearance.createTag(third.id, "Extra");
+        const found = collectCharacterDiagnostics(appearance).find(d => d.code === "avatarCombinations");
+        expect(found?.target).toEqual({ kind: "axis", id: third.id });
+        expect(found?.values.count).toBe("80");
+    });
+});
