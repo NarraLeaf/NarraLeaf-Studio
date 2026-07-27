@@ -2257,7 +2257,7 @@ describe("dialog avatars", () => {
         expect(resolveAvatar(compiled, "char-alice", { currentSrc: "nlr://asset-neutral" })).toBeNull();
     });
 
-    it("preloads every avatar it can answer with", async () => {
+    it("keeps avatars out of the scene preloader, which caches them where nothing can read them", async () => {
         const alice: DevModeCharacterSummary = {
             id: "char-alice",
             name: "Alice",
@@ -2276,10 +2276,20 @@ describe("dialog avatars", () => {
             resolveAssetUrl: async assetId => `nlr://${assetId}`,
         });
 
-        // The engine's preloader cannot see inside a resolver closure, so an avatar that is not
-        // registered here is fetched mid-dialog - the flash this whole path exists to avoid.
+        // `ImageCacheManager` stores a base64 re-encoding and decodes that, reachable only through
+        // `cacheManager.get(url)`. The engine's `<Image>` reads it; its `<Avatar>` and a Studio
+        // Image widget do not. Registering avatars here would buy a fetch, a base64 blowup, a
+        // decode and a retained full-resolution bitmap that every avatar consumer then ignores.
         const srcManager = (compiled.scene as unknown as { srcManager: { src: { type: string; src: unknown }[] } }).srcManager;
         const preloaded = srcManager.src.filter(entry => entry.type === "image").map(entry => entry.src);
-        expect(preloaded).toEqual(expect.arrayContaining(["nlr://asset-avatar-neutral", "nlr://asset-avatar-default"]));
+        expect(preloaded).not.toContain("nlr://asset-avatar-neutral");
+        expect(preloaded).not.toContain("nlr://asset-avatar-default");
+
+        // Not vacuous: the compile really did resolve those avatars, it just routed them to the
+        // warm that helps (`characterAvatarAssets`) instead of to the cache that does not.
+        expect([...compiled.avatarAssetIdByUrl]).toEqual(expect.arrayContaining([
+            ["nlr://asset-avatar-neutral", "asset-avatar-neutral"],
+            ["nlr://asset-avatar-default", "asset-avatar-default"],
+        ]));
     });
 });
