@@ -16,12 +16,10 @@ export const storyVars = {
     scene: {
         title: "Scene variables",
         hint: "Per scene; kept in the save file.",
-        empty: "No scene variables yet.",
     },
     saved: {
         title: "Saved variables",
         hint: "Per save file; must be serializable.",
-        empty: "No saved variables yet.",
     },
     persistent: {
         title: "Persistent variables",

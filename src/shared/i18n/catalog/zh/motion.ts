@@ -51,7 +51,6 @@ export const motion = {
         flash: "闪烁",
     },
     selector: {
-        emptyKind: "尚无{kind}动画，请使用\"新建\"以创建一个",
         loadingPreview: "正在加载预览…",
     },
     field: {
