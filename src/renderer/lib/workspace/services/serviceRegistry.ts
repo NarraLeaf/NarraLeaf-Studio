@@ -32,6 +32,7 @@ import { CommandService } from "./ui/CommandService";
 import { SearchService } from "./search/SearchService";
 import { ReferenceService } from "./references/ReferenceService";
 import { VariableRegistryService } from "./variables/VariableRegistryService";
+import { SaveStatusService } from "./autosave/SaveStatusService";
 
 export class ServiceRegistry {
     private services: Record<Services, Service> = {
@@ -67,6 +68,7 @@ export class ServiceRegistry {
         [Services.Search]: SearchService.getInstance(),
         [Services.Reference]: ReferenceService.getInstance(),
         [Services.VariableRegistry]: VariableRegistryService.getInstance(),
+        [Services.SaveStatus]: SaveStatusService.getInstance(),
     };
 
     public get<T extends Service>(service: Services): T {

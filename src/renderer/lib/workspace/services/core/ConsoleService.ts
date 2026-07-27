@@ -110,6 +110,11 @@ export const BUILTIN_CONSOLE_CHANNELS: readonly ConsoleChannelDefinition[] = [
         label: "Build",
         description: "Build, packaging, and preview pipeline output",
     },
+    {
+        id: "storage",
+        label: "Storage",
+        description: "Project file writes: failed saves, retries, and recoveries",
+    },
 ] as const;
 
 /** One registered channel: its definition plus a ref-count so multiple producers can share it. */

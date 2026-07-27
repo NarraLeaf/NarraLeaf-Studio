@@ -12,6 +12,7 @@ import {
     normalizeGameBuildArch,
 } from "@shared/types/gameBuild";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
+import { ATOMIC_WRITE_TEMP_PATTERN } from "@shared/utils/fs";
 import { buildDependencyPlatformKey } from "../build/preflight";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
@@ -350,7 +351,8 @@ export class PreviewManager {
                 assetsContentRoot,
                 assetsRoot,
             ],
-            { ignoreInitial: true },
+            // See DevModeManager: the atomic writer's scratch siblings are not project changes.
+            { ignoreInitial: true, ignored: ATOMIC_WRITE_TEMP_PATTERN },
         );
         session.watcher.on("add", file => this.scheduleRelaunch(session, "add", file));
         session.watcher.on("change", file => this.scheduleRelaunch(session, "change", file));

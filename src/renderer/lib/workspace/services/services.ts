@@ -151,6 +151,8 @@ enum Services {
     ProjectStats = "projectStats",
     /** Project-level persistent variable registry (blueprint-declared persistent vars); M-VAR */
     VariableRegistry = "variableRegistry",
+    /** Aggregate "is my work on disk?" state: auto-saver states + the table of files that failed */
+    SaveStatus = "saveStatus",
     // Texture = "texture",
     // Audio = "audio",
     // Video = "video",

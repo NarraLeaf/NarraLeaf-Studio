@@ -10,6 +10,8 @@ import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { Service } from "../Service";
 import { Services, IUIGraphService, WorkspaceContext } from "../services";
+import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver } from "../autosave/DebouncedSaver";
+import { registerAutoSaver } from "../autosave/SaveStatusService";
 import { UuidService } from "../core/UuidService";
 import { EventEmitter } from "../ui/EventEmitter";
 
@@ -24,8 +26,12 @@ export class UIGraphService extends Service<UIGraphService> implements IUIGraphS
     private dirty = false;
     private revision = 0;
     private lastSavedRevision = 0;
-    private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
-    private readonly autoSaveDelay = 800;
+    private readonly autoSaver = new DebouncedSaver({
+        delayMs: DEFAULT_AUTOSAVE_DELAY_MS,
+        maxWaitMs: DEFAULT_AUTOSAVE_MAX_WAIT_MS,
+        save: () => this.save(this.getDocument()),
+        onError: err => console.warn("[UIGraphService] auto-save failed", err),
+    });
     /**
      * The persistent variables read off the raw blueprint document at load, before the migration
      * relocates them to the project-level variable registry (M-VAR). One-shot: VariableRegistryService
@@ -38,6 +44,7 @@ export class UIGraphService extends Service<UIGraphService> implements IUIGraphS
         const projectService = ctx.services.get<ProjectService>(Services.Project);
         const uuidService = ctx.services.get<UuidService>(Services.Uuid);
         await depend([filesystemService, projectService, uuidService]);
+        await registerAutoSaver(ctx, depend, "uiGraph", "workspace.shell.save.stores.uiGraph", this.autoSaver);
 
         await this.ensureGraphDir();
         await this.load();
@@ -82,10 +89,8 @@ export class UIGraphService extends Service<UIGraphService> implements IUIGraphS
         const fs = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         await this.ensureGraphDir();
         const documentPath = this.getDocumentPath();
-        if (this.autoSaveTimer) {
-            clearTimeout(this.autoSaveTimer);
-            this.autoSaveTimer = null;
-        }
+        // This write supersedes whatever the timer was going to do.
+        this.autoSaver.cancel();
         const updated: UIGraphDocument = {
             ...document,
             meta: {
@@ -109,6 +114,11 @@ export class UIGraphService extends Service<UIGraphService> implements IUIGraphS
             throw new RendererError("Graph document not initialized");
         }
         return this.document;
+    }
+
+    /** Write out anything the auto-save timer still owes, and wait for it. */
+    public async flushPendingChanges(): Promise<void> {
+        await this.autoSaver.flush();
     }
 
     public onGraphsChanged(handler: (doc: UIGraphDocument) => void): () => void {
@@ -201,15 +211,7 @@ export class UIGraphService extends Service<UIGraphService> implements IUIGraphS
     }
 
     private scheduleAutoSave(): void {
-        if (this.autoSaveTimer) {
-            clearTimeout(this.autoSaveTimer);
-        }
-        this.autoSaveTimer = setTimeout(() => {
-            this.autoSaveTimer = null;
-            void this.save(this.getDocument()).catch(err => {
-                console.warn("[UIGraphService] auto-save failed", err);
-            });
-        }, this.autoSaveDelay);
+        this.autoSaver.schedule();
     }
 
     private setDirty(value: boolean): void {
