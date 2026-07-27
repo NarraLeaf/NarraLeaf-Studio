@@ -793,6 +793,8 @@ export const BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET = "blueprint.game.history.get"
 export const BLUEPRINT_NODE_TYPE_GAME_HISTORY_RESTORE = "blueprint.game.history.restore" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_HISTORY_UNDO_LAST = "blueprint.game.history.undoLast" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG = "blueprint.game.getNametag" as const;
+/** The speaking character's dialog avatar for the differential they are currently wearing. */
+export const BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR = "blueprint.game.getSpeakerAvatar" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS = "blueprint.game.getNotifications" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT = "blueprint.game.getChoiceCount" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE = "blueprint.game.isNvlMode" as const;

@@ -106,6 +106,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_GAME_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_GET_GLOBAL_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR,
     BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED,
@@ -1368,6 +1369,9 @@ function resolveGameNodeOutput(
     if (portId === "nametag") {
         return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getNametag() ?? null;
     }
+    if (portId === "avatar") {
+        return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getSpeakerAvatar() ?? null;
+    }
     if (portId === "isInGame") {
         return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.isInGame() === true;
     }
@@ -2395,6 +2399,7 @@ function resolveSelfOutput(
     }
     if (
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY ||
         GAME_PREFERENCE_OUTPUT_KEYS[selfNode.type]

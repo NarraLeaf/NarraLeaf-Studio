@@ -15,6 +15,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_INTERVAL,
     BLUEPRINT_NODE_TYPE_GAME_GET_SOUND_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR,
     BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_END_MODE,
     BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_FADE_DURATION,
     BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_VOLUME,
@@ -463,6 +464,31 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             return {
                 outputValues: {
                     nametag: requireHostApi(ctx).game.getNametag(),
+                },
+            };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR,
+        displayName: "Get Speaker Avatar",
+        category: "Game",
+        keywords: ["game", "dialog", "avatar", "portrait", "speaker", "character", "face", "expression", "nlr"],
+        graphKinds: ["event", "function", "macro"],
+        isPure: true,
+        isLatent: false,
+        pins: [
+            {
+                id: "avatar",
+                kind: "output",
+                semantic: "data",
+                valueType: BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
+                label: "Avatar",
+            },
+        ],
+        execute(ctx) {
+            return {
+                outputValues: {
+                    avatar: requireHostApi(ctx).game.getSpeakerAvatar(),
                 },
             };
         },

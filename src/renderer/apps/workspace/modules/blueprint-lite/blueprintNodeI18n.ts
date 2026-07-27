@@ -130,6 +130,7 @@ const NODE_TITLE_KEYS: Record<string, TranslationKey> = {
     "Get Slider Normalized Value": "blueprint.node.getSliderNormalizedValue",
     "Get Slider Range": "blueprint.node.getSliderRange",
     "Get Slider Value": "blueprint.node.getSliderValue",
+    "Get Speaker Avatar": "blueprint.node.getSpeakerAvatar",
     "Get Text": "blueprint.node.getText",
     "Get Text Align": "blueprint.node.getTextAlign",
     "Get Text Color": "blueprint.node.getTextColor",

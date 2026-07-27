@@ -47,6 +47,15 @@ export interface CharacterEditorProfile extends CharacterBaseProfile {
      * on older projects, which then fall back to the automatic head crop. Never consumed by the runtime.
      */
     portrait?: PortraitCrop;
+    /**
+     * Project image shown as this character's dialog avatar when no differential resolves one —
+     * the character is speaking from off-stage, or its current differential has neither a bake nor
+     * an override. Lives on the profile rather than on the appearance so it survives a kind switch,
+     * which discards everything the two kinds do not share.
+     *
+     * Unlike {@link thumbnail} (an editor asset, editor-only) this one *is* consumed by the runtime.
+     */
+    defaultAvatarAssetId?: string | null;
 }
 
 /**
@@ -103,10 +112,31 @@ export interface CharacterLayer extends CharacterNamed {
     options?: Record<string, string | null>;
 }
 
+/**
+ * One differential's dialog avatar.
+ *
+ * `baked` is the fingerprint of the derived PNG under `resources/characters/avatars/`, which is
+ * project content rather than a cache — it travels in the package and belongs in version control,
+ * exactly like the project icons. Its presence is what tells the runtime the file is there; its
+ * value is what tells the baker the file is current.
+ *
+ * `overrideAssetId` is the author's own artwork for this differential, and it wins over the bake.
+ * A character whose avatar is drawn by hand never bakes anything.
+ */
+export interface CharacterAvatarEntry {
+    baked?: string;
+    overrideAssetId?: string | null;
+}
+
+/** Avatar entries keyed by {@link CharacterAvatarKey} — pose id (preset) or tag combination (layered). */
+export type CharacterAvatarTable = Record<string, CharacterAvatarEntry>;
+
 export interface PresetAppearance {
     kind: "preset";
     poses: CharacterPose[];
     defaultPoseId: string | null;
+    /** Dialog avatars keyed by pose id. */
+    avatars?: CharacterAvatarTable;
 }
 
 export interface LayeredAppearance {
@@ -128,6 +158,17 @@ export interface LayeredAppearance {
      * art in place instead of building a second set of axes beside the first.
      */
     psd?: PsdFingerprint;
+    /**
+     * Which axes the dialog avatar varies with. A layered character has no single image, so its
+     * avatars are baked one per combination of these axes — which makes this the knob that decides
+     * how many get baked: three axes of four tags is sixty-four avatars, one axis of four is four.
+     *
+     * Absent means every axis, which is the honest default (the avatar then tracks the whole look)
+     * and the one the combination count is reported against.
+     */
+    avatarAxisIds?: string[];
+    /** Dialog avatars keyed by the tag combination (see `characterAvatarKey`). */
+    avatars?: CharacterAvatarTable;
 }
 
 /**

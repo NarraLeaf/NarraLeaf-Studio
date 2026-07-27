@@ -151,6 +151,24 @@ export class CharacterProfile {
         this.notifyChange();
     }
 
+    /**
+     * The dialog avatar shown when no differential resolves one. Unlike {@link getThumbnail}, this
+     * is a *project* asset and the runtime consumes it.
+     */
+    public getDefaultAvatarAssetId(): string | null {
+        return this.profile.defaultAvatarAssetId ?? null;
+    }
+
+    public setDefaultAvatarAssetId(assetId: string | null): void {
+        const previous = this.profile.defaultAvatarAssetId ?? null;
+        if (previous === assetId) {
+            return;
+        }
+        this.profile.defaultAvatarAssetId = assetId;
+        this.notifyAssetChange(previous, assetId);
+        this.notifyChange();
+    }
+
     public getNicknames(): string[] {
         return this.profile.nicknames;
     }
@@ -181,6 +199,7 @@ export class CharacterProfile {
             groupId: this.profile.groupId,
             color: this.profile.color,
             portrait: this.profile.portrait,
+            defaultAvatarAssetId: this.profile.defaultAvatarAssetId,
             appearance: this.appearance.toJSON(),
         };
     }
@@ -188,6 +207,12 @@ export class CharacterProfile {
     private notifyChange(): void {
         if (this.onChange) {
             this.onChange();
+        }
+    }
+
+    private notifyAssetChange(oldAssetId: string | null, newAssetId: string | null): void {
+        if (oldAssetId !== newAssetId) {
+            this.onAssetChange?.(oldAssetId, newAssetId);
         }
     }
 }

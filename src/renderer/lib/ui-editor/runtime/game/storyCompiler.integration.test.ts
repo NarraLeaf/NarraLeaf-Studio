@@ -2113,3 +2113,173 @@ describe("compileStudioStoryToNlr voice", () => {
         });
     });
 });
+
+describe("dialog avatars", () => {
+    /** Read the avatar strategy the compiler installed, the way the engine's `useAvatar` does. */
+    function resolveAvatar(
+        compiled: Awaited<ReturnType<typeof compileStudioStoryToNlr>>,
+        characterId: string,
+        context: { currentSrc?: string | null; tags?: string[] | null },
+    ): string | null | undefined {
+        // `Character.config` is `@internal` and stripped from the published types, so the probe
+        // duck-types it the way `nlrDialogReaders` does. Production code never reads it - it only
+        // calls the public `setAvatar`.
+        const character = compiled.characters.get(characterId) as unknown as { config?: { avatar?: unknown } } | undefined;
+        const avatar = character?.config?.avatar;
+        if (typeof avatar !== "function") {
+            return avatar as null | undefined;
+        }
+        return (avatar as (ctx: unknown) => string | null | undefined)({
+            currentSrc: context.currentSrc ?? null,
+            tags: context.tags ?? null,
+        });
+    }
+
+    function enterBlock(characterId: string, tags?: Record<string, string>): Record<string, StoryBlock> {
+        return {
+            enter: {
+                id: "enter",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "character", operation: "enter", characterId, ...(tags ? { tags } : {}) },
+            },
+        };
+    }
+
+    it("resolves a preset character's avatar from the pose src the engine reports", async () => {
+        const alice: DevModeCharacterSummary = {
+            id: "char-alice",
+            name: "Alice",
+            appearance: {
+                kind: "preset",
+                poses: [
+                    { id: "pose-neutral", name: "Neutral", assetId: "asset-neutral" },
+                    { id: "pose-angry", name: "Angry", assetId: "asset-angry" },
+                ],
+                defaultPoseId: "pose-neutral",
+                avatars: {
+                    "pose-neutral": { overrideAssetId: "asset-avatar-neutral" },
+                    "pose-angry": { overrideAssetId: "asset-avatar-angry" },
+                },
+            },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(enterBlock("char-alice"), ["enter"]),
+            sceneId: "scene-1",
+            characters: [alice],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        // The engine hands back the sprite currently on screen; the avatar has to follow it, not the
+        // pose the row happened to name.
+        expect(resolveAvatar(compiled, "char-alice", { currentSrc: "nlr://asset-angry" }))
+            .toBe("nlr://asset-avatar-angry");
+        expect(resolveAvatar(compiled, "char-alice", { currentSrc: "nlr://asset-neutral" }))
+            .toBe("nlr://asset-avatar-neutral");
+    });
+
+    it("resolves a layered character's avatar from the active tags", async () => {
+        const bob: DevModeCharacterSummary = {
+            id: "char-bob",
+            name: "Bob",
+            appearance: {
+                kind: "layered",
+                canvas: { width: 100, height: 200 },
+                axes: [{
+                    id: "mood",
+                    name: "Mood",
+                    tags: [{ id: "happy", name: "Happy" }, { id: "sad", name: "Sad" }],
+                    defaultTagId: "happy",
+                }],
+                layers: [{ id: "face", name: "Face", axisId: "mood", options: { happy: "asset-happy", sad: "asset-sad" } }],
+                avatars: {
+                    happy: { overrideAssetId: "asset-avatar-happy" },
+                    sad: { overrideAssetId: "asset-avatar-sad" },
+                },
+            },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(enterBlock("char-bob"), ["enter"]),
+            sceneId: "scene-1",
+            characters: [bob],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        // A layered image has no single src, so the engine reports tags instead of a URL.
+        expect(resolveAvatar(compiled, "char-bob", { tags: ["sad"] })).toBe("nlr://asset-avatar-sad");
+        expect(resolveAvatar(compiled, "char-bob", { tags: ["happy"] })).toBe("nlr://asset-avatar-happy");
+    });
+
+    it("falls back to the character default when the speaker has no differential on stage", async () => {
+        const alice: DevModeCharacterSummary = {
+            id: "char-alice",
+            name: "Alice",
+            defaultAvatarAssetId: "asset-avatar-default",
+            appearance: {
+                kind: "preset",
+                poses: [{ id: "pose-neutral", name: "Neutral", assetId: "asset-neutral" }],
+                defaultPoseId: "pose-neutral",
+                avatars: { "pose-neutral": { overrideAssetId: "asset-avatar-neutral" } },
+            },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(enterBlock("char-alice"), ["enter"]),
+            sceneId: "scene-1",
+            characters: [alice],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        // No portrait on stage: the engine reports neither a src nor tags.
+        expect(resolveAvatar(compiled, "char-alice", {})).toBe("nlr://asset-avatar-default");
+        // A src the appearance does not know (a sprite swapped by an `/image` row) is not guessed at.
+        expect(resolveAvatar(compiled, "char-alice", { currentSrc: "nlr://asset-stranger" }))
+            .toBe("nlr://asset-avatar-default");
+    });
+
+    it("answers null rather than substituting the sprite when nothing resolves", async () => {
+        const alice: DevModeCharacterSummary = {
+            id: "char-alice",
+            name: "Alice",
+            appearance: {
+                kind: "preset",
+                poses: [{ id: "pose-neutral", name: "Neutral", assetId: "asset-neutral" }],
+                defaultPoseId: "pose-neutral",
+            },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(enterBlock("char-alice"), ["enter"]),
+            sceneId: "scene-1",
+            characters: [alice],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        expect(resolveAvatar(compiled, "char-alice", { currentSrc: "nlr://asset-neutral" })).toBeNull();
+    });
+
+    it("preloads every avatar it can answer with", async () => {
+        const alice: DevModeCharacterSummary = {
+            id: "char-alice",
+            name: "Alice",
+            defaultAvatarAssetId: "asset-avatar-default",
+            appearance: {
+                kind: "preset",
+                poses: [{ id: "pose-neutral", name: "Neutral", assetId: "asset-neutral" }],
+                defaultPoseId: "pose-neutral",
+                avatars: { "pose-neutral": { overrideAssetId: "asset-avatar-neutral" } },
+            },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(enterBlock("char-alice"), ["enter"]),
+            sceneId: "scene-1",
+            characters: [alice],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        // The engine's preloader cannot see inside a resolver closure, so an avatar that is not
+        // registered here is fetched mid-dialog - the flash this whole path exists to avoid.
+        const srcManager = (compiled.scene as unknown as { srcManager: { src: { type: string; src: unknown }[] } }).srcManager;
+        const preloaded = srcManager.src.filter(entry => entry.type === "image").map(entry => entry.src);
+        expect(preloaded).toEqual(expect.arrayContaining(["nlr://asset-avatar-neutral", "nlr://asset-avatar-default"]));
+    });
+});
