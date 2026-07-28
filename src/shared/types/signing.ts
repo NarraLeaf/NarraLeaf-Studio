@@ -233,9 +233,11 @@ export type SigningCertificateInfo = {
  * Why no certificate could be read.
  * - `no-certificate`: the kind has no certificate file to read (the certificate
  *   lives in the Windows store, in Azure, or there is none at all).
- * - `unsupported-format`: a container this milestone cannot open - a PKCS#12
- *   needs the keystore reader that lands with the Android milestone.
- * - `unreadable`: the file is missing or is not a certificate.
+ * - `unsupported-format`: a container that cannot be opened here - a keystore
+ *   asked about without the password that opens it, or one written in a format
+ *   the reader refuses (JCEKS, an algorithm it does not implement).
+ * - `unreadable`: the file is missing, is not a certificate, or did not open -
+ *   a wrong password, an alias that is not in there, a damaged file.
  */
 export type SigningInspectUnavailableReason = "no-certificate" | "unsupported-format" | "unreadable";
 

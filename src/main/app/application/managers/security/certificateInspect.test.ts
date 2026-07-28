@@ -10,8 +10,53 @@ import {
     describeCertificate,
     inspectCertificateBytes,
     inspectCertificateFile,
+    looksLikeJavaKeystore,
+    looksLikeKeystore,
     looksLikePkcs12,
 } from "./certificateInspect";
+
+/**
+ * A real JKS holding one signing key under the alias `release`, made with
+ * keytool and copied from `buildWorker/mobile/keystoreReader.test.ts`, where the
+ * reader that opens it is checked field by field against OpenSSL's reading of
+ * the same file. What is being proved here is the wiring - that a keystore
+ * reaches that reader and comes back as certificate facts - so the expectations
+ * below are the certificate's own, not a second opinion about the parser.
+ *
+ *   keytool -genkeypair -alias release -keyalg RSA -keysize 2048 -validity 3650 \
+ *     -dname "CN=NarraLeaf JKS, O=NarraLeaf, C=US" -sigalg SHA256withRSA \
+ *     -keystore basic.jks -storetype JKS -storepass storepass -keypass storepass
+ */
+const BASIC_JKS = Buffer.from(
+    "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",
+    "base64",
+);
+
+const BASIC_JKS_PASSWORD = "storepass";
 
 function makeCertificate(options: { commonName?: string; notBefore?: Date; notAfter?: Date } = {}) {
     const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -89,6 +134,77 @@ describe("inspectCertificateBytes", () => {
     });
 });
 
+describe("inspectCertificateBytes with a keystore", () => {
+    it("opens a keystore with its password and describes the signing key's certificate", () => {
+        const result = inspectCertificateBytes(BASIC_JKS, { storePassword: BASIC_JKS_PASSWORD });
+
+        expect(result).toMatchObject({ available: true });
+        if (!result.available) {
+            return;
+        }
+        expect(result.certificate.subject).toContain("CN=NarraLeaf JKS");
+        expect(result.certificate.serialNumber).toBe("ABE201FAA9D3BFEF");
+        expect(result.certificate.notAfter).toBe("2036-07-25T21:37:05.000Z");
+    });
+
+    it("takes the alias when the caller names one", () => {
+        const result = inspectCertificateBytes(BASIC_JKS, {
+            storePassword: BASIC_JKS_PASSWORD,
+            keyPassword: BASIC_JKS_PASSWORD,
+            alias: "release",
+        });
+
+        expect(result.available && result.certificate.subject).toContain("CN=NarraLeaf JKS");
+    });
+
+    it("treats a null key password as 'the same as the store password', not as an empty one", () => {
+        // What the vault hands over when a credential carries only one secret.
+        const result = inspectCertificateBytes(BASIC_JKS, {
+            storePassword: BASIC_JKS_PASSWORD,
+            keyPassword: null,
+        });
+
+        expect(result).toMatchObject({ available: true });
+    });
+
+    it("says a keystore needs a password rather than calling it broken", () => {
+        // What preflight sees today: it inspects by path alone, so a keystore is
+        // reported as a container it cannot open here - not as a damaged file.
+        expect(inspectCertificateBytes(BASIC_JKS)).toEqual({ available: false, reason: "unsupported-format" });
+        expect(inspectCertificateBytes(BASIC_JKS, { storePassword: null }))
+            .toEqual({ available: false, reason: "unsupported-format" });
+    });
+
+    it("separates a wrong password from a container it cannot open", () => {
+        // Both are "no certificate for you", but only one is worth converting the
+        // file over, so they must not collapse into the same answer.
+        expect(inspectCertificateBytes(BASIC_JKS, { storePassword: "not the password" }))
+            .toEqual({ available: false, reason: "unreadable" });
+    });
+
+    it("reports a JCEKS as an unsupported container", () => {
+        const jceks = Buffer.concat([Buffer.from([0xce, 0xce, 0xce, 0xce]), Buffer.alloc(32)]);
+
+        expect(inspectCertificateBytes(jceks, { storePassword: "storepass" }))
+            .toEqual({ available: false, reason: "unsupported-format" });
+    });
+});
+
+describe("looksLikeKeystore", () => {
+    it("tells a keystore apart from a bare certificate", () => {
+        expect(looksLikeKeystore(BASIC_JKS)).toBe(true);
+        expect(looksLikeKeystore(Buffer.from([0x30, 0x10, 0x02, 0x01, 0x03, 0x00]))).toBe(true);
+        expect(looksLikeKeystore(makeCertificate())).toBe(false);
+    });
+
+    it("counts both Java keystore magics", () => {
+        expect(looksLikeJavaKeystore(Buffer.from([0xfe, 0xed, 0xfe, 0xed]))).toBe(true);
+        expect(looksLikeJavaKeystore(Buffer.from([0xce, 0xce, 0xce, 0xce]))).toBe(true);
+        expect(looksLikeJavaKeystore(makeCertificate())).toBe(false);
+        expect(looksLikeJavaKeystore(Buffer.alloc(0))).toBe(false);
+    });
+});
+
 describe("looksLikePkcs12", () => {
     it("separates a PKCS#12 from an X.509 certificate", () => {
         // tbsCertificate is a SEQUENCE, so a certificate's second element is
@@ -124,6 +240,16 @@ describe("inspectCertificateFile", () => {
     it("reports a missing file as unreadable rather than throwing", async () => {
         expect(await inspectCertificateFile(path.join(tempDir, "absent.pem")))
             .toEqual({ available: false, reason: "unreadable" });
+    });
+
+    it("carries the password through to a keystore on disk", async () => {
+        // Named `.p12` while actually being a JKS: the container is decided by
+        // the bytes, because authors and Android Studio both rename these.
+        const file = path.join(tempDir, "release.p12");
+        await fs.writeFile(file, BASIC_JKS);
+
+        const result = await inspectCertificateFile(file, { storePassword: BASIC_JKS_PASSWORD });
+        expect(result.available && result.certificate.subject).toContain("CN=NarraLeaf JKS");
     });
 });
 

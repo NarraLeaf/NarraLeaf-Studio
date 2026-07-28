@@ -470,54 +470,13 @@ export function daysUntil(notAfter: string, now: Date = new Date()): number {
  * Linux signing path depends on the host having gpg, and preflight has to say so
  * before the build rather than after every artifact is already written.
  *
- * Order: the path recorded on the credential, then GNUPG_PATH (which may name
- * either the binary or the directory holding it), then PATH, then the usual
- * Gpg4win install locations. Returns null when there is none.
+ * Deliberately re-exported from the worker rather than reimplemented here.
+ * Preflight and the signing step must agree to the letter: a second, slightly
+ * different search is how you get "gpg is missing" blocking a build that would
+ * have signed perfectly - which is exactly what happened when this file carried
+ * its own copy that could not find the gpg inside a Git for Windows install.
  */
-export async function findGpgBinary(input: {
-    /** `gpgPath` from the credential, when the author set one. */
-    configuredPath?: string;
-    env?: NodeJS.ProcessEnv;
-    platform?: NodeJS.Platform;
-} = {}): Promise<string | null> {
-    const env = input.env ?? process.env;
-    const windows = (input.platform ?? process.platform) === "win32";
-    const names = windows ? ["gpg.exe", "gpg2.exe"] : ["gpg", "gpg2"];
-
-    const explicit = [input.configuredPath, env.GNUPG_PATH].filter((value): value is string => Boolean(value?.trim()));
-    for (const candidate of explicit) {
-        const trimmed = candidate.trim();
-        // Either the binary itself or the directory it lives in: both are what
-        // people put in a variable called GNUPG_PATH, and guessing wrong here
-        // would report "gpg is missing" to somebody who has it.
-        const found = await firstExistingFile([trimmed, ...names.map(name => path.join(trimmed, name))]);
-        if (found) {
-            return found;
-        }
-    }
-
-    const searchDirs = (env.PATH ?? "").split(path.delimiter).filter(Boolean);
-    if (windows) {
-        for (const root of [env["ProgramFiles(x86)"], env.ProgramFiles].filter(Boolean) as string[]) {
-            searchDirs.push(path.join(root, "GnuPG", "bin"), path.join(root, "Gpg4win", "bin"));
-        }
-    }
-    return firstExistingFile(searchDirs.flatMap(dir => names.map(name => path.join(dir, name))));
-}
-
-async function firstExistingFile(candidates: string[]): Promise<string | null> {
-    for (const candidate of candidates) {
-        try {
-            if ((await fs.stat(candidate)).isFile()) {
-                return candidate;
-            }
-        } catch {
-            // Next candidate: a directory that does not exist on this host is
-            // the normal case, not a problem to report.
-        }
-    }
-    return null;
-}
+export { findGpg as findGpgBinary } from "../../../../buildWorker/gpgSign";
 
 export type OutputDirCheck = "ok" | "not-writable" | "not-empty";
 

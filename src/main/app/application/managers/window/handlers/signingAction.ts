@@ -1,3 +1,4 @@
+import fs from "fs/promises";
 import { safeStorage } from "electron";
 import { UserDataNamespace } from "@shared/types/constants";
 import { IPCMessageType } from "@shared/types/ipc";
@@ -7,7 +8,8 @@ import {
     type SigningCredential,
     type SigningInspectResult,
 } from "@shared/types/signing";
-import { inspectCertificateFile } from "../../security/certificateInspect";
+import { listAliases } from "../../../../../buildWorker/mobile/keystoreReader";
+import { certificateContainer, inspectCertificateFile } from "../../security/certificateInspect";
 import { SigningVault, type SecretSealer } from "../../security/signingVault";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
@@ -94,18 +96,45 @@ export class SigningInspectHandler extends IPCHandler<IPCEventType.signingInspec
             if (!credential) {
                 return { available: false, reason: "unreadable" } satisfies SigningInspectResult;
             }
-            const file = certificateField(credential);
-            if (!file) {
+            if (!certificateField(credential)) {
                 // Nothing to read: the certificate lives in the Windows store,
                 // in Azure, or the kind has none at all.
                 return { available: false, reason: "no-certificate" } satisfies SigningInspectResult;
             }
-            const materialPath = vault.materialPath(credential, file);
-            if (!materialPath) {
+            // The one place a window's question reaches an unsealed password.
+            // The passwords open the keystore and are dropped when this call
+            // returns; what goes back over IPC is `SigningInspectResult`, which
+            // by its type can only carry certificate facts.
+            const material = await vault.resolveMaterial(id);
+            const target = material ? certificateContainer(material) : null;
+            if (!target) {
                 return { available: false, reason: "unreadable" } satisfies SigningInspectResult;
             }
-            return inspectCertificateFile(materialPath);
+            return inspectCertificateFile(target.file, target.secrets);
         });
+    }
+}
+
+/**
+ * Ask a keystore which signing keys it holds, so the import form can offer them
+ * instead of making the author type an alias blind.
+ *
+ * Takes a path the author just picked and the password they just typed - the
+ * same one-way traffic as `import`, and for the same reason. Neither is kept,
+ * and only the alias names come back.
+ */
+export class SigningKeystoreAliasesHandler extends IPCHandler<IPCEventType.signingKeystoreAliases> {
+    readonly name = IPCEventType.signingKeystoreAliases;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        _window: AppWindow,
+        { file, storePassword }: IPCEvents[IPCEventType.signingKeystoreAliases]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.signingKeystoreAliases]["response"]>> {
+        // KeystoreError messages are written for the author who picked the file
+        // ("wrong password", "convert it with keytool"), so `tryUse` passing the
+        // message through is the point, not a leak.
+        return this.tryUse(async () => ({ aliases: listAliases(await fs.readFile(file), storePassword) }));
     }
 }
 
@@ -118,3 +147,4 @@ export class SigningInspectHandler extends IPCHandler<IPCEventType.signingInspec
 function certificateField(credential: SigningCredential): string | null {
     return SIGNING_CREDENTIAL_MATERIAL_FIELDS[credential.kind][0] ?? null;
 }
+

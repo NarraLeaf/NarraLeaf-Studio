@@ -2,10 +2,13 @@ import crypto from "crypto";
 import fs from "fs/promises";
 import {
     SIGNING_EXPIRY_WARNING_DAYS,
+    type ResolvedSigningMaterial,
     type SigningCertificateExpiry,
     type SigningCertificateInfo,
     type SigningInspectResult,
 } from "@shared/types/signing";
+// Relative on purpose: "@/" means src/main here but src/renderer under vitest.
+import { KeystoreError, readKeystore } from "../../../../buildWorker/mobile/keystoreReader";
 
 /**
  * Reads the display-only facts out of a signing certificate: who it is for, who
@@ -13,33 +16,133 @@ import {
  * a private key, and nothing it returns is a secret - the result is meant to be
  * shown in the build dialog and to feed the expiry preflight checks.
  *
- * Parsing is Node's own `crypto.X509Certificate`, which accepts both PEM and
- * DER. A PKCS#12 is a different container entirely and Node cannot open one;
- * that is reported rather than guessed at, and stays that way until the
- * keystore reader lands with the Android milestone.
+ * A bare certificate is parsed by Node's own `crypto.X509Certificate`, which
+ * accepts both PEM and DER. A keystore - PKCS#12 or JKS - is a different
+ * container: its certificate bags are encrypted under the store password, so it
+ * can only be opened with `secrets`, and the keystore reader does that. Called
+ * without a password, a keystore is still reported as `unsupported-format`
+ * rather than guessed at, because the honest answer is "not without the
+ * password", not "this file is broken".
+ *
+ * The private key `readKeystore` also returns is dropped on the floor here. The
+ * only thing that leaves this module is `SigningCertificateInfo`.
  */
 
-export async function inspectCertificateFile(filePath: string): Promise<SigningInspectResult> {
+/**
+ * What it takes to open a keystore. Passwords arrive already unsealed from the
+ * vault and must not be logged or passed on; `null` means the vault could not
+ * unseal one, which reads the same as having none.
+ */
+export type KeystoreSecrets = {
+    storePassword: string | null;
+    /** Defaults to `storePassword`, which is the usual case. */
+    keyPassword?: string | null;
+    /** Which key to describe. Optional when the keystore holds exactly one. */
+    alias?: string;
+};
+
+/**
+ * Which file of a resolved credential holds the certificate, and what it takes
+ * to open it. A PFX and an Apple .p12 carry one password serving as both store
+ * and key password; a keystore keeps them apart and names the key to read. The
+ * kinds not listed keep their certificate somewhere this process cannot reach -
+ * the Windows certificate store, or Azure.
+ *
+ * Lives here rather than beside either caller: the build dialog's inspector and
+ * the expiry preflight must describe the same certificate, and two mappings
+ * would eventually disagree about which one that is.
+ */
+export function certificateContainer(
+    material: ResolvedSigningMaterial,
+): { file: string; secrets: KeystoreSecrets } | null {
+    switch (material.kind) {
+        case "windows-pfx":
+            return { file: material.file, secrets: { storePassword: material.password } };
+        case "android-keystore":
+            return {
+                file: material.file,
+                secrets: {
+                    storePassword: material.storePassword,
+                    keyPassword: material.keyPassword,
+                    alias: material.alias,
+                },
+            };
+        case "ios-apple":
+            return { file: material.p12File, secrets: { storePassword: material.p12Password } };
+        default:
+            return null;
+    }
+}
+
+export async function inspectCertificateFile(
+    filePath: string,
+    secrets?: KeystoreSecrets,
+): Promise<SigningInspectResult> {
     let bytes: Buffer;
     try {
         bytes = await fs.readFile(filePath);
     } catch {
         return { available: false, reason: "unreadable" };
     }
-    return inspectCertificateBytes(bytes);
+    return inspectCertificateBytes(bytes, secrets);
 }
 
-export function inspectCertificateBytes(bytes: Buffer): SigningInspectResult {
+export function inspectCertificateBytes(bytes: Buffer, secrets?: KeystoreSecrets): SigningInspectResult {
     // Checked before parsing: a PKCS#12 is valid DER, so X509Certificate fails
     // on it with the same opaque error as actual garbage would produce.
-    if (looksLikePkcs12(bytes)) {
-        return { available: false, reason: "unsupported-format" };
+    if (looksLikeKeystore(bytes)) {
+        return secrets?.storePassword
+            ? inspectKeystoreBytes(bytes, secrets.storePassword, secrets)
+            : { available: false, reason: "unsupported-format" };
     }
     try {
         return { available: true, certificate: describeCertificate(new crypto.X509Certificate(bytes)) };
     } catch {
         return { available: false, reason: "unreadable" };
     }
+}
+
+/**
+ * Open a keystore and describe the certificate the signing key belongs to - the
+ * leaf of its chain, which is the one an author recognises and the one whose
+ * expiry decides whether a build can be signed today.
+ */
+function inspectKeystoreBytes(
+    bytes: Buffer,
+    storePassword: string,
+    secrets: KeystoreSecrets,
+): SigningInspectResult {
+    let der: Buffer;
+    try {
+        const identity = readKeystore(bytes, {
+            storePassword,
+            // `undefined` makes the reader fall back to the store password;
+            // `null` from the vault has to mean the same, not an empty password.
+            keyPassword: secrets.keyPassword ?? undefined,
+            alias: secrets.alias,
+        });
+        der = Buffer.from(identity.certificateDerBase64, "base64");
+    } catch (error) {
+        return { available: false, reason: keystoreFailureReason(error) };
+    }
+    try {
+        return { available: true, certificate: describeCertificate(new crypto.X509Certificate(der)) };
+    } catch {
+        return { available: false, reason: "unreadable" };
+    }
+}
+
+/**
+ * A container this build of Studio cannot open is a different problem from one
+ * it opened and did not like: the first is answered by converting the file, the
+ * second by checking the password, the alias, or the file itself.
+ */
+function keystoreFailureReason(error: unknown): "unsupported-format" | "unreadable" {
+    if (error instanceof KeystoreError
+        && (error.code === "unsupported-format" || error.code === "unsupported-algorithm")) {
+        return "unsupported-format";
+    }
+    return "unreadable";
 }
 
 export function describeCertificate(certificate: crypto.X509Certificate): SigningCertificateInfo {
@@ -76,6 +179,29 @@ export function certificateExpiry(
         return "not-yet-valid";
     }
     return notAfter - at <= warningDays * 24 * 60 * 60 * 1000 ? "expiring" : "valid";
+}
+
+/**
+ * Whether this file is a keystore rather than a bare certificate - i.e. whether
+ * reading it needs a password. Decided on the bytes, never on the extension:
+ * authors rename `.jks` to `.keystore` and back, and Android Studio writes
+ * PKCS#12 into files named `.jks`.
+ */
+export function looksLikeKeystore(bytes: Buffer): boolean {
+    return looksLikePkcs12(bytes) || looksLikeJavaKeystore(bytes);
+}
+
+/**
+ * JKS and JCEKS each open with their own magic number. JCEKS counts here even
+ * though the reader refuses it: it is a keystore, and saying "unsupported
+ * container" beats saying "unreadable file".
+ */
+export function looksLikeJavaKeystore(bytes: Buffer): boolean {
+    if (bytes.length < 4) {
+        return false;
+    }
+    const magic = bytes.readUInt32BE(0);
+    return magic === 0xfeedfeed || magic === 0xcececece;
 }
 
 /**

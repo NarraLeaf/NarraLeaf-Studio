@@ -52,6 +52,7 @@ import {
 import {
     SigningImportHandler,
     SigningInspectHandler,
+    SigningKeystoreAliasesHandler,
     SigningListHandler,
     SigningRemoveHandler,
 } from "./handlers/signingAction";
@@ -175,6 +176,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new SigningImportHandler(),
         new SigningRemoveHandler(),
         new SigningInspectHandler(),
+        new SigningKeystoreAliasesHandler(),
 
         // Blueprint persistent variable storage handlers
         new BlueprintPersistenceGetAllHandler(),
