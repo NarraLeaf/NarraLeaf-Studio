@@ -27,7 +27,15 @@ import { isVcsPlatformSupported } from "@shared/types/vcs";
  * the answer does not change on its own.
  */
 
-export type VcsBackend = typeof import("./revisionReader");
+/**
+ * The whole Lore-facing surface, as one object.
+ *
+ * Two modules rather than one because reading history and creating a repository are
+ * genuinely different jobs, but they share a single plug: adding a second dynamic
+ * import elsewhere would give the "never reach the binding at startup" rule a second
+ * place to be broken.
+ */
+export type VcsBackend = typeof import("./revisionReader") & typeof import("./repository");
 
 let cached: VcsBackend | null = null;
 let availability: VcsAvailability | null = null;
@@ -62,15 +70,18 @@ export async function loadVcsBackend(): Promise<VcsBackend | null> {
             return null;
         }
         try {
-            // Dynamic on purpose: this import is what reaches the native library, and
+            // Dynamic on purpose: these imports are what reach the native library, and
             // a static one would run `koffi.load()` during main-process startup.
-            const reader = await import("./revisionReader");
+            const [reader, repository] = await Promise.all([
+                import("./revisionReader"),
+                import("./repository"),
+            ]);
             // Force the load now rather than at first use, so availability reflects
             // whether the library actually opened rather than merely whether the
             // module resolved.
             const { loadLoreLibrary } = await import("./lore");
             loadLoreLibrary();
-            cached = reader;
+            cached = { ...reader, ...repository };
             availability = { available: true };
             return cached;
         } catch (error) {

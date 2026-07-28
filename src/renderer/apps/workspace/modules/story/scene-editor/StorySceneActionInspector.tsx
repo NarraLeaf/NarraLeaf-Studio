@@ -23,6 +23,7 @@ import {
     characterStageName,
     isStoryExpressionEvaluable,
     layerActionTargetRef,
+    listScenesInDocumentOrder,
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
     savedVariableDefs,
@@ -618,7 +619,7 @@ function InspectorFields(props: {
     }
     if (block.kind === "jump") {
         const payload = block.payload;
-        const sceneOptions = Object.values(props.document.scenes).map(scene => ({
+        const sceneOptions = listScenesInDocumentOrder(props.document).map(scene => ({
             value: scene.id,
             label: scene.name,
         }));

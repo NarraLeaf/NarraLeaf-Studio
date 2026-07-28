@@ -84,6 +84,95 @@ export interface VcsBlobRequest {
 }
 
 /**
+ * How one path differs from the last commit.
+ *
+ * A string union rather than the backend's numeric enum: those numbers are ABI, and
+ * a renumbering upstream would silently relabel every change in the UI.
+ */
+export type VcsChangeKind = "added" | "modified" | "deleted" | "moved" | "copied";
+
+export interface VcsFileChange {
+    /**
+     * REPOSITORY-RELATIVE, which is the opposite of what the write side wants.
+     * Anything that feeds a status result back into a stage or restore call has to
+     * make it absolute first; both are `string` and the compiler will not object.
+     */
+    path: string;
+    kind: VcsChangeKind;
+    /**
+     * A directory rather than a file.
+     *
+     * Directories are reported as changes in their own right - creating one folder
+     * with one file in it produces two entries - and the counts include them. Kept
+     * rather than filtered out because a directory can change with no file under it
+     * changing at all, and because dropping them would leave `counts` describing a
+     * different list than `files`. A change list shown to an author usually wants
+     * only the entries where this is false.
+     *
+     * Symbolic links are reported here as files; Studio treats them as ordinary
+     * entries everywhere else too.
+     */
+    directory: boolean;
+    /** Working-tree size in bytes; zero for a deletion or a directory. */
+    size: number;
+    /** Already recorded in the staged revision, so the next commit will include it. */
+    staged: boolean;
+    /** The working tree differs from the recorded state. */
+    dirty: boolean;
+    conflicted: boolean;
+    /** A conflict nobody has resolved yet - the only kind that blocks a commit. */
+    conflictUnresolved: boolean;
+    /** Where a move or copy came from. Absent for every other kind. */
+    fromPath?: string;
+}
+
+export interface VcsChangeCounts {
+    added: number;
+    modified: number;
+    deleted: number;
+    moved: number;
+    copied: number;
+}
+
+/**
+ * How this branch stands against its remote.
+ *
+ * Present from the first milestone even though Studio is single-machine until
+ * collaboration lands: the same status call already returns all of it, and retrofitting
+ * a shape the UI has grown around costs more than carrying it. Every field is false or
+ * absent while no remote is configured, which is what "purely local" looks like.
+ */
+export interface VcsSyncState {
+    /** A remote is configured and answered. */
+    remoteAvailable: boolean;
+    /** The remote accepted this identity. False also means "never asked". */
+    remoteAuthorized: boolean;
+    /** This branch exists on the remote. */
+    remoteBranchExists: boolean;
+    /** Local commits the remote does not have. */
+    localAhead: boolean;
+    /** Remote commits this machine does not have. */
+    remoteAhead: boolean;
+    remoteRevision?: RevisionId;
+}
+
+export interface VcsStatus {
+    /** Branch name as the author sees it, e.g. `main`. */
+    branch: string;
+    /** Newest commit on this branch. Absent only in a repository with no commits. */
+    head?: RevisionId;
+    /** Monotonic per repository; a cheap topological rank. */
+    revisionNumber: number;
+    /** Set when changes are staged but not yet committed. */
+    stagedRevision?: RevisionId;
+    /** Nothing pending. Derived from `files` so the two can never disagree. */
+    clean: boolean;
+    files: VcsFileChange[];
+    counts: VcsChangeCounts;
+    sync: VcsSyncState;
+}
+
+/**
  * The three inputs a merge needs, base64-encoded for transport.
  *
  * `base` is undefined when the two sides share no common ancestor, or when the
