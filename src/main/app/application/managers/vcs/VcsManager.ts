@@ -4,6 +4,7 @@ import type {
     VcsBlobRequest,
     VcsHistoryEntry,
     VcsRepositoryInfo,
+    VcsStatus,
     VcsThreeWayResult,
 } from "@shared/types/vcs";
 import { BaseApp } from "../../baseApp";
@@ -12,6 +13,7 @@ import { getVcsAvailability, requireVcsBackend, type VcsBackend } from "./backen
 // Type-only: erased at compile time, so no Lore module is reachable from here
 // at load time. See backend.ts for why that matters.
 import type { LoreGlobals, LoreHex, StoreHandle } from "./lore";
+import type { InitRepositoryOptions } from "./repository";
 
 /**
  * Owns Lore state for open projects.
@@ -116,7 +118,13 @@ export class VcsManager extends Manager {
             repositoryId = identity.repository;
         } catch (error) {
             // Do not leak the handle (or the exclusive lock) if identity lookup fails.
+            // Closing the store is not enough on its own: Lore keeps the repository
+            // itself open afterwards, and while it does, the directory cannot be
+            // deleted and the author's `lore` CLI blocks on the lock instead of
+            // failing. This path runs on every `isRepository` check against a
+            // directory that turns out not to be one, so it is not a rare corner.
             await backend.closeStore(globals, store).catch(() => undefined);
+            await backend.releaseRepository(globals).catch(() => undefined);
             throw error;
         }
 
@@ -138,6 +146,72 @@ export class VcsManager extends Manager {
         } catch {
             return false;
         }
+    }
+
+    /**
+     * Put a project under version control, creating the repository and its first
+     * commit. Fails if the directory already has one.
+     *
+     * Never called on Studio's behalf. Creating a repository writes `.lore/` into the
+     * author's project and takes an exclusive lock on it, so it is theirs to decide.
+     *
+     * Ordering matters and runs against the grain of the rest of this class: every
+     * other entry point starts from {@link sessionFor}, which cannot exist yet - it
+     * reads the repository id off the revision history, and there is no history until
+     * this method makes one. So init works on bare globals and takes no session.
+     */
+    public async initRepository(
+        projectPath: string,
+        options: InitRepositoryOptions = {},
+    ): Promise<VcsRepositoryInfo> {
+        return this.serialize(projectPath, async () => {
+            const backend = await requireVcsBackend();
+            const root = normalizeProjectPath(projectPath);
+            const globals = this.globalsFor(root);
+            // Decided before the attempt, because the cleanup below must not run when
+            // the answer is "it was already one": that path can have a LIVE SESSION on
+            // the same directory, and releasing the repository out from under it would
+            // leave an open store handle pointing at nothing.
+            const preexisting = backend.isRepositoryDirectory(root);
+            try {
+                const created = await backend.initRepository(globals, options);
+                this.app.logger.info("[Vcs] Initialised repository", root, created.repositoryId);
+                return {
+                    root,
+                    repositoryId: created.repositoryId,
+                    head: created.revision,
+                    // Exactly the commit just made; nothing else can have happened yet.
+                    revisionCount: 1,
+                };
+            } finally {
+                // No session was opened here, so nothing else in this class will ever
+                // let go of the repository - and Lore holds it open after the last
+                // call. Left held, the project directory cannot be moved or deleted
+                // and the author's own `lore` CLI blocks on the lock without an error.
+                // In the `finally` because a half-created repository holds it too.
+                if (!preexisting) {
+                    await backend.releaseRepository(globals).catch((error) => {
+                        this.app.logger.warn("[Vcs] Failed to release the repository after init", root, error);
+                    });
+                }
+            }
+        });
+    }
+
+    /**
+     * What has changed in the working tree since the last commit, plus where this
+     * branch stands against its remote.
+     *
+     * The paths in the result are REPOSITORY-RELATIVE while every write verb wants
+     * absolute ones, so a caller that turns a status entry into a stage or restore
+     * has to convert. Both are `string`, and Lore answers an unconverted relative
+     * path with success and no work done.
+     */
+    public async getStatus(projectPath: string): Promise<VcsStatus> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            return backend.getStatus(session.globals);
+        });
     }
 
     public async getInfo(projectPath: string): Promise<VcsRepositoryInfo> {
