@@ -294,6 +294,13 @@ export const workspace = {
             consoleFailed: "write failed ({code}, attempt {attempt}): {path} - {error}",
             consoleRecovered: "write succeeded: {path}",
             flushFailed: "could not flush {label}: {error}",
+            // The read side: a document that is on disk but cannot be understood. The wording leads
+            // with what did NOT happen, because the fear this raises is "has Studio eaten my work?".
+            unreadableTitle: "Couldn't read {file}",
+            unreadableDetail: "{reason} The file was left exactly as it was — nothing has been written over it.",
+            unreadableDetailQuarantined: "{reason} The file was left exactly as it was, and a copy of it is at {path}.",
+            consoleUnreadable: "read failed ({kind}): {path} - {reason}",
+            consoleQuarantined: "kept a copy of the unreadable file at {path}",
             // Names for the things that auto-save, used when a flush fails.
             stores: {
                 uiDocument: "interface document",
