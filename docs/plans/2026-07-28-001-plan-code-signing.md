@@ -257,6 +257,42 @@ signtool 的命令行，同用户的其他进程可以在进程列表里看到�
 `_CodeSignature/CodeResources` 与 `embedded.mobileprovision` 断言存在且内容正确；
 zsign `-x` 导出元数据交叉核对。**真机安装本机无法验证，明确留给用户。**
 
+#### 5.3.1 本机实测结论（2026-07-28，orchestrator 亲验）
+
+用真实的 `@narraleaf/studio-shell` iOS 模板（`Shell.app`，arm64 Mach-O，
+`CODE_SIGNING_ALLOWED=NO` 编出、无 `LC_CODE_SIGNATURE`）拼出未签名 IPA，
+用 openssl 造的测试身份跑通了全流程。逐条结论：
+
+- **zsign-windows-x64 完全自包含**：4.5 MB 单文件，`objdump -p` 只引用
+  KERNEL32 / SHELL32 / SHLWAPI / WS2_32 / CRYPT32 / USER32 / ADVAPI32——
+  OpenSSL 与 CRT 都静态链接，无 VC++ 运行库依赖。捆绑代价干净。
+- **Linux 宿主必须用 `zsign-linux-musl-static.tar.gz`（2.0 MB）**，
+  不能用 `zsign-linux-x86_64.tar.gz`（249 KB，动态链接宿主 libssl）。
+  **macOS 只有 arm64 资产，没有 x64**——mac 批次要么自己编，要么只支持 Apple Silicon。
+- **签名产物结构完整**：CodeDirectory `version=0x20400`、SHA-256（hashType=2）、
+  4 KiB 分页、53 个 code slot 覆盖到 `codeLimit=216336`（签名段之前的全部字节）、
+  ident 是改写后的 bundle id；另有 Requirements、Entitlements（XML）、
+  EntitlementsDER、CMS 五个 slot。CMS 是标准 PKCS#7 SignedData，
+  含完整证书链、sha256WithRSAEncryption，签名属性里有 Apple 的
+  `1.2.840.113635.100.9.2`（CDHashes）。
+- **entitlements 由描述文件自动派生**，Studio 不需要自己撰写。
+- **分页哈希确实覆盖载荷**：自写校验器重算 53 页全部匹配；
+  翻掉 `0x400` 处一个字节后 page 0 立刻 MISMATCH。断言不是空转。
+- **⚠ p12 必须自带签发链**。只给叶证书时 zsign 报
+  `Unknown issuer hash 0x…! No embedded WWDR intermediate matches and the p12
+  carries no usable CA chain.` 并以 exit 255 失败。真实 Apple 证书能过是因为
+  zsign 内嵌了 WWDR 中间证书，但**用户从钥匙串导出时漏掉中间证书一样会炸**——
+  preflight 必须提前检查链是否完整，并把这条错误翻译成可操作的中文/英文提示。
+- **`-c` 传 PEM 证书链没用**：`-k leaf.key -c <leaf+ca bundle>.pem` 依然报同一个
+  链缺失错误。链只认 p12 这一条路。
+- **✅ 密码可以不上命令行**：无口令 p12（`openssl pkcs12 -export -passout pass:`）
+  配合**不带 `-p`** 的调用签名成功。所以 S4 的做法是：用我们自己的 PKCS#12 读取器
+  读用户的 p12 → 在临时目录写一份 0600 的临时无口令 p12 → 调 zsign → 用后即删。
+  这样 §5.1 里 signtool 那类「密码出现在进程命令行」的泄漏在 iOS 侧不重演。
+  代价是需要一个最小 PKCS#12 **写入器**（可用未加密 keyBag，比读取器简单得多）。
+  **兜底**：若临时 p12 方案在实现中被证明脆弱，退回 `-p` 并按 §7.3 记录暴露面。
+- 退出码可靠：成功 0，失败 255，失败时 stdout 有 `Signed Failed!`。
+
 ### 5.4 Linux — 校验和 + 可选 GPG
 
 - 构建结束后对**所有**产物（不只 Linux 的）生成 `SHA256SUMS`，格式与 `sha256sum` 一致。
