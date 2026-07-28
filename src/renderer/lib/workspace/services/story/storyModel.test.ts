@@ -729,9 +729,83 @@ describe("story document migration ladder", () => {
     // The regression that shipped: bumping the constant without adding a step left v3 documents
     // falling through migrateStoryDocumentToLatest untouched, so every existing project threw
     // "migration is not implemented" and its story panel would not open.
-    it.each([[1], [2], [3], [4], [5], [6], [7], [8]])("brings a v%i document to the current schema", version => {
+    it.each([[1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11]])("brings a v%i document to the current schema", version => {
         expect(normalizeStoryDocument(docAtVersion(version), "2026-07-16T00:00:00.000Z").schemaVersion)
             .toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+    });
+
+    /**
+     * v11→v12 has exactly one chance to run: the key order of a freshly parsed `scenes` record IS
+     * the authored order of the scenes no chapter claims, and the first canonical write destroys it.
+     * These pin that it reads that order, and that nothing about the step can un-capture it.
+     */
+    describe("v11→v12 unassignedSceneIds", () => {
+        const SCENE_IN_CHAPTER = "00000000-0000-4000-8000-00000000aa01";
+        const LOOSE_FIRST = "00000000-0000-4000-8000-00000000bb02";
+        const LOOSE_SECOND = "00000000-0000-4000-8000-00000000bb01";
+
+        /** A v11 document whose two chapter-less scenes are stored in an order UUID sorting reverses. */
+        function v11WithLooseScenes(): StoryDocument {
+            const base = docAtVersion(11);
+            const chapterId = base.chapters[0].id;
+            const template = Object.values(base.scenes)[0];
+            const scene = (id: string) => ({ ...template, id, blocks: {}, rootBlockIds: [] });
+            return {
+                ...base,
+                entrySceneId: SCENE_IN_CHAPTER,
+                chapters: [{ ...base.chapters[0], id: chapterId, sceneIds: [SCENE_IN_CHAPTER] }],
+                scenes: {
+                    [SCENE_IN_CHAPTER]: scene(SCENE_IN_CHAPTER),
+                    [LOOSE_FIRST]: scene(LOOSE_FIRST),
+                    [LOOSE_SECOND]: scene(LOOSE_SECOND),
+                },
+            } as StoryDocument;
+        }
+
+        it("captures the parsed key order of the scenes no chapter claims", () => {
+            // Through JSON, because that is the only state the order ever exists in: `JSON.parse`
+            // hands back insertion order for these (non-integer-like) keys and nothing else does.
+            const parsed = JSON.parse(JSON.stringify(v11WithLooseScenes())) as StoryDocument;
+            const migrated = migrateStoryDocumentToLatest(parsed);
+            expect(migrated.unassignedSceneIds).toEqual([LOOSE_FIRST, LOOSE_SECOND]);
+            // Which is not what sorting the record would have said.
+            expect([LOOSE_FIRST, LOOSE_SECOND]).not.toEqual([...Object.keys(parsed.scenes)].sort());
+        });
+
+        it("survives the canonical rewrite that key order does not", () => {
+            const migrated = migrateStoryDocumentToLatest(v11WithLooseScenes());
+            const canonical = {
+                ...migrated,
+                scenes: Object.fromEntries(Object.keys(migrated.scenes).sort().map(id => [id, migrated.scenes[id]])),
+            };
+            expect(normalizeStoryDocument(canonical, "2026-07-16T00:00:00.000Z").unassignedSceneIds)
+                .toEqual([LOOSE_FIRST, LOOSE_SECOND]);
+        });
+
+        it("is a no-op on an already-migrated document", () => {
+            const once = normalizeStoryDocument(v11WithLooseScenes(), "2026-07-16T00:00:00.000Z");
+            const twice = normalizeStoryDocument(once, "2026-07-16T00:00:00.000Z");
+            expect(twice).toEqual(once);
+        });
+
+        it("loads a v12 document that carries no ordering field at all", () => {
+            const { unassignedSceneIds: _absent, ...withoutField } = migrateStoryDocumentToLatest(v11WithLooseScenes());
+            expect(() => normalizeStoryDocument(withoutField as StoryDocument, "2026-07-16T00:00:00.000Z")).not.toThrow();
+        });
+
+        it("writes no field when every scene belongs to a chapter", () => {
+            const normalized = normalizeStoryDocument(docAtVersion(11), "2026-07-16T00:00:00.000Z");
+            expect("unassignedSceneIds" in normalized).toBe(false);
+        });
+
+        it("drops a scene that has since been claimed by a chapter, without reordering the rest", () => {
+            const migrated = normalizeStoryDocument(v11WithLooseScenes(), "2026-07-16T00:00:00.000Z");
+            const adopted = {
+                ...migrated,
+                chapters: [{ ...migrated.chapters[0], sceneIds: [SCENE_IN_CHAPTER, LOOSE_FIRST] }],
+            };
+            expect(normalizeStoryDocument(adopted, "2026-07-16T00:00:00.000Z").unassignedSceneIds).toEqual([LOOSE_SECOND]);
+        });
     });
 
     it("v8→v9 renames the persistent StoryVariableRef arm storageKey→variableId with zero semantic change", () => {
