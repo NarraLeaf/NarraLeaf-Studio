@@ -1,5 +1,5 @@
 import React, { useCallback } from "react";
-import { Check, ChevronsRight } from "lucide-react";
+import { Check, Ellipsis } from "lucide-react";
 import {
     ContextMenu,
     ContextMenuDef,
@@ -92,7 +92,7 @@ export function useSidebarPanelContextMenu(
     const groupPanel: PanelDefinition = {
         id: SIDEBAR_GROUP_ID,
         title: t("workspace.shell.panelGroup.title"),
-        icon: <ChevronsRight className="w-4 h-4" />,
+        icon: <Ellipsis className="w-4 h-4" />,
         position,
     };
 
