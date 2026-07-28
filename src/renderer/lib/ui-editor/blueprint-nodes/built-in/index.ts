@@ -22,6 +22,7 @@ import { localVariableBlueprintNodes } from "./localVariableNodes";
 import { mathBlueprintNodes } from "./mathNodes";
 import { persistentVariableBlueprintNodes } from "./persistentVariableNodes";
 import { sliderBlueprintNodes } from "./sliderNodes";
+import { structuralBlueprintNodes } from "./structuralNodes";
 import { textInputBlueprintNodes } from "./textInputNodes";
 import { storyVariableBlueprintNodes } from "./storyVariableNodes";
 import { stringBlueprintNodes } from "./stringNodes";
@@ -48,15 +49,14 @@ export { persistentVariableBlueprintNodes } from "./persistentVariableNodes";
 export { storyVariableBlueprintNodes } from "./storyVariableNodes";
 export { sliderBlueprintNodes } from "./sliderNodes";
 export { textInputBlueprintNodes } from "./textInputNodes";
-export { navigationBlueprintNodes } from "./navigationNodes";
 export { stringBlueprintNodes } from "./stringNodes";
 export { textBlueprintNodes } from "./textNodes";
 export { structuralBlueprintNodes } from "./structuralNodes";
-export { widgetHostBlueprintNodes } from "./widget/widgetHostNodes";
 export { imageAssetBlueprintNodes, widgetPropertyBlueprintNodes } from "./widgetPropertyNodes";
 
 /** All core built-in nodes in registration order (must stay stable if you rely on duplicate checks elsewhere). */
 export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
+    ...structuralBlueprintNodes,
     ...eventHeadBlueprintNodes,
     ...broadcastBlueprintNodes,
     ...fnBlueprintNodes,

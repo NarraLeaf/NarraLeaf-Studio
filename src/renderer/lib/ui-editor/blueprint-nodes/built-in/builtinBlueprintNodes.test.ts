@@ -266,7 +266,6 @@ import { BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE } from "../frameTargetSur
 import { sliderBlueprintNodes } from "./sliderNodes";
 import { stringBlueprintNodes } from "./stringNodes";
 import { textBlueprintNodes } from "./textNodes";
-import { widgetHostBlueprintNodes } from "./widget/widgetHostNodes";
 import { imageAssetBlueprintNodes, widgetPropertyBlueprintNodes } from "./widgetPropertyNodes";
 import {
     BLUEPRINT_VALUE_TYPE_ANIMATION_TOKEN,
@@ -2921,11 +2920,6 @@ describe("built-in blueprint nodes", () => {
             .filter(def => def.type.endsWith(".setVariant"))
             .flatMap(def => def.pins)
             .some(pin => pin.id === "variantId")).toBe(false);
-
-        const legacyHostSetVariant = widgetHostBlueprintNodes.find(def => def.type === "blueprint.widget.setVariant");
-        expect(legacyHostSetVariant?.hideInPalette).toBe(true);
-        expect(legacyHostSetVariant?.pins.map(pin => pin.id)).toEqual(["in", "next"]);
-        expect(legacyHostSetVariant?.inspectorParams?.some(param => param.key === "variantId")).toBe(false);
 
         const animate = elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY);
         expect(animate?.inspectorParams?.map(param => param.key)).toEqual([
