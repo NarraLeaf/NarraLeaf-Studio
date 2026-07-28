@@ -1,4 +1,5 @@
 import type { StoryAnimationAsset, StoryDocument } from "@shared/types/story";
+import { listSceneBlocksInDocumentOrder, listScenesInDocumentOrder } from "@shared/types/story";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { VoiceDocument } from "@shared/types/voice";
@@ -107,7 +108,7 @@ export function buildReferenceIndex(references: readonly AssetReference[]): Map<
 export function extractStoryAssetReferences(document: StoryDocument, storyName: string): AssetReference[] {
     const references: AssetReference[] = [];
 
-    for (const scene of Object.values(document.scenes)) {
+    for (const scene of listScenesInDocumentOrder(document)) {
         const sceneName = scene.name;
         const detail = `${storyName} › ${sceneName}`;
 
@@ -145,9 +146,9 @@ export function extractStoryAssetReferences(document: StoryDocument, storyName: 
             });
         }
 
-        // `blocks` is a flat record — control-flow nesting lives in id lists, not in the values —
-        // so this covers blocks inside conditions and loops without recursing.
-        for (const block of Object.values(scene.blocks)) {
+        // Depth first, so the "used by" list under an asset reads down the scene the way the author
+        // wrote it. The record's key order would be UUID order once it has been rewritten once.
+        for (const block of listSceneBlocksInDocumentOrder(scene)) {
             if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
                 pushBlockReference(block.id, "dialogue.voiceAssetId", block.payload.voiceAssetId);
                 continue;

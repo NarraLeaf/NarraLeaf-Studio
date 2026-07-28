@@ -13,6 +13,7 @@ import type {
     StoryScene,
     StorySceneId,
 } from "@shared/types/story";
+import { listSceneBlocksInDocumentOrder, listSceneIdsInDocumentOrder } from "@shared/types/story";
 import { formatStoryConditionSummary } from "../story/projection/storySceneProjection";
 
 /** Node box size. The layout and the node component must agree on these. */
@@ -94,30 +95,6 @@ export type SceneFlowGraph = {
     danglingJumpCount: number;
     unreachableCount: number;
 };
-
-/**
- * Authoring order: chapters first (that is the order the author sees in the outline), then any
- * scene no chapter claims. Layout ties break on this, so the map stays stable across rebuilds.
- */
-function orderSceneIds(document: StoryDocument): StorySceneId[] {
-    const ordered: StorySceneId[] = [];
-    const seen = new Set<StorySceneId>();
-    for (const chapter of document.chapters) {
-        for (const sceneId of chapter.sceneIds) {
-            if (document.scenes[sceneId] && !seen.has(sceneId)) {
-                seen.add(sceneId);
-                ordered.push(sceneId);
-            }
-        }
-    }
-    for (const sceneId of Object.keys(document.scenes)) {
-        if (!seen.has(sceneId)) {
-            seen.add(sceneId);
-            ordered.push(sceneId);
-        }
-    }
-    return ordered;
-}
 
 /**
  * The nearest fork above a jump — the thing that decides whether this jump is the one that runs.
@@ -284,7 +261,9 @@ function layoutPositions(
 }
 
 export function buildSceneFlowGraph(document: StoryDocument): SceneFlowGraph {
-    const sceneIds = orderSceneIds(document);
+    // Authoring order: chapters first (that is the order the author sees in the outline), then any
+    // scene no chapter claims. Layout ties break on this, so the map stays stable across rebuilds.
+    const sceneIds = listSceneIdsInDocumentOrder(document);
     const entrySceneId = document.entrySceneId && document.scenes[document.entrySceneId]
         ? document.entrySceneId
         : undefined;
@@ -295,9 +274,9 @@ export function buildSceneFlowGraph(document: StoryDocument): SceneFlowGraph {
 
     for (const sceneId of sceneIds) {
         const scene = document.scenes[sceneId];
-        // `blocks` is a flat record — control-flow nesting lives in id lists, not in the values —
-        // so this reaches jumps buried inside conditions and loops without recursing.
-        for (const block of Object.values(scene.blocks)) {
+        // Depth-first, so the forks this collapses into one edge are listed in the order the author
+        // wrote them — which is what `SceneFlowEdgeModel.branches` promises the reader of the map.
+        for (const block of listSceneBlocksInDocumentOrder(scene)) {
             if (block.kind !== "jump") {
                 continue;
             }

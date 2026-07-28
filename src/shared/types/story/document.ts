@@ -38,7 +38,12 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
 // `schemaVersion: 11`, and `assertSupportedStoryDocument` refuses anything newer than this
 // constant. Since v11's migration was a pure no-op bump, such a document is shape-identical to a
 // v10 one, so keeping the number costs nothing and reclaiming it would lock those projects out.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 11 as const;
+// v12 adds `StoryDocument.unassignedSceneIds`: the order of the scenes no chapter claims, which
+// until now was only the key order of the `scenes` record. The bump is not additive in the way v7
+// and v8 were. A v11 Studio would ignore the field and fall back to key order, which the canonical
+// serializer sorts by UUID - so it would open the document, show the scenes in a random order, and
+// save that as if the author had arranged it. Refusing the document is the point.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 12 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -89,6 +94,22 @@ export type StoryDocument = {
     entrySceneId?: StorySceneId;
     chapters: StoryChapter[];
     scenes: Record<StorySceneId, StoryScene>;
+    /**
+     * Authoring order of the scenes no chapter claims (schema v12). `chapters[].sceneIds` orders
+     * everything inside a chapter; this orders what is left, so that no scene's position depends on
+     * the key order of `scenes` - which the canonical serializer sorts by UUID.
+     *
+     * Deliberately NOT a document-wide list of every scene. That would state a chaptered scene's
+     * position twice, and the two arrays would drift the first time someone reordered a chapter and
+     * forgot the other one. Here every scene's order is stated in exactly one place, and the two
+     * arrays compose (see `listSceneIdsInDocumentOrder`).
+     *
+     * Absent means "no unclaimed scenes", which is the normal case - Studio's own paths always file
+     * a new scene under a chapter, so unclaimed scenes come from imports and hand edits. Reads must
+     * tolerate its absence and `normalizeStoryDocument` is its only writer; nothing that mutates
+     * chapters has to remember it exists.
+     */
+    unassignedSceneIds?: StorySceneId[];
     meta?: StoryMeta;
 };
 
