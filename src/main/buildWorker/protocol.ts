@@ -13,6 +13,119 @@ import type { SigningIdentity } from "./mobile/signingIdentity";
  * and option is resolved by the manager before the fork.
  */
 
+/**
+ * Signing material, already resolved.
+ *
+ * The vault (`managers/security/signingVault.ts`) is the only thing that can
+ * unseal a password, and it runs in the main process; by the time anything here
+ * exists, the manager has looked up the credential, unsealed its secrets and
+ * turned every vault-relative name into an absolute path. The worker just uses
+ * what it is handed - it never learns a credential id, never reads
+ * credentials.json, and never decides whether to sign.
+ *
+ * These carry plain passwords, so nothing that receives one may log it. The
+ * worker's log channel goes straight to the author's console.
+ *
+ * The blocks sit where their consumer reads them, which is four places:
+ * `GameBuildWorkerTarget.signing` (Windows, inside electron-builder),
+ * `GameBuildWorkerConfig.gpg` (detached signatures over every finished
+ * artifact), and `mobile.android.signing` / `mobile.ios.signing` (inside the
+ * repack, after the package is assembled).
+ */
+
+/** What both signtool-driven Windows paths share. */
+type WindowsSigntoolCommon = {
+    /**
+     * RFC 3161 timestamp authority. A timestamp is what keeps a signature valid
+     * after the certificate expires - and it is a network call, which preflight
+     * warns about. Unset leaves electron-builder's own default.
+     */
+    rfc3161TimeStampServer?: string;
+    /**
+     * Absolute path of the signtool.exe to use, exported as SIGNTOOL_PATH.
+     * Unset lets electron-builder download its own Windows Kits bundle, which
+     * needs a network. Resolved by the manager (a host probe, not a decision
+     * the worker can make); the discovery itself lands with the Windows batch.
+     */
+    signtoolPath?: string;
+};
+
+/**
+ * Windows Authenticode. The three sources are mutually exclusive by
+ * construction: electron-builder refuses to combine `win.signtoolOptions` with
+ * `win.azureSignOptions` (it silently prefers Azure), so a union rather than one
+ * flat record with optional halves.
+ */
+export type GameBuildWorkerWindowsSigning =
+    | (WindowsSigntoolCommon & {
+        /** A PFX file and its password -> `win.signtoolOptions.certificateFile`/`certificatePassword`. */
+        source: "pfx";
+        certificateFile: string;
+        certificatePassword: string;
+    })
+    | (WindowsSigntoolCommon & {
+        /**
+         * A certificate already in the Windows certificate store, typically on a
+         * hardware token or HSM -> `win.signtoolOptions.certificateSubjectName`
+         * or `certificateSha1`. At least one of the two is set; signing this way
+         * only works from Windows.
+         */
+        source: "certificate-store";
+        certificateSubjectName?: string;
+        certificateSha1?: string;
+    })
+    | {
+        /**
+         * Azure Trusted Signing -> `win.azureSignOptions`. The Entra credentials
+         * are NOT here: the Azure tooling reads them from the host environment
+         * itself, and Studio deliberately does not hold them.
+         */
+        source: "azure";
+        endpoint: string;
+        codeSigningAccountName: string;
+        certificateProfileName: string;
+        publisherName: string;
+    };
+
+/**
+ * The GPG identity for detached signatures over the finished artifacts. Only a
+ * key id: the private key stays in the host's gpg-agent and Studio never sees
+ * it, which is why this block has no password.
+ */
+export type GameBuildWorkerGpgSigning = {
+    /** `gpg --local-user <keyId>`. */
+    keyId: string;
+    /** Absolute gpg binary; unset means the one on PATH. */
+    gpgPath?: string;
+};
+
+/**
+ * An Android release keystore. Unlike the other platforms the container is
+ * handed over unopened - reading PKCS#12/JKS lives in the worker beside the APK
+ * signer that consumes the key - so both passwords travel with it.
+ */
+export type GameBuildWorkerAndroidSigning = {
+    /** Absolute path of the vault's copy (.p12 / .jks / .keystore). */
+    keystoreFile: string;
+    /** Which entry in the keystore to sign with. */
+    alias: string;
+    storePassword: string;
+    keyPassword: string;
+};
+
+/**
+ * An Apple signing identity. The .p12 must carry its issuing chain, not just
+ * the leaf certificate: a signer given only the leaf cannot build the chain the
+ * signature needs and fails outright.
+ */
+export type GameBuildWorkerIosSigning = {
+    /** Absolute path of the vault's copy of the .p12. */
+    p12File: string;
+    p12Password: string;
+    /** Absolute path of the vault's copy of the .mobileprovision to embed. */
+    provisioningProfileFile: string;
+};
+
 export type GameBuildWorkerFuses = {
     runAsNode: boolean;
     enableCookieEncryption: boolean;
@@ -43,6 +156,14 @@ export type GameBuildWorkerTarget = {
      * falls back to the default Electron icon.
      */
     iconPath?: string;
+    /**
+     * Code signing for this target's binaries and installers, done inside
+     * electron-builder. Present only on Windows targets: macOS signing needs
+     * Apple tooling that runs on a Mac (a separate batch), and Linux packages
+     * carry no OS-level signature - their integrity ships as the detached GPG
+     * signatures in `GameBuildWorkerConfig.gpg`.
+     */
+    signing?: GameBuildWorkerWindowsSigning;
 };
 
 /**
@@ -111,7 +232,18 @@ export type GameBuildWorkerMobileJob = {
         versionCode: number;
         /** Icon slot (zip entry path) → absolute path of the scaled PNG. */
         iconPngBySlot?: Record<string, string>;
+        /**
+         * The sideload-only debug identity, always present. Used when `signing`
+         * is absent, and only then.
+         */
         signingIdentity: SigningIdentity;
+        /**
+         * The author's own release keystore, when the project points at one. It
+         * replaces `signingIdentity` rather than adding to it: an APK carries
+         * one signer, and installing over a build signed by the other identity
+         * fails on the device until the old one is uninstalled.
+         */
+        signing?: GameBuildWorkerAndroidSigning;
     };
     ios?: {
         templateAppZipPath: string;
@@ -123,6 +255,12 @@ export type GameBuildWorkerMobileJob = {
         bundleVersion: string;
         /** Icon slot (path relative to the .app) → absolute path of the scaled PNG. */
         iconPngBySlot?: Record<string, string>;
+        /**
+         * The Apple identity to sign the .ipa with. Absent leaves the package
+         * unsigned - which iOS will not install, but which is still the useful
+         * artifact for someone who signs it themselves afterwards.
+         */
+        signing?: GameBuildWorkerIosSigning;
     };
 };
 
@@ -149,6 +287,14 @@ export type GameBuildWorkerConfig = {
     asarUnpack: string[];
     /** Desktop packaging jobs, one per platform (electron-builder). */
     targets: GameBuildWorkerTarget[];
+    /**
+     * GPG identity for the detached signatures over the finished artifacts.
+     * Build-level rather than per-target because the signatures cover every
+     * artifact the build produced, not only the Linux ones - even though the
+     * project selects this credential under its "linux" slot, which is where
+     * the format's own conventions (SHA256SUMS + .asc) come from.
+     */
+    gpg?: GameBuildWorkerGpgSigning;
     /** Optional web export job, packaged without electron-builder. */
     web?: GameBuildWorkerWebJob;
     /** Optional mobile repack job, packaged without electron-builder. */
