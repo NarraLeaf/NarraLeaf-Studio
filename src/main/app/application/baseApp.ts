@@ -519,13 +519,24 @@ export class BaseApp {
     /**
      * Connect to the development reload server. Failures are never fatal:
      * a missing dev server only disables auto-reload.
+     *
+     * The port comes from --dev-reload-port, which dev-electron.js passes from its
+     * own DEV_RELOAD_PORT. Hardcoding 5588 here did two bad things to a worktree
+     * session on NLS_DEV_RELOAD_PORT: its own reload never arrived, and — with the
+     * main checkout also running — it latched onto *that* session's socket and
+     * reloaded its windows on the other tree's rebuilds.
      */
     private async setupDevReloadSocket(): Promise<void> {
+        const { port, error } = this.commandLine.devReload;
+        if (error) {
+            this.logger.warn(`[Dev] ${error}. Falling back to port ${port}.`);
+        }
+
         try {
             const { WebSocket } = await import("ws");
-            const ws = new WebSocket("ws://localhost:5588");
+            const ws = new WebSocket(`ws://localhost:${port}`);
             ws.onerror = (event) => {
-                this.logger.warn("[Dev] Reload server not reachable; auto-reload disabled.", event.message);
+                this.logger.warn(`[Dev] Reload server on port ${port} not reachable; auto-reload disabled.`, event.message);
             };
             ws.onmessage = (event) => {
                 const target = this.parseDevReloadTarget(event.data);

@@ -125,7 +125,17 @@ function broadcastReload(target = 'all') {
         const electronBinary = require('electron');
         const mainEntry = path.join(distDir, 'main', 'index.js');
         console.log('[dev] starting electron process...');
-        electronProcess = spawn(electronBinary, [mainEntry, '--dev', ...forwardedElectronArgs], {
+        // Tell the app which reload socket is ours. Without it the main process
+        // falls back to 5588, so a session on NLS_DEV_RELOAD_PORT either found
+        // nothing there or — worse — attached to the default-port session owned by
+        // another checkout and reloaded on its rebuilds. Forwarded args come last
+        // so an explicit --dev-reload-port on the command line still wins.
+        electronProcess = spawn(electronBinary, [
+            mainEntry,
+            '--dev',
+            `--dev-reload-port=${DEV_RELOAD_PORT}`,
+            ...forwardedElectronArgs,
+        ], {
             stdio: 'inherit',
         });
 

@@ -13,7 +13,9 @@ const distWindows = path.join(distRoot, 'windows');
  * Port the dev server listens on for renderer reload sockets. Owning it is what
  * marks a live `yarn dev` session, so `yarn stop` looks here too — keep the two
  * in sync via this constant rather than re-typing the number.
- * The renderer side connects in src/main/app/application/baseApp.ts.
+ * The app side connects in src/main/app/application/baseApp.ts, which learns the
+ * port from the --dev-reload-port argument dev-electron.js passes on to Electron
+ * — it must never re-derive it, or an overridden session talks to the wrong tree.
  *
  * Overridable via NLS_DEV_RELOAD_PORT so a second checkout (a git worktree on a
  * branch, say) can run its own dev session without killing the first: the port is
