@@ -103,9 +103,11 @@ import {
     BLUEPRINT_NODE_TYPE_FN_HEAD,
     BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD,
     BLUEPRINT_NODE_TYPE_GAME_GET_BGM_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT,
     BLUEPRINT_NODE_TYPE_GAME_GET_GAME_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_GET_GLOBAL_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+    BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS,
     BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR,
     BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY,
@@ -118,6 +120,8 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET,
     BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY,
     BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
+    BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE,
+    BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
@@ -1378,6 +1382,18 @@ function resolveGameNodeOutput(
     if (portId === "isGameOverlay") {
         return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.isGameOverlay() === true;
     }
+    if (portId === "notifications") {
+        return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getNotifications() ?? [];
+    }
+    if (portId === "count") {
+        return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getChoiceCount() ?? 0;
+    }
+    if (portId === "isNvlMode") {
+        return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.isNvlMode() === true;
+    }
+    if (portId === "isRead") {
+        return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.isCurrentTextRead() === true;
+    }
     const preference = GAME_PREFERENCE_OUTPUT_KEYS[nodeType];
     if (preference && portId === preference.portId) {
         return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getPreference(preference.key as never);
@@ -2402,6 +2418,10 @@ function resolveSelfOutput(
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ ||
         GAME_PREFERENCE_OUTPUT_KEYS[selfNode.type]
     ) {
         return resolveGameNodeOutput(selfNode.type, portId, runtime);

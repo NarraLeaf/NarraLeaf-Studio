@@ -1793,6 +1793,104 @@ describe("built-in blueprint nodes", () => {
         expect(sentenceCpsValues).toEqual([32]);
     });
 
+    it("reads pure Game state nodes through a wired data pin", async () => {
+        registerCoreBlueprintNodes();
+
+        // These readers are PURE, so `execute` never runs when the pin is read - the value comes from
+        // the resolver branch alone. A test that merely executes the node still passes when that branch
+        // is missing and the wired pin silently reads `undefined`, so every case reads through an edge.
+        async function readThroughEdge(
+            variableId: string,
+            nodeType: string,
+            portId: string,
+            hostAdapter: UIHostAdapter,
+        ): Promise<unknown> {
+            const locals: Record<string, unknown> = {};
+            await executeGraph({
+                graph: {
+                    id: variableId,
+                    entries: { main: { start: { nodeId: "capture", port: "in" } } },
+                    nodes: {
+                        read: {
+                            id: "read",
+                            type: nodeType,
+                            params: {},
+                        },
+                        capture: {
+                            id: "capture",
+                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                            params: { variableId },
+                        },
+                    },
+                    edges: [
+                        { from: { nodeId: "read", port: portId }, to: { nodeId: "capture", port: "value" } },
+                    ],
+                },
+                entry: { start: { nodeId: "capture", port: "in" } },
+                hostAdapter,
+                blueprintLocals: locals,
+            });
+            return locals[variableId];
+        }
+
+        expect(
+            await readThroughEdge(
+                "notifications",
+                BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS,
+                "notifications",
+                createGameSaveHostAdapter({ notifications: [{ id: "toast-1", message: "Saved" }] }),
+            ),
+        ).toEqual([{ id: "toast-1", message: "Saved" }]);
+        expect(
+            await readThroughEdge(
+                "choiceCount",
+                BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT,
+                "count",
+                createGameSaveHostAdapter({ choiceCount: 3 }),
+            ),
+        ).toBe(3);
+        expect(
+            await readThroughEdge(
+                "nvlMode",
+                BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE,
+                "isNvlMode",
+                createGameSaveHostAdapter({ nvlMode: true }),
+            ),
+        ).toBe(true);
+        expect(
+            await readThroughEdge(
+                "textRead",
+                BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ,
+                "isRead",
+                createGameSaveHostAdapter({ textRead: true }),
+            ),
+        ).toBe(true);
+
+        const withoutHostApi = (nodeType: string, portId: string): unknown =>
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        read: {
+                            type: nodeType,
+                            params: {},
+                        },
+                    },
+                    edges: [],
+                },
+                "read",
+                portId,
+                {},
+                undefined,
+                0,
+                {},
+            );
+
+        expect(withoutHostApi(BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS, "notifications")).toEqual([]);
+        expect(withoutHostApi(BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT, "count")).toBe(0);
+        expect(withoutHostApi(BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE, "isNvlMode")).toBe(false);
+        expect(withoutHostApi(BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ, "isRead")).toBe(false);
+    });
+
     it("executes game preference getter and setter nodes through host APIs", async () => {
         registerCoreBlueprintNodes();
 
