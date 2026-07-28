@@ -12,6 +12,7 @@ import {
     signingSecretsResolved,
     toWorkerAndroidSigning,
     toWorkerGpgSigning,
+    iosSigningToolPathFrom,
     toWorkerIosSigning,
     toWorkerWindowsSigning,
 } from "./GameBuildManager";
@@ -298,10 +299,11 @@ describe("signing material mapped for the worker", () => {
             p12File: "/vault/apple.p12",
             provisioningProfileFile: "/vault/app.mobileprovision",
             p12Password: "pw",
-        })).toEqual({
+        }, "/resources/codesign/win32/zsign.exe")).toEqual({
             p12File: "/vault/apple.p12",
             p12Password: "pw",
             provisioningProfileFile: "/vault/app.mobileprovision",
+            toolPath: "/resources/codesign/win32/zsign.exe",
         });
         expect(toWorkerIosSigning({
             kind: "ios-apple",
@@ -309,6 +311,33 @@ describe("signing material mapped for the worker", () => {
             p12File: "/vault/apple.p12",
             provisioningProfileFile: "/vault/app.mobileprovision",
             p12Password: null,
-        })).toBeNull();
+        }, "/resources/codesign/win32/zsign.exe")).toBeNull();
+    });
+});
+
+describe("iosSigningToolPathFrom", () => {
+    it("hands over the path of a staged tool", () => {
+        expect(iosSigningToolPathFrom({ available: true, path: "C:/app/resources/codesign/win32/zsign.exe" }))
+            .toBe("C:/app/resources/codesign/win32/zsign.exe");
+    });
+
+    // The alternative would be an .ipa that installs on nothing, with nothing in
+    // the log to say why - so this must be an error, not a silent downgrade.
+    it("fails the build when the tool is missing, quoting the reason", () => {
+        expect(() => iosSigningToolPathFrom({
+            available: false,
+            reason: "not-staged",
+            detail: "the bundled iOS signing tool is missing",
+            searched: ["/nowhere/zsign"],
+        })).toThrow(/the bundled iOS signing tool is missing/);
+    });
+
+    it("says so when the host has no build of the tool at all", () => {
+        expect(() => iosSigningToolPathFrom({
+            available: false,
+            reason: "host-unsupported",
+            detail: "there is no build of it for this machine",
+            searched: [],
+        })).toThrow(/no build of it for this machine/);
     });
 });
