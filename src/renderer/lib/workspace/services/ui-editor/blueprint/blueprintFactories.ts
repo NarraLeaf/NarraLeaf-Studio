@@ -73,7 +73,9 @@ export function createMainBlueprint(params: {
         program: {
             kind: "graph",
             graphs: {
+                eventIds: [],
                 events: {},
+                functionIds: [],
                 functions: {},
             },
         },
@@ -128,6 +130,7 @@ export function createDefaultGlobalMainBlueprint(params: {
         owner: { kind: "globalMain" },
     });
     if (blueprint.program.kind === "graph") {
+        blueprint.program.graphs.eventIds = [DEFAULT_GLOBAL_BOOT_LAYER_ID];
         blueprint.program.graphs.events = {
             [DEFAULT_GLOBAL_BOOT_LAYER_ID]: {
                 id: DEFAULT_GLOBAL_BOOT_LAYER_ID,
