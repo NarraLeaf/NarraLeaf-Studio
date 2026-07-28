@@ -76,6 +76,7 @@ import {
     duplicateSceneLabels,
     isStoryExpressionEvaluable,
     layerActionTargetRef,
+    listScenesInDocumentOrder,
     sceneLabelNames,
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
@@ -552,7 +553,8 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     pushPersistentNameCollisionDiagnostics(diagnostics, persistentView);
     const localization = input.localization ? createSceneLocalizationResolver(input.localization) : undefined;
 
-    for (const scene of Object.values(input.document.scenes)) {
+    // Document order, so the Problems panel reads down the story instead of down a UUID sort.
+    for (const scene of listScenesInDocumentOrder(input.document)) {
         const nlrScene = allScenes[scene.id];
         const sceneFnCatalog = collectSceneStoryActionFns({
             document: input.document,
@@ -1197,8 +1199,10 @@ async function createNlrScenes(input: {
     // Two scenes with the same runtime name share one `Scene.local` namespace, so their scene-local
     // variables would silently read and write each other's values. The name keys the namespace
     // (`DevTools.getNamespaceName`), so a collision is a real data hazard, not cosmetic (bible §3.3).
+    // Document order decides WHICH of the two colliding scenes gets blamed - the later one, as with
+    // duplicate labels. Reading the record would hand that verdict to whichever id sorts lower.
     const namesSeen = new Set<string>();
-    for (const scene of Object.values(input.document.scenes)) {
+    for (const scene of listScenesInDocumentOrder(input.document)) {
         const runtimeName = scene.runtimeName || scene.name || scene.id;
         if (namesSeen.has(runtimeName)) {
             pushDiagnostic(

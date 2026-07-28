@@ -2,26 +2,20 @@ import type { BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprin
 import { BLUEPRINT_NODE_TYPE_GAME_START_STORY } from "@shared/types/blueprint/graph";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { StoryDocument, StoryId, StorySceneId } from "@shared/types/story";
+import { listSceneIdsInDocumentOrder } from "@shared/types/story";
 
 export type DefaultLaunchScene = {
     storyId: StoryId;
     sceneId: StorySceneId;
 };
 
-function firstSceneId(document: StoryDocument): StorySceneId | undefined {
-    for (const chapter of document.chapters) {
-        if (chapter.sceneIds[0]) {
-            return chapter.sceneIds[0];
-        }
-    }
-    return Object.keys(document.scenes)[0];
-}
-
 function resolveSceneId(document: StoryDocument): StorySceneId | undefined {
     if (document.entrySceneId && document.scenes[document.entrySceneId]) {
         return document.entrySceneId;
     }
-    return firstSceneId(document);
+    // Which scene the game boots into when no entry scene is set — so this fallback has to be the
+    // author's first scene, not whichever scene id sorts lowest once the record is rewritten.
+    return listSceneIdsInDocumentOrder(document)[0];
 }
 
 /**
