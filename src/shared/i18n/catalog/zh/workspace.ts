@@ -166,6 +166,11 @@ export const workspace = {
         toggleBottomPanel: "切换底部面板",
         panelMenu: {
             removeItem: "移除此项目",
+            collapseItem: "折叠到折叠项",
+        },
+        // 左侧导轨的折叠项：一个图标代表被折叠进去的面板，点击后在导轨旁展开列表。
+        panelGroup: {
+            title: "折叠项",
         },
         openSettings: "打开设置",
         stopDevMode: "停止开发模式",
