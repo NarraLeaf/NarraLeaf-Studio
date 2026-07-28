@@ -123,7 +123,7 @@ export const widgets = {
     textInput: {
         title: "文本输入框",
         value: "值",
-        valueHint: "初始文本。玩家输入的内容保存在运行中的游戏里，不会写回本文档",
+        valueHint: "起始文本。玩家输入的内容存在于运行中的游戏内，而非此文档中",
         placeholder: "占位文本",
         placeholderKey: "占位文本键",
         placeholderKeyHint: "占位文本会展示给玩家：绑定键以便翻译",

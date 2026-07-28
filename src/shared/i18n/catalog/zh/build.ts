@@ -102,13 +102,9 @@ export const build = {
         "icon-low-resolution": "{platform} 图标小于 {minimum}×{minimum}，将放大后出片",
         "icon-stale": "{platform} 图标尚未烘焙，请打开 项目 ▸ 图标 生成",
         "plugins-invalid": "插件校验失败：\n{errors}",
-        "build-dependency-unavailable":
-            "{plugin} 在 {platform} 上需要构建依赖 {dependency}，本机没有缓存，也无法从 {url} 获取（{reason}）。"
-            + "可自行下载并另存为 {path}，即可离线构建",
+        "build-dependency-unavailable": "{plugin} 需要为 {platform} 构建依赖项 {dependency}，但该依赖项未在此处缓存且无法从  {url} 获取（{reason}）",
         "sidecar-target-missing": "{plugin} 没有为 {platform} 提供 {sidecar} 程序，它所支撑的功能在这份产物里不会生效",
-        "sidecar-crossbuild-exec-bit":
-            "Windows 无法给文件加上可执行位，{plugin} 的 {sidecar} 程序进入 {platform} 产物后将无法运行。"
-            + "请在 {targetPlatform} 机器上构建该目标",
+        "sidecar-crossbuild-exec-bit": "Windows 无法将文件标记为可执行，因此 {plugin} 的 {sidecar} 程序打包到 {platform} 产物后将无法运行",
         "encryption-key-unavailable": "资源保护已开启，但无法取得密钥",
         "web-unprotected": "资源保护对 Web 导出不生效，其文件以明文发布",
         "mobile-template-missing": "移动端外壳模板不可用：{reason}",
@@ -118,7 +114,7 @@ export const build = {
         "bundleid-ios-adjusted": "应用 ID {appId} 不是合法的 iOS Bundle ID，构建将使用 {bundleId}",
         unsigned: "构建产物未做代码签名。玩家首次打开游戏时，macOS Gatekeeper 或 Windows SmartScreen 可能弹出安全提示",
         "unsigned-android": "Android 构建使用本地调试签名，仅供旁加载安装，无法上架 Google Play",
-        "unsigned-ios": "iOS 构建产出的是未签名 .ipa。iOS 不允许安装任何未签名应用，需先用你自己的 Apple 身份重签才能在设备上运行",
+        "unsigned-ios": "iOS 构建产物是未签名的 .ipa 文件。iOS 不会安装任何未签名的应用，因此你必须使用自己的 Apple 身份对其重新签名，才能在设备上运行",
         "cross-build-download": "跨平台构建 {platforms} 需要下载 Electron（首次下载，之后会缓存）",
         "output-not-writable": "无法写入 {outputDir}",
         "output-not-empty": "输出目录已有文件，同名产物会被覆盖",
