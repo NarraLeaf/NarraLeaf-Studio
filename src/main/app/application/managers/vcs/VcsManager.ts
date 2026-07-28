@@ -11,7 +11,7 @@ import { Manager } from "../manager";
 import { getVcsAvailability, requireVcsBackend, type VcsBackend } from "./backend";
 // Type-only: erased at compile time, so no Lore module is reachable from here
 // at load time. See backend.ts for why that matters.
-import type { LoreGlobals, LoreHex, StoreHandle } from "./loreClient";
+import type { LoreGlobals, LoreHex, StoreHandle } from "./lore";
 
 /**
  * Owns Lore state for open projects.
@@ -177,7 +177,7 @@ export class VcsManager extends Manager {
             const { session, backend } = await this.sessionFor(request.projectPath);
             // Lore silently *ignores* a path outside the repository rather than
             // rejecting it, so the guard has to happen here.
-            backend.client.repoPath(session.root, request.path);
+            backend.repositoryPath(session.root, request.path);
             return backend.blobAt(
                 session.globals,
                 session.store,
@@ -196,7 +196,7 @@ export class VcsManager extends Manager {
     ): Promise<Map<string, Buffer>> {
         return this.serialize(projectPath, async () => {
             const { session, backend } = await this.sessionFor(projectPath);
-            for (const relative of paths) backend.client.repoPath(session.root, relative);
+            for (const relative of paths) backend.repositoryPath(session.root, relative);
             return backend.blobsAt(session.globals, session.store, session.repositoryId, revision, paths);
         });
     }
@@ -222,7 +222,7 @@ export class VcsManager extends Manager {
     ): Promise<VcsThreeWayResult> {
         return this.serialize(projectPath, async () => {
             const { session, backend } = await this.sessionFor(projectPath);
-            backend.client.repoPath(session.root, filePath);
+            backend.repositoryPath(session.root, filePath);
             const result = await backend.threeWay(
                 session.globals,
                 session.store,
@@ -277,9 +277,21 @@ export class VcsManager extends Manager {
         }
         try {
             await backend.closeStore(session.globals, session.store);
+        } catch (error) {
+            this.app.logger.warn("[Vcs] Failed to close the store", session.root, error);
+        }
+
+        try {
+            // Closing the store is not the same as letting go of the repository.
+            // Lore keeps the repository open after the last call (storeKeepAlive),
+            // and while it does, the directory cannot be deleted or moved and the
+            // author's own `lore` CLI BLOCKS on the repository lock rather than
+            // failing. Found the hard way: a test could not remove its own temp
+            // directory after closing the store.
+            await backend.releaseRepository(session.globals);
             this.app.logger.info("[Vcs] Closed session", session.root);
         } catch (error) {
-            this.app.logger.warn("[Vcs] Failed to close session", session.root, error);
+            this.app.logger.warn("[Vcs] Failed to release the repository", session.root, error);
         }
     }
 

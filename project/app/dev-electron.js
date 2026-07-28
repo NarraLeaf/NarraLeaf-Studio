@@ -222,7 +222,7 @@ function broadcastReload(target = 'all') {
         platform: 'node',
         bundle: true,
         format: 'cjs',
-        external: ['electron', '@narraleaf/encryption', '@lore-vcs/sdk', 'koffi'],
+        external: ['electron', '@narraleaf/encryption', 'koffi'],
         sourcemap: true,
         target: ['node18'],
     }, () => {
@@ -303,9 +303,9 @@ function broadcastReload(target = 'all') {
         platform: 'node',
         format: 'cjs',
         bundle: true,
-        // @narraleaf/encryption, koffi and @lore-vcs/sdk all resolve their own
-        // binaries by path at runtime; keep this list in sync with build-main.js.
-        external: ['electron', '@narraleaf/encryption', '@lore-vcs/sdk', 'koffi'],
+        // @narraleaf/encryption and koffi both resolve their own binaries by path
+        // at runtime; keep this list in sync with build-main.js.
+        external: ['electron', '@narraleaf/encryption', 'koffi'],
         sourcemap: true,
         target: ['node18'],
     }, () => {
