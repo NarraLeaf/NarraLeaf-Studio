@@ -57,6 +57,8 @@ export interface UIState {
     panels: PanelDefinition[];
     /** User-defined panel ordering per position (panel ids). Overrides the static `order` field. */
     panelOrder: Record<string, string[]>;
+    /** Panel ids folded into a dock's collapse group, per position (see sidebarPanelGroup.ts). */
+    collapsedPanels: Record<string, string[]>;
     panelVisibility: Record<string, boolean>;
     editorTabs: EditorTab[];
     activeEditorTabId: string | null;
@@ -85,6 +87,7 @@ export interface UIStateEvents {
     panelUnregistered: string; // panel id
     panelVisibilityChanged: { panelId: string; visible: boolean };
     panelOrderChanged: { position: string; order: string[] };
+    collapsedPanelsChanged: { position: string; collapsed: string[] };
     
     editorTabOpened: EditorTab;
     editorTabClosed: string; // tab id
@@ -142,6 +145,7 @@ export class UIStore {
             actionBarItems: [],
             panels: [],
             panelOrder: {},
+            collapsedPanels: {},
             panelVisibility: {},
             editorTabs: [],
             activeEditorTabId: null,
@@ -347,6 +351,25 @@ export class UIStore {
     public getPanelOrder(): Record<string, string[]> {
         const copy: Record<string, string[]> = {};
         for (const [position, ids] of Object.entries(this.state.panelOrder)) {
+            copy[position] = [...ids];
+        }
+        return copy;
+    }
+
+    /**
+     * Fold a set of panels into a dock's collapse group (list of panel ids). Membership is
+     * independent of visibility and of the order override: a collapsed panel keeps its slot in the
+     * order, it is just rendered inside the group's flyout instead of directly on the rail.
+     */
+    public setCollapsedPanels(position: PanelPosition, panelIds: string[]): void {
+        this.state.collapsedPanels = { ...this.state.collapsedPanels, [position]: [...panelIds] };
+        this.events.emit("collapsedPanelsChanged", { position, collapsed: [...panelIds] });
+        this.events.emit("stateChanged", { collapsedPanels: { ...this.state.collapsedPanels } });
+    }
+
+    public getCollapsedPanels(): Record<string, string[]> {
+        const copy: Record<string, string[]> = {};
+        for (const [position, ids] of Object.entries(this.state.collapsedPanels)) {
             copy[position] = [...ids];
         }
         return copy;
@@ -1423,6 +1446,7 @@ export class UIStore {
             actionBarItems: [],
             panels: [],
             panelOrder: {},
+            collapsedPanels: {},
             panelVisibility: {},
             editorTabs: [],
             activeEditorTabId: null,

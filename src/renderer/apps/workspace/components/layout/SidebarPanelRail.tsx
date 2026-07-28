@@ -20,7 +20,8 @@ interface SidebarPanelRailProps {
     panels: PanelDefinition[];
     activeId: string | null;
     sidebarVisible: boolean;
-    onPanelClick: (panelId: string) => void;
+    /** The event is passed through so a caller can anchor a flyout to the icon that was clicked. */
+    onPanelClick: (panelId: string, event: MouseEvent<HTMLElement>) => void;
     onActivateForDrop?: (panelId: string) => void;
     /** Commit a new panel order (ids in display order) for this dock area. */
     onReorder: (orderedIds: string[]) => void;
@@ -71,7 +72,7 @@ export function SidebarPanelRail({
                         panel={panel}
                         active={activeId === panel.id}
                         sidebarVisible={sidebarVisible}
-                        onPanelClick={() => onPanelClick(panel.id)}
+                        onPanelClick={(event) => onPanelClick(panel.id, event)}
                         onActivateForDrop={() => onActivateForDrop?.(panel.id)}
                         onContextMenu={
                             onPanelContextMenu
@@ -89,7 +90,7 @@ interface SortableSidebarPanelIconProps {
     panel: PanelDefinition;
     active: boolean;
     sidebarVisible: boolean;
-    onPanelClick: () => void;
+    onPanelClick: (event: MouseEvent<HTMLElement>) => void;
     onActivateForDrop: () => void;
     onContextMenu?: (event: MouseEvent) => void;
 }

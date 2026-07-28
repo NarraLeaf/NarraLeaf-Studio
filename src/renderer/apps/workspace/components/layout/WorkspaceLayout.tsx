@@ -43,6 +43,7 @@ import {
     resolveDock,
     type DockEnv,
 } from "./dockLayoutModel";
+import { DEFAULT_COLLAPSED_PANEL_IDS } from "./sidebarPanelGroup";
 
 interface WorkspaceLayoutProps {
     title: string;
@@ -60,6 +61,7 @@ const SETTINGS_KEYS = {
     LEFT_SIDEBAR_WIDTH: "ui.leftSidebar.width",
     LEFT_SIDEBAR_ACTIVE_PANEL: "ui.leftSidebar.activePanel",
     LEFT_SIDEBAR_ORDER: "ui.leftSidebar.order",
+    LEFT_SIDEBAR_COLLAPSED: "ui.leftSidebar.collapsed",
     RIGHT_SIDEBAR_VISIBLE: "ui.rightSidebar.visible",
     RIGHT_SIDEBAR_WIDTH: "ui.rightSidebar.width",
     RIGHT_SIDEBAR_ACTIVE_PANEL: "ui.rightSidebar.activePanel",
@@ -114,6 +116,8 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
 
     // User-defined panel ordering per dock area (mirror of UIStore, persisted here)
     const [panelOrders, setPanelOrders] = useState<Partial<Record<PanelPosition, string[]>>>({});
+    // Panels folded into the left rail's collapse group (mirror of UIStore, persisted here)
+    const [collapsedLeftPanels, setCollapsedLeftPanels] = useState<string[] | null>(null);
 
     // Intended region sizes (the user's last drag target). Effective rendered sizes are derived
     // from these via resolveDock() below — these are never mutated on window resize.
@@ -187,6 +191,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     [SETTINGS_KEYS.LEFT_SIDEBAR_WIDTH]: leftSidebarWidth,
                     [SETTINGS_KEYS.LEFT_SIDEBAR_ACTIVE_PANEL]: activeLeftPanelId,
                     [SETTINGS_KEYS.LEFT_SIDEBAR_ORDER]: panelOrders[PanelPosition.Left] ?? null,
+                    [SETTINGS_KEYS.LEFT_SIDEBAR_COLLAPSED]: collapsedLeftPanels,
                     [SETTINGS_KEYS.RIGHT_SIDEBAR_VISIBLE]: rightSidebarVisible,
                     [SETTINGS_KEYS.RIGHT_SIDEBAR_WIDTH]: rightSidebarWidth,
                     [SETTINGS_KEYS.RIGHT_SIDEBAR_ACTIVE_PANEL]: activeRightPanelId,
@@ -214,6 +219,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         bottomPanelHeight,
         activeBottomPanelId,
         panelOrders,
+        collapsedLeftPanels,
     ]);
 
     useEffect(() => {
@@ -288,6 +294,15 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     }
                 }
                 setPanelOrders(loadedOrders);
+
+                // The defaults apply only when nothing was ever stored, so a group the user has
+                // emptied stays empty instead of springing back on the next launch.
+                const savedCollapsed = await settingsService.get<string[]>(SETTINGS_KEYS.LEFT_SIDEBAR_COLLAPSED);
+                const collapsed = Array.isArray(savedCollapsed)
+                    ? savedCollapsed
+                    : [...DEFAULT_COLLAPSED_PANEL_IDS];
+                store?.setCollapsedPanels(PanelPosition.Left, collapsed);
+                setCollapsedLeftPanels(collapsed);
 
                 setSettingsLoaded(true);
                 console.log("[WorkspaceLayout] Settings loaded successfully");
@@ -389,12 +404,15 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         return correction;
     }, [currentEnv]);
 
-    // The first panel that would actually show in a dock's rail: not hidden, and not a (bodyless)
-    // rail action — so opening a sidebar with no active panel never lands on a hidden or empty one.
+    // The first panel that would actually show in a dock's rail: not hidden, not folded into the
+    // collapse group, and not a (bodyless) rail action — so opening a sidebar with no active panel
+    // never lands on a hidden, folded-away or empty one.
     const firstVisiblePanelId = (position: PanelPosition): string | null => {
-        const visibility = context?.services.get<UIService>(Services.UI).getStore().getPanelVisibility() ?? {};
+        const store = context?.services.get<UIService>(Services.UI).getStore();
+        const visibility = store?.getPanelVisibility() ?? {};
+        const collapsed = store?.getCollapsedPanels()[position] ?? [];
         const first = getPanelsByPosition(position).find(
-            panel => !panel.railAction && visibility[panel.id] !== false,
+            panel => !panel.railAction && visibility[panel.id] !== false && !collapsed.includes(panel.id),
         );
         return first?.id ?? null;
     };
@@ -613,13 +631,21 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             setPanelOrders(prev => ({ ...prev, [position as PanelPosition]: order }));
         };
 
+        const handleCollapsedPanelsChanged = ({ position, collapsed }: { position: string; collapsed: string[] }) => {
+            if (position === PanelPosition.Left) {
+                setCollapsedLeftPanels(collapsed);
+            }
+        };
+
         const unsubscribeVisibility = uiService.getEvents().on("panelVisibilityChanged", handlePanelVisibilityChanged);
         const unsubscribeUnregistered = uiService.getEvents().on("panelUnregistered", handlePanelUnregistered);
         const unsubscribeOrder = uiService.getEvents().on("panelOrderChanged", handlePanelOrderChanged);
+        const unsubscribeCollapsed = uiService.getEvents().on("collapsedPanelsChanged", handleCollapsedPanelsChanged);
         return () => {
             unsubscribeVisibility();
             unsubscribeUnregistered();
             unsubscribeOrder();
+            unsubscribeCollapsed();
         };
     }, [context]);
 

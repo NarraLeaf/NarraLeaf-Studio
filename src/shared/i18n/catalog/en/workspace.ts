@@ -168,9 +168,15 @@ export const workspace = {
         toggleRightSidebar: "Toggle right sidebar",
         toggleBottomPanel: "Toggle bottom panel",
         // Right-click menu on a sidebar rail: a checklist toggling each panel icon's visibility,
-        // plus a shortcut to hide the specific panel that was right-clicked.
+        // plus shortcuts acting on the specific panel that was right-clicked.
         panelMenu: {
             removeItem: "Remove this item",
+            collapseItem: "Collapse into group",
+        },
+        // The left rail's collapse group: one icon standing in for the panels folded behind it,
+        // which unfolds into a flyout listing them.
+        panelGroup: {
+            title: "Collapsed panels",
         },
         openSettings: "Open settings",
         stopDevMode: "Stop Dev Mode",
