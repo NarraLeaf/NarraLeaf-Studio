@@ -23,10 +23,6 @@ export const dashboard = {
             one: "{count} word",
             other: "{count} words",
         },
-        nodes: {
-            one: "{count} node",
-            other: "{count} nodes",
-        },
         days: {
             one: "{count} day",
             other: "{count} days",
@@ -54,7 +50,7 @@ export const dashboard = {
         totalWords: "Words",
         characters: "Characters",
         assets: "Assets",
-        blueprints: "Blueprints",
+        blueprintNodes: "Blueprint nodes",
         uiSurfaces: "Interface surfaces",
         variables: "Variables",
     },

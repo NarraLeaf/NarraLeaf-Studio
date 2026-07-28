@@ -23,9 +23,6 @@ export const dashboard = {
         words: {
             other: "{count} 字",
         },
-        nodes: {
-            other: "{count} 个节点",
-        },
         days: {
             other: "{count} 天",
         },
@@ -52,7 +49,7 @@ export const dashboard = {
         totalWords: "字数",
         characters: "角色",
         assets: "资源",
-        blueprints: "蓝图",
+        blueprintNodes: "蓝图节点",
         uiSurfaces: "界面",
         variables: "变量",
     },
