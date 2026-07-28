@@ -69,8 +69,8 @@ export const story = {
             openFlow: "打开场景流程",
         },
         empty: {
-            noStory: "没有可展示的故事。",
-            noScenes: "该故事还没有场景。",
+            noStory: "没有可展示的故事",
+            noScenes: "该故事还没有场景",
         },
     },
     stage: {
@@ -98,8 +98,8 @@ export const story = {
         createNew: "新建图层",
     },
     appearance: {
-        noPoses: "该角色还没有姿态。",
-        noAxes: "该角色还没有分层轴。",
+        noPoses: "该角色还没有姿态",
+        noAxes: "该角色还没有分层轴",
         unchanged: "不改动",
         appearance: "外观",
         default: "默认",
@@ -141,7 +141,7 @@ export const story = {
     },
     inlineEvent: {
         title: "行内事件",
-        noCharacter: "该行没有角色。",
+        noCharacter: "该行没有角色",
         sound: "音效",
     },
     actionCreator: {
@@ -200,16 +200,16 @@ export const story = {
         size: "字号",
         z: "层级",
     },
-
     view: {
         narrativeOnly: "只看叙事",
-        density: "阅读密度",
-        "density.compact": "紧凑",
-        "density.standard": "标准",
-        "density.comfortable": "舒适",
+        density: {
+            compact: "紧凑",
+            standard: "标准",
+            comfortable: "舒适",
+        },
     },
     diagnostics: {
-        missingAsset: "这一行指向的资源已经不在项目里了。",
+        missingAsset: "此行的目标资源项目已不再包含",
     },
     find: {
         placeholder: "在场景中查找",
@@ -233,16 +233,16 @@ export const story = {
         title: "指令",
         searchPlaceholder: "搜索指令",
         empty: "没有匹配的指令",
-        pick: "选一条指令，看它做什么。",
+        pick: "选择一个指令以阅读其功能说明",
         back: "全部指令",
         insert: "插入到场景",
         aliases: "也可以写作",
         parameters: "参数",
-        noParameters: "不接受参数。",
+        noParameters: "不接受参数",
         examples: "示例",
         required: "必填",
         optional: "可选",
-        greedy: "吃掉本行剩余内容",
+        greedy: "取本行其余部分",
         appliesTo: "同时归入",
         star: "收藏",
         unstar: "取消收藏",
@@ -328,7 +328,7 @@ export const story = {
         loadingScene: "正在加载故事场景…",
         notFound: "未找到故事或场景",
         addRow: "点击或输入以添加一行…",
-        emptyHint: "这个场景是空的。在新行里输入 {trigger} 挑一条指令，或者直接写一句旁白。",
+        emptyHint: "此场景为空。在新行中输入 {trigger} 以选择指令，或直接编写一行旁白文本",
         emptyExampleBg: "设置背景",
         emptyExampleShow: "让角色登场",
         emptyExampleSay: "给他一句台词",
@@ -414,58 +414,214 @@ export const story = {
     },
     pluginActionFallbackDetail: "插件故事动作",
     command: {
-        background: { label: "背景", detail: "设置场景背景图片或颜色" },
-        jump: { label: "跳转", detail: "前往另一个场景——会卸载并重新开始该场景，与 /goto 不同" },
-        wait: { label: "等待", detail: "等待数秒，或等待点击" },
-        nvl: { label: "NVL", detail: "切换堆叠对话面板" },
-        show: { label: "显示", detail: "显示角色或舞台对象" },
-        hide: { label: "隐藏", detail: "隐藏角色或舞台对象" },
-        move: { label: "移动", detail: "把角色移到某个位置" },
-        face: { label: "表情", detail: "切换角色表情" },
-        rename: { label: "改名", detail: "改变角色说话时显示的名字" },
-        say: { label: "对话", detail: "一句台词" },
-        image: { label: "图片", detail: "在舞台上放置图片" },
-        text: { label: "文本", detail: "在舞台上放置文本" },
-        video: { label: "视频", detail: "在舞台上放置视频" },
-        vfx: { label: "氛围特效", detail: "全屏循环叠加——落花、雨雪、尘埃、光斑" },
-        layer: { label: "图层", detail: "创建渲染图层" },
-        swap: { label: "替换", detail: "替换对象的图片或文本内容" },
-        play: { label: "播放", detail: "播放视频" },
-        font: { label: "字体", detail: "修改文本字号或颜色" },
-        bgm: { label: "背景音乐", detail: "设置背景音乐" },
-        sound: { label: "音效", detail: "播放音效" },
-        volume: { label: "音量", detail: "设置音量（默认 BGM）" },
-        rate: { label: "倍速", detail: "设置播放速度（默认 BGM）" },
-        stop: { label: "停止", detail: "停止声音或视频（默认 BGM）" },
-        pause: { label: "暂停", detail: "暂停声音或视频（默认 BGM）" },
-        resume: { label: "继续", detail: "继续播放声音或视频（默认 BGM）" },
-        mute: { label: "静音", detail: "静音（默认 BGM）" },
-        unmute: { label: "取消静音", detail: "取消静音（默认 BGM）" },
-        seek: { label: "跳转进度", detail: "把视频跳到指定时间" },
-        set: { label: "赋值", detail: "为变量赋值" },
-        inc: { label: "增加", detail: "为数值变量加值" },
-        dec: { label: "减少", detail: "为数值变量减值" },
-        toggle: { label: "翻转", detail: "翻转真/假变量" },
-        reset: { label: "重置", detail: "把变量恢复为默认值" },
-        declareLocal: { label: "场景变量", detail: "声明仅本场景有效的变量" },
-        declareVar: { label: "存档变量", detail: "声明跟随存档的变量" },
-        declarePersis: { label: "全局变量", detail: "声明应用级变量，界面蓝图可读取" },
-        if: { label: "条件", detail: "按条件分支" },
-        menu: { label: "选项", detail: "让玩家做出选择" },
-        repeat: { label: "重复", detail: "重复执行所含动作" },
-        parallel: { label: "并行", detail: "同时执行所含动作" },
-        race: { label: "竞速", detail: "全部执行，最先完成者结束" },
-        sequence: { label: "顺序", detail: "依次执行所含动作" },
-        label: { label: "标签", detail: "在本场景标记一个位置，供 /goto 跳转" },
-        goto: { label: "跳到标签", detail: "把播放头移到本场景的标签——与 /jump 不同，场景不会重启" },
-        code: { label: "代码", detail: "脚本块" },
-        blueprint: { label: "蓝图", detail: "运行故事动作蓝图" },
-        blink: { label: "闪屏", detail: "屏幕闪烁效果" },
-        vignette: { label: "暗角", detail: "屏幕暗角效果" },
-        camera: { label: "镜头", detail: "平移、推拉、旋转或压暗舞台镜头 —— 姿态跨场景保留" },
-        fx: { label: "特效", detail: "为对象应用特效" },
-        transform: { label: "变换", detail: "移动、缩放或旋转对象" },
-        note: { label: "备注", detail: "仅 Studio 可见的备注" },
+        background: {
+            label: "背景",
+            detail: "设置场景背景图片或颜色",
+        },
+        jump: {
+            label: "跳转",
+            detail: "前往到另一个场景、与 /goto 不同，这会卸载该场景并重新开始",
+        },
+        wait: {
+            label: "等待",
+            detail: "等待数秒，或等待点击",
+        },
+        nvl: {
+            label: "NVL",
+            detail: "切换堆叠对话面板",
+        },
+        show: {
+            label: "显示",
+            detail: "显示角色或舞台对象",
+        },
+        hide: {
+            label: "隐藏",
+            detail: "隐藏角色或舞台对象",
+        },
+        move: {
+            label: "移动",
+            detail: "把角色移到某个位置",
+        },
+        face: {
+            label: "表情",
+            detail: "切换角色表情",
+        },
+        rename: {
+            label: "改名",
+            detail: "改变角色说话时显示的名字",
+        },
+        say: {
+            label: "对话",
+            detail: "一句台词",
+        },
+        image: {
+            label: "图片",
+            detail: "在舞台上放置图片",
+        },
+        text: {
+            label: "文本",
+            detail: "在舞台上放置文本",
+        },
+        video: {
+            label: "视频",
+            detail: "在舞台上放置视频",
+        },
+        vfx: {
+            label: "氛围特效",
+            detail: "全屏循环叠加：落花、雨雪、尘埃、光斑",
+        },
+        layer: {
+            label: "图层",
+            detail: "创建渲染图层",
+        },
+        swap: {
+            label: "替换",
+            detail: "替换对象的图片或文本内容",
+        },
+        play: {
+            label: "播放",
+            detail: "播放视频",
+        },
+        font: {
+            label: "字体",
+            detail: "修改文本字号或颜色",
+        },
+        bgm: {
+            label: "背景音乐",
+            detail: "设置背景音乐",
+        },
+        sound: {
+            label: "音效",
+            detail: "播放音效",
+        },
+        volume: {
+            label: "音量",
+            detail: "设置音量（默认 BGM）",
+        },
+        rate: {
+            label: "倍速",
+            detail: "设置播放速度（默认 BGM）",
+        },
+        stop: {
+            label: "停止",
+            detail: "停止声音或视频（默认 BGM）",
+        },
+        pause: {
+            label: "暂停",
+            detail: "暂停声音或视频（默认 BGM）",
+        },
+        resume: {
+            label: "继续",
+            detail: "继续播放声音或视频（默认 BGM）",
+        },
+        mute: {
+            label: "静音",
+            detail: "静音（默认 BGM）",
+        },
+        unmute: {
+            label: "取消静音",
+            detail: "取消静音（默认 BGM）",
+        },
+        seek: {
+            label: "跳转进度",
+            detail: "把视频跳到指定时间",
+        },
+        set: {
+            label: "赋值",
+            detail: "为变量赋值",
+        },
+        inc: {
+            label: "增加",
+            detail: "为数值变量加值",
+        },
+        dec: {
+            label: "减少",
+            detail: "为数值变量减值",
+        },
+        toggle: {
+            label: "翻转",
+            detail: "翻转真/假变量",
+        },
+        reset: {
+            label: "重置",
+            detail: "把变量恢复为默认值",
+        },
+        declareLocal: {
+            label: "场景变量",
+            detail: "声明仅本场景有效的变量",
+        },
+        declareVar: {
+            label: "存档变量",
+            detail: "声明跟随存档的变量",
+        },
+        declarePersis: {
+            label: "全局变量",
+            detail: "声明应用级变量，界面蓝图可读取",
+        },
+        if: {
+            label: "条件",
+            detail: "按条件分支",
+        },
+        menu: {
+            label: "选项",
+            detail: "让玩家做出选择",
+        },
+        repeat: {
+            label: "重复",
+            detail: "重复执行所含动作",
+        },
+        parallel: {
+            label: "并行",
+            detail: "同时执行所含动作",
+        },
+        race: {
+            label: "竞速",
+            detail: "全部执行，最先完成者结束",
+        },
+        sequence: {
+            label: "顺序",
+            detail: "依次执行所含动作",
+        },
+        label: {
+            label: "标签",
+            detail: "在本场景标记一个位置，供 /goto 跳转",
+        },
+        goto: {
+            label: "跳到标签",
+            detail: "将播放头移动到当前场景中的一个标签处、与 /jump 不同，场景会继续运行",
+        },
+        code: {
+            label: "代码",
+            detail: "脚本块",
+        },
+        blueprint: {
+            label: "蓝图",
+            detail: "运行故事动作蓝图",
+        },
+        blink: {
+            label: "闪屏",
+            detail: "屏幕闪烁效果",
+        },
+        vignette: {
+            label: "暗角",
+            detail: "屏幕暗角效果",
+        },
+        camera: {
+            label: "镜头",
+            detail: "平移、推拉、旋转或压暗舞台镜头 —— 姿态跨场景保留",
+        },
+        fx: {
+            label: "特效",
+            detail: "为对象应用特效",
+        },
+        transform: {
+            label: "变换",
+            detail: "移动、缩放或旋转对象",
+        },
+        note: {
+            label: "备注",
+            detail: "仅 Studio 可见的备注",
+        },
     },
     containerHeader: {
         condition: "条件",
@@ -481,7 +637,11 @@ export const story = {
         option: "选项",
     },
     badge: {
-        declare: { scene: "场景变量", saved: "存档变量", persistent: "全局变量" },
+        declare: {
+            scene: "场景变量",
+            saved: "存档变量",
+            persistent: "全局变量",
+        },
         narration: "旁白",
         dialogue: "对话",
         choice: "选择",

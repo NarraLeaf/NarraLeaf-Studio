@@ -2,7 +2,7 @@ import type { LocaleNamespace } from "../types";
 
 export const widgetAppearance = {
     panel: {
-        invalidModel: "此元素缺少外观数据或数据无效，本编辑器需要一个已序列化的外观模型，请从素材面板新建元素以获取有效的外观数据块",
+        invalidModel: "此元素的外观数据缺失或无效。此编辑器需要一个序列化的外观模型。请从面板中创建一个新元素以获取有效的外观块",
     },
     variant: {
         nameLabel: "变体名称",
@@ -17,7 +17,7 @@ export const widgetAppearance = {
         on: "开",
         off: "关",
         openMenuAria: "打开动画字段菜单",
-        offHint: "该字段的动效已关闭，请开启后再配置时长与缓动效果",
+        offHint: "此字段的运动效果已关闭，请将其开启以配置时间和缓动",
         enable: "启用动效",
         clearFieldTitle: "清除该字段的动效",
         type: "类型",

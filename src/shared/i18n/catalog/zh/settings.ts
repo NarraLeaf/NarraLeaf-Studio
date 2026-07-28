@@ -67,7 +67,7 @@ export const settings = {
         },
         reduceMotion: {
             label: "减少动效",
-            description: "关闭 Studio 界面中的动画过渡。不影响你的游戏本身的动画，编辑时和发行后都不受影响",
+            description: "关闭 Studio 界面中的动画过渡效果。游戏自身的动画不受影响，无论是在编辑器中还是在游戏发布后",
         },
         zoomPercent: {
             label: "界面缩放",
@@ -91,15 +91,15 @@ export const settings = {
         },
         blueprintDragConnectExecOutput: {
             label: "从执行输出引脚拖拽创建节点",
-            description: "从执行（next）输出引脚拖到空白画布并松手时，弹出兼容节点菜单，并自动连接新建的节点",
+            description: "从执行（next）输出引脚拖拽到空白画布上，会打开一个兼容节点菜单并自动连接新节点",
         },
         blueprintDragConnectDataOutput: {
             label: "从数据输出引脚拖拽创建节点",
-            description: "从数据输出引脚拖到空白画布并松手时，弹出能接收该数据类型的节点菜单，并自动连接新建的节点",
+            description: "从数据输出引脚拖拽到空白画布上，会打开一个接受该值类型的节点菜单并自动连接新节点",
         },
         blueprintDragConnectInput: {
             label: "从输入引脚拖拽创建节点",
-            description: "从输入引脚拖到空白画布并松手时，弹出兼容节点菜单，并将新建节点的输出连到该输入",
+            description: "从输入引脚拖拽到空白画布上，会打开一个兼容节点菜单并将新节点的输出连线到该输入",
         },
         slashAtAlias: {
             label: "用“@”打开动作创建",
@@ -127,11 +127,11 @@ export const settings = {
         },
         dashboardOnOpen: {
             label: "默认显示项目仪表盘",
-            description: "尚未单独设置过的项目，进入工作区时是否自动打开仪表盘标签页。可在各项目的仪表盘底部单独调整",
+            description: "尚未单独设置是否在进入工作区时打开其仪表板的项目。每个项目都可以在其各自的仪表板中覆盖此设置",
         },
         clearAllStats: {
             label: "清空所有统计数据",
-            description: "抹除所有项目已记录的写作历史、活跃时长和构建历史。从项目本身算出的统计数字不受影响",
+            description: "清除每个项目的记录撰写历史、活跃时间和构建历史。从你的项目中得出的统计数据不受影响",
             action: "清空",
             confirm: "确认清空",
         },
