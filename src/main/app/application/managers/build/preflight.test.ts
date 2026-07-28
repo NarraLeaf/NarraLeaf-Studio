@@ -11,8 +11,15 @@ import type {
 import {
     checkIcon,
     collectSidecarRequirements,
+    daysUntil,
+    findGpgBinary,
     readMobileOrientation,
+    readProjectSigningIds,
     sidecarLosesExecBit,
+    signingCredentialSupportedOnHost,
+    signingExpiryCode,
+    signingPlatformForTarget,
+    signingReachesNetwork,
 } from "./preflight";
 
 const config = (app: unknown): ProjectConfigData => ({ app, metadata: {} } as ProjectConfigData);
@@ -222,5 +229,169 @@ describe("checkIcon", () => {
         expect(await checkIcon(projectPath, config, "windows")).toMatchObject({ status: "ok", baked: false });
         // Linux never had its own slot here; it now inherits the master.
         expect(await checkIcon(projectPath, config, "linux")).toMatchObject({ status: "ok" });
+    });
+});
+
+describe("readProjectSigningIds", () => {
+    it("reads a credential id per platform", () => {
+        expect(readProjectSigningIds(config({
+            signing: { windows: "cred-win", android: "cred-droid" },
+        }))).toEqual({ windows: "cred-win", android: "cred-droid" });
+    });
+
+    it("reports nothing for projects saved before signing existed", () => {
+        expect(readProjectSigningIds(config({}))).toEqual({});
+        expect(readProjectSigningIds(config(undefined))).toEqual({});
+        expect(readProjectSigningIds(null)).toEqual({});
+    });
+
+    it("drops blanks, non-strings and platforms it does not know", () => {
+        // "absent" is the meaningful state - it means "build this one unsigned" -
+        // so a malformed entry must land there rather than become an id of "".
+        expect(readProjectSigningIds(config({
+            signing: { windows: "  ", linux: 42, macos: "cred-mac", ios: " cred-ios " },
+        }))).toEqual({ ios: "cred-ios" });
+    });
+
+    it("survives a signing key that is not an object at all", () => {
+        expect(readProjectSigningIds(config({ signing: "cred-win" }))).toEqual({});
+    });
+});
+
+describe("signingPlatformForTarget", () => {
+    it("maps each build target onto the slot it signs from", () => {
+        expect(signingPlatformForTarget("windows")).toBe("windows");
+        expect(signingPlatformForTarget("linux")).toBe("linux");
+        expect(signingPlatformForTarget("android")).toBe("android");
+        expect(signingPlatformForTarget("ios")).toBe("ios");
+    });
+
+    it("gives web and macOS no slot", () => {
+        // macOS is not "forgotten": signing a Mac build needs Apple tooling that
+        // only runs on a Mac, so there is nothing for a project to select here.
+        expect(signingPlatformForTarget("macos")).toBeNull();
+        expect(signingPlatformForTarget("web")).toBeNull();
+    });
+});
+
+describe("signingCredentialSupportedOnHost", () => {
+    it("confines the Windows certificate store to Windows hosts", () => {
+        // electron-builder throws "supported only on Windows" rather than
+        // producing an unsigned artifact, so preflight has to catch it first.
+        expect(signingCredentialSupportedOnHost("windows-store", "windows")).toBe(true);
+        expect(signingCredentialSupportedOnHost("windows-store", "macos")).toBe(false);
+        expect(signingCredentialSupportedOnHost("windows-store", "linux")).toBe(false);
+    });
+
+    it("lets every other kind sign from any host", () => {
+        for (const kind of ["windows-pfx", "windows-azure", "android-keystore", "ios-apple", "linux-gpg"] as const) {
+            for (const host of ["windows", "macos", "linux"] as const) {
+                expect(signingCredentialSupportedOnHost(kind, host)).toBe(true);
+            }
+        }
+    });
+});
+
+describe("signingReachesNetwork", () => {
+    it("flags the Windows paths, which timestamp or sign remotely", () => {
+        expect(signingReachesNetwork("windows-pfx")).toBe(true);
+        expect(signingReachesNetwork("windows-store")).toBe(true);
+        expect(signingReachesNetwork("windows-azure")).toBe(true);
+    });
+
+    it("keeps the local paths offline", () => {
+        // The mobile repack and gpg never leave the machine; the offline
+        // guarantee the build pipeline makes still holds for them.
+        expect(signingReachesNetwork("android-keystore")).toBe(false);
+        expect(signingReachesNetwork("ios-apple")).toBe(false);
+        expect(signingReachesNetwork("linux-gpg")).toBe(false);
+    });
+});
+
+describe("signingExpiryCode", () => {
+    it("blocks on a certificate outside its validity window, either edge", () => {
+        expect(signingExpiryCode("expired")).toBe("signing-credential-expired");
+        // Not "expiring": a start date in the future fails signing today, just
+        // like an end date in the past.
+        expect(signingExpiryCode("not-yet-valid")).toBe("signing-credential-expired");
+    });
+
+    it("warns inside the expiry window and says nothing outside it", () => {
+        expect(signingExpiryCode("expiring")).toBe("signing-credential-expiring");
+        expect(signingExpiryCode("valid")).toBeNull();
+    });
+});
+
+describe("daysUntil", () => {
+    const now = new Date("2026-07-28T12:00:00Z");
+
+    it("counts whole days to the deadline", () => {
+        expect(daysUntil("2026-08-07T12:00:00Z", now)).toBe(10);
+        expect(daysUntil("2026-07-29T00:00:00Z", now)).toBe(0);
+    });
+
+    it("floors a past or unparseable date at zero", () => {
+        expect(daysUntil("2020-01-01T00:00:00Z", now)).toBe(0);
+        expect(daysUntil("not a date", now)).toBe(0);
+    });
+});
+
+describe("findGpgBinary", () => {
+    let root: string;
+
+    beforeEach(async () => {
+        root = await fs.mkdtemp(path.join(os.tmpdir(), "nls-preflight-gpg-"));
+    });
+
+    afterEach(async () => {
+        await fs.rm(root, { recursive: true, force: true });
+    });
+
+    async function writeBinary(dir: string, name: string): Promise<string> {
+        await fs.mkdir(dir, { recursive: true });
+        const filePath = path.join(dir, name);
+        await fs.writeFile(filePath, "");
+        return filePath;
+    }
+
+    it("finds gpg on PATH", async () => {
+        const bin = path.join(root, "bin");
+        const gpg = await writeBinary(bin, "gpg");
+        expect(await findGpgBinary({ env: { PATH: bin }, platform: "linux" })).toBe(gpg);
+    });
+
+    it("prefers the path recorded on the credential over PATH", async () => {
+        const onPath = path.join(root, "bin");
+        await writeBinary(onPath, "gpg");
+        const configured = await writeBinary(path.join(root, "custom"), "gpg");
+        expect(await findGpgBinary({ configuredPath: configured, env: { PATH: onPath }, platform: "linux" }))
+            .toBe(configured);
+    });
+
+    it("accepts GNUPG_PATH naming either the binary or the directory holding it", async () => {
+        const dir = path.join(root, "gnupg");
+        const gpg = await writeBinary(dir, "gpg");
+        expect(await findGpgBinary({ env: { GNUPG_PATH: gpg }, platform: "linux" })).toBe(gpg);
+        expect(await findGpgBinary({ env: { GNUPG_PATH: dir }, platform: "linux" })).toBe(gpg);
+    });
+
+    it("looks for the .exe names and the Gpg4win install location on Windows", async () => {
+        const programFiles = path.join(root, "Program Files");
+        const gpg = await writeBinary(path.join(programFiles, "GnuPG", "bin"), "gpg.exe");
+        expect(await findGpgBinary({ env: { PATH: "", ProgramFiles: programFiles }, platform: "win32" })).toBe(gpg);
+        // The POSIX names must not match on Windows, or a directory called "gpg"
+        // would read as a binary.
+        expect(await findGpgBinary({ env: { PATH: path.dirname(gpg) }, platform: "linux" })).toBeNull();
+    });
+
+    it("reports nothing when the host has no gpg", async () => {
+        expect(await findGpgBinary({ env: { PATH: path.join(root, "empty") }, platform: "linux" })).toBeNull();
+        expect(await findGpgBinary({ env: {}, platform: "linux" })).toBeNull();
+    });
+
+    it("does not mistake a directory for the binary", async () => {
+        const bin = path.join(root, "bin");
+        await fs.mkdir(path.join(bin, "gpg"), { recursive: true });
+        expect(await findGpgBinary({ env: { PATH: bin }, platform: "linux" })).toBeNull();
     });
 });
