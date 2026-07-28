@@ -141,6 +141,62 @@ export function usePanelVisibility(): Record<string, boolean> {
 }
 
 /**
+ * Hook to access the user-defined panel ordering per dock area
+ */
+export function usePanelOrder(): Record<string, string[]> {
+    const uiService = useUIService();
+    const [order, setOrder] = useState<Record<string, string[]>>({});
+
+    useEffect(() => {
+        let mounted = true;
+
+        const store = uiService.getStore();
+        setOrder(store.getPanelOrder());
+
+        const unsubscribe = uiService.getEvents().on("panelOrderChanged", () => {
+            if (mounted) {
+                setOrder(uiService.getStore().getPanelOrder());
+            }
+        });
+
+        return () => {
+            mounted = false;
+            unsubscribe();
+        };
+    }, []);
+
+    return order;
+}
+
+/**
+ * Hook to access the panels folded into each dock area's collapse group
+ */
+export function useCollapsedPanels(): Record<string, string[]> {
+    const uiService = useUIService();
+    const [collapsed, setCollapsed] = useState<Record<string, string[]>>({});
+
+    useEffect(() => {
+        let mounted = true;
+
+        const store = uiService.getStore();
+        setCollapsed(store.getCollapsedPanels());
+
+        const unsubscribe = uiService.getEvents().on("stateChanged", (changes) => {
+            if (changes.collapsedPanels && mounted) {
+                setCollapsed(changes.collapsedPanels);
+            }
+        });
+
+        return () => {
+            mounted = false;
+            unsubscribe();
+        };
+    }, []);
+
+    return collapsed;
+}
+
+/**
  * Hook to access editor tabs
  */
 export function useEditorTabs(): EditorTab[] {

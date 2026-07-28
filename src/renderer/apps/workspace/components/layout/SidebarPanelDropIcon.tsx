@@ -21,7 +21,7 @@ interface SidebarPanelDropIconProps {
     panel: PanelDefinition;
     active: boolean;
     sidebarVisible: boolean;
-    onPanelClick: () => void;
+    onPanelClick: (event: MouseEvent<HTMLElement>) => void;
     /** Show sidebar, select panel, and move workspace focus (for drag-drop). */
     onActivateForDrop: () => void;
     /** Right-click on this icon (opens the rail's visibility context menu). */
@@ -56,9 +56,10 @@ export function SidebarPanelDropIcon({
         },
     });
 
-    // A rail action has no panel body, so there is nowhere to drop an asset *into*: accepting one
-    // would activate the sidebar onto an empty panel. It reads as a plain button instead.
-    const acceptsAssetDrop = !panel.railAction;
+    // A rail action (and the collapse group) has no panel body, so there is nowhere to drop an
+    // asset *into*: accepting one would activate the sidebar onto an empty panel. Those read as
+    // plain buttons instead.
+    const acceptsAssetDrop = Boolean(panel.component);
 
     return (
         <button
