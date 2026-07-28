@@ -358,7 +358,27 @@ zsign `-x` 导出元数据交叉核对。**真机安装本机无法验证，明�
 | **S5** | SHA256SUMS（无条件）+ GPG 分离签名 + gpg 发现器。 | ✅ `72d4c7b9` | 已验收：`gpg --verify` 通过 + 翻字节 BAD |
 | **S3** | Android release keystore：证书链、身份分叉、换签名警告。 | ✅ `36f5d6b4` | 已验收：用我自己造的 keystore，v2 块里的证书指纹与 keytool 逐位一致；翻字节被拒 |
 | **S4b** | iOS：zsign 调用、临时无口令 p12、描述文件解析。 | ✅ `36f5d6b4` | 已验收：产物交给我自己写的 `verify.js`，53 页全中；翻字节 page 0 立刻断 |
-| **S6** | 端到端手测（用 `D:/Temp/nls-sign-probe/WinMobileProbe`）、文档、handoff 给 mac 批次。 | 🔄 | orchestrator 亲眼验收，不认代理报告 |
+| **S6** | 端到端手测（用 `D:/Temp/nls-sign-probe/WinMobileProbe`）。 | ✅ | 见下 |
+
+### S6 端到端验收记录（2026-07-28，orchestrator 亲手跑真实应用）
+
+在 worktree 里起真实 Studio 实例，从构建对话框导入四份凭据、逐平台选定、按下 Build。
+判定全部用**外部工具**，且每条都配反向对照：
+
+| 产物 | 判官 | 结论 | 反向对照 |
+| --- | --- | --- | --- |
+| Windows `.exe` | `signtool verify /pa /v` + `Get-AuthenticodeSignature` | 签名者是配置的证书；时间戳链验到受信的 DigiCert 根 | 翻一字节 → `HashMismatch` |
+| Android `.apk` | 另写的 v2 签名块解析器，与 `keytool` 报的指纹对拍 | `BE:1F:F2:…:03:64` 逐位一致 | 翻一字节 → verify 失败 |
+| iOS `.ipa` | 自写的 CodeDirectory 分页哈希校验器 | 81 页全中；ident 是工程真实 bundle id；五个 blob 齐全；CMS 带完整链 | 翻一字节 → page 0 MISMATCH |
+| `SHA256SUMS` | GNU `sha256sum -c` | 全部 OK | 翻一字节 → 正好一行 FAILED |
+| `.asc` × 3 | 外部 `gpg --verify` | 三份全 `Good signature` | 翻一字节 → `BAD signature` |
+
+**顺带撞到、值得记下的一条**：给 Studio 设了 `GNUPGHOME` 时，Git for Windows 那个 MSYS
+构建的 gpg 会把它当相对路径解析——因为 MSYS 在把环境变量交给原生进程时会做 POSIX→Windows
+转换，转过的路径再回到 MSYS 侧就不认了。产品这边行为是对的（**构建失败而不是产出未签名的
+东西**，且把 gpg 的原话原样呈出来，一眼定位），发现器也已经优先挑 Gpg4win 的原生 gpg。
+但用 Git 自带 gpg 且设了 `GNUPGHOME` 的作者会撞上这个。验收时的绕法是启动时加
+`MSYS2_ENV_CONV_EXCL=GNUPGHOME`。
 
 ### S6 跑真实应用时暴露、且**测试全绿也没抓到**的三个缺陷（commit `2c7230cd`）
 
