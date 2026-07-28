@@ -1,0 +1,34 @@
+import {registerDocumentSpec} from "../registry";
+import {AnyDocumentSpec} from "../types";
+import {localizationDocumentSpec} from "./localization";
+import {localizationKeysSpec} from "./localizationKeys";
+import {variableRegistrySpec} from "./variables";
+import {voiceDocumentSpec} from "./voice";
+
+export {VARIABLE_REGISTRY_DOCUMENT_PATH, variableRegistrySpec} from "./variables";
+export {VOICE_DOCUMENT_PATH, voiceDocumentSpec} from "./voice";
+export {LOCALIZATION_DOCUMENT_PATH, localizationDocumentSpec} from "./localization";
+export {LOCALIZATION_KEYS_DOCUMENT_PATH, localizationKeysSpec} from "./localizationKeys";
+
+/**
+ * The document formats Studio can read, and the one place they are registered.
+ *
+ * Registering is what lets version control answer "what is this changed file?" from a path alone,
+ * with no renderer service in the picture. Wave 2 adds the remaining kinds here; the list is
+ * deliberately the only thing a new spec has to be added to.
+ */
+export const PROJECT_DOCUMENT_SPECS: readonly AnyDocumentSpec[] = [
+    variableRegistrySpec,
+    voiceDocumentSpec,
+    localizationDocumentSpec,
+    localizationKeysSpec,
+];
+
+// Registration happens on import rather than behind a call, so no consumer can reach the registry
+// before it is populated and get a silent `undefined` back. It is safe to leave unguarded because a
+// module is evaluated once per process: a second registration of the same kind would mean two
+// instances of this module, which is a bundler fault worth failing loudly on rather than papering
+// over. Import it as `@shared/documents/specs` everywhere so that stays true.
+for (const spec of PROJECT_DOCUMENT_SPECS) {
+    registerDocumentSpec(spec);
+}
