@@ -73,7 +73,7 @@ export type GameBuildRequest = {
 };
 
 /** Which build-dialog section a preflight finding belongs to. */
-export type BuildPreflightSection = "targets" | "identity" | "content" | "output";
+export type BuildPreflightSection = "targets" | "identity" | "content" | "signing" | "output";
 
 /**
  * "error" blocks the build (the pipeline would throw); "warning" ships but
@@ -102,9 +102,29 @@ export type BuildPreflightCode =
     | "version-uncodable"
     | "appid-android-adjusted"
     | "bundleid-ios-adjusted"
+    // Reported only for a platform the project has NOT pointed at a signing
+    // credential: once one is configured, the specific signing-* codes below
+    // carry whatever is wrong with it instead.
     | "unsigned"
     | "unsigned-android"
     | "unsigned-ios"
+    // The project names a credential this machine does not hold - the expected
+    // shape when a version-controlled project is opened somewhere else, since
+    // the key material never travels with it.
+    | "signing-credential-missing"
+    | "signing-credential-expired"
+    | "signing-credential-expiring"
+    /** The password is on disk but cannot be unsealed here (keyring gone, or another OS account). */
+    | "signing-secret-unavailable"
+    /** Configured, but the host lacks the program that does the signing (gpg, the Azure module). */
+    | "signing-tool-missing"
+    /** The host cannot drive this credential at all - e.g. the Windows certificate store off Windows. */
+    | "signing-host-unsupported"
+    /** Signing reaches the network (timestamping, cloud signing, fetching signtool). */
+    | "signing-needs-network"
+    /** A signed APK still cannot go to Google Play, which takes only AABs. */
+    | "signing-android-not-play"
+    | "signing-ios-profile-mismatch"
     | "cross-build-download"
     | "output-not-writable"
     | "output-not-empty";
