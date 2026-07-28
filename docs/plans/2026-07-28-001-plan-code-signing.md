@@ -347,17 +347,18 @@ zsign `-x` 导出元数据交叉核对。**真机安装本机无法验证，明�
 
 ## 6. 里程碑
 
-| # | 内容 | 依赖 | 合入门槛 |
+| # | 内容 | 状态 | 合入门槛 |
 | --- | --- | --- | --- |
-| **S0** | 凭据保险库：类型、`signingVault.ts`、safeStorage 落盘、IPC 面、证书/描述文件解析（`inspect`）。无 UI。 | — | vitest 绿（导入/读回/删除/safeStorage 不可用降级）；密码不出现在任何序列化输出里 |
-| **S1** | 工程侧 `signing` 配置 + preflight 新码 + BuildDialog Signing 段 + i18n en/zh。 | S0 | 手测：导入一个 PFX、指给 Windows 平台、preflight 显示证书主题与到期日；跨机器悬空 id 报 missing |
-| **S2** | Windows Authenticode：signtool 发现器、三种凭据映射进 `builderConfiguration()`、`hasSigningIdentity` per-target 化。 | S1 | `signtool verify /pa /v` 通过（zip/nsis/dir 三种 format）；翻字节必须失败；asar 完整性 fuse 实际打开 |
-| **S3** | Android release keystore：`keystoreReader.ts`、证书链、身份分叉、换签名警告。 | S1 | keytool 造的 p12 + jks 都能签；自写验签器绿 + 翻字节 MISMATCH；CI apksigner 断言签名者 |
-| **S4** | iOS zsign：vendoring 脚本、`resources/codesign/` 打包、描述文件解析、签名步骤。 | S1 | 签名 IPA 结构断言全绿；`zsign -C` 通过；bundle id 不匹配时 preflight 拦下 |
-| **S5** | Linux：SHA256SUMS + GPG 分离签名 + gpg 发现器。 | S1 | `gpg --verify` 通过 + 翻字节 BAD |
-| **S6** | 文档（`project/docs/` 构建页）、i18n 复核、handoff 给 mac 批次。 | S2–S5 | `yarn lint` 绿；i18n parity 测试绿 |
-
-S2 / S3 / S4 / S5 互不依赖，可并行派发。
+| **S0** | 凭据保险库：类型、`signingVault.ts`、safeStorage 落盘、IPC 面。 | ✅ `dd5a91fc` | 已验收：orchestrator 另写三个独立探针（密码任何编码下不落盘、离开保险库的东西都不带它、主进程仍可取回、删除抹掉私钥、手改索引想跳出目录被拒） |
+| **S0.5** | `keystoreReader.ts` + `rc2.ts`：PKCS#12 / JKS 读取。 | ✅ `120d0966` | 已验收：openssl 本机开不了 RC2-40，改用 keytool 造真 RC2-40 库并以其 SHA-256 指纹当独立 oracle，逐位一致 |
+| **S4a** | zsign vendoring：构建期下载校验、`resources/codesign/`、运行时解析。 | ✅ `41c732f6` | 已验收：落地 exe 与手工核验的资产 sha256 相同、二次运行 no-op、改坏一字节会重新拉取、排除 glob 只吃 codesign 树 |
+| **S1a** | 工程侧 `signing` 配置、worker 协议、凭据解析、preflight 新码、i18n。 | ✅ `20233d3e` | 已验收：三个 tsc 项目干净、失败即抛不降级、种类不匹配被拦、全仓确认无密码流向控制台 |
+| **S1b** | BuildDialog Signing 段、凭据导入、PKCS#12 证书检视。 | 🔄 进行中 | Signing 段真实渲染（S1a 已把三条 unsigned 发现挪进去，没有这一段它们无处显示）；到期码点亮 |
+| **S2** | Windows Authenticode：三种凭据映射、signtool 发现器。 | 🔄 进行中 | `signtool verify` + `Get-AuthenticodeSignature` 断言签名者；翻字节必须 `HashMismatch` |
+| **S5** | SHA256SUMS（无条件）+ GPG 分离签名 + gpg 发现器。 | 🔄 进行中 | `gpg --verify` 通过 + 翻字节 BAD |
+| **S3** | Android release keystore：证书链、身份分叉、换签名警告。 | 🔄 进行中 | 自写验签器绿 + 翻字节 MISMATCH；CI apksigner 断言签名者 |
+| **S4b** | iOS：zsign 调用、临时无口令 p12、描述文件解析。 | 🔄 进行中 | 签名 IPA 结构断言全绿 + `verify.js` 分页哈希反向对照 |
+| **S6** | 端到端手测（用 `D:/Temp/nls-mobile-probe/WinMobileProbe`）、文档、handoff 给 mac 批次。 | ⏸ | orchestrator 亲眼验收，不认代理报告 |
 
 ## 7. 风险
 
