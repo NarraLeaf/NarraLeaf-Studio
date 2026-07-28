@@ -229,11 +229,42 @@ interface DocumentSpec<T> {
 `.nlstudio/quarantine/<时间戳>/<原路径>`，向 SaveStatus 报一条可见的错误，文档以「未加载」
 状态存在——**绝不用默认值覆盖一个读不懂的文件**，那等于删数据。
 
-### 3.3 迁移路径
+### 3.3 排序键会重排作者写下的内容 —— H1 审计发现，必须先解决
+
+H1 完工时做了一次审计，结论是**四个文档格式把对象当有序 map 用**，键序就是作者看到的顺序。
+排序键不是"整理格式"，是**打乱作者的内容**。已逐条核实：
+
+| 格式 | 键序表现为什么 | 证据 |
+|---|---|---|
+| `StoryScene.blocks` | 场景变量表与快照面板的行序 | `listSceneDeclarationBlocks` = `Object.values(scene.blocks)`，注释明写 "in document order"（`src/shared/types/story/declarations.ts:60`） |
+| `Blueprint.program.graphs.events` | 事件层列表；`eventIds[0]` 决定默认打开哪一层 | `src/shared/types/blueprint/document.ts:170`、`BlueprintMemberTree.tsx:729` |
+| `AssetsMap[type]` / `AssetGroupMap[type]` | 资产浏览器排序，且 shift 范围选择依赖它 | `newAssets[type] = Object.values(assetsMap[type])`（`useAssetData.ts:85`） |
+| `StoryDocument.scenes`（无章节场景） | 流程图布局与本地化行序 | `sceneFlowModel.ts:113`、`localizationModel.ts:69` |
+
+键全是 UUID，所以排序 = 随机重排。**这条不解决就上规范化，第一次 normalize-on-open 会当着
+作者的面打乱他的变量表和资产列表，看起来就是 Studio 把工程搞坏了。**
+
+三条路：
+
+| 方案 | 代价 | 问题 |
+|---|---|---|
+| **(a) 加显式顺序数组**（推荐） | 4 个格式各一次 schema 迁移 | 工作量最大 |
+| (b) 读取处改为确定性排序（按名/按时间） | 小 | **作者失去手动排序能力**，是产品倒退 |
+| (c) 这四个格式豁免键排序 | 最小 | 内容最大的四个文档恰恰不确定，diff 噪声全落在它们身上 |
+
+**推荐 (a)**，理由不只是版本控制：这四个格式**今天就已经**在依赖一个 JS 只是碰巧给的保证——
+对象键序是插入序，任何一次 `{...spread}` 重建、`map`/`filter` 回填都会改变它，与 VCS 无关。
+仓库里 `rootBlockIds` / `childrenIds` 已经是这么做的，有现成先例。
+
+> **待拍板**：(a) 意味着 4 次 schema 迁移，属于产品与工期决策，不是实现细节。**H2 开工前必须定。**
+
+### 3.4 迁移路径
 
 8 个服务逐个接入，每个都是「读走 `parse`、写走 `serialize`」的窄改动 + 一个往返测试。
 接入完成后做一次**全项目规范化**：打开项目时若检测到非规范字节，重写一遍（在建仓库之前
 做，这样第一个提交就是规范形态，而不是第二个提交里冒出一个全文件 diff）。
+
+§3.3 的四个格式**排在这一步之前**——顺序问题没解决，规范化就不能对它们跑。
 
 ---
 
