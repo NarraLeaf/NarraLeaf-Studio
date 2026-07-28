@@ -12,6 +12,7 @@ import type { MissingRecentProject } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
+import type { SigningCredential, SigningCredentialImport, SigningInspectResult } from "./signing";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
@@ -321,6 +322,29 @@ export interface RendererPreloadedInterface {
         selectOutputDir(defaultPath?: string): Promise<RequestStatus<{ path: string | null }>>;
         /** Run the build's checks without building; advisory, `start` re-checks. */
         preflight(projectPath: string, request: GameBuildRequest): Promise<RequestStatus<{ findings: BuildPreflightFinding[] }>>;
+    };
+
+    /**
+     * The machine's code-signing credential vault. Machine-level, not per
+     * project: a project only ever stores a credential id, so opening it
+     * elsewhere leaves the id dangling until the same credential is imported
+     * there.
+     *
+     * No call returns a password. `import` is the one direction a secret
+     * travels - up, once, straight into the OS keyring.
+     */
+    signing: {
+        /** Redacted credentials: metadata only. */
+        list(): Promise<RequestStatus<{ credentials: SigningCredential[] }>>;
+        /**
+         * File fields are absolute paths the author picked; the vault copies each
+         * one in. Secret fields are plain text - do not log the payload or hold
+         * it after the call resolves.
+         */
+        import(input: SigningCredentialImport): Promise<RequestStatus<{ credential: SigningCredential }>>;
+        remove(id: string): Promise<RequestStatus<{ removed: boolean }>>;
+        /** Certificate subject / issuer / validity / thumbprint, for display. */
+        inspect(id: string): Promise<RequestStatus<SigningInspectResult>>;
     };
 
     blueprintPersistence: {
