@@ -1,3 +1,5 @@
+import type { LocaleNamespace } from "../types";
+
 export const storyExpr = {
     issue: {
         unexpectedToken: "此处不应出现「{text}」",
@@ -35,9 +37,9 @@ export const storyExpr = {
         expressionError: "{message}",
         expressionNotBoolean: "条件必须是真假判断，例如 gold >= 100",
         expressionTypeMismatch: "这里得到的是 {received}，而「{value}」存放的是 {expected}",
-        duplicateVariable: "「{value}」已存在——换个名字，或用 /set 修改它的值",
+        duplicateVariable: "「{value}」已存在！请另选一个名称，或使用 /set 来更改它",
         unknownTarget: "舞台上没有名为「{value}」的对象",
         unsupportedOption: "「{value}」不适用于此处，可用：{allowed}",
-        missingCore: "/{token} 还缺少{slot}",
+        missingCore: "/{token} 还缺少 {slot}",
     },
-};
+} satisfies LocaleNamespace<"storyExpr">;

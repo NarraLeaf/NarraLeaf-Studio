@@ -17,12 +17,12 @@ export const assets = {
         inUseMessage: "删除后，以下位置将失去素材来源：",
         moreReferences: "…另有 {count} 处",
         unverifiedTitle: "无法检查这些素材的使用情况",
-        unverifiedMessage: "引用索引读取失败，无法确认是否仍有内容引用这些素材。仍要删除吗？",
+        unverifiedMessage: "无法读取引用索引，因此无法判断是否有任何内容仍指向这些资源。是否仍要删除它们？",
         confirmTitle: {
             one: "删除 {count} 项？",
             other: "删除 {count} 项？",
         },
-        confirmMessage: "所选分组内的全部内容也会一并删除，且无法撤销。",
+        confirmMessage: "所选组内的所有内容也会被删除。此操作无法撤销",
         action: "删除",
         failedTitle: "删除失败",
     },
@@ -30,7 +30,7 @@ export const assets = {
         confirmTitle: "替换 {name} 的文件内容？",
         confirmAction: "替换",
         failedTitle: "替换素材内容失败",
-        remoteUnsupported: "远程素材没有可替换的本地文件。",
+        remoteUnsupported: "远程素材没有本地文件可供替换",
     },
     types: {
         image: "图片",
@@ -47,7 +47,7 @@ export const assets = {
     },
     overview: {
         loading: "正在读取资源库…",
-        failed: "无法读取资源库。",
+        failed: "无法读取资源库",
         retry: "重试",
         section: {
             library: "资源库",
@@ -189,7 +189,6 @@ export const assets = {
             one: "{count} 声道",
             other: "{count} 声道",
         },
-        // 预览的播放与视图控件。这里没有任何操作会改动音频文件--只有标记会写回素材记录。
         editor: {
             toStart: "回到开头",
             loop: "循环",
@@ -201,7 +200,6 @@ export const assets = {
             markOut: "在播放头设置出点",
             channels: "{count} 声道",
         },
-        // 显示在快捷键设置表和「?」速查表中。
         keybindings: {
             playPause: "播放 / 暂停",
             toStart: "回到开头",

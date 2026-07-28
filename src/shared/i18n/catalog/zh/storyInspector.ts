@@ -141,7 +141,7 @@ export const storyInspector = {
         dots: "圆点，网格中的圆点逐渐扩大直至连成一片",
         slide: "推入过渡，新图片从一侧滑入，同时旧图片向外滑出",
         darkness: "压暗过渡，直接换到新图片并把它的亮度从起始暗度动到结束暗度：1 → 0 是从黑场中浮现，0 → 1 是渐暗至黑",
-        throughColor: "以纯色（按所选图案）覆盖画面，停留片刻后再显露新图片，目标图片仅在色彩停留结束后才会出现。涵盖淡入黑/白、黑场柔和擦除、百叶窗黑场停留、光圈至黑场，以及闪白（停留时长为 0）等效果",
+        throughColor: "使用纯色覆盖整个画面（使用所选图案），保持一段时间，然后在新图像上揭开。目标仅在颜色保持之后出现。可覆盖淡入淡出至黑/白、通过黑色的柔和擦除、百叶窗黑场保持、虹膜至黑以及闪光（保持时间为 0）",
     },
     wipeDirection: {
         left: "左",
@@ -200,7 +200,6 @@ export const storyInspector = {
         rate: "速度（1 = 正常）",
         fade: "淡入淡出（秒）",
     },
-
     cameraOperation: {
         zoom: "推拉",
         pan: "平移",
@@ -208,7 +207,6 @@ export const storyInspector = {
         darken: "压暗舞台",
         reset: "复位镜头",
     },
-
     camera: {
         zoom: "缩放（1 为原始）",
         rotation: "旋转角度 °",
@@ -216,7 +214,6 @@ export const storyInspector = {
         xalign: "X 对齐（0-1）",
         yalign: "Y 对齐（0-1）",
     },
-
     displayableOperation: {
         transform: "变换",
         mask: "遮罩",
@@ -405,7 +402,7 @@ export const storyInspector = {
         elseHint: "当之前的分支均不匹配时，运行 Else 分支",
     },
     condition: {
-        brokenExpression: "该表达式已无法解析--它引用的变量可能被重命名或删除了。修复前该分支恒为假",
+        brokenExpression: "此表达式不再可解析。它读取的一个变量可能已被重命名或删除。在修复之前，该分支将被判定为 false",
         clear: "清除条件",
     },
     code: {

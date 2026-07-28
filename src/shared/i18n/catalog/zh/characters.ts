@@ -30,7 +30,10 @@ export const characters = {
         deleteGroupDetail: "此分组下的角色将变为未分组状态",
     },
     editor: {
-        kind: { preset: "成品差分", layered: "分层立绘" },
+        kind: {
+            preset: "成品差分",
+            layered: "分层立绘",
+        },
         poses: "姿态",
         newPose: "新建姿态",
         removePose: "删除姿态",
@@ -49,7 +52,8 @@ export const characters = {
         hasImage: "已设图",
         noImage: "未设图",
         drawsNothing: "不绘制",
-        layerCount: "绘制 {count} 层",        hideLayer: "隐藏",
+        layerCount: "绘制 {count} 层",
+        hideLayer: "隐藏",
         showLayer: "显示",
         lockLayer: "锁定",
         unlockLayer: "解锁",

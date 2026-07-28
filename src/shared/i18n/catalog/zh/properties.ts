@@ -132,7 +132,7 @@ export const properties = {
             other: "{count} 处引用",
         },
         dormant: "未生效",
-        dormantHint: "已保存在控件上，但当前不会显示——填充方式被设为纯色。删除该素材会让它变空。",
+        dormantHint: "已存储在控件上，但当前未渲染——填充设置为一种颜色。删除此资源将会使其清空",
         kind: {
             story: "剧情",
             blueprint: "蓝图",

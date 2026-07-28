@@ -72,16 +72,16 @@ export const workspace = {
     voice: {
         panel: {
             languagesTitle: "配音语言",
-            languagesHint: "游戏已有配音的语言。与文本语言相互独立，你可以在文本保持英文的同时录制日语配音。",
+            languagesHint: "你拥有配音的语言。独立于文本语言，因此你可以用日语为游戏配音，同时保持文本为中文",
             addLanguage: "添加配音语言",
             codePlaceholder: "代码（ja、en、zh-CN…）",
             namePlaceholder: "显示名称",
-            invalidCode: "语言代码只能包含字母、数字和连字符。",
+            invalidCode: "语言代码只能包含字母、数字和连字符",
             more: "更多",
             confirm: "确认",
             removeLanguage: "移除配音语言",
             removeConfirm: "移除 {name}？",
-            removeConfirmDetail: "配音指派仍保留在磁盘上，重新添加该语言即可恢复。",
+            removeConfirmDetail: "配音指派仍保留在磁盘上，重新添加该语言即可恢复",
             openTable: "打开配音表",
             progress: "已配音 {covered}/{total}",
             staleCount: "{count} 处待更新",
@@ -89,7 +89,7 @@ export const workspace = {
             exportPickup: "导出补录脚本（仅待更新）",
             importAudio: "导入音频…",
             exportDone: "已导出到 {path}",
-            pickupEmpty: "没有待更新的行，无需补录。",
+            pickupEmpty: "没有待更新的行，无需补录",
             importSummary: "已关联 {linked} 条（{unmatched} 条未匹配，{failed} 条失败）",
             importFailed: "无法导入音频文件",
         },
@@ -118,11 +118,11 @@ export const workspace = {
             approve: "通过",
             reject: "退回",
             clipMissing: "音频缺失",
-            outdatedHint: "导入该配音后台词发生了变化。重新导入音频后才会重新计入。",
-            noStories: "先创建一个故事，它的口白台词会显示在这里供配音。",
-            emptyStory: "这个故事还没有可配音的口白台词。",
-            emptyFilter: "没有符合此筛选条件的内容。",
-            auditionAllClear: "已全部处理，没有需要试听的内容了。",
+            outdatedHint: "这条台词在此录音片段导入后发生了更改，重新导入该片段以使其重新计入",
+            noStories: "先创建一个故事。其口语台词将显示在此处以供配音",
+            emptyStory: "这个故事还没有可配音的口语台词",
+            emptyFilter: "没有符合此筛选条件的内容",
+            auditionAllClear: "全部完成，没有需要试听的台词了",
             auditionPendingCount: "{count} 项待处理",
             statusMissing: "缺失",
             statusVoiced: "已配音",
@@ -147,7 +147,6 @@ export const workspace = {
         closePanel: "关闭面板",
         closeTab: "关闭 {name}",
         newTab: "新建标签页",
-        // 标签条"+"打开的浏览器式空白标签页。
         newTabPage: {
             title: "新标签页",
         },
@@ -168,7 +167,6 @@ export const workspace = {
             removeItem: "移除此项目",
             collapseItem: "折叠到折叠项",
         },
-        // 左侧导轨的折叠项：一个图标代表被折叠进去的面板，点击后在导轨旁展开列表。
         panelGroup: {
             title: "折叠项",
         },
@@ -177,16 +175,12 @@ export const workspace = {
         stopPreview: "停止预览",
         logoAlt: "NarraLeaf Studio 徽标",
         editorTabsLabel: "编辑器标签页",
-        // 可搜索的命令面板（Cmd/Ctrl+Shift+P）：把所有动作、菜单命令与带说明的快捷键汇成一个列表，随输入过滤。
         commandPalette: {
             title: "命令面板",
             placeholder: "输入命令…",
             empty: "没有匹配的命令",
-            // 空态提示行：点击切换到命令模式（填入 ">"）。
             goToCommands: "显示并运行命令",
-            // 「打开 X 面板」这类导航命令显示的分类。
             categoryView: "视图",
-            // 编辑器标签命令的分类与标题（作用于当前活动标签）。
             categoryEditor: "编辑器",
             editor: {
                 closeTab: "关闭标签页",
@@ -198,12 +192,10 @@ export const workspace = {
                 closeOtherGroups: "关闭其他编辑器组",
             },
         },
-        // 通知中心（控制栏铃铛；所有 toast 的环形历史）。
         notifications: {
             title: "通知",
             clearAll: "清空",
         },
-        // 自定义背景对话框（从设置或命令面板打开）。
         background: {
             command: "设置背景图像…",
             title: "背景图像",
@@ -212,7 +204,6 @@ export const workspace = {
             browse: "浏览…",
             opacity: "不透明度",
             blur: "模糊",
-            // 值为 0 时代替像素读数显示，此时滤镜完全关闭。
             blurOff: "关闭",
             fillMode: "填充方式",
             anchor: "位置",
@@ -226,7 +217,6 @@ export const workspace = {
             clear: "清除并关闭",
             apply: "完成",
         },
-        // 快速打开（mod+p）：可打开实体的模糊选择器。
         quickOpen: {
             title: "快速打开",
             placeholder: "跳转到场景、角色、界面、素材、蓝图…",
@@ -239,13 +229,10 @@ export const workspace = {
                 blueprint: "蓝图",
             },
         },
-        // 底部状态条。各信号只在有意义时出现（运行中/构建中/未保存）。
         statusBar: {
-            // 统一「运行状态」单元格的模式名称，格式为「模式 | 阶段」，任一模式运行时整条状态栏都会染成主题色。
             devMode: "开发模式",
             preview: "预览",
             production: "生产构建",
-            // 分隔符之后的阶段文案。并非每个阶段都适用于每种模式。
             phase: {
                 starting: "启动中…",
                 preparing: "准备中…",
@@ -269,7 +256,6 @@ export const workspace = {
             noStoryOpen: "未打开故事",
             openDashboard: "打开项目仪表盘",
             openCurrentScene: "打开当前场景",
-            // 已注册状态栏项目的名称，仅在状态栏右键开关菜单中显示。
             entries: {
                 runStatus: "运行状态",
                 unsavedChanges: "未保存的更改",
@@ -280,17 +266,14 @@ export const workspace = {
                 zoom: "缩放比例",
             },
         },
-        // 保存反馈：文件写不进去时弹出的常驻提示，以及「存储」控制台频道的日志行。
-        // 失败的写入会按退避阶梯一直重试、永不放弃，所以文案说的是「仍在重试」而不是「已丢失」。
         save: {
             failedTitle: "无法保存 {file}",
-            failedDetailTransient: "正在后台继续重试。{error}",
-            failedDetailPermanent: "这一条需要你处理——在修复之前重试也无济于事。{error}",
+            failedDetailTransient: "正在后台继续重试：{error}",
+            failedDetailPermanent: "此项需要你注意、在修复之前，重试将无济于事：{error}",
             retry: "立即重试",
             consoleFailed: "写入失败（{code}，第 {attempt} 次尝试）：{path} - {error}",
             consoleRecovered: "写入成功：{path}",
             flushFailed: "{label} 刷盘失败：{error}",
-            // 自动保存对象的名称，刷盘失败时使用。
             stores: {
                 uiDocument: "界面文档",
                 uiGraph: "界面蓝图",
@@ -301,7 +284,6 @@ export const workspace = {
                 characters: "角色",
             },
         },
-        // 快捷键自定义（设置 tab）+「?」速查浮层。
         keybindings: {
             searchPlaceholder: "搜索快捷键…",
             hint: "点击快捷键即可录制新组合，Esc 取消",
@@ -315,7 +297,6 @@ export const workspace = {
             openSettings: "自定义快捷键",
             cheatSheetTitle: "快捷键速查",
             cheatSheetCustomize: "自定义…",
-            // 设置表与速查表的分类标题（来自静态目录）。
             categories: {
                 general: "通用",
                 story: "故事编辑器",
@@ -325,7 +306,6 @@ export const workspace = {
                 assets: "素材",
                 other: "其他",
             },
-            // 此前没有自带 i18n key 的目录条目标签。
             catalog: {
                 commandPalette: "显示并运行命令",
                 quickOpen: "快速打开",
@@ -360,10 +340,8 @@ export const workspace = {
                 },
             },
         },
-        // 全局项目搜索：dock 面板与命令面板搜索模式共用。
         search: {
             placeholder: "搜索项目…",
-            // 顶栏搜索 pill 上的文案（点击后打开搜索模式的命令面板）。`{name}` 为当前项目名。
             titleBarPlaceholder: "在 {name} 里搜索",
             building: "正在建立搜索索引…",
             empty: "没有匹配结果",
@@ -376,7 +354,6 @@ export const workspace = {
                 blueprintNode: "蓝图节点",
             },
         },
-        // 标题栏里类 PyCharm 的项目切换器：显示当前项目名，下拉列出最近工作区以便跳转。
         projectSwitcher: {
             switchProject: "切换项目",
             recentProjects: "最近项目",
