@@ -167,10 +167,18 @@ export function BuildDialogContent({
 
     // Only the platforms this build actually produces: a credential row for a
     // target nobody selected is a question the author has no reason to answer.
-    const signablePlatforms = useMemo(
-        () => SIGNING_PLATFORMS.filter(platform => state.formats[platform].size > 0),
-        [state.formats],
-    );
+    //
+    // The GPG slot is the exception. It is filed under "linux" in the config,
+    // but its detached signatures cover every artifact the build writes, not
+    // Linux's - so it is offered whenever the build writes anything. Gating it
+    // on a Linux target would put it out of reach on a Windows host, which
+    // cannot build a Linux target at all.
+    const signablePlatforms = useMemo(() => {
+        const producesSomething = DIALOG_PLATFORMS.some(platform => state.formats[platform].size > 0);
+        return SIGNING_PLATFORMS.filter(platform => (platform === "linux"
+            ? producesSomething
+            : state.formats[platform].size > 0));
+    }, [state.formats]);
 
     const severityBySection = useMemo(() => {
         const map = {} as Partial<Record<BuildPreflightSection, BuildPreflightSeverity>>;

@@ -81,6 +81,9 @@ export const build = {
     },
     signing: {
         empty: "Select a target that can be signed.",
+        // Filed under "linux" in the project config, but it is not about Linux:
+        // the signatures sit beside every artifact the build writes.
+        detached: "Detached signatures",
         none: "Not signed",
         missing: "Missing on this machine",
         import: "Import…",
