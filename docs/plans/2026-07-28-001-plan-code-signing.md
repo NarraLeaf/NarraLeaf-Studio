@@ -218,6 +218,20 @@ signtool 的命令行，同用户的其他进程可以在进程列表里看到�
 `Get-AuthenticodeSignature` 的 `Status` 为 `Valid`；改一个字节后必须变 `HashMismatch`
 （反向对照，防止断言空转）。
 
+#### 5.1.1 本机实测结论（2026-07-28，orchestrator 亲验）
+
+用 openssl 造的 RSA-3072 代码签名证书（EKU=codeSigning）签了一份真实的
+`electron.exe` 副本，走的是 SDK 10.0.26100 的 `signtool.exe`：
+
+- `signtool sign /fd SHA256 /f cs.pfx /p … /tr http://timestamp.digicert.com /td SHA256`
+  成功，exit 0，且**真的挂上了 RFC3161 时间戳**——`TimeStamperCertificate` 是
+  `DigiCert SHA256 RSA4096 Timestamp Responder 2025 1`。时间戳这条联网路径在本机通。
+- 自签根不受信时 `Get-AuthenticodeSignature` 的 `Status` 是 **`UnknownError`**（不是
+  `Valid`），但 `SignerCertificate` 正确填充。**测试用自签证书永远到不了 `Valid`**，
+  所以测试断言要断的是 signer 主题 + 非 `HashMismatch`，把 `Valid` 留给真实证书的手测。
+- 翻掉 `0x2000` 处一个字节后 `Status` 变 **`HashMismatch`**——与「根不受信」是两个
+  可区分的状态，反向对照成立。
+
 ### 5.2 Android — release keystore
 
 - 新 `src/main/buildWorker/mobile/keystoreReader.ts`：读 PKCS#12 与 JKS，产出
