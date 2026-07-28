@@ -1,25 +1,25 @@
-import { FsRejectErrorCode } from "@shared/types/os";
+import { loadDocument, saveDocument, type DocumentStorage } from "@shared/documents/documentIo";
+import { variableRegistrySpec } from "@shared/documents/specs";
+import type { DocumentCorruptError } from "@shared/documents/types";
 import { RendererError } from "@shared/utils/error";
 import type { StoryLiteralValue, StoryVariableValueType } from "@shared/types/story/document";
 import {
-    VARIABLE_REGISTRY_SCHEMA_VERSION,
     type VariableRegistry,
     type VariableRegistryEntry,
 } from "@shared/types/variables/registry";
 import {
     createEmptyVariableRegistry,
     listRegistryEntries,
-    migrateVariableRegistryToLatest,
     normalizePersistentValueType,
     seedRegistryEntriesFromBlueprintPersistent,
 } from "@shared/variables/variableRegistryModel";
-import { ProjectNameConvention } from "../../project/nameConvention";
+import { createProjectDocumentStorage } from "../core/DocumentStorage";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { Service } from "../Service";
 import { Services, IVariableRegistryService, WorkspaceContext } from "../services";
 import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver } from "../autosave/DebouncedSaver";
-import { registerAutoSaver } from "../autosave/SaveStatusService";
+import { registerAutoSaver, reportUnreadableDocument } from "../autosave/SaveStatusService";
 import { UuidService } from "../core/UuidService";
 import { UIGraphService } from "../ui-editor/UIGraphService";
 import { EventEmitter } from "../ui/EventEmitter";
@@ -41,6 +41,14 @@ type VariableRegistryServiceEvents = {
  */
 export class VariableRegistryService extends Service<VariableRegistryService> implements IVariableRegistryService {
     private registry: VariableRegistry | null = null;
+    /**
+     * Set when `editor/variables.json` is on disk but could not be parsed, and never cleared until a
+     * load succeeds. Everything else about this service carries on - a project with one broken
+     * document still has to open - but {@link save} refuses outright while it is set, which is the
+     * whole point: the in-memory registry is empty, and writing an empty registry over a file we
+     * could not read would turn "unreadable" into "gone".
+     */
+    private unreadable: DocumentCorruptError | null = null;
     private readonly events = new EventEmitter<VariableRegistryServiceEvents>();
     private dirty = false;
     private revision = 0;
@@ -60,52 +68,47 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
         await depend([filesystemService, projectService, uuidService, uiGraphService]);
         await registerAutoSaver(ctx, depend, "variables", "workspace.shell.save.stores.variables", this.autoSaver);
 
-        await this.ensureEditorDir();
         await this.load();
     }
 
     public async load(): Promise<VariableRegistry> {
-        const fs = this.getContext().services.get<FileSystemService>(Services.FileSystem);
-        const documentPath = this.getDocumentPath();
-        const exists = await fs.isFileExists(documentPath);
-        if (!exists.ok) {
-            throw new RendererError(exists.error?.message || "Failed to access variable registry path");
+        const result = await loadDocument(variableRegistrySpec, this.storage(), variableRegistrySpec.pathFor());
+        // Cleared before the branch, not inside it. These services are singletons that re-init on a
+        // project switch, and a latch left set by the previous project would make the next one's
+        // first save refuse - i.e. one broken project would follow the author into every other.
+        this.unreadable = null;
+
+        if (result.status === "missing") {
+            // The registry is created on first open rather than lazily, so a project that predates
+            // M-VAR gets its blueprint persistent variables seeded once and visibly.
+            await this.save(this.createSeededRegistry());
+            return this.getRegistry();
         }
 
-        if (!exists.data) {
-            const created = this.createSeededRegistry();
-            await this.save(created);
-            this.registry = created;
-            return created;
+        if (result.status === "corrupt") {
+            // Reported and then survived, not thrown: this runs inside `init`, and throwing here is
+            // how one unreadable document used to stop the whole project from opening.
+            this.unreadable = result.error;
+            this.registry = createEmptyVariableRegistry();
+            reportUnreadableDocument(this.getContext(), result);
+        } else {
+            this.registry = result.document;
         }
 
-        const result = await fs.readJSON<VariableRegistry>(documentPath);
-        if (!result.ok) {
-            if (result.error.code === FsRejectErrorCode.NOT_FOUND) {
-                const created = this.createSeededRegistry();
-                await this.save(created);
-                this.registry = created;
-                return created;
-            }
-            throw new RendererError(result.error.message);
-        }
-
-        if (typeof result.data?.schemaVersion === "number" && result.data.schemaVersion > VARIABLE_REGISTRY_SCHEMA_VERSION) {
-            throw new RendererError("variables.json schema is newer than this Studio version");
-        }
-        const migrated = migrateVariableRegistryToLatest(result.data);
-        this.registry = migrated;
         this.revision = 0;
         this.lastSavedRevision = 0;
         this.setDirty(false);
         this.events.emit("registryChanged", this.registry);
-        return migrated;
+        return this.registry;
     }
 
     public async save(registry: VariableRegistry): Promise<void> {
-        const fs = this.getContext().services.get<FileSystemService>(Services.FileSystem);
-        await this.ensureEditorDir();
-        const documentPath = this.getDocumentPath();
+        if (this.unreadable) {
+            throw new RendererError(
+                `Refusing to write ${this.unreadable.path}: it is on disk but could not be read `
+                + `(${this.unreadable.reason}), so anything written now would replace it with an empty registry.`,
+            );
+        }
         // This write supersedes whatever the timer was going to do.
         this.autoSaver.cancel();
         const updated: VariableRegistry = {
@@ -115,11 +118,7 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
                 updatedAt: new Date().toISOString(),
             },
         };
-        const data = JSON.stringify(updated, null, 2);
-        const result = await fs.write(documentPath, data, "utf-8");
-        if (!result.ok) {
-            throw new RendererError(result.error.message);
-        }
+        await saveDocument(variableRegistrySpec, this.storage(), variableRegistrySpec.pathFor(), updated);
         this.registry = updated;
         this.lastSavedRevision = this.revision;
         this.setDirty(false);
@@ -185,7 +184,11 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
             storageKey: id,
             name: input?.name?.trim() || `persist_${id.slice(0, 8)}`,
             valueType: normalizePersistentValueType(input?.valueType),
-            defaultValue: input?.defaultValue,
+            // Conditional, not `defaultValue: input?.defaultValue`. A variable created without a
+            // default is the ordinary case, and the assigning form puts an explicit `undefined` in
+            // the record - which `JSON.stringify` dropped in silence and the canonical encoder
+            // refuses by name, making every default-less variable an unsaveable registry.
+            ...(input?.defaultValue !== undefined ? { defaultValue: input.defaultValue } : {}),
             ...(input?.description?.trim() ? { description: input.description.trim() } : {}),
         };
         this.applyRegistryMutation(registry => {
@@ -219,6 +222,13 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
         this.applyRegistryMutation(registry => {
             const entry = registry.entries[id];
             if (!entry) {
+                return;
+            }
+            // Clearing a default has to remove the key, the way `setEntryDescription` removes a
+            // description. Assigning `undefined` leaves a property the canonical encoder rejects,
+            // so the variable the author just cleared would be the one that stops the file saving.
+            if (defaultValue === undefined) {
+                delete entry.defaultValue;
                 return;
             }
             entry.defaultValue = defaultValue;
@@ -282,22 +292,7 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
         return registry;
     }
 
-    private getDocumentPath(): string {
-        return this.getContext().project.resolve(ProjectNameConvention.EditorVariableRegistry);
-    }
-
-    private async ensureEditorDir(): Promise<void> {
-        const fs = this.getContext().services.get<FileSystemService>(Services.FileSystem);
-        const dir = this.getContext().project.resolve(ProjectNameConvention.Editor);
-        const exists = await fs.isDirExists(dir);
-        if (!exists.ok) {
-            throw new RendererError(exists.error?.message || "Failed to access editor directory");
-        }
-        if (!exists.data) {
-            const created = await fs.createDir(dir);
-            if (!created.ok) {
-                throw new RendererError(created.error?.message || "Failed to create editor directory");
-            }
-        }
+    private storage(): DocumentStorage {
+        return createProjectDocumentStorage(this.getContext());
     }
 }
