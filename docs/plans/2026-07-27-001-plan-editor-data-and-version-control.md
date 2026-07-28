@@ -295,6 +295,30 @@ order"，实现却是 `Object.values(scene.blocks)`，拿的是**插入序**。�
   `Object.entries(graphs.events)`，规范化后会变成 UUID 序。属于结果排序而非作者内容，不拦 H2b，
   但届时应该给它一个显式排序而不是继续依赖记录顺序。
 
+### 3.3.2 H2b 第一波已落地，以及第二波的前置清单
+
+第一波（存储适配器 + variables / voice / localization / localization-keys 四个 spec）已合入。
+**接入模式**：spec 里 `parse` = 形状闸门 → 拒绝更新的 schemaVersion → 调用**既有**迁移函数（不重写）；
+服务侧 `missing` 建默认、`loaded` 用它、`corrupt` **既不缓存也不写**。`corrupt` 在 `init` 里
+不能抛（一个坏文件会让整个工程打不开），改为latch 并拒绝保存，且 latch 在 `load()` 开头清——
+这些服务是单例，上一个工程的 latch 会跟着作者进下一个工程。
+
+**第二波的硬前置：`undefined` 赋值审计。** 规范化编码对 `undefined` 抛错，而 `JSON.stringify`
+静默丢弃，所以每个服务在接入前都必须先清掉自己的 `undefined` 赋值，否则文档一存就废。第一波
+审计出约 60 处，**按服务分布**（每一处只挡住它自己的服务）：
+
+| 服务 | 位置 |
+|---|---|
+| story | `StoryService.ts:682,719,837`；`storyModel.ts` 十余处 |
+| blueprint | `LocalBlueprintService.ts` 十处，其中 `:837`/`:1128`/`:1418` **无条件** |
+| ui-document | `UIDocumentService.ts` 二十余处（`:2573-2574`、`:2582-2583` 无条件）；另有三个 widget 默认值经 `container.tsx:31` 未克隆地进入 `UIElement.props` |
+| ui-graphs | `UIGraphService.ts:167,168` |
+| assets | `RemoteAssetsManager.ts:38`、`LocalAssetsManager.ts:283`（绕过了 `setAssetExtension` 的先例） |
+| characters | `CharacterProfile.ts:22,34,199-202`、`CharacterAppearance.ts:74`、`migrateAppearance.ts:104` |
+
+**审计必须覆盖迁移函数本身**，不只是修改点：变量注册表那处 `undefined` 就在迁移函数里，
+它会让 `loadDocument` **以「spec 坏了」抛出**，而不是报告文件损坏——两者的处置完全不同。
+
 ### 3.4 迁移路径
 
 8 个服务逐个接入，每个都是「读走 `parse`、写走 `serialize`」的窄改动 + 一个往返测试。
