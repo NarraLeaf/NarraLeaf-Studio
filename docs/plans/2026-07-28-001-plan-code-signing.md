@@ -360,6 +360,21 @@ zsign `-x` 导出元数据交叉核对。**真机安装本机无法验证，明�
 | **S4b** | iOS：zsign 调用、临时无口令 p12、描述文件解析。 | ✅ `36f5d6b4` | 已验收：产物交给我自己写的 `verify.js`，53 页全中；翻字节 page 0 立刻断 |
 | **S6** | 端到端手测（用 `D:/Temp/nls-sign-probe/WinMobileProbe`）、文档、handoff 给 mac 批次。 | 🔄 | orchestrator 亲眼验收，不认代理报告 |
 
+### S6 跑真实应用时暴露、且**测试全绿也没抓到**的三个缺陷（commit `2c7230cd`）
+
+跑起来看之所以不可替代，这三条是证据——每一条的单元测试都是绿的。
+
+1. **GPG 在 Windows 宿主上根本够不着**。它的分离签名覆盖构建产出的每一个产物，但那一行
+   只在选了 Linux 目标时才渲染，而 Windows 宿主**构建不了 Linux 目标**
+   （`hostCanBuildTarget`）。于是这个功能在本轮唯一的宿主上是死代码。改成：只要这次构建
+   会产出东西就提供它，并按它实际做的事命名（"Detached signatures"），而不是按它恰好
+   寄居的那个配置键。
+2. **描述文件匹配检查只在签名那一刻做**，而签名是移动构建的最后一步。一份签给别的 app id
+   的描述文件，要让作者把整个构建跑完才被告知——我第一次跑就踩到了。现在 preflight 先说，
+   签名器仍然自己拦一道。
+3. **Signing 段有横向滚动条，且 preflight 文案被从中间切断**（"…certificate authority, clou"）。
+   grid 子项不会收缩到内容宽度以下，而定宽的凭据选择器把这个下限顶到了弹窗宽度之上。
+
 ### 收尾时的三处订正（orchestrator 亲手改，非代理产出）
 
 1. **preflight 与签名步骤各有一份 gpg 发现器**，preflight 那份找不到 Git for Windows 里的 gpg
