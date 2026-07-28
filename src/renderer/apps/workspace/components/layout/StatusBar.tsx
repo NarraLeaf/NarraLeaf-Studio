@@ -16,6 +16,13 @@ import { useStatusBarContextMenu } from "./useStatusBarContextMenu";
 export const STATUS_BAR_HEIGHT = 24;
 
 /**
+ * Breathing room at both ends of the strip. The bar runs flush into the bottom corners of the
+ * window, which the OS rounds off, so the outermost cell would otherwise have its icon and its hover
+ * fill crowded by the curve. Insetting the row keeps both clear of it.
+ */
+const STATUS_BAR_EDGE_GAP = 6;
+
+/**
  * A resolved cell: either a built-in module (renders its own component) or an item registered at
  * runtime on the StatusBarService (rendered from its plain text/icon fields). Unifying them here is
  * what lets ordering and the toggle menu treat both kinds identically.
@@ -109,7 +116,11 @@ export function StatusBar() {
                 className={`flex shrink-0 items-stretch justify-between overflow-hidden border-t transition-colors duration-300 ${
                     running ? "border-primary bg-primary" : "border-edge bg-surface-sunken"
                 }`}
-                style={{ height: STATUS_BAR_HEIGHT }}
+                style={{
+                    height: STATUS_BAR_HEIGHT,
+                    paddingLeft: STATUS_BAR_EDGE_GAP,
+                    paddingRight: STATUS_BAR_EDGE_GAP,
+                }}
                 onContextMenu={event => openMenu(event)}
             >
                 <div className="flex min-w-0 items-stretch">{renderSide(StatusBarAlignment.Left)}</div>
