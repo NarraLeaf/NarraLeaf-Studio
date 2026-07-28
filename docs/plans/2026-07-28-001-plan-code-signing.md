@@ -316,8 +316,27 @@ zsign `-x` 导出元数据交叉核对。**真机安装本机无法验证，明�
 - gpg 发现器：`GNUPG_PATH` 环境变量 → PATH 上的 `gpg`/`gpg2` → 常见安装目录。
 - UI 与文档里**说清这不是 OS 强制的代码签名**，是分发完整性；Linux 不会因为没签名而拦你。
 
-**验收**：本机装 Gpg4win → 造一把测试密钥 → 构建 → `gpg --verify <artifact>.asc <artifact>`
+**验收**：造一把测试密钥 → 构建 → `gpg --verify <artifact>.asc <artifact>`
 通过；改一字节必须 BAD signature。
+
+#### 5.4.1 本机实测结论（2026-07-28，orchestrator 亲验）
+
+用隔离的 `GNUPGHOME=/d/Temp/gpgprobe`（不碰用户真实钥匙串）造了一把 ed25519 密钥，
+对前面签过的 `probe.exe` 做分离签名：完好文件 `Good signature`，翻过字节的
+`BAD signature`。反向对照成立。三条会改实现的发现：
+
+- **本机其实有 gpg，但 `Get-Command gpg` 查不到**——它是 Git for Windows 自带的，
+  只在 Git Bash 的环境里可见。所以发现器**不能只查 PATH**。
+- **也不能硬编码 `C:\Program Files\Git`**：这台机器上 Git 装在 `D:\Program\Git`。
+  正确做法是先定位 git 本体（`where git` / `git --exec-path`）再推 `usr/bin/gpg.exe`，
+  同时探 Gpg4win 的 `%ProgramFiles(x86)%\GnuPG\bin\gpg.exe`，以及 PATH。
+- **⚠ Git 自带的是 MSYS 构建，路径语义和原生 Windows 不同**：给它 Windows 风格的
+  `GNUPGHOME`（`D:\Temp\…`）会报 `':' are not allowed in the socket name`，并且它把该
+  路径当成相对 cwd 解析。结论：**Studio 绝不要设 GNUPGHOME**（用作者默认的钥匙串就好）；
+  若将来非设不可，必须转成 MSYS 风格。**优先挑 Gpg4win 的原生 gpg，Git 的作为兜底。**
+- **带口令的密钥需要 pinentry**。从 utility process 里弹 GUI pinentry 不可靠。
+  本轮的立场：要求密钥要么无口令、要么已在 gpg-agent 里解锁；签名失败时**把 gpg 的
+  stderr 原样呈给作者**，而不是吞掉换成我们自己的猜测。
 
 ## 6. 里程碑
 
