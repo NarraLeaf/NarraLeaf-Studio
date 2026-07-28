@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from "react";
-import { AlignLeft, BookOpen, Camera, Check, ChevronDown, ChevronRight, FileText, Image as ImageIcon, ListPlus, MonitorPlay, Plus, StretchVertical, Trash2, Variable } from "lucide-react";
+import { AlignLeft, BookOpen, Camera, Check, ChevronDown, ChevronRight, FileText, Image as ImageIcon, ListPlus, MonitorPlay, Plus, Rows3, Trash2, Variable } from "lucide-react";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
@@ -1718,7 +1718,9 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     </button>
                     {/* Three densities, so a two-state toggle can no longer say which one is on. The
                         menu names them and ticks the current one; the button still reads as "not the
-                        default" at a glance. */}
+                        default" at a glance. `StretchVertical` used to sit here and it is two vertical
+                        bars — a pause glyph, in an editor that also has a playback control. Rows is
+                        the ordinary idiom for list density and cannot be misread as transport. */}
                     <button
                         type="button"
                         onClick={event => densityMenu.showMenu(event)}
@@ -1728,7 +1730,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         aria-pressed={editor.density !== "compact"}
                         className={["rounded-md p-1.5 transition-colors", editor.density !== "compact" ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
                     >
-                        <StretchVertical className="h-4 w-4" />
+                        <Rows3 className="h-4 w-4" />
                     </button>
                     {/* The manual used to be a modal, which meant closing what you were reading before
                         you could use it. It is the right-hand panel now, so the documentation and the

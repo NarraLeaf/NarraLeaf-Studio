@@ -15,11 +15,13 @@ export const defaultDoc = {
         interactionLayer: "Dialog Interaction Layer",
         panel: "Dialog Panel",
         content: "Dialog Content",
+        avatar: "Speaker Avatar",
         nametag: "Nametag",
         sentence: "Sentence",
         sentenceText: "The current line will appear here.",
         nextEvent: "Dialog Next",
         updateNametagEvent: "Update Nametag",
+        updateAvatarEvent: "Update Speaker Avatar",
     },
     notification: {
         list: "Notification List",

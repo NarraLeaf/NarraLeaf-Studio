@@ -91,7 +91,9 @@ import {
     BLUEPRINT_NODE_TYPE_FLOW_IF,
     BLUEPRINT_NODE_TYPE_GAME_CHOOSE,
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR,
     BLUEPRINT_NODE_TYPE_GAME_NEXT,
+    BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS,
     BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT,
 } from "@shared/types/blueprint/graph";
@@ -114,6 +116,7 @@ import { defaultTextWidgetProps, type TextWidgetProps } from "@/lib/ui-editor/wi
 import { defaultListWidgetProps, type ListWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/list/types";
 import {
     createInitialContainerAppearance,
+    createInitialImageAppearanceFromProps,
     createInitialTextAppearance,
     isUsableAppearanceModel,
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
@@ -166,6 +169,7 @@ type DialogStageTemplate = {
     elements: Record<UIElementId, UIElement>;
     interactionLayerId: UIElementId;
     panelId: UIElementId;
+    avatarId: UIElementId;
     stackId: UIElementId;
     nametagId: UIElementId;
     sentenceId: UIElementId;
@@ -337,6 +341,21 @@ function createTextTemplateProps(overrides: Partial<TextWidgetProps>): TextWidge
         ...overrides,
     };
     props.appearance = createInitialTextAppearance(props);
+    return props;
+}
+
+/**
+ * `nl.image` has no exported default-props bag, so the widget module's own insert defaults are the
+ * single source of truth here; overrides land on top and the appearance model is rebuilt from the
+ * merged result (the module's serialized one describes the defaults, not what we just wrote).
+ */
+function createImageTemplateProps(overrides: Record<string, unknown>): Record<string, unknown> {
+    const defaults = widgetModuleRegistry.get("nl.image")?.createDefaultElement().props ?? {};
+    const props: Record<string, unknown> = {
+        ...cloneJson(defaults),
+        ...overrides,
+    };
+    props.appearance = createInitialImageAppearanceFromProps(props);
     return props;
 }
 
@@ -3274,6 +3293,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
         const interactionLayerId = uuidService.generate();
         const panelId = uuidService.generate();
+        const avatarId = uuidService.generate();
         const stackId = uuidService.generate();
         const nametagId = uuidService.generate();
         const sentenceId = uuidService.generate();
@@ -3281,6 +3301,13 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const panelHeight = Math.max(180, Math.round(designSize.height * 0.24));
         const panelX = Math.round((designSize.width - panelWidth) / 2);
         const panelY = Math.max(0, designSize.height - panelHeight - Math.round(designSize.height * 0.04));
+        const panelInset = 28;
+        // The avatar sits in the panel's free layout, and the text column pays for it with left
+        // padding rather than becoming a flow sibling: that keeps nametag/sentence stacking as-is
+        // and keeps the text baseline steady on lines that resolve no avatar.
+        const avatarSize = Math.max(96, Math.min(180, panelHeight - 44));
+        const avatarY = Math.max(0, Math.round((panelHeight - avatarSize) / 2));
+        const contentPaddingLeft = panelInset + avatarSize + 24;
 
         rootElement.childrenIds = [interactionLayerId, panelId];
 
@@ -3318,7 +3345,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             type: "nl.container",
             name: translate("defaultDoc.dialog.panel"),
             parentId: rootElement.id,
-            childrenIds: [stackId],
+            childrenIds: [stackId, avatarId],
             layout: roundUILayoutGeometryFields({
                 x: panelX,
                 y: panelY,
@@ -3343,6 +3370,39 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }),
         };
 
+        const avatar: UIElement = {
+            id: avatarId,
+            type: "nl.image",
+            name: translate("defaultDoc.dialog.avatar"),
+            parentId: panelId,
+            childrenIds: [],
+            layout: roundUILayoutGeometryFields({
+                x: panelInset,
+                y: avatarY,
+                width: avatarSize,
+                height: avatarSize,
+                opacity: 1,
+                visible: true,
+            }),
+            props: createImageTemplateProps({
+                // No chrome: with no asset resolved the widget then paints nothing at all, which is
+                // what a narrator line or an avatar-less character should look like.
+                fillType: "image",
+                imageFill: { mode: "cover", assetId: null },
+                backgroundColor: "transparent",
+                fillVisible: true,
+                fillOpacity: 1,
+                strokeVisible: false,
+                borderWidth: 0,
+                borderRadius: 8,
+                borderRadiusTL: 8,
+                borderRadiusTR: 8,
+                borderRadiusBL: 8,
+                borderRadiusBR: 8,
+                borderRadiusLinked: true,
+            }),
+        };
+
         const stack: UIElement = {
             id: stackId,
             type: "nl.container",
@@ -3362,9 +3422,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 stackDirection: "vertical",
                 stackGap: 10,
                 stackPaddingTop: 22,
-                stackPaddingRight: 28,
+                stackPaddingRight: panelInset,
                 stackPaddingBottom: 22,
-                stackPaddingLeft: 28,
+                stackPaddingLeft: contentPaddingLeft,
                 backgroundColor: "transparent",
                 fillVisible: false,
                 strokeVisible: false,
@@ -3406,7 +3466,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             layout: roundUILayoutGeometryFields({
                 x: 0,
                 y: 0,
-                width: Math.max(1, panelWidth - 56),
+                width: Math.max(1, panelWidth - contentPaddingLeft - panelInset),
                 height: Math.max(96, panelHeight - 88),
                 opacity: 1,
                 visible: true,
@@ -3423,12 +3483,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             elements: {
                 [interactionLayer.id]: interactionLayer,
                 [panel.id]: panel,
+                [avatar.id]: avatar,
                 [stack.id]: stack,
                 [nametag.id]: nametag,
                 [sentence.id]: sentence,
             },
             interactionLayerId,
             panelId,
+            avatarId,
             stackId,
             nametagId,
             sentenceId,
@@ -3448,6 +3510,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         targets: {
             interactionLayerId: UIElementId;
             panelId: UIElementId;
+            avatarId: UIElementId;
             nametagId: UIElementId;
             sentenceId: UIElementId;
         },
@@ -3469,16 +3532,22 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 y: 380,
             },
             {
+                nodeId: "dialog.next.avatarElementClick",
+                elementId: targets.avatarId,
+                elementType: "nl.image",
+                y: 550,
+            },
+            {
                 nodeId: "dialog.next.nametagElementClick",
                 elementId: targets.nametagId,
                 elementType: "nl.text",
-                y: 550,
+                y: 720,
             },
             {
                 nodeId: "dialog.next.sentenceElementClick",
                 elementId: targets.sentenceId,
                 elementType: DIALOG_SENTENCE_WIDGET_TYPE,
-                y: 720,
+                y: 890,
             },
         ] as const;
         const nodes: Record<string, BlueprintGraphNode> = {
@@ -3494,13 +3563,13 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 params: {
                     [BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME]: " ",
                 },
-                meta: { editorLayout: { x: 80, y: 890 } },
+                meta: { editorLayout: { x: 80, y: 1060 } },
             },
             [nextId]: {
                 id: nextId,
                 type: BLUEPRINT_NODE_TYPE_GAME_NEXT,
                 params: {},
-                meta: { editorLayout: { x: 560, y: 465 } },
+                meta: { editorLayout: { x: 560, y: 550 } },
             },
         };
         const edges: NonNullable<BlueprintGraphIr["edges"]> = [
@@ -3641,6 +3710,63 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         };
     }
 
+    /**
+     * On every dialog beat, push the speaking character's avatar into the image widget.
+     *
+     * `Get Speaker Avatar` answers off the live portrait, so it already carries the differential the
+     * character is wearing; a line with no avatar answers null, which clears the widget rather than
+     * leaving the previous speaker's face on screen.
+     */
+    private createAvatarUpdateGraph(): BlueprintGraphIr {
+        const initHeadId = "avatar.update.init";
+        const flushHeadId = "avatar.update.flush";
+        const getAvatarId = "avatar.update.get";
+        const setAssetId = "avatar.update.setImageAsset";
+        return {
+            nodes: {
+                [initHeadId]: {
+                    id: initHeadId,
+                    type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+                    params: {},
+                    meta: { editorLayout: { x: 80, y: 60 } },
+                } satisfies BlueprintGraphNode,
+                [flushHeadId]: {
+                    id: flushHeadId,
+                    type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
+                    params: {},
+                    meta: { editorLayout: { x: 80, y: 190 } },
+                } satisfies BlueprintGraphNode,
+                [getAvatarId]: {
+                    id: getAvatarId,
+                    type: BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR,
+                    params: {},
+                    meta: { editorLayout: { x: 300, y: 230 } },
+                } satisfies BlueprintGraphNode,
+                [setAssetId]: {
+                    id: setAssetId,
+                    type: BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET,
+                    params: {},
+                    meta: { editorLayout: { x: 580, y: 110 } },
+                } satisfies BlueprintGraphNode,
+            },
+            edges: [
+                {
+                    from: { nodeId: initHeadId, port: "then" },
+                    to: { nodeId: setAssetId, port: "in" },
+                },
+                {
+                    from: { nodeId: flushHeadId, port: "then" },
+                    to: { nodeId: setAssetId, port: "in" },
+                },
+                {
+                    from: { nodeId: getAvatarId, port: "avatar" },
+                    to: { nodeId: setAssetId, port: "asset" },
+                },
+            ],
+            meta: { [BLUEPRINT_GRAPH_IR_META_KIND]: "event" },
+        };
+    }
+
     private configureDefaultDialogBlueprints(surfaceId: UISurfaceId, template: DialogStageTemplate): void {
         const localBp = this.getOptionalLocalBlueprintService();
         if (!localBp) {
@@ -3666,6 +3792,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     graph: this.createDialogContentNextGraph(surfaceId, {
                         interactionLayerId: template.interactionLayerId,
                         panelId: template.panelId,
+                        avatarId: template.avatarId,
                         nametagId: template.nametagId,
                         sentenceId: template.sentenceId,
                     }),
@@ -3684,6 +3811,21 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     id: "nametagUpdate",
                     name: translate("defaultDoc.dialog.updateNametagEvent"),
                     graph: this.createNametagUpdateGraph(),
+                },
+            };
+        });
+
+        const avatarBlueprintId = localBp.ensureWidgetMain(surfaceId, template.avatarId, translate("defaultDoc.dialog.avatar"), "nl.image");
+        localBp.applyBlueprintMutation(doc => {
+            const blueprint = doc.blueprints[avatarBlueprintId];
+            if (!blueprint || blueprint.program.kind !== "graph") {
+                return;
+            }
+            blueprint.program.graphs.events = {
+                avatarUpdate: {
+                    id: "avatarUpdate",
+                    name: translate("defaultDoc.dialog.updateAvatarEvent"),
+                    graph: this.createAvatarUpdateGraph(),
                 },
             };
         });
