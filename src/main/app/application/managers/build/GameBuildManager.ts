@@ -69,6 +69,11 @@ import { loadMobileShellTemplateForApp } from "./mobileShellTemplate";
 import { resolveMobileSigningIdentity } from "./mobileSigningIdentity";
 import { payloadExceedsLimit } from "../../../../buildWorker/mobile/runMobileRepack";
 import { resolveZsignTool, type ZsignTool } from "../../../../buildWorker/mobile/zsignTool";
+import {
+    parseProvisioningProfile,
+    profileCoversBundleId,
+    type ProvisioningProfile,
+} from "../../../../buildWorker/mobile/provisioningProfile";
 import type { MobileShellConfigV1 } from "@/buildWorker/mobile/mobileShellManifest";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
@@ -555,7 +560,12 @@ export class GameBuildManager {
         if (mobileTargets.length > 0) {
             findings.push(...await this.mobilePreflight(normalizedProjectPath));
         }
-        findings.push(...await this.signingPreflight(projectConfig, targets, hostPlatform));
+        findings.push(...await this.signingPreflight(
+            projectConfig,
+            targets,
+            hostPlatform,
+            normalizeIosBundleId(appId),
+        ));
 
         const outputDir = request.outputDir?.trim()
             ? path.resolve(request.outputDir.trim())
@@ -999,6 +1009,7 @@ export class GameBuildManager {
         projectConfig: ProjectConfigData | null,
         targets: GameBuildTarget[],
         hostPlatform: GameBuildDesktopPlatform,
+        iosBundleId: string,
     ): Promise<BuildPreflightFinding[]> {
         const findings: BuildPreflightFinding[] = [];
         const ids = readProjectSigningIds(projectConfig);
@@ -1025,10 +1036,16 @@ export class GameBuildManager {
             findings.push({ code: "unsigned-ios", severity: "warning", section: "signing" });
         }
 
-        const slots = [...new Set(
+        const slots = new Set(
             targets.map(target => signingPlatformForTarget(target.platform))
                 .filter((slot): slot is SigningPlatform => slot !== null),
-        )];
+        );
+        // Checked whenever one is configured, not only alongside a Linux target:
+        // the GPG signatures cover every artifact, and resolveSigningForBuild
+        // will go looking for this credential on the same terms.
+        if (ids.linux) {
+            slots.add("linux");
+        }
         for (const platform of slots) {
             const id = ids[platform];
             if (!id) {
@@ -1091,12 +1108,51 @@ export class GameBuildManager {
                 // the assumption a release keystore invites.
                 findings.push({ code: "signing-android-not-play", severity: "warning", section: "signing" });
             }
-            // `signing-ios-profile-mismatch` belongs here, and cannot be checked
-            // yet: it needs the .mobileprovision parser that lands with the iOS
-            // milestone. The code is defined so the message and the UI slot exist
-            // when the check does.
+            if (platform === "ios" && targets.some(target => target.platform === "ios")) {
+                findings.push(...await this.iosProfilePreflight(vault, credential, iosBundleId));
+            }
         }
         return findings;
+    }
+
+    /**
+     * Whether the Apple credential's provisioning profile actually covers the
+     * app this build produces.
+     *
+     * Worth checking here rather than only at signing time: the signing step is
+     * the last thing a mobile build does, so a profile issued for a different
+     * app id costs the author the entire build before saying so. The signer
+     * still refuses on its own - this is the early warning, not the guard.
+     *
+     * A profile that cannot be read at all is left to the signer to report: it
+     * has the file open anyway and its error names the actual parse failure,
+     * which is more use than "something is wrong with your profile".
+     */
+    private async iosProfilePreflight(
+        vault: SigningVault,
+        credential: SigningCredential,
+        bundleId: string,
+    ): Promise<BuildPreflightFinding[]> {
+        const profilePath = vault.materialPath(credential, "provisioningProfileFile");
+        if (!profilePath) {
+            return [];
+        }
+        let profile: ProvisioningProfile;
+        try {
+            profile = parseProvisioningProfile(await fs.readFile(profilePath));
+        } catch {
+            return [];
+        }
+        const coverage = profileCoversBundleId(profile, bundleId);
+        if (coverage.matches) {
+            return [];
+        }
+        return [{
+            code: "signing-ios-profile-mismatch",
+            severity: "error",
+            section: "signing",
+            detail: { bundleId, profileAppId: profile.applicationIdentifier },
+        }];
     }
 
     /** Where the vendored iOS signing tool lives on this machine. */
@@ -1183,10 +1239,19 @@ export class GameBuildManager {
         targets: GameBuildTarget[],
     ): Promise<ResolvedBuildSigning> {
         const ids = readProjectSigningIds(projectConfig);
-        const slots = [...new Set(
+        const needed = new Set(
             targets.map(target => signingPlatformForTarget(target.platform))
                 .filter((slot): slot is SigningPlatform => slot !== null),
-        )].filter(slot => ids[slot]);
+        );
+        // The GPG slot is not tied to the target that shares its name: its
+        // detached signatures go beside every artifact this build writes. So it
+        // is resolved whenever the author configured one, whether or not a Linux
+        // target is in the request - which is the only way it is reachable at
+        // all from a Windows host, where a Linux target cannot be built.
+        if (ids.linux) {
+            needed.add("linux");
+        }
+        const slots = [...needed].filter(slot => ids[slot]);
         if (slots.length === 0) {
             return {};
         }

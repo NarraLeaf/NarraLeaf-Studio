@@ -34,6 +34,18 @@ import {
  * process.
  */
 
+/**
+ * What a row is called.
+ *
+ * The GPG slot is stored under "linux" but is not about Linux: its detached
+ * signatures cover every artifact the build writes. Labelling it "Linux" would
+ * be a lie on a Windows host, where it is the only signature offered for the
+ * whole build.
+ */
+function signingRowLabel(platform: SigningPlatform, t: ReturnType<typeof useTranslation>["t"]): string {
+    return platform === "linux" ? t("build.signing.detached") : t(`build.platform.${platform}`);
+}
+
 export function SigningSection({
     platforms,
     signing,
@@ -147,9 +159,14 @@ function SigningRow({
     }, [credentials, platform, selectedId, t]);
 
     return (
-        <div className="group rounded-md border border-edge-subtle px-3 py-2.5">
-            <div className="flex items-center justify-between gap-3">
-                <span className="text-fg">{t(`build.platform.${platform}`)}</span>
+        // min-w-0: a grid item's default `min-width: auto` refuses to shrink
+        // below its content, and the fixed-width picker plus the Import button
+        // put that floor above the dialog's width - which showed up as a
+        // horizontal scrollbar across the whole section and a preflight message
+        // clipped mid-word.
+        <div className="group min-w-0 rounded-md border border-edge-subtle px-3 py-2.5">
+            <div className="flex min-w-0 items-center justify-between gap-3">
+                <span className="text-fg">{signingRowLabel(platform, t)}</span>
                 <div className="flex items-center gap-1.5">
                     {/* Fixed width so the rows line up and the menu matches the
                         trigger; a credential name longer than this truncates. */}
@@ -302,7 +319,7 @@ function SigningImportForm({
     return (
         <div className="grid gap-3">
             <span className="text-xs text-fg">
-                {t("build.signing.importTitle", { platform: t(`build.platform.${platform}`) })}
+                {t("build.signing.importTitle", { platform: signingRowLabel(platform, t) })}
             </span>
 
             {kinds.length > 1 && (

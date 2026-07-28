@@ -81,6 +81,9 @@ export const build = {
     },
     signing: {
         empty: "选择一个可签名的目标后，这里会列出对应平台",
+        // 工程配置里存在 "linux" 名下，但它与 Linux 无关：签名文件落在这次构建
+        // 产出的每一个产物旁边。
+        detached: "分离签名",
         none: "不签名",
         missing: "本机没有这份凭据",
         import: "导入…",
