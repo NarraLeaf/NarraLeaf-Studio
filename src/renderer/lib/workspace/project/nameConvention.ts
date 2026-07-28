@@ -11,6 +11,19 @@ export const ProjectNameConvention = {
     // Assets metadata and groups (stored in assets/)
     AssetsMetadataShard: (type: AssetType) => ["assets", `assets.metadata.${type}.json` as const],
     AssetsGroupsShard: (type: AssetType) => ["assets", `assets.groups.${type}.json` as const],
+    /**
+     * Row order for the two shards above, which are ordered maps: the asset browser draws them in
+     * key order and shift-range selection slices that order, so canonical serialization — which
+     * sorts object keys — would silently rearrange the library.
+     *
+     * A sibling rather than a field inside those shards, because the shards are also read by the
+     * Dev Mode bundler and the runtime packer, and by every Studio ever shipped. All of them parse
+     * the file's top level as `{ id: record }`. Moving the records down a level to make room for an
+     * array would empty the asset library on any build that has not been taught the new shape, and
+     * an author who opens their project to an empty library re-imports everything. A file nobody
+     * else looks for costs those readers nothing.
+     */
+    AssetsOrderShard: (type: AssetType) => ["assets", `assets.order.${type}.json` as const],
 
     // Project Root Directories
     NLCache: [".nlstudio/"],

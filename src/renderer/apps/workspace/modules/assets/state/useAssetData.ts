@@ -76,13 +76,15 @@ export function useAssetData({ context, isInitialized }: UseAssetDataParams) {
 
         try {
             const assetsService = context.services.get<AssetsService>(Services.Assets);
-            const assetsMap = assetsService.getAssets();
 
             const newAssets: Record<AssetType, Asset[]> = createEmptyAssets();
             const newGroups: Record<AssetType, AssetGroup[]> = createEmptyGroups();
 
             for (const type of Object.values(AssetType)) {
-                newAssets[type] = Object.values(assetsMap[type]);
+                // Explicit order, not `Object.values`: this list is what the grid draws and what
+                // shift-range selection slices, so once shards are written with sorted keys a
+                // range would cover a different set of rows than the author has on screen.
+                newAssets[type] = assetsService.getOrderedAssets(type);
                 newGroups[type] = assetsService.getGroupAssetsManager().getGroups(type);
             }
 
