@@ -45,9 +45,21 @@ export function registryEntryFromBlueprintPersistent(v: BlueprintPersistentVaria
         id: storageKey,
         name: v.name,
         valueType: normalizePersistentValueType(v.valueType),
-        defaultValue: v.defaultValue as VariableRegistryEntry["defaultValue"],
+        ...withDefaultValue(v.defaultValue),
         storageKey,
     };
+}
+
+/**
+ * `{ defaultValue }` only when there is one - never `{ defaultValue: undefined }`.
+ *
+ * A variable with no default is the common case, and the two spellings are indistinguishable in
+ * TypeScript. They are not indistinguishable on the way to disk: `JSON.stringify` drops the
+ * property in silence, while the canonical encoder rejects the document by name. Assigning the
+ * undefined would make every default-less variable an unsaveable registry.
+ */
+function withDefaultValue(value: unknown): Pick<VariableRegistryEntry, "defaultValue"> {
+    return value === undefined ? {} : { defaultValue: value as VariableRegistryEntry["defaultValue"] };
 }
 
 /**
@@ -88,7 +100,7 @@ export function migrateVariableRegistryToLatest(raw: unknown): VariableRegistry 
             id,
             name: value.name,
             valueType: normalizePersistentValueType(typeof value.valueType === "string" ? value.valueType : undefined),
-            defaultValue: value.defaultValue as VariableRegistryEntry["defaultValue"],
+            ...withDefaultValue(value.defaultValue),
             storageKey: value.storageKey,
             ...(typeof value.description === "string" ? { description: value.description } : {}),
         };
