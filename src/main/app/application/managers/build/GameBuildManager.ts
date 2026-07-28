@@ -63,6 +63,7 @@ import {
     signingPlatformForTarget,
     signingReachesNetwork,
 } from "./preflight";
+import { findSigntool } from "./signtoolDiscovery";
 import { readIconSlotSizes, writeScaledIcons } from "./mobileIcons";
 import { loadMobileShellTemplateForApp } from "./mobileShellTemplate";
 import { resolveMobileSigningIdentity } from "./mobileSigningIdentity";
@@ -70,7 +71,7 @@ import { payloadExceedsLimit } from "../../../../buildWorker/mobile/runMobileRep
 import type { MobileShellConfigV1 } from "@/buildWorker/mobile/mobileShellManifest";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
-import { certificateExpiry, inspectCertificateFile } from "../security/certificateInspect";
+import { certificateContainer, certificateExpiry, inspectCertificateFile } from "../security/certificateInspect";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
 import { SigningVault, type SecretSealer } from "../security/signingVault";
 import { type GameRuntimeArtifactCompileResult } from "../preview/compiler/gameRuntimeArtifactCompiler";
@@ -789,7 +790,7 @@ export class GameBuildManager {
                     ? { electronDist: resolveElectronDistDirForApp(this.app) }
                     : {}),
                 ...await this.resolveTargetIcon(session, projectPath, projectConfig, target.platform),
-                ...this.resolveDesktopTargetSigning(session, target.platform, signing),
+                ...await this.resolveDesktopTargetSigning(session, target.platform, signing),
             }))),
             ...(webTarget && webArtifact ? {
                 web: {
@@ -895,15 +896,18 @@ export class GameBuildManager {
      * credential is, and silently shipping unsigned is the one outcome an author
      * who configured signing must never get.
      */
-    private resolveDesktopTargetSigning(
+    private async resolveDesktopTargetSigning(
         session: BuildSession,
         platform: GameBuildDesktopPlatform,
         signing: ResolvedBuildSigning,
-    ): { signing?: GameBuildWorkerWindowsSigning } {
+    ): Promise<{ signing?: GameBuildWorkerWindowsSigning }> {
         if (platform !== "windows" || !signing.windows) {
             return {};
         }
-        const material = toWorkerWindowsSigning(signing.windows);
+        // The host probe belongs here rather than in the worker: which signtool
+        // exists is a fact about this machine, and the worker is handed answers.
+        const signtoolPath = await findSigntool();
+        const material = toWorkerWindowsSigning(signing.windows, { ...(signtoolPath ? { signtoolPath } : {}) });
         if (!material) {
             throw new Error("The Windows signing credential could not be prepared for this build.");
         }
@@ -1071,26 +1075,27 @@ export class GameBuildManager {
     /**
      * The expiry findings for one credential's certificate.
      *
-     * Dormant for most credentials today: the certificate of a PFX, a keystore
-     * or an Apple identity lives inside a PKCS#12, which the inspector reports as
-     * unsupported until the keystore reader lands with the Android milestone.
-     * The wiring is here so those codes start firing the day it does, rather than
-     * being remembered later.
+     * Every certificate worth checking here lives inside a PKCS#12 or a JKS,
+     * whose certificate bags are encrypted under the store password - so this
+     * unseals the credential to read them. The passwords are dropped when the
+     * call returns; what comes back is `SigningInspectResult`, which by its type
+     * carries only certificate facts.
+     *
+     * A credential whose certificate this process cannot reach at all - one in
+     * the Windows certificate store, or in Azure - has no container and is
+     * skipped. Its expiry is the signing tool's business, not ours.
      */
     private async signingExpiryPreflight(
         vault: SigningVault,
         credential: SigningCredential,
         platform: SigningPlatform,
     ): Promise<BuildPreflightFinding[]> {
-        const field = SIGNING_CREDENTIAL_MATERIAL_FIELDS[credential.kind][0];
-        if (!field) {
+        const material = await vault.resolveMaterial(credential.id);
+        const container = material ? certificateContainer(material) : null;
+        if (!container) {
             return [];
         }
-        const materialPath = vault.materialPath(credential, field);
-        if (!materialPath) {
-            return [];
-        }
-        const inspected = await inspectCertificateFile(materialPath).catch(() => null);
+        const inspected = await inspectCertificateFile(container.file, container.secrets).catch(() => null);
         if (!inspected?.available) {
             return [];
         }

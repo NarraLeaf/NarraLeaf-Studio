@@ -365,6 +365,9 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.signingRemove, { id }) as Promise<RequestStatus<{ removed: boolean }>>,
         inspect: (id: string) =>
             ipcClient.invoke(IPCEventType.signingInspect, { id }) as Promise<RequestStatus<SigningInspectResult>>,
+        /** `storePassword` is plain text. Do not log it or keep it after the call. */
+        keystoreAliases: (file: string, storePassword: string) =>
+            ipcClient.invoke(IPCEventType.signingKeystoreAliases, { file, storePassword }) as Promise<RequestStatus<{ aliases: string[] }>>,
     },
 
     blueprintPersistence: {
