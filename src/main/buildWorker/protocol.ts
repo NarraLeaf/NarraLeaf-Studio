@@ -124,6 +124,19 @@ export type GameBuildWorkerIosSigning = {
     p12Password: string;
     /** Absolute path of the vault's copy of the .mobileprovision to embed. */
     provisioningProfileFile: string;
+    /**
+     * Absolute path of the vendored signing tool, resolved by the manager like
+     * every other path here.
+     *
+     * Worth stating why it is not worked out in the worker: the tool lives
+     * beside the app under `resources/`, and where that is differs between a dev
+     * checkout and a packaged install. A worker-side derivation would be a
+     * second copy of knowledge the manager already has, and its packaged branch
+     * is precisely the one that cannot be exercised outside a real installer -
+     * so a change to the packaging layout would break signed iOS builds in a
+     * release and nowhere before it.
+     */
+    toolPath: string;
 };
 
 export type GameBuildWorkerFuses = {
