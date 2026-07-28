@@ -93,6 +93,13 @@ function createHarness(files: Record<string, string> = {}) {
             return record(path, data);
         },
         async writeFileNoFollow(path: string, data: string) {
+            // Refuses an absent file, exactly as the real one does: it opens with an `lstat` so it
+            // can inspect and reject a symlink, and therefore can only overwrite. Modelling a write
+            // as "append to a list" is what let an order file written with this API pass every test
+            // here while failing on the first open of every real project.
+            if (readText(path) === undefined) {
+                return { ok: false as const, error: { code: "ENOENT", message: `lstat '${path}'` } };
+            }
             return record(path, data);
         },
         async recoverCorruptedJsonFile(path: string, replacement: string) {
