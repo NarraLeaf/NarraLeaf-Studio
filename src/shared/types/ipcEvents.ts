@@ -165,6 +165,7 @@ export enum IPCEventType {
     signingImport = "signing.import",
     signingRemove = "signing.remove",
     signingInspect = "signing.inspect",
+    signingKeystoreAliases = "signing.keystoreAliases",
 
     blueprintPersistenceGetAll = "blueprintPersistence.getAll",
     blueprintPersistenceGetValue = "blueprintPersistence.getValue",
@@ -1298,6 +1299,25 @@ export type IPCSigningEvents = {
             id: string;
         },
         response: SigningInspectResult;
+    };
+    /**
+     * The signing keys inside a keystore the author has picked but not imported
+     * yet, so the import form can offer them instead of asking for an alias
+     * typed from memory. Same one-way traffic as `import`: the password goes up
+     * and only the names come back.
+     */
+    [IPCEventType.signingKeystoreAliases]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            /** Absolute path the author picked; nothing is copied or kept. */
+            file: string;
+            /** Plain text - do not log it or keep it after the call. */
+            storePassword: string;
+        },
+        response: {
+            aliases: string[];
+        };
     };
 };
 

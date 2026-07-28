@@ -345,6 +345,12 @@ export interface RendererPreloadedInterface {
         remove(id: string): Promise<RequestStatus<{ removed: boolean }>>;
         /** Certificate subject / issuer / validity / thumbprint, for display. */
         inspect(id: string): Promise<RequestStatus<SigningInspectResult>>;
+        /**
+         * The signing keys inside a keystore the author has picked but not
+         * imported yet, so the import form can offer them. `storePassword` is
+         * plain text and travels the same one way `import` does.
+         */
+        keystoreAliases(file: string, storePassword: string): Promise<RequestStatus<{ aliases: string[] }>>;
     };
 
     blueprintPersistence: {
