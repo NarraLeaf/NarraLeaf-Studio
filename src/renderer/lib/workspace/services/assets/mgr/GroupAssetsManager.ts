@@ -8,6 +8,7 @@ import { Asset, AssetGroup, AssetGroupMap, AssetSource } from "../types";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { AssetsService } from "../../core/AssetsService";
 import type { AssetDeleteOptions } from "../assetDeleteGuard";
+import { reconcileAssetOrder } from "../assetOrder";
 
 export class GroupAssetsManager {
     public assetsGroups: AssetGroupMap | null = null;
@@ -24,8 +25,17 @@ export class GroupAssetsManager {
 
     public getGroups<T extends AssetType>(type: T): AssetGroup[] {
         this.assertGroups();
-        const groups = Object.values(this.assetsGroups[type]);
-        return groups;
+        const record = this.assetsGroups[type];
+        return this.listOrderedGroups(type).map(id => record[id]);
+    }
+
+    /**
+     * Group ids of `type` in the order the browser draws them — the tree's other half, walked
+     * together with the assets by shift-range selection.
+     */
+    public listOrderedGroups<T extends AssetType>(type: T): string[] {
+        this.assertGroups();
+        return reconcileAssetOrder(this.assetsService.getAssetOrderManager().getGroupIds(type), this.assetsGroups[type]);
     }
 
     public async createGroup<T extends AssetType>(
@@ -334,6 +344,10 @@ export class GroupAssetsManager {
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         const data = JSON.stringify(this.assetsGroups[type]);
 
+        // The row order lives in a sibling file, not in this one, so an older Studio keeps reading
+        // this shard byte-for-byte as it always has.
+        this.assetsService.markOrderDirty(type);
+
         return await filesystemService.write(
             this.getContext().project.resolve(ProjectNameConvention.AssetsGroupsShard(type)), 
             data, 
@@ -366,6 +380,9 @@ export class GroupAssetsManager {
             const shardPath = this.getContext().project.resolve(ProjectNameConvention.AssetsGroupsShard(type));
             const shardResult = await filesystemService.readJSON<Record<string, AssetGroup>>(shardPath);
             if (shardResult.ok) {
+                // Key order stands as the group order until the sibling order file says otherwise;
+                // for a project that predates that file it *is* the order, and this parse is where
+                // it still exists.
                 Object.assign(data[type], shardResult.data);
             } else {
                 throw new RendererError(`Failed to read assets groups shard: ${shardPath}`);

@@ -6,10 +6,27 @@ import { AssetType } from "../assetTypes";
 import { Asset, AssetExtras, AssetSource, AssetsMap } from "../types";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { AssetsService } from "../../core/AssetsService";
+import { reconcileAssetOrder } from "../assetOrder";
+
+/**
+ * Set an asset's extension, removing the key when there is none.
+ *
+ * `ext = undefined` and "no `ext`" read the same in TypeScript but are not the same value.
+ * `JSON.stringify` drops an `undefined` property silently, while a canonical encoder rejects it by
+ * name — so an extensionless asset written the assigning way is a document that saves fine today
+ * and refuses to save the moment this shard is serialized canonically.
+ */
+function setAssetExtension(asset: Asset<AssetType, AssetSource>, ext: string | undefined): void {
+    if (ext === undefined) {
+        delete asset.ext;
+        return;
+    }
+    asset.ext = ext;
+}
 
 export class AssetsMetadataManager {
     public assetsMetadata: AssetsMap | null = null;
-    
+
     constructor(private assetsService: AssetsService, private context: WorkspaceContext) {
     }
 
@@ -22,6 +39,22 @@ export class AssetsMetadataManager {
 
     public list<T extends AssetType>(type: T): string[] {
         return Object.keys(this.getAssets()[type]);
+    }
+
+    /**
+     * Asset ids of `type` in the order the browser draws them, which shift-range selection reads as
+     * the range to cover.
+     *
+     * Reconciled on every call rather than cached: the stored order is a hint that is always one
+     * write behind the record, and an asset the hint has not heard of has to appear regardless.
+     */
+    public listOrdered<T extends AssetType>(type: T): string[] {
+        return reconcileAssetOrder(this.assetsService.getAssetOrderManager().getAssetIds(type), this.getAssets()[type]);
+    }
+
+    public getOrderedAssets<T extends AssetType>(type: T): Asset<T, AssetSource>[] {
+        const record = this.getAssets()[type];
+        return this.listOrdered(type).map(id => record[id]);
     }
 
     public exists<T extends AssetType>(asset: Asset<T, AssetSource>): boolean {
@@ -137,7 +170,7 @@ export class AssetsMetadataManager {
         const nameParts = newName.toLowerCase().split('.');
         const newExtension = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
         if (newExtension !== (existingAsset.ext || '')) {
-            existingAsset.ext = newExtension || undefined;
+            setAssetExtension(existingAsset, newExtension || undefined);
         }
 
         this.assetsService.markDirty(asset.type);
@@ -178,7 +211,7 @@ export class AssetsMetadataManager {
         // extension is what the compiler writes into the packaged filename.
         const nextExt = digest.ext || undefined;
         if (nextExt !== existingAsset.ext) {
-            existingAsset.ext = nextExt;
+            setAssetExtension(existingAsset, nextExt);
             existingAsset.name = this.resolveNameForExtension(asset.type, existingAsset.name, existingAsset.id, nextExt);
         }
 
@@ -334,7 +367,7 @@ export class AssetsMetadataManager {
                     // Extract extension from filename
                     const nameParts = asset.name.toLowerCase().split('.');
                     const extension = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
-                    asset.ext = extension || undefined;
+                    setAssetExtension(asset, extension || undefined);
                     hasChanges = true;
                 }
             }
