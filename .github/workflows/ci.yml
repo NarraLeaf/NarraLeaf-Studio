@@ -69,14 +69,22 @@ jobs:
       - name: Build plugin API types
         run: yarn build:plugin-types
 
-      # REQUIRE_ANDROID_SDK_ORACLE turns a missing SDK into a failure rather than
-      # a skip: the oracle tests are the only external judgement of whether a
-      # repacked APK is installable, and a silent skip is indistinguishable from
-      # a pass.
+      # The iOS signing oracle signs a real package with the real binary, so the
+      # binary has to be here. Staged as its own step rather than left to the
+      # packaging job: this job does not package, and without the tool the
+      # oracle would skip - which reads exactly like a pass.
+      - name: Stage the code-signing tools
+        run: node project/build/prepare-codesign-tools.js
+
+      # Both REQUIRE_* variables turn a missing tool into a failure rather than a
+      # skip. These oracles are the only judgement from outside our own code on
+      # whether a signed package is real, and a silent skip is indistinguishable
+      # from a pass.
       - name: Test
         run: yarn test
         env:
           REQUIRE_ANDROID_SDK_ORACLE: "1"
+          REQUIRE_ZSIGN_ORACLE: "1"
 
   # Package the Studio for every desktop target, so a change that only breaks
   # packaging (native deps, electron-builder config, per-arch binaries) can be

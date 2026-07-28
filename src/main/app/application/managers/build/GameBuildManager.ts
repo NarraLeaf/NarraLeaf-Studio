@@ -68,6 +68,7 @@ import { readIconSlotSizes, writeScaledIcons } from "./mobileIcons";
 import { loadMobileShellTemplateForApp } from "./mobileShellTemplate";
 import { resolveMobileSigningIdentity } from "./mobileSigningIdentity";
 import { payloadExceedsLimit } from "../../../../buildWorker/mobile/runMobileRepack";
+import { resolveZsignTool, type ZsignTool } from "../../../../buildWorker/mobile/zsignTool";
 import type { MobileShellConfigV1 } from "@/buildWorker/mobile/mobileShellManifest";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
@@ -264,8 +265,33 @@ export function toWorkerAndroidSigning(material: ResolvedSigningMaterial): GameB
     };
 }
 
-/** Map an unsealed credential onto the Apple identity the .ipa is signed with. */
-export function toWorkerIosSigning(material: ResolvedSigningMaterial): GameBuildWorkerIosSigning | null {
+/**
+ * The path of the resolved iOS signing tool, or a build failure.
+ *
+ * Throws rather than returning null: by the time this is asked, the author has
+ * chosen an Apple credential, and quietly emitting an unsigned .ipa - a package
+ * iOS refuses to install - is the one outcome worse than stopping. Preflight
+ * asks the same question while the dialog is open, so this is the backstop
+ * rather than the usual path.
+ */
+export function iosSigningToolPathFrom(tool: ZsignTool): string {
+    if (!tool.available) {
+        throw new Error(`This build asks for a signed iOS package, but ${tool.detail}.`);
+    }
+    return tool.path;
+}
+
+/**
+ * Map an unsealed credential onto the Apple identity the .ipa is signed with.
+ *
+ * `toolPath` comes in rather than being looked up here so this stays a pure
+ * mapping, but it is not optional: a job that asks for a signed .ipa without a
+ * tool to sign it with should never reach the worker.
+ */
+export function toWorkerIosSigning(
+    material: ResolvedSigningMaterial,
+    toolPath: string,
+): GameBuildWorkerIosSigning | null {
     if (material.kind !== "ios-apple" || material.p12Password === null) {
         return null;
     }
@@ -273,6 +299,7 @@ export function toWorkerIosSigning(material: ResolvedSigningMaterial): GameBuild
         p12File: material.p12File,
         p12Password: material.p12Password,
         provisioningProfileFile: material.provisioningProfileFile,
+        toolPath,
     };
 }
 
@@ -1072,6 +1099,11 @@ export class GameBuildManager {
         return findings;
     }
 
+    /** Where the vendored iOS signing tool lives on this machine. */
+    private async resolveIosSigningToolPath(): Promise<string> {
+        return iosSigningToolPathFrom(await resolveZsignTool(this.app));
+    }
+
     /**
      * The expiry findings for one credential's certificate.
      *
@@ -1311,7 +1343,9 @@ export class GameBuildManager {
                 });
             }
             const bundleVersion = deriveIosBundleVersion(identity.version);
-            const appleIdentity = input.signing.ios ? toWorkerIosSigning(input.signing.ios) : null;
+            const appleIdentity = input.signing.ios
+                ? toWorkerIosSigning(input.signing.ios, await this.resolveIosSigningToolPath())
+                : null;
             job.ios = {
                 templateAppZipPath: template.iosTemplatePath,
                 outputName: mobileExportFileName("ios", identity.artifactBaseName, identity.version),

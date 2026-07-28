@@ -1,6 +1,11 @@
 import crypto from "crypto";
 import { describe, expect, it } from "vitest";
-import { generateSigningIdentity, loadSigningIdentity } from "./signingIdentity";
+import {
+    describeSigningCertificate,
+    generateSigningIdentity,
+    loadSigningIdentity,
+    toApkSigningIdentity,
+} from "./signingIdentity";
 
 describe("generateSigningIdentity", () => {
     it("produces a loadable RSA key and a matching certificate", () => {
@@ -38,5 +43,42 @@ describe("generateSigningIdentity", () => {
         const fromCert = new crypto.X509Certificate(reloaded.certificateDer)
             .publicKey.export({ type: "spki", format: "der" });
         expect(fromKey.equals(fromCert)).toBe(true);
+    });
+});
+
+describe("toApkSigningIdentity", () => {
+    it("widens the single-certificate debug identity into a one-element chain", () => {
+        const identity = generateSigningIdentity({ serialNumber: Buffer.from([0x11]) });
+        const widened = toApkSigningIdentity(identity);
+        expect(widened.privateKeyPem).toBe(identity.privateKeyPem);
+        expect(widened.certificateChainDerBase64).toEqual([identity.certificateDerBase64]);
+    });
+});
+
+describe("describeSigningCertificate", () => {
+    const identity = generateSigningIdentity({
+        notBefore: new Date(Date.UTC(2020, 0, 1)),
+        notAfter: new Date(Date.UTC(2049, 0, 1)),
+        serialNumber: Buffer.from([0x12]),
+        commonName: "NarraLeaf Debug",
+    });
+
+    it("gives a build log the subject on one line", () => {
+        const { subject } = describeSigningCertificate(Buffer.from(identity.certificateDerBase64, "base64"));
+        expect(subject).toContain("NarraLeaf Debug");
+        expect(subject).not.toContain("\n");
+    });
+
+    it("gives the fingerprint keytool and the Play Console print", () => {
+        const der = Buffer.from(identity.certificateDerBase64, "base64");
+        const { sha256Fingerprint } = describeSigningCertificate(der);
+        const expected = crypto.createHash("sha256").update(der).digest("hex").toUpperCase()
+            .replace(/(..)(?=.)/g, "$1:");
+        expect(sha256Fingerprint).toBe(expected);
+    });
+
+    it("reports the expiry the certificate actually carries", () => {
+        const { notAfter } = describeSigningCertificate(Buffer.from(identity.certificateDerBase64, "base64"));
+        expect(notAfter.toISOString()).toBe("2049-01-01T00:00:00.000Z");
     });
 });

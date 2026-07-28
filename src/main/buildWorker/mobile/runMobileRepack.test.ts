@@ -1,5 +1,6 @@
 import { constants as bufferConstants } from "buffer";
 import { execFileSync } from "child_process";
+import crypto from "crypto";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
@@ -11,6 +12,19 @@ import { verifyApkV2 } from "./apkSigningV2";
 import { validateMobileShellManifest, type MobileShellManifest } from "./mobileShellManifest";
 import { MAX_PAYLOAD_BYTES, payloadExceedsLimit, runMobileRepack } from "./runMobileRepack";
 import { generateSigningIdentity } from "./signingIdentity";
+import {
+    ANDROID_KEYSTORE_ALIAS,
+    ANDROID_KEYSTORE_PASSWORD,
+    ANDROID_RELEASE_JKS_SHA256,
+    ANDROID_RELEASE_P12_SHA256,
+    ANDROID_RELEASE_P12_SUBJECT,
+    APPLE_IDENTITY_PASSWORD,
+    APPLE_PROFILE_BUNDLE_ID,
+    androidReleaseJks,
+    androidReleaseP12,
+    appleIdentityP12,
+    appleProvisioningProfile,
+} from "./signingFixtures";
 import { findMisalignedStoredEntries, parseZipIndex, readEntryBytes, ZIP_METHOD_STORE } from "./zipModel";
 import type { GameBuildWorkerMobileJob } from "../protocol";
 
@@ -324,3 +338,119 @@ describe("runMobileRepack against the real shell templates", () => {
             .rejects.toThrow(/not present in the template/);
     });
 });
+
+/**
+ * The release-keystore fork. The question these answer is not "did signing
+ * succeed" but "*whose* signature is on the package" - and the judge is
+ * keytool's own SHA-256 of the certificate, recorded when the fixture keystore
+ * was made, so a signature by anything else cannot pass.
+ */
+describe("runMobileRepack with an author's release keystore", () => {
+    /** The SHA-256 of the certificate the APK's v2 signature actually carries. */
+    function signerFingerprint(apk: Buffer): string {
+        const result = verifyApkV2(apk);
+        expect(result.verified).toBe(true);
+        return new crypto.X509Certificate(result.certificatesDer![0]).fingerprint256;
+    }
+
+    async function buildWithKeystore(keystore: Buffer, name: string): Promise<Buffer> {
+        const materialDir = await tempDir("nls-keystore-");
+        const keystoreFile = path.join(materialDir, name);
+        await fs.writeFile(keystoreFile, keystore);
+
+        const job = await makeJob();
+        delete job.ios;
+        job.android!.signing = {
+            keystoreFile,
+            alias: ANDROID_KEYSTORE_ALIAS,
+            storePassword: ANDROID_KEYSTORE_PASSWORD,
+            keyPassword: ANDROID_KEYSTORE_PASSWORD,
+        };
+        const outputDir = await tempDir("nls-out-");
+        await runMobileRepack(job, outputDir, log, MTIME);
+        return fs.readFile(path.join(outputDir, "MyGame-1.2.3-android.apk"));
+    }
+
+    it("signs with the PKCS#12 keystore's key, not the machine identity", async () => {
+        const apk = await buildWithKeystore(androidReleaseP12(), "release.p12");
+        expect(signerFingerprint(apk)).toBe(ANDROID_RELEASE_P12_SHA256);
+    });
+
+    it("signs with a JKS keystore's key just as well", async () => {
+        // Format is decided by the file's magic, not its extension - so the same
+        // path has to work for the other container authors actually hold.
+        const apk = await buildWithKeystore(androidReleaseJks(), "release.jks");
+        expect(signerFingerprint(apk)).toBe(ANDROID_RELEASE_JKS_SHA256);
+    });
+
+    it("puts the release certificate's subject into the package", async () => {
+        const apk = await buildWithKeystore(androidReleaseP12(), "release.p12");
+        const certificate = new crypto.X509Certificate(verifyApkV2(apk).certificatesDer![0]);
+        expect(certificate.subject).toContain(ANDROID_RELEASE_P12_SUBJECT);
+    });
+
+    it("uses the machine identity when no release keystore is configured", async () => {
+        const job = await makeJob();
+        delete job.ios;
+        const outputDir = await tempDir("nls-out-");
+        await runMobileRepack(job, outputDir, log, MTIME);
+        const apk = await fs.readFile(path.join(outputDir, "MyGame-1.2.3-android.apk"));
+
+        const expected = new crypto.X509Certificate(
+            Buffer.from(job.android!.signingIdentity.certificateDerBase64, "base64"),
+        ).fingerprint256;
+        expect(signerFingerprint(apk)).toBe(expected);
+        // ...and that is emphatically not the release key.
+        expect(signerFingerprint(apk)).not.toBe(ANDROID_RELEASE_P12_SHA256);
+    });
+
+    it("warns that switching identity breaks installing over an existing copy", async () => {
+        // Android keys an installed app on package name and signature together.
+        // Nobody guesses that from "App not installed", so the build has to say
+        // it - loudly enough to be a warning, not a line of noise.
+        logs.length = 0;
+        await buildWithKeystore(androidReleaseP12(), "release.p12");
+        const warnings = logs.filter(line => line.startsWith("warning:"));
+        expect(warnings.some(line => /uninstall/.test(line))).toBe(true);
+        expect(warnings.some(line => line.includes("App not installed"))).toBe(true);
+        expect(logs.some(line => line.includes(ANDROID_RELEASE_P12_SHA256))).toBe(true);
+        expect(logs.some(line => line.includes(ANDROID_KEYSTORE_ALIAS))).toBe(true);
+    });
+
+    it("never writes a password or a key into the log", async () => {
+        logs.length = 0;
+        await buildWithKeystore(androidReleaseP12(), "release.p12");
+        expect(logs.some(line => line.includes(ANDROID_KEYSTORE_PASSWORD))).toBe(false);
+        expect(logs.some(line => line.includes("PRIVATE KEY"))).toBe(false);
+    });
+
+    it("still detects tampering after release signing", async () => {
+        // The reverse control for every assertion above: if the signature did
+        // not actually cover the payload, matching the fingerprint would mean
+        // nothing.
+        const apk = await buildWithKeystore(androidReleaseP12(), "release.p12");
+        const tampered = Buffer.from(apk);
+        const marker = tampered.indexOf(Buffer.alloc(4096, 7)); // the bgm.ogg payload
+        expect(marker, "payload bytes not found in the APK").toBeGreaterThan(0);
+        tampered[marker] ^= 0xff;
+        expect(verifyApkV2(tampered).verified).toBe(false);
+    });
+
+    it("says which key it could not open, rather than failing anonymously", async () => {
+        const materialDir = await tempDir("nls-keystore-");
+        const keystoreFile = path.join(materialDir, "release.p12");
+        await fs.writeFile(keystoreFile, androidReleaseP12());
+        const job = await makeJob();
+        delete job.ios;
+        job.android!.signing = {
+            keystoreFile,
+            alias: ANDROID_KEYSTORE_ALIAS,
+            storePassword: "wrong",
+            keyPassword: "wrong",
+        };
+        await expect(runMobileRepack(job, await tempDir("nls-out-"), log, MTIME))
+            .rejects.toThrow(/keystore password is incorrect/);
+    });
+});
+
+
