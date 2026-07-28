@@ -4,6 +4,7 @@ import type {
     BlueprintVariable,
     LiteralValue,
 } from "@shared/types/blueprint/document";
+import { listBlueprintEventIds } from "@shared/blueprint/blueprintEventOrder";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { VariableRegistryService } from "@/lib/workspace/services/variables/VariableRegistryService";
@@ -626,6 +627,10 @@ export function BlueprintMemberTree({
     const pageBlueprint = pageBlueprintId ? blueprintDocument.blueprints[pageBlueprintId] : undefined;
 
     const events = blueprint.program.graphs.events ?? {};
+    // Not `Object.keys(events)`: that is the order the record happens to be in, and the
+    // canonical writer sorts it. Both this list and `eventIds[0]` (which layer opens) have
+    // to come off the same reconciliation or they will disagree about layer one.
+    const eventIds = listBlueprintEventIds(blueprint.program.graphs);
 
     const variableGroups = useMemo(
         () =>
@@ -726,10 +731,10 @@ export function BlueprintMemberTree({
                     </button>
                 </div>
                 <ul className="space-y-0.5">
-                    {Object.keys(events).length === 0 ? (
+                    {eventIds.length === 0 ? (
                         <li className="text-fg-subtle">-</li>
                     ) : (
-                        Object.keys(events).map(id => {
+                        eventIds.map(id => {
                             const { errors, warnings } = countForGraph(diagnostics, "event", id);
                             return (
                                 <li key={id}>
