@@ -22,6 +22,7 @@ import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEd
 import type { BlueprintEntryTabPayload } from "../blueprintEntryTabId";
 import type { Blueprint, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import type { StoryDocument } from "@shared/types/story";
+import { listSceneIdsInDocumentOrder } from "@shared/types/story";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
 import { getUIListChildSlot, isListLikeWidgetType } from "@shared/types/ui-editor/list";
@@ -1402,23 +1403,10 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             if (!storyDocument) {
                 continue;
             }
-            const orderedSceneIds: string[] = [];
-            const seenSceneIds = new Set<string>();
-            for (const chapter of storyDocument.chapters) {
-                for (const sceneId of chapter.sceneIds) {
-                    if (!seenSceneIds.has(sceneId) && storyDocument.scenes[sceneId]) {
-                        seenSceneIds.add(sceneId);
-                        orderedSceneIds.push(sceneId);
-                    }
-                }
-            }
-            for (const sceneId of Object.keys(storyDocument.scenes).sort()) {
-                if (!seenSceneIds.has(sceneId)) {
-                    seenSceneIds.add(sceneId);
-                    orderedSceneIds.push(sceneId);
-                }
-            }
-            for (const sceneId of orderedSceneIds) {
+            // This used to compose chapters itself and then `.sort()` the leftovers, because key
+            // order could not be trusted to be stable. Sorting UUIDs is stable but it is not the
+            // author's order; `unassignedSceneIds` now carries that, so the picker can show it.
+            for (const sceneId of listSceneIdsInDocumentOrder(storyDocument)) {
                 const scene = storyDocument.scenes[sceneId];
                 if (!scene) {
                     continue;

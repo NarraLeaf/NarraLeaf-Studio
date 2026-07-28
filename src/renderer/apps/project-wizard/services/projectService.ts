@@ -8,6 +8,7 @@ import { BaseProjectService } from "@/lib/workspace/services/core/ProjectService
 import { join } from "@shared/utils/path";
 import { WindowAppType } from "@shared/types/window";
 import { throwException } from "@shared/utils/error";
+import { EMPTY_ASSET_ORDER_TEXT } from "@/lib/workspace/services/assets/assetOrder";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import {
     DEFAULT_APP_SURFACE_NAME,
@@ -86,6 +87,11 @@ export class ProjectService {
 
                 const groupsPath = this.resolve(basePath, ProjectNameConvention.AssetsGroupsShard(type));
                 throwException(await BaseFileSystemService.write(groupsPath, JSON.stringify({}), "utf-8"));
+
+                // Created here as well as on open, so a new project's first commit already has the
+                // file rather than growing one in the second.
+                const orderPath = this.resolve(basePath, ProjectNameConvention.AssetsOrderShard(type));
+                throwException(await BaseFileSystemService.write(orderPath, EMPTY_ASSET_ORDER_TEXT, "utf-8"));
             }
 
             getInterface().window.closeWith<WindowAppType.ProjectWizard>({ created: true, projectPath: basePath });

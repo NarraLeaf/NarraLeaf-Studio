@@ -1,4 +1,7 @@
 import {
+    deriveUnassignedSceneIds,
+    listSceneBlocksInDocumentOrder,
+    listScenesInDocumentOrder,
     STORY_ANIMATION_SCHEMA_VERSION,
     STORY_DOCUMENT_SCHEMA_VERSION,
     STORY_LIBRARY_INDEX_SCHEMA_VERSION,
@@ -331,13 +334,16 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
     if (version < 10) {
         migrated = migrateStoryDocumentV9toV10(migrated);
     }
+    if (version < 12) {
+        migrated = migrateStoryDocumentV11toV12(migrated);
+    }
     // v4 (the `invalid` block kind and dialogue's `speakerName`), v7 (the block-level `disabled`
     // flag), v8 (the `event` rich-text run) and v11 (a withdrawn marker block - see the version
     // history in document.ts) are purely additive: an older document is already valid at the new
     // version, so there is no step for any of them - only the stamp (a v7 document falls through
-    // every step above and is stamped v11). v9 (M-VAR, the persistent `StoryVariableRef` rename)
-    // and v10 (the character appearance rework - `formName`/`variants` become `pose`/`tags`) are
-    // NOT additive, so each has a real step.
+    // every step above and is stamped v12). v9 (M-VAR, the persistent `StoryVariableRef` rename),
+    // v10 (the character appearance rework - `formName`/`variants` become `pose`/`tags`) and v12
+    // (the explicit order of chapter-less scenes) are NOT additive, so each has a real step.
     //
     // The stamp is unconditional, and has to be. Each migrator above ends by writing
     // STORY_DOCUMENT_SCHEMA_VERSION rather than the version it actually produces, so the ladder only
@@ -346,6 +352,34 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
     // v2 tests kept passing because V2toV3 stamps whatever the constant currently says. Landing the
     // stamp here means the next additive bump cannot reopen that hole.
     return { ...migrated, schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION };
+}
+
+/**
+ * v11→v12: the order of the scenes no chapter claims becomes `unassignedSceneIds`.
+ *
+ * This step exists for one moment and cannot be deferred. `chapters[].sceneIds` orders scenes inside
+ * a chapter; an unclaimed scene's only position was its slot in the `scenes` record, and `JSON.parse`
+ * hands that back in the file's key order - which is the order the author arranged. The canonical
+ * serializer this milestone adopts sorts keys, so the FIRST canonical write of a v11 document
+ * destroys that order permanently. Reading it here, on the object as parsed and before anything has
+ * rebuilt the record, is the only chance to capture it.
+ *
+ * Two caveats worth stating rather than papering over. Integer-like keys (`"0"`, `"12"`) are
+ * reordered ahead of string keys by the engine itself, so a document carrying them lost its order
+ * before this ran - scene ids are UUID v4, so Studio never produces one, but a hand-written document
+ * could. And a document already canonically written by some path that skipped this ladder is past
+ * saving too; that is why the step is gated on the version and not on the field being absent.
+ *
+ * Idempotent by construction: `deriveUnassignedSceneIds` leads with whatever the document already
+ * declares and only falls back to key order for scenes it never mentioned, so running it on a
+ * migrated document reproduces the same array.
+ */
+function migrateStoryDocumentV11toV12(document: StoryDocument): StoryDocument {
+    const unassignedSceneIds = deriveUnassignedSceneIds(document);
+    if (unassignedSceneIds.length === 0) {
+        return document;
+    }
+    return { ...document, unassignedSceneIds };
 }
 
 /**
@@ -807,11 +841,20 @@ export function normalizeStoryDocument(document: StoryDocument, now: string): St
     const entrySceneId = migrated.entrySceneId && scenes[migrated.entrySceneId]
         ? migrated.entrySceneId
         : firstSceneId(chapters);
+    // The only writer of `unassignedSceneIds`. Recomputing here rather than having every chapter
+    // mutation maintain it is the difference between a stale id that self-heals on the next load and
+    // a missed call site that loses an order nothing can reconstruct. It is omitted when empty -
+    // which is nearly every document - so a project that never had a chapter-less scene carries no
+    // trace of the field and no diff line for it.
+    const normalized: StoryDocument = { ...migrated, chapters, scenes, entrySceneId };
+    const unassignedSceneIds = deriveUnassignedSceneIds(normalized);
+    if (unassignedSceneIds.length > 0) {
+        normalized.unassignedSceneIds = unassignedSceneIds;
+    } else {
+        delete normalized.unassignedSceneIds;
+    }
     return {
-        ...migrated,
-        chapters,
-        scenes,
-        entrySceneId,
+        ...normalized,
         meta: {
             ...migrated.meta,
             updatedAt: migrated.meta?.updatedAt ?? now,
@@ -1455,8 +1498,8 @@ export function isBlockDisabled(scene: StoryScene, block: StoryBlock): boolean {
 
 export function collectInvalidBlocks(document: StoryDocument): InvalidStoryBlockRef[] {
     const found: InvalidStoryBlockRef[] = [];
-    for (const scene of Object.values(document.scenes)) {
-        for (const block of Object.values(scene.blocks)) {
+    for (const scene of listScenesInDocumentOrder(document)) {
+        for (const block of listSceneBlocksInDocumentOrder(scene)) {
             // A disabled invalid row (or one under a disabled container) is compiled out, so the build
             // does not gate on it — that is exactly what disabling a half-written line is for.
             if (block.kind === "invalid" && !isBlockDisabled(scene, block)) {
@@ -1492,8 +1535,11 @@ export type TempSpeakerRef = {
  */
 export function collectTempSpeakers(document: StoryDocument): TempSpeakerRef[] {
     const byName = new Map<string, TempSpeakerRef>();
-    for (const scene of Object.values(document.scenes)) {
-        for (const block of Object.values(scene.blocks)) {
+    // "First appearance" is a claim about the script, so both loops have to walk the declared order.
+    // Read out of the records instead and the first line to name a speaker is whichever one the JSON
+    // happened to hold first, which after a canonical write means whichever block has the lowest id.
+    for (const scene of listScenesInDocumentOrder(document)) {
+        for (const block of listSceneBlocksInDocumentOrder(scene)) {
             if (block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
                 continue;
             }

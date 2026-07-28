@@ -38,6 +38,7 @@ import { AssetsService } from "../core/AssetsService";
 import { AssetLockReason } from "../assets/AssetLockManager";
 import { EventEmitter } from "../ui/EventEmitter";
 import { findDeclarationBlock } from "@shared/types/story/declarations";
+import { listSceneIdsInDocumentOrder } from "@shared/types/story/order";
 import { assertValidStoryId } from "@shared/utils/storyId";
 import {
     createChapter as createStoryChapterModel,
@@ -697,9 +698,12 @@ export class StoryService extends Service<StoryService> implements IStoryService
         input: { name: string; valueType: StoryVariableValueType; defaultValue?: StoryLiteralValue },
     ): StorySavedVariableDefinition | null {
         const document = this.getStoryDocument(storyId);
+        // Where a saved variable's declaration row lands. Falling back to key order would move a new
+        // variable's row into an arbitrary scene once the record is rewritten, so it follows the
+        // author's scene order instead.
         const homeSceneId = document.entrySceneId && document.scenes[document.entrySceneId]
             ? document.entrySceneId
-            : Object.keys(document.scenes)[0];
+            : listSceneIdsInDocumentOrder(document)[0];
         return homeSceneId ? this.createDeclaration(storyId, homeSceneId, "saved", input) : null;
     }
 

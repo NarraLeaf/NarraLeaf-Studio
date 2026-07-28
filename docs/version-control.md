@@ -104,6 +104,26 @@ esbuild 静态分析跟不进去，自然不会打包它。
 
 electron-builder **不需要改**：[electron-builder.yml](../electron-builder.yml) 已有 `asarUnpack: node_modules/**/*`，原生库不会被封进 asar。这是最容易翻车的一步，Studio 已经免疫。
 
+### 2.4 工作集：`.loreignore` 是 Lore 自己的能力
+
+**本文此前的隐含前提是「排除得由调用方解决」——那是错的。** Lore 支持 `.loreignore`，实测语义
+（v0.8.5，靠 DLL 字符串定位到 `lore-revision/src/filter.rs` + `glob-match`，再用真库逐条验证）：
+
+| 行为 | 实测 |
+|---|---|
+| 被排除的路径发 **`FILTER_EXCLUDE`(102)**，不是 `PATH_IGNORE`(130) | 所以 `stage` 不会因此抛错，§4.5 的仓库外守卫仍然完整 |
+| 单段模式**任意深度**匹配 | `dist` 也会排除 `sub/dist`；要锚定根就写 `/dist/` |
+| 多段模式根锚定；`*.ext` 任意深度 | |
+| `#` 注释与空行无效力；`!` 取反可用 | |
+| `.lore/` 天然排除；**点目录不天然排除** | `.nlstudio/plugins/x.js` 不写进忽略文件就会被提交——已用差分实测：**不写忽略文件时它确实进了提交** |
+| `repositoryStatus` 同样遵守 | |
+| 忽略文件自身进版本库 | 策略随 clone 传播 |
+
+所以 `stage(globals, [root])` 一次调用即可，**不需要传显式路径清单**，也就没有几千个路径塞进
+一个 `LoreStringArray` 的规模问题。策略表在
+[workingSet.ts](../src/main/app/application/managers/vcs/workingSet.ts)，谓词与忽略文件由**同一张表**生成，
+两者不可能漂移。
+
 ### 2.3 进程模型
 
 **全部 Lore 调用必须在主进程**——原生 FFI，渲染进程碰不到。
@@ -305,6 +325,49 @@ store handle 开着的时候，第二个进程访问同一仓库会**一直等**
 
 也就是说「拿 status 的结果去 stage」这个最自然的写法，是坏的。任何把状态输出回喂给暂存的地方
 都必须转换。TypeScript 类型两边都是 `string`，不会拦你。
+
+### 4.17 `repositoryStatus(scan)` 不是纯读操作
+
+**扫描会写状态。** 扫描时发现一个**新目录**，Lore 会把它记进暂存状态；之后把该目录删掉，
+接下来整个 session 都会把它报成删除——尽管它从未被提交过。
+
+对照实验（同样的文件操作、同样的最终磁盘状态，只差中间一次扫描）：
+
+```
+不调用中间扫描 -> []
+调用了中间扫描 -> ["fresh:2", "fresh/inner.txt:2"]     // 2 = DELETE
+```
+
+新文件落在**已跟踪的目录**里不会有这个效果，是**目录**才会。
+
+后果是硬的：**状态查询不能挂定时器轮询。** 作者中途建了个临时目录又删掉，两次轮询之间就会在
+他的变更列表里留下不存在的删除项；他若照着提交，提交的是从未存在过的东西的删除。UI 只能按需
+扫描，V2 的定时检查点也不能靠"定时扫一遍看有没有变化"来判断是否需要提交。
+
+### 4.18 `LoreFileAction` 没有 MODIFY 这个成员
+
+```
+KEEP=0  ADD=1  DELETE=2  MOVE=3  COPY=4
+```
+
+**改过内容的文件报的是 `KEEP`(0)**，同时 `summary.modifies` 加一、`dirty` 为真。把 `action`
+读成"没变"会让**项目里每一处编辑从状态列表里消失**。实测确认。
+
+另外：重命名报成 delete + add，`summary.moves` 为 0 且 `fromPath` 为空——**不是** MOVE。
+MOVE/COPY 只有走显式的移动 verb 才会出现。
+
+### 4.19 §4.15 补充：暂存之后没有提交，release 之前还要 flush
+
+§4.15 说「关 store 不等于放开仓库，还得 `repositoryRelease`」。实测补充：**`stage` 之后若没有
+跟一次 commit，只调 `repositoryRelease` 仍然删不掉目录**，要先 `flushRepository`。带 commit 的
+同一串调用则正常释放。
+
+也就是说安全的收尾顺序是 **flush → closeStore → release**，而不是只在写路径末尾 flush。
+
+### 4.20 `REPOSITORY_CREATE` 事件里的 path 在 Windows 上是正斜杠
+
+`LoreRepositoryCreatePayload.path` 返回 `C:/Users/...` 形态，与 `path.join` 产出的根路径不可
+直接比较。当成展示值，别当成路径键。
 
 ## 5. 服务端策略
 

@@ -9,6 +9,7 @@ import { FontService } from "../assets/FontService";
 import { ImageService } from "../assets/ImageService";
 import { JSONService } from "../assets/JSONService";
 import { BlueprintService } from "../assets/BlueprintService";
+import { AssetOrderManager } from "../assets/mgr/AssetOrderManager";
 import { AssetsMetadataManager } from "../assets/mgr/AssetsMetadataManager";
 import { EditorRemoteCacheManager } from "../assets/mgr/EditorRemoteCacheManager";
 import { GroupAssetsManager } from "../assets/mgr/GroupAssetsManager";
@@ -49,6 +50,7 @@ const THUMBNAIL_DIMENSION = 160;
 
 export class AssetsService extends Service<AssetsService> implements IAssetService {
     private assetsMetadataManager: AssetsMetadataManager | null = null;
+    private assetOrderManager: AssetOrderManager | null = null;
     private localAssetsManager: LocalAssetsManager | null = null;
     private groupAssetsManager: GroupAssetsManager | null = null;
     private remoteAssetsManager: RemoteAssetsManager | null = null;
@@ -78,6 +80,8 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
      */
     private batchDepth = 0;
     private dirtyTypes = new Set<AssetType>();
+    /** Types whose `assets.order.<type>.json` is behind the shards it orders. */
+    private dirtyOrderTypes = new Set<AssetType>();
     private assetsMetadataInitializing = false;
 
     public getFileFormatValidator(): FileFormatValidator {
@@ -119,13 +123,26 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
 
     public markDirty(type: AssetType): void {
         this.dirtyTypes.add(type);
+        // Adding or removing an asset changes the row order too, and the two live in different files.
+        this.dirtyOrderTypes.add(type);
         if (this.batchDepth === 0 && !this.assetsMetadataInitializing) {
             void this.flushPendingWrites();
         }
     }
 
     /**
-     * Write the metadata shards that changed.
+     * Queue the sibling order file without rewriting the metadata shard — what a group mutation
+     * needs, since it has already written its own shard and only the order has moved.
+     */
+    public markOrderDirty(type: AssetType): void {
+        this.dirtyOrderTypes.add(type);
+        if (this.batchDepth === 0 && !this.assetsMetadataInitializing) {
+            void this.flushPendingWrites();
+        }
+    }
+
+    /**
+     * Write the metadata shards that changed, and the order files that go with them.
      *
      * Failures used to vanish here: `writeAssetsMetadata` returns an `FsRequestResult` and this
      * dropped it, so a shard that could not be written was still marked clean and the library
@@ -134,14 +151,46 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
      * toast / "Storage" console line).
      */
     private async flushPendingWrites(): Promise<void> {
-        if (this.dirtyTypes.size === 0) return;
-        const types = Array.from(this.dirtyTypes);
-        this.dirtyTypes.clear();
-        const results = await Promise.all(types.map(async type => ({ type, result: await this.writeAssetsMetadata(type) })));
+        if (this.dirtyTypes.size > 0) {
+            const types = Array.from(this.dirtyTypes);
+            this.dirtyTypes.clear();
+            const results = await Promise.all(types.map(async type => ({ type, result: await this.writeAssetsMetadata(type) })));
+            for (const { type, result } of results) {
+                if (!result.ok) {
+                    this.dirtyTypes.add(type);
+                    console.warn(`[AssetsService] failed to write ${type} metadata: ${result.error.message}`);
+                }
+            }
+        }
+
+        await this.flushPendingOrderWrites();
+    }
+
+    /**
+     * An order file names both an asset order and a group order, so it can only be written once both
+     * managers are up. Until then the types stay queued rather than being written half-known: an
+     * order file claiming a type has no groups would, after the shards are canonicalized, be
+     * indistinguishable from one that had recorded their order.
+     */
+    private async flushPendingOrderWrites(): Promise<void> {
+        if (this.dirtyOrderTypes.size === 0 || !this.assetOrderManager || !this.assetsMetadataManager || !this.groupAssetsManager) {
+            return;
+        }
+
+        const metadataManager = this.assetsMetadataManager;
+        const groupManager = this.groupAssetsManager;
+        const orderManager = this.assetOrderManager;
+        const types = Array.from(this.dirtyOrderTypes);
+        this.dirtyOrderTypes.clear();
+
+        const results = await Promise.all(types.map(async type => ({
+            type,
+            result: await orderManager.write(type, metadataManager.listOrdered(type), groupManager.listOrderedGroups(type)),
+        })));
         for (const { type, result } of results) {
             if (!result.ok) {
-                this.dirtyTypes.add(type);
-                console.warn(`[AssetsService] failed to write ${type} metadata: ${result.error.message}`);
+                this.dirtyOrderTypes.add(type);
+                console.warn(`[AssetsService] failed to write ${type} asset order: ${result.error.message}`);
             }
         }
     }
@@ -164,6 +213,11 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         // Initialize file format validator
         this.fileFormatValidator = new FileFormatValidator();
         
+        // Before the shard managers: each of them reads its half of the row order from here, and a
+        // project that has no order file yet must fall back to its shards' key order, which is only
+        // still the author's order for as long as nothing has rewritten those shards.
+        this.assetOrderManager = await new AssetOrderManager(ctx).init();
+
         const assetsMetadataManager = new AssetsMetadataManager(this, ctx);
         this.assetsMetadataManager = assetsMetadataManager;
         this.assetsMetadataInitializing = true;
@@ -172,6 +226,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         } catch (error) {
             this.assetsMetadataManager = null;
             this.dirtyTypes.clear();
+            this.dirtyOrderTypes.clear();
             throw error;
         } finally {
             this.assetsMetadataInitializing = false;
@@ -179,10 +234,26 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         await this.flushPendingWrites();
 
         this.groupAssetsManager = await new GroupAssetsManager(this, ctx).init();
+
+        // Both halves are known now, so the order recovered from key order can be committed. This is
+        // the migration for a project that predates the order file, and it has to happen on this
+        // open: once a shard is rewritten with sorted keys there is nothing left to recover from.
+        for (const type of this.assetOrderManager.listMissingTypes()) {
+            this.dirtyOrderTypes.add(type);
+        }
+        await this.flushPendingWrites();
+
         this.localAssetsManager = await new LocalAssetsManager(this, ctx).init();
         this.editorRemoteCacheManager = await new EditorRemoteCacheManager(ctx).init();
         await this.ensureThumbnailRoot();
         this.remoteAssetsManager = await new RemoteAssetsManager(this, ctx, this.editorRemoteCacheManager).init();
+    }
+
+    public getAssetOrderManager(): AssetOrderManager {
+        if (!this.assetOrderManager) {
+            throw new RendererError("Asset order manager not initialized");
+        }
+        return this.assetOrderManager;
     }
 
     public getAssetsMetadataManager(): AssetsMetadataManager {
@@ -222,6 +293,14 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
 
     public getAssets(): AssetsMap {
         return this.getAssetsMetadataManager().getAssets();
+    }
+
+    /**
+     * Assets of `type` in browser order. Prefer this over `Object.values(getAssets()[type])`, whose
+     * key order stops being the author's the moment a shard is written with sorted keys.
+     */
+    public getOrderedAssets<T extends AssetType>(type: T): Asset<T, AssetSource>[] {
+        return this.getAssetsMetadataManager().getOrderedAssets(type);
     }
 
     public list<T extends AssetType>(type: T): string[] {

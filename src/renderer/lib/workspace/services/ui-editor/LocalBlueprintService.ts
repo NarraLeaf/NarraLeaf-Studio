@@ -26,6 +26,12 @@ import {
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
 } from "@shared/types/blueprint/graph";
+import {
+    captureBlueprintEventOrder,
+    captureBlueprintFunctionOrder,
+    listBlueprintEventIds,
+    listBlueprintFunctionIds,
+} from "@shared/blueprint/blueprintEventOrder";
 import type { UIDocument, UIElement, UIElementValueBindingValueType } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import type { VariableRegistry, VariableRegistryEntry } from "@shared/types/variables/registry";
@@ -649,6 +655,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 blueprint.program.graphs.events = {
                     onCall: { id: "onCall", name: "On Call", graph },
                 };
+                captureBlueprintEventOrder(blueprint.program.graphs);
             }
             doc.blueprints[id] = blueprint;
             registerPrivateBlueprintAsActive(doc, key, id, "visual");
@@ -1228,7 +1235,8 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 throw new RendererError(`Blueprint ${blueprintId} is not a graph program`);
             }
             const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
-            const prev = bp.program.graphs.events[eventId];
+            const graphs = bp.program.graphs;
+            const prev = graphs.events[eventId];
             const graphIr = ensureBlueprintEventGraphIrStructure(prev?.graph ?? undefined, () => uuid.generate());
             const next: BlueprintEventGraph = {
                 id: eventId,
@@ -1236,7 +1244,10 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 graph: graphIr,
                 meta: prev?.meta,
             };
-            bp.program.graphs.events[eventId] = next;
+            graphs.events[eventId] = next;
+            // A new layer joins the end of the author's list; an upsert of an existing one
+            // keeps its place, because the reconciliation only appends what is unlisted.
+            captureBlueprintEventOrder(graphs);
         });
     }
 
@@ -1251,21 +1262,26 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             if (!bp || bp.program.kind !== "graph") {
                 return;
             }
-            if (bp.program.graphs.events[slotId]) {
+            const graphs = bp.program.graphs;
+            if (graphs.events[slotId]) {
                 return;
             }
-            const legacy = bp.program.graphs.events[legacyEventId];
+            const legacy = graphs.events[legacyEventId];
             if (!legacy) {
                 return;
             }
-            bp.program.graphs.events[slotId] = {
+            // The adopted layer takes the legacy one's place rather than being appended:
+            // re-keying a layer is not the author moving it down the list.
+            const adopted = listBlueprintEventIds(graphs).map(id => (id === legacyEventId ? slotId : id));
+            graphs.events[slotId] = {
                 ...legacy,
                 id: slotId,
                 name: legacy.name ?? displayName,
             };
             if (legacyEventId !== slotId) {
-                delete bp.program.graphs.events[legacyEventId];
+                delete graphs.events[legacyEventId];
             }
+            graphs.eventIds = adopted;
         });
     }
 
@@ -1291,6 +1307,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 return;
             }
             delete bp.program.graphs.events[eventId];
+            captureBlueprintEventOrder(bp.program.graphs);
         });
     }
 
@@ -1299,7 +1316,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         if (!bp || bp.program.kind !== "graph") {
             return [];
         }
-        return Object.keys(bp.program.graphs.events ?? {});
+        return listBlueprintEventIds(bp.program.graphs);
     }
 
     public ensureFunctionGraph(blueprintId: string, functionId: string, displayName?: string): void {
@@ -1312,7 +1329,8 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 throw new RendererError(`Blueprint ${blueprintId} is not a graph program`);
             }
             const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
-            const prev = bp.program.graphs.functions[functionId];
+            const graphs = bp.program.graphs;
+            const prev = graphs.functions[functionId];
             const graphIr = ensureBlueprintFunctionGraphIrStructure(prev?.graph ?? undefined, () => uuid.generate());
             const next: BlueprintFunctionGraph = {
                 id: functionId,
@@ -1320,7 +1338,8 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 graph: graphIr,
                 meta: prev?.meta,
             };
-            bp.program.graphs.functions[functionId] = next;
+            graphs.functions[functionId] = next;
+            captureBlueprintFunctionOrder(graphs);
         });
     }
 
@@ -1331,6 +1350,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 return;
             }
             delete bp.program.graphs.functions[functionId];
+            captureBlueprintFunctionOrder(bp.program.graphs);
         });
     }
 
@@ -1339,7 +1359,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         if (!bp || bp.program.kind !== "graph") {
             return [];
         }
-        return Object.keys(bp.program.graphs.functions ?? {});
+        return listBlueprintFunctionIds(bp.program.graphs);
     }
 
     public updateEventGraphIr(
