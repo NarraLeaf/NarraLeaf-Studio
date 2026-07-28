@@ -234,12 +234,19 @@ signtool 的命令行，同用户的其他进程可以在进程列表里看到�
 
 ### 5.2 Android — release keystore
 
-- 新 `src/main/buildWorker/mobile/keystoreReader.ts`：读 PKCS#12 与 JKS，产出
-  `{privateKeyPem, certificateChainDer[]}`，即 `SigningIdentity` 的超集。
-  - **依赖决策（待拍板，见 §8）**：PKCS#12 的 PBES1 里有 `pbeWithSHAAnd40BitRC2-CBC`，
-    而 RC2 在 OpenSSL 3 的默认 provider 里没有，Node 也调不到 → 要么自己实现 RC2
-    （RFC 2268，约 100 行），要么引入 `node-forge`（BSD-3-Clause OR GPL-2.0）。
-    JKS 格式简单（magic `0xFEEDFEED` + SHA-1 密钥流），无论如何自写。
+- ✅ **已完成**：`src/main/buildWorker/mobile/keystoreReader.ts` + `rc2.ts`（commit `120d0966`）。
+  读 PKCS#12 与 JKS，产出 `SigningIdentity & { certificateChainDerBase64[], alias }`，
+  链是 leaf-first 且由私钥与签发关系**重新推导**，不信文件顺序。RC2 按 RFC 2268 自写
+  （8 组官方向量双向对拍），未引 node-forge。
+  - **⚠ 格式必须按魔数判定，不能按扩展名**：Android Studio 把 PKCS#12 写进名为 `.jks`
+    的文件里，按扩展名分派会把最常见的那种情况路由错。文件选择器要同时接受
+    `.jks/.keystore/.p12/.pfx`，且**不得**因扩展名拒绝。
+  - **⚠ `signApkV2` 的接口要改成收 leaf-first 的证书链**，`verifyApkV2` 比对
+    `certificates[0]` 而不是「那张证书」。
+  - 已知无解的歧义：口令错与文件损坏**在构造上不可区分**（都只是 MAC 校验失败）。
+    提示语以口令为先、损坏为次，不靠「跳过完整性校验继续解析」去编一个区分依据。
+  - 已知跨工具风险：PBES2 按 UTF-8 哈希口令，PBES1 与 MAC 按 UTF-16BE——
+    非 ASCII 口令在 OpenSSL 与 Java 写出的库之间可能对不上。值一句 UI 文案。
 - `signApkV2`（`apkSigningV2.ts:190`）目前只带单张自签证书；扩成接受证书链。
 - `GameBuildManager.ts:855` 的身份解析分叉：配了 release 凭据用它，否则维持 debug 身份。
   **必须在日志里说清换了签名身份**——同包名换签名会导致设备上「应用未安装」，用户需要先卸载。
@@ -371,5 +378,5 @@ S2 / S3 / S4 / S5 互不依赖，可并行派发。
 | 问题 | 裁决 |
 | --- | --- |
 | 下载并本机运行 zsign v1.1.1 | **批准**。pin 版本 + 对照上游 `SHA256SUMS.txt` 校验后才解包，校验和写死进 vendoring 脚本。 |
-| PKCS#12 解析 | **自写解析器**，不引 node-forge。只覆盖 keytool 与 Android Studio 实际产出的算法组合，RC2 按 RFC 2268 实现。 |
+| PKCS#12 解析 | **自写解析器**，不引 node-forge。只覆盖 keytool 与 Android Studio 实际产出的算法组合，RC2 按 RFC 2268 实现。**已落地并验收**（见 §5.2）：openssl 在本机连 RC2-40 的库都打不开，所以我用 keytool 造了一个真 RC2-40 的 keystore，拿 keytool 自己报的 SHA-256 指纹当独立 oracle，与读取器提取的证书逐位一致，私钥也通过 `checkPrivateKey` + 真实签验。 |
 | SHA256SUMS | **无条件生成**，覆盖该次构建的全部产物（不限 Linux）。
