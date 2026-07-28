@@ -353,12 +353,30 @@ zsign `-x` 导出元数据交叉核对。**真机安装本机无法验证，明�
 | **S0.5** | `keystoreReader.ts` + `rc2.ts`：PKCS#12 / JKS 读取。 | ✅ `120d0966` | 已验收：openssl 本机开不了 RC2-40，改用 keytool 造真 RC2-40 库并以其 SHA-256 指纹当独立 oracle，逐位一致 |
 | **S4a** | zsign vendoring：构建期下载校验、`resources/codesign/`、运行时解析。 | ✅ `41c732f6` | 已验收：落地 exe 与手工核验的资产 sha256 相同、二次运行 no-op、改坏一字节会重新拉取、排除 glob 只吃 codesign 树 |
 | **S1a** | 工程侧 `signing` 配置、worker 协议、凭据解析、preflight 新码、i18n。 | ✅ `20233d3e` | 已验收：三个 tsc 项目干净、失败即抛不降级、种类不匹配被拦、全仓确认无密码流向控制台 |
-| **S1b** | BuildDialog Signing 段、凭据导入、PKCS#12 证书检视。 | 🔄 进行中 | Signing 段真实渲染（S1a 已把三条 unsigned 发现挪进去，没有这一段它们无处显示）；到期码点亮 |
-| **S2** | Windows Authenticode：三种凭据映射、signtool 发现器。 | 🔄 进行中 | `signtool verify` + `Get-AuthenticodeSignature` 断言签名者；翻字节必须 `HashMismatch` |
-| **S5** | SHA256SUMS（无条件）+ GPG 分离签名 + gpg 发现器。 | 🔄 进行中 | `gpg --verify` 通过 + 翻字节 BAD |
-| **S3** | Android release keystore：证书链、身份分叉、换签名警告。 | 🔄 进行中 | 自写验签器绿 + 翻字节 MISMATCH；CI apksigner 断言签名者 |
-| **S4b** | iOS：zsign 调用、临时无口令 p12、描述文件解析。 | 🔄 进行中 | 签名 IPA 结构断言全绿 + `verify.js` 分页哈希反向对照 |
-| **S6** | 端到端手测（用 `D:/Temp/nls-mobile-probe/WinMobileProbe`）、文档、handoff 给 mac 批次。 | ⏸ | orchestrator 亲眼验收，不认代理报告 |
+| **S1b** | BuildDialog Signing 段、凭据导入、PKCS#12 证书检视。 | ✅ `1736dc00` | 已验收：到期码不再是黑的（拿一张 2025-01 就过期的证书验过），无口令时仍拒绝猜测 |
+| **S2** | Windows Authenticode：三种凭据映射、signtool 发现器。 | ✅ `72d4c7b9` | 已验收：真 exe 经 `signtool verify` 与 `Get-AuthenticodeSignature`，翻字节 → `HashMismatch` |
+| **S5** | SHA256SUMS（无条件）+ GPG 分离签名 + gpg 发现器。 | ✅ `72d4c7b9` | 已验收：`gpg --verify` 通过 + 翻字节 BAD |
+| **S3** | Android release keystore：证书链、身份分叉、换签名警告。 | ✅ `36f5d6b4` | 已验收：用我自己造的 keystore，v2 块里的证书指纹与 keytool 逐位一致；翻字节被拒 |
+| **S4b** | iOS：zsign 调用、临时无口令 p12、描述文件解析。 | ✅ `36f5d6b4` | 已验收：产物交给我自己写的 `verify.js`，53 页全中；翻字节 page 0 立刻断 |
+| **S6** | 端到端手测（用 `D:/Temp/nls-sign-probe/WinMobileProbe`）、文档、handoff 给 mac 批次。 | 🔄 | orchestrator 亲眼验收，不认代理报告 |
+
+### 收尾时的三处订正（orchestrator 亲手改，非代理产出）
+
+1. **preflight 与签名步骤各有一份 gpg 发现器**，preflight 那份找不到 Git for Windows 里的 gpg
+   —— 在这台机器上它会以 error 级挡住一个其实签得成的构建。已合并成一份。
+   教训通用：**同一个问题有两处答案，迟早会答得不一样**，而且不一致的那一天多半是在用户机器上。
+2. **证书到期检查形同虚设**：它不带口令去看 PKCS#12，只会得到「格式不支持」然后闭嘴——
+   一张已经过期的证书会一声不吭地放过去。现在它解封凭据再读。
+3. **iOS 工具路径改由 manager 解析并写进协议**。代理为了不碰协议，在 worker 里重新推导了
+   `resources/` 的位置；那段推导的**打包态分支恰恰是本机无法验证的那一支**，一旦打包布局变了，
+   坏的会是发布版而不是任何一次测试。协议里本来就写着「所有路径由 manager 解析后再 fork」。
+
+### 两处采纳的代理判断
+
+- **不做 `zsign -C` 事后自检**：它的帮助里写着要查 OCSP 吊销状态，也就是每次签名都要联网，
+  而且没人宣告过。离线替代已就位（描述文件到期检查 + 证书主题/有效期进日志）。
+- **只签 sha256**，不跟 electron-builder 默认的 sha1+sha256 双签：sha1 那一趟要多一次
+  非 RFC3161 的时间戳往返，换来一个 Windows 早就不信的签名。
 
 ## 7. 风险
 
