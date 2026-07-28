@@ -290,6 +290,12 @@ export const workspace = {
             consoleFailed: "写入失败（{code}，第 {attempt} 次尝试）：{path} - {error}",
             consoleRecovered: "写入成功：{path}",
             flushFailed: "{label} 刷盘失败：{error}",
+            // 读取侧：文件在盘上，但读不懂。文案先说「没发生什么」——这时作者最怕的是「Studio 把我的东西吃了」。
+            unreadableTitle: "无法读取 {file}",
+            unreadableDetail: "{reason} 文件保持原样，没有任何内容被覆盖。",
+            unreadableDetailQuarantined: "{reason} 文件保持原样，其副本已保存在 {path}。",
+            consoleUnreadable: "读取失败（{kind}）：{path} - {reason}",
+            consoleQuarantined: "已保留无法读取的文件副本：{path}",
             // 自动保存对象的名称，刷盘失败时使用。
             stores: {
                 uiDocument: "界面文档",

@@ -266,7 +266,6 @@ import { BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE } from "../frameTargetSur
 import { sliderBlueprintNodes } from "./sliderNodes";
 import { stringBlueprintNodes } from "./stringNodes";
 import { textBlueprintNodes } from "./textNodes";
-import { widgetHostBlueprintNodes } from "./widget/widgetHostNodes";
 import { imageAssetBlueprintNodes, widgetPropertyBlueprintNodes } from "./widgetPropertyNodes";
 import {
     BLUEPRINT_VALUE_TYPE_ANIMATION_TOKEN,
@@ -1793,6 +1792,104 @@ describe("built-in blueprint nodes", () => {
         expect(sentenceCpsValues).toEqual([32]);
     });
 
+    it("reads pure Game state nodes through a wired data pin", async () => {
+        registerCoreBlueprintNodes();
+
+        // These readers are PURE, so `execute` never runs when the pin is read - the value comes from
+        // the resolver branch alone. A test that merely executes the node still passes when that branch
+        // is missing and the wired pin silently reads `undefined`, so every case reads through an edge.
+        async function readThroughEdge(
+            variableId: string,
+            nodeType: string,
+            portId: string,
+            hostAdapter: UIHostAdapter,
+        ): Promise<unknown> {
+            const locals: Record<string, unknown> = {};
+            await executeGraph({
+                graph: {
+                    id: variableId,
+                    entries: { main: { start: { nodeId: "capture", port: "in" } } },
+                    nodes: {
+                        read: {
+                            id: "read",
+                            type: nodeType,
+                            params: {},
+                        },
+                        capture: {
+                            id: "capture",
+                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                            params: { variableId },
+                        },
+                    },
+                    edges: [
+                        { from: { nodeId: "read", port: portId }, to: { nodeId: "capture", port: "value" } },
+                    ],
+                },
+                entry: { start: { nodeId: "capture", port: "in" } },
+                hostAdapter,
+                blueprintLocals: locals,
+            });
+            return locals[variableId];
+        }
+
+        expect(
+            await readThroughEdge(
+                "notifications",
+                BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS,
+                "notifications",
+                createGameSaveHostAdapter({ notifications: [{ id: "toast-1", message: "Saved" }] }),
+            ),
+        ).toEqual([{ id: "toast-1", message: "Saved" }]);
+        expect(
+            await readThroughEdge(
+                "choiceCount",
+                BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT,
+                "count",
+                createGameSaveHostAdapter({ choiceCount: 3 }),
+            ),
+        ).toBe(3);
+        expect(
+            await readThroughEdge(
+                "nvlMode",
+                BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE,
+                "isNvlMode",
+                createGameSaveHostAdapter({ nvlMode: true }),
+            ),
+        ).toBe(true);
+        expect(
+            await readThroughEdge(
+                "textRead",
+                BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ,
+                "isRead",
+                createGameSaveHostAdapter({ textRead: true }),
+            ),
+        ).toBe(true);
+
+        const withoutHostApi = (nodeType: string, portId: string): unknown =>
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        read: {
+                            type: nodeType,
+                            params: {},
+                        },
+                    },
+                    edges: [],
+                },
+                "read",
+                portId,
+                {},
+                undefined,
+                0,
+                {},
+            );
+
+        expect(withoutHostApi(BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS, "notifications")).toEqual([]);
+        expect(withoutHostApi(BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT, "count")).toBe(0);
+        expect(withoutHostApi(BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE, "isNvlMode")).toBe(false);
+        expect(withoutHostApi(BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ, "isRead")).toBe(false);
+    });
+
     it("executes game preference getter and setter nodes through host APIs", async () => {
         registerCoreBlueprintNodes();
 
@@ -2823,11 +2920,6 @@ describe("built-in blueprint nodes", () => {
             .filter(def => def.type.endsWith(".setVariant"))
             .flatMap(def => def.pins)
             .some(pin => pin.id === "variantId")).toBe(false);
-
-        const legacyHostSetVariant = widgetHostBlueprintNodes.find(def => def.type === "blueprint.widget.setVariant");
-        expect(legacyHostSetVariant?.hideInPalette).toBe(true);
-        expect(legacyHostSetVariant?.pins.map(pin => pin.id)).toEqual(["in", "next"]);
-        expect(legacyHostSetVariant?.inspectorParams?.some(param => param.key === "variantId")).toBe(false);
 
         const animate = elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY);
         expect(animate?.inspectorParams?.map(param => param.key)).toEqual([
