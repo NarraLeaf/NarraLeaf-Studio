@@ -6,6 +6,8 @@
  * Comments in English per project convention.
  */
 
+import { loadDocument, saveDocument, type DocumentStorage } from "@shared/documents/documentIo";
+import { localizationDocumentSpec, localizationKeysSpec } from "@shared/documents/specs";
 import { RendererError } from "@shared/utils/error";
 import {
     LocalizationConfiguration,
@@ -19,17 +21,15 @@ import {
     createEmptyLocalizationKeysDocument,
     isValidLocaleCode,
     isValidLocalizationKeyName,
-    normalizeLocalizationDocument,
-    normalizeLocalizationKeysDocument,
 } from "@shared/types/localization";
 import { hashSourceText } from "@shared/utils/localizationText";
 import type { TranslationCsvRow } from "@shared/utils/localizationCsv";
 import type { StoryDocument } from "@shared/types/story";
-import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
 import { ILocalizationService, Services, WorkspaceContext } from "../services";
 import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver } from "../autosave/DebouncedSaver";
-import { registerAutoSaver } from "../autosave/SaveStatusService";
+import { registerAutoSaver, reportUnreadableDocument } from "../autosave/SaveStatusService";
+import { createProjectDocumentStorage } from "../core/DocumentStorage";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { EventEmitter } from "../ui/EventEmitter";
@@ -201,25 +201,18 @@ export class LocalizationService extends Service<LocalizationService> implements
         if (cached) {
             return cached;
         }
-        const fs = this.getFileSystem();
-        const path = this.getDocumentPath(locale);
-        const exists = await fs.isFileExists(path);
-        if (!exists.ok) {
-            throw new RendererError(exists.error.message || `Failed to access translations: ${locale}`);
+        const result = await loadDocument(localizationDocumentSpec, this.storage(), this.getDocumentPath(locale));
+
+        // A present-but-unreadable file throws instead of degrading to empty, and - the part that
+        // matters - is not cached: an "empty" document in the cache is one edit away from being
+        // auto-saved over a file full of translations nobody could read.
+        if (result.status === "corrupt") {
+            reportUnreadableDocument(this.getContext(), result);
+            throw new RendererError(`Failed to read translations for ${locale}: ${result.error.reason}`);
         }
-        let document: LocalizationDocument;
-        if (!exists.data) {
-            // First time this language is opened - start empty, created on first save.
-            document = createEmptyLocalizationDocument(locale);
-        } else {
-            // A present-but-unreadable file throws instead of degrading to empty:
-            // silently editing an "empty" document would overwrite the broken file.
-            const result = await fs.readJSON<unknown>(path);
-            if (!result.ok) {
-                throw new RendererError(result.error.message || `Failed to read translations: ${locale}`);
-            }
-            document = normalizeLocalizationDocument(result.data, locale);
-        }
+
+        // First time this language is opened - start empty, created on first save.
+        const document = result.status === "missing" ? createEmptyLocalizationDocument(locale) : result.document;
         this.documents.set(locale, document);
         return document;
     }
@@ -302,22 +295,14 @@ export class LocalizationService extends Service<LocalizationService> implements
         if (this.keysDocument) {
             return this.keysDocument;
         }
-        const fs = this.getFileSystem();
-        const path = this.getContext().project.resolve(ProjectNameConvention.EditorLocalizationKeys);
-        const exists = await fs.isFileExists(path);
-        if (!exists.ok) {
-            throw new RendererError(exists.error.message || "Failed to access localization keys");
+        const result = await loadDocument(localizationKeysSpec, this.storage(), localizationKeysSpec.pathFor());
+
+        if (result.status === "corrupt") {
+            reportUnreadableDocument(this.getContext(), result);
+            throw new RendererError(`Failed to read localization keys: ${result.error.reason}`);
         }
-        let document: LocalizationKeysDocument;
-        if (!exists.data) {
-            document = createEmptyLocalizationKeysDocument();
-        } else {
-            const result = await fs.readJSON<unknown>(path);
-            if (!result.ok) {
-                throw new RendererError(result.error.message || "Failed to read localization keys");
-            }
-            document = normalizeLocalizationKeysDocument(result.data);
-        }
+
+        const document = result.status === "missing" ? createEmptyLocalizationKeysDocument() : result.document;
         this.keysDocument = document;
         return document;
     }
@@ -461,60 +446,33 @@ export class LocalizationService extends Service<LocalizationService> implements
     }
 
     private async writeKeysDocument(document: LocalizationKeysDocument): Promise<void> {
-        await this.ensureLocalizationDir();
-        const result = await this.getFileSystem().write(
-            this.getContext().project.resolve(ProjectNameConvention.EditorLocalizationKeys),
-            JSON.stringify(document, null, 2),
-            "utf-8",
-        );
-        if (!result.ok) {
-            throw new RendererError(result.error.message);
-        }
+        await saveDocument(localizationKeysSpec, this.storage(), localizationKeysSpec.pathFor(), document);
     }
 
     private scheduleAutoSave(): void {
         this.autoSaver.schedule();
     }
 
-    private async ensureLocalizationDir(): Promise<void> {
-        const fs = this.getFileSystem();
-        const dir = this.getContext().project.resolve(ProjectNameConvention.EditorLocalization);
-        const exists = await fs.isDirExists(dir);
-        if (!exists.ok) {
-            throw new RendererError(exists.error.message || "Failed to access localization directory");
-        }
-        if (!exists.data) {
-            const created = await fs.createDir(dir);
-            if (!created.ok) {
-                throw new RendererError(created.error.message || "Failed to create localization directory");
-            }
-        }
-    }
-
     private async writeDocument(document: LocalizationDocument): Promise<void> {
-        await this.ensureLocalizationDir();
-        const result = await this.getFileSystem().write(
-            this.getDocumentPath(document.locale),
-            JSON.stringify(document, null, 2),
-            "utf-8",
-        );
-        if (!result.ok) {
-            throw new RendererError(result.error.message);
-        }
+        await saveDocument(localizationDocumentSpec, this.storage(), this.getDocumentPath(document.locale), document);
     }
 
+    /**
+     * Project-relative, and built by the spec rather than by `ProjectNameConvention`, so the path a
+     * document is saved to is the same path the document registry resolves back to a spec.
+     */
     private getDocumentPath(locale: string): string {
         if (!isValidLocaleCode(locale)) {
             throw new RendererError(`Invalid locale code: ${locale}`);
         }
-        return this.getContext().project.resolve(ProjectNameConvention.EditorLocalizationDocument(locale));
+        return localizationDocumentSpec.pathFor({ locale });
+    }
+
+    private storage(): DocumentStorage {
+        return createProjectDocumentStorage(this.getContext());
     }
 
     private getProjectService(): ProjectService {
         return this.getContext().services.get<ProjectService>(Services.Project);
-    }
-
-    private getFileSystem(): FileSystemService {
-        return this.getContext().services.get<FileSystemService>(Services.FileSystem);
     }
 }

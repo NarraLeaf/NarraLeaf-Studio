@@ -475,6 +475,18 @@ const value = resolveDataPinValue(
 
 `resolveDataPinValue` already falls back to the inline/default param stored on the node when no edge is connected. Blueprint-visible empty data should be represented as `null`.
 
+## Publishing data outputs
+
+An exec node publishes its data output pins by returning `outputValues` from `execute()`:
+
+```ts
+return { nextPort: "next", outputValues: { value: await api.localization.getLocale() } };
+```
+
+`GraphExecutor` stores those generically, but the read side does **not** pick them up generically: `resolveSelfOutput` in `built-in/graphParamResolvers.ts` is a per-node-type whitelist, and a node type missing from it resolves to `undefined` for every downstream consumer — silently, with no error and no diagnostic. Register the node type and its output port ids there whenever you add an exec node with data output pins.
+
+`graphParamResolvers.test.ts` sweeps the registry for exactly this and fails with the offending `type.pin` list, so the mistake surfaces at test time rather than in a shipped game.
+
 ## Host API nodes
 
 Host API nodes call runtime services such as navigation, widget mutation, persistence, or state. Use `requireHostApi` to fail with a blueprint execution error when the runtime host is unavailable.

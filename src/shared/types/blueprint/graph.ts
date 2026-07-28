@@ -832,6 +832,17 @@ export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY = "blueprint.game.getSkipDe
 export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_DELAY = "blueprint.game.setSkipDelay" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_INTERVAL = "blueprint.game.getSkipInterval" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_INTERVAL = "blueprint.game.setSkipInterval" as const;
+
+// Localization nodes. Every getter here is latent and publishes its result through
+// `execute()`'s `outputValues`, so each one also has to be listed on the read side,
+// in `resolveSelfOutput` in `graphParamResolvers.ts`.
+export const BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_CURRENT_LANGUAGE = "blueprint.localization.getCurrentLanguage" as const;
+export const BLUEPRINT_NODE_TYPE_LOCALIZATION_SET_LANGUAGE = "blueprint.localization.setLanguage" as const;
+export const BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT = "blueprint.localization.getText" as const;
+export const BLUEPRINT_NODE_TYPE_LOCALIZATION_HAS_TEXT = "blueprint.localization.hasText" as const;
+export const BLUEPRINT_NODE_TYPE_LOCALIZATION_FORMAT_TEXT = "blueprint.localization.formatText" as const;
+export const BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_AVAILABLE_LANGUAGES = "blueprint.localization.getAvailableLanguages" as const;
+
 export const BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM = "blueprint.frame.getParam" as const;
 export const BLUEPRINT_NODE_TYPE_FRAME_EMIT = "blueprint.frame.emit" as const;
 export const BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE = "blueprint.frameWidget.setTargetPage" as const;
