@@ -1,7 +1,20 @@
 export const DEFAULT_CDP_PORT = 9222;
 
+/**
+ * Must match DEV_RELOAD_PORT's fallback in project/build/utils.js. The dev server
+ * passes its actual port with --dev-reload-port, so this default only applies to a
+ * main process launched by hand against a plain `yarn dev` session.
+ */
+export const DEFAULT_DEV_RELOAD_PORT = 5588;
+
 export interface CdpCommandLineOptions {
     enabled: boolean;
+    port: number;
+    portSource: "default" | "argument";
+    error: string | null;
+}
+
+export interface DevReloadCommandLineOptions {
     port: number;
     portSource: "default" | "argument";
     error: string | null;
@@ -10,13 +23,14 @@ export interface CdpCommandLineOptions {
 export interface MainCommandLineOptions {
     dev: boolean;
     cdp: CdpCommandLineOptions;
+    devReload: DevReloadCommandLineOptions;
 }
 
 export function isMainDevMode(options: MainCommandLineOptions, isPackaged: boolean): boolean {
     return !isPackaged && options.dev;
 }
 
-function parseCdpPort(value: string | undefined): number | null {
+function parsePort(value: string | undefined): number | null {
     if (!value) {
         return null;
     }
@@ -34,6 +48,9 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
     let cdpPort = DEFAULT_CDP_PORT;
     let portSource: CdpCommandLineOptions["portSource"] = "default";
     let error: string | null = null;
+    let devReloadPort = DEFAULT_DEV_RELOAD_PORT;
+    let devReloadPortSource: DevReloadCommandLineOptions["portSource"] = "default";
+    let devReloadError: string | null = null;
 
     for (let i = 0; i < argv.length; i += 1) {
         const arg = argv[i];
@@ -54,7 +71,7 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
         }
 
         if (arg === "--cdp-port") {
-            const port = parseCdpPort(argv[i + 1]);
+            const port = parsePort(argv[i + 1]);
             if (port === null) {
                 error = `Invalid --cdp-port value: ${argv[i + 1] ?? ""}`;
                 continue;
@@ -69,7 +86,7 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
 
         if (arg.startsWith("--cdp-port=")) {
             const value = arg.slice("--cdp-port=".length);
-            const port = parseCdpPort(value);
+            const port = parsePort(value);
             if (port === null) {
                 error = `Invalid --cdp-port value: ${value}`;
                 continue;
@@ -78,6 +95,34 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
             cdpPort = port;
             portSource = "argument";
             error = null;
+            continue;
+        }
+
+        if (arg === "--dev-reload-port") {
+            const port = parsePort(argv[i + 1]);
+            if (port === null) {
+                devReloadError = `Invalid --dev-reload-port value: ${argv[i + 1] ?? ""}`;
+                continue;
+            }
+
+            devReloadPort = port;
+            devReloadPortSource = "argument";
+            devReloadError = null;
+            i += 1;
+            continue;
+        }
+
+        if (arg.startsWith("--dev-reload-port=")) {
+            const value = arg.slice("--dev-reload-port=".length);
+            const port = parsePort(value);
+            if (port === null) {
+                devReloadError = `Invalid --dev-reload-port value: ${value}`;
+                continue;
+            }
+
+            devReloadPort = port;
+            devReloadPortSource = "argument";
+            devReloadError = null;
         }
     }
 
@@ -88,6 +133,11 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
             port: cdpPort,
             portSource,
             error,
+        },
+        devReload: {
+            port: devReloadPort,
+            portSource: devReloadPortSource,
+            error: devReloadError,
         },
     };
 }
