@@ -4,7 +4,12 @@ Studio 的版本控制以 [Epic Games Lore](https://github.com/EpicGames/lore) �
 
 选 Lore 而不是 Git 的理由只有一条，但足够：Studio 的资产是二进制和 JSON，Lore 的存储热路径**不做 CRLF 转换、不做编码推断、没有 clean/smudge filter**（[system-design.md §13](https://github.com/EpicGames/lore/blob/main/docs/explanation/system-design.md)），且分块去重是 fragment 级而非文件级。Git 的 autocrlf + LFS 组合在这两点上都是长期事故源。
 
-> **状态**：Lore 于 2026-06-16 开源，本文基于 **v0.8.5**（2026-07-16）核实，核实日期 2026-07-18。Lore 是 pre-stable 0.x，**API 和协议在 1.0 前都会变**；数据格式官方承诺向前兼容。
+> **状态**：Lore 于 2026-06-16 开源，本文基于 **v0.8.5**（2026-07-16）核实。Lore 是 pre-stable 0.x，
+> **API 和协议在 1.0 前都会变**；数据格式官方承诺向前兼容。
+>
+> **2026-07-27 重大变更**：Studio 不再使用 `@lore-vcs/sdk` 的运行时。绑定改为
+> [自己写](#21-客户端自有-koffi-绑定)，只保留 SDK 作为 devDependency 供 ABI 快照脚本使用。
+> §4 的坑分成了两类：**已由自有绑定按构造消除**的，和**仍然成立**的，每条都标了。
 
 ## 0. 结论先行
 
@@ -33,20 +38,48 @@ Studio 的版本控制以 [Epic Games Lore](https://github.com/EpicGames/lore) �
 
 ## 2. Studio 如何依赖 Lore
 
-### 2.1 客户端：`@lore-vcs/sdk`
+### 2.1 客户端：自有 koffi 绑定
 
-**它是 optional 依赖，不是普通依赖：**
+**Studio 自己绑定 lorelib，不用 SDK 的运行时。**
 
 ```jsonc
 // package.json
-"optionalDependencies": {
-  "@lore-vcs/sdk": "0.8.5"   // 锁死版本（无 caret），见 §8
-}
+"dependencies":    { "koffi": "2.16.2" },
+"optionalDependencies": {          // 只要 DLL，不要 JS
+  "@lore-vcs/sdk-amd64-unknown-windows": "0.8.5",
+  "@lore-vcs/sdk-arm64-apple-darwin":    "0.8.5",
+  "@lore-vcs/sdk-amd64-unknown-linux":   "0.8.5",
+  "@lore-vcs/sdk-arm64-graviton-linux":  "0.8.5"
+},
+"devDependencies": { "@lore-vcs/sdk": "0.8.5" }   // 仅供 ABI 快照脚本
 ```
 
-SDK 自身再用 `optionalDependencies` + `os`/`cpu` 分发平台子包，npm/yarn 只装匹配当前平台的那个（已验证：Windows 上只装了 `sdk-amd64-unknown-windows`，29MB DLL）。
+四个平台包各自带 `os`/`cpu` 字段，包管理器只装匹配当前平台的那个（Windows 上只装
+`sdk-amd64-unknown-windows`，29MB DLL）。放进 `optionalDependencies` 是**故意的**：装不上
+（不支持的平台、`--no-optional`、网络失败）不能让 Studio 整个装不上。
 
-放进 `optionalDependencies` 是**故意的**：装不上（不支持的平台、`--no-optional`、网络失败）不能让 Studio 整个装不上。配合 §7 的降级，Studio 在任何平台都能装、能跑。
+**为什么丢掉 SDK 的 JS**——三条，都是硬的：
+
+1. **失败模式是静默数据损坏。** SDK 用一张 `convertOptions` 查找表转换参数，其中 `loreHash`
+   一类**没有实现 handler**。传错方向不报错，而是把定长字段零填充：调用成功，partition 全零。
+   自有绑定里结构体字段的声明类型**就是**编码规则（`LoreString` 收十六进制、`LoreHash` 收 32
+   字节），没有可查的表，也就没有可查错的表。
+2. **加载失败不可逆。** SDK 在模块求值期 `koffi.load()`，ESM 求值抛异常被 Node 永久缓存，
+   不支持的平台上一句静态 import 就让主进程启动期崩溃。自有绑定在**函数内**加载，用户修好
+   安装后可以 [`refreshVcsAvailability()`](../src/main/app/application/managers/vcs/backend.ts) 恢复，不必重启。
+3. **只用得上 27%。** 131 个 verb 里我们需要 ~35 个；SDK 为另外 96 个背了几百个事件结构体和
+   一整套通用转换层，我们承担全部风险却拿不到收益。
+
+**ABI 正确性怎么保证**——手写结构体写错布局 = 内存损坏，所以三道防线：
+
+| 防线 | 位置 |
+|---|---|
+| 与 SDK 生成的绑定**逐字段比对**（420 结构体 / 131 函数 / 226 事件 tag 的快照） | [`tools/lore-abi-extract.mjs`](../tools/lore-abi-extract.mjs) → `abi/upstream.json` |
+| 161 个断言：字段名/类型/顺序、别名、verb 签名、事件 tag 数值、声明顺序 | [`abi/definitions.test.ts`](../src/main/app/application/managers/vcs/lore/abi/definitions.test.ts) |
+| 打真 DLL 的往返测试（建库→暂存→提交→历史→读 blob→分支） | [`lore.integration.test.ts`](../src/main/app/application/managers/vcs/lore/lore.integration.test.ts) |
+
+快照**进版本库**，所以校验不需要装 SDK。升级 Lore 时重跑提取脚本，`upstream.json` 的 diff
+**就是升级报告**。
 
 **关键：lorelib 是普通共享库（.dll/.dylib/.so），不是 N-API addon。** 它不随 Electron ABI 变化，Electron 升级不需要重编——这比 [`@narraleaf/encryption`](../src/main/app/application/managers/security/packKeyService.ts) 的 node-gyp 路线省心得多。唯一 ABI 绑定的是 `koffi`，它自带各 ABI 的 prebuilt。
 
@@ -54,12 +87,20 @@ SDK 自身再用 `optionalDependencies` + `os`/`cpu` 分发平台子包，npm/ya
 
 ### 2.2 构建配置
 
-esbuild 必须把 SDK 和 koffi 标记为 external，与现有 `@narraleaf/encryption` 完全同构：
+esbuild 必须把 koffi 标记为 external，与现有 `@narraleaf/encryption` 同构：
 
 ```js
 // project/build/build-main.js 和 project/app/dev-electron.js
-external: ['electron', 'esbuild', '@narraleaf/encryption', '@lore-vcs/sdk', 'koffi']
+external: ['electron', 'esbuild', '@narraleaf/encryption', 'koffi']
 ```
+
+平台包**不用**列进 external：`library.ts` 用 `createRequire(__filename)` 做计算 require，
+esbuild 静态分析跟不进去，自然不会打包它。
+
+**打包后仍然惰性**这一条已用 metafile 证明，不是靠注释保证：
+[`pluggability.test.ts`](../src/main/app/application/managers/vcs/pluggability.test.ts) 从 `src/main/index.ts`
+走静态导入图（只跟 import 语句和 require，**不跟** `import()`），断言 `vcs/lore/` 一个文件都不在里面，
+同时断言 `VcsManager.ts` 和 `backend.ts` 在里面（否则这个断言是空的）。
 
 electron-builder **不需要改**：[electron-builder.yml](../electron-builder.yml) 已有 `asarUnpack: node_modules/**/*`，原生库不会被封进 asar。这是最容易翻车的一步，Studio 已经免疫。
 
@@ -72,9 +113,10 @@ P0 建议：**全放主进程**，作为一个新的 manager，与现有 [manage
 ```
 src/main/app/application/managers/vcs/
   backend.ts             # 可插拔边界：动态加载 + 可用性判定（见 §7）
-  loreClient.ts          # 唯一 import @lore-vcs/sdk 的文件（见 §3）
+  lore/                  # 自有 koffi 绑定（见 §3）
   revisionReader.ts      # blobAt / blobsAt / mergeBase / threeWay / changedPaths
-  VcsManager.ts          # 按项目 keying 的 session，flush-then-close
+  VcsManager.ts          # 按项目 keying 的 session，flush → close → release
+  documents/             # 文档模型与规范序列化（H1，待建）
   diff/                  # Studio 自己的 diff 引擎（待建）
 ```
 
@@ -82,21 +124,38 @@ Lore 的异步变体在自己的线程池上跑，`waitAsync()` 返回 Promise�
 
 因此：把 `VcsManager` 的对外接口设计成**可整体搬走**的形态。如果 profiling 显示 clone/sync 造成掉帧，再把批量传输挪进 `utilityProcess`（Studio 的 [buildWorker](../src/main/buildWorker/) 已有先例）。交互式读路径（status、打开文件时的 diff）留在主进程，省掉一次 IPC 往返。**不要预先加这个进程边界。**
 
-## 3. 必须自己封一层
+## 3. 边界在哪
 
-`@lore-vcs/sdk` **只允许被一个文件 import**（`loreClient.ts`）。理由有三，每条都是硬的：
+绑定全部关在 [`vcs/lore/`](../src/main/app/application/managers/vcs/lore/) 里，上面只有一个插拔口
+[`backend.ts`](../src/main/app/application/managers/vcs/backend.ts)。规则两条：
 
-1. Lore 是 0.x，**没有 semver 保护**，API 会变
-2. SDK 是用 Python + Jinja 从 `lore.h` **代码生成**的，header 一动 SDK 就动
-3. §4 那一堆坑必须被封死在一个地方，不能散落各处
+1. **`backend.ts` 之上不许静态引用 `lore/`**，直接间接都不行——只能 `import type` 或
+   `await import()`。这条由 §2.2 的导入图测试守着，不靠人记。
+2. **Studio 面向业务的类型里不许出现 `Lore` 前缀。** 往外暴露自己的 `Revision`、`BlobRef`、
+   `ChangeSet`。Lore 是 0.x，随时可能要换底层；名字描述能力，不描述供应商。
 
-Studio 面向业务的类型里**不许出现 `Lore` 前缀**。往外暴露自己的 `Revision`、`BlobRef`、`ChangeSet`。这样万一要换底层（或 Lore 1.0 破坏性变更），改动面是一个文件。
+`lore/` 内部分工：
+
+| 文件 | 职责 |
+|---|---|
+| `abi/definitions.ts` | 纯数据：结构体、别名、verb 表、事件 tag。不 import koffi，不碰原生库 |
+| `abi/upstream.json` | 从 SDK 生成物提取的 ABI 快照，`definitions.test.ts` 的比对基准 |
+| `library.ts` | 惰性 `koffi.load`、`LORE_LIB_PATH` 逃生舱、asar 解包、按需绑定 + 符号缺失探测 |
+| `values.ts` | 显式编码/解码：hex ↔ 定长字段（**非法即抛**）、字符串、字节、路径越界防护 |
+| `events.ts` | 事件解码表：**在回调内拷贝完**，没有借用内存能逃出去 |
+| `call.ts` | 唯一的 invoke：单 trampoline、异步 off-thread、注册/注销配对、错误富化、`PATH_IGNORE` 转异常 |
+| `verbs.ts` | ~22 个有类型的操作，Studio 唯一调用面 |
 
 ## 4. 坑（全部实测，不是推测）
 
 这一节是本文的核心。以下每条都在 v0.8.5 上复现过。
 
 ### 4.1 标识符编码：一个上游 bug，不是设计
+
+> **已按构造消除（2026-07-27）。** 自有绑定里没有转换表：结构体字段的声明类型就是编码规则，
+> `LoreHash`/`LorePartition`/`LoreContext` 字段收定长字节，长度不对**抛错**而不是补零
+> （[`values.ts` 的 `hashBytes`](../src/main/app/application/managers/vcs/lore/values.ts)）。
+> 下面保留原始推导，因为它解释了为什么「照抄清单」不是解法。
 
 **这条最初被误判过，值得记录推导过程。** 表面现象是「`storage*` 要十六进制字符串，`revisionTree*` 要 `{data:Uint8Array}`」——但这是错误归纳，照这个结论写封装层会埋下静默数据损坏。
 
@@ -128,19 +187,24 @@ Studio 的路径上只有 `revisionTreeLoad`。
 
 第二种是静默数据损坏。之所以在单仓库测试里没暴露，是因为 `revisionTreeLoad` 的 `repository` 会被 store handle 覆盖——一旦 Studio 用一个 store 跨多仓库（links/layers、多项目同开），它立刻变成数据路由 bug。
 
-**封装层的对策**：先按 hex 发；只有捕获到 `Unexpected String value` 且该调用声明了 `hashArgs` 时，才改写这些字段并锁存决定。这样在今天的 SDK 上自动降级，在上游修复后自动保持 hex，**不需要版本嗅探**，也永远不会把非 hash 字段改写成会零填充的形态。见 [loreClient.ts](../src/main/app/application/managers/vcs/loreClient.ts)。
+**当时封装层的对策**是自适应降级：先按 hex 发，捕获到 `Unexpected String value` 再改写并锁存决定。它能用，但正确性依赖上游一句错误文案不变。自有绑定不需要这套：`revisionTreeLoad` 的 `repository`/`revisionHash` 在头文件里**本来就是** `LorePartition`/`LoreHash`，按声明类型发定长字节即可，上游修不修 handler 都不影响我们。
 
 ### 4.2 `.callback()` 是替换，不是追加
 
-调两次 `.callback()`，第一个handler 被**静默丢弃**，调用照样返回 `rc=0`，你只是拿不到数据。这个坑极难 debug——没有报错，只有空结果。
+> **已消除**：SDK 专有行为。自有绑定注册**唯一一个** trampoline，事件在 JS 里分发给多个订阅者
+> （[`call.ts`](../src/main/app/application/managers/vcs/lore/call.ts)）。
 
-封装时只留一个 callback 入口，内部自己分发。
+调两次 `.callback()`，第一个 handler 被**静默丢弃**，调用照样返回 `rc=0`，你只是拿不到数据。
+这个坑极难 debug——没有报错，只有空结果。
 
 ### 4.3 事件数据是借来的 FFI 内存
 
-回调返回后 `event.data` 就失效。**想留住任何东西必须 `event.clone()`**，忘了就是随机内存垃圾且不报错。
+> **前半已消除**：自有绑定在回调内**立即完整解码并拷贝**，出了 `decodeEvent` 就没有借用内存
+> （[`events.ts`](../src/main/app/application/managers/vcs/lore/events.ts)），没有「忘记 clone」这回事。
+> **后半仍然成立**：回调里**不能重入调用 Lore**，这是进程级契约，`invoke` 先收集完再处理。
 
-另外：回调里**不能重入调用 Lore**，这是进程级契约。先收集事件，出了回调再处理。
+回调返回后 `event.data` 就失效。SDK 用一个惰性 `.data` getter 建模这件事，忘了 `clone()`
+就是随机内存垃圾且不报错。
 
 ### 4.4 路径按进程 CWD 解析，不是按 `repositoryPath`
 
@@ -206,6 +270,10 @@ store handle 开着的时候，第二个进程访问同一仓库会**一直等**
 
 ### 4.13 加载失败是不可逆的，整个进程都别想再用
 
+> **已消除**：自有绑定在**函数内**调 `koffi.load()`，失败只是一个异常。用户修好安装后
+> `refreshVcsAvailability()` 就能恢复，不必重启 Studio。下面是 SDK 的原始行为，保留是因为
+> 它解释了为什么可用性判定至今仍然缓存（探测一次要 dlopen 29MB，不是因为不能重试）。
+
 `@lore-vcs/sdk` 在**模块求值期**就调 `koffi.load()`。ESM 模块求值一旦抛异常，Node 会**永久缓存这个失败**——同一进程里再 import 多少次都是同一个错误，`vi.resetModules()` 也够不着（模块归 Node 的 loader 管，不归 vitest）。
 
 两个后果：
@@ -216,6 +284,27 @@ store handle 开着的时候，第二个进程访问同一仓库会**一直等**
 ### 4.14 revisionTree 读路径在 SDK 里零测试覆盖
 
 `lore-js` 自己的测试套件**没有任何 `revisionTree` 用例**。capi 有实现、绑定是自动生成的，但 JS 层没人验证过。Studio 会是早期用户——这条路径的回归测试得 Studio 自己写。
+
+### 4.15 关掉 store 不等于放开仓库
+
+`storageClose` 只关一个 store handle。**仓库本身还开着**（`storeKeepAlive` 默认保活若干秒），
+后果有两个：
+
+- Windows 上删不掉项目目录，`rmSync` 报 **EPERM**
+- 用户自己的 `lore` CLI 会**一直阻塞**在仓库锁上（§4.12 说的就是这个锁）
+
+必须显式调 `repositoryRelease`。这条是写绑定时被测试的 teardown 逼出来的：整套测试全绿，
+但删自己的临时目录失败。`VcsManager.closeProject` 现在是 **flush → closeStore → release** 三步。
+
+### 4.16 路径方向是不对称的，类型上看不出来
+
+| 调用 | 路径形态 |
+|---|---|
+| `fileStage` / `fileUnstage` 等**输入** | **绝对路径**。相对路径按进程 CWD 解析（§4.4），随后因为在仓库外被**静默忽略**（§4.5） |
+| `repositoryStatus` 的**输出** | **仓库相对路径** |
+
+也就是说「拿 status 的结果去 stage」这个最自然的写法，是坏的。任何把状态输出回喂给暂存的地方
+都必须转换。TypeScript 类型两边都是 `string`，不会拦你。
 
 ## 5. 服务端策略
 
@@ -354,16 +443,32 @@ getInfo         : {"success":false,"error":"Version control backend failed to lo
 
 | 文件 | 职责 |
 |---|---|
-| [backend.ts](../src/main/app/application/managers/vcs/backend.ts) | **插拔边界**。动态加载、平台闸门、可用性判定与缓存、`VcsUnavailableError` |
-| [loreClient.ts](../src/main/app/application/managers/vcs/loreClient.ts) | **唯一** import `@lore-vcs/sdk` 的地方。单 callback、自动 clone、hash 编码降级、`PATH_IGNORE` 转异常、错误带 Rust `file:line`、路径越界防护 |
-| [revisionReader.ts](../src/main/app/application/managers/vcs/revisionReader.ts) | `blobAt` / `blobsAt` / `readRevisionGraph` / `mergeBase` / `threeWay` / `changedPaths` / `flushRepository` |
-| [VcsManager.ts](../src/main/app/application/managers/vcs/VcsManager.ts) | **按项目路径 keying** 的 session（store handle 复用 + 每项目串行化），flush-then-close |
+| [backend.ts](../src/main/app/application/managers/vcs/backend.ts) | **插拔边界**。动态加载、平台闸门、可用性判定与缓存、`refreshVcsAvailability`、`VcsUnavailableError` |
+| [lore/abi/definitions.ts](../src/main/app/application/managers/vcs/lore/abi/definitions.ts) | 手写 ABI：结构体 / 别名 / verb 表 / 事件 tag。**纯数据**，不 import koffi |
+| [lore/abi/upstream.json](../src/main/app/application/managers/vcs/lore/abi/upstream.json) | 从 SDK 生成物提取的 ABI 快照（420 结构体 / 131 函数 / 226 tag），进版本库 |
+| [lore/library.ts](../src/main/app/application/managers/vcs/lore/library.ts) | 惰性 `koffi.load`、`LORE_LIB_PATH`、asar 解包、按需绑定 + `LoreCapabilityError` |
+| [lore/values.ts](../src/main/app/application/managers/vcs/lore/values.ts) | 显式编解码，非法标识符**抛错不补零**；路径越界防护 |
+| [lore/events.ts](../src/main/app/application/managers/vcs/lore/events.ts) | 32 个事件解码器，回调内即拷贝 |
+| [lore/call.ts](../src/main/app/application/managers/vcs/lore/call.ts) | 单 trampoline、异步 off-thread、注册/注销配对、`PATH_IGNORE` 转异常、错误带 Rust `file:line` |
+| [lore/verbs.ts](../src/main/app/application/managers/vcs/lore/verbs.ts) | 22 个有类型的操作：建库 / 状态 / 暂存 / 提交 / 历史 / diff / 读 blob / 分支 |
+| [revisionReader.ts](../src/main/app/application/managers/vcs/revisionReader.ts) | `blobAt` / `blobsAt` / `readRevisionGraph` / `mergeBase` / `threeWay` / `changedPaths` |
+| [VcsManager.ts](../src/main/app/application/managers/vcs/VcsManager.ts) | **按项目路径 keying** 的 session（store handle 复用 + 每项目串行化），flush → close → release |
 | [vcsAction.ts](../src/main/app/application/managers/window/handlers/vcsAction.ts) | 8 个只读 IPC handler |
 | [vcs.ts](../src/shared/types/vcs.ts) | 渲染进程类型 + 平台表 + `isVcsPlatformSupported()`，**不含任何 `Lore` 前缀** |
-| [backend.test.ts](../src/main/app/application/managers/vcs/backend.test.ts) | 6 个降级测试（含 Intel Mac / Windows ARM64 路径） |
-| [revisionReader.test.ts](../src/main/app/application/managers/vcs/revisionReader.test.ts) | 11 个集成测试，打真实原生库 |
 
-构建侧：`@lore-vcs/sdk` 和 `koffi` 在 [build-main.js](../project/build/build-main.js) 与 [dev-electron.js](../project/app/dev-electron.js) 里标了 external；`asarUnpack` 已有，没改。session 释放接在 [index.ts](../src/main/index.ts) 的 `window-closed` 上。
+测试（`yarn vitest run src/main/app/application/managers/vcs/`，201 个）：
+
+| 文件 | 覆盖 |
+|---|---|
+| [abi/definitions.test.ts](../src/main/app/application/managers/vcs/lore/abi/definitions.test.ts) | 161 断言，逐字段比对 `upstream.json` |
+| [lore.integration.test.ts](../src/main/app/application/managers/vcs/lore/lore.integration.test.ts) | 17 个，打真 DLL：写路径、读路径、编码拒绝、回调生命周期（250 次连续调用不耗尽 koffi 回调池） |
+| [revisionReader.integration.test.ts](../src/main/app/application/managers/vcs/revisionReader.integration.test.ts) | 8 个，打真 DLL：blob 字节精确、三路合并、add/add 的 base 缺失 |
+| [revisionReader.test.ts](../src/main/app/application/managers/vcs/revisionReader.test.ts) | 6 个纯逻辑：LCA，含 criss-cross 的稳定裁决 |
+| [backend.test.ts](../src/main/app/application/managers/vcs/backend.test.ts) | 6 个降级测试（含 Intel Mac / Windows ARM64 路径） |
+| [pluggability.test.ts](../src/main/app/application/managers/vcs/pluggability.test.ts) | 3 个：静态导入图里没有 `lore/`，且这个断言非空 |
+
+构建侧：`koffi` 在 [build-main.js](../project/build/build-main.js) 与 [dev-electron.js](../project/app/dev-electron.js) 里标了
+external；`asarUnpack` 已有，没改。session 释放接在 [index.ts](../src/main/index.ts) 的 `window-closed` 上。
 
 ### 渲染进程接口
 
@@ -388,19 +493,23 @@ window[RendererInterfaceKey].vcs
 
 ### 升级绊线
 
-`loreClient` 的 hash 编码是**自适应**的，测试里有一条断言专门盯着它：
+升级 Lore 的流程是机械的，不需要审计：
 
-```ts
-check("fallback fired and latched to binary on v0.8.5",
-      __hashCodecForTests() === "binary");
-```
+1. 换平台包版本，重跑 `node tools/lore-abi-extract.mjs`
+2. 读 `abi/upstream.json` 的 diff——**那就是 ABI 变更报告**
+3. `definitions.test.ts` 会指出我们哪个结构体/别名/verb 签名/事件 tag 对不上，逐条改
+4. 跑打真库的集成测试
 
-上游一旦实现 `loreHash` handler，这条断言会失败——那不是回归，是**信号**：把断言翻成 `=== "hex"`，然后确认没有别处依赖旧行为。
+原来那条「hash 编码自适应」的绊线随 `loreClient.ts` 一起删掉了：自有绑定按字段声明类型编码，
+上游修不修 `loreHash` handler 都与我们无关。
 
 ## 10. 待解问题
 
-- **UI 尚未对接**。主进程侧完整可用，渲染进程还没有任何 VCS 界面。交接说明见 [plans/2026-07-18-001-handoff-vcs-integration.md](plans/2026-07-18-001-handoff-vcs-integration.md)
-- **仓库来源未定**：Studio 目前假设「项目目录 == 仓库根」，但没有任何地方**创建**仓库。用户怎么把一个项目变成 Lore 仓库（向导？菜单？自动？）是产品决策，未做
+- **UI 尚未对接**。主进程侧完整可用，渲染进程还没有任何 VCS 界面。总体规划见
+  [plans/2026-07-27-001-plan-editor-data-and-version-control.md](plans/2026-07-27-001-plan-editor-data-and-version-control.md)
+- **仓库来源已定，尚未实现**：项目目录 == 仓库根（`repositoryCreate` 就在项目根建 `.lore/`，
+  没有第二种布局）。**不自动建库**——建库会在项目根写独占锁，必须是作者的显式决定。入口留在
+  项目设置 + 新建项目向导，属 V1
 - **LCA 的 criss-cross**：`mergeBase` 当前按 `revisionNumber` 取最高的共同祖先。两分支互相合并过时会有多个极小公共祖先，Git 用递归 merge base 解决。当前取舍写在 [revisionReader.ts](../src/main/app/application/managers/vcs/revisionReader.ts) 注释里：降级结果是「base 略差 → 用户多看到几个冲突」，不是错误合并
 - **取消/超时**：长操作（clone、sync）能否中途取消未验证。`offline` 不可靠（§4.6），封装层还没有超时机制
 - **多仓库 store 复用**：§4.1 的零填充风险只在一个 store 跨多仓库时才会咬人。links/layers 或多项目同开时要专门测 `repository` 参数确实生效

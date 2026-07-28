@@ -1,199 +1,101 @@
-import fs from "fs";
-import os from "os";
-import path from "path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { isVcsPlatformSupported } from "@shared/types/vcs";
-import {
-    LorePathIgnoredError,
-    LoreEventTag,
-    invoke,
-    repoPath,
-    sdk,
-    __hashCodecForTests,
-    __resetHashCodecForTests,
-    type LoreGlobals,
-    type StoreHandle,
-} from "./loreClient";
-import {
-    blobAt,
-    blobsAt,
-    changedPaths,
-    closeStore,
-    mergeBase,
-    openStore,
-    readRepositoryIdentity,
-    readRevisionGraph,
-    threeWay,
-} from "./revisionReader";
+import { describe, expect, it } from "vitest";
+import { mergeBase } from "./revisionReader";
+import type { RevisionNode } from "./lore";
 
 /**
- * Integration test against the real Lore native library.
+ * Merge-base resolution, which Lore does not provide.
  *
- * Deliberately not mocked: every bug this layer exists to absorb lives in the
- * FFI boundary (identifier encoding, callback replacement semantics, borrowed
- * event memory, silently ignored paths). A mock would assert our idea of the
- * SDK rather than the SDK, which is precisely the failure mode that produced
- * the wrong encoding rule in the first place.
- *
- * Consequences: it loads a ~29MB shared library, writes a real repository to a
- * temp dir, and only runs on a platform Epic ships a build for (no Intel Mac,
- * no Windows ARM64 - see docs/version-control.md §7).
+ * There is no `lore_*` entry point returning a common ancestor, and the merge
+ * conflict event carries only a path - so Studio computes the base itself from the
+ * two parent slots on each revision. That makes it a pure function over a graph,
+ * and worth testing without the native library: the topologies that break an LCA
+ * are tedious to produce through real commits and trivial to write down.
  */
 
-const REL = "assets/sprite.bin";
-
-// Distinct, non-text payloads: the whole point is binary assets.
-const V1 = Buffer.from([...Array(256).keys()]);
-const V2 = Buffer.concat([V1.subarray(0, 128), Buffer.from("NARRALEAF-V2"), V1.subarray(128)]);
-const V3 = Buffer.concat([Buffer.from("HDR-V3"), V2]);
-
-let root: string;
-let globals: LoreGlobals;
-let store: StoreHandle;
-let repositoryId: string;
-let rev1: string;
-let rev2: string;
-let rev3: string;
-
-async function commit(bytes: Buffer, message: string): Promise<string> {
-    fs.writeFileSync(path.join(root, REL), bytes);
-    await invoke((g, a) => sdk.fileStage(g, a), "fileStage", globals, {
-        paths: [repoPath(root, REL)],
-        scan: true,
-    });
-    const events = await invoke<{ revision: string; repository: string }>(
-        (g, a) => sdk.revisionCommit(g, a),
-        "revisionCommit",
-        globals,
-        { message },
-        { capture: [LoreEventTag.REVISION_COMMIT_REVISION] },
-    );
-    repositoryId = events[0].data.repository;
-    return events[0].data.revision;
+function graph(...nodes: Array<[string, number, string[]]>): Map<string, RevisionNode> {
+    const map = new Map<string, RevisionNode>();
+    for (const [revision, number, parents] of nodes) {
+        map.set(revision, { revision, number, parents });
+    }
+    return map;
 }
 
-beforeAll(async () => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), "nl-vcs-"));
-    fs.mkdirSync(path.join(root, "assets"), { recursive: true });
-
-    globals = { repositoryPath: root, offline: true, identity: "test@narraleaf", cache: true };
-
-    // A repository URL is mandatory even for a fully offline create; nothing dials it.
-    await invoke((g, a) => sdk.repositoryCreate(g, a), "repositoryCreate", globals, {
-        id: "",
-        description: "vcs test",
-        repositoryUrl: "lore://127.0.0.1:41337/test",
-    });
-
-    rev1 = await commit(V1, "v1");
-    rev2 = await commit(V2, "v2");
-    rev3 = await commit(V3, "v3");
-
-    __resetHashCodecForTests();
-    store = await openStore(globals, root);
-}, 120_000);
-
-afterAll(async () => {
-    if (store) await closeStore(globals, store).catch(() => undefined);
-    if (root) fs.rmSync(root, { recursive: true, force: true });
-});
-
-describe("backend availability (happy path)", () => {
-    // Lives here rather than in backend.test.ts because a failed SDK load is
-    // permanent for the process - see the note at the end of that file.
-    it("loads and caches the backend on a supported host", async () => {
-        expect(isVcsPlatformSupported()).toBe(true);
-
-        const backendModule = await import("./backend");
-        const first = await backendModule.loadVcsBackend();
-        expect(first).not.toBeNull();
-        expect(typeof first?.blobAt).toBe("function");
-        expect(typeof first?.client.repoPath).toBe("function");
-
-        // Cached: the same object, not a second dlopen.
-        expect(await backendModule.loadVcsBackend()).toBe(first);
-        await expect(backendModule.getVcsAvailability()).resolves.toEqual({ available: true });
-    }, 60_000);
-});
-
-describe("revisionReader", () => {
-    it("reads historical blobs byte-exactly with no working tree and no server", async () => {
-        await expect(blobAt(globals, store, repositoryId, rev1, REL)).resolves.toEqual(V1);
-        await expect(blobAt(globals, store, repositoryId, rev2, REL)).resolves.toEqual(V2);
-        await expect(blobAt(globals, store, repositoryId, rev3, REL)).resolves.toEqual(V3);
-    }, 60_000);
-
-    it("reuses one tree handle across paths in a revision", async () => {
-        const blobs = await blobsAt(globals, store, repositoryId, rev2, [REL]);
-        expect(blobs.get(REL)).toEqual(V2);
-    }, 60_000);
-
-    it("exposes the revision DAG with parents", async () => {
-        const graph = await readRevisionGraph(globals);
-        expect(graph.size).toBe(3);
-        expect(graph.get(rev3)?.parents).toEqual([rev2]);
-        expect(graph.get(rev2)?.parents).toEqual([rev1]);
-        // A root revision reports no parents; the all-zero hash is filtered out.
-        expect(graph.get(rev1)?.parents).toEqual([]);
-    }, 60_000);
-
-    it("computes a merge base, which Lore itself does not expose", async () => {
-        const graph = await readRevisionGraph(globals);
-        expect(mergeBase(graph, rev3, rev2)).toBe(rev2);
-        expect(mergeBase(graph, rev3, rev1)).toBe(rev1);
+describe("mergeBase", () => {
+    it("returns the shared ancestor of a simple fork", () => {
+        //   a - b - c        (main)
+        //        \- d - e    (branch)
+        const dag = graph(
+            ["a", 1, []],
+            ["b", 2, ["a"]],
+            ["c", 3, ["b"]],
+            ["d", 3, ["b"]],
+            ["e", 4, ["d"]],
+        );
+        expect(mergeBase(dag, "c", "e")).toBe("b");
         // Order must not matter.
-        expect(mergeBase(graph, rev1, rev3)).toBe(rev1);
-    }, 60_000);
-
-    it("returns base/mine/theirs for a three-way merge", async () => {
-        const result = await threeWay(globals, store, repositoryId, rev3, rev2, REL);
-        expect(result.baseRevision).toBe(rev2);
-        expect(result.base).toEqual(V2);
-        expect(result.mine).toEqual(V3);
-        expect(result.theirs).toEqual(V2);
-    }, 60_000);
-
-    it("reports which paths changed between revisions", async () => {
-        const changed = await changedPaths(globals, rev1, rev2);
-        expect(changed.some((p) => p.replace(/\\/g, "/").includes("sprite.bin"))).toBe(true);
-    }, 60_000);
-
-    it("reads the repository identity without touching the network", async () => {
-        const identity = await readRepositoryIdentity(globals);
-        expect(identity?.repository).toBe(repositoryId);
-    }, 60_000);
-});
-
-describe("loreClient", () => {
-    it("raises instead of silently skipping an unusable path", async () => {
-        // Lore answers a path outside the repository with PATH_IGNORE and rc=0;
-        // untranslated, a user's asset would just never get committed.
-        const outside = path.join(os.tmpdir(), "nl-vcs-not-in-repo.bin");
-        await expect(
-            invoke((g, a) => sdk.fileStage(g, a), "fileStage", globals, { paths: [outside], scan: true }),
-        ).rejects.toBeInstanceOf(LorePathIgnoredError);
-    }, 60_000);
-
-    it("rejects paths that escape the repository root", () => {
-        expect(() => repoPath(root, "../../etc/passwd")).toThrow();
-        expect(path.isAbsolute(repoPath(root, REL))).toBe(true);
+        expect(mergeBase(dag, "e", "c")).toBe("b");
     });
 
-    /**
-     * UPGRADE TRIPWIRE.
-     *
-     * The SDK's generator declares `loreHash` args but ships no converter for
-     * them, so a hex hash is rejected and this layer falls back to the binary
-     * form. When upstream implements the handler, hex will start working and
-     * this assertion will flip to "hex" - that is a signal, not a regression.
-     * Change it to "hex" and re-check that nothing depends on the old path.
-     */
-    it("latches the hash codec by observation, not by hardcoding", async () => {
-        __resetHashCodecForTests();
-        expect(__hashCodecForTests()).toBe("hex");
+    it("returns the older revision when one side is an ancestor of the other", () => {
+        const dag = graph(["a", 1, []], ["b", 2, ["a"]], ["c", 3, ["b"]]);
+        expect(mergeBase(dag, "c", "a")).toBe("a");
+        expect(mergeBase(dag, "c", "c")).toBe("c");
+    });
 
-        await blobAt(globals, store, repositoryId, rev1, REL);
+    it("follows both parents of a merge revision", () => {
+        //   a - b ---- m      m has parents b and d
+        //    \- c - d -/
+        //       b -- x        x is a sibling of m, not an ancestor
+        const dag = graph(
+            ["a", 1, []],
+            ["b", 2, ["a"]],
+            ["c", 2, ["a"]],
+            ["d", 3, ["c"]],
+            ["m", 4, ["b", "d"]],
+            ["x", 3, ["b"]],
+        );
+        // Reachable only through the merge's SECOND parent.
+        expect(mergeBase(dag, "m", "d")).toBe("d");
+        // x forked from b and was never merged, so the shared ancestor is b - not x,
+        // which is what a traversal following only first parents would report.
+        expect(mergeBase(dag, "m", "x")).toBe("b");
+    });
 
-        expect(__hashCodecForTests()).toBe("binary");
-    }, 60_000);
+    it("returns undefined for unrelated histories", () => {
+        // Two roots with no shared ancestor. The caller must treat a missing base as
+        // an add/add conflict, NOT as an empty file - assuming empty silently accepts
+        // one side of the merge.
+        const dag = graph(["a", 1, []], ["b", 2, ["a"]], ["x", 1, []], ["y", 2, ["x"]]);
+        expect(mergeBase(dag, "b", "y")).toBeUndefined();
+    });
+
+    it("resolves a criss-cross to one stable candidate", () => {
+        // Two branches that have merged each other leave SEVERAL equally-minimal
+        // common ancestors - here b and c, both at revision number 2. Git resolves
+        // this by recursively merging them; Studio picks one, which is the documented
+        // degradation: a slightly worse base means the user sees a few extra
+        // conflicts, never a wrong merge.
+        //
+        // What this pins is that the choice is STABLE. Without the id tie-break the
+        // winner depended on traversal order, so two people merging the same pair of
+        // branches could be shown different conflicts.
+        const dag = graph(
+            ["a", 1, []],
+            ["b", 2, ["a"]],
+            ["c", 2, ["a"]],
+            ["m1", 3, ["b", "c"]],
+            ["m2", 4, ["c", "b"]],
+            ["left", 5, ["m1"]],
+            ["right", 6, ["m2"]],
+        );
+        expect(mergeBase(dag, "left", "right")).toBe("b");
+        expect(mergeBase(dag, "right", "left")).toBe("b");
+    });
+
+    it("terminates on a cycle rather than hanging", () => {
+        // Lore cannot produce one, but the graph arrives over FFI and a hung main
+        // process is a far worse failure than a wrong answer.
+        const dag = graph(["a", 1, ["b"]], ["b", 2, ["a"]]);
+        expect(() => mergeBase(dag, "a", "b")).not.toThrow();
+    });
 });

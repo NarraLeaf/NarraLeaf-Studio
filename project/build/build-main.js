@@ -22,9 +22,11 @@ const { rootDir, isDev } = require('./utils');
         format: 'cjs',
         bundle: true,
         // @narraleaf/encryption is kept external (required from node_modules, not bundled).
-        // @lore-vcs/sdk and koffi likewise: koffi resolves its own .node addon and the
-        // platform lorelib shared library by path at runtime, which bundling breaks.
-        external: ['electron', 'esbuild', '@narraleaf/encryption', '@lore-vcs/sdk', 'koffi'],
+        // koffi likewise: it resolves its own .node addon by path at runtime, which
+        // bundling breaks. lorelib itself is loaded through a computed require of the
+        // @lore-vcs/sdk-<platform> package, which esbuild cannot follow and therefore
+        // leaves alone - see vcs/lore/library.ts.
+        external: ['electron', 'esbuild', '@narraleaf/encryption', 'koffi'],
         sourcemap: isDev(),
         minify: !isDev(),
         target: ['node18'],
@@ -75,10 +77,9 @@ const { rootDir, isDev } = require('./utils');
         format: 'cjs',
         bundle: true,
         // Same externals as the main bundle: @narraleaf/encryption is a native
-        // addon whose computed-require sidecars resolve by path at runtime, and
-        // koffi / @lore-vcs/sdk load their own binaries by path — bundling any of
-        // them breaks resolution.
-        external: ['electron', '@narraleaf/encryption', '@lore-vcs/sdk', 'koffi'],
+        // addon whose computed-require sidecars resolve by path at runtime, and koffi
+        // loads its own binary by path — bundling either breaks resolution.
+        external: ['electron', '@narraleaf/encryption', 'koffi'],
         sourcemap: isDev(),
         minify: !isDev(),
         target: ['node18'],
