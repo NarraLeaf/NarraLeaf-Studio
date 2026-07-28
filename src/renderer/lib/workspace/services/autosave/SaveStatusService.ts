@@ -1,4 +1,5 @@
 import type { TranslationKey } from "@shared/i18n";
+import type { DocumentCorruptError } from "@shared/documents/types";
 import { FsRejectErrorCode } from "@shared/types/os";
 import { translate } from "@/lib/i18n";
 import { Service } from "../Service";
@@ -73,6 +74,8 @@ export class SaveStatusService extends Service<SaveStatusService> {
     private readonly failures = new Map<string, SaveFailure>();
     /** path → notification id, so one failing file raises one toast rather than one per retry. */
     private readonly toasts = new Map<string, string>();
+    /** path → notification id for documents that could not be *read*. See {@link reportUnreadableDocument}. */
+    private readonly corruptToasts = new Map<string, string>();
     private readonly listeners = new Set<() => void>();
     private unobserveWrites: (() => void) | null = null;
 
@@ -86,6 +89,7 @@ export class SaveStatusService extends Service<SaveStatusService> {
         this.unobserveWrites = filesystemService.observeWrites(outcome => this.handleWriteOutcome(outcome));
         this.failures.clear();
         this.toasts.clear();
+        this.corruptToasts.clear();
     }
 
     public override dispose(): void {
@@ -93,6 +97,7 @@ export class SaveStatusService extends Service<SaveStatusService> {
         this.unobserveWrites = null;
         this.failures.clear();
         this.toasts.clear();
+        this.corruptToasts.clear();
         this.notifyChanged();
     }
 
@@ -179,6 +184,51 @@ export class SaveStatusService extends Service<SaveStatusService> {
             this.clearFailure(path, { announce: false });
         }
         await this.flushAll();
+    }
+
+    /**
+     * Report a document that could be read off the disk but not understood.
+     *
+     * This is the read-side counterpart of a failed write, and it goes out on the same two channels
+     * for the same reason: before they existed, a document service that could not parse its file
+     * reached a `console.warn` in a devtools window nobody had open, and the author's first sign of
+     * trouble was an empty panel.
+     *
+     * Deliberately NOT recorded in {@link failures}. That table is the set of writes still owed, it
+     * drives the status bar and {@link retryNow} clears it - none of which is true here. A file we
+     * cannot parse will not become parseable because we tried again, and the one thing that must
+     * not happen is the service treating it as "clean" and writing a default over it.
+     */
+    public reportUnreadableDocument(error: DocumentCorruptError, quarantinePath: string | null): void {
+        this.logStorage("error", translate("workspace.shell.save.consoleUnreadable", {
+            kind: error.kind,
+            path: error.path,
+            reason: error.reason,
+        }));
+        if (quarantinePath) {
+            this.logStorage("error", translate("workspace.shell.save.consoleQuarantined", { path: quarantinePath }));
+        }
+
+        // One toast per document: loading is retried on every project switch and on every panel that
+        // opens the same locale, and a toast per attempt would bury the workspace in duplicates.
+        if (this.corruptToasts.has(error.path)) {
+            return;
+        }
+        const notifications = this.getNotifications();
+        if (!notifications) {
+            return;
+        }
+        const id = notifications.showSticky({
+            type: NotificationType.Error,
+            message: translate("workspace.shell.save.unreadableTitle", { file: fileNameOf(error.path) }),
+            detail: quarantinePath
+                ? translate("workspace.shell.save.unreadableDetailQuarantined", {
+                    reason: error.reason,
+                    path: quarantinePath,
+                })
+                : translate("workspace.shell.save.unreadableDetail", { reason: error.reason }),
+        });
+        this.corruptToasts.set(error.path, id);
     }
 
     private handleWriteOutcome(outcome: FsWriteOutcome): void {
@@ -290,4 +340,23 @@ export async function registerAutoSaver(
     const saveStatus = ctx.services.get<SaveStatusService>(Services.SaveStatus);
     await depend([saveStatus]);
     saveStatus.register(id, labelKey, saver);
+}
+
+/**
+ * The one line a document service adds to the `corrupt` arm of a load result.
+ *
+ * Swallows its own failures on purpose: this runs on a load path that has already gone wrong, and
+ * the news is the unreadable document, not that the console service was torn down while we were
+ * telling somebody about it.
+ */
+export function reportUnreadableDocument(
+    ctx: WorkspaceContext,
+    result: { error: DocumentCorruptError; quarantinePath: string | null },
+): void {
+    try {
+        ctx.services.get<SaveStatusService>(Services.SaveStatus)
+            .reportUnreadableDocument(result.error, result.quarantinePath);
+    } catch (error) {
+        console.warn("[SaveStatus] could not report an unreadable document", error);
+    }
 }

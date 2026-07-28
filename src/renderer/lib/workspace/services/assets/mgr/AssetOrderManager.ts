@@ -74,7 +74,13 @@ export class AssetOrderManager {
         this.orders[type] = document;
 
         const filesystemService = this.context.services.get<FileSystemService>(Services.FileSystem);
-        const result = await filesystemService.writeFileNoFollow(
+        // `write`, not `writeFileNoFollow`: the no-follow writer opens with an unconditional `lstat`
+        // so it can inspect and refuse a symlink, which means it can only ever *overwrite*. This
+        // file does not exist on the one open that matters most — the first open of any project that
+        // predates it, i.e. every project in existence — and that write failing is not a cosmetic
+        // loss: it is the open on which the author's row order is still recoverable from key order.
+        // The sibling shards use `write` for the same reason. See `GroupAssetsManager`.
+        const result = await filesystemService.write(
             this.context.project.resolve(ProjectNameConvention.AssetsOrderShard(type)),
             serializeAssetOrderDocument(document),
             "utf-8",
