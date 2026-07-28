@@ -53,6 +53,7 @@
     "clsx": "^2.1.1",
     "electron-builder": "^26.0.12",
     "electron-store": "^9.0.0",
+    "koffi": "2.16.2",
     "lucide-react": "^0.546.0",
     "mime-types": "^3.0.1",
     "monaco-editor": "^0.55.1",
@@ -67,10 +68,14 @@
     "transliteration": "^2.3.5"
   },
   "optionalDependencies": {
-    "@lore-vcs/sdk": "0.8.5"
+    "@lore-vcs/sdk-amd64-unknown-linux": "0.8.5",
+    "@lore-vcs/sdk-amd64-unknown-windows": "0.8.5",
+    "@lore-vcs/sdk-arm64-apple-darwin": "0.8.5",
+    "@lore-vcs/sdk-arm64-graviton-linux": "0.8.5"
   },
   "devDependencies": {
     "7zip-bin": "^5.2.0",
+    "@lore-vcs/sdk": "0.8.5",
     "@narraleaf/studio-shell": "0.2.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
