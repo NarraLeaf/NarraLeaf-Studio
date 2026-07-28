@@ -68,6 +68,7 @@ import {
     type CompiledNlrStory,
 } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import { computeStoryStageSnapshot } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
+import { createPuppetStageHandle, loadPuppetBackends } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
 import { sceneVariableDefs, savedVariableDefs } from "@shared/types/story";
 import { resolveStagePreloadTarget } from "@/lib/ui-editor/runtime/game/resolveDefaultLaunchScene";
 import { NlrStageLayer, type NlrStageSession } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
@@ -1082,6 +1083,20 @@ export function GameApp(props: GameAppProps): ReactNode {
             // preview, which embeds into arbitrarily small panes).
             minStageSize: { width: 1, height: 1 },
         });
+        // Before the Player mounts, not after: a puppet looks its backend up once, when its
+        // component mounts, so anything registered later is simply not there for it. Failures are
+        // already reported by the loader and never rejected — a broken author-supplied runtime
+        // costs the stage nothing but the characters it would have drawn.
+        if (host.listPuppetBackendModules) {
+            try {
+                const sources = await host.listPuppetBackendModules();
+                if (sources.length > 0) {
+                    await loadPuppetBackends(game, sources, { log: host.log });
+                }
+            } catch (error) {
+                host.log("warning", `Puppet backends could not be discovered: ${normalizeError(error)}`);
+            }
+        }
         const environmentReady = new Promise<void>((resolve, reject) => {
             pendingEnvReadyRef.current.set(sessionId, { resolve, reject });
         });
@@ -1144,6 +1159,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         getSavePreview,
         hideDialogInGame,
         host.id,
+        host.log,
+        host.listPuppetBackendModules,
         host.quitApplication,
         host.getFullscreen,
         host.setFullscreen,
@@ -2046,6 +2063,18 @@ export function GameApp(props: GameAppProps): ReactNode {
                 }
                 nlrLiveGameRef.current = liveGame;
                 nlrLiveGameSessionIdRef.current = sessionId;
+                // Puppets have no authoring surface yet, so the only way to put one on a stage is
+                // from a console. Published on the window rather than a panel because the audience
+                // is whoever is bringing a backend up, and what they need is to poke at a live one.
+                // Remove when a character's appearance can declare a puppet and the story compiler
+                // emits it; nothing in Studio reads this.
+                if (nlrSession?.game.listPuppetBackends().length) {
+                    const gameState = liveGame.getGameState();
+                    if (gameState) {
+                        (window as typeof window & { __NLS_PUPPETS__?: unknown }).__NLS_PUPPETS__ =
+                            createPuppetStageHandle(nlrSession.game, gameState);
+                    }
+                }
                 // Hand the new environment to the runtime plugin host. Called
                 // per session, so a relaunch or hot reload re-binds the engine
                 // events under the plugins' existing listeners.
