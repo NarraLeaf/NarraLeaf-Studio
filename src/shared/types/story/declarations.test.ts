@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { describeDeclaration, sceneVariableDefs, savedVariableDefs, storyPersistentDefs } from "./declarations";
-import type { StoryDeclarationBlock, StoryDocument, StoryScene, StoryVariableScope, StoryVariableValueType, StoryLiteralValue } from "./document";
+import { describeDeclaration, listSceneDeclarationBlocks, sceneVariableDefs, savedVariableDefs, storyPersistentDefs } from "./declarations";
+import type { StoryBlock, StoryDeclarationBlock, StoryDocument, StoryScene, StoryVariableScope, StoryVariableValueType, StoryLiteralValue } from "./document";
 
 /**
  * A disabled declaration row must still declare its variable. Disabling is "compiled out" for
@@ -62,6 +62,62 @@ describe("describeDeclaration", () => {
 
     it("omits the ` = value` when no default is declared", () => {
         expect(describeDeclaration(typedDeclaration("flag", "boolean"))).toBe("flag: boolean");
+    });
+});
+
+/**
+ * `scene.blocks` is a lookup table, not the script. `insertBlockInScene` appends every new block to
+ * the record whatever position it takes in the tree, so the record's key order and the order the
+ * author reads diverge the moment anything is inserted anywhere but the end. These pin that the
+ * declaration scans read the tree.
+ */
+describe("declaration scans and document order", () => {
+    it("lists declarations in tree order, not the order the record happens to hold them", () => {
+        // Exactly what `StoryService.createDeclaration` produces: a new row is inserted BEFORE
+        // `rootBlockIds[0]`, so the second variable an author declares is the first row of the scene
+        // and the last key of the record.
+        const declaredFirst = declaration("declared-first", "scene");
+        const declaredSecond = declaration("declared-second", "scene");
+        const scene: StoryScene = {
+            ...sceneWith([]),
+            rootBlockIds: [declaredSecond.id, declaredFirst.id],
+            blocks: { [declaredFirst.id]: declaredFirst, [declaredSecond.id]: declaredSecond },
+        };
+        expect(listSceneDeclarationBlocks(scene).map(block => block.id)).toEqual(["declared-second", "declared-first"]);
+        expect(Object.keys(sceneVariableDefs(scene))).toEqual(["declared-second", "declared-first"]);
+    });
+
+    it("places a nested declaration where its container sits, not after every root row", () => {
+        const top = declaration("top", "scene");
+        const nested = declaration("nested", "scene");
+        const branch: StoryBlock = {
+            id: "branch",
+            kind: "control",
+            parentId: null,
+            childrenIds: [nested.id],
+            payload: { control: "sequence", mode: "do" },
+        };
+        const tail = declaration("tail", "scene");
+        const scene: StoryScene = {
+            ...sceneWith([]),
+            rootBlockIds: [top.id, branch.id, tail.id],
+            // The nested row was added last, so the record holds it after `tail`.
+            blocks: { [top.id]: top, [branch.id]: branch, [tail.id]: tail, [nested.id]: { ...nested, parentId: branch.id } },
+        };
+        expect(listSceneDeclarationBlocks(scene).map(block => block.id)).toEqual(["top", "nested", "tail"]);
+    });
+
+    it("still declares a row the block tree has lost, rather than silently un-declaring it", () => {
+        // A row whose parent exists but does not claim it is unreachable from `rootBlockIds`. Studio
+        // cannot produce that, but dropping such a row would turn every reference to its variable
+        // into "undeclared" and cascade errors through lines the author never touched.
+        const orphan = declaration("orphan", "scene");
+        const scene: StoryScene = {
+            ...sceneWith([]),
+            rootBlockIds: [],
+            blocks: { [orphan.id]: { ...orphan, parentId: "gone" } },
+        };
+        expect(listSceneDeclarationBlocks(scene).map(block => block.id)).toEqual(["orphan"]);
     });
 });
 

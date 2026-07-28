@@ -10,7 +10,7 @@ import type {
     StoryVariableScope,
     StoryVariableValueType,
 } from "@shared/types/story";
-import { describeDeclaration } from "@shared/types/story";
+import { describeDeclaration, listSceneIdsInDocumentOrder } from "@shared/types/story";
 import { translate } from "@/lib/i18n";
 import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
@@ -752,7 +752,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         const block = createBlockForCommand(kind, () => uuidService.generate(), initialText, characterId);
         if (block.kind === "jump" && !block.payload.targetSceneId && document) {
-            block.payload.targetSceneId = Object.keys(document.scenes)[0] ?? "";
+            block.payload.targetSceneId = listSceneIdsInDocumentOrder(document)[0] ?? "";
         }
         return block;
     }, [document, uuidService]);

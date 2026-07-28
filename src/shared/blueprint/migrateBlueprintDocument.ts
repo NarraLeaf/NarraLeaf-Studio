@@ -21,6 +21,7 @@ import {
 } from "@shared/types/blueprint/graph";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { seedRegistryEntriesFromBlueprintPersistent } from "@shared/variables/variableRegistryModel";
+import { captureBlueprintDocumentEventOrder, captureBlueprintDocumentFunctionOrder } from "./blueprintEventOrder";
 import {
     ensureBlueprintEventGraphIrStructure,
     ensureBlueprintFunctionGraphIrStructure,
@@ -264,13 +265,20 @@ export function migrateBlueprintDocumentToLatest(raw: unknown): BlueprintDocumen
     if (!isRecord(raw)) {
         throw new Error("BlueprintDocument: expected object");
     }
+    // v10 (H2a). Both before any other pass, because every one of them rebuilds objects
+    // (`{...doc, blueprints}`, `{...graphs, events, functions}`) and the graph-slot order
+    // exists only as the key order of `events` / `functions` until these two lines have run.
+    // Nothing downstream can recover it once a rebuild has reinserted the keys, and the
+    // result would look like a perfectly valid order rather than like data loss.
+    captureBlueprintDocumentEventOrder(raw);
+    captureBlueprintDocumentFunctionOrder(raw);
     const sv = raw.schemaVersion;
     if (sv === BLUEPRINT_DOCUMENT_SCHEMA_VERSION) {
         return migrateBlueprintSentenceSpeedToCps(
             stripPersistentVariables(migrateLegacyDeclarationsToFields(raw as BlueprintDocument)),
         );
     }
-    if ((sv === 5 || sv === 6 || sv === 7 || sv === 8) && isRecord(raw.blueprints)) {
+    if ((sv === 5 || sv === 6 || sv === 7 || sv === 8 || sv === 9) && isRecord(raw.blueprints)) {
         const migrated = finalizeLegacyBlueprintDocument(raw as BlueprintDocument);
         return { ...migrated, schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION };
     }

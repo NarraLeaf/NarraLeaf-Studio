@@ -1,6 +1,7 @@
 import { FileText, Image as ImageIcon, Music, PanelsTopLeft, Users, Workflow, File } from "lucide-react";
 import type { ReactNode } from "react";
 import type { TranslationKey } from "@shared/i18n";
+import { listScenesInDocumentOrder } from "@shared/types/story";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
@@ -71,7 +72,7 @@ export function collectQuickOpenEntries(ctx: WorkspaceContext): QuickOpenEntry[]
         } catch {
             continue; // Not loaded (ensureReady not awaited) — skip rather than throw.
         }
-        for (const scene of Object.values(document.scenes)) {
+        for (const scene of listScenesInDocumentOrder(document)) {
             entries.push({
                 key: `scene:${document.id}:${scene.id}`,
                 kind: "scene",

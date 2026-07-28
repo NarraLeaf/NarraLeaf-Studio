@@ -1,5 +1,5 @@
 import type { StoryDocument } from "@shared/types/story";
-import { isStoryDeclarationBlock } from "@shared/types/story";
+import { isStoryDeclarationBlock, listSceneBlocksInDocumentOrder, listScenesInDocumentOrder } from "@shared/types/story";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { LocalizationKeysDocument } from "@shared/types/localization";
@@ -135,7 +135,9 @@ export function extractStoryEntries(document: StoryDocument): SearchIndexEntry[]
     const entries: SearchIndexEntry[] = [];
     const storyName = document.name;
 
-    for (const scene of Object.values(document.scenes)) {
+    // Ranking only reorders matches; everything that ties keeps index order, which is why both loops
+    // walk the authored order rather than the records.
+    for (const scene of listScenesInDocumentOrder(document)) {
         const context = `${storyName} › ${scene.name}`;
         const sceneFields: SearchEntryFields = {
             storyId: document.id,
@@ -144,7 +146,7 @@ export function extractStoryEntries(document: StoryDocument): SearchIndexEntry[]
             sceneName: scene.name,
         };
 
-        for (const block of Object.values(scene.blocks)) {
+        for (const block of listSceneBlocksInDocumentOrder(scene)) {
             if (isStoryDeclarationBlock(block)) {
                 if (!block.payload.name) {
                     continue;

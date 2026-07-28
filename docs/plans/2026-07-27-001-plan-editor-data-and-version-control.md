@@ -229,11 +229,79 @@ interface DocumentSpec<T> {
 `.nlstudio/quarantine/<时间戳>/<原路径>`，向 SaveStatus 报一条可见的错误，文档以「未加载」
 状态存在——**绝不用默认值覆盖一个读不懂的文件**，那等于删数据。
 
-### 3.3 迁移路径
+### 3.3 排序键会重排作者写下的内容 —— H1 审计发现，必须先解决
+
+H1 完工时做了一次审计，结论是**四个文档格式把对象当有序 map 用**，键序就是作者看到的顺序。
+排序键不是"整理格式"，是**打乱作者的内容**。已逐条核实：
+
+| 格式 | 键序表现为什么 | 证据 |
+|---|---|---|
+| `StoryScene.blocks` | 场景变量表与快照面板的行序 | `listSceneDeclarationBlocks` = `Object.values(scene.blocks)`，注释明写 "in document order"（`src/shared/types/story/declarations.ts:60`） |
+| `Blueprint.program.graphs.events` | 事件层列表；`eventIds[0]` 决定默认打开哪一层 | `src/shared/types/blueprint/document.ts:170`、`BlueprintMemberTree.tsx:729` |
+| `AssetsMap[type]` / `AssetGroupMap[type]` | 资产浏览器排序，且 shift 范围选择依赖它 | `newAssets[type] = Object.values(assetsMap[type])`（`useAssetData.ts:85`） |
+| `StoryDocument.scenes`（无章节场景） | 流程图布局与本地化行序 | `sceneFlowModel.ts:113`、`localizationModel.ts:69` |
+
+键全是 UUID，所以排序 = 随机重排。**这条不解决就上规范化，第一次 normalize-on-open 会当着
+作者的面打乱他的变量表和资产列表，看起来就是 Studio 把工程搞坏了。**
+
+三条路：
+
+| 方案 | 代价 | 问题 |
+|---|---|---|
+| **(a) 加显式顺序数组**（推荐） | 4 个格式各一次 schema 迁移 | 工作量最大 |
+| (b) 读取处改为确定性排序（按名/按时间） | 小 | **作者失去手动排序能力**，是产品倒退 |
+| (c) 这四个格式豁免键排序 | 最小 | 内容最大的四个文档恰恰不确定，diff 噪声全落在它们身上 |
+
+**推荐 (a)**，理由不只是版本控制：这四个格式**今天就已经**在依赖一个 JS 只是碰巧给的保证——
+对象键序是插入序，任何一次 `{...spread}` 重建、`map`/`filter` 回填都会改变它，与 VCS 无关。
+仓库里 `rootBlockIds` / `childrenIds` 已经是这么做的，有现成先例。
+
+> **已拍板（2026-07-27）：走 (a)，schema 可以迁移。**
+
+拍板后再勘验，发现**"四次迁移"并不成立**——顺序信息有一半本来就在结构里：
+
+| 格式 | 既有承载 | 结论 |
+|---|---|---|
+| `StoryScene.blocks` | `rootBlockIds` + 块的 `parentId`/`childrenIds` 构成树 | **不需要迁移**，深度优先走既有结构即可 |
+| `StoryDocument.scenes`（无章节） | `chapters[].sceneIds` 只覆盖有章节的场景 | 需要承载 |
+| `Blueprint...graphs.events` | 无 | 需要迁移（bp v9→v10），且 `graphs.functions` 有**同一个**缺陷——`functionIds[0]` 决定没有事件层时默认打开哪张图 |
+| `AssetsMap` / `AssetGroupMap` | 无 | 需要承载；且实测**资产顺序是导入序不是作者排的**（UI 里没有任何重排手势） |
+
+**资产这一条的落地形态是被推翻过一次的裁决**：第一版把分片改成了信封结构
+（`{assets: {...}, assetIds: [...]}`），代价是**旧版 Studio 打开迁移过的工程会看到空资产库**。
+这不是不可避免的——已发货的加载器 `assignValidAssets` 对校验失败的条目只是警告并跳过，其余资产
+照常保留；空库纯粹是因为信封把资产**下移了一层**，旧读取器只看见一个叫 `assets` 的条目并合理地
+拒绝了它。所以改为**独立顺序文件**：内容分片字节形态不变，顺序放同级的另一个文档。
+前向兼容变成完全的，主进程那三个读取点一行都不用改。
+
+一个空的资产库是 Studio 能显示给作者的最惊悚的东西，而危险不在显示，在于作者接下来会做什么
+（重新导入一遍，或者认定工程坏了）。为一个**本来就不是作者排的**顺序付这个代价不成比例。
+
+而且第一条顺带暴露一个**已经存在的 bug**：`listSceneDeclarationBlocks` 的注释写着 "in document
+order"，实现却是 `Object.values(scene.blocks)`，拿的是**插入序**。在场景中间插入的块，变量表里
+会跑到末尾。与版本控制无关，今天就是错的。
+
+**迁移的硬约束**：迁移必须在**同一次 parse 里**从对象键序推出顺序数组。`JSON.parse` 对非整数样式
+的键保留插入序，所以今天的键序**就是**作者的顺序——但只到下一次改写为止。顺序数组一旦晚于任何
+一次规范化写入才填，作者的顺序就已经没了，之后再怎么修都找不回来。
+
+### 3.3.1 H2b 开工前已知的地雷
+
+- **`Asset.ext` 在内存里可以是 `undefined`。** `JSON.stringify` 静默丢弃它，
+  `encodeCanonicalJson` 会**抛错**（这正是它存在的理由——静默丢字段就是静默丢数据）。资产分片
+  接规范化写入之前，`ext` 必须是「删掉这个键」而不是「赋值 undefined」。同类写法在别处大概率
+  也有，H2b 第一步应该先扫一遍。
+- **搜索与引用的结果顺序**（`searchIndexModel.ts:263`、`referenceModel.ts:251`）取自
+  `Object.entries(graphs.events)`，规范化后会变成 UUID 序。属于结果排序而非作者内容，不拦 H2b，
+  但届时应该给它一个显式排序而不是继续依赖记录顺序。
+
+### 3.4 迁移路径
 
 8 个服务逐个接入，每个都是「读走 `parse`、写走 `serialize`」的窄改动 + 一个往返测试。
 接入完成后做一次**全项目规范化**：打开项目时若检测到非规范字节，重写一遍（在建仓库之前
 做，这样第一个提交就是规范形态，而不是第二个提交里冒出一个全文件 diff）。
+
+§3.3 的四个格式**排在这一步之前**——顺序问题没解决，规范化就不能对它们跑。
 
 ---
 
@@ -258,6 +326,16 @@ interface DocumentSpec<T> {
   | `ATOMIC_WRITE_TEMP_PATTERN` 命中的临时文件 | 原子写的 scratch 文件，[fs.ts](../../src/shared/utils/fs.ts) 已有该常量 |
 
   `resources/icons/derived/`（烘焙图标）**收**——它是工程内容不是缓存，这条已有先例。
+
+  实现走 Lore 自己的 `.loreignore`（能力与实测语义见 [version-control.md §2.4](../version-control.md)），
+  谓词与忽略文件由同一张表生成，我们这侧不可能漂移。
+
+  > **已知缺口（V1 尾巴或 V2 一并解决）**：`.loreignore` 进版本库、随 clone 传播、且用户可编辑，
+  > 而 Studio 的谓词是编译进程序的。作者手改一行，或者未来 Studio 改了策略而老仓库还留着旧文件，
+  > 两边就静默分歧——而这正是 `workingSet.ts` 自己称为「本里程碑最坏故障」的那一种：Studio 显示
+  > 文件受保护，每次提交都悄悄漏掉它，等作者要取回来时才发现。
+  > **对策**：打开仓库时把磁盘上的忽略文件与编译进来的策略比对，不一致就报告（不要静默改写作者
+  > 的文件）。约二十行加一个测试。
 
 ### 4.2 V2 提交与检查点
 

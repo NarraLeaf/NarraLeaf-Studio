@@ -6,6 +6,7 @@ import type {
     StorySceneVariableDefinition,
     StorySavedVariableDefinition,
 } from "./document";
+import { listSceneBlocksInDocumentOrder, listScenesInDocumentOrder } from "./order";
 
 /**
  * The derived variable tables (schema v6): declaration ROWS are the source of truth, and these
@@ -56,9 +57,33 @@ function defOf(block: StoryDeclarationBlock): StorySceneVariableDefinition {
     };
 }
 
-/** Every declaration row in a scene, in document order. */
+/**
+ * Every declaration row in a scene, in document order - the order the rows sit in the scene, which
+ * is the order the variable table and the snapshot panel list them in.
+ *
+ * The walk is over the block tree, not `Object.values(scene.blocks)`. The record is a lookup table
+ * that grows by append: `/local` inserts its row at the TOP of the scene but stores it at the END of
+ * the record, so reading the record listed variables in roughly reverse declaration order.
+ *
+ * The tail is for a row the tree has lost - one whose parent exists but does not list it among its
+ * children, which no Studio operation produces but a damaged file can carry. Dropping it would
+ * un-declare its variable, and every reference to that variable elsewhere would resolve to
+ * "undeclared", cascading errors through lines the author never touched. Ending up last in the
+ * table is a far smaller wrong than disappearing from it.
+ */
 export function listSceneDeclarationBlocks(scene: StoryScene): StoryDeclarationBlock[] {
-    return Object.values(scene.blocks).filter(isStoryDeclarationBlock);
+    const reached = listSceneBlocksInDocumentOrder(scene);
+    const rows = reached.filter(isStoryDeclarationBlock);
+    if (reached.length === Object.keys(scene.blocks).length) {
+        return rows;
+    }
+    const reachedIds = new Set(reached.map(block => block.id));
+    for (const block of Object.values(scene.blocks)) {
+        if (!reachedIds.has(block.id) && isStoryDeclarationBlock(block)) {
+            rows.push(block);
+        }
+    }
+    return rows;
 }
 
 /** The scene-scope variable table of one scene - what `StoryScene.sceneVariables` used to persist. */
@@ -88,7 +113,7 @@ export function storyPersistentDefs(document: StoryDocument): Record<string, Sto
 
 function documentWideDefs(document: StoryDocument, scope: "saved" | "persistent"): Record<string, StorySavedVariableDefinition> {
     const defs: Record<string, StorySavedVariableDefinition> = {};
-    for (const scene of Object.values(document.scenes)) {
+    for (const scene of listScenesInDocumentOrder(document)) {
         for (const block of listSceneDeclarationBlocks(scene)) {
             if (block.payload.scope === scope) {
                 defs[block.id] = defOf(block);
@@ -100,7 +125,10 @@ function documentWideDefs(document: StoryDocument, scope: "saved" | "persistent"
 
 /** The declaration row backing a variable id, or null - how an editor jumps from a ref to its row. */
 export function findDeclarationBlock(document: StoryDocument, variableId: string): { sceneId: string; block: StoryDeclarationBlock } | null {
-    for (const [sceneId, scene] of Object.entries(document.scenes)) {
+    // Document order, not key order: if a damaged document held the same block id in two scenes, the
+    // one an author would call "the" row is the earlier one, and it must not change per save.
+    for (const scene of listScenesInDocumentOrder(document)) {
+        const sceneId = scene.id;
         const block = scene.blocks[variableId];
         if (block && isStoryDeclarationBlock(block)) {
             return { sceneId, block };
