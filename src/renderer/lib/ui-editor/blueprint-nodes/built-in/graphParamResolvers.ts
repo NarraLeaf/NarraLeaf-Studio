@@ -56,6 +56,7 @@ import {
     BLUEPRINT_NODE_TYPE_DATA_TO_FLOAT,
     BLUEPRINT_NODE_TYPE_DATA_TO_INTEGER,
     BLUEPRINT_NODE_TYPE_DATA_TO_JSON,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VARIANT,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_BOUNDS,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_DISPLAY,
@@ -85,6 +86,7 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT_COLOR,
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT_VERTICAL_ALIGN,
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_WRAP_MODE,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_BOUNDS,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_DISPLAY,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_OPACITY,
@@ -146,6 +148,11 @@ import {
     BLUEPRINT_NODE_TYPE_LIST_GET_SELECTED_ITEM,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
+    BLUEPRINT_NODE_TYPE_LOCALIZATION_FORMAT_TEXT,
+    BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_AVAILABLE_LANGUAGES,
+    BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_CURRENT_LANGUAGE,
+    BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT,
+    BLUEPRINT_NODE_TYPE_LOCALIZATION_HAS_TEXT,
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
     BLUEPRINT_NODE_TYPE_MATH_ABS,
@@ -206,6 +213,8 @@ import {
     BLUEPRINT_NODE_TYPE_STRING_TRIM,
     BLUEPRINT_NODE_TYPE_STRING_TRIM_END,
     BLUEPRINT_NODE_TYPE_STRING_TRIM_START,
+    BLUEPRINT_NODE_TYPE_SAVED_GET,
+    BLUEPRINT_NODE_TYPE_SCENE_GET,
     BLUEPRINT_NODE_TYPE_SLIDER_GET_NORMALIZED_VALUE,
     BLUEPRINT_NODE_TYPE_SLIDER_GET_RANGE,
     BLUEPRINT_NODE_TYPE_SLIDER_GET_VALUE,
@@ -2349,11 +2358,19 @@ function resolveSelfOutput(
         (selfNode.type === BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP ||
             selfNode.type === BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH ||
             selfNode.type === BLUEPRINT_NODE_TYPE_PERSISTENT_GET ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_SCENE_GET ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_SAVED_GET ||
             selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS ||
             selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA ||
             selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW ||
             selfNode.type === BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET ||
-            selfNode.type === BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN) &&
+            selfNode.type === BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN ||
+            // Localization getters are latent and all publish onto a `value` pin.
+            selfNode.type === BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_CURRENT_LANGUAGE ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_LOCALIZATION_HAS_TEXT ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_LOCALIZATION_FORMAT_TEXT ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_AVAILABLE_LANGUAGES) &&
         (portId === "index" ||
             portId === "item" ||
             portId === "value" ||
@@ -2363,6 +2380,15 @@ function resolveSelfOutput(
             portId === "entries" ||
             portId === "isFullscreen" ||
             portId === "count")
+    ) {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
+    // Animate Property hands the token it minted to a later Stop Animation, so the
+    // token has to survive the hop through the node output store.
+    if (
+        (selfNode.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY) &&
+        portId === "animation"
     ) {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }
