@@ -121,6 +121,11 @@ export interface RendererPreloadedInterface {
         directorySize(path: string): Promise<RequestStatus<FsRequestResult<DirectorySizeResult>>>;
         requestRead(path: string, encoding: BufferEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
         requestReadRaw(path: string): Promise<RequestStatus<FsRequestResult<string>>>;
+        /**
+         * Grant read access to a directory tree, served as `app://fs/{hash}/{relative/path}`.
+         * Studio-internal (not on the plugin privileged surface) - see the IPC event's note.
+         */
+        requestReadDir(path: string): Promise<RequestStatus<FsRequestResult<string>>>;
         requestWrite(path: string, encoding: BufferEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
         requestWriteRaw(path: string): Promise<RequestStatus<FsRequestResult<string>>>;
         ensureRegularFile(path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;

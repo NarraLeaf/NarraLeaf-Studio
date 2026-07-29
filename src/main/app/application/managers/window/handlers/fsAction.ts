@@ -160,6 +160,43 @@ export class FsRequestReadHandler extends IPCHandler<IPCEventType.fsRequestRead>
     }
 }
 
+/**
+ * Issue a directory grant: one hash under which every file in `path` is readable as
+ * `app://fs/{hash}/{relative/path}`.
+ *
+ * The authorization is the same one a file read passes - the directory itself must already be
+ * inside a granted root - and the per-request containment check in the protocol handler is what
+ * keeps the grant from widening beyond that directory.
+ */
+export class FsRequestReadDirHandler extends IPCHandler<IPCEventType.fsRequestReadDir> {
+    readonly name = IPCEventType.fsRequestReadDir;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow, { path }: IPCEvents[IPCEventType.fsRequestReadDir]["data"]): Promise<RequestStatus<FsRequestResult<string>>> {
+        const denied = await ensurePathAllowed<string>(window, path, "read");
+        if (denied) return this.success(denied);
+
+        const existsResult = await Fs.isDirExists(path);
+        if (!existsResult.ok) {
+            return this.success(existsResult as FsRequestResult<string>);
+        }
+        if (!existsResult.data) {
+            return this.success({
+                ok: false,
+                error: {
+                    code: FsRejectErrorCode.NOT_FOUND,
+                    message: "Directory does not exist: " + path
+                }
+            });
+        }
+
+        const hash = window.app.storageManager.allocateDirectoryHash(path, window.getWebContents().id);
+        window.app.logger.debug(`[fs.readDir] path="${path}"`);
+
+        return this.success({ ok: true, data: hash });
+    }
+}
+
 export class FsRequestWriteHandler extends IPCHandler<IPCEventType.fsRequestWrite> {
     readonly name = IPCEventType.fsRequestWrite;
     readonly type = IPCMessageType.request;

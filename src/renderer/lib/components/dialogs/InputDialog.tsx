@@ -285,6 +285,7 @@ export class InputDialog {
             [AssetType.Video]: nounFor("video"),
             [AssetType.JSON]: nounFor("json"),
             [AssetType.Blueprint]: nounFor("blueprint"),
+            [AssetType.Model]: nounFor("model"),
             [AssetType.Font]: nounFor("font"),
             [AssetType.Other]: nounFor("other"),
         };

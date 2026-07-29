@@ -59,6 +59,15 @@ export type GameRuntimeAssetManifestEntry = {
     hash?: string;
     ext?: string;
     mimeType?: string;
+    /**
+     * Bundle assets only (`type: "model"`), and only on the entry keyed by the bare asset id:
+     * the bundle-relative path of its entry file.
+     *
+     * Its siblings ship as their own manifest entries keyed `{assetId}/{pathInsideBundle}`, so a
+     * URL built from `{assetId}/{bundleEntry}` is one the bundle's own relative references resolve
+     * against - which is the entire reason a model is one asset rather than N.
+     */
+    bundleEntry?: string;
 };
 
 export type GameRuntimeProjectIconPlatform = "macos" | "windows" | "linux";

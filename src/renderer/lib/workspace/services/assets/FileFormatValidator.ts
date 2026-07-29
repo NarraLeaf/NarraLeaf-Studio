@@ -273,6 +273,8 @@ export class FileFormatValidator {
             },
             [AssetType.JSON]: {},
             [AssetType.Blueprint]: {},
+            // A bundle is a directory; there is no single file whose magic bytes could be checked.
+            [AssetType.Model]: {},
             [AssetType.Other]: {},
         };
 
