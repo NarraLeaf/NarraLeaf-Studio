@@ -241,6 +241,28 @@ export interface PuppetAppearance {
     size: { width: number; height: number } | null;
     /** Handed to the backend verbatim. Studio never reads a key of it. */
     options: Record<string, unknown>;
+    /** The pose this character rests in. Omitted entirely when the author has set nothing. */
+    defaultState?: PuppetDefaultState;
+}
+
+/**
+ * What a puppet looks like before a story row has said otherwise.
+ *
+ * These three names are the engine's own vocabulary, not a renderer's - `PuppetState` documents them
+ * as "the three ideas every 2D character renderer has", and `IPuppetUserConfig` carries the same
+ * three as a puppet's *initial* state. So this is not the renderer-specific knob the surrounding
+ * doc comment rules out; it is the same idea as a preset character's default pose, said in the
+ * engine's words.
+ *
+ * `null` on any field is the absence of a request, exactly as the engine defines it - the model
+ * rests with no motion applied, no expression applied, and its own default skin. That is why a
+ * cleared field has to stay `null` rather than fall back to a model's own "neutral": if the author
+ * wants that one they can name it, and then the two still differ.
+ */
+export interface PuppetDefaultState {
+    motion: string | null;
+    expression: string | null;
+    skin: string | null;
 }
 
 export type ICharacterAppearance = PresetAppearance | LayeredAppearance | PuppetAppearance;
