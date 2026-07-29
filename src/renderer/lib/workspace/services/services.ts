@@ -30,6 +30,8 @@ import { AssetData, AssetType } from "./assets/assetTypes";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { Character } from "./character/Character";
 import { CharacterAppearanceKind, CharacterGroup } from "./character/types";
+import type { PuppetDescription } from "narraleaf-react";
+import type { PuppetDescriptionRequest, PuppetDescriptionResult } from "./puppet/puppetDescriptionModel";
 import type {
     UIDocument,
     UISurface,
@@ -155,6 +157,8 @@ enum Services {
     Story = "story",
     Character = "character",
     Assets = "assets",
+    /** What a puppet's model says it contains — motions, expressions, skins, parameters */
+    PuppetDescription = "puppetDescription",
     /** Per-project plugin dependency table: scan, persist, and resolve compatibility */
     ProjectDependency = "projectDependency",
     /** Accumulated authoring activity (writing curve, active time, build history) */
@@ -843,6 +847,24 @@ interface ICharacterService extends IService {
     flushPendingChanges(): Promise<void>;
 }
 
+/**
+ * What a puppet's model contains, read out of the live model rather than parsed off disk.
+ *
+ * The one lookup any surface can use: a character inspector filling its controls, a story row
+ * offering the motions a character actually has. Nothing here throws at a caller — a project with
+ * no runtime installed, a runtime that does not describe its models, and a model that failed to
+ * load all come back as `{status: "unavailable"}` with a reason, and the caller falls back to
+ * letting the author type a name.
+ */
+interface IPuppetDescriptionService extends IService {
+    describe(request: PuppetDescriptionRequest, options?: { refresh?: boolean }): Promise<PuppetDescriptionResult>;
+    describeCharacter(characterId: string, options?: { refresh?: boolean }): Promise<PuppetDescriptionResult>;
+    /** What is already in memory, for render paths that cannot await. Null means "ask, then re-render". */
+    peek(request: PuppetDescriptionRequest): PuppetDescription | null;
+    invalidate(request?: PuppetDescriptionRequest): Promise<void>;
+    onDescriptionChanged(handler: () => void): () => void;
+}
+
 // Asset Services
 interface IAssetService extends IService {
     getAssets(): AssetsMap;
@@ -988,7 +1010,7 @@ export {
     ITextureService, IUIService, IUuidService, IVersionControlService, IWorkspaceFreezeService, IVideoService,
     ICharacterService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, IConsoleService, UIEditorStateEvents,
-    IProjectDependencyService, IVoiceService, IVariableRegistryService,
+    IProjectDependencyService, IVoiceService, IVariableRegistryService, IPuppetDescriptionService,
     Services, WorkspaceContext
 };
 

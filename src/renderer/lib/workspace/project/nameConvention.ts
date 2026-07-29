@@ -67,6 +67,22 @@ export const ProjectNameConvention = {
         const safeId = encodePathSegmentId(id);
         return ["editor", "cache", "thumbnail", ...splitEncodedPathSegmentId(safeId), `${safeId}.png` as const];
     },
+    /**
+     * What each puppet model said about itself the last time one was mounted - its motions, skins
+     * and parameters.
+     *
+     * Derived, and therefore here rather than on the asset record: it is a reading of the model
+     * bundle and the author's runtime, and re-reading them reproduces it exactly. Each record
+     * carries the fingerprint of the inputs it was taken from, so a file that no longer matches is
+     * a miss rather than something to migrate - which is why nothing here is versioned by path.
+     *
+     * Flat rather than sharded. The id is already a fixed-width digest of the model/runtime pair, a
+     * project has as many of these as it has puppet characters, and the two-level shard the
+     * thumbnail cache uses is a no-op in practice (every encoded id starts with the same prefix).
+     */
+    EditorPuppetDescriptionCache: ["editor", "cache", "puppet/"],
+    EditorPuppetDescriptionCacheShard: (key: string) =>
+        ["editor", "cache", "puppet", `${encodePathSegmentId(key)}.json` as const],
     EditorUI: ["editor", "ui/"],
     EditorUIDocument: ["editor", "ui", "uidoc.json"],
     EditorUIGraphs: ["editor", "ui", "uigraphs.json"],
