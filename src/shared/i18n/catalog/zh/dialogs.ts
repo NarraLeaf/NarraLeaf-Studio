@@ -64,6 +64,7 @@ export const dialogs = {
         json: "JSON",
         blueprint: "蓝图",
         font: "字体",
+        model: "模型",
         other: "其他",
     },
 } satisfies LocaleNamespace<"dialogs">;

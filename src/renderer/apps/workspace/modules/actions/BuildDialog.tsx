@@ -21,7 +21,12 @@ import {
     type GameBuildRequest,
 } from "@shared/types/gameBuild";
 import { sanitizeProjectFileName } from "@shared/utils/nlproj";
-import { BUILD_COMPRESSIONS } from "@/lib/workspace/project/configuration";
+import type { SigningCredential } from "@shared/types/signing";
+import {
+    BUILD_COMPRESSIONS,
+    SIGNING_PLATFORMS,
+    type SigningConfiguration,
+} from "@/lib/workspace/project/configuration";
 import type { Workspace } from "@/lib/workspace/workspace";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/ui";
@@ -43,9 +48,16 @@ import {
     type BuildDialogState,
 } from "./buildDialogState";
 import { BuildIconRow } from "./BuildIconRow";
+import { SigningSection } from "./BuildSigningSection";
 import { PROJECT_ICON_TARGETS } from "@shared/types/projectIcons";
 
-const SECTIONS: BuildPreflightSection[] = ["targets", "identity", "content", "output"];
+/**
+ * The rail, in order. Exported so a test can hold it against
+ * `BuildPreflightSection`: a section the type knows about and this list does not
+ * is invisible - its findings render nowhere, and a blocking one sends the
+ * author to a section that is not there.
+ */
+export const SECTIONS: BuildPreflightSection[] = ["targets", "identity", "content", "signing", "output"];
 
 /** Everything the dialog reads about the project but does not itself own. */
 export type BuildDialogInfo = {
@@ -72,8 +84,11 @@ export function BuildDialogContent({
     initialSection,
     initialVersion,
     initialCopyright,
+    initialSigning,
     onChange,
     onPersistIdentity,
+    onPersistSigning,
+    onRemoveCredential,
     onEditIcons,
     onCommit,
     onCancel,
@@ -84,8 +99,11 @@ export function BuildDialogContent({
     initialSection: BuildPreflightSection;
     initialVersion: string;
     initialCopyright: string;
+    initialSigning: SigningConfiguration;
     onChange: (request: GameBuildRequest, section: BuildPreflightSection) => void;
     onPersistIdentity: (identity: { version: string; copyright: string }) => Promise<void>;
+    onPersistSigning: (signing: SigningConfiguration) => Promise<void>;
+    onRemoveCredential: (credential: SigningCredential) => Promise<boolean>;
     onEditIcons: () => void;
     onCommit: (request: GameBuildRequest) => void;
     onCancel: () => void;
@@ -99,7 +117,9 @@ export function BuildDialogContent({
     // openBuildDialog, so a prop-driven input could never change.
     const [version, setVersion] = useState(initialVersion);
     const [copyright, setCopyright] = useState(initialCopyright);
+    const [signing, setSigning] = useState<SigningConfiguration>(initialSigning);
     const persisted = useRef({ version: initialVersion, copyright: initialCopyright });
+    const persistedSigning = useRef(initialSigning);
 
     const request = useMemo(() => stateToRequest(state), [state]);
 
@@ -113,10 +133,11 @@ export function BuildDialogContent({
         onChange(request, section);
     }, [onChange, request, section]);
 
-    // Persist identity edits and re-check, debounced together. Preflight reads
-    // the project from disk, so the write has to land first or it would judge
-    // the previous version. `cancelled` keeps a slow reply from overwriting a
-    // newer one.
+    // Persist identity and signing edits and re-check, debounced together.
+    // Preflight reads the project from disk, so the writes have to land first or
+    // it would judge the previous version - and, for signing, would report the
+    // credential the author just cleared. `cancelled` keeps a slow reply from
+    // overwriting a newer one.
     useEffect(() => {
         let cancelled = false;
         const timer = setTimeout(() => {
@@ -124,6 +145,10 @@ export function BuildDialogContent({
                 if (persisted.current.version !== version || persisted.current.copyright !== copyright) {
                     await onPersistIdentity({ version, copyright });
                     persisted.current = { version, copyright };
+                }
+                if (persistedSigning.current !== signing) {
+                    await onPersistSigning(signing);
+                    persistedSigning.current = signing;
                 }
                 if (cancelled) {
                     return;
@@ -138,7 +163,22 @@ export function BuildDialogContent({
             cancelled = true;
             clearTimeout(timer);
         };
-    }, [request, runPreflight, onPersistIdentity, version, copyright]);
+    }, [request, runPreflight, onPersistIdentity, onPersistSigning, version, copyright, signing]);
+
+    // Only the platforms this build actually produces: a credential row for a
+    // target nobody selected is a question the author has no reason to answer.
+    //
+    // The GPG slot is the exception. It is filed under "linux" in the config,
+    // but its detached signatures cover every artifact the build writes, not
+    // Linux's - so it is offered whenever the build writes anything. Gating it
+    // on a Linux target would put it out of reach on a Windows host, which
+    // cannot build a Linux target at all.
+    const signablePlatforms = useMemo(() => {
+        const producesSomething = DIALOG_PLATFORMS.some(platform => state.formats[platform].size > 0);
+        return SIGNING_PLATFORMS.filter(platform => (platform === "linux"
+            ? producesSomething
+            : state.formats[platform].size > 0));
+    }, [state.formats]);
 
     const severityBySection = useMemo(() => {
         const map = {} as Partial<Record<BuildPreflightSection, BuildPreflightSeverity>>;
@@ -205,6 +245,19 @@ export function BuildDialogContent({
                         />
                     )}
                     {section === "content" && <ContentSection info={info} findings={findings} />}
+                    {section === "signing" && (
+                        <SigningSection
+                            platforms={signablePlatforms}
+                            signing={signing}
+                            onChange={(platform, credentialId) => setSigning(current => ({
+                                ...current,
+                                [platform]: credentialId,
+                            }))}
+                            onRemove={onRemoveCredential}
+                        >
+                            <Findings findings={findings} section="signing" />
+                        </SigningSection>
+                    )}
                     {section === "output" && (
                         <OutputSection info={info} state={state} version={version} findings={findings} onChange={update} />
                     )}
@@ -679,6 +732,7 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
                 initialSection={section}
                 initialVersion={typeof projectConfig.metadata?.version === "string" ? projectConfig.metadata.version : ""}
                 initialCopyright={typeof projectConfig.metadata?.copyright === "string" ? projectConfig.metadata.copyright : ""}
+                initialSigning={projectService.getSigningConfiguration()}
                 onChange={(nextRequest, nextSection) => {
                     request = nextRequest;
                     section = nextSection;
@@ -688,6 +742,29 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
                     // Best-effort: a failed write must not wedge the dialog, and
                     // preflight re-reads from disk either way.
                     await projectService.updateProjectMetadata({ version, copyright }).catch(() => undefined);
+                }}
+                onPersistSigning={async nextSigning => {
+                    // Same discipline as the identity write above. What lands in
+                    // the project is credential ids and nothing else - the key
+                    // material stays in the machine's vault.
+                    await projectService.updateSigningConfiguration({
+                        windows: nextSigning.windows,
+                        linux: nextSigning.linux,
+                        android: nextSigning.android,
+                        ios: nextSigning.ios,
+                    }).catch(() => undefined);
+                }}
+                onRemoveCredential={async credential => {
+                    const confirmed = await uiService.dialogs.confirmDestructive(
+                        translate("build.signing.removeConfirm", { label: credential.label }),
+                        translate("build.signing.removeConfirmDetail"),
+                        translate("build.signing.removeAction"),
+                    );
+                    if (!confirmed) {
+                        return false;
+                    }
+                    const result = await getInterface().signing.remove(credential.id);
+                    return result.success && result.data.removed;
                 }}
                 onEditIcons={() => {
                     // The draft is already parked, so closing here is safe: the

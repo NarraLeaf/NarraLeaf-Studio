@@ -24,6 +24,7 @@ function emptyAssetsMap(): AssetsMap {
         [AssetType.JSON]: {},
         [AssetType.Blueprint]: {},
         [AssetType.Font]: {},
+        [AssetType.Model]: {},
         [AssetType.Other]: {},
     };
 }
@@ -36,6 +37,7 @@ function emptyGroupMap(): AssetGroupMap {
         [AssetType.JSON]: {},
         [AssetType.Blueprint]: {},
         [AssetType.Font]: {},
+        [AssetType.Model]: {},
         [AssetType.Other]: {},
     };
 }

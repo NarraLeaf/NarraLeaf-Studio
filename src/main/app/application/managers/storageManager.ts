@@ -23,6 +23,19 @@ export interface FileStorageInfo {
     status: "allocated" | "ready" | "error";
     error?: string;
     /**
+     * When set, `path` is a directory root rather than one file, and `app://fs/{hash}/{rel}` serves
+     * the file at `rel` inside it (containment re-checked per request).
+     *
+     * This exists for one reason: a model bundle's manifest names its siblings by *relative path*
+     * (`Hiyori.2048/texture_00.png`), so the URL its entry file is served from has to be one those
+     * relative references resolve against. A flat per-file grant cannot be that URL - every sibling
+     * would resolve to `app://fs/{some-other-hash}` and 404.
+     *
+     * Directory grants are read-only and always session-lived: a bundle is fetched many times (one
+     * request per texture, per motion), so a one-shot grant would die on the first file.
+     */
+    directory?: boolean;
+    /**
      * "once" (default when absent): destroyed after the first successful use.
      * "session": stays usable until the owner webContents goes away, so the
      * same app://fs/{hash} URL can be fetched repeatedly (e.g. the game engine
@@ -65,6 +78,57 @@ export class StorageManager extends Manager {
         const hash = crypto.randomBytes(32).toString("base64url");
         this.storage.set(hash, { path, raw, operation, encoding, status: "allocated" });
         return hash;
+    }
+
+    /**
+     * Allocate a hash that serves a whole directory tree: `app://fs/{hash}/{relative/path}`.
+     *
+     * Session-lived and owned by the requesting webContents, because the consumer is a renderer that
+     * will fetch many files under the root and is expected to keep doing so for as long as it is
+     * showing the bundle. It dies with that webContents, exactly like a promoted read grant.
+     */
+    public allocateDirectoryHash(dirPath: string, ownerWebContentsId: number): string {
+        const hash = crypto.randomBytes(32).toString("base64url");
+        this.storage.set(hash, {
+            path: path.resolve(dirPath),
+            raw: true,
+            operation: "read",
+            // Ready on allocation, unlike a file grant. The allocate-then-ready dance exists because
+            // `allocateHash` is called *before* its existence check; a directory grant checks first
+            // and re-stats per request anyway, so a separate "not yet usable" state would only be a
+            // way to forget the second call.
+            status: "ready",
+            directory: true,
+            lifetime: "session",
+            ownerWebContentsId,
+        });
+        return hash;
+    }
+
+    /**
+     * The absolute path a directory grant's relative request maps to, or null when the request
+     * escapes the granted root.
+     *
+     * Containment is re-checked here rather than trusted from the URL: the relative part of the URL
+     * is attacker-controllable in the same sense every renderer-supplied path is, and `..` segments
+     * survive `new URL()` normalization when they are percent-encoded.
+     */
+    public resolveDirectoryGrantPath(info: FileStorageInfo, relativePath: string): string | null {
+        if (!info.directory) {
+            return null;
+        }
+        const decoded = relativePath.replace(/^\/+/, "");
+        if (!decoded) {
+            return null;
+        }
+        // Reject NUL and Windows drive/UNC prefixes before joining; `path.join` would happily
+        // absorb "C:/..." into a traversal that `isSameOrChild` then has to catch.
+        if (decoded.includes("\0") || path.isAbsolute(decoded) || /^[a-zA-Z]:/.test(decoded)) {
+            return null;
+        }
+        const root = path.resolve(info.path);
+        const target = path.resolve(root, decoded);
+        return this.isSameOrChild(target, root) && target !== root ? target : null;
     }
 
     public grantFileSystemAccess(
@@ -397,6 +461,10 @@ export class StorageManager extends Manager {
         return [
             path.join(this.app.getUserDataDir(), UserDataNamespace.Authorization),
             path.join(this.app.getUserDataDir(), UserDataNamespace.Plugins),
+            // Signing credentials: sealed passwords and imported private keys.
+            // Reachable only through the signing IPC surface, which never hands
+            // back a secret - the file-system facade must not be a way around it.
+            path.join(this.app.getUserDataDir(), UserDataNamespace.Signing),
             this.app.getBuiltInPluginsDir(),
         ];
     }

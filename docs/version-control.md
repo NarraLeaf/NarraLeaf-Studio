@@ -516,7 +516,9 @@ getInfo         : {"success":false,"error":"Version control backend failed to lo
 | [lore/verbs.ts](../src/main/app/application/managers/vcs/lore/verbs.ts) | 22 个有类型的操作：建库 / 状态 / 暂存 / 提交 / 历史 / diff / 读 blob / 分支 |
 | [revisionReader.ts](../src/main/app/application/managers/vcs/revisionReader.ts) | `blobAt` / `blobsAt` / `readRevisionGraph` / `mergeBase` / `threeWay` / `changedPaths` |
 | [VcsManager.ts](../src/main/app/application/managers/vcs/VcsManager.ts) | **按项目路径 keying** 的 session（store handle 复用 + 每项目串行化），flush → close → release |
-| [vcsAction.ts](../src/main/app/application/managers/window/handlers/vcsAction.ts) | 8 个只读 IPC handler |
+| [vcsAction.ts](../src/main/app/application/managers/window/handlers/vcsAction.ts) | 10 个 IPC handler：9 读 + `initRepository` |
+| [shared/vcs/workingSet.ts](../src/shared/vcs/workingSet.ts) | 工作集**策略**（谓词 + 忽略文件），两进程共用一份；走磁盘的遍历留在 main |
+| [VersionControlService.ts](../src/renderer/lib/workspace/services/core/VersionControlService.ts) | 渲染进程服务：可用性缓存、状态快照与订阅、历史缓存 |
 | [vcs.ts](../src/shared/types/vcs.ts) | 渲染进程类型 + 平台表 + `isVcsPlatformSupported()`，**不含任何 `Lore` 前缀** |
 
 测试（`yarn vitest run src/main/app/application/managers/vcs/`，201 个）：
@@ -544,13 +546,17 @@ window[RendererInterfaceKey].vcs
 | `getAvailability()` | `{available}` 或 `{available:false, reason, detail}` — **先问这个** |
 | `isRepository(projectPath)` | `{isRepository}`；后端不可用时为 `false`，不抛 |
 | `getInfo(projectPath)` | `{root, repositoryId, head?, revisionCount}` |
+| `initRepository(projectPath, options?)` | `{root, repositoryId, head?, revisionCount}` — **唯一的写**，见下 |
+| `getStatus(projectPath)` | `VcsStatus`；**会扫描**，只能按需调，理由见 §4.17 |
 | `getHistory(projectPath, limit?)` | `{entries: [{revision, number, parents}]}` |
 | `readBlob(projectPath, revision, path)` | `{contentBase64}` |
 | `getChangedPaths(projectPath, from, to)` | `{paths}` |
 | `getThreeWay(projectPath, mine, theirs, path)` | `{baseRevision?, base?, mine, theirs}`（均 base64） |
 | `getMergeBase(projectPath, a, b)` | `{base?}` |
 
-**写侧故意不做**：没有 resolve UI 之前放出提交入口，等于让渲染进程在没有冲突处理的情况下提交。
+**写侧只放 `initRepository`**：它等不了 resolve UI——项目就是靠它才有仓库，其余每个动词在它跑之前都只会回答
+"不是仓库"。真正需要冲突故事的写（stage / commit / merge / restore）仍然故意缺席：渲染进程能在没有冲突处理
+的情况下提交，等于把作者提交进一个谁也出不来的状态。
 
 **为什么 keying 是硬要求**：Studio 是 one-project-one-window，单例 runtime 会让第二个打开的项目和第一个抢同一个 store handle——而 Lore 的仓库锁是独占的（§4.12），后果不是数据竞争而是死等。DevMode 踩过这个坑。
 
@@ -568,7 +574,8 @@ window[RendererInterfaceKey].vcs
 
 ## 10. 待解问题
 
-- **UI 尚未对接**。主进程侧完整可用，渲染进程还没有任何 VCS 界面。总体规划见
+- **界面尚未对接**。渲染进程的框架层已落（`VersionControlService`：可用性、状态快照、历史缓存、
+  变更订阅），但还没有任何 VCS 界面消费它。总体规划见
   [plans/2026-07-27-001-plan-editor-data-and-version-control.md](plans/2026-07-27-001-plan-editor-data-and-version-control.md)
 - **仓库来源已定，尚未实现**：项目目录 == 仓库根（`repositoryCreate` 就在项目根建 `.lore/`，
   没有第二种布局）。**不自动建库**——建库会在项目根写独占锁，必须是作者的显式决定。入口留在

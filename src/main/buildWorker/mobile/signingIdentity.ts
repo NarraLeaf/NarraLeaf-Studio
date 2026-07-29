@@ -18,6 +18,31 @@ export type SigningIdentity = {
     certificateDerBase64: string;
 };
 
+/**
+ * What the v2 signer actually consumes: a key and the certificate chain to
+ * embed alongside it, leaf first.
+ *
+ * The debug identity is self-signed and so has a chain of one, but an author's
+ * release keystore usually carries the issuing certificates too, and the v2
+ * signing block is defined to hold the whole chain. `KeystoreIdentity`
+ * (keystoreReader.ts) satisfies this structurally, so a release keystore drops
+ * straight in.
+ */
+export type ApkSigningIdentity = {
+    /** PKCS#8 private key, PEM. */
+    privateKeyPem: string;
+    /** Leaf first: element 0 is the signer's own certificate, then each issuer. */
+    certificateChainDerBase64: string[];
+};
+
+/** Widen the single-certificate debug identity into a one-element chain. */
+export function toApkSigningIdentity(identity: SigningIdentity): ApkSigningIdentity {
+    return {
+        privateKeyPem: identity.privateKeyPem,
+        certificateChainDerBase64: [identity.certificateDerBase64],
+    };
+}
+
 export type GenerateSigningIdentityOptions = {
     /** Injected for reproducible tests; defaults to a wide debug window. */
     notBefore?: Date;
@@ -65,5 +90,39 @@ export function loadSigningIdentity(identity: SigningIdentity): {
     return {
         privateKey: crypto.createPrivateKey(identity.privateKeyPem),
         certificateDer: Buffer.from(identity.certificateDerBase64, "base64"),
+    };
+}
+
+/** Materialize the private key and the whole certificate chain, leaf first. */
+export function loadApkSigningIdentity(identity: ApkSigningIdentity): {
+    privateKey: crypto.KeyObject;
+    certificateChainDer: Buffer[];
+} {
+    if (identity.certificateChainDerBase64.length === 0) {
+        throw new Error("The signing identity carries no certificate");
+    }
+    return {
+        privateKey: crypto.createPrivateKey(identity.privateKeyPem),
+        certificateChainDer: identity.certificateChainDerBase64.map(der => Buffer.from(der, "base64")),
+    };
+}
+
+/**
+ * The human-facing facts about a signing certificate: what the build log needs
+ * to say *which* identity signed, and what the author can compare against
+ * `keytool -list`. The fingerprint is the SHA-256 of the certificate's DER,
+ * which is exactly what keytool and the Play Console print.
+ */
+export function describeSigningCertificate(certificateDer: Buffer): {
+    subject: string;
+    sha256Fingerprint: string;
+    notAfter: Date;
+} {
+    const certificate = new crypto.X509Certificate(certificateDer);
+    return {
+        // X509Certificate.subject is newline-separated; a log line wants one line.
+        subject: certificate.subject.split("\n").join(", "),
+        sha256Fingerprint: certificate.fingerprint256,
+        notAfter: new Date(certificate.validTo),
     };
 }

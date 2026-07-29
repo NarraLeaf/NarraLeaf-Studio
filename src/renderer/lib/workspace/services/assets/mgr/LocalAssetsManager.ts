@@ -3,7 +3,8 @@ import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { AssetsService } from "../../core/AssetsService";
 import { Services, WorkspaceContext } from "../../services";
-import { AssetData, AssetExtensions, AssetType } from "../assetTypes";
+import { AssetData, AssetExtensions, AssetType, isBundleAssetType } from "../assetTypes";
+import { bundleListingFingerprint, detectModelBundleEntry } from "@shared/utils/modelBundle";
 import { Asset, AssetSource } from "../types";
 import { ProjectNameConvention, isValidAssetStorageId } from "@/lib/workspace/project/nameConvention";
 import { FsRequestResult } from "@shared/types/os";
@@ -54,6 +55,19 @@ export class LocalAssetsManager {
     }
 
     public async importLocalAssets<T extends AssetType>(type: T): Promise<RequestStatus<RequestStatus<Asset<T, AssetSource.Local>>[]>> {
+        // A bundle is authored as a folder, so it is picked as one. Going through `selectFile` with
+        // an extension filter is exactly the behaviour that would import a model as 18 loose assets.
+        if (isBundleAssetType(type)) {
+            const directories = await getInterface().fs.selectDirectory(true);
+            if (!directories.success || !directories.data.ok) {
+                return {
+                    success: false,
+                    error: `Failed to select folders: ${directories.error || (`[${(directories.data as FsRequestResult<string[], false>)?.error.code}] ${(directories.data as FsRequestResult<string[], false>)?.error.message}`)}`,
+                };
+            }
+            return this.importFromPaths(type, directories.data.data);
+        }
+
         const assetExtensions = AssetExtensions[type];
         const files = await getInterface().fs.selectFile(assetExtensions, true);
         if (!files.success || !files.data.ok) {
@@ -113,6 +127,11 @@ export class LocalAssetsManager {
                     throw new RendererError("Font service not initialized");
                 }
                 return await this.assetsService.fontService.readLocalFont(asset as Asset<AssetType.Font>) as RequestStatus<AssetData<T>>;
+            case AssetType.Model:
+                if (!this.assetsService.modelService) {
+                    throw new RendererError("Model service not initialized");
+                }
+                return await this.assetsService.modelService.readLocalModel(asset as Asset<AssetType.Model>) as RequestStatus<AssetData<T>>;
             case AssetType.Other:
                 if (!this.assetsService.otherService) {
                     throw new RendererError("Other service not initialized");
@@ -142,10 +161,14 @@ export class LocalAssetsManager {
             };
         }
 
-        // Delete asset file
+        // Delete the payload. A bundle is one asset, so it is one delete: the whole directory goes,
+        // never file-by-file - a half-deleted bundle is a model that still lists in the browser and
+        // 404s its textures, which is strictly worse than either outcome.
         const assetPath = this.getLocalAssetPath(asset.id);
-        const deleteResult = await appPrivilegedFacade.fs.deleteFile(assetPath);
-        
+        const deleteResult = isBundleAssetType(asset.type)
+            ? await appPrivilegedFacade.fs.deleteDir(assetPath)
+            : await appPrivilegedFacade.fs.deleteFile(assetPath);
+
         if (!deleteResult.success || !deleteResult.data.ok) {
             // Continue even if file deletion fails (file might not exist)
             console.warn(`Failed to delete asset file: ${assetPath}`);
@@ -184,6 +207,10 @@ export class LocalAssetsManager {
         const metadata = this.assetsService.getAssetsMetadataManager().getAssets();
         if (!metadata[asset.type][asset.id]) {
             return { success: false, error: `Asset not found: ${asset.id}` };
+        }
+
+        if (isBundleAssetType(asset.type)) {
+            return this.writeBundleContentFromPath(asset, sourcePath);
         }
 
         // Same gate imports pass: a file whose magic bytes say "not an image" must not become the
@@ -228,6 +255,52 @@ export class LocalAssetsManager {
         };
     }
 
+    /**
+     * Swap a bundle's whole tree for another folder, keeping the asset id.
+     *
+     * The old tree is removed first rather than copied over: a merge would leave the previous
+     * export's orphaned textures and motions in place, and since the manifest is the only thing that
+     * knows which files belong, nothing downstream could ever tell them apart from live ones.
+     */
+    private async writeBundleContentFromPath<T extends AssetType>(
+        asset: Asset<T, AssetSource.Local>,
+        sourceDir: string,
+    ): Promise<RequestStatus<AssetContentDigest>> {
+        const fsService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+        const modelService = this.assetsService.modelService;
+        if (!modelService) {
+            return { success: false, error: "Model service not initialized" };
+        }
+
+        const isDirectory = await fsService.isDirExists(sourceDir);
+        if (!isDirectory.ok || !isDirectory.data) {
+            return { success: false, error: `A model asset must be replaced with a folder: ${sourceDir}` };
+        }
+
+        const destPath = this.getLocalAssetPath(asset.id);
+        const existing = await fsService.isDirExists(destPath);
+        if (existing.ok && existing.data) {
+            const removed = await appPrivilegedFacade.fs.deleteDir(destPath);
+            if (!removed.success || !removed.data.ok) {
+                return { success: false, error: `Failed to clear the existing bundle: ${destPath}` };
+            }
+        }
+
+        const copyResult = await appPrivilegedFacade.fs.copyDir(sourceDir, destPath);
+        if (!copyResult.success || !copyResult.data.ok) {
+            const message = copyResult.error
+                || (`[${(copyResult.data as FsRequestResult<void, false>)?.error.code}] ${(copyResult.data as FsRequestResult<void, false>)?.error.message}`);
+            return { success: false, error: `Failed to replace model bundle: ${sourceDir} to ${destPath}. ${message}` };
+        }
+
+        const listing = await modelService.listBundle(destPath);
+        if (!listing.success || !listing.data) {
+            return { success: false, error: listing.error ?? "Failed to read the replaced bundle" };
+        }
+
+        return { success: true, data: { hash: bundleListingFingerprint(listing.data.files) } };
+    }
+
     public async duplicateAsset<T extends AssetType>(asset: Asset<T>): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
         const metadata = this.assetsService.getAssetsMetadataManager().getAssets();
 
@@ -248,6 +321,7 @@ export class LocalAssetsManager {
         // Source/dest paths
         const srcPath = this.getLocalAssetPath(asset.id);
         const destPath = this.getLocalAssetPath(newId);
+        const isBundle = isBundleAssetType(asset.type);
 
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         // Ensure destination directory exists
@@ -257,22 +331,28 @@ export class LocalAssetsManager {
             return { success: false, error: `Failed to create destination directory: ${dirEnsure.error?.message}` };
         }
 
-        // Check if source file exists
-        const srcExists = await filesystemService.isFileExists(srcPath);
+        // Check if the source payload exists
+        const srcExists = isBundle
+            ? await filesystemService.isDirExists(srcPath)
+            : await filesystemService.isFileExists(srcPath);
         if (!srcExists.ok || !srcExists.data) {
             return { success: false, error: `Source asset file not found: ${srcPath}` };
         }
 
-        // Copy file
-        const copyResult = await appPrivilegedFacade.fs.copyFile(srcPath, destPath);
+        // Copy the payload. `copyDir` for a bundle: the copy has to keep the tree, because the
+        // duplicate's manifest still names its siblings by the same relative paths.
+        const copyResult = isBundle
+            ? await appPrivilegedFacade.fs.copyDir(srcPath, destPath)
+            : await appPrivilegedFacade.fs.copyFile(srcPath, destPath);
         if (!copyResult.success || !copyResult.data.ok) {
             const msg = copyResult.error || (copyResult.data as FsRequestResult<void, false>)?.error.message;
             return { success: false, error: `Failed to copy asset file: ${msg}` };
         }
 
-        // Compute hash for the duplicated file
-        const hashResult = await appPrivilegedFacade.fs.hash(destPath);
-        const fileHash = hashResult.success && hashResult.data.ok ? hashResult.data.data : asset.hash;
+        // Compute hash for the duplicated payload. A bundle has no single-file digest, so it keeps
+        // the source record's (see `hashBundle`) rather than inventing one.
+        const hashResult = isBundle ? null : await appPrivilegedFacade.fs.hash(destPath);
+        const fileHash = hashResult?.success && hashResult.data.ok ? hashResult.data.data : asset.hash;
 
         // Create metadata
         const newAsset: Asset<T, AssetSource.Local> = {
@@ -338,7 +418,102 @@ export class LocalAssetsManager {
         });
     }
 
+    /**
+     * Import one authored folder as one model-bundle asset.
+     *
+     * The tree is copied verbatim - `copyDir`, no filter, no flattening, no renaming. That is the
+     * whole requirement: a model's manifest names its siblings by relative path
+     * (`Hiyori.2048/texture_00.png`), so anything that moves, renames or drops a file breaks a
+     * reference Studio cannot see and would have to parse the format to repair.
+     *
+     * Note also that the root listing does not imply the file set - Hiyori's `TapBody` motion is
+     * named only inside the manifest - so "copy what looks relevant" is not a thing that can be done
+     * correctly here. Everything comes.
+     */
+    private async importModelBundle<T extends AssetType>(type: T, sourceDir: string): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
+        const fsService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+
+        const isDirectory = await fsService.isDirExists(sourceDir);
+        if (!isDirectory.ok || !isDirectory.data) {
+            return { success: false, error: `A model asset must be imported from a folder: ${sourceDir}` };
+        }
+
+        const modelService = this.assetsService.modelService;
+        if (!modelService) {
+            return { success: false, error: "Model service not initialized" };
+        }
+
+        // Read the source tree before copying anything, so a folder that is empty or unreadable is
+        // refused rather than landing as an asset with no files.
+        const sourceListing = await modelService.listBundle(sourceDir);
+        if (!sourceListing.success || !sourceListing.data) {
+            return { success: false, error: sourceListing.error ?? `Failed to read folder: ${sourceDir}` };
+        }
+        if (sourceListing.data.files.length === 0) {
+            return { success: false, error: `Folder contains no files: ${sourceDir}` };
+        }
+
+        const id = this.getUuidService().generate();
+        const destPath = this.getLocalAssetPath(id);
+        const destDir = dirname(destPath);
+        const dirExistCheck = await fsService.isDirExists(destDir);
+        if (!dirExistCheck.ok) {
+            return { success: false, error: `Failed to check destination directory: ${dirExistCheck.error?.message}` };
+        }
+        if (!dirExistCheck.data) {
+            const mkdirResult = await fsService.createDir(destDir);
+            if (!mkdirResult.ok) {
+                return { success: false, error: `Failed to create destination directory: ${destDir}. ${mkdirResult.error?.message}` };
+            }
+        }
+
+        const copyResult = await appPrivilegedFacade.fs.copyDir(sourceDir, destPath);
+        if (!copyResult.success || !copyResult.data.ok) {
+            const message = copyResult.error
+                || (`[${(copyResult.data as FsRequestResult<void, false>)?.error.code}] ${(copyResult.data as FsRequestResult<void, false>)?.error.message}`);
+            return { success: false, error: `Failed to copy model bundle: ${sourceDir} to ${destPath}. ${message}` };
+        }
+
+        // Re-list the copy rather than trusting the source listing: what is on disk under the asset
+        // id is what every later read sees, and a copy that silently dropped a file must show up now
+        // and not at mount time.
+        const listing = await modelService.listBundle(destPath);
+        if (!listing.success || !listing.data) {
+            return { success: false, error: listing.error ?? "Failed to read the imported bundle" };
+        }
+
+        const detection = detectModelBundleEntry(listing.data.files);
+        const asset: Asset<T, AssetSource.Local> = {
+            id,
+            type,
+            name: this.resolveUniqueAssetName(type, basename(sourceDir)),
+            // No `ext`: the payload is a directory. Deliberately absent rather than empty - see
+            // `setAssetExtension`, and the extension migration skips bundle types for the same reason.
+            hash: bundleListingFingerprint(listing.data.files),
+            source: AssetSource.Local,
+            meta: {},
+            tags: [],
+            description: "",
+            // The detected entry is written down at import even though it could be re-derived, so
+            // that a later Studio which ranks candidates differently cannot silently re-point an
+            // asset the author has already wired into a character. Detection stays the fallback for
+            // records that predate this, and for records whose entry file has since been renamed.
+            ...(detection.entry ? { extras: { modelEntry: detection.entry } } : {}),
+        };
+
+        const metadata = this.assetsService.getAssetsMetadataManager().getAssets();
+        (metadata[type] as Record<string, Asset<T>>)[id] = asset;
+
+        this.assetsService.getEvents().emit("updated", asset);
+
+        return { success: true, data: asset };
+    }
+
     private async importLocalAsset<T extends AssetType>(type: T, path: string): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
+        if (isBundleAssetType(type)) {
+            return this.importModelBundle(type, path);
+        }
+
         // Validate file format before importing
         const formatValidation = await this.validateFileFormat(type, path);
         if (!formatValidation.success) {

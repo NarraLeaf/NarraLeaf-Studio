@@ -51,6 +51,7 @@ import { resolveSliderRuntimeValue } from "@shared/types/ui-editor/slider";
 import type { UITextInputRuntimeValue, UITextInputWidgetProps } from "@shared/types/ui-editor/textInput";
 import { normalizeTextInputProps, resolveTextInputRuntimeValue } from "@shared/types/ui-editor/textInput";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
+import type { AutoSaveEntry } from "@shared/types/saves";
 import {
     isButtonCursorValue,
     type AppearanceFieldTransition,
@@ -275,6 +276,10 @@ export type BlueprintHostApiRuntime = {
         listSaveIds: () => Promise<string[]>;
         getSaveMetadata: (id: string) => Promise<unknown>;
         getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
+        /** Write an autosave into the reserved ring now, regardless of the timer. */
+        writeAutoSave: () => Promise<void>;
+        /** The reserved autosave ring, newest first. Never overlaps `listSaveIds`. */
+        listAutoSaves: () => Promise<AutoSaveEntry[]>;
         getHistory: () => Promise<BlueprintGameHistoryEntry[]>;
         /** Jump back to a history entry by id; omit the id to undo the last entry. */
         restoreHistory: (id?: string) => Promise<void>;
@@ -333,6 +338,8 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onListSaveIds?: () => Promise<string[]> | string[];
     onGetSaveMetadata?: (id: string) => Promise<unknown> | unknown;
     onGetSavePreview?: (id: string) => Promise<BlueprintImageAsset | null> | BlueprintImageAsset | null;
+    onWriteAutoSave?: () => Promise<void> | void;
+    onListAutoSaves?: () => Promise<AutoSaveEntry[]> | AutoSaveEntry[];
     onGetHistory?: () => Promise<BlueprintGameHistoryEntry[]> | BlueprintGameHistoryEntry[];
     onRestoreHistory?: (id?: string) => Promise<void> | void;
     onGetNametag?: () => string | null;
@@ -1082,6 +1089,36 @@ function normalizeBlueprintGameHistory(value: unknown): BlueprintGameHistoryEntr
     return out;
 }
 
+/**
+ * Clamp the autosave ring to plain JSON a graph can bind to, newest first.
+ * Sorting here rather than at the source is what lets "the latest autosave" be
+ * `entries[0]` in every graph that reads it.
+ */
+function normalizeAutoSaveEntries(value: unknown): AutoSaveEntry[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    const out: AutoSaveEntry[] = [];
+    for (const item of value) {
+        if (!item || typeof item !== "object") {
+            continue;
+        }
+        const record = item as Record<string, unknown>;
+        const id = String(record.id ?? "");
+        if (!id) {
+            continue;
+        }
+        out.push({
+            id,
+            slot: Number.isFinite(Number(record.slot)) ? Math.trunc(Number(record.slot)) : 0,
+            timestamp: Number.isFinite(Number(record.timestamp)) ? Number(record.timestamp) : 0,
+            createdAt: Number.isFinite(Number(record.createdAt)) ? Number(record.createdAt) : 0,
+            metadata: normalizeJsonValue(record.metadata),
+        });
+    }
+    return out.sort((a, b) => b.timestamp - a.timestamp);
+}
+
 function normalizeBlueprintChoiceCount(value: unknown): number {
     const count = Number(value);
     return Number.isInteger(count) && count > 0 ? count : 0;
@@ -1376,6 +1413,8 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onListSaveIds,
         onGetSaveMetadata,
         onGetSavePreview,
+        onWriteAutoSave,
+        onListAutoSaves,
         onGetHistory,
         onRestoreHistory,
         onGetNametag,
@@ -2541,6 +2580,30 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         throw new Error("getSavePreview: game save runtime is not available");
                     }
                     return normalizeBlueprintImageAssetValue(await onGetSavePreview(saveId));
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            writeAutoSave: async () => {
+                const cap = "game.writeAutoSave";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onWriteAutoSave) {
+                        throw new Error("writeAutoSave: game save runtime is not available");
+                    }
+                    await onWriteAutoSave();
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            listAutoSaves: async () => {
+                const cap = "game.listAutoSaves";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onListAutoSaves) {
+                        throw new Error("listAutoSaves: game save runtime is not available");
+                    }
+                    return normalizeAutoSaveEntries(await onListAutoSaves());
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

@@ -38,6 +38,7 @@ import { EditorComponentProps } from "../../types";
 import { LayerStackPreview, type PreviewLayer } from "./components/LayerStackPreview";
 import { CombinationGrid } from "./components/CombinationGrid";
 import { PsdImportWizard } from "./components/PsdImportWizard";
+import { PuppetEditor } from "./components/PuppetEditor";
 import { combinationKey, enumerateCombinations } from "@/lib/workspace/services/character/characterCombinations";
 import { characterAvatarAxisIds, characterAvatarKey } from "@shared/utils/characterAvatar";
 
@@ -62,6 +63,13 @@ const ICON_BTN_ON = "p-1 rounded-md text-primary hover:bg-fill transition-colors
 const CARD = "rounded-md border bg-fill-subtle p-2 space-y-1.5";
 const FOCUSED = "border-primary/60";
 
+/** Written out rather than interpolated so the keys stay statically checkable against the catalogue. */
+const KIND_LABELS = {
+    preset: "characters.editor.kind.preset",
+    layered: "characters.editor.kind.layered",
+    puppet: "characters.editor.kind.puppet",
+} as const;
+
 function Section(props: { title: string; onAdd: () => void; children: React.ReactNode }) {
     return (
         <div className="space-y-1.5">
@@ -79,10 +87,11 @@ function Section(props: { title: string; onAdd: () => void; children: React.Reac
 /**
  * The character appearance editor.
  *
- * One surface, two shapes, because the kind is fixed when the character is created and the two share
- * no data: a preset character is a flat list of finished sprites, a layered one is a stack of layers
- * driven by axes. What both need is the same - name a slot, give it an image - so the row vocabulary
- * is shared and only the tree above it differs.
+ * One surface, three shapes, because the kind is fixed when the character is created and the kinds
+ * share no data: a preset character is a flat list of finished sprites, a layered one is a stack of
+ * layers driven by axes, and a puppet is a box an author-supplied runtime draws. The first two need
+ * the same thing - name a slot, give it an image - so the row vocabulary is shared and only the tree
+ * above it differs; the puppet has no images at all and gets its own inspector.
  *
  * Two pieces of state deliberately live here rather than on the character: which layers are hidden
  * and which are locked. Hiding a layer to see the one under it must not change what ships, so it
@@ -319,11 +328,17 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                     {character.profile.getProfile().name || t("characters.editor.header.fallbackName")}
                 </span>
                 <span className="text-xs text-fg-subtle">
-                    {t(kind === "layered" ? "characters.editor.kind.layered" : "characters.editor.kind.preset")}
+                    {t(KIND_LABELS[kind])}
                 </span>
             </div>
 
-            <div className="flex-1 grid grid-cols-[minmax(0,1fr)_360px] overflow-hidden">
+            {/* A puppet has no stack to preview - Studio cannot draw one outside a running game -
+                so the pane that would hold it is not there, rather than there and empty. */}
+            <div className={[
+                "flex-1 overflow-hidden",
+                kind === "puppet" ? "" : "grid grid-cols-[minmax(0,1fr)_360px]",
+            ].join(" ")}>
+                {kind !== "puppet" && (
                 <div className="flex min-h-0 flex-col">
                     {grid ? (
                         <CombinationGrid
@@ -398,9 +413,15 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                         </div>
                     )}
                 </div>
+                )}
 
-                <div className="border-l border-edge overflow-y-auto p-3 space-y-4">
-                    {kind === "preset" ? (
+                <div className={[
+                    "overflow-y-auto p-3 space-y-4",
+                    kind === "puppet" ? "mx-auto w-full max-w-lg" : "border-l border-edge",
+                ].join(" ")}>
+                    {kind === "puppet" ? (
+                        <PuppetEditor appearance={appearance} />
+                    ) : kind === "preset" ? (
                         <Section
                             title={t("characters.editor.poses")}
                             onAdd={() => appearance.createPose(t("characters.editor.newPose"))}

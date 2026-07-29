@@ -967,7 +967,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
 
     // Stable handler for asset field updates
     const handleAssetUpdate = useCallback(
-        async (field: "name" | "tags" | "description", value: any) => {
+        async (field: "name" | "tags" | "description" | "modelEntry", value: any) => {
             const asset = activeAssetRef.current;
             if (!asset || !assetsService) return;
 
@@ -981,6 +981,12 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
                         break;
                     case "description":
                         await assetsService.updateAssetDescription(asset, value);
+                        break;
+                    case "modelEntry":
+                        // Extras rather than a record field: which file in a bundle is the entry is
+                        // an authored decision, and it is the one part of a bundle that is not
+                        // re-derived from disk on every read.
+                        await assetsService.patchAssetExtras(asset, { modelEntry: value });
                         break;
                 }
             } catch (err) {

@@ -6,6 +6,10 @@ export const project = {
             title: "详情",
             description: "名称、标识符与元数据",
         },
+        game: {
+            title: "游戏",
+            description: "成品游戏对玩家的表现",
+        },
         assets: {
             title: "图标",
             description: "各平台的应用图标",
@@ -56,6 +60,15 @@ export const project = {
             ios: "iOS",
             web: "Web",
         },
+    },
+    game: {
+        autoSaveTitle: "自动保存",
+        autoSaveDescription: "玩家在游戏中时按间隔自动保存进度，崩溃或误关窗口只损失片刻，而不是一整段游玩",
+        autoSaveIntervalTitle: "保存间隔",
+        autoSaveIntervalDescription: "多久检查一次。剧情没有推进就不会写入，因此挂机不产生任何开销",
+        autoSaveIntervalUnit: "秒",
+        autoSaveSlotsTitle: "保留数量",
+        autoSaveSlotsDescription: "自动存档在这么多个槽位间轮转，最旧的先被覆盖。它们不会混进玩家自己的存档槽，用「列出自动存档」节点读取",
     },
     settings: {
         allowHttpTitle: "允许 HTTP",

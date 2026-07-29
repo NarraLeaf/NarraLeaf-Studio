@@ -22,4 +22,10 @@ export enum UserDataNamespace {
     DevModeSaves = "dev-mode-saves",
     /** Cache of the pictures picked as a custom workspace background, named by content hash. */
     Backgrounds = "backgrounds",
+    /**
+     * The machine's code-signing credential vault: sealed passwords and the key
+     * material copied in at import. Machine-level, never inside a project - a
+     * project is version controlled and would carry the keys with it.
+     */
+    Signing = "signing",
 }
