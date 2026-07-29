@@ -1,5 +1,6 @@
 import type { LocalizationConfiguration } from "@shared/types/localization";
 import type { AutoSaveConfiguration } from "@shared/types/saves";
+import type { SigningPlatform } from "@shared/types/signing";
 import type { VoiceConfiguration } from "@shared/types/voice";
 import {
     GAME_BUILD_FORMATS_BY_PLATFORM,
@@ -102,6 +103,68 @@ export const BUILD_COMPRESSIONS: GameBuildCompression[] = ["maximum", "normal", 
  */
 export const DEFAULT_BUILD_COMPRESSION: GameBuildCompression = "maximum";
 
+/**
+ * Which signing credential the project uses for each platform, by credential
+ * **id** and nothing else.
+ *
+ * A project is version controlled, so this file travels: no path, no password
+ * and no certificate may appear here. The ids point into the machine's vault
+ * (`<userData>/signing/`, see @shared/types/signing), and opening the project on
+ * another machine leaves them dangling on purpose - preflight then says which
+ * credential to import, rather than the build silently shipping unsigned.
+ *
+ * macOS has no entry: signing a Mac build needs Apple tooling that only runs on
+ * a Mac, and that is a separate batch.
+ */
+export type SigningConfiguration = {
+    /** Credential id for the Windows target (Authenticode). */
+    windows?: string;
+    /** Credential id for the GPG detached signatures over the artifacts. */
+    linux?: string;
+    /** Credential id for the Android release keystore. */
+    android?: string;
+    /** Credential id for the Apple identity the .ipa is signed with. */
+    ios?: string;
+};
+
+/**
+ * Keyed by platform rather than written as a list, so a new signable platform
+ * fails to compile here until it is given an answer.
+ */
+const SIGNING_PLATFORM_KEYS: Record<SigningPlatform, true> = {
+    windows: true,
+    linux: true,
+    android: true,
+    ios: true,
+};
+
+/** The platforms a project can point at a signing credential, in display order. */
+export const SIGNING_PLATFORMS = Object.keys(SIGNING_PLATFORM_KEYS) as SigningPlatform[];
+
+/** Nothing signed: what every project that never configured signing means. */
+export const DEFAULT_SIGNING_CONFIGURATION: SigningConfiguration = {};
+
+/**
+ * Coerce an unknown persisted value into a SigningConfiguration, dropping
+ * unknown platforms and anything that is not a non-empty id string. An absent
+ * platform is the meaningful state ("build this one unsigned"), so a blank or
+ * malformed entry is dropped rather than kept as "".
+ */
+export function normalizeSigningConfiguration(value: unknown): SigningConfiguration {
+    if (!value || typeof value !== "object") {
+        return { ...DEFAULT_SIGNING_CONFIGURATION };
+    }
+    const record = value as Record<string, unknown>;
+    const normalized: SigningConfiguration = {};
+    for (const platform of SIGNING_PLATFORMS) {
+        const id = record[platform];
+        if (typeof id === "string" && id.trim()) {
+            normalized[platform] = id.trim();
+        }
+    }
+    return normalized;
+}
+
 export type ProjectAppConfiguration = {
     network: NetworkConfiguration;
     /** Game localization setup (see @shared/types/localization); absent until configured. */
@@ -114,6 +177,8 @@ export type ProjectAppConfiguration = {
     mobile?: MobileConfiguration;
     /** Automatic saving in the shipped game; absent until configured (see the defaults). */
     autoSave?: AutoSaveConfiguration;
+    /** Which signing credential each platform uses - ids only; absent until configured. */
+    signing?: SigningConfiguration;
     /** Last production-build dialog selection; absent until the first build. */
     build?: BuildConfiguration;
 };

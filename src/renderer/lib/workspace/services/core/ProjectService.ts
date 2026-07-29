@@ -12,6 +12,7 @@ import {
     NetworkConfiguration,
     ProjectAppConfiguration,
     SecurityConfiguration,
+    SigningConfiguration,
     VoiceConfiguration,
     normalizeAutoSaveConfiguration,
     normalizeBuildConfiguration,
@@ -19,6 +20,7 @@ import {
     normalizeMobileConfiguration,
     normalizeNetworkConfiguration,
     normalizeSecurityConfiguration,
+    normalizeSigningConfiguration,
     normalizeVoiceConfiguration,
 } from "../../project/configuration";
 import { ProjectNameConvention } from "../../project/nameConvention";
@@ -207,6 +209,39 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
                 ...config.app,
                 network: normalizeNetworkConfiguration(config.app?.network),
                 security,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /**
+     * Read which signing credential each platform uses, normalized for projects
+     * that predate (or never configured) `app.signing`. Ids only - resolving one
+     * into key material happens in the main process, at build time.
+     */
+    public getSigningConfiguration(): SigningConfiguration {
+        return normalizeSigningConfiguration(this.getProjectConfig().app?.signing);
+    }
+
+    /**
+     * Merge a patch into the signing selection. Passing `undefined` for a
+     * platform clears it (the normalizer drops it), which is how the build
+     * dialog says "build this one unsigned" - so the stored config never carries
+     * an id the author has deselected.
+     */
+    public async updateSigningConfiguration(patch: Partial<SigningConfiguration>): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const signing = normalizeSigningConfiguration({
+                ...normalizeSigningConfiguration(config.app?.signing),
+                ...patch,
+            });
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                signing,
             };
             return {
                 ...config,

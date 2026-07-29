@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { loadSigningIdentity, type SigningIdentity } from "./signingIdentity";
+import { loadApkSigningIdentity, type ApkSigningIdentity } from "./signingIdentity";
 
 /**
  * APK Signature Scheme v2 signer and an independent self-verifier. Pure with
@@ -145,13 +145,16 @@ function computeContentDigest(sections: ApkSections): Buffer {
 
 /* ------------------------------------------------------------- v2 assembly */
 
-function buildSignedData(contentDigest: Buffer, certificateDer: Buffer): Buffer {
+function buildSignedData(contentDigest: Buffer, certificateChainDer: Buffer[]): Buffer {
     const digests = [Buffer.concat([u32(SIG_ALGO_RSA_PKCS1_SHA256), lengthPrefixed(contentDigest)])];
-    const certificates = [certificateDer];
     const additionalAttributes: Buffer[] = [];
     return Buffer.concat([
         lengthPrefixedSequence(digests),
-        lengthPrefixedSequence(certificates),
+        // The signer's own certificate first, then the chain up to (and
+        // including, when the keystore has it) the root. Android only trusts
+        // element 0 - an APK's identity *is* that certificate - but a verifier
+        // that wants to display the issuing chain gets it from here.
+        lengthPrefixedSequence(certificateChainDer),
         lengthPrefixedSequence(additionalAttributes),
     ]);
 }
@@ -184,16 +187,21 @@ function buildSigningBlock(pairs: { id: number; value: Buffer }[]): Buffer {
 
 /**
  * Sign an unsigned, descriptor-free APK with a v2 signature and return the
- * signed bytes. The identity is reused across projects so overwrite installs
- * keep the same certificate.
+ * signed bytes.
+ *
+ * `identity` carries a leaf-first certificate chain. The debug identity is
+ * self-signed and passes a chain of one; an author's release keystore passes
+ * whatever chain it holds. Which identity signs is the caller's decision and a
+ * consequential one - Android keys an installed app on package name *and*
+ * signature - so the caller, not this function, says so in the build log.
  */
-export function signApkV2(apk: Buffer, identity: SigningIdentity): Buffer {
-    const { privateKey, certificateDer } = loadSigningIdentity(identity);
+export function signApkV2(apk: Buffer, identity: ApkSigningIdentity): Buffer {
+    const { privateKey, certificateChainDer } = loadApkSigningIdentity(identity);
     const publicKeyDer = crypto.createPublicKey(privateKey).export({ type: "spki", format: "der" });
 
     const sections = locateSections(apk);
     const contentDigest = computeContentDigest(sections);
-    const signedData = buildSignedData(contentDigest, certificateDer);
+    const signedData = buildSignedData(contentDigest, certificateChainDer);
     const signature = crypto.sign("sha256", signedData, privateKey);
     const v2Block = buildV2Block(signedData, signature, publicKeyDer);
     const signingBlock = buildSigningBlock([{ id: V2_BLOCK_ID, value: v2Block }]);
@@ -210,7 +218,8 @@ export function signApkV2(apk: Buffer, identity: SigningIdentity): Buffer {
 export type ApkV2VerifyResult = {
     verified: boolean;
     reason?: string;
-    certificateDer?: Buffer;
+    /** The signer's certificate chain as embedded, leaf first. */
+    certificatesDer?: Buffer[];
 };
 
 function readLengthPrefixed(buffer: Buffer, offset: number): { value: Buffer; next: number } {
@@ -221,6 +230,18 @@ function readLengthPrefixed(buffer: Buffer, offset: number): { value: Buffer; ne
         throw new Error("length-prefixed field overruns its container");
     }
     return { value: buffer.subarray(start, end), next: end };
+}
+
+/** Read every element of a length-prefixed sequence of length-prefixed values. */
+function readLengthPrefixedSequence(sequence: Buffer): Buffer[] {
+    const values: Buffer[] = [];
+    let cursor = 0;
+    while (cursor < sequence.length) {
+        const { value, next } = readLengthPrefixed(sequence, cursor);
+        values.push(value);
+        cursor = next;
+    }
+    return values;
 }
 
 function findSigningBlock(apk: Buffer): { block: Buffer; centralDirOffset: number; sections: ApkSections } {
@@ -303,7 +324,10 @@ export function verifyApkV2(apk: Buffer): ApkV2VerifyResult {
         const certificatesSeq = readLengthPrefixed(signedData.value, digestsSeq.next);
         const firstDigest = readLengthPrefixed(digestsSeq.value, 0).value;
         const signedDigest = readLengthPrefixed(firstDigest, 4).value; // skip algo id
-        const certificateDer = readLengthPrefixed(certificatesSeq.value, 0).value;
+        const certificatesDer = readLengthPrefixedSequence(certificatesSeq.value);
+        if (certificatesDer.length === 0) {
+            return { verified: false, reason: "the signature carries no certificate" };
+        }
 
         // Parse the first signature.
         const firstSignature = readLengthPrefixed(signatures.value, 0).value;
@@ -324,13 +348,15 @@ export function verifyApkV2(apk: Buffer): ApkV2VerifyResult {
         if (!crypto.verify("sha256", signedData.value, publicKey, signatureBytes)) {
             return { verified: false, reason: "signature does not verify" };
         }
-        // 3. The certificate's key must be the signer key.
-        const certificate = new crypto.X509Certificate(Buffer.from(certificateDer));
+        // 3. The *first* certificate's key must be the signer key. Element 0 is
+        //    the signer by definition; the rest are the issuing chain and carry
+        //    other keys, so comparing against anything else would be wrong.
+        const certificate = new crypto.X509Certificate(Buffer.from(certificatesDer[0]));
         const certKeyDer = certificate.publicKey.export({ type: "spki", format: "der" });
         if (!certKeyDer.equals(Buffer.from(publicKeyField.value))) {
             return { verified: false, reason: "certificate key does not match signer key" };
         }
-        return { verified: true, certificateDer: Buffer.from(certificateDer) };
+        return { verified: true, certificatesDer: certificatesDer.map(der => Buffer.from(der)) };
     } catch (error) {
         return { verified: false, reason: error instanceof Error ? error.message : String(error) };
     }

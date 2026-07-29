@@ -1,8 +1,19 @@
 import fs from "fs/promises";
 import { constants as fsConstants } from "fs";
 import path from "path";
-import type { GameBuildArch, GameBuildDesktopPlatform, GameBuildMobilePlatform } from "@shared/types/gameBuild";
+import type {
+    BuildPreflightCode,
+    GameBuildArch,
+    GameBuildDesktopPlatform,
+    GameBuildMobilePlatform,
+    GameBuildPlatform,
+} from "@shared/types/gameBuild";
 import { readProjectIconSet, resolveIconFile } from "@shared/types/projectIcons";
+import type {
+    SigningCertificateExpiry,
+    SigningCredentialKind,
+    SigningPlatform,
+} from "@shared/types/signing";
 import type {
     NormalizedPluginManifestV2,
     PluginBuildDependencyTargetContribution,
@@ -325,6 +336,147 @@ export function sidecarTargetPlatform(platformKey: string): string {
     const separator = platformKey.indexOf("-");
     return separator === -1 ? platformKey : platformKey.slice(0, separator);
 }
+
+/**
+ * Which signing credential the project uses per platform - ids only, exactly as
+ * `SigningConfiguration` stores them (see the renderer's project/configuration).
+ */
+export type ProjectSigningIds = Partial<Record<SigningPlatform, string>>;
+
+/**
+ * Keyed rather than listed so a new signable platform has to be given an answer
+ * here before it compiles. Mirrors the renderer's SIGNING_PLATFORMS; main cannot
+ * import from the renderer tree, and the shape is four words long.
+ */
+const SIGNING_PLATFORM_KEYS: Record<SigningPlatform, true> = {
+    windows: true,
+    linux: true,
+    android: true,
+    ios: true,
+};
+
+const SIGNING_PLATFORMS = Object.keys(SIGNING_PLATFORM_KEYS) as SigningPlatform[];
+
+/**
+ * The project's signing selection as the build will read it. Read defensively
+ * through an untyped view for the same reason readMobileOrientation is: the file
+ * is on the author's disk and may predate the setting, be hand-edited, or come
+ * from a newer Studio. A blank or non-string entry means "unsigned", which is
+ * also what an absent one means, so both simply do not appear.
+ */
+export function readProjectSigningIds(projectConfig: ProjectConfigData | null): ProjectSigningIds {
+    const configured = (projectConfig?.app as { signing?: unknown } | undefined)?.signing;
+    if (!configured || typeof configured !== "object") {
+        return {};
+    }
+    const record = configured as Record<string, unknown>;
+    const ids: ProjectSigningIds = {};
+    for (const platform of SIGNING_PLATFORMS) {
+        const id = record[platform];
+        if (typeof id === "string" && id.trim()) {
+            ids[platform] = id.trim();
+        }
+    }
+    return ids;
+}
+
+/**
+ * The signing slot a build target draws its credential from, or null when the
+ * target has none to draw. Two platforms have none: a web export is files on a
+ * server, and macOS signing needs Apple tooling that only runs on a Mac.
+ *
+ * Exhaustive on purpose - the next platform addition must answer this question
+ * rather than fall through to "unsigned" unnoticed.
+ */
+export function signingPlatformForTarget(platform: GameBuildPlatform): SigningPlatform | null {
+    switch (platform) {
+        case "windows":
+            return "windows";
+        case "linux":
+            return "linux";
+        case "android":
+            return "android";
+        case "ios":
+            return "ios";
+        case "macos":
+        case "web":
+            return null;
+    }
+}
+
+/**
+ * Whether this host can sign with a credential of this kind at all.
+ *
+ * Only one kind is host-bound: a certificate in the Windows certificate store
+ * (a hardware token or HSM) is reachable through the Windows CryptoAPI and
+ * nothing else - electron-builder refuses it off Windows rather than producing
+ * an unsigned artifact. A PFX file signs from any host, and Azure Trusted
+ * Signing runs remotely.
+ */
+export function signingCredentialSupportedOnHost(
+    kind: SigningCredentialKind,
+    hostPlatform: GameBuildDesktopPlatform,
+): boolean {
+    return kind !== "windows-store" || hostPlatform === "windows";
+}
+
+/**
+ * Whether signing with this kind of credential reaches the network. It matters
+ * because every other part of a build is deliberately offline, and an author who
+ * builds on an air-gapped machine has to hear about it before the build, not
+ * from a timeout.
+ *
+ * Both Windows file/store paths do: the signature is timestamped by a
+ * certificate authority (without which it stops verifying the day the
+ * certificate expires), and a host with no Windows SDK also downloads the
+ * signing tool. Azure signs remotely by definition. The keystore, Apple and gpg
+ * paths are entirely local.
+ */
+export function signingReachesNetwork(kind: SigningCredentialKind): boolean {
+    return kind === "windows-pfx" || kind === "windows-store" || kind === "windows-azure";
+}
+
+/**
+ * The finding a certificate's validity window earns, or null when it is fine.
+ *
+ * A certificate whose start date has not arrived is reported as the same
+ * blocking code as an expired one: both mean "signing will fail today", and the
+ * message names the whole window rather than one edge of it.
+ */
+export function signingExpiryCode(expiry: SigningCertificateExpiry): BuildPreflightCode | null {
+    switch (expiry) {
+        case "expired":
+        case "not-yet-valid":
+            return "signing-credential-expired";
+        case "expiring":
+            return "signing-credential-expiring";
+        case "valid":
+            return null;
+    }
+}
+
+/** Whole days from now until `notAfter`, floored at 0. For the expiry warning. */
+export function daysUntil(notAfter: string, now: Date = new Date()): number {
+    const at = Date.parse(notAfter);
+    if (Number.isNaN(at)) {
+        return 0;
+    }
+    return Math.max(0, Math.floor((at - now.getTime()) / (24 * 60 * 60 * 1000)));
+}
+
+/**
+ * Locate the gpg binary that will produce the detached signatures. Studio never
+ * holds a GPG private key - it stays in the host's gpg-agent - so the whole
+ * Linux signing path depends on the host having gpg, and preflight has to say so
+ * before the build rather than after every artifact is already written.
+ *
+ * Deliberately re-exported from the worker rather than reimplemented here.
+ * Preflight and the signing step must agree to the letter: a second, slightly
+ * different search is how you get "gpg is missing" blocking a build that would
+ * have signed perfectly - which is exactly what happened when this file carried
+ * its own copy that could not find the gpg inside a Git for Windows install.
+ */
+export { findGpg as findGpgBinary } from "../../../../buildWorker/gpgSign";
 
 export type OutputDirCheck = "ok" | "not-writable" | "not-empty";
 

@@ -6,7 +6,7 @@ import path from "path";
 import { promisify } from "util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { signApkV2, verifyApkV2 } from "./apkSigningV2";
-import { generateSigningIdentity } from "./signingIdentity";
+import { generateSigningIdentity, toApkSigningIdentity } from "./signingIdentity";
 import { BufferZipOutput, writeZip, type ZipWriteEntry } from "./zipWriter";
 
 const execFileAsync = promisify(execFile);
@@ -15,11 +15,28 @@ const execFileAsync = promisify(execFile);
  * A deterministic debug identity for the whole suite (generation is the only
  * slow part). A fresh RSA key per test would triple the runtime for no gain.
  */
-const identity = generateSigningIdentity({
+const debugIdentity = generateSigningIdentity({
     notBefore: new Date(Date.UTC(2020, 0, 1)),
     notAfter: new Date(Date.UTC(2050, 0, 1)),
     serialNumber: Buffer.from([0x2a]),
 });
+const identity = toApkSigningIdentity(debugIdentity);
+
+/**
+ * A second, unrelated identity. A real chain holds the certificate that issued
+ * the signer's, but nothing in the v2 block checks the issuing relationship -
+ * so any second certificate stands in for one here, and using one with a
+ * *different* key is what lets the "element 0 is the signer" assertions fail.
+ */
+const otherIdentity = generateSigningIdentity({
+    notBefore: new Date(Date.UTC(2020, 0, 1)),
+    notAfter: new Date(Date.UTC(2050, 0, 1)),
+    serialNumber: Buffer.from([0x2b]),
+});
+const chainIdentity = {
+    privateKeyPem: debugIdentity.privateKeyPem,
+    certificateChainDerBase64: [debugIdentity.certificateDerBase64, otherIdentity.certificateDerBase64],
+};
 
 /** A minimal but structurally real unsigned APK (a ZIP), 4-byte aligned. */
 async function buildUnsignedApk(): Promise<Buffer> {
@@ -46,8 +63,42 @@ describe("signApkV2 + verifyApkV2", () => {
     it("embeds the identity's certificate", async () => {
         const signed = signApkV2(await buildUnsignedApk(), identity);
         const result = verifyApkV2(signed);
-        const expectedCert = Buffer.from(identity.certificateDerBase64, "base64");
-        expect(result.certificateDer?.equals(expectedCert)).toBe(true);
+        expect(result.certificatesDer?.map(der => der.toString("base64")))
+            .toEqual([debugIdentity.certificateDerBase64]);
+    });
+
+    it("embeds a whole chain, leaf first, and still verifies", async () => {
+        const signed = signApkV2(await buildUnsignedApk(), chainIdentity);
+        const result = verifyApkV2(signed);
+        expect(result.verified).toBe(true);
+        expect(result.certificatesDer?.map(der => der.toString("base64")))
+            .toEqual(chainIdentity.certificateChainDerBase64);
+    });
+
+    it("grows the signing block by exactly the extra certificate", async () => {
+        const unsigned = await buildUnsignedApk();
+        const extra = Buffer.from(otherIdentity.certificateDerBase64, "base64").length;
+        // The certificate plus its own uint32 length prefix, and nothing else:
+        // the chain is embedded, not signed over a second time.
+        expect(signApkV2(unsigned, chainIdentity).length - signApkV2(unsigned, identity).length)
+            .toBe(extra + 4);
+    });
+
+    it("judges the signer by certificate 0, not by whichever certificate fits", async () => {
+        // A chain whose first element is not the signer's is invalid, even
+        // though the certificate for the signing key is still present later on.
+        const reversed = {
+            privateKeyPem: debugIdentity.privateKeyPem,
+            certificateChainDerBase64: [...chainIdentity.certificateChainDerBase64].reverse(),
+        };
+        const result = verifyApkV2(signApkV2(await buildUnsignedApk(), reversed));
+        expect(result.verified).toBe(false);
+        expect(result.reason).toMatch(/certificate key does not match signer key/);
+    });
+
+    it("refuses an identity carrying no certificate at all", async () => {
+        const empty = { privateKeyPem: debugIdentity.privateKeyPem, certificateChainDerBase64: [] };
+        expect(() => signApkV2(Buffer.alloc(0), empty)).toThrow(/carries no certificate/);
     });
 
     it("preserves the original entry bytes ahead of the signing block", async () => {
