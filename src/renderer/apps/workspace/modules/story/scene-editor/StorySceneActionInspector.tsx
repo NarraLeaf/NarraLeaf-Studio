@@ -1355,6 +1355,28 @@ function CharacterActionEditor(props: {
         || authoredObjectName === derivedObjectName
         || characterStageName(payload.characterId, payload.objectName) !== authoredObjectName;
 
+    // A puppet state row addresses the inside of the box: no stage name, no transform, no transition,
+    // and no appearance picker either - the names live in the model, not in the project, so the field
+    // is a plain one. Blank is not "unfilled": it is the engine's `null`, the request to clear.
+    if (payload.operation === "setMotion" || payload.operation === "setSkin") {
+        return (
+            <FieldGrid cols={2}>
+                <SelectField
+                    label={t("storyInspector.field.character")}
+                    options={characterOptions}
+                    value={payload.characterId ?? ""}
+                    onChange={updateCharacter}
+                />
+                <TextField
+                    label={t(payload.operation === "setMotion" ? "storyInspector.character.puppetMotion" : "storyInspector.character.puppetSkin")}
+                    value={payload.puppetName ?? ""}
+                    placeholder={t("storyInspector.character.puppetNone")}
+                    onChange={puppetName => onChange({ ...payload, puppetName })}
+                />
+            </FieldGrid>
+        );
+    }
+
     // A rename touches the speaker label and nothing else - no portrait, so no stage name, appearance,
     // transform or transition. Offering those would be offering to edit fields the compile never reads.
     if (payload.operation === "setName") {
@@ -1391,7 +1413,20 @@ function CharacterActionEditor(props: {
                     onChange={objectName => onChange({ ...payload, objectName })}
                 />
             </FieldGrid>
-            {selectedCharacter ? (
+            {selectedCharacter && selectedCharacter.profile.appearance.getKind() === "puppet" ? (
+                // The third appearance kind answers "which look" with a name only the model knows, so
+                // the picker has nothing to show and a field is the honest control.
+                <Section title={t("storyInspector.section.appearance")}>
+                    <div className="max-w-sm">
+                        <TextField
+                            label={t("storyInspector.character.puppetExpression")}
+                            value={payload.puppetName ?? ""}
+                            placeholder={t("storyInspector.character.puppetNone")}
+                            onChange={puppetName => onChange({ ...payload, puppetName })}
+                        />
+                    </div>
+                </Section>
+            ) : selectedCharacter ? (
                 <Section title={t("storyInspector.section.appearance")}>
                     <CharacterAppearancePicker
                         character={selectedCharacter}

@@ -13,6 +13,7 @@ const CONTEXT = {
     labels: [],
     variables: [],
     appearanceByCharacterId: {},
+    puppetCharacterIds: [],
     stageObjects: { image: [], text: [], layer: [], video: [], audio: [], vfx: [] },
 } as unknown as StoryCommandContext;
 

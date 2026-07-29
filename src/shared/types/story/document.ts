@@ -351,8 +351,14 @@ export type StoryActionPayload =
            * `setName` is the one operation that touches no portrait: it renames the *speaker label*
            * (NLR `Character.setName`), which is how "？？？" becomes a real name mid-scene. Every other
            * operation acts on the character's stage image.
+           *
+           * `setMotion` and `setSkin` are the two state channels only a `puppet` character has — the
+           * named loop it settles into and the costume it wears. They are here rather than in an
+           * action kind of their own because the *subject* is the character: the row reads, colours,
+           * indexes and inspects as a character row, and a puppet participates in a scene the way any
+           * other character does. On a character Studio draws itself they are a compile diagnostic.
            */
-          operation: "enter" | "move" | "exit" | "expression" | "setName";
+          operation: "enter" | "move" | "exit" | "expression" | "setName" | "setMotion" | "setSkin";
           characterId?: string;
           assetId?: string;
           objectName?: string;
@@ -364,6 +370,25 @@ export type StoryActionPayload =
            * changing the mood keeps the outfit. `enter` resolves it out to every axis first.
            */
           tags?: StoryCharacterTagSelection;
+          /**
+           * `puppet` character: the state its backend is asked for — the expression on `expression`,
+           * the motion on `setMotion`, the skin on `setSkin`. The third arm of the same question
+           * `pose` and `tags` answer for the other two appearance kinds.
+           *
+           * A **name the backend owns**, stored verbatim rather than as an id, because there is no id
+           * to store: which names a model has is only knowable from the live model (the engine's
+           * `PuppetInstance.describe`), so nothing in the project can be renamed out from under it and
+           * nothing here can be validated against a catalogue.
+           *
+           * Absent (or blank) is the engine's `null`: the *absence* of a request, which visibly clears
+           * that channel — `/motion Doll` with no name puts the model back to rest. That is why this
+           * is one optional field and not a "clear" flag; the engine's own vocabulary already has
+           * exactly this shape (`PuppetState`).
+           *
+           * Additive: no document written before this carries it, so no schema bump — the same rule
+           * `camera` and `vfx` were added under.
+           */
+          puppetName?: string;
           /** `setName` — the label shown from this row on. Empty is legal: some reveals hide the name again. */
           displayName?: string;
           transition?: StoryTransitionRef;

@@ -70,6 +70,8 @@ function describeType(type: StoryCommandParamType, t: ManualTranslate): string {
             return t(type.allowTemp ? "story.manual.type.characterOrName" : "story.manual.type.character");
         case "characterForm":
             return t("story.manual.type.characterForm");
+        case "puppetName":
+            return t(`story.manual.type.puppet.${type.channel}` as TranslationKey);
         case "scene":
             return t("story.manual.type.scene");
         case "label":

@@ -138,6 +138,7 @@ function resolutionReason(issue: StoryCommandResolutionIssue): StoryCommandReaso
             return { key: reasonKey(issue.code), params: { value: issue.value, characterName: issue.characterName } };
         case "unknownTarget":
         case "ambiguousName":
+        case "notPuppetCharacter":
             return { key: reasonKey(issue.code), params: { value: issue.value } };
         case "unsupportedOption":
             return { key: reasonKey(issue.code), params: { value: issue.value, allowed: issue.allowed.join(", ") } };
