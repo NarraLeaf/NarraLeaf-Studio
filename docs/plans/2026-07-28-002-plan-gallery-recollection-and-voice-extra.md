@@ -1,10 +1,15 @@
 ---
 title: "plan: 画廊的第二、第三条腿 —— 回想与语音 EXTRA"
 type: plan
-status: draft
+status: superseded
+superseded-by: 2026-07-29-001-plan-gallery-extra-suite.md
 date: 2026-07-28
 branch: feat/gallery-capability
 ---
+
+> **已被取代（2026-07-29）**：详细版见 `2026-07-29-001-plan-gallery-extra-suite.md`，
+> 新增音乐鉴赏一栏，且本文的两个"大阻塞"被新事实显著缩小——引擎已有
+> `LiveGame.playSound`（0.20.0 在售），NLR 环境在生产宿主开机即挂（标题页有声）。
 
 # plan: 回想（シーン回想）与语音 EXTRA
 
