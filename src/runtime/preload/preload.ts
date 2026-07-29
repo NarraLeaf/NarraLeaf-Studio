@@ -141,8 +141,12 @@ const sidecar: GameRuntimeSidecarBridge = {
 
 const bridge: GameRuntimePreloadBridge = {
     readPack: () => ipcRenderer.invoke("runtime:read-pack") as Promise<GameRuntimePackV1>,
+    // Encoded per segment, not as a whole: a model bundle addresses its files by the manifest key
+    // `{assetId}/{pathInsideBundle}`, and escaping the separators would collapse that into one
+    // opaque segment - which is exactly the sibling arithmetic the bundle depends on.
     assetUrl: (assetId: string) =>
-        `${GAME_RUNTIME_PROTOCOL}://asset/${encodeURIComponent(String(assetId ?? ""))}?v=${encodeURIComponent(assetVersion)}`,
+        `${GAME_RUNTIME_PROTOCOL}://asset/${String(assetId ?? "").split("/").map(encodeURIComponent).join("/")}`
+        + `?v=${encodeURIComponent(assetVersion)}`,
     pluginEntryUrl: (entryRelativePath: string) =>
         `${GAME_RUNTIME_PROTOCOL}://runtime/${entryRelativePath}`,
     log: (level, message) => {

@@ -342,9 +342,24 @@ export function GameRuntimeApp() {
         bridge?.log(level, message);
     }, [bridge]);
 
+    /**
+     * A model bundle resolves to the URL of its *entry file*, not of the asset id.
+     *
+     * The engine's `PuppetMountContext.resolveSibling(rel)` does URL arithmetic against whatever
+     * this returns to find the bundle's textures and motions, which the model's own manifest names
+     * by relative path. `.../asset/{id}` would make every one of those resolve to a sibling of the
+     * id; `.../asset/{id}/{entry}` makes them resolve to `{id}/{rel}`, which is exactly the key the
+     * packer wrote for each file.
+     */
     const resolveStoryAssetUrl = useCallback(
-        (assetId: string) => bridge?.assetUrl(assetId) ?? assetId,
-        [bridge],
+        (assetId: string) => {
+            if (!bridge) {
+                return assetId;
+            }
+            const bundleEntry = pack?.assets.items[assetId]?.bundleEntry;
+            return bridge.assetUrl(bundleEntry ? `${assetId}/${bundleEntry}` : assetId);
+        },
+        [bridge, pack],
     );
 
     const saveStore = useMemo<GameAppSaveStore>(() => ({
