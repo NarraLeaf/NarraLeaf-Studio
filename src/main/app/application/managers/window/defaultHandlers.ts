@@ -11,7 +11,8 @@ import {
 } from "./handlers/fsAction";
 import {
     VcsGetAvailabilityHandler, VcsIsRepositoryHandler, VcsGetInfoHandler, VcsGetHistoryHandler, VcsReadBlobHandler,
-    VcsGetChangedPathsHandler, VcsGetThreeWayHandler, VcsGetMergeBaseHandler,
+    VcsGetChangedPathsHandler, VcsGetThreeWayHandler, VcsGetMergeBaseHandler, VcsInitRepositoryHandler,
+    VcsGetStatusHandler,
 } from "./handlers/vcsAction";
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./handlers/projectWizardAction";
 import { WorkspaceExportProjectPackageHandler, WorkspaceImportProjectPackageHandler } from "./handlers/projectPackageAction";
@@ -236,10 +237,12 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new FsGrantFileAccessHandler(),
         new FsHashHandler(),
 
-        // Version control (read-only surface; see docs/version-control.md)
+        // Version control (reads, plus init - see docs/version-control.md)
         new VcsGetAvailabilityHandler(),
         new VcsIsRepositoryHandler(),
         new VcsGetInfoHandler(),
+        new VcsInitRepositoryHandler(),
+        new VcsGetStatusHandler(),
         new VcsGetHistoryHandler(),
         new VcsReadBlobHandler(),
         new VcsGetChangedPathsHandler(),
