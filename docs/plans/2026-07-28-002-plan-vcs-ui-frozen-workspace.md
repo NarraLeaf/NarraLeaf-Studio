@@ -56,8 +56,15 @@ UI 只读只负责 affordance（别给假的可点按钮）。**正确性由写�
 所以裁决「编辑器状态不冻、项目数据冻」= 「被 `.loreignore` 排除的不冻、进版本库的冻」，
 一条谓词，不需要逐面板判断。
 
-不走 `DocumentStorage` 的写路径要单独堵：**资产导入**（走主进程复制）、项目设置写 `project.json`、
-蓝图持久化（主进程）。这三处是审计清单，不是猜测。
+不走 `DocumentStorage` 的写路径要单独堵：**资产导入**（直接调 `appPrivilegedFacade.fs.copyFile`，
+写进 `assets/content/**`）与**项目设置**写 `project.json`。U1a 的审计把两处都堵上了，闸门落在
+`createBoundPrivilegedFacade`——所有写路径的唯一交汇点，插件的绑定也走它。
+
+> 本节初稿把**蓝图持久化**也列为第三处旁路写，那是错的：它写 `UserDataNamespace.BlueprintPersistence`
+> 下的 userData，按项目路径哈希 keying，一个字节都不落在项目目录里。Dev Mode 的存档同理。
+
+**没堵、且是有意的**：游戏构建的最终输出目录（作者可以把它指到项目里）。构建是 IPC 直达主进程的，
+从渲染层拦是做样子——按 §1 的裁决，这一拦要落在主进程，属 U4。
 
 ## 3. 界面形态
 
@@ -109,11 +116,13 @@ U1 单独完工时作者看不见任何东西，所以入口是 U1 的一部分�
    ——那时内存里是一个**过去的修订**，解冻后第一次保存就把它覆盖到工作树上，正是这道闸门要防的
    损失晚一步到达。修法与计划给「恢复」定的是同一条：工作树不再是编辑器显示的东西时，丢掉内存文档
    重读。**U3 的阻塞前置，不是优化项。**
-2. **面板布局存在版本库里**：`editor/services/panel_state.json`（`EditorServices: ["editor","services/"]`），
-   不在 `.nlstudio/`。所以裁决「编辑器状态不冻」今天**不成立**——布局是受版本控制的项目数据，冻结会
-   把它一起冻住。`workingSet.ts` 的注释还写着 `.nlstudio` 是「editor layout」，那句话是错的。
-3. 因为第 2 条，**冻结的瞬间就会弹「什么都没在保存」**：打开标签页会改面板状态，那次写入立刻被拒。
-   作者什么都还没做就先看到一句警告。第 2 条怎么裁，这条就怎么消。
+2. ~~**面板布局存在版本库里**~~ **已修**：`editor/services/` 是个混装目录，`panel_state` /
+   `notification_history` / `recent_colors` 是 Studio 状态，`character`（工程的角色表）与插件 store
+   是项目内容。裁决：**Studio 状态不进版本控制也不冻**，前三者搬到 `.nlstudio/services/`，分类表在
+   [shared/vcs/serviceStores.ts](../../src/shared/vcs/serviceStores.ts)，**默认是「项目内容」**——
+   多冻一个偏好可恢复，少冻一份作者写的东西就退出了版本控制。
+3. ~~**冻结的瞬间就弹「什么都没在保存」**~~ 随第 2 条消失。实测（冻结态下同一个动作）：
+   `editor/story/index.json` 纹丝不动，`.nlstudio/services/notification_history.json` 照常写入。
 
 ## 5. 会咬人的实现约束
 
