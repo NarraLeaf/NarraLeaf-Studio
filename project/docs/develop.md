@@ -85,7 +85,7 @@
     - [ ] Character usage tracking
   - [ ] Background and CG manager
     - [ ] Scene background catalog
-    - [ ] CG gallery metadata
+    - [x] CG gallery metadata (Gallery plugin: artworks, differentials, groups, spoiler masking)
     - [ ] Unlock condition metadata
     - [ ] Cropping and safe-area preview
   - [ ] Audio model
