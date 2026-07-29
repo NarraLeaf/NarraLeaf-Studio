@@ -1,4 +1,5 @@
 import type { LocalizationConfiguration } from "@shared/types/localization";
+import type { AutoSaveConfiguration } from "@shared/types/saves";
 import type { VoiceConfiguration } from "@shared/types/voice";
 import {
     GAME_BUILD_FORMATS_BY_PLATFORM,
@@ -21,6 +22,15 @@ export {
     normalizeVoiceConfiguration,
 } from "@shared/types/voice";
 export type { VoiceConfiguration, VoiceLocaleEntry } from "@shared/types/voice";
+export {
+    AUTO_SAVE_INTERVAL_SECONDS_MAX,
+    AUTO_SAVE_INTERVAL_SECONDS_MIN,
+    AUTO_SAVE_SLOTS_MAX,
+    AUTO_SAVE_SLOTS_MIN,
+    DEFAULT_AUTO_SAVE_CONFIGURATION,
+    normalizeAutoSaveConfiguration,
+} from "@shared/types/saves";
+export type { AutoSaveConfiguration } from "@shared/types/saves";
 
 // Declared as object-literal `type` aliases (not interfaces) so they carry an
 // implicit string index signature and remain assignable to the loose
@@ -102,6 +112,8 @@ export type ProjectAppConfiguration = {
     security?: SecurityConfiguration;
     /** Mobile shell behaviour; absent until configured (see the defaults). */
     mobile?: MobileConfiguration;
+    /** Automatic saving in the shipped game; absent until configured (see the defaults). */
+    autoSave?: AutoSaveConfiguration;
     /** Last production-build dialog selection; absent until the first build. */
     build?: BuildConfiguration;
 };

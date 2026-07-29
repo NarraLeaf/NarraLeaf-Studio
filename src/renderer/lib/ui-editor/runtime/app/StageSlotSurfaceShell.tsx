@@ -12,6 +12,7 @@ import {
 import type { DevModeBundle, DevModeStartStoryRequest } from "@shared/types/devMode";
 import type { UIStageSlotId, UIStageSurface } from "@shared/types/ui-editor/document";
 import type { BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
+import type { AutoSaveEntry } from "@shared/types/saves";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { GameSurfaceRenderer } from "@/lib/ui-editor/runtime/surface/GameSurfaceRenderer";
@@ -62,6 +63,8 @@ export type GameUiSlotHostOptions = {
     listSaveIds: () => Promise<string[]>;
     getSaveMetadata: (id: string) => Promise<unknown>;
     getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
+    writeAutoSaveInGame: () => Promise<void>;
+    listAutoSaves: () => Promise<AutoSaveEntry[]>;
     getHistoryInGame: () => BlueprintGameHistoryEntry[];
     restoreHistoryInGame: (id?: string) => Promise<void>;
     getCurrentNametag: () => string | null;
@@ -179,6 +182,8 @@ export function useStageSlotSurfaceRuntime(input: {
             onListSaveIds: options.listSaveIds,
             onGetSaveMetadata: options.getSaveMetadata,
             onGetSavePreview: options.getSavePreview,
+            onWriteAutoSave: options.writeAutoSaveInGame,
+            onListAutoSaves: options.listAutoSaves,
             onGetHistory: options.getHistoryInGame,
             onRestoreHistory: options.restoreHistoryInGame,
             onGetNametag: options.getCurrentNametag,

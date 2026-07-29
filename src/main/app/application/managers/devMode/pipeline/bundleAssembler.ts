@@ -15,6 +15,8 @@ import {
     normalizeLocalizationDocument,
     normalizeLocalizationKeysDocument,
 } from "@shared/types/localization";
+import type { AutoSaveConfiguration } from "@shared/types/saves";
+import { normalizeAutoSaveConfiguration } from "@shared/types/saves";
 import type { GameVoiceBundle } from "@shared/types/voice";
 import { normalizeVoiceConfiguration, normalizeVoiceDocument } from "@shared/types/voice";
 import type { StoryAnimationAsset, StoryAnimationIndex, StoryDocument, StoryLibraryEntry, StoryLibraryIndex } from "@shared/types/story";
@@ -46,6 +48,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     const storyLibrary = await loadStoryLibrary(context.projectPath);
     const localization = await loadGameLocalization(context.projectPath);
     const voice = await loadGameVoice(context.projectPath);
+    const autoSave = await loadAutoSaveConfiguration(context.projectPath);
     return {
         bundleId: context.bundleId,
         revision: context.revision,
@@ -60,6 +63,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         storyLibrary,
         localization,
         voice,
+        autoSave,
         compiled: context.compiled,
         blueprintCompiledScripts: context.blueprintCompiledScripts,
         blueprintScriptsCompileOk: context.blueprintScriptsCompileOk ?? true,
@@ -422,6 +426,18 @@ export async function loadGameVoice(projectPath: string): Promise<GameVoiceBundl
         voicedLocales: voice.voicedLocales,
         tables,
     };
+}
+
+/**
+ * Load the automatic-saving configuration from `.nlproj` `app.autoSave`. Unlike
+ * localization and voice this never returns undefined: autosaving is on by
+ * default, so a project that never configured it must still get the defaults
+ * rather than nothing. Exported for tests.
+ */
+export async function loadAutoSaveConfiguration(projectPath: string): Promise<AutoSaveConfiguration> {
+    const config = await readProjectConfigRecord(projectPath);
+    const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
+    return normalizeAutoSaveConfiguration(app?.autoSave);
 }
 
 function resolveAssetContentPath(projectPath: string, assetId: string): string | null {

@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { CSSProperties, ReactNode, RefObject, MouseEvent } from "react";
 import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Hash, Image, List, Music, Play, Plus, Route, Trash2, TriangleAlert, UserRoundPlus, Variable, Video } from "lucide-react";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
@@ -849,32 +850,54 @@ const STAGE_PLACEMENTS: { value: StoryStagePlacement; icon: typeof AlignLeft }[]
  */
 function GroupHeadPositionControl(props: { position: StoryStagePlacement | undefined; active: boolean; onSetPosition: (position: StoryStagePlacement) => void }) {
     const { t } = useTranslation();
-    const [open, setOpen] = useState(false);
-    const anchorRef = useRef<HTMLDivElement | null>(null);
+    // The strip is portalled to the body, not absolutely positioned in the row: the virtualiser gives
+    // every row wrapper a `translateY`, and a transform makes a stacking context — so an in-row popup
+    // is confined to its own row's box and the NEXT row, later in tree order, paints and hit-tests on
+    // top of it. Anchoring against the viewport (the pattern of PausePopover and the quick-param
+    // popover) is the only placement that outlives the row's box.
+    const [anchor, setAnchor] = useState<{ top: number; right: number } | null>(null);
+    const buttonRef = useRef<HTMLButtonElement | null>(null);
+    const panelRef = useRef<HTMLDivElement | null>(null);
+    const open = anchor !== null;
 
     useEffect(() => {
         if (!open) {
             return;
         }
+        // "Outside" has to be asked of BOTH boxes now that the panel lives elsewhere in the DOM —
+        // testing only the button would close on the very mousedown that begins a pick, unmounting
+        // the item before its click could land.
         const onPointerDown = (event: Event) => {
-            if (!anchorRef.current?.contains(event.target as Node)) {
-                setOpen(false);
+            const target = event.target as Node;
+            if (buttonRef.current?.contains(target) || panelRef.current?.contains(target)) {
+                return;
             }
+            setAnchor(null);
         };
+        // A viewport-anchored panel cannot follow the row, so whatever moves the row dismisses it.
+        const onDetach = () => setAnchor(null);
         window.addEventListener("mousedown", onPointerDown, true);
-        return () => window.removeEventListener("mousedown", onPointerDown, true);
+        window.addEventListener("scroll", onDetach, true);
+        window.addEventListener("resize", onDetach);
+        return () => {
+            window.removeEventListener("mousedown", onPointerDown, true);
+            window.removeEventListener("scroll", onDetach, true);
+            window.removeEventListener("resize", onDetach);
+        };
     }, [open]);
 
     const currentValue = props.position ?? "center";
     const CurrentIcon = (STAGE_PLACEMENTS.find(placement => placement.value === currentValue) ?? STAGE_PLACEMENTS[1]).icon;
 
     return (
-        <div ref={anchorRef} className="relative">
+        <>
             <button
+                ref={buttonRef}
                 type="button"
                 tabIndex={-1}
                 title={t("story.position.label")}
                 aria-label={t("story.position.label")}
+                aria-expanded={open}
                 className={[
                     "rounded-md p-1 transition-colors hover:bg-fill hover:text-primary",
                     open || props.active ? "opacity-100" : "opacity-0 group-hover:opacity-100",
@@ -882,14 +905,23 @@ function GroupHeadPositionControl(props: { position: StoryStagePlacement | undef
                 ].join(" ")}
                 onClick={event => {
                     event.stopPropagation();
-                    setOpen(value => !value);
+                    if (open) {
+                        setAnchor(null);
+                        return;
+                    }
+                    // Right-anchored, as it was: pinning the panel's right edge to the button's means
+                    // the strip never has to know its own width.
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    setAnchor({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
                 }}
             >
                 <CurrentIcon className="h-4 w-4" />
             </button>
-            {open ? (
+            {anchor ? createPortal(
                 <div
-                    className="absolute right-0 top-full z-50 mt-1 flex gap-0.5 rounded-lg border border-edge bg-surface-raised p-1 shadow-xl"
+                    ref={panelRef}
+                    className="fixed z-[70] flex gap-0.5 rounded-lg border border-edge bg-surface-raised p-1 shadow-2xl"
+                    style={{ top: Math.min(anchor.top, window.innerHeight - 48), right: Math.max(8, anchor.right) }}
                     onMouseDown={event => event.stopPropagation()}
                 >
                     {STAGE_PLACEMENTS.map(placement => {
@@ -910,16 +942,17 @@ function GroupHeadPositionControl(props: { position: StoryStagePlacement | undef
                                 onClick={event => {
                                     event.stopPropagation();
                                     props.onSetPosition(placement.value);
-                                    setOpen(false);
+                                    setAnchor(null);
                                 }}
                             >
                                 <Icon className="h-4 w-4" />
                             </button>
                         );
                     })}
-                </div>
+                </div>,
+                globalThis.document.body,
             ) : null}
-        </div>
+        </>
     );
 }
 
@@ -1580,7 +1613,7 @@ export function InsertRow(props: {
     // menu until the next keystroke clears it (see the controller), so it forces "none" here.
     const chooser = props.mode.chooserDismissed ? "none" : insertChooserType(value, props.slashAtAlias);
     const menuAnchorRef = useRef<HTMLDivElement | null>(null);
-    const menuPlacement = useAutoMenuPlacement(menuAnchorRef, chooser !== "none", 312);
+    const menuFrame = useAnchoredMenuFrame(menuAnchorRef, chooser !== "none", 312);
     const pluginCommands = useStoryPluginActionCommands();
     const actionOptions = useMemo<PaletteActionCommand[]>(
         () => searchActionCommands(
@@ -1852,7 +1885,7 @@ export function InsertRow(props: {
                         onHighlight={actionMenu.selectKey}
                         onChoose={chooseCommandCandidate}
                         onCancel={props.onDismissChooser}
-                        placement={menuPlacement}
+                        frame={menuFrame}
                     />
                 ) : null}
                 {argMenuOpen ? (
@@ -1862,7 +1895,7 @@ export function InsertRow(props: {
                         onHighlight={argMenu.selectItem}
                         onChoose={takeArgCandidate}
                         onCancel={props.onDismissChooser}
-                        placement={menuPlacement}
+                        frame={menuFrame}
                     />
                 ) : null}
                 {chooser === "character" ? (
@@ -1874,7 +1907,7 @@ export function InsertRow(props: {
                             ? props.onChooseCharacter(candidate.character.profile.getId())
                             : props.onChooseTempSpeaker(candidate.name)}
                         onClear={props.onDismissChooser}
-                        placement={menuPlacement}
+                        frame={menuFrame}
                     />
                 ) : null}
             </div>
@@ -1931,16 +1964,29 @@ export function getSpeakerCandidates(characters: Character[], tempSpeakers: Temp
     return candidates;
 }
 
+/**
+ * Where a row menu opens, and the viewport box it opens into.
+ *
+ * These menus used to be `absolute` inside the row's own content column, which cannot work in this
+ * list: the virtualiser gives every row wrapper a `translateY`, and a transform makes a stacking
+ * context, so a panel that overhangs its own row is painted and hit-tested UNDER every row after it.
+ * A `/` menu opened mid-list ended up interleaved with the next six rows' text and completely
+ * unclickable. So the frame is measured against the VIEWPORT and the panel is portalled to the body,
+ * where no row's box can confine it — the same shape the file's other popovers already use.
+ */
 type PopupPlacement = "above" | "below";
+type AnchoredMenuFrame = { placement: PopupPlacement; style: CSSProperties };
 
-function useAutoMenuPlacement(anchorRef: RefObject<HTMLElement | null>, open: boolean, expectedHeight: number): PopupPlacement {
-    const [placement, setPlacement] = useState<PopupPlacement>("below");
+const MENU_GAP_PX = 4;
+
+function useAnchoredMenuFrame(anchorRef: RefObject<HTMLElement | null>, open: boolean, expectedHeight: number): AnchoredMenuFrame {
+    const [frame, setFrame] = useState<AnchoredMenuFrame>({ placement: "below", style: {} });
 
     useEffect(() => {
         if (!open) {
             return;
         }
-        const updatePlacement = () => {
+        const updateFrame = () => {
             const rect = anchorRef.current?.getBoundingClientRect();
             if (!rect) {
                 return;
@@ -1948,24 +1994,36 @@ function useAutoMenuPlacement(anchorRef: RefObject<HTMLElement | null>, open: bo
             const gap = 8;
             const spaceBelow = window.innerHeight - rect.bottom - gap;
             const spaceAbove = rect.top - gap;
-            setPlacement(spaceBelow < expectedHeight && spaceAbove > spaceBelow ? "above" : "below");
+            const placement: PopupPlacement = spaceBelow < expectedHeight && spaceAbove > spaceBelow ? "above" : "below";
+            setFrame({
+                placement,
+                style: {
+                    position: "fixed",
+                    left: rect.left,
+                    // `maxWidth` rather than a clamped `left`: the panels carry fixed widths, and one
+                    // anchor serves menus of several of them, so let a panel near the edge narrow
+                    // instead of teaching the anchor every width it might have to hold.
+                    maxWidth: Math.max(160, window.innerWidth - rect.left - 8),
+                    ...(placement === "above"
+                        ? { bottom: window.innerHeight - rect.top + MENU_GAP_PX }
+                        : { top: rect.bottom + MENU_GAP_PX }),
+                },
+            });
         };
-        updatePlacement();
-        const raf = window.requestAnimationFrame(updatePlacement);
-        window.addEventListener("resize", updatePlacement);
-        window.addEventListener("scroll", updatePlacement, true);
+        updateFrame();
+        // Tracked, not sampled once: a fixed panel cannot ride the list, so it has to be re-placed
+        // whenever the anchor moves under it. `scroll` is captured so the editor's own scroller counts.
+        const raf = window.requestAnimationFrame(updateFrame);
+        window.addEventListener("resize", updateFrame);
+        window.addEventListener("scroll", updateFrame, true);
         return () => {
             window.cancelAnimationFrame(raf);
-            window.removeEventListener("resize", updatePlacement);
-            window.removeEventListener("scroll", updatePlacement, true);
+            window.removeEventListener("resize", updateFrame);
+            window.removeEventListener("scroll", updateFrame, true);
         };
     }, [anchorRef, expectedHeight, open]);
 
-    return placement;
-}
-
-function getPopupPlacementClass(placement: PopupPlacement): string {
-    return placement === "above" ? "bottom-full mb-1" : "top-full mt-1";
+    return frame;
 }
 
 /**
@@ -2073,7 +2131,7 @@ function ActionCommandMenu(props: {
     onHighlight: (key: string) => void;
     onChoose: (commandId: string) => void;
     onCancel: () => void;
-    placement: PopupPlacement;
+    frame: AnchoredMenuFrame;
 }) {
     const { t } = useTranslation();
     const listRef = useRef<HTMLDivElement | null>(null);
@@ -2088,9 +2146,10 @@ function ActionCommandMenu(props: {
         });
     }, [props.activeKey]);
 
-    return (
+    return createPortal(
         <div
-            className={["absolute left-0 z-50 w-[420px] overflow-hidden rounded-xl border border-edge bg-surface-raised shadow-xl", getPopupPlacementClass(props.placement)].join(" ")}
+            className="z-[70] w-[420px] overflow-hidden rounded-xl border border-edge bg-surface-raised shadow-xl"
+            style={props.frame.style}
             onMouseDown={event => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -2143,7 +2202,8 @@ function ActionCommandMenu(props: {
                     )}
                 </div>
             )}
-        </div>
+        </div>,
+        globalThis.document.body,
     );
 }
 
@@ -2185,7 +2245,13 @@ function CharacterPicker(props: {
     onHighlight: (candidateKey: string) => void;
     onChoose: (candidate: SpeakerCandidate) => void;
     onClear: () => void;
-    placement: PopupPlacement;
+    frame: AnchoredMenuFrame;
+    /**
+     * The portalled panel, handed back so an owner's light-dismiss can recognise it. It is not inside
+     * the anchor any more, and a check that only knows the anchor closes the menu on the very
+     * pointerdown that starts a pick — the item unmounts before its `mousedown` can choose anything.
+     */
+    panelRef?: RefObject<HTMLDivElement | null>;
     /** Rendered as a trailing action when the typed name is not already a character. */
     createLabel?: string | null;
     onCreate?: () => void;
@@ -2204,10 +2270,16 @@ function CharacterPicker(props: {
         });
     }, [props.activeCharacterId]);
 
-    return (
+    return createPortal(
         <div
-            ref={listRef}
-            className={["absolute left-0 z-50 max-h-72 w-[320px] overflow-auto rounded-xl border border-edge bg-surface-raised p-1 shadow-xl", getPopupPlacementClass(props.placement)].join(" ")}
+            ref={node => {
+                listRef.current = node;
+                if (props.panelRef) {
+                    props.panelRef.current = node;
+                }
+            }}
+            className="z-[70] max-h-72 w-[320px] overflow-auto rounded-xl border border-edge bg-surface-raised p-1 shadow-xl"
+            style={props.frame.style}
             onMouseDown={event => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -2259,7 +2331,8 @@ function CharacterPicker(props: {
                     </button>
                 </>
             ) : null}
-        </div>
+        </div>,
+        globalThis.document.body,
     );
 }
 
@@ -2291,10 +2364,11 @@ function CharacterSelectTrigger(props: {
 }) {
     const { t } = useTranslation();
     const rootRef = useRef<HTMLDivElement | null>(null);
+    const pickerRef = useRef<HTMLDivElement | null>(null);
     const inputRef = useRef<HTMLInputElement | null>(null);
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState("");
-    const placement = useAutoMenuPlacement(rootRef, editing, 288);
+    const frame = useAnchoredMenuFrame(rootRef, editing, 288);
 
     const committedName = props.characterId
         ? getCharacterName(props.characters, props.characterId)
@@ -2347,9 +2421,13 @@ function CharacterSelectTrigger(props: {
             return;
         }
         const handlePointerDown = (event: PointerEvent) => {
-            if (!rootRef.current?.contains(event.target as Node)) {
-                close();
+            const target = event.target as Node;
+            // The picker is portalled to the body, so "outside" has to be asked of it as well as of
+            // the nametag. Without the second test this closes on the pointerdown that begins a pick.
+            if (rootRef.current?.contains(target) || pickerRef.current?.contains(target)) {
+                return;
             }
+            close();
         };
         window.addEventListener("pointerdown", handlePointerDown);
         return () => window.removeEventListener("pointerdown", handlePointerDown);
@@ -2434,7 +2512,8 @@ function CharacterSelectTrigger(props: {
                     props.onChoose(null);
                     close();
                 }}
-                placement={placement}
+                frame={frame}
+                panelRef={pickerRef}
                 createLabel={canCreate ? t("story.rows.createCharacter", { name: trimmed }) : null}
                 onCreate={() => {
                     props.onCreateCharacter(trimmed);

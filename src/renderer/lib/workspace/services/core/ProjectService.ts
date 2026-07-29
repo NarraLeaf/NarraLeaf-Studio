@@ -5,6 +5,7 @@ import { basename, extname, join } from "@shared/utils/path";
 import { ProjectConfig, ProjectMetadata, Resolution } from "../../project/project";
 import { normalizeProjectIconSet, type ProjectIconSet, type ProjectIconSource } from "@shared/types/projectIcons";
 import {
+    AutoSaveConfiguration,
     BuildConfiguration,
     LocalizationConfiguration,
     MobileConfiguration,
@@ -12,6 +13,7 @@ import {
     ProjectAppConfiguration,
     SecurityConfiguration,
     VoiceConfiguration,
+    normalizeAutoSaveConfiguration,
     normalizeBuildConfiguration,
     normalizeLocalizationConfiguration,
     normalizeMobileConfiguration,
@@ -227,6 +229,38 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
                 ...config.app,
                 network: normalizeNetworkConfiguration(config.app?.network),
                 mobile,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /**
+     * Read the effective automatic-saving policy, falling back to the defaults
+     * (on, every 5s, 3 slots) for projects that predate the `app.autoSave`
+     * config.
+     */
+    public getAutoSaveConfiguration(): AutoSaveConfiguration {
+        return normalizeAutoSaveConfiguration(this.getProjectConfig().app?.autoSave);
+    }
+
+    /**
+     * Merge a partial patch into the automatic-saving policy. Written by the
+     * project Game settings page and baked into the bundle the game app runs
+     * its autosave scheduler off.
+     */
+    public async updateAutoSaveConfiguration(patch: Partial<AutoSaveConfiguration>): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const autoSave = normalizeAutoSaveConfiguration({
+                ...normalizeAutoSaveConfiguration(config.app?.autoSave),
+                ...patch,
+            });
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                autoSave,
             };
             return {
                 ...config,
