@@ -335,6 +335,11 @@ export const workspace = {
             enteredDetail: "Your project files are left untouched until you unfreeze it.",
             leftTitle: "Project unfrozen",
             leftDetail: "Changes are being saved again.",
+            // Hover text on every top-bar control the freeze switches off. Deliberately one string
+            // for all of them: the author has to learn "this is what a frozen project looks like"
+            // once, not read a different excuse on each button. The controls are disabled rather
+            // than hidden precisely so there is something to hover.
+            unavailable: "Not available while the project is frozen — unfreeze it to use this again.",
         },
         // Keyboard-shortcut customization (Settings window → Editor) + the "?" cheat sheet overlay.
         keybindings: {

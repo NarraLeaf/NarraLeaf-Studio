@@ -7,7 +7,9 @@ import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusContext } from "@/lib/workspace/services/ui";
 import { getActionGroupItems, getVisibleActionMenuItems, isActionVisible } from "../ui/actionMenuModel";
+import { isActionFrozenOut, resolveFrozenActionDisabled } from "../ui/freezeActionPolicy";
 import { RunControl } from "../../modules/actions/RunControl";
+import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
 import { useTranslation } from "@/lib/i18n";
 
 interface ActionBarProps {
@@ -26,11 +28,16 @@ interface ActionBarProps {
  * The Run split-button ({@link RunControl}) is rendered first, with the standalone registry actions
  * (the Build icon, plugin actions) packed right beside it, then — off macOS — the File/Help
  * dropdowns. Keeping Build adjacent to Run makes the run/build controls read as one cluster.
+ *
+ * While the workspace is frozen the standalone actions render as usual but disabled, and which ones
+ * escape that is decided by {@link resolveFrozenActionDisabled} - a table in Studio's source, never a
+ * flag a registrant could set. See `../ui/freezeActionPolicy`.
  */
 export function ActionBar({ hideAllGroups = false }: ActionBarProps) {
     const { t } = useTranslation();
     const { actions, actionGroups } = useRegistry();
     const { workspace, context } = useWorkspace();
+    const frozen = useWorkspaceFrozen();
     const [focusContext, setFocusContext] = useState<FocusContext | null>(null);
 
     // Subscribe to focus changes
@@ -65,24 +72,31 @@ export function ActionBar({ hideAllGroups = false }: ActionBarProps) {
 
             {/* Standalone actions (Build, plugin actions) sit immediately right of the Run button */}
             {standaloneActions.map((action) => {
-                const stateClasses = action.disabled
+                // Computed for the render only; the registered object is left exactly as it was, so
+                // thawing restores it without anyone having to remember what it used to be.
+                const frozenOut = isActionFrozenOut(action, frozen);
+                const disabled = resolveFrozenActionDisabled(action, frozen);
+                const stateClasses = disabled
                     ? "text-fg-subtle cursor-not-allowed"
                     : "text-fg-muted hover:bg-fill hover:text-fg";
                 const resolvedLabel = action.labelKey ? t(action.labelKey) : action.label;
                 const resolvedTooltip = action.tooltipKey ? t(action.tooltipKey) : action.tooltip;
-                const title = resolvedTooltip || resolvedLabel;
+                const label = resolvedTooltip || resolvedLabel;
+                // The freeze reason takes the tooltip, because an icon button that is off for no
+                // stated reason reads as a bug; `aria-label` keeps naming the action itself.
+                const title = frozenOut ? t("workspace.shell.freeze.unavailable") : label;
 
                 return (
                     <button
                         key={action.id}
                         onClick={() => handleActionClick(action)}
-                        disabled={action.disabled}
+                        disabled={disabled}
                         className={`
                             h-8 px-2 rounded-md flex items-center gap-1.5 text-sm transition-colors cursor-default relative
                             ${stateClasses}
                         `}
                         title={title}
-                        aria-label={title}
+                        aria-label={label}
                     >
                         {action.icon && <span className="w-4 h-4">{action.icon}</span>}
                         {resolvedLabel && <span>{String(resolvedLabel)}</span>}
