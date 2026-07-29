@@ -5,6 +5,7 @@ import { Service } from "../Service";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { AppHost, AppProtocol } from "@shared/types/constants";
 import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
+import { refuseFrozenWrite } from "@/lib/app/writeFreeze";
 import { getInterface } from "@/lib/app/bridge";
 
 /**
@@ -23,6 +24,18 @@ export type FsWriteOutcome = {
 };
 
 const writeObservers = new Set<(outcome: FsWriteOutcome) => void>();
+
+/**
+ * A write that the freeze latch refused, answered as a no-op success.
+ *
+ * The four verbs below report to {@link writeObservers}, and a refusal must not reach them: the
+ * subscriber is `SaveStatusService`, whose whole vocabulary there is "this path failed" / "this path
+ * recovered". A refusal is neither. It is announced on its own channel
+ * (`observeRefusedWrites`) instead, which is what lets the notice say *frozen* rather than *failed*.
+ *
+ * See `frozenNoOp` in the privileged facade for why a refusal is not an error.
+ */
+const FROZEN_NO_OP: FsRequestResult<void> = { ok: true, data: undefined };
 
 function reportWriteOutcome(path: string, result: FsRequestResult<void>): FsRequestResult<void> {
     if (writeObservers.size > 0) {
@@ -84,18 +97,30 @@ export class BaseFileSystemService {
     }
 
     public static async write(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
+        if (refuseFrozenWrite(path)) {
+            return FROZEN_NO_OP;
+        }
         return reportWriteOutcome(path, await this.put(path, data, encoding));
     }
 
     public static async writeRaw(path: string, data: Uint8Array): Promise<FsRequestResult<void>> {
+        if (refuseFrozenWrite(path)) {
+            return FROZEN_NO_OP;
+        }
         return reportWriteOutcome(path, await this.putRaw(path, data));
     }
 
     public static async ensureRegularFile(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
+        if (refuseFrozenWrite(path)) {
+            return FROZEN_NO_OP;
+        }
         return reportWriteOutcome(path, this.wrapIPCError(await appPrivilegedFacade.fs.ensureRegularFile(path, data, encoding)));
     }
 
     public static async writeFileNoFollow(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
+        if (refuseFrozenWrite(path)) {
+            return FROZEN_NO_OP;
+        }
         return reportWriteOutcome(path, this.wrapIPCError(await appPrivilegedFacade.fs.writeFileNoFollow(path, data, encoding)));
     }
 
