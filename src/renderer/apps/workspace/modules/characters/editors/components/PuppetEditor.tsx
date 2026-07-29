@@ -13,15 +13,6 @@ import { Services } from "@/lib/workspace/services/services";
 import { Box, FolderOpen, X } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-/**
- * `AssetType.Model` — the multi-file model bundle a puppet draws.
- *
- * Written by value because the enum member arrives with the multi-file asset work, which is a
- * separate change: this lets the two land in either order and *is* `AssetType.Model` the moment the
- * member exists. Replace the constant with the member once it does.
- */
-const MODEL_ASSET_TYPE = "model" as unknown as AssetType;
-
 const ROW = "flex items-center gap-2 rounded-md border border-edge bg-fill-subtle px-2 py-1.5 text-xs";
 const ICON_BTN = "p-1 rounded-md text-fg-muted hover:text-fg hover:bg-fill transition-colors";
 const LABEL = "w-16 shrink-0 text-2xs text-fg-muted";
@@ -198,7 +189,7 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
 
             <AssetSelector
                 visible={picking}
-                assetType={MODEL_ASSET_TYPE}
+                assetType={AssetType.Model}
                 selectedIds={puppet.assetId ? [puppet.assetId] : []}
                 onClose={() => setPicking(false)}
                 onConfirm={confirmAsset}
