@@ -13,6 +13,8 @@ import {
     isActionMenuAction,
     isActionMenuSeparator,
 } from "./actionMenuModel";
+import { applyFreezeToActionMenuItems, isFreezeExemptActionGroup } from "./freezeActionPolicy";
+import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
 import { useTranslation } from "@/lib/i18n";
 
 interface ActionDropdownProps {
@@ -22,10 +24,16 @@ interface ActionDropdownProps {
 /**
  * Action dropdown component for grouped actions
  * Filters actions based on focus context and when conditions
+ *
+ * While the workspace is frozen the menu still OPENS and still lists everything - only its items are
+ * disabled, and only for groups the exemption table does not name (see `./freezeActionPolicy`). A
+ * menu that refused to open would hide what the freeze is doing, which is the opposite of the point.
  */
 export function ActionDropdown({ group }: ActionDropdownProps) {
     const { t } = useTranslation();
     const { workspace, context } = useWorkspace();
+    const frozen = useWorkspaceFrozen();
+    const frozenOut = frozen && !isFreezeExemptActionGroup(group.id);
     const groupLabel = group.labelKey ? t(group.labelKey) : group.label;
     const [isOpen, setIsOpen] = useState(false);
     const [openPath, setOpenPath] = useState<number[]>([]); // path of opened submenus
@@ -48,10 +56,15 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
         });
     }, [context]);
 
-    // Normalize items: prefer hierarchical `items`, fallback to flat `actions`
+    // Normalize items: prefer hierarchical `items`, fallback to flat `actions`.
+    // The freeze is applied to COPIES here rather than to the registrations, which are shared
+    // registry state that outlives a freeze - mutating them would leave the menu dead after a thaw.
     const rootItems: ActionMenuItem[] = useMemo(() => {
-        return getVisibleActionMenuItems(getActionGroupItems(group), focusContext);
-    }, [group, focusContext]);
+        return applyFreezeToActionMenuItems(
+            getVisibleActionMenuItems(getActionGroupItems(group), focusContext),
+            frozenOut,
+        );
+    }, [group, focusContext, frozenOut]);
 
     useEffect(() => {
         if (!isOpen) {
@@ -209,6 +222,7 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
                             hoverOpenTimerRef={hoverOpenTimerRef}
                             hoverCloseTimerRef={hoverCloseTimerRef}
                             focusContext={focusContext}
+                            disabledTitle={frozenOut ? t("workspace.shell.freeze.unavailable") : undefined}
                         />
                     </div>
                 </>
@@ -288,11 +302,17 @@ interface MenuLevelProps {
     hoverOpenTimerRef: React.MutableRefObject<number | null>;
     hoverCloseTimerRef: React.MutableRefObject<number | null>;
     focusContext: FocusContext | null;
+    /**
+     * Hover text for the items this menu has turned off wholesale - the frozen workspace's reason.
+     * Set only when the freeze is the cause, so a row disabled by its own registration is not given
+     * an explanation that would be wrong.
+     */
+    disabledTitle?: string;
 }
 
 function MenuLevel(props: MenuLevelProps) {
     const { t } = useTranslation();
-    const { level, items, openPath, focusPath, setOpenPath, setFocusPath, onActionClick, hoverOpenTimerRef, hoverCloseTimerRef, focusContext } = props;
+    const { level, items, openPath, focusPath, setOpenPath, setFocusPath, onActionClick, hoverOpenTimerRef, hoverCloseTimerRef, focusContext, disabledTitle } = props;
     const parentPath = focusPath.slice(0, level);
     const focusedIndex = focusPath[level] ?? -1;
 
@@ -346,6 +366,7 @@ function MenuLevel(props: MenuLevelProps) {
                                 isDisabled ? "text-fg-subtle cursor-not-allowed" : isFocused ? "bg-fill text-fg" : "text-fg-muted hover:bg-fill hover:text-fg"
                             }`}
                             role="menuitem"
+                            title={isDisabled ? disabledTitle : undefined}
                             aria-disabled={isDisabled || undefined}
                             aria-haspopup={isSubmenu || undefined}
                             aria-expanded={isSubmenu ? isOpened : undefined}
@@ -405,6 +426,7 @@ function MenuLevel(props: MenuLevelProps) {
                                         hoverOpenTimerRef={hoverOpenTimerRef}
                                         hoverCloseTimerRef={hoverCloseTimerRef}
                                         focusContext={focusContext}
+                                        disabledTitle={disabledTitle}
                                     />
                                 </div>
                             )}
