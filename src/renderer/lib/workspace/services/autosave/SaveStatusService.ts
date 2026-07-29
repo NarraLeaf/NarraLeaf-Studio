@@ -2,6 +2,11 @@ import type { TranslationKey } from "@shared/i18n";
 import type { DocumentCorruptError } from "@shared/documents/types";
 import { FsRejectErrorCode } from "@shared/types/os";
 import { translate } from "@/lib/i18n";
+import {
+    observeProjectWriteFreeze,
+    observeRefusedWrites,
+    type RefusedWrite,
+} from "@/lib/app/writeFreeze";
 import { Service } from "../Service";
 import { Services, type WorkspaceContext } from "../services";
 import { ConsoleService } from "../core/ConsoleService";
@@ -78,6 +83,9 @@ export class SaveStatusService extends Service<SaveStatusService> {
     private readonly corruptToasts = new Map<string, string>();
     private readonly listeners = new Set<() => void>();
     private unobserveWrites: (() => void) | null = null;
+    private unobserveFreeze: (() => void) | null = null;
+    /** The sticky notice for the current frozen stretch, if one has been raised. */
+    private frozenToast: string | null = null;
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
@@ -87,17 +95,37 @@ export class SaveStatusService extends Service<SaveStatusService> {
         // otherwise keep reporting into a workspace that is gone.
         this.unobserveWrites?.();
         this.unobserveWrites = filesystemService.observeWrites(outcome => this.handleWriteOutcome(outcome));
+
+        // Subscribed straight to the latch rather than through WorkspaceFreezeService, which depends
+        // on this service to flush before it freezes: routing the report back through it would close
+        // that loop and the service graph rejects a cycle outright.
+        this.unobserveFreeze?.();
+        const unobserveRefusals = observeRefusedWrites(refusal => this.handleRefusedWrite(refusal));
+        const unobserveState = observeProjectWriteFreeze(freeze => {
+            if (!freeze) {
+                this.clearFrozenNotice();
+            }
+        });
+        this.unobserveFreeze = () => {
+            unobserveRefusals();
+            unobserveState();
+        };
+
         this.failures.clear();
         this.toasts.clear();
         this.corruptToasts.clear();
+        this.frozenToast = null;
     }
 
     public override dispose(): void {
         this.unobserveWrites?.();
         this.unobserveWrites = null;
+        this.unobserveFreeze?.();
+        this.unobserveFreeze = null;
         this.failures.clear();
         this.toasts.clear();
         this.corruptToasts.clear();
+        this.frozenToast = null;
         this.notifyChanged();
     }
 
@@ -229,6 +257,52 @@ export class SaveStatusService extends Service<SaveStatusService> {
                 : translate("workspace.shell.save.unreadableDetail", { reason: error.reason }),
         });
         this.corruptToasts.set(error.path, id);
+    }
+
+    /**
+     * Report a write the freeze latch refused.
+     *
+     * Deliberately NOT recorded in {@link failures}, for the same reason an unreadable document is
+     * not: that table is the set of writes still owed, it turns the status bar red and
+     * {@link retryNow} replays it. A refused write is owed to nobody - it was aimed at a project the
+     * author is only looking at - and replaying it later is the exact accident this gate exists to
+     * prevent.
+     *
+     * One notice for the whole frozen stretch rather than one per path: a single refused save can be
+     * several refusals (the parent directory, then the file), and an import of fifty assets would
+     * otherwise bury the workspace. The console keeps the per-path record - it is editor state, so
+     * it goes on working while frozen.
+     */
+    private handleRefusedWrite(refusal: RefusedWrite): void {
+        this.logStorage("error", translate("workspace.shell.save.consoleFrozen", {
+            path: refusal.path,
+            reason: refusal.reason.kind,
+        }));
+
+        if (this.frozenToast) {
+            return;
+        }
+        const notifications = this.getNotifications();
+        if (!notifications) {
+            return;
+        }
+        this.frozenToast = notifications.showSticky({
+            type: NotificationType.Warning,
+            message: translate("workspace.shell.save.frozenTitle"),
+            detail: refusal.reason.kind === "revision"
+                ? translate("workspace.shell.save.frozenDetailRevision", {
+                    version: refusal.reason.label ?? refusal.reason.revision,
+                })
+                : translate("workspace.shell.save.frozenDetailManual"),
+        });
+    }
+
+    private clearFrozenNotice(): void {
+        const toastId = this.frozenToast;
+        this.frozenToast = null;
+        if (toastId) {
+            this.getNotifications()?.close(toastId);
+        }
     }
 
     private handleWriteOutcome(outcome: FsWriteOutcome): void {
