@@ -17,6 +17,7 @@ import { EditorClosedTabsKeybinding } from "./EditorClosedTabsKeybinding";
 import { WorkspaceEditorQuickSwitch } from "./WorkspaceEditorQuickSwitch";
 import { CommandPalette } from "./CommandPalette";
 import { EditorCommands } from "./EditorCommands";
+import { WorkspaceFreezeCommands } from "./WorkspaceFreezeCommands";
 import { KeybindingCheatSheet } from "./KeybindingCheatSheet";
 import { TitleBarSearchBox } from "./TitleBarSearchBox";
 import { StatusBar, STATUS_BAR_HEIGHT } from "./StatusBar";
@@ -788,6 +789,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             <CommandPalette />
             <QuickOpenPicker />
             <EditorCommands />
+            <WorkspaceFreezeCommands />
             <KeybindingCheatSheet />
             <EditorClosedTabsKeybinding />
             <NotificationContainer />
