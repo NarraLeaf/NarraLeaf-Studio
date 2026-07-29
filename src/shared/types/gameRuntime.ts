@@ -134,6 +134,30 @@ export type GameRuntimePackPluginEntry = {
     sidecars?: GameRuntimePackSidecarEntry[];
 };
 
+/**
+ * A puppet-runtime module shipped inside the pack.
+ *
+ * A puppet's backend is the author's own code, dropped into the project under
+ * `runtimes/puppet/{name}/`, and it is the only thing that can draw the model.
+ * A pack that carried the model bundle without it would produce a game whose
+ * characters are empty boxes - and nothing in the build would say so, because
+ * the engine treats an unregistered backend as a puppet that simply draws
+ * nothing. So the module travels with the pack, keyed by the directory name,
+ * which is the same string a character's appearance names as its backend.
+ */
+export type GameRuntimePackPuppetRuntimeEntry = {
+    /** The directory name under `runtimes/puppet/`, which is also the backend name authors select. */
+    name: string;
+    /** Path of the runtime's ESM entry relative to the app dir, e.g. puppet/{name}/index.js. */
+    entryRelativePath: string;
+    /**
+     * Every other file in the runtime's directory, relative to it, so a backend
+     * that reads its own siblings finds them. Ordered, and never includes the
+     * entry itself.
+     */
+    files: string[];
+};
+
 export type GameRuntimePackV1 = {
     schemaVersion: typeof GAME_RUNTIME_PACK_SCHEMA_VERSION;
     generatedAt: string;
@@ -153,6 +177,12 @@ export type GameRuntimePackV1 = {
     };
     /** Runtime entries of the plugins packaged with this game. */
     plugins: GameRuntimePackPluginEntry[];
+    /**
+     * Puppet backends packaged with this game. Absent on packs produced before
+     * this field existed, and on projects that installed none - the runtime
+     * treats both the same way, as "this game draws no puppets".
+     */
+    puppetRuntimes?: GameRuntimePackPuppetRuntimeEntry[];
     /**
      * Network policy for the packaged/previewed game. Absent on packs produced
      * before this field existed - the runtime treats a missing value as the
