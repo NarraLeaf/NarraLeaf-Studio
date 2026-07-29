@@ -56,8 +56,15 @@ UI 只读只负责 affordance（别给假的可点按钮）。**正确性由写�
 所以裁决「编辑器状态不冻、项目数据冻」= 「被 `.loreignore` 排除的不冻、进版本库的冻」，
 一条谓词，不需要逐面板判断。
 
-不走 `DocumentStorage` 的写路径要单独堵：**资产导入**（走主进程复制）、项目设置写 `project.json`、
-蓝图持久化（主进程）。这三处是审计清单，不是猜测。
+不走 `DocumentStorage` 的写路径要单独堵：**资产导入**（直接调 `appPrivilegedFacade.fs.copyFile`，
+写进 `assets/content/**`）与**项目设置**写 `project.json`。U1a 的审计把两处都堵上了，闸门落在
+`createBoundPrivilegedFacade`——所有写路径的唯一交汇点，插件的绑定也走它。
+
+> 本节初稿把**蓝图持久化**也列为第三处旁路写，那是错的：它写 `UserDataNamespace.BlueprintPersistence`
+> 下的 userData，按项目路径哈希 keying，一个字节都不落在项目目录里。Dev Mode 的存档同理。
+
+**没堵、且是有意的**：游戏构建的最终输出目录（作者可以把它指到项目里）。构建是 IPC 直达主进程的，
+从渲染层拦是做样子——按 §1 的裁决，这一拦要落在主进程，属 U4。
 
 ## 3. 界面形态
 
