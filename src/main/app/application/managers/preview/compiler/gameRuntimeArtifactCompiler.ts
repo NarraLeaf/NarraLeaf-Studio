@@ -8,6 +8,7 @@ import {
     type GameRuntimeAssetManifestEntry,
     type GameRuntimeLaunchEntry,
     type GameRuntimePackPluginEntry,
+    type GameRuntimePackPuppetRuntimeEntry,
     type GameRuntimePackSidecarEntry,
     type GameRuntimePackV1,
     type GameRuntimeProjectIcon,
@@ -67,6 +68,10 @@ const OPTIONAL_RUNTIME_FILES = ["main.js.map", "preload.js.map", "renderer.js.ma
 const RUNTIME_BUILD_MANIFEST_FILENAME = "build-manifest.json";
 /** Where sidecar payload lands inside the app dir; mirrored by buildAsarUnpackPatterns. */
 const SIDECAR_DIR_NAME = "sidecars";
+/** Author-installed puppet backends: read from here in the project, written here in the pack. */
+const PUPPET_RUNTIMES_PROJECT_DIR = ["runtimes", "puppet"] as const;
+const PUPPET_RUNTIMES_PACK_DIR = "puppet";
+const PUPPET_RUNTIME_ENTRY_FILE = "index.js";
 /**
  * Marks an `include` entry as an artifact of a declared build dependency rather
  * than a file inside the plugin package. Kept in step with the manifest
@@ -293,6 +298,11 @@ export async function compileGameRuntimeArtifact(
             ...(input.sidecarPlatformKey ? { sidecarPlatformKey: input.sidecarPlatformKey } : {}),
             ...(input.hostUserDataDir ? { hostUserDataDir: input.hostUserDataDir } : {}),
         });
+        const packPuppetRuntimes = await copyPuppetRuntimes({
+            appDir,
+            projectPath: input.projectPath,
+            target,
+        });
 
         const pack: GameRuntimePackV1 = {
             schemaVersion: GAME_RUNTIME_PACK_SCHEMA_VERSION,
@@ -312,6 +322,7 @@ export async function compileGameRuntimeArtifact(
                 items: assetManifest,
             },
             plugins: packPlugins,
+            ...(packPuppetRuntimes.length > 0 ? { puppetRuntimes: packPuppetRuntimes } : {}),
             // The network policy is a desktop-shell mechanism (CSP + webRequest);
             // a web export is served over HTTP(S) by nature, so its pack carries
             // no policy at all.
@@ -712,6 +723,68 @@ async function copyBakedCharacterAvatars(input: {
             };
         }
     }
+}
+
+/**
+ * Copy the project's puppet backends into the pack, one directory per backend.
+ *
+ * The whole directory travels, not just `index.js`: a backend is free to keep
+ * shader sources, a wasm blob or a licence file beside its entry and reach them
+ * through the host's `resolveFile`, exactly as it does in Dev Mode.
+ *
+ * A project with no `runtimes/puppet/` is the normal case and not an error. A
+ * directory with no `index.js` is skipped with a warning rather than failing the
+ * build: it is indistinguishable from a half-finished install, and the pack is
+ * still a working game for every character that does not use it.
+ */
+async function copyPuppetRuntimes(input: {
+    appDir: string;
+    projectPath: string;
+    target: PackTarget;
+}): Promise<GameRuntimePackPuppetRuntimeEntry[]> {
+    const root = path.join(input.projectPath, ...PUPPET_RUNTIMES_PROJECT_DIR);
+    let dirents;
+    try {
+        dirents = await fs.readdir(root, { withFileTypes: true });
+    } catch {
+        return [];
+    }
+    const entries: GameRuntimePackPuppetRuntimeEntry[] = [];
+    for (const dirent of dirents.filter(item => item.isDirectory()).sort((a, b) => a.name.localeCompare(b.name))) {
+        const sourceDir = path.join(root, dirent.name);
+        const files = sortBundlePaths(await listBundleFiles(sourceDir));
+        if (!files.includes(PUPPET_RUNTIME_ENTRY_FILE)) {
+            console.warn(
+                "[gameRuntimeArtifactCompiler]",
+                `puppet runtime "${dirent.name}" has no ${PUPPET_RUNTIME_ENTRY_FILE}; it is not packaged`,
+            );
+            continue;
+        }
+        for (const file of files) {
+            const relativePath = path.posix.join(PUPPET_RUNTIMES_PACK_DIR, dirent.name, file);
+            const sourcePath = path.join(sourceDir, ...file.split("/"));
+            try {
+                if (input.target.kind === "sealed") {
+                    await input.target.writer.add(gameRuntimeBundleRuntimeEntry(relativePath), await fs.readFile(sourcePath));
+                } else {
+                    const targetPath = path.join(input.appDir, ...relativePath.split("/"));
+                    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+                    await fs.copyFile(sourcePath, targetPath);
+                }
+            } catch (error) {
+                throw new Error(
+                    `Failed to copy puppet runtime "${dirent.name}" file ${file} from ${sourcePath}: ` +
+                    `${error instanceof Error ? error.message : String(error)}`,
+                );
+            }
+        }
+        entries.push({
+            name: dirent.name,
+            entryRelativePath: path.posix.join(PUPPET_RUNTIMES_PACK_DIR, dirent.name, PUPPET_RUNTIME_ENTRY_FILE),
+            files: files.filter(file => file !== PUPPET_RUNTIME_ENTRY_FILE),
+        });
+    }
+    return entries;
 }
 
 async function copyRuntimePlugins(input: {
