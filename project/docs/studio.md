@@ -72,7 +72,8 @@ const story = context.services.get<StoryService>(Services.Story);
 
 - Project config：`.nlproj`，legacy fallback 为 `project.json`。
 - Studio/global settings：Electron `userData/state/global.json`。
-- Service private store：`editor/services/<namespace>.json`。
+- Service private store：`editor/services/<namespace>.json`（项目内容，受版本控制）。
+- Studio 自身状态的 service store：`.nlstudio/services/<namespace>.json`（面板布局、通知历史、最近颜色；不受版本控制）。分类表在 `src/shared/vcs/serviceStores.ts`，缺省是项目内容。
 - Service private file：`editor/assets/<uuid>`。
 - UI document：`editor/ui/uidoc.json`。
 - UI graph / local blueprint：`editor/ui/uigraphs.json`。
