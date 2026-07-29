@@ -79,6 +79,7 @@ export enum IPCEventType {
     fsDetails = "fs.details",
     fsDirectorySize = "fs.directorySize",
     fsRequestRead = "fs.requestRead",
+    fsRequestReadDir = "fs.requestReadDir",
     fsRequestWrite = "fs.requestWrite",
     fsEnsureRegularFile = "fs.ensureRegularFile",
     fsWriteFileNoFollow = "fs.writeFileNoFollow",
@@ -559,6 +560,22 @@ export type IPCFsEvents = {
             encoding?: BufferEncoding;
         },
         response: FsRequestResult<string>; // a hash that can be used to fetch the file later
+    };
+    /**
+     * Grant read access to a whole directory tree, served as `app://fs/{hash}/{relative/path}`.
+     *
+     * Studio-internal (not on the plugin privileged surface, same as `fsDirectorySize`): a directory
+     * grant is a broader capability than the single-file grants plugins get, and its one consumer is
+     * the model-bundle asset resolver, whose served URL has to be something the bundle's own
+     * relative sibling references resolve against.
+     */
+    [IPCEventType.fsRequestReadDir]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            path: string;
+        },
+        response: FsRequestResult<string>; // a hash the whole tree can be fetched under
     };
     [IPCEventType.fsRequestWrite]: {
         type: IPCMessageType.request,

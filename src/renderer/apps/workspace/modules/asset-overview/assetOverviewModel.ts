@@ -25,6 +25,7 @@ export const ASSET_OVERVIEW_TYPE_ORDER: readonly AssetType[] = [
     AssetType.Font,
     AssetType.JSON,
     AssetType.Blueprint,
+    AssetType.Model,
     AssetType.Other,
 ];
 

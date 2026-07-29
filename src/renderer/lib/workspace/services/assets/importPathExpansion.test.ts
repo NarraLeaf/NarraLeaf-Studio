@@ -129,3 +129,39 @@ describe("expandImportPaths", () => {
         expect(result.files).toEqual([]);
     });
 });
+
+describe("expandImportPaths for model bundles", () => {
+    const MODEL_ROOT = join("D:", "drop", "Hiyori");
+    const MODEL_SUB = join(MODEL_ROOT, "motions");
+    const bundleFs = makeFs({
+        [MODEL_ROOT]: [
+            { name: "Hiyori.model3.json", type: "file" },
+            { name: "Hiyori.moc3", type: "file" },
+            { name: "motions", type: "directory" },
+        ],
+        [MODEL_SUB]: [{ name: "Hiyori_m01.motion3.json", type: "file" }],
+    });
+
+    it("passes a dropped folder through whole instead of walking it", async () => {
+        // This is the exact inversion of every other type's behaviour, and it has to be: walking and
+        // extension-filtering a model folder is what turns one character into N loose files with
+        // every internal reference broken.
+        const result = await expandImportPaths(AssetType.Model, [MODEL_ROOT], bundleFs);
+        expect(result.files).toEqual([MODEL_ROOT]);
+        expect(result.expandedDirectory).toBe(true);
+    });
+
+    it("ignores dropped files, which cannot be a bundle on their own", async () => {
+        const loose = join(MODEL_ROOT, "Hiyori.model3.json");
+        const result = await expandImportPaths(AssetType.Model, [loose], bundleFs);
+        expect(result.files).toEqual([]);
+        expect(result.expandedDirectory).toBe(false);
+    });
+
+    it("leaves the flattening behaviour of the other types untouched", async () => {
+        const imageResult = await expandImportPaths(AssetType.Image, [MODEL_ROOT], bundleFs);
+        expect(imageResult.files).toEqual([]);
+        const otherResult = await expandImportPaths(AssetType.Other, [MODEL_ROOT], bundleFs);
+        expect(otherResult.files).toHaveLength(3);
+    });
+});

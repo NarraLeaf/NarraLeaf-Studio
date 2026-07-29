@@ -211,6 +211,20 @@ export const properties = {
             schemaValue: "架构：{schema}",
             noSchema: "无架构",
         },
+        model: {
+            title: "模型属性",
+            info: "模型信息",
+            entry: "入口文件",
+            entryAuto: "自动识别：{entry}",
+            entryUnresolvedNone: "未能识别入口文件，请手动选择。",
+            entryUnresolvedAmbiguous: "有多个文件可能是入口，请手动选择。",
+            files: "文件",
+            fileCount: {
+                one: "{count} 个文件",
+                other: "{count} 个文件",
+            },
+            browse: "包内文件",
+        },
         other: {
             title: "文件属性",
             info: "文件信息",

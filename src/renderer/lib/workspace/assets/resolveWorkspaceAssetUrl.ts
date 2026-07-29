@@ -3,10 +3,11 @@ import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
 import { Services, WorkspaceContext } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
-import { AssetSource } from "@/lib/workspace/services/assets/types";
+import { Asset, AssetSource } from "@/lib/workspace/services/assets/types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import { characterAvatarBakePath, parseCharacterAvatarAssetId } from "@shared/utils/characterAvatar";
+import { getInterface } from "@/lib/app/bridge";
 
 export type WorkspaceAssetUrlResult =
     | { success: true; url: string }
@@ -70,6 +71,10 @@ export function createWorkspaceAssetUrlResolver(context: WorkspaceContext): Work
             return { success: true, url };
         }
 
+        if (asset.type === AssetType.Model) {
+            return resolveModelBundleUrl(context, asset as Asset<AssetType.Model>);
+        }
+
         const assetPath = context.project.resolve(ProjectNameConvention.AssetsDataShard(assetId));
         const request = await appPrivilegedFacade.fs.requestReadRaw(assetPath);
 
@@ -79,6 +84,63 @@ export function createWorkspaceAssetUrlResolver(context: WorkspaceContext): Work
 
         return { success: true, url: `${AppProtocol}://${AppHost.Fs}/${request.data.data}` };
     };
+}
+
+/**
+ * Resolve a model bundle to the URL of its **entry file**, served from a directory grant.
+ *
+ * This is the contract the whole asset type exists to satisfy. A model's manifest names its
+ * siblings by relative path, and the engine's `PuppetMountContext.resolveSibling(rel)` does plain
+ * URL arithmetic against the entry URL to find them - so what comes back here must be a URL against
+ * which `new URL("Hiyori.2048/texture_00.png", entryUrl)` is *also servable*.
+ *
+ * A per-file grant (`app://fs/{hash}`, what every other asset type gets) cannot be that URL: it is
+ * flat, so every sibling resolves to `app://fs/{something-else}` and 404s. Hence the directory
+ * grant, under which the bundle's own tree is the path space:
+ *
+ *     app://fs/{grant}/Hiyori.model3.json          <- returned here
+ *     app://fs/{grant}/Hiyori.2048/texture_00.png  <- what resolveSibling() asks for, and gets
+ *
+ * A bundle whose entry cannot be identified resolves to an error rather than to the root: the
+ * engine would take a directory URL and mount nothing, which reads as "the model is broken" instead
+ * of "nobody has said which file is the entry".
+ */
+async function resolveModelBundleUrl(
+    context: WorkspaceContext,
+    asset: Asset<AssetType.Model>,
+): Promise<WorkspaceAssetUrlResult> {
+    const assetsService = context.services.get<AssetsService>(Services.Assets);
+    const modelService = assetsService.modelService;
+    if (!modelService) {
+        return { success: false, error: "Model service is not initialized" };
+    }
+
+    const root = modelService.getBundleRoot(asset.id);
+    const listing = await modelService.listBundle(root);
+    if (!listing.success || !listing.data) {
+        return { success: false, error: listing.error ?? "Failed to read model bundle" };
+    }
+
+    const resolved = modelService.resolveEntry(asset, listing.data.files);
+    if (!resolved.entry) {
+        return {
+            success: false,
+            error: resolved.unresolved === "ambiguous"
+                ? `Model bundle "${asset.name}" has more than one possible entry file; choose one in the asset inspector.`
+                : `Model bundle "${asset.name}" has no entry file; choose one in the asset inspector.`,
+        };
+    }
+
+    const grant = await getInterface().fs.requestReadDir(root);
+    if (!grant.success || !grant.data?.ok) {
+        return { success: false, error: grant.error ?? "Failed to grant access to the model bundle" };
+    }
+
+    // Each segment is encoded on its own so the separators stay separators - encoding the whole
+    // relative path would turn "Hiyori.2048/texture_00.png" into a single opaque segment and break
+    // the very sibling arithmetic this URL exists for.
+    const encodedEntry = resolved.entry.split("/").map(encodeURIComponent).join("/");
+    return { success: true, url: `${AppProtocol}://${AppHost.Fs}/${grant.data.data}/${encodedEntry}` };
 }
 
 function findAsset(assetsService: AssetsService, assetId: string, assetType?: string) {
@@ -142,6 +204,13 @@ export function createWorkspaceBlobUrlResolver(context: WorkspaceContext): Works
             if (asset.source === AssetSource.Remote) {
                 const url = (asset.meta as any)?.url;
                 return typeof url === "string" && url.trim() ? url : null;
+            }
+            if (asset.type === AssetType.Model) {
+                // A bundle has no single blob to wrap in an object URL, and it does not need one:
+                // its directory grant is already session-lived and repeatable, which is the only
+                // property this resolver exists to add.
+                const resolved = await resolveModelBundleUrl(context, asset as Asset<AssetType.Model>);
+                return resolved.success ? resolved.url : null;
             }
             const result = await assetsService.fetch(asset);
             if (!result.success || !result.data) {

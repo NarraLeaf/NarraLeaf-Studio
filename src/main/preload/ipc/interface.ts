@@ -148,6 +148,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         directorySize: (path: string) => ipcClient.invoke(IPCEventType.fsDirectorySize, { path }),
         requestRead: (path: string, encoding: BufferEncoding) => ipcClient.invoke(IPCEventType.fsRequestRead, { path, encoding, raw: false }),
         requestReadRaw: (path: string) => ipcClient.invoke(IPCEventType.fsRequestRead, { path, raw: true }),
+        requestReadDir: (path: string) => ipcClient.invoke(IPCEventType.fsRequestReadDir, { path }),
         requestWrite: (path: string, encoding: BufferEncoding) => ipcClient.invoke(IPCEventType.fsRequestWrite, { path, encoding, raw: false }),
         requestWriteRaw: (path: string) => ipcClient.invoke(IPCEventType.fsRequestWrite, { path, raw: true }),
         ensureRegularFile: (path: string, data: string, encoding: BufferEncoding = "utf-8") => ipcClient.invoke(IPCEventType.fsEnsureRegularFile, { path, data, encoding }),
