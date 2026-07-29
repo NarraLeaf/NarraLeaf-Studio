@@ -15,7 +15,9 @@ const CONTEXT: StoryCommandContext = {
     images: [{ id: "i1", name: "forest_day" }, { id: "i2", name: "night" }],
     audio: [{ id: "a1", name: "theme" }, { id: "a2", name: "hit" }],
     videos: [{ id: "v1", name: "intro" }],
-    characters: [{ id: "c1", name: "Alice" }],
+    // Alice is drawn by Studio; Doll is drawn by a runtime the author supplied, so she has no
+    // authoring-time differentials at all - the two together are what the `/face` union has to serve.
+    characters: [{ id: "c1", name: "Alice" }, { id: "c2", name: "Doll" }],
     tempSpeakers: ["Zoe"],
     scenes: [{ id: "s1", name: "Chapter 2" }],
     labels: ["intro", "after refusal"],
@@ -25,7 +27,8 @@ const CONTEXT: StoryCommandContext = {
         // A blueprint-style name with spaces: only addressable on the command line through `'…'`.
         { name: "boss hp", ref: { scope: "saved", variableId: "var_boss" }, valueType: "number", defaultValue: 3 },
     ],
-    appearanceByCharacterId: { c1: [{ id: "t1", name: "smile" }, { id: "t2", name: "angry" }] },
+    appearanceByCharacterId: { c1: [{ id: "t1", name: "smile" }, { id: "t2", name: "angry" }], c2: [] },
+    puppetCharacterIds: ["c2"],
     stageObjects: { image: ["hero"], text: ["title"], layer: ["overlay"], video: ["clip"], audio: ["music"], vfx: ["petals"] },
 };
 
@@ -163,6 +166,67 @@ describe("dialogue", () => {
         // Both halves are core (B9): a rename with no name to show would commit nothing meaningful.
         expect(getCommandSpec("rename")?.params.character.core).toBe(true);
         expect(getCommandSpec("rename")?.params.name.core).toBe(true);
+    });
+});
+
+/**
+ * The three state channels of a character an author's own runtime draws.
+ *
+ * The taxonomy claim under test: expression is NOT a new command (it is `/face`, whose one slot now
+ * answers for all three appearance kinds), motion and skin ARE - nothing in the vocabulary named
+ * them - and `setParam` / `setSlot` / `command` are not on the line at all.
+ */
+describe("puppet state channels", () => {
+    it("/face keeps its slot and stores a runtime name verbatim, with no id to store", () => {
+        // Same verb, same slot, third kind of answer: a pose id, a tag id, or a name the model owns.
+        expect(build("/face Alice smile")).toMatchObject({
+            payload: { action: "character", operation: "expression", characterId: "c1", pose: "t1" },
+        });
+        expect(build("/face Alice smile").payload).not.toHaveProperty("puppetName");
+        const doll = build("/face Doll smile");
+        expect(doll).toMatchObject({
+            payload: { action: "character", operation: "expression", characterId: "c2", puppetName: "smile" },
+        });
+        expect(doll.payload).not.toHaveProperty("pose");
+        expect(doll.payload).not.toHaveProperty("tags");
+        // A name no branch can check is still not a free-for-all: the character must resolve.
+        expect(issuesOf("/face Nobody smile")).toEqual(["unknownCharacter"]);
+    });
+
+    it("/motion and /skin write their own operation and nothing else", () => {
+        expect(build("/motion Doll run")).toMatchObject({
+            kind: "action",
+            payload: { action: "character", operation: "setMotion", characterId: "c2", puppetName: "run" },
+        });
+        expect(build("/skin Doll winter")).toMatchObject({
+            payload: { action: "character", operation: "setSkin", characterId: "c2", puppetName: "winter" },
+        });
+        expect(build("/anim Doll walk")).toMatchObject({ payload: { operation: "setMotion", puppetName: "walk" } });
+        expect(build("/costume Doll summer")).toMatchObject({ payload: { operation: "setSkin", puppetName: "summer" } });
+        // No transform, no transition, no stage name: these address the inside of the box.
+        expect(build("/motion Doll run").payload).not.toHaveProperty("transform");
+    });
+
+    it("naming nothing is the request to clear - the engine's null, not an unfilled slot", () => {
+        expect(build("/motion Doll")).toMatchObject({ payload: { operation: "setMotion", characterId: "c2" } });
+        expect(build("/motion Doll").payload).not.toHaveProperty("puppetName");
+        expect(getCommandSpec("motion")?.params.name.core).toBeUndefined();
+        expect(getCommandSpec("skin")?.params.name.core).toBeUndefined();
+    });
+
+    it("refuses a character Studio draws itself, on the slot that is actually wrong", () => {
+        expect(issuesOf("/motion Alice run")).toEqual(["notPuppetCharacter"]);
+        expect(issuesOf("/skin Alice winter")).toEqual(["notPuppetCharacter"]);
+    });
+
+    it("gives the escape-hatch end no token at all", () => {
+        // `PuppetDescription` enumerates motions, expressions, skins and params - never slots, never
+        // commands - so a line for those would be free text pretending to be a command. Params are an
+        // id plus a continuous number: the inspector's, the way /vfx left blend mode to it.
+        const tokens = listCommandSpecs().flatMap(spec => [spec.token, ...(spec.aliases ?? [])]);
+        for (const forbidden of ["param", "slot", "cmd", "command", "puppet"]) {
+            expect(tokens, forbidden).not.toContain(forbidden);
+        }
     });
 });
 

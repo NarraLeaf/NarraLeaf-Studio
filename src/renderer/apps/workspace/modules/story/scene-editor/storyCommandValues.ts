@@ -27,6 +27,14 @@ export type StoryCommandNamedRef = { id: string; name: string };
  */
 export type StoryCommandAppearanceRef = { id: string; name: string; axisId?: string };
 
+/**
+ * The three state channels a puppet character's backend answers to (NLR `PuppetState`).
+ *
+ * They are the three ideas every 2D character renderer has, which is why they are named here rather
+ * than left to a backend: `expression` already had a verb (`/face`), the other two got one each.
+ */
+export type StoryPuppetChannel = "motion" | "expression" | "skin";
+
 export type StoryCommandVariableEntry = {
     name: string;
     ref: StoryVariableRef;
@@ -76,12 +84,22 @@ export type StoryCommandContext = {
     variables: readonly StoryCommandVariableEntry[];
     /** Per character: its poses (preset) or every tag across its axes (layered). */
     appearanceByCharacterId: Readonly<Record<string, readonly StoryCommandAppearanceRef[]>>;
+    /**
+     * The characters a runtime draws (`puppet` appearance) - the ones whose motion / expression / skin
+     * are named by the model rather than enumerated in the project.
+     *
+     * A flat id list rather than an appearance map because that is the whole of what the command layer
+     * needs to know: a puppet character has NO authoring-time differentials to list, so there is
+     * nothing to key. What it does have is asked of the live model, which this layer cannot reach.
+     */
+    puppetCharacterIds: readonly string[];
     /** Named objects on stage in the current scene, per kind. */
     stageObjects: StoryCommandStageObjects;
 };
 
 export const EMPTY_STORY_COMMAND_CONTEXT: StoryCommandContext = {
     images: [], audio: [], videos: [], characters: [], tempSpeakers: [], scenes: [], labels: [], variables: [], appearanceByCharacterId: {},
+    puppetCharacterIds: [],
     stageObjects: EMPTY_STORY_COMMAND_STAGE_OBJECTS,
 };
 
@@ -110,6 +128,11 @@ export type StoryCommandValue =
      * renaming it reaches a dozen files plus the i18n catalogues, so it is deferred — see the L1 card.)
      */
     | { kind: "characterForm"; refId: string | null; label: string; axisId?: string }
+    /**
+     * A state name of a puppet-kind character's backend, on one of its three channels. Carries no id
+     * because there is none to carry: the vocabulary lives in the model, not in the project.
+     */
+    | { kind: "puppetName"; channel: StoryPuppetChannel; name: string }
     | { kind: "scene"; sceneId: string }
     /** A label declared in this scene - stored as declared, so it matches what the engine sees. */
     | { kind: "label"; name: string }
@@ -136,6 +159,8 @@ export type StoryCommandResolutionIssue =
     | { code: "unknownLabel"; span: StoryCommandSpan; value: string }
     | { code: "unknownVariable"; span: StoryCommandSpan; value: string }
     | { code: "unknownForm"; span: StoryCommandSpan; value: string; characterName: string }
+    /** `/motion Alice run` - Alice is drawn by Studio, so she has no runtime state to request. */
+    | { code: "notPuppetCharacter"; span: StoryCommandSpan; value: string }
     /** A generic verb's subject matching neither a character nor anything on stage. */
     | { code: "unknownTarget"; span: StoryCommandSpan; value: string }
     /** Two things share this name, so the line does not say which one. */

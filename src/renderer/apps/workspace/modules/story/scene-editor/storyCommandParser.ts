@@ -185,6 +185,7 @@ function acceptsType(type: StoryCommandParamType, value: string): boolean {
         case "asset":
         case "character":
         case "characterForm":
+        case "puppetName":
         case "scene":
         case "variable":
         case "label":
