@@ -177,6 +177,13 @@ function candidatesForType(
                 .filter(ref => !query || containsFold(ref.name, query))
                 .map(ref => ({ value: ref.name, label: ref.name }));
         }
+        case "puppetName":
+            // Nothing to offer yet, and nothing here can invent it: a puppet's motions, expressions
+            // and skins live in the model file, and the only thing that can enumerate them is the
+            // live backend answering `PuppetInstance.describe`. When that reaches the editor it feeds
+            // this arm, keyed by `type.channel` and the owner character - the spec, the payload and
+            // the stored row all stay exactly as they are.
+            return [];
         case "scene":
             return refCandidates(context.scenes, query);
         case "label":
@@ -271,6 +278,9 @@ export function hasCandidateSource(param: StoryCommandParam): boolean {
             // A constant enumerates true/false, so "no matches" is meaningful once something is typed.
             case "constant":
                 return true;
+            // Until `describe()` feeds the arm above there is genuinely nothing to match, so an empty
+            // menu is "no menu", not "no results" - the author is typing a name only the model knows.
+            case "puppetName":
             case "number":
             case "color":
             case "literal":

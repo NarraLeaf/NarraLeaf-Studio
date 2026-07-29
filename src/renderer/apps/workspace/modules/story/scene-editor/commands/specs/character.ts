@@ -4,10 +4,12 @@ import type { StoryCommandResolutionIssue, StoryCommandTargetValue, StoryCommand
 import {
     asDurationMs,
     asEnum,
+    asPuppetName,
     asTarget,
     asText,
     defineStoryCommand,
     placementParam,
+    puppetNameParam,
     secondsParam,
     targetParam,
     type ResolvedArgsOf,
@@ -19,11 +21,39 @@ import { vfxOperationBlock, withPlacementTransform, withRevealTransform, withTra
 import { mergedTransitionOptions, supportedTransitionWords, transformPresetFor, transitionKindFor } from "../transitions";
 
 /**
- * The generic verbs and the character commands: `/show`, `/hide`, `/move`, `/face`, `/say`.
+ * The generic verbs and the character commands: `/show`, `/hide`, `/move`, `/face`, `/motion`,
+ * `/skin`, `/say`.
  *
  * `/show` and `/hide` are the bible's B3 in action: one verb, any subject. The target resolves to a
  * character or a stage object and the build dispatches on what it found - the author never memorizes
  * an "object type × verb" matrix of tokens.
+ *
+ * ## Puppet characters (the three state channels)
+ *
+ * A character an author's own runtime draws has no authoring-time differentials: what it looks like
+ * and what it is doing are named by the model, not enumerated in the project. The engine models that
+ * as three channels every 2D character renderer has - motion, expression, skin - plus two free maps
+ * and a command escape hatch.
+ *
+ * The channels are not a new object type, so they get no token of their own:
+ *
+ *  - **expression already had a verb.** `/face <character> <name>` is the "which of this character's
+ *    looks is showing" verb, and its slot already means a different stored thing per appearance kind
+ *    (a pose id for `preset`, a tag id for `layered`). A puppet's expression is the third answer to
+ *    the same question, so it is the same slot and the same verb - a union branch, not a command.
+ *  - **motion and skin had none.** Nothing in the vocabulary names "which loop is this character in"
+ *    or "which costume is it wearing", so each takes one token. `/play` was the near miss and is
+ *    wrong: it is transport (a clip that runs and ends), while a motion is persistent state that is
+ *    saved and re-applied on load - the engine puts the one-shot in `Puppet.command` precisely to
+ *    keep the two apart. Both verbs are named after the idea, not the type: the taxonomy forbids
+ *    "object type × verb", and `/motion` reads on any character that ever grows motions.
+ *
+ * What is deliberately NOT here: `setParam`, `setSlot` and `command`. `PuppetDescription` - the only
+ * thing that can ever enumerate a model's vocabulary - lists motions, expressions, skins and params,
+ * and lists neither slots nor commands. A line for those would be free text pretending to be a
+ * command, and a param is an id plus a continuous number tuned by eye against the stage: the
+ * inspector's job, the way `/vfx` left blend mode to it, and one that wants `describe()`'s
+ * min/max/default before it is worth a persisted shape.
  */
 
 const SHOW_HIDE_ACCEPTS = ["character", "image", "text", "video", "layer", "vfx"] as const;
@@ -244,7 +274,19 @@ export const face = defineStoryCommand({
     examples: ["/face Alice smile"],
     params: {
         character: { hint: "character", type: { kind: "character" }, positional: true, core: true },
-        form: { hint: "form", type: { kind: "characterForm", dependsOn: "character" }, positional: true, core: true },
+        // One slot, three appearance kinds. The branches are tried in order and the FIRST that
+        // accepts wins, so a character Studio draws resolves exactly as it always did; only a
+        // character whose forms live in a model file reaches the second branch (the first declines
+        // it, having nothing to offer), and its name is stored verbatim because there is no id.
+        form: {
+            hint: "form",
+            type: [
+                { kind: "characterForm", dependsOn: "character" },
+                { kind: "puppetName", channel: "expression", dependsOn: "character" },
+            ],
+            positional: true,
+            core: true,
+        },
     },
     build(args, ctx) {
         const block = createBlockForCommand("characterExpression", ctx.generateId);
@@ -258,8 +300,86 @@ export const face = defineStoryCommand({
         if (args.form?.kind === "characterForm" && args.form.refId) {
             applyAppearanceRef(payload, args.form.refId, args.form.axisId);
         }
+        const puppetName = asPuppetName(args.form);
+        if (puppetName !== undefined) {
+            payload.puppetName = puppetName;
+        }
         return { ...block, payload };
     },
+});
+
+/**
+ * Build a puppet state row for `/motion` and `/skin`.
+ *
+ * Written here rather than through `createBlockForCommand`: the block carries no transform, no
+ * transition and no stage name, so there is nothing for the shared constructor to seed - the same
+ * reason `/rename` and `/camera` build their own.
+ */
+function puppetStateBlock(
+    operation: "setMotion" | "setSkin",
+    args: { readonly character?: StoryCommandValue; readonly name?: StoryCommandValue },
+    ctx: StoryCommandBuildContext,
+): StoryBlock {
+    const name = asPuppetName(args.name);
+    return {
+        id: ctx.generateId(),
+        parentId: null,
+        childrenIds: [],
+        kind: "action",
+        payload: {
+            action: "character",
+            operation,
+            ...(args.character?.kind === "character" ? { characterId: args.character.characterId } : {}),
+            // Omitted on purpose when the author named nothing: that IS the engine's `null`, and the
+            // model visibly drops back to rest.
+            ...(name !== undefined ? { puppetName: name } : {}),
+        },
+    };
+}
+
+/** A character these verbs cannot address - Studio draws it, so it has no runtime state to ask for. */
+function validatePuppetCharacter(
+    args: { readonly character?: StoryCommandValue },
+    ctx: StoryCommandValidateContext,
+): StoryCommandResolutionIssue[] {
+    const character = args.character;
+    if (character?.kind !== "character" || ctx.context.puppetCharacterIds.includes(character.characterId)) {
+        return [];
+    }
+    const span = ctx.spanOf("character");
+    if (!span) {
+        return [];
+    }
+    const name = ctx.context.characters.find(entry => entry.id === character.characterId)?.name ?? "";
+    return [{ code: "notPuppetCharacter", span, value: name }];
+}
+
+export const motion = defineStoryCommand({
+    id: "motion",
+    token: "motion",
+    aliases: ["anim"],
+    category: "character",
+    examples: ["/motion Doll run", "/motion Doll"],
+    params: {
+        character: { hint: "character", type: { kind: "character" }, positional: true, core: true },
+        name: puppetNameParam("motion", "character", "motion"),
+    },
+    build: (args, ctx) => puppetStateBlock("setMotion", args, ctx),
+    validate: validatePuppetCharacter,
+});
+
+export const skin = defineStoryCommand({
+    id: "skin",
+    token: "skin",
+    aliases: ["costume"],
+    category: "character",
+    examples: ["/skin Doll winter", "/skin Doll"],
+    params: {
+        character: { hint: "character", type: { kind: "character" }, positional: true, core: true },
+        name: puppetNameParam("skin", "character", "skin"),
+    },
+    build: (args, ctx) => puppetStateBlock("setSkin", args, ctx),
+    validate: validatePuppetCharacter,
 });
 
 /**
@@ -333,4 +453,4 @@ export const say = defineStoryCommand({
     },
 });
 
-export const CHARACTER_COMMANDS = [show, hide, move, face, rename, say];
+export const CHARACTER_COMMANDS = [show, hide, move, face, motion, skin, rename, say];
