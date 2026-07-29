@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { AutoSaveEntry } from "@shared/types/saves";
 import {
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
     BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
@@ -99,6 +100,9 @@ import {
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE,
     BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD,
+    BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LATEST,
+    BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST,
+    BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_WRITE,
     BLUEPRINT_NODE_TYPE_GAME_CHOOSE,
     BLUEPRINT_NODE_TYPE_GAME_GET_BGM_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT,
@@ -329,6 +333,8 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     listSaveIds: async () => [],
                     getSaveMetadata: async () => ({}),
                     getSavePreview: async () => null,
+                    writeAutoSave: async () => undefined,
+                    listAutoSaves: async () => [],
                     getHistory: async () => [],
                     restoreHistory: async () => undefined,
                     getNametag: () => null,
@@ -449,6 +455,8 @@ function createPageNavigationHostAdapter(
                     listSaveIds: async () => [],
                     getSaveMetadata: async () => ({}),
                     getSavePreview: async () => null,
+                    writeAutoSave: async () => undefined,
+                    listAutoSaves: async () => [],
                     getHistory: async () => [],
                     restoreHistory: async () => undefined,
                     getNametag: () => null,
@@ -487,6 +495,8 @@ function createGameSaveHostAdapter(options: {
     previews?: Record<string, unknown>;
     history?: Array<Record<string, unknown>>;
     restoredIds?: Array<string | undefined>;
+    autoSaveWrites?: boolean[];
+    autoSaves?: AutoSaveEntry[];
     nametag?: string | null;
     speakerAvatar?: BlueprintImageAsset | null;
     notifications?: Array<{ id: string; message: string }>;
@@ -563,6 +573,10 @@ function createGameSaveHostAdapter(options: {
                     listSaveIds: async () => options.listedIds ?? [],
                     getSaveMetadata: async () => options.metadata ?? {},
                     getSavePreview: async (id: string) => options.previews?.[id] as any ?? null,
+                    writeAutoSave: async () => {
+                        options.autoSaveWrites?.push(true);
+                    },
+                    listAutoSaves: async () => options.autoSaves ?? [],
                     getHistory: async () => (options.history ?? []) as any,
                     restoreHistory: async (id?: string) => {
                         options.restoredIds?.push(id);
@@ -2217,6 +2231,138 @@ describe("built-in blueprint nodes", () => {
         });
         expect(loadedIds).toEqual(["slot-a"]);
         expect(localsAfterLoad).not.toHaveProperty("afterLoad");
+    });
+
+    it("executes the auto save nodes through host APIs", async () => {
+        registerCoreBlueprintNodes();
+
+        const autoSaveWrites: boolean[] = [];
+        const localsAfterAutoSave: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "autoSave",
+                entries: { main: { start: { nodeId: "auto", port: "in" } } },
+                nodes: {
+                    auto: { id: "auto", type: BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_WRITE, params: {} },
+                    after: {
+                        id: "after",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "afterAutoSave" },
+                    },
+                    literal: {
+                        id: "literal",
+                        type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                        params: { value: "continued" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "auto", port: "next" }, to: { nodeId: "after", port: "in" } },
+                    { from: { nodeId: "literal", port: "value" }, to: { nodeId: "after", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "auto", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ autoSaveWrites }),
+            blueprintLocals: localsAfterAutoSave,
+        });
+        expect(autoSaveWrites).toEqual([true]);
+        // Unlike Load Save, an autosave leaves the playthrough running, so the
+        // graph continues past it.
+        expect(localsAfterAutoSave.afterAutoSave).toBe("continued");
+
+        const autoSaves: AutoSaveEntry[] = [
+            { id: "@autosave.1", slot: 1, timestamp: 2_000, createdAt: 1_000, metadata: { chapter: 2 } },
+            { id: "@autosave.0", slot: 0, timestamp: 1_500, createdAt: 500, metadata: null },
+        ];
+        const localsFromAutoList: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "listAutoSaves",
+                entries: { main: { start: { nodeId: "autoList", port: "in" } } },
+                nodes: {
+                    autoList: { id: "autoList", type: BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST, params: {} },
+                    captureEntries: {
+                        id: "captureEntries",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "entries" },
+                    },
+                    captureCount: {
+                        id: "captureCount",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "count" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "autoList", port: "next" }, to: { nodeId: "captureEntries", port: "in" } },
+                    { from: { nodeId: "autoList", port: "entries" }, to: { nodeId: "captureEntries", port: "value" } },
+                    { from: { nodeId: "captureEntries", port: "next" }, to: { nodeId: "captureCount", port: "in" } },
+                    { from: { nodeId: "autoList", port: "count" }, to: { nodeId: "captureCount", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "autoList", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ autoSaves }),
+            blueprintLocals: localsFromAutoList,
+        });
+        expect(localsFromAutoList.entries).toEqual(autoSaves);
+        expect(localsFromAutoList.count).toBe(2);
+
+        // The Continue button: newest id, straight into Load Save.
+        const localsFromLatest: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "latestAutoSave",
+                entries: { main: { start: { nodeId: "latest", port: "in" } } },
+                nodes: {
+                    latest: { id: "latest", type: BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LATEST, params: {} },
+                    captureId: {
+                        id: "captureId",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "latestId" },
+                    },
+                    captureHas: {
+                        id: "captureHas",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "hasAutoSave" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "latest", port: "next" }, to: { nodeId: "captureId", port: "in" } },
+                    { from: { nodeId: "latest", port: "id" }, to: { nodeId: "captureId", port: "value" } },
+                    { from: { nodeId: "captureId", port: "next" }, to: { nodeId: "captureHas", port: "in" } },
+                    { from: { nodeId: "latest", port: "hasAutoSave" }, to: { nodeId: "captureHas", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "latest", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ autoSaves }),
+            blueprintLocals: localsFromLatest,
+        });
+        expect(localsFromLatest.latestId).toBe("@autosave.1");
+        expect(localsFromLatest.hasAutoSave).toBe(true);
+
+        // A fresh install has no autosaves; the Continue button has to be able
+        // to tell, rather than trying to load "".
+        const localsFromEmpty: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "latestAutoSaveEmpty",
+                entries: { main: { start: { nodeId: "latest", port: "in" } } },
+                nodes: {
+                    latest: { id: "latest", type: BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LATEST, params: {} },
+                    captureHas: {
+                        id: "captureHas",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "hasAutoSave" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "latest", port: "next" }, to: { nodeId: "captureHas", port: "in" } },
+                    { from: { nodeId: "latest", port: "hasAutoSave" }, to: { nodeId: "captureHas", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "latest", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ autoSaves: [] }),
+            blueprintLocals: localsFromEmpty,
+        });
+        expect(localsFromEmpty.hasAutoSave).toBe(false);
     });
 
     it("reads the dialogue backlog and restores the game from a history entry", async () => {

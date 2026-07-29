@@ -13,7 +13,12 @@ export type GameAppLogLevel = "info" | "warning" | "error";
 /** Raw save record as stored by the host (Studio IPC or the game runtime bridge). */
 export type GameAppSaveRecord = {
     savedGame: unknown;
-    metadata: { user?: unknown };
+    metadata: {
+        user?: unknown;
+        /** ISO timestamps written by the store; absent on records it could not stamp. */
+        createdAt?: string;
+        updatedAt?: string;
+    };
 };
 
 /** Host-side raw save storage. Game-level logic (serialize, capture, reveal) stays in GameApp. */
