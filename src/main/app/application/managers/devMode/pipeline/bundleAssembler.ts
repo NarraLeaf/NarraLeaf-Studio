@@ -211,7 +211,7 @@ async function loadStoryLibrary(projectPath: string): Promise<DevModeStoryLibrar
 }
 
 /** The media types a story row can name; a font or a blueprint never appears in a row's sentence. */
-const NAMED_ASSET_TYPES = ["image", "audio", "video"] as const;
+const NAMED_ASSET_TYPES = ["image", "audio", "video", "model"] as const;
 
 /**
  * `assetId → name` for the media a story row names (U4 WI-1).
