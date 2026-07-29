@@ -410,6 +410,11 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
             label: t("characters.editor.kind.layered"),
             onClick: () => handleCreateCharacter("layered", groupId),
         },
+        {
+            id: "new-character-puppet",
+            label: t("characters.editor.kind.puppet"),
+            onClick: () => handleCreateCharacter("puppet", groupId),
+        },
     ]), [handleCreateCharacter, t]);
 
     const buildContextMenu = useCallback((target: MenuTarget): ContextMenuDef => {

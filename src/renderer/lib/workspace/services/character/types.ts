@@ -65,8 +65,23 @@ export interface CharacterEditorProfile extends CharacterBaseProfile {
  *
  * - `preset` — N finished sprites, one per named pose. N = 1 is the plain single-image character.
  * - `layered` — a stack of layers composited at runtime and switched by tag.
+ * - `puppet` — a box on the stage whose interior an author-supplied runtime draws.
  */
-export type CharacterAppearanceKind = "preset" | "layered";
+export type CharacterAppearanceKind = "preset" | "layered" | "puppet";
+
+/**
+ * Every kind the current model knows, in one place.
+ *
+ * Enumerated rather than inferred because two loaders check it and they must agree: the appearance
+ * constructor (which falls back to an empty preset) and the store migration (which reads an
+ * unrecognised kind as the *pre-rework* store and rewrites it). A kind added to the union but not
+ * to this list is therefore not merely unhandled — it is deleted on the next load.
+ */
+export const CHARACTER_APPEARANCE_KINDS: readonly CharacterAppearanceKind[] = ["preset", "layered", "puppet"];
+
+export function isCharacterAppearanceKind(value: unknown): value is CharacterAppearanceKind {
+    return CHARACTER_APPEARANCE_KINDS.includes(value as CharacterAppearanceKind);
+}
 
 /**
  * Everything an author can rename is an `{ id, name }` pair, and the `id` is what everything else
@@ -182,7 +197,53 @@ export interface CharacterSnapshot extends CharacterNamed {
     tags: CharacterTagSelection;
 }
 
-export type ICharacterAppearance = PresetAppearance | LayeredAppearance;
+/**
+ * A character drawn by a runtime the *author* supplied, through the engine's puppet seam.
+ *
+ * The engine owns the box — where it sits, its layer, its transform, its opacity, its entry in a
+ * saved game — and hands the inside to a backend registered under {@link backend}. Studio ships no
+ * such backend and is not allowed to: the renderers authors want for animated characters are
+ * licensed in terms a source-available application cannot meet (card 2026-07-27-002). So this arm
+ * carries no renderer-specific field, and never will — every product-specific knob goes in
+ * {@link options}, which Studio passes through without reading.
+ *
+ * Unlike the other two kinds this one has no differentials in Studio's model: what a puppet is
+ * doing (motion / expression / skin) is a *runtime* state the backend names, not an authoring-time
+ * enumeration, so there is nothing here to key a dialog avatar or a story `/face` row on. The
+ * profile-level `defaultAvatarAssetId` is a puppet character's avatar.
+ */
+export interface PuppetAppearance {
+    kind: "puppet";
+    /**
+     * The model asset. Null until the author picks one, and a puppet with no model compiles to
+     * nothing — the engine's `src` is required and there is no meaningful empty value for it.
+     *
+     * A model is a *bundle* (a manifest plus an atlas plus texture pages, or a model file plus its
+     * motions and physics), so this names a multi-file asset. Studio resolves it to the bundle's
+     * entry-file URL and the engine resolves the rest relative to that, through
+     * `PuppetMountContext.resolveSibling` — which is why nothing here enumerates the siblings:
+     * which ones exist is only knowable after parsing the entry.
+     */
+    assetId: string | null;
+    /** Backend name, matching a folder under the project's `runtimes/puppet/`. */
+    backend: string;
+    /**
+     * A different entry file within the same bundle; null = the bundle's own declared entry.
+     *
+     * For bundles that ship several (two skeletons sharing one atlas), or whose declared entry is
+     * not the one this character wants. Resolved as a *sibling* of the declared entry — the same
+     * arithmetic the engine's `resolveSibling` applies, so a path here means the same thing it
+     * would mean inside the model's own manifest, and the two cannot disagree about where the
+     * bundle's root is. For the usual bundle, whose entry sits at the top, that is the root.
+     */
+    entry: string | null;
+    /** Stage box size, in logical pixels; null = the stage size. The backend scales its own content inside it. */
+    size: { width: number; height: number } | null;
+    /** Handed to the backend verbatim. Studio never reads a key of it. */
+    options: Record<string, unknown>;
+}
+
+export type ICharacterAppearance = PresetAppearance | LayeredAppearance | PuppetAppearance;
 
 /** A chosen tag per axis, keyed by axis id. Partial selections are legal and mean "leave the rest". */
 export type CharacterTagSelection = Record<string, string>;

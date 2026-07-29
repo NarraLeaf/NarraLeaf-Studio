@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { BlurDissolve, Darkness, DevTools, Push, Reveal, ThroughColor, Transition } from "narraleaf-react";
 import type { CharacterAppearanceSummary, DevModeCharacterSummary } from "@shared/types/devMode";
-import type { StoryAnimationAsset, StoryBlock, StoryDocument, StoryTransitionRef } from "@shared/types/story";
+import type { StoryActionPayload, StoryAnimationAsset, StoryBlock, StoryDocument, StoryTransitionRef } from "@shared/types/story";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
-import { compileStudioStoryToNlr } from "@/lib/ui-editor/runtime/game/storyCompiler";
+import { compileStudioStoryToNlr, resolveBundleEntry } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
 
 /** A character with no sprites: enough to be a speaker, which is all these cases need. */
@@ -2323,5 +2323,138 @@ describe("dialog avatars", () => {
             ["nlr://asset-avatar-neutral", "asset-avatar-neutral"],
             ["nlr://asset-avatar-default", "asset-avatar-default"],
         ]));
+    });
+});
+
+describe("puppet characters", () => {
+    /** What Studio hands the engine. Read off the element because a puppet's config is fixed at construction. */
+    function puppetConfig(compiled: Awaited<ReturnType<typeof compileStudioStoryToNlr>>, name: string) {
+        const puppet = compiled.sceneElements?.["scene-1"]?.puppets.get(name);
+        return puppet ? (puppet as unknown as { config: Record<string, unknown> }).config : null;
+    }
+
+    const PUPPET: DevModeCharacterSummary = {
+        id: "char-doll",
+        name: "Doll",
+        appearance: {
+            kind: "puppet",
+            assetId: "asset-model",
+            backend: "some-runtime",
+            entry: null,
+            size: { width: 900, height: 1200 },
+            options: { scale: 0.5 },
+        },
+    };
+
+    function characterBlock(
+        operation: Extract<StoryActionPayload, { action: "character" }>["operation"],
+        characterId = "char-doll",
+    ): Record<string, StoryBlock> {
+        return {
+            row: {
+                id: "row",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "character", operation, characterId } as Extract<StoryActionPayload, { action: "character" }>,
+            },
+        };
+    }
+
+    it("compiles a puppet character to a Puppet element carrying the author's declaration", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(characterBlock("enter"), ["row"]),
+            sceneId: "scene-1",
+            characters: [PUPPET],
+            resolveAssetUrl: async assetId => `nlr://bundle/${assetId}/model.json`,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        // No Image was created for it: a puppet is a different element class, not a sourceless sprite.
+        expect(compiled.sceneElements?.["scene-1"]?.images.get("char-doll")).toBeUndefined();
+        expect(puppetConfig(compiled, "char-doll")).toMatchObject({
+            backend: "some-runtime",
+            src: "nlr://bundle/asset-model/model.json",
+            size: { width: 900, height: 1200 },
+            options: { scale: 0.5 },
+        });
+    });
+
+    it("resolves an entry override against the bundle the asset resolved to", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(characterBlock("enter"), ["row"]),
+            sceneId: "scene-1",
+            characters: [{ ...PUPPET, appearance: { ...PUPPET.appearance, entry: "alt/other.json" } as typeof PUPPET.appearance }],
+            resolveAssetUrl: async assetId => `nlr://bundle/${assetId}/model.json`,
+        });
+
+        expect(puppetConfig(compiled, "char-doll")).toMatchObject({ src: "nlr://bundle/asset-model/alt/other.json" });
+    });
+
+    it("resolves an entry the way the engine resolves a sibling", () => {
+        const entry = "nlr://bundle/a/model.json";
+        expect(resolveBundleEntry(entry, "atlas.txt")).toBe("nlr://bundle/a/atlas.txt");
+        expect(resolveBundleEntry(entry, "textures/page.png")).toBe("nlr://bundle/a/textures/page.png");
+        expect(resolveBundleEntry(entry, "../shared/eyes.png")).toBe("nlr://bundle/shared/eyes.png");
+        expect(resolveBundleEntry(entry, "windows\\path.json")).toBe("nlr://bundle/a/windows/path.json");
+        // Absolute wins outright, and an empty override is not an override.
+        expect(resolveBundleEntry(entry, "https://cdn/x.json")).toBe("https://cdn/x.json");
+        expect(resolveBundleEntry(entry, "   ")).toBe(entry);
+    });
+
+    it("reuses one element across the rows that move it, because a puppet cannot be re-sourced", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                ...characterBlock("enter"),
+                exit: {
+                    id: "exit",
+                    kind: "action",
+                    parentId: null,
+                    childrenIds: [],
+                    payload: { action: "character", operation: "exit", characterId: "char-doll" },
+                },
+            }, ["row", "exit"]),
+            sceneId: "scene-1",
+            characters: [PUPPET],
+            resolveAssetUrl: async assetId => `nlr://bundle/${assetId}/model.json`,
+        });
+
+        expect(compiled.sceneElements?.["scene-1"]?.puppets.size).toBe(1);
+    });
+
+    it("reports a puppet with no model rather than emitting a sourceless element", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(characterBlock("enter"), ["row"]),
+            sceneId: "scene-1",
+            characters: [{ ...PUPPET, appearance: { ...PUPPET.appearance, assetId: null } as typeof PUPPET.appearance }],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        expect(compiled.sceneElements?.["scene-1"]?.puppets.size).toBe(0);
+        expect(compiled.diagnostics.some(entry => /no model asset/.test(entry.message))).toBe(true);
+    });
+
+    it("reports a puppet that names no runtime", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(characterBlock("enter"), ["row"]),
+            sceneId: "scene-1",
+            characters: [{ ...PUPPET, appearance: { ...PUPPET.appearance, backend: "" } as typeof PUPPET.appearance }],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        expect(compiled.sceneElements?.["scene-1"]?.puppets.size).toBe(0);
+        expect(compiled.diagnostics.some(entry => /names no runtime/.test(entry.message))).toBe(true);
+    });
+
+    it("gives a puppet speaker the character-level dialog avatar", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(characterBlock("enter"), ["row"]),
+            sceneId: "scene-1",
+            characters: [{ ...PUPPET, defaultAvatarAssetId: "asset-avatar" }],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        // A puppet has no portrait to read a differential off, so the default is set directly.
+        expect([...compiled.avatarAssetIdByUrl]).toContainEqual(["nlr://asset-avatar", "asset-avatar"]);
     });
 });
