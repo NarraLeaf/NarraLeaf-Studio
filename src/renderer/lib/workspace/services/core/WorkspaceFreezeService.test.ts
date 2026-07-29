@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { thawProjectWrites } from "@/lib/app/writeFreeze";
 import { BaseFileSystemService } from "./FileSystem";
 import { WorkspaceFreezeService } from "./WorkspaceFreezeService";
-import type { WorkspaceContext } from "../services";
+import { Services, type WorkspaceContext } from "../services";
 
 /**
  * The service and the boundary it arms, together.
@@ -31,12 +31,15 @@ vi.mock("@/lib/app/bridge", () => ({
 }));
 
 const flushAll = vi.fn(async () => undefined);
+const reload = vi.fn(async () => ({ cause: "thaw" as const, reloaded: [], failures: [] }));
 const fetchMock = vi.fn(async () => ({ ok: true, statusText: "OK" }));
 
 function createContext(): WorkspaceContext {
     return {
         project: { getConfig: () => ({ projectPath: PROJECT }) },
-        services: { get: () => ({ flushAll }) },
+        services: {
+            get: (id: string) => (id === Services.WorkspaceReload ? { reload } : { flushAll }),
+        },
     } as unknown as WorkspaceContext;
 }
 
@@ -52,6 +55,7 @@ beforeEach(() => {
         fn.mockResolvedValue({ success: true, data: { ok: true, data: "hash" } });
     }
     flushAll.mockClear();
+    reload.mockClear();
     fetchMock.mockClear();
     vi.stubGlobal("fetch", fetchMock);
 });
@@ -129,6 +133,31 @@ describe("WorkspaceFreezeService", () => {
         expect(privilegedFs.requestWrite).toHaveBeenCalledTimes(1);
         expect(service.isFrozen()).toBe(false);
         expect(service.getReason()).toBeNull();
+    });
+
+    /**
+     * The other half of the fix. A refused write is a no-op, so whatever tried it kept the value in
+     * memory - measured: a scene created while frozen never reached disk, then rode the first save
+     * after thawing there. Without this the freeze does not prevent the loss, it postpones it.
+     */
+    it("re-reads the working tree on thaw, exactly once", async () => {
+        const service = await createService();
+        await service.freeze({ kind: "revision", revision: "aa" });
+
+        service.thaw();
+
+        expect(reload).toHaveBeenCalledTimes(1);
+        expect(reload).toHaveBeenCalledWith("thaw");
+    });
+
+    it("does not reload when there was nothing to leave", async () => {
+        const service = await createService();
+
+        // A thaw is still a thaw when no freeze was armed, but re-reading the whole project for it
+        // would throw away undo history and remount every tab for nothing.
+        service.thaw();
+
+        expect(reload).not.toHaveBeenCalled();
     });
 
     it("flushes what is owed before freezing, so a pending save is not silently dropped", async () => {

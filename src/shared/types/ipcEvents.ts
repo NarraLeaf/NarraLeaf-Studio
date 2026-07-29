@@ -45,6 +45,9 @@ import type {
     RevisionId,
     VcsAvailability,
     VcsBlobRequest,
+    VcsCheckpointReason,
+    VcsCommitOptions,
+    VcsCommitResult,
     VcsHistoryEntry,
     VcsInitOptions,
     VcsRepositoryInfo,
@@ -209,6 +212,8 @@ export enum IPCEventType {
     vcsGetInfo = "vcs.getInfo",
     vcsIsRepository = "vcs.isRepository",
     vcsInitRepository = "vcs.initRepository",
+    vcsCommit = "vcs.commit",
+    vcsCheckpoint = "vcs.checkpoint",
     vcsGetStatus = "vcs.getStatus",
     vcsGetHistory = "vcs.getHistory",
     vcsReadBlob = "vcs.readBlob",
@@ -512,6 +517,35 @@ export type IPCVcsEvents = {
         response: VcsRepositoryInfo;
     };
     /**
+     * Record the working tree as a new revision.
+     *
+     * Long: it settles the renderer's auto-save debt, stages the whole project, commits,
+     * and forces Lore's stores to disk before answering, because a commit reported before
+     * that flush is a commit that may not survive the process. Await it, and show the
+     * failure - "nothing has changed" arrives here as one, and it is the answer.
+     */
+    [IPCEventType.vcsCommit]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; options?: VcsCommitOptions },
+        response: VcsCommitResult;
+    };
+    /**
+     * Record a checkpoint - the same revision, labelled as one Studio took rather than
+     * one the author asked for.
+     *
+     * `revision: null` means there was nothing to record: the project is not under
+     * version control, this host has no backend, or the tree has not changed since the
+     * last revision. None of those are failures, and an empty revision every interval
+     * would make the history unreadable.
+     */
+    [IPCEventType.vcsCheckpoint]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; reason: VcsCheckpointReason },
+        response: { revision: VcsCommitResult | null };
+    };
+    /**
      * What changed in the working tree. NOT a pure read - the scan behind it records
      * newly discovered directories into staged state, so a caller that polls this on
      * a timer manufactures deletions the author never made (docs §4.17). Call it when
@@ -523,10 +557,15 @@ export type IPCVcsEvents = {
         data: { projectPath: string },
         response: VcsStatus;
     };
+    /**
+     * Revisions, newest first. `includeKinds` costs one backend call per revision -
+     * there is no batch metadata verb - so it is opt-in, and entries come back without
+     * a `kind` when it is off.
+     */
     [IPCEventType.vcsGetHistory]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
-        data: { projectPath: string; limit?: number },
+        data: { projectPath: string; limit?: number; includeKinds?: boolean },
         response: { entries: VcsHistoryEntry[] };
     };
     [IPCEventType.vcsReadBlob]: {

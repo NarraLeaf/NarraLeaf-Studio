@@ -12,6 +12,15 @@ import { Check, Ellipsis, Plus } from "lucide-react";
 import type { PanelComponentProps } from "../types";
 import { ContextMenu, Progress, type ContextMenuDef } from "@/lib/components/elements";
 import { useWorkspace } from "../../context";
+import { freezeContextMenuRows, useFreezeGuard } from "../../components/ui/freezeGuard";
+
+/**
+ * The localization locale menu row that keeps working while frozen: the CSV export.
+ *
+ * It writes to a path the author picks, outside the project. Set-as-source, Import CSV and Remove
+ * Language all write the project and are off.
+ */
+const FREEZE_READ_ONLY_LOCALIZATION_MENU_IDS: ReadonlySet<string> = new Set(["export-csv"]);
 import { useRegistry } from "../../registry";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
@@ -56,7 +65,7 @@ const INPUT_CLASS =
     "h-7 min-w-0 flex-1 rounded-md border border-edge bg-surface-raised px-2 text-xs text-fg outline-none placeholder:text-fg-subtle focus:border-primary/50";
 
 const GHOST_ROW_CLASS =
-    "flex h-7 w-full items-center justify-center gap-1 rounded-md border border-dashed border-edge text-2xs text-fg-subtle transition-colors hover:border-edge-strong hover:text-fg";
+    "flex h-7 w-full items-center justify-center gap-1 rounded-md border border-dashed border-edge text-2xs text-fg-subtle transition-colors hover:border-edge-strong hover:text-fg disabled:cursor-not-allowed disabled:opacity-40";
 
 /** Autonym for a language code via Intl (e.g. "ja" → "日本語"); falls back to the code. */
 function autonymFor(code: string): string {
@@ -72,6 +81,9 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
     const { t } = useTranslation();
+    // Adding, removing and re-sourcing a language, and importing a CSV, write the project. Reading the
+    // tables, switching locale and exporting a CSV do not.
+    const freeze = useFreezeGuard();
 
     const localizationService = useMemo(
         () => (context && isInitialized ? context.services.get<LocalizationService>(Services.Localization) : null),
@@ -378,6 +390,10 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
         );
         return items;
     }, [localeMenu, handleSetSource, handleExportCsv, handleImportCsv, handleRemoveLocale, t]);
+    const frozenLocaleMenuItems = useMemo(
+        () => freezeContextMenuRows(localeMenuItems, freeze.frozen, FREEZE_READ_ONLY_LOCALIZATION_MENU_IDS),
+        [freeze, localeMenuItems],
+    );
 
     const locales = config?.locales ?? [];
 
@@ -477,6 +493,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                             type="button"
                             className={`mt-1 ${GHOST_ROW_CLASS}`}
                             onClick={() => setAddingLocale(true)}
+                            {...freeze.writes()}
                         >
                             <Plus className="h-3 w-3" /> {t("workspace.localization.panel.addLanguage")}
                         </button>
@@ -536,7 +553,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
             </div>
             {localeMenu ? (
                 <ContextMenu
-                    items={localeMenuItems}
+                    items={frozenLocaleMenuItems}
                     position={localeMenu.position}
                     onClose={() => setLocaleMenu(null)}
                 />

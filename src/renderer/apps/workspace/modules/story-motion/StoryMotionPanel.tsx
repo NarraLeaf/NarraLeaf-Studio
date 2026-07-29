@@ -12,6 +12,7 @@ import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
+import { useFreezeGuard } from "../../components/ui/freezeGuard";
 import { Services } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
@@ -68,6 +69,9 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
     const { menuState, showMenu, hideMenu } = useContextMenu();
+    // Creating, duplicating, deleting and binding write the story document; selecting a motion,
+    // previewing it and opening the full editor only read, so they stay live in a frozen project.
+    const freeze = useFreezeGuard();
     const storyService = useMemo(
         () => context && isInitialized ? context.services.get<StoryService>(Services.Story) : null,
         [context, isInitialized],
@@ -389,7 +393,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                         placeholder={t("motion.panel.searchPlaceholder")}
                         leftIcon={<Search className="h-3.5 w-3.5 text-fg-subtle" />}
                     />
-                    <button className={ICON_BUTTON_CLASS} type="button" onClick={openCreateMenu} title={t("motion.panel.createMotion")} aria-label={t("motion.panel.createMotion")}>
+                    <button className={`${ICON_BUTTON_CLASS} disabled:cursor-not-allowed disabled:opacity-40`} type="button" onClick={openCreateMenu} {...freeze.writes(false, t("motion.panel.createMotion"))} aria-label={t("motion.panel.createMotion")}>
                         <Plus className="h-4 w-4" />
                     </button>
                 </div>
@@ -450,10 +454,10 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                             <Edit3 className="h-3.5 w-3.5" />
                                             <span>{t("common.edit")}</span>
                                         </SurfaceEditorToolbarSegButton>
-                                        <SurfaceEditorToolbarSegButton type="button" onClick={duplicateMotion} title={t("common.duplicate")} aria-label={t("common.duplicate")}>
+                                        <SurfaceEditorToolbarSegButton type="button" onClick={duplicateMotion} {...freeze.writes(false, t("common.duplicate"))} aria-label={t("common.duplicate")}>
                                             <Copy className="h-4 w-4" />
                                         </SurfaceEditorToolbarSegButton>
-                                        <SurfaceEditorToolbarSegButton type="button" onClick={() => void deleteMotion()} title={t("common.delete")} aria-label={t("common.delete")}>
+                                        <SurfaceEditorToolbarSegButton type="button" onClick={() => void deleteMotion()} {...freeze.writes(false, t("common.delete"))} aria-label={t("common.delete")}>
                                             <Trash2 className="h-4 w-4" />
                                         </SurfaceEditorToolbarSegButton>
                                     </SurfaceEditorToolbarButtonGroup>
@@ -505,6 +509,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                             type="button"
                                             onClick={bindToAction}
                                             className="h-9 justify-center"
+                                            {...freeze.writes()}
                                         >
                                             <Check className="h-3.5 w-3.5" />
                                             {t("motion.panel.bindToAction")}

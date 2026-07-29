@@ -126,6 +126,25 @@ export interface GlobalStateType extends Record<string, any> {
      * the UI editor's template store fetches the index or a template bundle.
      */
     "uiTemplates.registryUrl": string;
+    /**
+     * How long between automatic checkpoints, in minutes. **0 disables them.**
+     *
+     * A checkpoint only happens when a versioned file has actually been written since
+     * the last one - the interval is a ceiling on how often, never a schedule that
+     * fires on its own. Global rather than per-project because it describes how often
+     * the author wants Studio interrupting to record, which is a habit rather than a
+     * property of any one project.
+     */
+    "versionControl.checkpointIntervalMinutes": number;
+    /**
+     * Name recorded as the author on commits and checkpoints; "" = unset.
+     *
+     * The interim answer to Lore's `identity` global, which is per-call rather than
+     * stored in the repository. It becomes the fallback once there is a logged-in
+     * identity to prefer; see VcsManager.resolveIdentity for what an unset value
+     * records.
+     */
+    "versionControl.authorName": string;
 }
 
 export type GlobalStateKeys = string;
@@ -175,4 +194,6 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "build.electronMirror": "",
     "plugins.registryUrl": "",
     "uiTemplates.registryUrl": "",
+    "versionControl.checkpointIntervalMinutes": 15,
+    "versionControl.authorName": "",
 };

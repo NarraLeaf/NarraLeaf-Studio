@@ -10,6 +10,7 @@ import { HeadThumbnail } from "@/apps/workspace/modules/characters/editors/compo
 import { useCompositedSprite } from "@/lib/workspace/hooks/useCompositedSprite";
 import type { NormalizedCrop } from "@/lib/utils/headCrop";
 import { useWorkspace } from "@/apps/workspace/context";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
 import { getCommandGhost } from "./storyCommandGhost";
@@ -232,13 +233,22 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
     const [hovered, setHovered] = useState(false);
     const reduceMotion = useReduceMotion();
     const showRowActions = hovered || active;
+    // Reordering a row writes the scene. Everything else this row does - selecting, folding, reading
+    // its text, hovering its portrait - does not, and is left alone.
+    const freeze = useFreezeGuard();
     const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
         id: row.block.id,
+        // Off at dnd-kit rather than only in the handle, so a keyboard activation of the grip cannot
+        // start a drag either.
+        disabled: freeze.frozen,
         // Reduce-motion means the sort animation is off at the source, not merely overridden in CSS:
         // dnd-kit writes this transition as an inline style, which the stylesheet's blanket rule
         // cannot reach.
         transition: reduceMotion ? null : undefined,
     });
+    // Withheld whole while frozen rather than left attached and inert: a grip that picks the row up and
+    // then refuses to drop it reads as a broken editor.
+    const dragListeners = freeze.gesture(listeners) ?? {};
     const sortableStyle: CSSProperties = {
         transform: toSortableTransform(transform),
         transition,
@@ -330,14 +340,14 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                 <div
                     ref={setActivatorNodeRef}
                     {...attributes}
-                    {...listeners}
+                    {...dragListeners}
                     role="button"
                     tabIndex={0}
                     aria-label={t("story.rows.dragRow")}
-                    title={t("story.rows.dragRow")}
+                    title={freeze.frozen ? freeze.reason : t("story.rows.dragRow")}
                     // Sized to the (narrowed) column so the invisible-but-clickable target never
                     // overhangs into the badge beside it — an opacity-0 button still takes clicks.
-                    className="flex h-7 w-[var(--nl-story-handle,20px)] touch-none select-none items-center justify-center rounded-md text-fg-subtle opacity-0 transition-colors hover:cursor-grab hover:text-primary hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 group-hover:opacity-100"
+                    className={`flex h-7 w-[var(--nl-story-handle,20px)] touch-none select-none items-center justify-center rounded-md text-fg-subtle opacity-0 transition-colors hover:text-primary hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 group-hover:opacity-100 ${freeze.frozen ? "cursor-not-allowed" : "hover:cursor-grab"}`}
                     onMouseDown={event => event.stopPropagation()}
                     onClick={event => event.stopPropagation()}
                 >

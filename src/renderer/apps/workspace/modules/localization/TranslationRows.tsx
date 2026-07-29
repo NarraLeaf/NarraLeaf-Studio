@@ -12,6 +12,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { Check, Plus, Trash2, TriangleAlert, Undo2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import type { LocalizationUnitState } from "@/lib/workspace/services/localization/localizationModel";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 
 /** Minimal row shape both modes render; the tab supplies story/UI/key rows alike. */
 export type TranslationTableRow = {
@@ -271,6 +272,10 @@ const ADD_KEY_INPUT_CLASS =
  */
 export function AddKeyRow(props: { onSubmit: (name: string, sourceText: string) => boolean }) {
     const { t } = useTranslation();
+    // Declaring a UI key writes the localization document. Guarded at the collapsed "+" so the draft
+    // row never opens - a form that accepts a name and then throws it away is the measured failure this
+    // milestone exists to remove.
+    const freeze = useFreezeGuard();
     const [expanded, setExpanded] = useState(false);
     const [nameDraft, setNameDraft] = useState("");
     const [sourceDraft, setSourceDraft] = useState("");
@@ -292,8 +297,9 @@ export function AddKeyRow(props: { onSubmit: (name: string, sourceText: string) 
             <div className="px-4 py-2">
                 <button
                     type="button"
-                    className="flex h-7 w-full items-center justify-center gap-1 rounded-md border border-dashed border-edge text-2xs text-fg-subtle transition-colors hover:border-edge-strong hover:text-fg"
+                    className="flex h-7 w-full items-center justify-center gap-1 rounded-md border border-dashed border-edge text-2xs text-fg-subtle transition-colors hover:border-edge-strong hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
                     onClick={() => setExpanded(true)}
+                    {...freeze.writes()}
                 >
                     <Plus className="h-3 w-3" /> {t("workspace.localization.table.addKey")}
                 </button>

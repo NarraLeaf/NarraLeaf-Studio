@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWorkspace } from "@/apps/workspace/context";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { EditorComponentProps } from "../../types";
 import { LayerStackPreview, type PreviewLayer } from "./components/LayerStackPreview";
 import { CombinationGrid } from "./components/CombinationGrid";
@@ -56,7 +57,7 @@ type SlotRef =
 type Focus = { kind: "layer" | "axis"; id: string } | null;
 
 const ROW = "flex items-center gap-2 rounded-md border border-edge bg-fill-subtle px-2 py-1.5 text-xs";
-const ICON_BTN = "p-1 rounded-md text-fg-muted hover:text-fg hover:bg-fill transition-colors";
+const ICON_BTN = "p-1 rounded-md text-fg-muted hover:text-fg hover:bg-fill transition-colors disabled:cursor-not-allowed disabled:opacity-40";
 /** Same button, lit. Not `ICON_BTN + " text-primary"`: two colour utilities in one class list are
     decided by stylesheet order, not by the order they are written, so the muted one can win. */
 const ICON_BTN_ON = "p-1 rounded-md text-primary hover:bg-fill transition-colors";
@@ -71,11 +72,14 @@ const KIND_LABELS = {
 } as const;
 
 function Section(props: { title: string; onAdd: () => void; children: React.ReactNode }) {
+    // The one "+" every appearance section shares - poses, axes, layers, snapshots - so guarding it here
+    // covers all four creation flows at once. Its `onAdd` always writes the appearance.
+    const freeze = useFreezeGuard();
     return (
         <div className="space-y-1.5">
             <div className="flex items-center justify-between px-1">
                 <span className="text-2xs tracking-wide text-fg-muted">{props.title}</span>
-                <button className={ICON_BTN} onClick={props.onAdd} aria-label={props.title}>
+                <button className={ICON_BTN} onClick={props.onAdd} aria-label={props.title} {...freeze.writes()}>
                     <Plus className="w-4 h-4" />
                 </button>
             </div>
@@ -100,6 +104,9 @@ function Section(props: { title: string; onAdd: () => void; children: React.Reac
 export function CharacterEditor({ payload }: EditorComponentProps<CharacterEditorPayload>) {
     const { t } = useTranslation();
     const { context } = useWorkspace();
+    // Reordering the layer stack writes the appearance; hiding and locking a layer are editor state and
+    // stay live, which is why they are not guarded here.
+    const freeze = useFreezeGuard();
     const character = payload?.character;
     const appearance = character?.profile.appearance;
 
@@ -571,7 +578,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                 isFocused ? FOCUSED : "border-edge",
                                                 dragLayerId === layer.id ? "opacity-50" : "",
                                             ].join(" ")}
-                                            draggable={!locked[layer.id]}
+                                            draggable={!locked[layer.id] && !freeze.frozen}
                                             onDragStart={event => {
                                                 // A native drag runs a nested message loop, so a
                                                 // React state update made here is not visible to the
@@ -587,8 +594,11 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                 event.preventDefault();
                                                 event.dataTransfer.dropEffect = "move";
                                             }}
+                                            // Reordering the stack writes the appearance. Selecting a layer
+                                            // to look at it does not, so the row stays clickable.
                                             onDrop={event => {
                                                 event.preventDefault();
+                                                if (freeze.frozen) return;
                                                 const dragged = dragRef.current || event.dataTransfer.getData("text/plain");
                                                 if (dragged) moveLayer(dragged, layer.id);
                                                 dragRef.current = null;

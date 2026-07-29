@@ -96,6 +96,20 @@ export function loreStringArray(values: readonly string[] | undefined): LoreStri
 /** Lore's booleans are `uint8_t`. */
 export const loreBool = (value: boolean | undefined): number => (value ? 1 : 0);
 
+export interface LoreMetadataTypeArrayValue { ptr: number[]; count: number }
+
+/**
+ * A `LoreMetadataTypeArray`: the per-entry format tags a metadata write is parsed with.
+ *
+ * Parallel to the keys and values arrays, and Lore reads all three by index. A count
+ * that disagrees with theirs would have it read a format for an entry that does not
+ * exist, so the caller composing them keeps the three the same length; this only
+ * encodes what it is given.
+ */
+export function loreMetadataTypeArray(values: readonly number[]): LoreMetadataTypeArrayValue {
+    return { ptr: [...values], count: values.length };
+}
+
 // -- decoding ---------------------------------------------------------------
 
 /**

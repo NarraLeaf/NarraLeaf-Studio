@@ -221,6 +221,36 @@ export class VoiceService extends Service<VoiceService> implements IVoiceService
     }
 
     /**
+     * Throw away the cached voice libraries and read back whatever was open. The mirror of
+     * `LocalizationService.reloadFromDisk`, for the same reason: `loadDocument` answers from the
+     * cache, so a locale opened before the working tree changed would keep - and later write back -
+     * the clip assignments it already had.
+     */
+    public async reloadFromDisk(): Promise<void> {
+        const previouslyLoaded = [...this.documents.keys()];
+        this.documents.clear();
+        this.dirtyLocales.clear();
+
+        const failures: string[] = [];
+        for (const locale of previouslyLoaded) {
+            // A voice language dropped from the configuration while the tree changed is not an error.
+            if (!this.getConfiguration().voicedLocales.some(entry => entry.code === locale)) {
+                continue;
+            }
+            try {
+                const document = await this.loadDocument(locale);
+                this.events.emit("documentChanged", { locale, document });
+            } catch (error) {
+                failures.push(`${locale} (${error instanceof Error ? error.message : String(error)})`);
+            }
+        }
+
+        if (failures.length > 0) {
+            throw new RendererError(`Could not re-read ${failures.length} voice library/libraries: ${failures.join("; ")}`);
+        }
+    }
+
+    /**
      * The write itself. Only ever reached through {@link autoSaver}, which serialises it.
      *
      * See `LocalizationService.writeDirtyDocuments`: the dirty flag is cleared after the write

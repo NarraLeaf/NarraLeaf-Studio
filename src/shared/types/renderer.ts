@@ -37,7 +37,7 @@ import type {
 } from "./privileged";
 import { AppEventToken } from "./app";
 import type { LocaleContribution } from "@shared/i18n";
-import type { RevisionId, VcsAvailability, VcsHistoryEntry, VcsInitOptions, VcsRepositoryInfo, VcsStatus, VcsThreeWayResult } from "./vcs";
+import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsHistoryEntry, VcsInitOptions, VcsRepositoryInfo, VcsStatus, VcsThreeWayResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -298,8 +298,10 @@ export interface RendererPreloadedInterface {
     };
 
     /**
-     * Version control. Reads, plus `initRepository` - the one write that cannot wait
-     * for the resolve UI, because until it runs there is no repository to read.
+     * Version control. Reads, plus the writes that only ever add a revision:
+     * `initRepository`, `commit` and `checkpoint`. None of them can reach a conflict -
+     * they extend the author's own branch and never move the working tree - so none
+     * waits on a resolve UI. Merge and restore, which do move it, are still absent.
      * Every call is per project - Studio is one-project-one-window and the VCS
      * runtime is keyed by project path.
      */
@@ -324,7 +326,21 @@ export interface RendererPreloadedInterface {
          * timer that calls it reports deletions the author never made (§4.17).
          */
         getStatus(projectPath: string): Promise<RequestStatus<VcsStatus>>;
-        getHistory(projectPath: string, limit?: number): Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>>;
+        /**
+         * Record the working tree as a new revision: the window's pending saves are
+         * flushed, the project is staged, committed, and the backend's stores are
+         * forced to disk before this answers. Long; await it and show the failure.
+         * "Nothing has changed" is one of those failures, and it is the answer.
+         */
+        commit(projectPath: string, options?: VcsCommitOptions): Promise<RequestStatus<VcsCommitResult>>;
+        /**
+         * The same pipeline, labelled a checkpoint. `revision: null` means there was
+         * nothing to record - no repository, no backend, or an unchanged tree - which
+         * is a success, because an empty revision per interval is not history.
+         */
+        checkpoint(projectPath: string, reason: VcsCheckpointReason): Promise<RequestStatus<{ revision: VcsCommitResult | null }>>;
+        /** `includeKinds` costs one call per revision; leave it off unless kinds are shown. */
+        getHistory(projectPath: string, limit?: number, includeKinds?: boolean): Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>>;
         /** File contents at a revision, base64-encoded. */
         readBlob(projectPath: string, revision: RevisionId, path: string): Promise<RequestStatus<{ contentBase64: string }>>;
         getChangedPaths(projectPath: string, from: RevisionId, to: RevisionId): Promise<RequestStatus<{ paths: string[] }>>;

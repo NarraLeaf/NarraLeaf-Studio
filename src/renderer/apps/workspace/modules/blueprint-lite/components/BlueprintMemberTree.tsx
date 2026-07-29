@@ -13,6 +13,7 @@ import type { BlueprintGraphEditorDiagnostic } from "@/lib/workspace/services/ui
 import { ContextMenu, type ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { BlueprintLiteralValueControl } from "./BlueprintLiteralValueControl";
 import { useWorkspace } from "@/apps/workspace/context";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/ui";
 import { createInputDialog } from "@/lib/components/dialogs";
@@ -386,6 +387,9 @@ export function BlueprintMemberTree({
     onDeleteLayer,
 }: Props) {
     const { t } = useTranslation();
+    // Declaring a layer or a variable, and renaming or deleting one, write the blueprint document.
+    // Selecting a layer to look at its graph does not.
+    const freeze = useFreezeGuard();
     const { menuState, showMenu, hideMenu } = useContextMenu();
     const [menuLayerId, setMenuLayerId] = useState<string | null>(null);
     const { context, isInitialized } = useWorkspace();
@@ -669,6 +673,7 @@ export function BlueprintMemberTree({
             {
                 id: "rename",
                 label: t("blueprint.memberTree.renameLayer"),
+                ...freeze.menuRow(),
                 onClick: () => {
                     const id = menuLayerId;
                     hideMenu();
@@ -695,6 +700,7 @@ export function BlueprintMemberTree({
             {
                 id: "delete",
                 label: t("blueprint.memberTree.deleteLayer"),
+                ...freeze.menuRow(),
                 onClick: () => {
                     const id = menuLayerId;
                     hideMenu();
@@ -714,7 +720,7 @@ export function BlueprintMemberTree({
                 },
             },
         ];
-    }, [blueprintId, events, hideMenu, inputDialog, localBp, menuLayerId, onDeleteLayer, uiService, t]);
+    }, [blueprintId, events, freeze, hideMenu, inputDialog, localBp, menuLayerId, onDeleteLayer, uiService, t]);
 
     return (
         <div className="flex h-full min-h-0 flex-col gap-4 text-xs text-fg-muted">
@@ -723,8 +729,9 @@ export function BlueprintMemberTree({
                     <span>{t("blueprint.memberTree.layers")}</span>
                     <button
                         type="button"
-                        className="inline-flex items-center gap-1 text-primary hover:text-primary/80"
+                        className="inline-flex items-center gap-1 text-primary hover:text-primary/80 disabled:cursor-not-allowed disabled:opacity-40"
                         onClick={() => void onAddLayer()}
+                        {...freeze.writes()}
                     >
                         <Plus className="h-3 w-3" />
                         {t("common.new")}
@@ -778,8 +785,9 @@ export function BlueprintMemberTree({
                             action={
                                 <button
                                     type="button"
-                                    className="inline-flex items-center gap-1 text-primary hover:text-primary/80"
+                                    className="inline-flex items-center gap-1 text-primary hover:text-primary/80 disabled:cursor-not-allowed disabled:opacity-40"
                                     onClick={() => void handleCreateVariable(group)}
+                                    {...freeze.writes()}
                                 >
                                     <Plus className="h-3 w-3" />
                                     {t("common.new")}
@@ -813,8 +821,9 @@ export function BlueprintMemberTree({
                     action={
                         <button
                             type="button"
-                            className="inline-flex items-center gap-1 text-primary hover:text-primary/80"
+                            className="inline-flex items-center gap-1 text-primary hover:text-primary/80 disabled:cursor-not-allowed disabled:opacity-40"
                             onClick={() => void handleCreatePersistentVariable()}
+                            {...freeze.writes()}
                         >
                             <Plus className="h-3 w-3" />
                             New
