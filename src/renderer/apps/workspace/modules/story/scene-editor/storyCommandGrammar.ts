@@ -1,4 +1,4 @@
-import type { StoryCommandStageObjectKind, StoryCommandTargetKind } from "./storyCommandValues";
+import type { StoryCommandStageObjectKind, StoryCommandTargetKind, StoryPuppetChannel } from "./storyCommandValues";
 
 /**
  * The grammar vocabulary of the story editor's slash command line: what a param IS, independent of
@@ -44,6 +44,22 @@ export type StoryCommandParamType =
      * The dependency may resolve to a `character` value or to a `target` value of character type.
      */
     | { kind: "characterForm"; dependsOn: string }
+    /**
+     * One state channel of a puppet-kind character, named by the model its backend loaded:
+     * `/motion Doll run`, `/skin Doll winter`, `/face Doll smile`.
+     *
+     * Free text by construction, not by concession. A puppet has no authoring-time differentials —
+     * what it can do is decided by a file Studio does not parse — so there is nothing in the project
+     * to resolve a name against and nothing that renaming could invalidate. `dependsOn` still names
+     * the owner param, because *whether* this branch applies is a property of the character: it
+     * declines any character Studio draws itself, which is what lets `/face` carry the same slot for
+     * all three appearance kinds.
+     *
+     * `channel` exists so the candidate list can be fed later from the live model
+     * (`PuppetInstance.describe` enumerates motions, expressions and skins separately) without the
+     * spec, the payload or the stored row changing shape.
+     */
+    | { kind: "puppetName"; channel: StoryPuppetChannel; dependsOn: string }
     | { kind: "scene" }
     /**
      * A `label` row declared in the CURRENT scene - what `/goto` addresses. Scene-scoped by
@@ -209,7 +225,7 @@ export function freeTargetKind(type: Extract<StoryCommandParamType, { kind: "tar
 
 /** Whether a param's candidates can only be listed once another param has resolved, and which one. */
 export function dependsOnParam(type: StoryCommandParamType): string | null {
-    if (type.kind === "characterForm" || type.kind === "content") {
+    if (type.kind === "characterForm" || type.kind === "content" || type.kind === "puppetName") {
         return type.dependsOn;
     }
     return null;
@@ -240,6 +256,10 @@ export function allowsFreeValue(type: StoryCommandParamType): boolean {
         case "literal":
         // A constant is whatever scalar the author types; nothing to fail to resolve against.
         case "constant":
+        // A model's own vocabulary is not in the project, so a name here can only ever be free text.
+        // What CAN fail is the character: `/motion Alice run` is reported on the character slot by the
+        // spec's `validate`, which is where a cross-param fact belongs.
+        case "puppetName":
         case "text":
             return true;
         // A free-typed name can only stand where the kind is knowable without the stage answering -

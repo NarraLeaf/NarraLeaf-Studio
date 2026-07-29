@@ -348,6 +348,10 @@ export const storyInspector = {
         displayName: "显示为",
         chooseHint: "先选择一个角色，再选择其外观",
         overrideImage: "覆盖图片",
+        puppetMotion: "动作",
+        puppetExpression: "表情",
+        puppetSkin: "皮肤",
+        puppetNone: "无",
     },
     asset: {
         missing: "资源缺失",

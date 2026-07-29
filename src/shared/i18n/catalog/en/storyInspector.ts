@@ -400,6 +400,12 @@ export const storyInspector = {
         displayName: "Speaks as",
         chooseHint: "Choose a character to pick its appearance.",
         overrideImage: "Override image",
+        // A character its own runtime draws: the names come from the model, so these are plain
+        // fields rather than pickers, and empty is a request (clear it), not an unfilled slot.
+        puppetMotion: "Motion",
+        puppetExpression: "Expression",
+        puppetSkin: "Skin",
+        puppetNone: "none",
     },
 
     asset: {
