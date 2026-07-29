@@ -3,6 +3,7 @@ import path from "path";
 import type {
     VcsChangeKind,
     VcsFileChange,
+    VcsInitOptions,
     VcsStatus,
 } from "@shared/types/vcs";
 import { renderWorkingSetIgnoreFile } from "./workingSet";
@@ -46,14 +47,12 @@ const PLACEHOLDER_REPOSITORY_URL = "lore://127.0.0.1:41337/local";
 
 const DEFAULT_INITIAL_MESSAGE = "Enable version control";
 
-export interface InitRepositoryOptions {
-    /** Author recorded on the first commit, and persisted into the repository config. */
-    identity?: string;
-    description?: string;
-    message?: string;
-    /** Only for a repository created against a known remote; a placeholder is used otherwise. */
-    repositoryUrl?: string;
-}
+/**
+ * The same shape the renderer sends over IPC, aliased rather than restated: two
+ * declarations of one options bag is how a field arrives from the UI and is dropped
+ * here without anything failing.
+ */
+export type InitRepositoryOptions = VcsInitOptions;
 
 export interface InitRepositoryResult {
     /** Repository (partition) id, hex. */

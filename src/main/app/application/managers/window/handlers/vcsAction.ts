@@ -1,6 +1,13 @@
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEvents, IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
-import type { RevisionId, VcsAvailability, VcsHistoryEntry, VcsRepositoryInfo, VcsThreeWayResult } from "@shared/types/vcs";
+import type {
+    RevisionId,
+    VcsAvailability,
+    VcsHistoryEntry,
+    VcsRepositoryInfo,
+    VcsStatus,
+    VcsThreeWayResult,
+} from "@shared/types/vcs";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -11,9 +18,12 @@ import { IPCHandler } from "./IPCHandler";
  * VcsManager - Studio is one-project-one-window, so a project-less VCS call
  * would be ambiguous with two projects open.
  *
- * These are all reads. Writes (stage/commit/merge) are deliberately absent
- * until the resolve UI exists: a half-wired write surface invites a renderer to
- * commit without a conflict story. See docs/version-control.md.
+ * All of these are reads except {@link VcsInitRepositoryHandler}, and that one is
+ * here because it is not a write the resolve UI can wait for: creating the repository
+ * is how a project gets one at all, and every other verb answers "not a repository"
+ * until it has run. The writes that DO need a conflict story - stage, commit, merge,
+ * restore - remain deliberately absent, because a renderer that can commit without
+ * one commits into a state nobody can get out of. See docs/version-control.md.
  */
 
 /**
@@ -53,6 +63,48 @@ export class VcsGetInfoHandler extends IPCHandler<IPCEventType.vcsGetInfo> {
         { projectPath }: IPCEvents[IPCEventType.vcsGetInfo]["data"],
     ): Promise<RequestStatus<VcsRepositoryInfo>> {
         return this.tryUse(() => window.app.getVcsManager().getInfo(projectPath));
+    }
+}
+
+/**
+ * Put a project under version control.
+ *
+ * Never called on Studio's behalf, only on the author's: it writes `.lore/` into their
+ * project directory and takes an exclusive lock on it, and Lore's lock blocks rather
+ * than fails, so a repository created without asking would hang their own `lore` CLI
+ * with nothing anywhere to explain why.
+ */
+export class VcsInitRepositoryHandler extends IPCHandler<IPCEventType.vcsInitRepository> {
+    readonly name = IPCEventType.vcsInitRepository;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath, options }: IPCEvents[IPCEventType.vcsInitRepository]["data"],
+    ): Promise<RequestStatus<VcsRepositoryInfo>> {
+        return this.tryUse(() => window.app.getVcsManager().initRepository(projectPath, options ?? {}));
+    }
+}
+
+/**
+ * What changed in the working tree since the last commit.
+ *
+ * Answering this runs a scan, and a scan is not a pure read: discovering a NEW
+ * DIRECTORY records it into the repository's staged state, after which deleting that
+ * directory is reported as a deletion for the rest of the session even though it was
+ * never committed. So this must only run when someone asks for it - a renderer that
+ * polls it on a timer fabricates deletions between two ticks and the author commits
+ * the removal of something that never existed.
+ */
+export class VcsGetStatusHandler extends IPCHandler<IPCEventType.vcsGetStatus> {
+    readonly name = IPCEventType.vcsGetStatus;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath }: IPCEvents[IPCEventType.vcsGetStatus]["data"],
+    ): Promise<RequestStatus<VcsStatus>> {
+        return this.tryUse(() => window.app.getVcsManager().getStatus(projectPath));
     }
 }
 
