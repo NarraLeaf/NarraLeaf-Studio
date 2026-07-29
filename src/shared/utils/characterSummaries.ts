@@ -32,6 +32,26 @@ function mapAvatars(raw: unknown): Record<string, CharacterAvatarSummaryEntry> |
     return Object.keys(avatars).length > 0 ? avatars : undefined;
 }
 
+/**
+ * The resting pose, dropped entirely when nothing is set.
+ *
+ * All three cleared is the same state as no default at all, so it is not forwarded — a summary that
+ * always carried `{motion: null, expression: null, skin: null}` would make every preset-to-puppet
+ * comparison downstream have to know that triple means nothing.
+ */
+function mapPuppetDefaultState(raw: unknown): { motion: string | null; expression: string | null; skin: string | null } | null {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        return null;
+    }
+    const entry = raw as { motion?: unknown; expression?: unknown; skin?: unknown };
+    const state = {
+        motion: trimmed(entry.motion) || null,
+        expression: trimmed(entry.expression) || null,
+        skin: trimmed(entry.skin) || null,
+    };
+    return state.motion || state.expression || state.skin ? state : null;
+}
+
 function named(entry: unknown): { id: string; name: string } | null {
     const raw = entry as { id?: unknown; name?: unknown } | null;
     const id = trimmed(raw?.id);
@@ -48,6 +68,7 @@ function mapAppearance(appearance: unknown): CharacterAppearanceSummary {
             entry?: unknown;
             size?: { width?: unknown; height?: unknown } | null;
             options?: unknown;
+            defaultState?: unknown;
         };
         const width = Number(raw.size?.width);
         const height = Number(raw.size?.height);
@@ -64,6 +85,7 @@ function mapAppearance(appearance: unknown): CharacterAppearanceSummary {
             options: raw.options && typeof raw.options === "object" && !Array.isArray(raw.options)
                 ? { ...(raw.options as Record<string, unknown>) }
                 : {},
+            ...(mapPuppetDefaultState(raw.defaultState) ? { defaultState: mapPuppetDefaultState(raw.defaultState)! } : {}),
         };
     }
 

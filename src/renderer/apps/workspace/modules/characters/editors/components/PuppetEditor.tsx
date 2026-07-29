@@ -6,12 +6,20 @@ import { useTranslation } from "@/lib/i18n";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
-import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import { CharacterAppearance } from "@/lib/workspace/services/character/CharacterAppearance";
-import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
+import type { PuppetDefaultState } from "@/lib/workspace/services/character/types";
+import { listProjectPuppetRuntimes } from "@/lib/workspace/services/puppet/projectPuppetRuntimes";
+import {
+    puppetChoiceOptions,
+    type PuppetDescriptionRequest,
+    type PuppetDescriptionUnavailableReason,
+} from "@/lib/workspace/services/puppet/puppetDescriptionModel";
+import type { TranslationKey } from "@shared/i18n";
 import { Services } from "@/lib/workspace/services/services";
-import { Box, FolderOpen, X } from "lucide-react";
+import { Box, FolderOpen, RefreshCw, X } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { PuppetPreview } from "./PuppetPreview";
+import { usePuppetDescription } from "./usePuppetDescription";
 
 const ROW = "flex items-center gap-2 rounded-md border border-edge bg-fill-subtle px-2 py-1.5 text-xs";
 const ICON_BTN = "p-1 rounded-md text-fg-muted hover:text-fg hover:bg-fill transition-colors";
@@ -26,13 +34,80 @@ function Field(props: { label: string; children: React.ReactNode }) {
     );
 }
 
+/** Where the three lists came from, said in one line. */
+function describeStatusKey(reason: PuppetDescriptionUnavailableReason | null | undefined): TranslationKey {
+    switch (reason) {
+        case "no-model": return "characters.editor.puppet.describeNoModel";
+        case "no-backend": return "characters.editor.puppet.describeNoBackend";
+        case "backend-missing": return "characters.editor.puppet.describeBackendMissing";
+        case "not-described": return "characters.editor.puppet.describeNotSupported";
+        case "failed": return "characters.editor.puppet.describeFailed";
+        default: return "characters.editor.puppet.describeOk";
+    }
+}
+
+/**
+ * One of the three names the engine's `PuppetState` is made of.
+ *
+ * A `<Select>` when the model listed any, free text when it did not — decided per field, not per
+ * model, because a skeleton with eleven animations and no expressions should still get a list for
+ * its animations. The fallback is not a degraded mode: a backend is free to implement no
+ * `describe()` at all, and typing a name has to keep working when it does.
+ */
+function ChoiceField(props: {
+    label: string;
+    placeholder: string;
+    available: readonly string[];
+    value: string | null;
+    onChange: (value: string | null) => void;
+}) {
+    const { available, value } = props;
+    const options = puppetChoiceOptions(available, value);
+    if (options.length === 0) {
+        return (
+            <Field label={props.label}>
+                <Input
+                    size="sm"
+                    fullWidth
+                    value={value ?? ""}
+                    placeholder={props.placeholder}
+                    onChange={event => props.onChange(event.target.value)}
+                />
+            </Field>
+        );
+    }
+    return (
+        <Field label={props.label}>
+            <Select
+                options={[
+                    // The empty option is the engine's `null`, which is a real state - the model
+                    // rests with nothing applied - and not the absence of a choice.
+                    { value: "", label: props.placeholder },
+                    ...options.map(name => ({ value: name, label: name })),
+                ]}
+                value={value ?? ""}
+                size="sm"
+                fullWidth
+                portalMenu
+                onChange={next => props.onChange(String(next) || null)}
+            />
+        </Field>
+    );
+}
+
 /**
  * The inspector for a character an author-supplied runtime draws.
  *
- * Four values and nothing else, because four values are the whole of what Studio knows about a
- * puppet: which model, which runtime draws it, which file in the bundle to enter through, and how
- * big the box is. What the model can *do* — its motions, its skins, its parameters — is the
- * backend's vocabulary, readable only from a mounted instance, so it is not enumerated here.
+ * Studio knows four things about a puppet — which model, which runtime draws it, which file in the
+ * bundle to enter through, how big the box is — and cannot know a fifth by reading the files: what
+ * the model can *do* is the backend's vocabulary, locked inside a `.moc3` or a `.skel` Studio is
+ * never going to learn to parse.
+ *
+ * So it does not parse them. It mounts the model and asks it, through the engine's
+ * `PuppetInstance.describe()`, and fills the three state controls from the answer. The same mount,
+ * with its container on screen, is the preview above them. When there is no answer — no runtime
+ * installed, or a backend that does not describe its models — every control degrades to free text
+ * and nothing else changes.
  */
 export function PuppetEditor(props: { appearance: CharacterAppearance }) {
     const { appearance } = props;
@@ -45,6 +120,7 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
     const anchorMemo = useMemo(() => ({ current: anchorRef.current }), [picking]);
 
     const puppet = appearance.getPuppet();
+    const defaultState: PuppetDefaultState = appearance.getPuppetDefaultState();
 
     /**
      * The runtimes the project actually carries — one directory per backend under
@@ -57,15 +133,8 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
             return;
         }
         let cancelled = false;
-        const filesystem = context.services.get<FileSystemService>(Services.FileSystem);
-        void filesystem.list(context.project.resolve(ProjectNameConvention.PuppetRuntimes)).then(result => {
-            if (cancelled) {
-                return;
-            }
-            // No such directory is the normal case: most projects use no puppet runtime at all.
-            setBackends(result.ok
-                ? result.data.filter(entry => entry.type === "directory").map(entry => entry.fileName)
-                : []);
+        void listProjectPuppetRuntimes(context.project).then(names => {
+            if (!cancelled) setBackends(names);
         }).catch(() => {
             if (!cancelled) setBackends([]);
         });
@@ -106,6 +175,28 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
         });
     }, [appearance]);
 
+    /**
+     * What the description lookup is asked about.
+     *
+     * Only the four values that decide what a backend would load. The resting pose is deliberately
+     * out: applying a motion does not change which motions exist, and putting it in here would
+     * re-mount the model every time the author picked one.
+     */
+    const request = useMemo<PuppetDescriptionRequest | null>(() => (
+        puppet?.assetId && puppet.backend
+            ? {
+                assetId: puppet.assetId,
+                backend: puppet.backend,
+                entry: puppet.entry,
+                options: puppet.options,
+                size: puppet.size,
+            }
+            : null
+    ), [puppet?.assetId, puppet?.backend, puppet?.entry, puppet?.options, puppet?.size]);
+
+    const { result, loading, refresh } = usePuppetDescription(request);
+    const description = result?.status === "ok" ? result.description : null;
+
     if (!puppet) {
         return null;
     }
@@ -119,6 +210,8 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
 
     return (
         <div className="space-y-1.5">
+            <PuppetPreview request={request} state={defaultState} />
+
             <Field label={t("characters.editor.puppet.model")}>
                 <span className="min-w-0 flex-1 truncate">
                     {modelName ?? <span className="text-fg-subtle">{t("characters.editor.puppet.noModel")}</span>}
@@ -186,6 +279,51 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
                     onChange={event => setDimension("height", event.target.value)}
                 />
             </Field>
+
+            {/* The pose the character rests in, in the engine's own words. Filled from what the
+                model said about itself; free text when it said nothing. */}
+            <ChoiceField
+                label={t("characters.editor.puppet.motion")}
+                placeholder={t("characters.editor.puppet.stateNone")}
+                available={description?.motions ?? []}
+                value={defaultState.motion}
+                onChange={value => appearance.setPuppetDefaultState("motion", value)}
+            />
+            <ChoiceField
+                label={t("characters.editor.puppet.expression")}
+                placeholder={t("characters.editor.puppet.stateNone")}
+                available={description?.expressions ?? []}
+                value={defaultState.expression}
+                onChange={value => appearance.setPuppetDefaultState("expression", value)}
+            />
+            <ChoiceField
+                label={t("characters.editor.puppet.skin")}
+                placeholder={t("characters.editor.puppet.skinDefault")}
+                available={description?.skins ?? []}
+                value={defaultState.skin}
+                onChange={value => appearance.setPuppetDefaultState("skin", value)}
+            />
+
+            {/* One line saying where the three lists above came from, and the way to take them
+                again. A description is a reading of files that change outside Studio, so the
+                author needs to be able to see that it is stale and act on it. */}
+            {request && (
+                <div className="flex items-center gap-2 px-2 text-2xs text-fg-subtle">
+                    <span className="min-w-0 flex-1 truncate">
+                        {loading
+                            ? t("characters.editor.puppet.describing")
+                            : t(describeStatusKey(result?.status === "unavailable" ? result.reason : null))}
+                    </span>
+                    <button
+                        className={ICON_BTN}
+                        aria-label={t("characters.editor.puppet.redescribe")}
+                        title={t("characters.editor.puppet.redescribe")}
+                        onClick={refresh}
+                    >
+                        <RefreshCw className={`w-3 h-3${loading ? " animate-spin" : ""}`} />
+                    </button>
+                </div>
+            )}
 
             <AssetSelector
                 visible={picking}
