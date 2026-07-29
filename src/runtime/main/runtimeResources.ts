@@ -10,10 +10,11 @@ import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import { GAME_RUNTIME_BUNDLE_PACK_ENTRY, gameRuntimeBundleRuntimeEntry } from "@shared/utils/gameRuntimeBundle";
 import { resolveRuntimeAssetPath } from "./runtimeProtocol";
 
-// Runtime files served from the store are limited to bundled plugin entries; the
-// pack and assets have their own request hosts. Anchoring on this prefix keeps
-// the runtime host from reaching other store entries by path.
-const RUNTIME_STORE_FILE_PREFIX = "plugins/";
+// Runtime files served from the store are limited to the author-supplied code
+// the pack carries - bundled plugin entries and puppet backends; the pack and
+// assets have their own request hosts. Anchoring on these prefixes keeps the
+// runtime host from reaching other store entries by path.
+const RUNTIME_STORE_FILE_PREFIXES = ["plugins/", "puppet/"] as const;
 
 /**
  * Byte budget for store entry reads kept in memory. The game engine drops and
@@ -169,7 +170,7 @@ class SealedRuntimeResources implements RuntimeResources {
 
     async readRuntimeFile(pathname: string): Promise<Buffer | null> {
         const name = gameRuntimeBundleRuntimeEntry(pathname);
-        if (!name.startsWith(RUNTIME_STORE_FILE_PREFIX) || !this.reader.has(name)) {
+        if (!RUNTIME_STORE_FILE_PREFIXES.some(prefix => name.startsWith(prefix)) || !this.reader.has(name)) {
             return null;
         }
         return this.readEntry(name);
