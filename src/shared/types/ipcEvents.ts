@@ -37,11 +37,18 @@ import type {
 } from "./menu";
 import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
 import type {
+    SigningCredential,
+    SigningCredentialImport,
+    SigningInspectResult,
+} from "./signing";
+import type {
     RevisionId,
     VcsAvailability,
     VcsBlobRequest,
     VcsHistoryEntry,
+    VcsInitOptions,
     VcsRepositoryInfo,
+    VcsStatus,
     VcsThreeWayResult,
 } from "./vcs";
 
@@ -79,6 +86,7 @@ export enum IPCEventType {
     fsDetails = "fs.details",
     fsDirectorySize = "fs.directorySize",
     fsRequestRead = "fs.requestRead",
+    fsRequestReadDir = "fs.requestReadDir",
     fsRequestWrite = "fs.requestWrite",
     fsEnsureRegularFile = "fs.ensureRegularFile",
     fsWriteFileNoFollow = "fs.writeFileNoFollow",
@@ -156,6 +164,12 @@ export enum IPCEventType {
     gameBuildSelectOutputDir = "gameBuild.selectOutputDir",
     gameBuildPreflight = "gameBuild.preflight",
 
+    signingList = "signing.list",
+    signingImport = "signing.import",
+    signingRemove = "signing.remove",
+    signingInspect = "signing.inspect",
+    signingKeystoreAliases = "signing.keystoreAliases",
+
     blueprintPersistenceGetAll = "blueprintPersistence.getAll",
     blueprintPersistenceGetValue = "blueprintPersistence.getValue",
     blueprintPersistenceSetValue = "blueprintPersistence.setValue",
@@ -194,6 +208,8 @@ export enum IPCEventType {
     vcsGetAvailability = "vcs.getAvailability",
     vcsGetInfo = "vcs.getInfo",
     vcsIsRepository = "vcs.isRepository",
+    vcsInitRepository = "vcs.initRepository",
+    vcsGetStatus = "vcs.getStatus",
     vcsGetHistory = "vcs.getHistory",
     vcsReadBlob = "vcs.readBlob",
     vcsGetChangedPaths = "vcs.getChangedPaths",
@@ -450,7 +466,7 @@ export type IPCEvents = {
             path: string;
         };
     };
-} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameBuildEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCPrivilegedEvents & IPCVcsEvents;
+} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameBuildEvents & IPCSigningEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCPrivilegedEvents & IPCVcsEvents;
 
 /**
  * Version control. Every event carries `projectPath`: Studio is
@@ -484,6 +500,28 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { projectPath: string },
         response: VcsRepositoryInfo;
+    };
+    /**
+     * Create the repository and its first commit. The one write here, and only
+     * because nothing else works until it has happened - see vcsAction.ts.
+     */
+    [IPCEventType.vcsInitRepository]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; options?: VcsInitOptions },
+        response: VcsRepositoryInfo;
+    };
+    /**
+     * What changed in the working tree. NOT a pure read - the scan behind it records
+     * newly discovered directories into staged state, so a caller that polls this on
+     * a timer manufactures deletions the author never made (docs §4.17). Call it when
+     * someone asks, never on a schedule.
+     */
+    [IPCEventType.vcsGetStatus]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: VcsStatus;
     };
     [IPCEventType.vcsGetHistory]: {
         type: IPCMessageType.request,
@@ -559,6 +597,22 @@ export type IPCFsEvents = {
             encoding?: BufferEncoding;
         },
         response: FsRequestResult<string>; // a hash that can be used to fetch the file later
+    };
+    /**
+     * Grant read access to a whole directory tree, served as `app://fs/{hash}/{relative/path}`.
+     *
+     * Studio-internal (not on the plugin privileged surface, same as `fsDirectorySize`): a directory
+     * grant is a broader capability than the single-file grants plugins get, and its one consumer is
+     * the model-bundle asset resolver, whose served URL has to be something the bundle's own
+     * relative sibling references resolve against.
+     */
+    [IPCEventType.fsRequestReadDir]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            path: string;
+        },
+        response: FsRequestResult<string>; // a hash the whole tree can be fetched under
     };
     [IPCEventType.fsRequestWrite]: {
         type: IPCMessageType.request,
@@ -1228,6 +1282,84 @@ export type IPCGameBuildEvents = {
         };
         response: {
             findings: BuildPreflightFinding[];
+        };
+    };
+};
+
+/**
+ * The machine's code-signing credential vault.
+ *
+ * Passwords travel one way only. `import` carries the plain secrets the author
+ * just typed up to the main process, which seals them immediately; no response
+ * here ever carries a secret back, and there is deliberately no "read the
+ * password" event. Unsealing happens in the main process alone, when a build
+ * actually needs the material.
+ */
+export type IPCSigningEvents = {
+    [IPCEventType.signingList]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>,
+        response: {
+            /** Redacted: metadata only, never a password. */
+            credentials: SigningCredential[];
+        };
+    };
+    /**
+     * Import a credential: the material files are copied into the vault and the
+     * secrets in the payload are sealed. The payload holds plain passwords - do
+     * not log it, do not keep it, do not send it anywhere else.
+     */
+    [IPCEventType.signingImport]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            input: SigningCredentialImport;
+        },
+        response: {
+            credential: SigningCredential;
+        };
+    };
+    [IPCEventType.signingRemove]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            id: string;
+        },
+        response: {
+            /** False when the id was already gone. */
+            removed: boolean;
+        };
+    };
+    /**
+     * Read the credential's certificate for display: subject, issuer, validity,
+     * thumbprint. Never key material.
+     */
+    [IPCEventType.signingInspect]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            id: string;
+        },
+        response: SigningInspectResult;
+    };
+    /**
+     * The signing keys inside a keystore the author has picked but not imported
+     * yet, so the import form can offer them instead of asking for an alias
+     * typed from memory. Same one-way traffic as `import`: the password goes up
+     * and only the names come back.
+     */
+    [IPCEventType.signingKeystoreAliases]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            /** Absolute path the author picked; nothing is copied or kept. */
+            file: string;
+            /** Plain text - do not log it or keep it after the call. */
+            storePassword: string;
+        },
+        response: {
+            aliases: string[];
         };
     };
 };

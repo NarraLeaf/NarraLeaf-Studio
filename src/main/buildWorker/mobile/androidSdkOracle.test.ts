@@ -7,7 +7,14 @@ import { afterEach, describe, expect, it } from "vitest";
 import { validateMobileShellManifest } from "./mobileShellManifest";
 import { runMobileRepack } from "./runMobileRepack";
 import { generateSigningIdentity } from "./signingIdentity";
-import type { GameBuildWorkerMobileJob } from "../protocol";
+import {
+    ANDROID_KEYSTORE_ALIAS,
+    ANDROID_KEYSTORE_PASSWORD,
+    ANDROID_RELEASE_P12_SHA256,
+    ANDROID_RELEASE_P12_SUBJECT,
+    androidReleaseP12,
+} from "./signingFixtures";
+import type { GameBuildWorkerAndroidSigning, GameBuildWorkerMobileJob } from "../protocol";
 
 /**
  * The Android SDK oracle: Google's own tools judging what Studio produced.
@@ -63,8 +70,12 @@ async function tempDir(prefix: string): Promise<string> {
     return dir;
 }
 
-/** Repack the real template with a real payload and hand back the APK's path. */
-async function buildApk(): Promise<string> {
+/**
+ * Repack the real template with a real payload and hand back the APK's path.
+ * With `signing`, the author's release keystore signs it instead of the
+ * machine's sideload identity.
+ */
+async function buildApk(signing?: GameBuildWorkerAndroidSigning): Promise<string> {
     const templateManifest = validateMobileShellManifest(
         JSON.parse(await fs.readFile(path.join(TEMPLATE_DIR, "manifest.json"), "utf8")),
     );
@@ -89,11 +100,25 @@ async function buildApk(): Promise<string> {
             versionName: "1.2.3",
             versionCode: 1_002_003,
             signingIdentity: generateSigningIdentity(),
+            ...(signing ? { signing } : {}),
         },
     };
     const outputDir = await tempDir("nls-oracle-out-");
     const [apk] = await runMobileRepack(job, outputDir, () => undefined, MTIME);
     return apk;
+}
+
+/** Write the fixture release keystore out and describe it as the job expects. */
+async function releaseKeystore(): Promise<GameBuildWorkerAndroidSigning> {
+    const dir = await tempDir("nls-oracle-keystore-");
+    const keystoreFile = path.join(dir, "release.p12");
+    await fs.writeFile(keystoreFile, androidReleaseP12());
+    return {
+        keystoreFile,
+        alias: ANDROID_KEYSTORE_ALIAS,
+        storePassword: ANDROID_KEYSTORE_PASSWORD,
+        keyPassword: ANDROID_KEYSTORE_PASSWORD,
+    };
 }
 
 describe("the Android SDK oracle's availability", () => {
@@ -172,6 +197,23 @@ describe.skipIf(!buildTools)("Google's tools on a Studio-built APK", () => {
         const packages = resources.split("\n").filter(line => line.startsWith("Package name="));
         expect(packages).toHaveLength(1);
         expect(packages[0]).toContain("com.example.oraclegame");
+    });
+
+    it("attributes a release-signed APK to the author's own certificate", async () => {
+        // The one question only apksigner can settle about the release fork:
+        // whose certificate does the platform's own reader see? The expected
+        // digest is keytool's, recorded when the fixture keystore was made, so
+        // an APK signed by anything else - the machine identity above all -
+        // cannot pass this.
+        const apk = await buildApk(await releaseKeystore());
+        const output = tool("apksigner", [
+            "verify", "--min-sdk-version", String(MIN_SDK), "--print-certs", "--verbose", apk,
+        ]);
+        expect(output).toContain("Verifies");
+        expect(output).toMatch(/Verified using v2 scheme \(APK Signature Scheme v2\): true/);
+        expect(output.toLowerCase())
+            .toContain(`signer #1 certificate sha-256 digest: ${ANDROID_RELEASE_P12_SHA256.replace(/:/g, "").toLowerCase()}`);
+        expect(output).toContain(ANDROID_RELEASE_P12_SUBJECT);
     });
 
     it("declares no provider authority two installed games could collide on", async () => {

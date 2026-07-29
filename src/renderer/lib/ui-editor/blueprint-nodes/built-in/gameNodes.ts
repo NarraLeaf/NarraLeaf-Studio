@@ -1,4 +1,7 @@
 import {
+    BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LATEST,
+    BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST,
+    BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_WRITE,
     BLUEPRINT_NODE_TYPE_GAME_CHOOSE,
     BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD,
     BLUEPRINT_NODE_TYPE_GAME_GET_BGM_VOLUME,
@@ -441,6 +444,118 @@ const gamePreferenceBlueprintNodes: BlueprintNodeDef[] = GAME_PREFERENCE_NODE_ME
     const setterNode = createPreferenceSetterNode(meta);
     return setterNode ? [createPreferenceGetterNode(meta), setterNode] : [createPreferenceGetterNode(meta)];
 });
+
+/**
+ * Automatic saving. Studio writes these on a timer (project → Game), into a
+ * reserved ring of ids the player-facing save nodes never see - so an author's
+ * Save/Load screen and an Auto Save screen each list only their own.
+ *
+ * Entries carry the save *id*, not the serialized game: a `SavedGameData` blob
+ * is inert inside a graph, whereas an id feeds straight into Load Save / Get
+ * Save Preview / Get Save Metadata / Delete Save. One node composing with the
+ * six that already exist, rather than a parallel family.
+ */
+const autoSaveBlueprintNodes: BlueprintNodeDef[] = [
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_WRITE,
+        displayName: "Auto Save",
+        category: "Game",
+        keywords: ["game", "auto", "autosave", "save", "write", "checkpoint", "slot", "rotate"],
+        graphKinds: [...GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [execIn, execNext],
+        async execute(ctx) {
+            await requireHostApi(ctx).game.writeAutoSave();
+            return { nextPort: "next" };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST,
+        displayName: "List Auto Saves",
+        category: "Game",
+        keywords: ["game", "auto", "autosave", "save", "list", "entries", "slots", "recent", "continue"],
+        graphKinds: [...GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            execIn,
+            execNext,
+            {
+                id: "entries",
+                kind: "output",
+                semantic: "data",
+                valueType: BLUEPRINT_VALUE_TYPE_ARRAY,
+                label: "Entries",
+            },
+            {
+                id: "count",
+                kind: "output",
+                semantic: "data",
+                valueType: "integer",
+                label: "Count",
+            },
+        ],
+        async execute(ctx) {
+            const entries = await requireHostApi(ctx).game.listAutoSaves();
+            return {
+                nextPort: "next",
+                outputValues: {
+                    entries,
+                    count: entries.length,
+                },
+            };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LATEST,
+        displayName: "Get Latest Auto Save",
+        category: "Game",
+        keywords: ["game", "auto", "autosave", "save", "latest", "newest", "continue", "resume", "id"],
+        graphKinds: [...GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            execIn,
+            execNext,
+            {
+                id: "id",
+                kind: "output",
+                semantic: "data",
+                valueType: "string",
+                label: "Id",
+            },
+            {
+                id: "hasAutoSave",
+                kind: "output",
+                semantic: "data",
+                valueType: "boolean",
+                label: "Has Auto Save",
+            },
+            {
+                id: "timestamp",
+                kind: "output",
+                semantic: "data",
+                valueType: "float",
+                label: "Timestamp",
+            },
+        ],
+        // The whole point of this node is the Continue button: pick the newest
+        // autosave and feed its id to Load Save. Deriving it from List Auto
+        // Saves would take three more nodes for the single most common use.
+        async execute(ctx) {
+            const latest = (await requireHostApi(ctx).game.listAutoSaves())[0];
+            return {
+                nextPort: "next",
+                outputValues: {
+                    id: latest?.id ?? "",
+                    hasAutoSave: Boolean(latest),
+                    timestamp: latest?.timestamp ?? 0,
+                },
+            };
+        },
+    },
+];
 
 export const gameBlueprintNodes: BlueprintNodeDef[] = [
     {
@@ -966,4 +1081,5 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             };
         },
     },
+    ...autoSaveBlueprintNodes,
 ];

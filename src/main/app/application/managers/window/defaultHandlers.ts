@@ -3,7 +3,7 @@ import { IPCHandler } from "./handlers/IPCHandler";
 import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppRemoveRecentProjectHandler, AppCheckRecentProjectsHandler, AppInfoHandler, AppOpenExternalHandler, AppPickBackgroundImageHandler, AppPlatformInfoHandler, AppReadBackgroundImageHandler, AppTerminateHandler, AppWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowEditCommandHandler, AppWindowGetControlHandler, AppWindowGetFullscreenHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler } from "./handlers/appAction";
 import { AppCountWorkspaceWindowsHandler, AppRequestWorkspaceViewHandler, AppSettingsWindowLaunchHandler } from "./handlers/settingAction";
 import {
-    FsStatHandler, FsListHandler, FsDetailsHandler, FsDirectorySizeHandler, FsRequestReadHandler, FsRequestWriteHandler,
+    FsStatHandler, FsListHandler, FsDetailsHandler, FsDirectorySizeHandler, FsRequestReadHandler, FsRequestReadDirHandler, FsRequestWriteHandler,
     FsCreateDirHandler, FsEnsureRegularFileHandler, FsWriteFileNoFollowHandler, FsRecoverCorruptedJsonFileHandler, FsDeleteFileHandler, FsDeleteDirHandler, FsRenameHandler,
     FsCopyFileHandler, FsCopyDirHandler, FsMoveFileHandler, FsMoveDirHandler,
     FsFileExistsHandler, FsDirExistsHandler, FsIsFileHandler, FsIsDirHandler,
@@ -11,7 +11,8 @@ import {
 } from "./handlers/fsAction";
 import {
     VcsGetAvailabilityHandler, VcsIsRepositoryHandler, VcsGetInfoHandler, VcsGetHistoryHandler, VcsReadBlobHandler,
-    VcsGetChangedPathsHandler, VcsGetThreeWayHandler, VcsGetMergeBaseHandler,
+    VcsGetChangedPathsHandler, VcsGetThreeWayHandler, VcsGetMergeBaseHandler, VcsInitRepositoryHandler,
+    VcsGetStatusHandler,
 } from "./handlers/vcsAction";
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./handlers/projectWizardAction";
 import { WorkspaceExportProjectPackageHandler, WorkspaceImportProjectPackageHandler } from "./handlers/projectPackageAction";
@@ -49,6 +50,13 @@ import {
     GameBuildSelectOutputDirHandler,
     GameBuildStartHandler,
 } from "./handlers/gameBuildAction";
+import {
+    SigningImportHandler,
+    SigningInspectHandler,
+    SigningKeystoreAliasesHandler,
+    SigningListHandler,
+    SigningRemoveHandler,
+} from "./handlers/signingAction";
 import { PluginPermissionGrantHandler, PluginPermissionPromptLaunchHandler } from "./handlers/pluginPermissionAction";
 import {
     PluginApproveHandler,
@@ -164,6 +172,13 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new GameBuildSelectOutputDirHandler(),
         new GameBuildPreflightHandler(),
 
+        // Code-signing credential vault (machine-level; no handler returns a secret)
+        new SigningListHandler(),
+        new SigningImportHandler(),
+        new SigningRemoveHandler(),
+        new SigningInspectHandler(),
+        new SigningKeystoreAliasesHandler(),
+
         // Blueprint persistent variable storage handlers
         new BlueprintPersistenceGetAllHandler(),
         new BlueprintPersistenceGetValueHandler(),
@@ -200,6 +215,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new FsDetailsHandler(),
         new FsDirectorySizeHandler(),
         new FsRequestReadHandler(),
+        new FsRequestReadDirHandler(),
         new FsRequestWriteHandler(),
         new FsEnsureRegularFileHandler(),
         new FsWriteFileNoFollowHandler(),
@@ -221,10 +237,12 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new FsGrantFileAccessHandler(),
         new FsHashHandler(),
 
-        // Version control (read-only surface; see docs/version-control.md)
+        // Version control (reads, plus init - see docs/version-control.md)
         new VcsGetAvailabilityHandler(),
         new VcsIsRepositoryHandler(),
         new VcsGetInfoHandler(),
+        new VcsInitRepositoryHandler(),
+        new VcsGetStatusHandler(),
         new VcsGetHistoryHandler(),
         new VcsReadBlobHandler(),
         new VcsGetChangedPathsHandler(),

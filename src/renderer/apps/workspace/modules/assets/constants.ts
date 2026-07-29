@@ -5,6 +5,7 @@ import {
     FileJson,
     Workflow,
     Type,
+    Boxes,
     File,
 } from "lucide-react";
 import { ComponentType } from "react";
@@ -17,6 +18,7 @@ export const ASSET_TYPE_ICONS: Record<AssetType, ComponentType<any>> = {
     [AssetType.JSON]: FileJson,
     [AssetType.Blueprint]: Workflow,
     [AssetType.Font]: Type,
+    [AssetType.Model]: Boxes,
     [AssetType.Other]: File,
 };
 

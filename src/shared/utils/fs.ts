@@ -4,18 +4,14 @@ import {Dirent, default as fsSync, Stats} from "fs";
 import {randomBytes} from "crypto";
 import mime from "mime-types";
 import { FsRequestResult, FsRejectError, FsRejectErrorCode } from "../types/os";
+import { ATOMIC_WRITE_TEMP_SUFFIX } from "./atomicWriteTemp";
 
 /**
- * Suffix of the scratch files the atomic writer creates next to its target.
- *
- * Exported so the file watchers can filter them out from one place: a temp file lives in the
- * project tree for a few milliseconds, and a watcher that reports it would make Dev Mode reload on
- * a file that is already gone. See {@link ATOMIC_WRITE_TEMP_PATTERN}.
+ * The scratch-file naming lives in its own module because this one imports Node at
+ * module scope and the renderer needs the same suffix (see atomicWriteTemp.ts).
+ * Re-exported here so every existing importer keeps working from this path.
  */
-export const ATOMIC_WRITE_TEMP_SUFFIX = ".nltmp";
-
-/** Matches any path produced by the atomic writer. The one filter every watcher should use. */
-export const ATOMIC_WRITE_TEMP_PATTERN = /\.nltmp$/;
+export { ATOMIC_WRITE_TEMP_PATTERN, ATOMIC_WRITE_TEMP_SUFFIX } from "./atomicWriteTemp";
 
 export type FileStat = {
     name: string;

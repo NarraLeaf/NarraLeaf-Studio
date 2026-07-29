@@ -1,10 +1,10 @@
 import { useMemo } from "react";
-import { ChevronRight, Image as ImageIcon, Info, Puzzle, SlidersHorizontal, type LucideIcon } from "lucide-react";
+import { ChevronRight, Gamepad2, Image as ImageIcon, Info, Puzzle, SlidersHorizontal, type LucideIcon } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { InteractiveCard } from "@/lib/components/elements";
 import type { ProjectConfig } from "@/lib/workspace/project/project";
 
-export type ProjectSectionId = "details" | "assets" | "settings" | "dependencies";
+export type ProjectSectionId = "details" | "game" | "assets" | "settings" | "dependencies";
 
 export type ProjectNavItem = {
     id: ProjectSectionId;
@@ -15,12 +15,15 @@ export type ProjectNavItem = {
 
 const PROJECT_NAV_ICONS: Record<ProjectSectionId, LucideIcon> = {
     details: Info,
+    game: Gamepad2,
     assets: ImageIcon,
     dependencies: Puzzle,
     settings: SlidersHorizontal,
 };
 
-const PROJECT_NAV_ORDER: ProjectSectionId[] = ["details", "assets", "dependencies", "settings"];
+// Game sits next to Details on purpose: both describe the game itself, while
+// Assets / Dependencies / Settings describe how it is built and shipped.
+const PROJECT_NAV_ORDER: ProjectSectionId[] = ["details", "game", "assets", "dependencies", "settings"];
 
 /**
  * The project navigation rows, with localized title/description. Shared by the

@@ -9,12 +9,13 @@ import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, W
 import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "@shared/types/gameBuild";
+import type { SigningCredential, SigningCredentialImport, SigningInspectResult } from "@shared/types/signing";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import type { PrivilegedActor } from "@shared/types/privileged";
-import type { RevisionId, VcsAvailability, VcsHistoryEntry, VcsRepositoryInfo, VcsThreeWayResult } from "@shared/types/vcs";
+import type { RevisionId, VcsAvailability, VcsHistoryEntry, VcsInitOptions, VcsRepositoryInfo, VcsStatus, VcsThreeWayResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
@@ -148,6 +149,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         directorySize: (path: string) => ipcClient.invoke(IPCEventType.fsDirectorySize, { path }),
         requestRead: (path: string, encoding: BufferEncoding) => ipcClient.invoke(IPCEventType.fsRequestRead, { path, encoding, raw: false }),
         requestReadRaw: (path: string) => ipcClient.invoke(IPCEventType.fsRequestRead, { path, raw: true }),
+        requestReadDir: (path: string) => ipcClient.invoke(IPCEventType.fsRequestReadDir, { path }),
         requestWrite: (path: string, encoding: BufferEncoding) => ipcClient.invoke(IPCEventType.fsRequestWrite, { path, encoding, raw: false }),
         requestWriteRaw: (path: string) => ipcClient.invoke(IPCEventType.fsRequestWrite, { path, raw: true }),
         ensureRegularFile: (path: string, data: string, encoding: BufferEncoding = "utf-8") => ipcClient.invoke(IPCEventType.fsEnsureRegularFile, { path, data, encoding }),
@@ -313,7 +315,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     },
 
     /**
-     * Version control. Read-only for now; writes wait on the resolve UI.
+     * Version control. Reads plus `initRepository`, which is the one write that
+     * cannot wait for the resolve UI - it is how a project gets a repository at all.
      * Blobs arrive base64-encoded - decode at the call site that needs bytes.
      */
     vcs: {
@@ -324,6 +327,15 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.vcsIsRepository, { projectPath }) as Promise<RequestStatus<{ isRepository: boolean }>>,
         getInfo: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.vcsGetInfo, { projectPath }) as Promise<RequestStatus<VcsRepositoryInfo>>,
+        /** Creates `.lore/` in the project and commits it. The author's decision, never Studio's. */
+        initRepository: (projectPath: string, options?: VcsInitOptions) =>
+            ipcClient.invoke(IPCEventType.vcsInitRepository, { projectPath, options }) as Promise<RequestStatus<VcsRepositoryInfo>>,
+        /**
+         * Scans the working tree. On demand only: the scan records newly found
+         * directories into staged state, so polling it invents deletions (§4.17).
+         */
+        getStatus: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsGetStatus, { projectPath }) as Promise<RequestStatus<VcsStatus>>,
         getHistory: (projectPath: string, limit?: number) =>
             ipcClient.invoke(IPCEventType.vcsGetHistory, { projectPath, limit }) as Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>>,
         readBlob: (projectPath: string, revision: RevisionId, path: string) =>
@@ -347,6 +359,26 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.gameBuildSelectOutputDir, { defaultPath }) as Promise<RequestStatus<{ path: string | null }>>,
         preflight: (projectPath: string, request: GameBuildRequest) =>
             ipcClient.invoke(IPCEventType.gameBuildPreflight, { projectPath, request }) as Promise<RequestStatus<{ findings: BuildPreflightFinding[] }>>,
+    },
+
+    /**
+     * The machine's code-signing credential vault. Nothing here returns a
+     * password: `import` sends the plain secrets up once and everything else
+     * deals in the redacted credential.
+     */
+    signing: {
+        list: () =>
+            ipcClient.invoke(IPCEventType.signingList, {}) as Promise<RequestStatus<{ credentials: SigningCredential[] }>>,
+        /** `input` holds plain passwords. Do not log it or keep it after the call. */
+        import: (input: SigningCredentialImport) =>
+            ipcClient.invoke(IPCEventType.signingImport, { input }) as Promise<RequestStatus<{ credential: SigningCredential }>>,
+        remove: (id: string) =>
+            ipcClient.invoke(IPCEventType.signingRemove, { id }) as Promise<RequestStatus<{ removed: boolean }>>,
+        inspect: (id: string) =>
+            ipcClient.invoke(IPCEventType.signingInspect, { id }) as Promise<RequestStatus<SigningInspectResult>>,
+        /** `storePassword` is plain text. Do not log it or keep it after the call. */
+        keystoreAliases: (file: string, storePassword: string) =>
+            ipcClient.invoke(IPCEventType.signingKeystoreAliases, { file, storePassword }) as Promise<RequestStatus<{ aliases: string[] }>>,
     },
 
     blueprintPersistence: {
