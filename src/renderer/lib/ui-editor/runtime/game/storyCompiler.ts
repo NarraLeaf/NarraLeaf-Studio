@@ -15,6 +15,7 @@ import {
     Narrator,
     Pause,
     Persistent,
+    Puppet,
     Push,
     Reveal,
     Scene,
@@ -296,7 +297,12 @@ type NlrStatement = unknown;
 type NlrChainLike = {
     getActions: () => NlrAction[];
 };
-export type StoryAssetKind = "image" | "audio" | "video" | "font" | "other";
+/**
+ * `model` is the multi-file bundle a puppet draws — a manifest plus whatever it names. It resolves
+ * to the bundle's *entry file* URL, and the engine resolves the siblings off it (`resolveSibling`),
+ * so nothing here ever enumerates a bundle's members.
+ */
+export type StoryAssetKind = "image" | "audio" | "video" | "font" | "model" | "other";
 type NlrCondition = Lambda<boolean> | ((ctx: ScriptCtx) => boolean);
 
 /** Name-keyed NLR elements a compiled scene created; lets hosts look up live objects (e.g. a preview's transform target). */
@@ -304,6 +310,8 @@ export type CompiledSceneElements = {
     images: Map<string, Image>;
     texts: Map<string, Text>;
     layers: Map<string, Layer>;
+    /** Puppet-kind characters, keyed by the same stage name their image-backed siblings use. */
+    puppets: Map<string, Puppet>;
 };
 
 export type CompiledNlrStory = {
@@ -410,6 +418,8 @@ type SceneCompileContext = {
     avatarAssetIdByUrl: Map<string, string>;
     /** Stage sprites already registered as portraits, so a second row does not register them twice. */
     boundPortraits?: WeakSet<Image>;
+    /** Puppet characters whose dialog avatar has been set, so a second row does not re-resolve it. */
+    boundPuppetAvatars?: Set<string>;
     /** Single NLR Persistent (Storable-backed, per-save) holding all "saved" variables. */
     savedPersistent: Persistent<Record<string, StoryLiteralValue>>;
     /** Scene-scope declaration table of this scene (variableId → def), scanned once per compile. */
@@ -434,6 +444,8 @@ type SceneCompileContext = {
     sceneFnCatalog: StoryActionFnCatalog;
     images: Map<string, Image>;
     texts: Map<string, Text>;
+    /** Puppet-kind characters. A separate map because a `Puppet` is not an `Image` and shares no API with one. */
+    puppets: Map<string, Puppet>;
     layers: Map<string, Layer>;
     videos: Map<string, Video>;
     vfx: Map<string, Vfx>;
@@ -583,6 +595,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             sceneFnCatalog,
             images: new Map(),
             texts: new Map(),
+            puppets: new Map(),
             layers: new Map(),
             videos: new Map(),
             vfx: new Map(),
@@ -605,7 +618,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         }
         const statements = await compileBlockList(ctx, scene.rootBlockIds);
         nlrScene.action([...seeds, ...statements] as unknown as Parameters<Scene["action"]>[0]);
-        sceneElements[scene.id] = { images: ctx.images, texts: ctx.texts, layers: ctx.layers };
+        sceneElements[scene.id] = { images: ctx.images, texts: ctx.texts, layers: ctx.layers, puppets: ctx.puppets };
     }
 
     // Row-precise launch: the story enters through a one-shot pre-posed scene that arrives at the
@@ -738,6 +751,7 @@ async function buildLaunchEntryScene(params: {
         }),
         images: new Map(),
         texts: new Map(),
+        puppets: new Map(),
         layers: new Map(),
         videos: new Map(),
         vfx: new Map(),
@@ -939,6 +953,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         }),
         images: new Map(),
         texts: new Map(),
+        puppets: new Map(),
         layers: new Map(),
         videos: new Map(),
         vfx: new Map(),
@@ -1091,7 +1106,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         diagnostics,
         characters: ctx.characters,
         avatarAssetIdByUrl: ctx.avatarAssetIdByUrl,
-        sceneElements: { [scene.id]: { images: ctx.images, texts: ctx.texts, layers: ctx.layers } },
+        sceneElements: { [scene.id]: { images: ctx.images, texts: ctx.texts, layers: ctx.layers, puppets: ctx.puppets } },
         playbackStop,
     };
 }
@@ -1902,6 +1917,15 @@ async function compileCharacterStageAction(
         return [recordStatement(ctx, character.setName(payload.displayName ?? ""), block)];
     }
 
+    // A puppet character is a different element class, not a differently-sourced Image, so it
+    // branches before anything reaches `getImage`.
+    const characterAppearance = payload.characterId
+        ? ctx.characterSummaries.get(payload.characterId)?.appearance
+        : undefined;
+    if (characterAppearance?.kind === "puppet") {
+        return compileCharacterPuppetAction(ctx, block, payload, name, characterAppearance);
+    }
+
     if (payload.operation === "exit") {
         const image = getImage(ctx, name, { autoFit: true });
         await bindCharacterPortrait(ctx, payload.characterId, image);
@@ -1968,6 +1992,152 @@ async function compileCharacterStageAction(
     const sourceChain = image.char(src as any, createTransition(payload.transition, ctx, block.id) as any);
     statements.push(recordStatement(ctx, sourceChain, block));
     return statements;
+}
+
+/**
+ * Compile a stage row for a character the author's own runtime draws.
+ *
+ * A puppet is a box: the engine owns where it sits, its layer, its transform and its place in a
+ * saved game, and hands the inside to a backend registered under `appearance.backend`. So the
+ * operations that mean something here are exactly the ones that address the box - enter / exit /
+ * move - and they are compiled through the same `compileDisplayableOperation` an Image row uses,
+ * which is the point: a puppet character participates in a scene the way any other character does.
+ *
+ * `expression` is the one that does not carry over. A puppet has no authoring-time differentials -
+ * what it is doing is runtime state the backend names (motion / expression / skin), reachable
+ * through the engine's puppet actions rather than through a source swap - so a row asking for one
+ * is reported rather than silently dropped.
+ */
+async function compileCharacterPuppetAction(
+    ctx: SceneCompileContext,
+    block: StoryBlock,
+    payload: Extract<StoryActionPayload, { action: "character" }>,
+    name: string,
+    appearance: Extract<DevModeCharacterSummary["appearance"], { kind: "puppet" }>,
+): Promise<NlrStatement[]> {
+    const puppet = await getPuppetElement(ctx, name, appearance, block.id);
+    if (!puppet) {
+        return [];
+    }
+    await bindPuppetAvatar(ctx, payload.characterId);
+
+    if (payload.operation === "expression") {
+        diagnostic(ctx, "warning", block.id, `${payload.characterId || name} is drawn by a runtime, which has no expressions to switch; use the puppet's own state instead.`);
+        return [];
+    }
+
+    const operation = payload.operation === "exit" ? "hide" : payload.operation === "move" ? "transform" : "show";
+    const transform = payload.operation === "exit"
+        ? payload.transform ?? { preset: "fadeOut" as const, durationMs: 250 }
+        : payload.transform;
+    const chain = compileDisplayableOperation(puppet, operation, transform, ctx, block.id);
+    return chain ? [recordStatement(ctx, chain, block)] : [];
+}
+
+/**
+ * The scene's `Puppet` for a stage name, created on first use.
+ *
+ * Created once and never re-sourced, because a puppet **cannot** change its `src`: the backend's
+ * instance lives as long as the element is on stage, and swapping the model underneath it would
+ * tear that instance down while the engine's box, transform and saved state stayed put. Returns
+ * null when the character names no model - the engine's `src` is required, and an empty one would
+ * reach a backend as a resource descriptor pointing at nothing.
+ */
+async function getPuppetElement(
+    ctx: SceneCompileContext,
+    objectName: string,
+    appearance: Extract<DevModeCharacterSummary["appearance"], { kind: "puppet" }>,
+    blockId: string,
+): Promise<Puppet | null> {
+    const key = normalizeObjectName(objectName);
+    const existing = ctx.puppets.get(key);
+    if (existing) {
+        return existing;
+    }
+    if (!appearance.assetId) {
+        diagnostic(ctx, "warning", blockId, `Puppet character "${objectName}" has no model asset.`);
+        return null;
+    }
+    if (!appearance.backend) {
+        diagnostic(ctx, "warning", blockId, `Puppet character "${objectName}" names no runtime; nothing will draw it.`);
+        return null;
+    }
+    // The bundle's entry file. Studio resolves the asset and stops there: which siblings a model
+    // pulls in is knowable only after parsing this one, and the engine does that arithmetic itself
+    // (`PuppetMountContext.resolveSibling`) against exactly this URL.
+    const bundleUrl = await resolveAsset(ctx, appearance.assetId, "model", blockId);
+    if (!bundleUrl) {
+        diagnostic(ctx, "warning", blockId, `Puppet model not found for ${objectName}.`);
+        return null;
+    }
+    const src = appearance.entry ? resolveBundleEntry(bundleUrl, appearance.entry) : bundleUrl;
+    const puppet = new Puppet({
+        backend: appearance.backend,
+        src,
+        options: appearance.options,
+        // null is the engine's own default and means the stage size, so it is passed through
+        // rather than substituted with a guess at what the stage happens to be.
+        size: appearance.size,
+    });
+    ctx.puppets.set(key, puppet);
+    return puppet;
+}
+
+/**
+ * Resolve an entry override against the bundle URL, by the same rule the engine's `resolveSibling`
+ * applies: everything before the last `/` is the bundle root, `.` and `..` fold, an already-absolute
+ * path wins outright, and a backslash reads as `/`.
+ *
+ * Written out rather than delegated because the engine only offers this arithmetic to a *mounted*
+ * backend, and the entry has to be decided at compile time - and duplicated deliberately rather
+ * than approximated, so the two never disagree about where a bundle's root is.
+ */
+export function resolveBundleEntry(bundleUrl: string, entry: string): string {
+    const path = entry.replace(/\\/g, "/").trim();
+    if (!path) {
+        return bundleUrl;
+    }
+    if (/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(path) || path.startsWith("/")) {
+        return path;
+    }
+    const base = bundleUrl.replace(/\\/g, "/");
+    const cut = base.lastIndexOf("/");
+    const root = cut === -1 ? "" : base.slice(0, cut + 1);
+    const segments: string[] = [];
+    for (const segment of `${root}${path}`.split("/")) {
+        if (segment === ".") continue;
+        if (segment === ".." && segments.length > 0 && segments[segments.length - 1] !== "..") {
+            segments.pop();
+            continue;
+        }
+        segments.push(segment);
+    }
+    return segments.join("/");
+}
+
+/**
+ * Give a puppet character the dialog avatar its profile declares.
+ *
+ * Not `bindCharacterPortrait`: that one registers the *stage sprite* as a portrait so the engine
+ * can report which differential is on screen, and a puppet has neither a sprite nor differentials.
+ * What is left is the character-level default, which is set directly.
+ */
+async function bindPuppetAvatar(ctx: SceneCompileContext, characterId: string | undefined): Promise<void> {
+    const summary = characterId ? ctx.characterSummaries.get(characterId) : undefined;
+    const assetId = summary?.defaultAvatarAssetId?.trim();
+    if (!summary || !assetId) {
+        return;
+    }
+    const bound = ctx.boundPuppetAvatars ?? (ctx.boundPuppetAvatars = new Set());
+    if (bound.has(summary.id)) {
+        return;
+    }
+    bound.add(summary.id);
+    const url = await resolveAsset(ctx, assetId, "image", `avatar:${summary.id}`);
+    if (url) {
+        ctx.avatarAssetIdByUrl.set(url, assetId);
+        getCharacter(ctx, summary.id).setAvatar(url);
+    }
 }
 
 async function compileAudioAction(
@@ -2529,7 +2699,8 @@ function getDisplayable(ctx: SceneCompileContext, name: string, kind?: string): 
     if (kind === "image" || !kind) return ctx.images.get(normalized) ?? (!kind ? ctx.texts.get(normalized) ?? ctx.layers.get(normalized) ?? null : null);
     if (kind === "text") return ctx.texts.get(normalized) ?? null;
     if (kind === "layer") return ctx.layers.get(normalized) ?? null;
-    if (kind === "character") return ctx.images.get(normalized) ?? null;
+    // A character is one element or the other, never both, so the lookup can simply try each.
+    if (kind === "character") return ctx.images.get(normalized) ?? ctx.puppets.get(normalized) ?? null;
     return null;
 }
 
@@ -3248,7 +3419,10 @@ async function compileCharacterAvatars(
 
     // Only keys with an entry are worth resolving: a key with neither a bake nor an override
     // resolves to the character default, which `fallback` already holds.
-    for (const key of Object.keys(summary.appearance.avatars ?? {})) {
+    // A puppet carries no avatar table: it has no differentials to key one on (see
+    // `bindPuppetAvatar`, which sets the character-level default instead).
+    const avatarTable = summary.appearance.kind === "puppet" ? undefined : summary.appearance.avatars;
+    for (const key of Object.keys(avatarTable ?? {})) {
         const assetId = resolveCharacterAvatarAssetId(summary, key);
         const url = assetId ? await resolveAsset(ctx, assetId, "image", blockId) : null;
         if (url && assetId) {

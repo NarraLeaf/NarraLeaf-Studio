@@ -7,6 +7,7 @@ import type { BlueprintPersistentStoreAdapter } from "@/lib/ui-editor/blueprint-
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import type { NlrActionIdBinding, StoryAssetKind } from "@/lib/ui-editor/runtime/game/storyCompiler";
+import type { PuppetBackendModuleSource } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
 
 export type GameAppLogLevel = "info" | "warning" | "error";
 
@@ -74,6 +75,17 @@ export type GameAppHost = {
         assetType?: StoryAssetKind,
     ) => Promise<string | null | undefined> | string | null | undefined;
     saveStore: GameAppSaveStore;
+    /**
+     * The author-supplied drawing backends for the engine's puppet seam, if this host can serve
+     * any. Studio ships no renderer for animated characters and cannot: the ones authors want are
+     * licensed in terms a source-available application cannot meet, so the author brings their own
+     * and the host's only job is to find it. Where it looks is the host's business — a Dev Mode
+     * window reads the open project, a packaged game reads what was published with it.
+     *
+     * Omitted by hosts with nowhere to look. Rejecting is fine: the game starts without puppets,
+     * and any puppet on stage degrades to an empty box (see `loadPuppetBackends`).
+     */
+    listPuppetBackendModules?: () => Promise<PuppetBackendModuleSource[]>;
     quitApplication: () => Promise<void>;
     /** Application window fullscreen. Hosts without a real window (story preview) omit these. */
     getFullscreen?: () => Promise<boolean>;
