@@ -140,6 +140,13 @@ export type CharacterAppearanceSummary =
           size: { width: number; height: number } | null;
           /** Handed to the backend verbatim. */
           options: Record<string, unknown>;
+          /**
+           * The pose the character rests in, in the engine's own `PuppetState` vocabulary — the
+           * three values `IPuppetUserConfig` takes as a puppet's *initial* state. Absent when the
+           * author set none, and `null` on a field is the absence of a request rather than "leave
+           * whatever is there".
+           */
+          defaultState?: { motion: string | null; expression: string | null; skin: string | null };
       };
 
 export type DevModeStoryLibrary = {

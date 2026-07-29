@@ -60,6 +60,43 @@ describe("puppet appearance", () => {
         expect(appearance.getAvatars()).toEqual({});
     });
 
+    it("carries no resting pose until the author sets one", () => {
+        const appearance = new CharacterAppearance(puppet());
+        expect(appearance.getPuppetDefaultState()).toEqual({ motion: null, expression: null, skin: null });
+        // Absent rather than a triple of nulls, so a character that never had one adds nothing to
+        // the store.
+        expect(appearance.toJSON()).not.toHaveProperty("defaultState");
+    });
+
+    it("keeps a resting pose through the store clone", () => {
+        const appearance = new CharacterAppearance(puppet());
+        appearance.setPuppetDefaultState("motion", "walk");
+        appearance.setPuppetDefaultState("skin", "winter");
+
+        expect(appearance.getPuppetDefaultState())
+            .toEqual({ motion: "walk", expression: null, skin: "winter" });
+        expect(appearance.toJSON()).toEqual(puppet({
+            defaultState: { motion: "walk", expression: null, skin: "winter" },
+        }));
+    });
+
+    it("clears a field back to nothing, which is a state and not a missing value", () => {
+        const appearance = new CharacterAppearance(puppet({
+            defaultState: { motion: "walk", expression: null, skin: null },
+        }));
+        appearance.setPuppetDefaultState("motion", "");
+
+        expect(appearance.getPuppetDefaultState().motion).toBeNull();
+        expect(appearance.toJSON()).not.toHaveProperty("defaultState");
+    });
+
+    it("does not read a resting pose off a malformed store", () => {
+        const appearance = new CharacterAppearance(puppet({
+            defaultState: { motion: 7, expression: "  ", skin: null } as never,
+        }));
+        expect(appearance.getPuppetDefaultState()).toEqual({ motion: null, expression: null, skin: null });
+    });
+
     it("cold-switches away from a puppet the way the other kinds do", () => {
         const released: (string | null)[] = [];
         const appearance = new CharacterAppearance(puppet());

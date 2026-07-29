@@ -14,6 +14,7 @@ import {
     PortraitCrop,
     PresetAppearance,
     PuppetAppearance,
+    PuppetDefaultState,
     ResolvedLayeredDefinition,
 } from "./types";
 import type { PsdFingerprint } from "@shared/types/psdImport";
@@ -41,6 +42,28 @@ export function emptyAppearance(kind: CharacterAppearanceKind): ICharacterAppear
         return { kind: "puppet", assetId: null, backend: "", entry: null, size: null, options: {} };
     }
     return { kind: "preset", poses: [], defaultPoseId: null };
+}
+
+/**
+ * A resting pose, or null when there is nothing to record.
+ *
+ * All three fields cleared is the same state as no `defaultState` at all, and collapsing it keeps
+ * the store free of `{motion: null, expression: null, skin: null}` for every puppet character that
+ * never had one.
+ */
+export function normalizePuppetDefaultState(state: unknown): PuppetDefaultState | null {
+    if (typeof state !== "object" || state === null) {
+        return null;
+    }
+    const raw = state as Partial<Record<keyof PuppetDefaultState, unknown>>;
+    const field = (value: unknown): string | null =>
+        (typeof value === "string" && value.trim()) ? value.trim() : null;
+    const normalized: PuppetDefaultState = {
+        motion: field(raw.motion),
+        expression: field(raw.expression),
+        skin: field(raw.skin),
+    };
+    return normalized.motion || normalized.expression || normalized.skin ? normalized : null;
 }
 
 function cloneAvatars(avatars: CharacterAvatarTable | undefined): CharacterAvatarTable | undefined {
@@ -79,6 +102,11 @@ function cloneAppearance(appearance: ICharacterAppearance): ICharacterAppearance
             // Opaque by contract: cloned one level, never inspected. A backend's options are its
             // own vocabulary and Studio has no business knowing a key of it.
             options: { ...(puppet.options ?? {}) },
+            // Absent rather than a triple of nulls when nothing is set, so a character the author
+            // never gave a resting pose carries no extra state into the store at all.
+            ...(normalizePuppetDefaultState(puppet.defaultState)
+                ? { defaultState: normalizePuppetDefaultState(puppet.defaultState)! }
+                : {}),
         };
     }
     if (appearance?.kind === "layered") {
@@ -405,6 +433,28 @@ export class CharacterAppearance {
         puppet.size = size && size.width > 0 && size.height > 0
             ? { width: size.width, height: size.height }
             : null;
+        this.notifyChange();
+    }
+
+    /** The pose this character rests in. Reads {@link PuppetDefaultState} for what `null` means. */
+    public getPuppetDefaultState(): PuppetDefaultState {
+        // Normalized on read rather than trusted: the live appearance object is whatever the store
+        // held, and a number where a motion name belongs would reach a `<Select>` as its value.
+        return normalizePuppetDefaultState(this.getPuppet()?.defaultState)
+            ?? { motion: null, expression: null, skin: null };
+    }
+
+    /** Set one field of the resting pose. An empty string clears it, which is not the same as leaving it. */
+    public setPuppetDefaultState(field: keyof PuppetDefaultState, value: string | null): void {
+        const puppet = this.getPuppet();
+        if (!puppet) return;
+        const next = { ...this.getPuppetDefaultState(), [field]: value?.trim() || null };
+        const normalized = normalizePuppetDefaultState(next);
+        if (normalized) {
+            puppet.defaultState = normalized;
+        } else {
+            delete puppet.defaultState;
+        }
         this.notifyChange();
     }
 
