@@ -15,7 +15,7 @@ import type { DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/dev
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import type { PrivilegedActor } from "@shared/types/privileged";
-import type { RevisionId, VcsAvailability, VcsHistoryEntry, VcsRepositoryInfo, VcsThreeWayResult } from "@shared/types/vcs";
+import type { RevisionId, VcsAvailability, VcsHistoryEntry, VcsInitOptions, VcsRepositoryInfo, VcsStatus, VcsThreeWayResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
@@ -314,7 +314,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     },
 
     /**
-     * Version control. Read-only for now; writes wait on the resolve UI.
+     * Version control. Reads plus `initRepository`, which is the one write that
+     * cannot wait for the resolve UI - it is how a project gets a repository at all.
      * Blobs arrive base64-encoded - decode at the call site that needs bytes.
      */
     vcs: {
@@ -325,6 +326,15 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.vcsIsRepository, { projectPath }) as Promise<RequestStatus<{ isRepository: boolean }>>,
         getInfo: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.vcsGetInfo, { projectPath }) as Promise<RequestStatus<VcsRepositoryInfo>>,
+        /** Creates `.lore/` in the project and commits it. The author's decision, never Studio's. */
+        initRepository: (projectPath: string, options?: VcsInitOptions) =>
+            ipcClient.invoke(IPCEventType.vcsInitRepository, { projectPath, options }) as Promise<RequestStatus<VcsRepositoryInfo>>,
+        /**
+         * Scans the working tree. On demand only: the scan records newly found
+         * directories into staged state, so polling it invents deletions (§4.17).
+         */
+        getStatus: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsGetStatus, { projectPath }) as Promise<RequestStatus<VcsStatus>>,
         getHistory: (projectPath: string, limit?: number) =>
             ipcClient.invoke(IPCEventType.vcsGetHistory, { projectPath, limit }) as Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>>,
         readBlob: (projectPath: string, revision: RevisionId, path: string) =>

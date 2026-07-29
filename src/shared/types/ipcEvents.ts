@@ -46,7 +46,9 @@ import type {
     VcsAvailability,
     VcsBlobRequest,
     VcsHistoryEntry,
+    VcsInitOptions,
     VcsRepositoryInfo,
+    VcsStatus,
     VcsThreeWayResult,
 } from "./vcs";
 
@@ -205,6 +207,8 @@ export enum IPCEventType {
     vcsGetAvailability = "vcs.getAvailability",
     vcsGetInfo = "vcs.getInfo",
     vcsIsRepository = "vcs.isRepository",
+    vcsInitRepository = "vcs.initRepository",
+    vcsGetStatus = "vcs.getStatus",
     vcsGetHistory = "vcs.getHistory",
     vcsReadBlob = "vcs.readBlob",
     vcsGetChangedPaths = "vcs.getChangedPaths",
@@ -495,6 +499,28 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { projectPath: string },
         response: VcsRepositoryInfo;
+    };
+    /**
+     * Create the repository and its first commit. The one write here, and only
+     * because nothing else works until it has happened - see vcsAction.ts.
+     */
+    [IPCEventType.vcsInitRepository]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; options?: VcsInitOptions },
+        response: VcsRepositoryInfo;
+    };
+    /**
+     * What changed in the working tree. NOT a pure read - the scan behind it records
+     * newly discovered directories into staged state, so a caller that polls this on
+     * a timer manufactures deletions the author never made (docs §4.17). Call it when
+     * someone asks, never on a schedule.
+     */
+    [IPCEventType.vcsGetStatus]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: VcsStatus;
     };
     [IPCEventType.vcsGetHistory]: {
         type: IPCMessageType.request,
