@@ -416,6 +416,39 @@ export function GameRuntimeApp() {
         return bridge?.onCloseRequested(listener) ?? (() => undefined);
     }, [bridge]);
 
+    /**
+     * The puppet backends published with this game.
+     *
+     * The same shape Dev Mode hands over, resolved against the pack instead of
+     * the project: `pluginEntryUrl` maps an app-dir-relative path onto whichever
+     * scheme this shell serves (`nlgame://runtime/…` on desktop, a relative URL
+     * on the web), and that is all a backend module needs. `resolveFile` stays
+     * confined to the backend's own directory, exactly as the editor's does - a
+     * module names its own siblings and nothing else.
+     */
+    const listPuppetBackendModules = useCallback(async () => {
+        const runtimes = pack?.puppetRuntimes ?? [];
+        if (runtimes.length === 0) {
+            return [];
+        }
+        const toUrl = (relativePath: string) =>
+            bridge?.pluginEntryUrl(relativePath) ?? `nlgame://runtime/${relativePath}`;
+        return runtimes.map(runtime => {
+            const directory = runtime.entryRelativePath.slice(0, runtime.entryRelativePath.lastIndexOf("/"));
+            return {
+                id: runtime.name,
+                url: toUrl(runtime.entryRelativePath),
+                resolveFile: (relativePath: string) => {
+                    const normalized = relativePath.replace(/\\/g, "/").replace(/^\.\//, "");
+                    if (normalized.startsWith("/") || normalized.split("/").includes("..")) {
+                        return Promise.reject(new Error(`Path escapes the backend directory: ${relativePath}`));
+                    }
+                    return Promise.resolve(toUrl(`${directory}/${normalized}`));
+                },
+            };
+        });
+    }, [bridge, pack]);
+
     const host = useMemo<GameAppHost | null>(() => {
         if (!pack) {
             return null;
@@ -440,10 +473,12 @@ export function GameRuntimeApp() {
             setFullscreen,
             subscribeFullscreenChanged,
             subscribeCloseRequested,
+            listPuppetBackendModules,
         };
     }, [
         entrySurfaceId,
         getFullscreen,
+        listPuppetBackendModules,
         log,
         onDebugEvent,
         pack,
