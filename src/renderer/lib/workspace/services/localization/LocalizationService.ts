@@ -269,6 +269,56 @@ export class LocalizationService extends Service<LocalizationService> implements
     }
 
     /**
+     * Throw away the cached locale documents and the key registry, and read back whatever was open.
+     *
+     * A participant of `WorkspaceReloadService`. `loadDocument` answers from the cache, so without
+     * this a locale opened before the working tree changed would keep serving the translations it
+     * had - and write them back over the ones now on disk.
+     *
+     * Dirty flags go too: an edit made while writes were refused is owed on a document that is being
+     * replaced, and paying that debt afterwards is the loss this exists to prevent.
+     */
+    public async reloadFromDisk(): Promise<void> {
+        const previouslyLoaded = [...this.documents.keys()];
+        const hadKeys = this.keysDocument !== null;
+        this.documents.clear();
+        this.dirtyLocales.clear();
+        this.keysDocument = null;
+        this.keysDirty = false;
+
+        // One locale at a time, and a failure does not stop the others: a document that cannot be
+        // read stays out of the cache, which is the state `loadDocument` throws from and
+        // `writeDirtyDocuments` skips - never an empty document one edit away from overwriting it.
+        const failures: string[] = [];
+        const reread = async (label: string, load: () => Promise<unknown>): Promise<void> => {
+            try {
+                await load();
+            } catch (error) {
+                failures.push(`${label} (${error instanceof Error ? error.message : String(error)})`);
+            }
+        };
+
+        if (hadKeys) {
+            await reread("keys", () => this.loadKeys());
+        }
+        for (const locale of previouslyLoaded) {
+            // A locale removed from the configuration while the tree changed under us is not an
+            // error - `assertKnownLocale` would throw, and there is nothing left to show.
+            if (!this.getConfiguration().locales.some(entry => entry.code === locale)) {
+                continue;
+            }
+            await reread(locale, async () => {
+                const document = await this.loadDocument(locale);
+                this.events.emit("documentChanged", { locale, document });
+            });
+        }
+
+        if (failures.length > 0) {
+            throw new RendererError(`Could not re-read ${failures.length} translation document(s): ${failures.join("; ")}`);
+        }
+    }
+
+    /**
      * The write itself. Only ever reached through {@link autoSaver}, which serialises it.
      *
      * Each dirty flag is cleared *after* its write lands, not before: `writeDocument` throws on a

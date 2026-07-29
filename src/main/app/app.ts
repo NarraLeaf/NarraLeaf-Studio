@@ -24,7 +24,16 @@ export class App extends BaseApp {
         this.devModeManager = new DevModeManager(this);
         this.previewManager = new PreviewManager(this);
         this.gameBuildManager = new GameBuildManager(this);
-        this.vcsManager = new VcsManager(this);
+        // The commit pipeline has to settle the renderer's auto-save debt before it
+        // stages, and only the window layer can ask a window to do that. Handed in as a
+        // function because VcsManager holds a BaseApp: without it a commit would still
+        // succeed and would describe a document that is about to change on disk.
+        this.vcsManager = new VcsManager(this, async projectPath => {
+            const workspace = this.findWorkspaceForProject(projectPath);
+            if (workspace) {
+                await this.flushWorkspacePendingSaves(workspace);
+            }
+        });
     }
 
     private readonly devModeManager: DevModeManager;
@@ -208,6 +217,36 @@ export class App extends BaseApp {
         }
     }
 
+    /**
+     * Record a checkpoint for a project that is about to be closed.
+     *
+     * One of the three unconditional checkpoints: after this returns, nothing is
+     * watching the working tree, so an author who edited for an hour without committing
+     * would otherwise have that hour recorded nowhere. Runs after the pending-save
+     * flush so the checkpoint describes what they actually left behind.
+     *
+     * Never throws and never blocks the close. A project with no repository, a host
+     * with no backend, and a tree that has not changed all answer "nothing to do"
+     * rather than failing - see VcsManager.checkpoint.
+     *
+     * Deliberately NOT wired into the app-quit flush as well. That path runs under a
+     * hard deadline whose purpose is a bounded teardown, and a commit's duration is a
+     * function of how much the author changed; hanging Cmd+Q on it would trade a
+     * bounded "lost the last few seconds" for an unbounded wait. Closing a workspace
+     * window comes through here first, which is the exit an author takes deliberately.
+     */
+    private async checkpointBeforeClose(window: AppWindow<WindowAppType.Workspace>): Promise<void> {
+        const projectPath = window.getProps().projectPath;
+        if (typeof projectPath !== "string" || projectPath.length === 0) {
+            return;
+        }
+        try {
+            await this.vcsManager.checkpoint(projectPath, "project-close");
+        } catch (error) {
+            this.logger.warn(`[Vcs] Could not check point before closing the project: ${String(error)}`);
+        }
+    }
+
     /** Flush every open workspace concurrently. Used on the way out of the app. */
     public async flushAllWorkspacesPendingSaves(): Promise<void> {
         const workspaces = this.windowManager.getWindows().filter(
@@ -234,6 +273,10 @@ export class App extends BaseApp {
         // block on a dialog, and a user who answers "don't close" should keep their timers running
         // rather than get a write they did not ask for.
         await this.flushWorkspacePendingSaves(window);
+
+        // Flush first, check point second: the checkpoint's whole value is that it
+        // records what is on disk, and the flush is what puts the last edit there.
+        await this.checkpointBeforeClose(window);
 
         // The app may have started quitting, or the window may be gone, while the sheet was up.
         // Reopening the launcher now would resurrect a window in the middle of a quit.

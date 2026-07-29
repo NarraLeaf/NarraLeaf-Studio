@@ -369,6 +369,48 @@ MOVE/COPY 只有走显式的移动 verb 才会出现。
 `LoreRepositoryCreatePayload.path` 返回 `C:/Users/...` 形态，与 `path.join` 产出的根路径不可
 直接比较。当成展示值，别当成路径键。
 
+### 4.21 `revisionMetadataSet` 写的是**暂存修订**，不是 HEAD；且没暂存时会**泄漏到下一次提交**
+
+`LoreRevisionMetadataSetArgs` 没有 revision 字段，直觉上会以为它写当前 HEAD。**实测是写
+暂存修订**——也就是下一次 commit 将要产生的那个。
+
+按「commit 之后再打标记」写，结果是每个标记都落在**后一个**修订上：检查点读回来是 commit，
+下一次 commit 读回来是 checkpoint。对照实验（同一个库，`probe.kind`）：
+
+```
+stage → set(alpha) → commit          -> rev2 带 probe.kind=alpha    ✅
+stage → commit（不 set）              -> rev3 无 probe.kind          ✅ 不会继承
+（干净树）set(ghost) → commit 失败     -> 之后 stage → commit 产生的 rev4 带 probe.kind=ghost ❌
+```
+
+第三行是硬约束：**没有东西可提交时调 set 不会报错，它会等着贴到下一个提交上**。所以
+[`commitWorkingTree`](../src/main/app/application/managers/vcs/repository.ts) 的顺序是
+**stage → 确认有东西可提交 → set → commit → flush**，确认那一步用
+`repositoryStatus(scan:false, revisionOnly:true)`（纯读，不触发 §4.17）。另外每条提交路径都写
+这个键，所以万一泄漏也是被覆盖而不是被继承。
+
+顺带实测：Lore 自己也往同一张表里写 `branch` / `timestamp` / `message` / `created-by` /
+`committed-by`。所以 Studio 的键必须带前缀（`narraleaf.kind`），而**提交信息与作者名是读得回来的**。
+
+### 4.22 `repositoryFlush` 会等满 `storeKeepAliveSeconds`
+
+写路径末尾那一句强制的 flush（§4.11），耗时**不是**取决于要落盘多少东西，而是等前面那些
+带 `storeKeepAlive` 的调用把 store 放掉。实测同一条 stage→set→commit→flush 管线：
+
+| session globals | flush | 总计 |
+|---|---|---|
+| `storeKeepAlive: true`（默认 10 秒） | 9996 ms | 10012 ms |
+| `storeKeepAlive: true, storeKeepAliveSeconds: 1` | 988 ms | 1009 ms |
+| 不设 `storeKeepAlive` | 4 ms | 29 ms |
+
+stage / commit 本身在三种配置下都是 5–20 ms，**开销全在等待**。
+
+明显但**错误**的解法是只给 flush 那一次调用传 `storeKeepAlive: false`：完全无效（带 1029 ms
+/ 不带 1009 ms）。等待属于**之前那些读**，只有窗口长度能缩短它。所以
+[`VcsManager.globalsFor`](../src/main/app/application/managers/vcs/VcsManager.ts) 设
+`storeKeepAliveSeconds: 1` —— 保住 §6.3「连续调用不反复开关 store」的本意（一批 blob 读之间
+的间隔远小于 1 秒），同时把每次提交的代价从 10 秒压到 1 秒。
+
 ## 5. 服务端策略
 
 ### 5.1 P0：不需要任何服务端，也不需要包装

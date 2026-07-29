@@ -53,6 +53,7 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
 import { ButtonCursorSelect } from "@/lib/ui-editor/widget-modules/shared/appearance/editors/ButtonCursorSelect";
 import { useTranslation, type UseTranslation } from "@/lib/i18n";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import {
     resolveBlueprintCategoryLabel,
     resolveBlueprintLabel,
@@ -1943,6 +1944,9 @@ function BlueprintCommentNodeCard({
     onPatchNodeParam?: BlueprintNodeParamPatch;
 }) {
     const { t } = useTranslation();
+    // The resize corner IS the gesture affordance, so while frozen it is not drawn at all - a grab
+    // handle that refuses to move is the half-gesture that reads as a broken editor.
+    const freeze = useFreezeGuard();
     const { getZoom } = useReactFlow();
     const colorKey = typeof params.color === "string" && COMMENT_COLORS[params.color] ? params.color : "amber";
     const color = COMMENT_COLORS[colorKey] ?? COMMENT_COLORS.amber;
@@ -2076,13 +2080,15 @@ function BlueprintCommentNodeCard({
                 onPointerDown={stopFlowNodePointerBubble}
                 onChange={e => onPatchNodeParam?.(nodeId, "text", e.target.value)}
             />
-            <div
-                className="nodrag absolute bottom-1 right-1 h-4 w-4 cursor-nwse-resize rounded-sm border border-edge-strong bg-fill-subtle"
-                title={t("blueprint.comment.resize")}
-                onPointerDown={startResize}
-            >
-                <div className="absolute bottom-1 right-1 h-2 w-2 border-b border-r border-edge-strong" />
-            </div>
+            {freeze.frozen ? null : (
+                <div
+                    className="nodrag absolute bottom-1 right-1 h-4 w-4 cursor-nwse-resize rounded-sm border border-edge-strong bg-fill-subtle"
+                    title={t("blueprint.comment.resize")}
+                    onPointerDown={startResize}
+                >
+                    <div className="absolute bottom-1 right-1 h-2 w-2 border-b border-r border-edge-strong" />
+                </div>
+            )}
         </div>
     );
 }

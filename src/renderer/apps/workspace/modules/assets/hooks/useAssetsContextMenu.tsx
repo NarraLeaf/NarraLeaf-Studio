@@ -1,5 +1,19 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "@/lib/i18n";
+import { freezeContextMenuRows, useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+
+/**
+ * The asset-menu rows a frozen library keeps: the two that only fill the clipboard.
+ *
+ * Copy and Cut record what is marked; the move happens on Paste, which is off. Everything else
+ * creates, imports, renames, retags, replaces bytes or deletes.
+ */
+const FREEZE_READ_ONLY_ASSET_MENU_IDS: ReadonlySet<string> = new Set([
+    "copy",
+    "cut",
+    "copy-selected",
+    "cut-selected",
+]);
 import { useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
@@ -46,6 +60,7 @@ export function useAssetsContextMenu({
     handleCreateMagicTags,
 }: UseAssetsContextMenuParams) {
     const { t, tn } = useTranslation();
+    const freeze = useFreezeGuard();
     const { menuState, showMenu, hideMenu } = useContextMenu();
 
     const showContextMenu = useCallback((event: React.MouseEvent, type: AssetType, item: Asset | AssetGroup | null, isGroup: boolean) => {
@@ -226,8 +241,8 @@ export function useAssetsContextMenu({
             },
         });
 
-        return items;
-    }, [clipboard, closeContextMenu, contextMenuTarget, handleCopy, handleCut, handleDelete, handleImportToGroup, handlePaste, handleRename, handleReplaceContent, handleCreateGroup, isMultiSelectMode, selectedItems, t, tn]);
+        return freezeContextMenuRows(items, freeze.frozen, FREEZE_READ_ONLY_ASSET_MENU_IDS);
+    }, [clipboard, closeContextMenu, contextMenuTarget, freeze, handleCopy, handleCut, handleDelete, handleImportToGroup, handlePaste, handleRename, handleReplaceContent, handleCreateGroup, isMultiSelectMode, selectedItems, t, tn]);
 
     return {
         menuState,

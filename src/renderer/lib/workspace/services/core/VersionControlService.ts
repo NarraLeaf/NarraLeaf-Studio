@@ -1,7 +1,11 @@
 import { getInterface } from "@/lib/app/bridge";
+import { getProjectWriteFreeze, isFrozenProjectData } from "@/lib/app/writeFreeze";
 import type {
     RevisionId,
     VcsAvailability,
+    VcsCheckpointReason,
+    VcsCommitOptions,
+    VcsCommitResult,
     VcsFileChange,
     VcsHistoryEntry,
     VcsInitOptions,
@@ -9,8 +13,10 @@ import type {
     VcsStatus,
 } from "@shared/types/vcs";
 import { Service } from "../Service";
-import type { IVersionControlService, WorkspaceContext } from "../services";
+import { Services, type IVersionControlService, type WorkspaceContext } from "../services";
+import type { GlobalSettingsService } from "../GlobalSettingsService";
 import { EventEmitter } from "../ui/EventEmitter";
+import { BaseFileSystemService } from "./FileSystem";
 
 /**
  * The renderer's side of version control.
@@ -35,18 +41,159 @@ import { EventEmitter } from "../ui/EventEmitter";
  * Epic ships no native build for macOS Intel or Windows ARM64 - and "unavailable" is
  * a normal answer with a reason, not an error. Every read below answers empty rather
  * than throwing when there is nothing to report, so a UI does not need a try/catch to
- * render an empty panel; the two verbs with no honest empty answer, {@link readBlob}
- * and {@link initRepository}, throw.
+ * render an empty panel; the verbs with no honest empty answer - {@link readBlob},
+ * {@link initRepository} and {@link commit} - throw.
  *
- * Shaped for the writes that are still to come (commit, restore, branch, push), but
- * none of them are stubbed here: the manager has no such methods yet, and a method
- * that resolves without doing anything is worse than one that does not exist.
+ * **The automatic checkpoint lives here too**, in {@link CheckpointScheduler}, because
+ * only the renderer knows when a document was actually written. It is driven by
+ * `FileSystemService.observeWrites`, never by asking the backend what changed, for the
+ * same §4.17 reason the paragraph above gives. Restore, branch and push are still to
+ * come and are deliberately not stubbed: a method that resolves without doing anything
+ * is worse than one that does not exist.
  */
 
 type VersionControlServiceEvents = {
     /** Null once the cached snapshot is dropped, e.g. on teardown or after init. */
     statusChanged: VcsStatus | null;
 };
+
+/** The settings key holding the checkpoint interval in minutes. 0 disables. */
+export const CHECKPOINT_INTERVAL_SETTING = "versionControl.checkpointIntervalMinutes";
+
+/** What the setting means when nobody has set it. Mirrors GLOBAL_STATE_DEFAULTS. */
+export const CHECKPOINT_INTERVAL_DEFAULT_MINUTES = 15;
+
+/**
+ * How often the scheduler wakes up to check the clock.
+ *
+ * Independent of the interval so that changing the interval - or setting it to 0 - takes
+ * effect on the next beat instead of at the next restart. A beat with nothing to do
+ * reads two booleans and a number; it never talks to the backend and it never scans.
+ */
+export const CHECKPOINT_HEARTBEAT_MS = 30_000;
+
+/** One write, as `FileSystemService.observeWrites` reports it. */
+type ObservedWrite = { path: string; ok: boolean };
+
+export interface CheckpointSchedulerDeps {
+    /** Read on every beat, not captured, so a changed setting applies immediately. */
+    intervalMinutes: () => number;
+    /** Whether a write to this absolute path is a change to the versioned project. */
+    counts: (absolutePath: string) => boolean;
+    /** Whether project data is currently frozen. */
+    isFrozen: () => boolean;
+    /** Take the checkpoint. Resolving with null means there was nothing to record. */
+    checkpoint: () => Promise<unknown>;
+    observeWrites: (observer: (write: ObservedWrite) => void) => () => void;
+    now?: () => number;
+    /** Start the beat; returns a cancel. Injected so tests can beat it by hand. */
+    heartbeat?: (beat: () => void, periodMs: number) => () => void;
+    onError?: (error: unknown) => void;
+}
+
+/**
+ * Decides when an automatic checkpoint is due.
+ *
+ * **It never asks what changed - only whether anything did.** The obvious
+ * implementation, a timer that scans the working tree and commits if the scan reports
+ * changes, is broken at the backend level: a status scan is not a pure read. Discovering
+ * a new directory records it into the repository's staged state, so a directory the
+ * author created and removed between two ticks is reported as a DELETION for the rest of
+ * the session - a checkpoint following that list would record the removal of something
+ * that never existed (docs/version-control.md §4.17, pinned in
+ * `repository.integration.test.ts`).
+ *
+ * So the signal is the one the renderer already has: `FileSystemService.observeWrites`
+ * fires for every write Studio performs, and `isVersioned` - reached here through
+ * {@link isFrozenProjectData}, the same predicate the freeze gate uses - says whether
+ * the path is part of the repository. A thumbnail cache write, a panel-layout write, a
+ * build artefact: all observed, none of them a reason to make a revision.
+ *
+ * The interval is a floor on the gap between checkpoints, measured from the FIRST
+ * unrecorded change rather than from the last checkpoint. An author who edits once and
+ * stops gets one checkpoint a minute later than they typed, not one every interval
+ * forever.
+ */
+export class CheckpointScheduler {
+    private readonly now: () => number;
+    private readonly heartbeat: (beat: () => void, periodMs: number) => () => void;
+    private stopObserving: (() => void) | null = null;
+    private stopBeating: (() => void) | null = null;
+    /**
+     * When the oldest unrecorded versioned write happened, or null when the working
+     * tree has nothing in it that a checkpoint would record.
+     */
+    private dirtySince: number | null = null;
+    /** A checkpoint in flight. Its own beat must not start a second one. */
+    private running = false;
+
+    constructor(private readonly deps: CheckpointSchedulerDeps) {
+        this.now = deps.now ?? (() => Date.now());
+        this.heartbeat = deps.heartbeat ?? ((beat, periodMs) => {
+            const timer = setInterval(beat, periodMs);
+            return () => clearInterval(timer);
+        });
+    }
+
+    public start(): void {
+        if (this.stopObserving) return;
+        this.stopObserving = this.deps.observeWrites((write) => this.noteWrite(write));
+        this.stopBeating = this.heartbeat(() => void this.tick(), CHECKPOINT_HEARTBEAT_MS);
+    }
+
+    public stop(): void {
+        this.stopObserving?.();
+        this.stopObserving = null;
+        this.stopBeating?.();
+        this.stopBeating = null;
+        this.dirtySince = null;
+    }
+
+    /** Whether a checkpoint would record anything. Exposed for the UI and for tests. */
+    public hasUnrecordedChanges(): boolean {
+        return this.dirtySince !== null;
+    }
+
+    private noteWrite(write: ObservedWrite): void {
+        // A failed write left nothing on disk, so there is nothing for a checkpoint to
+        // record and nothing to reset the clock for.
+        if (!write.ok || !this.deps.counts(write.path)) return;
+        this.dirtySince ??= this.now();
+    }
+
+    /**
+     * One beat. Public so a test can drive it and await the checkpoint it starts.
+     *
+     * The freeze check is NOT redundant, even though a frozen workspace cannot produce
+     * a versioned write in the first place (the latch refuses it before the write is
+     * ever reported, so `dirtySince` cannot be set while frozen). It matters for a flag
+     * set BEFORE the freeze: without it, an author who edits and then opens a past
+     * revision gets a checkpoint appended to their timeline for the act of reading
+     * history - and "browsing history has zero side effects" is the decision that
+     * shapes the whole feature (docs/plans/2026-07-28-002 §1).
+     */
+    public async tick(): Promise<void> {
+        const minutes = this.deps.intervalMinutes();
+        if (!Number.isFinite(minutes) || minutes <= 0) return;
+        if (this.dirtySince === null || this.running) return;
+        if (this.deps.isFrozen()) return;
+        if (this.now() - this.dirtySince < minutes * 60_000) return;
+
+        this.running = true;
+        // Cleared before the await, so a write that lands DURING the checkpoint starts a
+        // new interval rather than being swallowed by the one being recorded.
+        this.dirtySince = null;
+        try {
+            await this.deps.checkpoint();
+        } catch (error) {
+            // The change is still unrecorded, so the next beat has to try again.
+            this.dirtySince ??= this.now();
+            this.deps.onError?.(error);
+        } finally {
+            this.running = false;
+        }
+    }
+}
 
 export class VersionControlService extends Service<VersionControlService> implements IVersionControlService {
     /**
@@ -62,31 +209,78 @@ export class VersionControlService extends Service<VersionControlService> implem
      */
     private status: VcsStatus | null = null;
     /**
-     * History by limit. Safe to cache - revisions are immutable and nothing in this
-     * process creates one yet. The first read of a project with a remote may go to
-     * the network (docs §6), which is the other reason not to repeat it.
+     * History by page. Revisions are immutable, so a page cannot go stale - only get
+     * shorter than the truth once this process commits, which is what
+     * {@link invalidateHistory} is for. The first read of a project with a remote may go
+     * to the network (docs §6), which is the other reason not to repeat it.
      */
-    private readonly history = new Map<number, Promise<VcsHistoryEntry[]>>();
+    private readonly history = new Map<string, Promise<VcsHistoryEntry[]>>();
     private readonly events = new EventEmitter<VersionControlServiceEvents>();
+    private settings: GlobalSettingsService | null = null;
+    private scheduler: CheckpointScheduler | null = null;
 
-    protected async init(_ctx: WorkspaceContext): Promise<void> {
-        return;
+    protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
+        try {
+            const settings = ctx.services.get<GlobalSettingsService>(Services.GlobalSettings);
+            await depend([settings]);
+            this.settings = settings;
+        } catch {
+            // No settings service means the interval cannot be read, so the scheduler
+            // falls back to the shipped default rather than refusing to exist.
+            this.settings = null;
+        }
+        this.scheduler = this.createScheduler(ctx.project.getConfig().projectPath);
     }
 
     /**
-     * Nothing eager, on purpose. Probing availability dlopens the native library and
-     * a status scan takes Lore's exclusive repository lock - which BLOCKS the author's
-     * own `lore` CLI rather than failing it. Both wait for someone to open the UI.
+     * Nothing that touches the backend, on purpose. Probing availability dlopens the
+     * native library and a status scan takes Lore's exclusive repository lock - which
+     * BLOCKS the author's own `lore` CLI rather than failing it. Both wait for someone
+     * to open the UI.
+     *
+     * The checkpoint scheduler does start here, because it is not one of those things: a
+     * write observer plus one heartbeat, and nothing reaches the host until a versioned
+     * file has actually been written and the configured interval has passed.
      */
     public override activate(_ctx: WorkspaceContext): void {
-        return;
+        this.scheduler?.start();
     }
 
     public override dispose(_ctx: WorkspaceContext): void {
+        this.scheduler?.stop();
+        this.scheduler = null;
+        this.settings = null;
         this.availability = null;
         this.status = null;
         this.history.clear();
         this.events.clear();
+    }
+
+    /**
+     * The automatic-checkpoint timer for one project.
+     *
+     * Every decision it makes is delegated back here so the scheduler itself has no
+     * knowledge of IPC, settings storage or the freeze latch - which is what makes its
+     * four load-bearing behaviours (no fire without a change, none at interval 0, none
+     * for a cache write, none while frozen) testable without a workspace.
+     */
+    private createScheduler(projectPath: string): CheckpointScheduler {
+        return new CheckpointScheduler({
+            intervalMinutes: () => Number(
+                this.settings?.getSync(CHECKPOINT_INTERVAL_SETTING, CHECKPOINT_INTERVAL_DEFAULT_MINUTES)
+                ?? CHECKPOINT_INTERVAL_DEFAULT_MINUTES,
+            ),
+            // The freeze gate's own predicate, reused rather than re-derived: it answers
+            // "is this absolute path versioned data of this project", which is exactly
+            // the question here, and it owns the Windows case-folding rule that a second
+            // copy would get subtly wrong. One predicate means the set of paths that can
+            // trigger a checkpoint is the set a freeze protects.
+            counts: (absolutePath) => isFrozenProjectData(projectPath, absolutePath),
+            isFrozen: () => getProjectWriteFreeze() !== null,
+            checkpoint: () => this.createCheckpoint("interval"),
+            observeWrites: (observer) => BaseFileSystemService.observeWrites(observer),
+            onError: (error) => console.warn("[VersionControl] Automatic checkpoint failed", error),
+        });
     }
 
     /**
@@ -154,19 +348,26 @@ export class VersionControlService extends Service<VersionControlService> implem
      * Async and possibly slow: on a project with a remote the first read fetches
      * fragments over the network (docs §6). Show a loading state; there is
      * deliberately no synchronous accessor to fall back on.
+     *
+     * `includeKinds` asks which revisions are checkpoints. It is opt-in because the
+     * backend has no batch metadata verb, so it costs one call PER REVISION - and it is
+     * part of the cache key rather than a filter on one cached list, because a page read
+     * without kinds cannot answer a later question about them.
      */
-    public async getHistory(limit = 0): Promise<VcsHistoryEntry[]> {
-        const cached = this.history.get(limit);
+    public async getHistory(limit = 0, options: { includeKinds?: boolean } = {}): Promise<VcsHistoryEntry[]> {
+        const includeKinds = options.includeKinds === true;
+        const key = `${limit}:${includeKinds ? "kinds" : "plain"}`;
+        const cached = this.history.get(key);
         if (cached) return cached;
 
         const pending = (async () => {
             if (!(await this.isAvailable())) return [];
-            const result = await getInterface().vcs.getHistory(this.projectPath(), limit);
+            const result = await getInterface().vcs.getHistory(this.projectPath(), limit, includeKinds);
             return result.success ? result.data.entries : [];
         })();
-        this.history.set(limit, pending);
+        this.history.set(key, pending);
         // A failed read must not become the cached answer for the rest of the session.
-        void pending.catch(() => this.history.delete(limit));
+        void pending.catch(() => this.history.delete(key));
         return pending;
     }
 
@@ -208,9 +409,74 @@ export class VersionControlService extends Service<VersionControlService> implem
         if (!result.success) throw new Error(result.error);
         // The project just became a repository: anything cached from before described
         // a project that did not have one.
+        this.afterRevision();
+        return result.data;
+    }
+
+    /**
+     * Record the working tree as a new revision.
+     *
+     * Throws on failure, and the message is meant to reach the author - the same
+     * contract as {@link initRepository}, for the same reason: they asked for this, and a
+     * commit that quietly did not happen leaves them believing their work is recorded.
+     * "Nothing has changed since the last revision" arrives here as a failure too,
+     * because for someone who pressed Commit that IS the answer.
+     *
+     * Slow by nature. The main process settles this window's auto-save debt first, then
+     * stages the whole project, commits, and waits for the backend to put its stores on
+     * disk - skipping that last wait is measured to lose commits outright. Show progress
+     * and await the result.
+     */
+    public async commit(options: VcsCommitOptions = {}): Promise<VcsCommitResult> {
+        const availability = await this.getAvailability();
+        if (!availability.available) {
+            throw new Error(`Version control is not available on this machine (${availability.reason})`);
+        }
+        const result = await getInterface().vcs.commit(this.projectPath(), options);
+        if (!result.success) throw new Error(result.error);
+        this.afterRevision();
+        return result.data;
+    }
+
+    /**
+     * Record a checkpoint: the same revision, labelled as one Studio took rather than
+     * one the author asked for.
+     *
+     * Null means there was nothing to record - no repository, no backend, or a tree that
+     * has not changed. That is deliberately not an error: this runs on a timer and before
+     * a build, and "no revision needed" is the common case. Genuine failures still throw,
+     * so the interval scheduler can report them once instead of every interval.
+     */
+    public async createCheckpoint(reason: VcsCheckpointReason): Promise<VcsCommitResult | null> {
+        if (!(await this.isAvailable())) return null;
+        const result = await getInterface().vcs.checkpoint(this.projectPath(), reason);
+        if (!result.success) throw new Error(result.error);
+        if (result.data.revision) this.afterRevision();
+        return result.data.revision;
+    }
+
+    /**
+     * Everything cached that a new revision made wrong.
+     *
+     * The status snapshot described a tree with uncommitted changes in it, and every
+     * cached history page is now one entry short. Deliberately does NOT scan to replace
+     * the snapshot: a scan is not a pure read (see the class comment), so what to do next
+     * is the caller's decision, not this method's.
+     */
+    private afterRevision(): void {
         this.history.clear();
         this.setStatus(null);
-        return result.data;
+    }
+
+    /**
+     * Whether an automatic checkpoint would currently record anything.
+     *
+     * Reads the write signal the scheduler already keeps, so asking is free - notably it
+     * does not scan. False also means "no scheduler", which is the case before the
+     * workspace is activated.
+     */
+    public hasUnrecordedChanges(): boolean {
+        return this.scheduler?.hasUnrecordedChanges() ?? false;
     }
 
     /**

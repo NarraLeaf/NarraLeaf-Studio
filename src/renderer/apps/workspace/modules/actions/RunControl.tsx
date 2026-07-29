@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Check, ChevronDown, MonitorPlay, Play, Square } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { useWorkspace } from "../../context";
+import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
 import { useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
 import { Services } from "@/lib/workspace/services/services";
@@ -49,10 +50,15 @@ function normalizeRunMode(value: unknown): RunMode {
  * Preview) with a dropdown to switch which one that is. While a mode runs the button becomes a Stop
  * control and the dropdown is disabled — you cannot switch modes mid-run, only stop the running one.
  * Which mode is selected persists globally (see `ui.runMode`); Build/Production stays its own icon.
+ *
+ * A frozen workspace disables Preview but not Dev Mode. This control is a fixed part of the top bar
+ * rather than a registered action, so the exemption table in `components/ui/freezeActionPolicy` does
+ * not reach it and the rule is spelled out below instead.
  */
 export function RunControl() {
     const { t } = useTranslation();
     const { workspace, context } = useWorkspace();
+    const frozen = useWorkspaceFrozen();
     const [mode, setMode] = useState<RunMode>("devMode");
     const [devStatus, setDevStatus] = useState<DevModeStatus>("idle");
     const [previewStatus, setPreviewStatus] = useState<PreviewStatus>("idle");
@@ -100,6 +106,20 @@ export function RunControl() {
     const meta = RUN_MODE_META[shownMode];
     const errored = !running && (shownMode === "devMode" ? devStatus === "error" : previewStatus === "error");
 
+    /**
+     * Preview is off while frozen; Dev Mode stays on.
+     *
+     * Preview builds and runs the project the way a player would receive it, and that is the thing a
+     * frozen workspace is specifically not claiming to be. Dev Mode runs what is on disk, which while
+     * a freeze is manual IS the working tree - correct as it stands. Pointing Dev Mode at the focused
+     * revision instead is U4 (plan 2026-07-28-002 §4); nothing here anticipates it.
+     *
+     * Never applied while something is running: whatever the freeze says, a launched process must
+     * always be stoppable, and this same button is the stop control.
+     */
+    const previewBlocked = frozen && !running && shownMode === "preview";
+    const frozenTitle = t("workspace.shell.freeze.unavailable");
+
     const runOrStop = () => {
         if (!workspace || !context) {
             return;
@@ -145,12 +165,15 @@ export function RunControl() {
                 <button
                     type="button"
                     onClick={runOrStop}
-                    title={runTitle}
+                    disabled={previewBlocked}
+                    title={previewBlocked ? frozenTitle : runTitle}
                     aria-label={runTitle}
                     aria-pressed={running || undefined}
                     className={cn(
                         "flex cursor-default items-center gap-1.5 px-2 text-sm transition-colors",
-                        running ? "hover:bg-danger/80" : "text-fg-muted hover:bg-fill hover:text-fg",
+                        previewBlocked
+                            ? "cursor-not-allowed text-fg-subtle"
+                            : running ? "hover:bg-danger/80" : "text-fg-muted hover:bg-fill hover:text-fg",
                     )}
                 >
                     <span className={cn("flex h-4 w-4 items-center justify-center", errored && "text-danger")}>
@@ -187,16 +210,25 @@ export function RunControl() {
                         {RUN_MODES.map(option => {
                             const optionMeta = RUN_MODE_META[option];
                             const selected = option === mode;
+                            // Selecting a mode whose run button is dead would be a dead end, so the
+                            // frozen mode is disabled here too - and stays listed, so the author can
+                            // see that Preview exists and why it is off.
+                            const optionBlocked = frozen && option === "preview";
                             return (
                                 <button
                                     key={option}
                                     type="button"
                                     role="menuitemradio"
                                     aria-checked={selected}
+                                    aria-disabled={optionBlocked || undefined}
+                                    disabled={optionBlocked}
+                                    title={optionBlocked ? frozenTitle : undefined}
                                     onClick={() => selectMode(option)}
                                     className={cn(
                                         "flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm transition-colors",
-                                        selected ? "text-fg" : "text-fg-muted hover:bg-fill hover:text-fg",
+                                        optionBlocked
+                                            ? "cursor-not-allowed text-fg-subtle"
+                                            : selected ? "text-fg" : "text-fg-muted hover:bg-fill hover:text-fg",
                                     )}
                                 >
                                     <span className="flex h-4 w-4 items-center justify-center">{optionMeta.icon}</span>

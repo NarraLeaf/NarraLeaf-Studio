@@ -10,6 +10,7 @@ import type { PanelComponentProps } from "../types";
 import { useTranslation } from "@/lib/i18n";
 import { HintPopover, Select, type SelectOption } from "@/lib/components/elements";
 import { useWorkspace } from "@/apps/workspace/context";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { Services } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
@@ -65,6 +66,7 @@ function VariableRowEditor(props: {
     onDelete: () => void;
 }) {
     const { t } = useTranslation();
+    const freeze = useFreezeGuard();
     const valueTypeOptions: SelectOption[] = useMemo(
         () => [
             { value: "boolean", label: t("storyVars.valueType.boolean") },
@@ -99,9 +101,9 @@ function VariableRowEditor(props: {
             />
             <button
                 type="button"
-                className="flex h-7 w-7 items-center justify-center rounded-md text-fg-subtle hover:bg-fill hover:text-danger"
+                className="flex h-7 w-7 items-center justify-center rounded-md text-fg-subtle hover:bg-fill hover:text-danger disabled:cursor-not-allowed disabled:opacity-40"
                 onClick={props.onDelete}
-                title={t("storyVars.row.delete")}
+                {...freeze.writes(false, t("storyVars.row.delete"))}
             >
                 <Trash2 className="h-3.5 w-3.5" />
             </button>
@@ -111,6 +113,9 @@ function VariableRowEditor(props: {
 
 function SectionHeader(props: { title: string; hint: string; onAdd?: () => void }) {
     const { t } = useTranslation();
+    // Declaring a variable writes the story document. The hint popover beside it does not, and stays
+    // open to a reader of a frozen project.
+    const freeze = useFreezeGuard();
     return (
         <div className="flex items-center justify-between">
             <div className="flex min-w-0 items-center gap-1">
@@ -124,8 +129,9 @@ function SectionHeader(props: { title: string; hint: string; onAdd?: () => void 
             {props.onAdd ? (
                 <button
                     type="button"
-                    className="flex h-6 items-center gap-1 rounded-md border border-edge px-2 text-2xs text-fg-muted hover:border-primary/50 hover:text-fg"
+                    className="flex h-6 items-center gap-1 rounded-md border border-edge px-2 text-2xs text-fg-muted hover:border-primary/50 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
                     onClick={props.onAdd}
+                    {...freeze.writes()}
                 >
                     <Plus className="h-3 w-3" /> {t("common.add")}
                 </button>

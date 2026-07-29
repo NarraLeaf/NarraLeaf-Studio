@@ -1,3 +1,4 @@
+import { LORE_METADATA_TYPES } from "./abi/definitions";
 import { invoke, type InvokeOptions, type LoreGlobals } from "./call";
 import {
     LoreTag,
@@ -8,6 +9,7 @@ import {
     type LoreDiffFilePayload,
     type LoreHistoryEntryPayload,
     type LoreHistoryPayload,
+    type LoreMetadataPayload,
     type LoreRepositoryCreatePayload,
     type LoreRevisionInfoPayload,
     type LoreStageEndPayload,
@@ -23,6 +25,7 @@ import {
 } from "./events";
 import {
     contextBytes,
+    loreMetadataTypeArray,
     loreString,
     loreStringArray,
     partitionBytes,
@@ -266,6 +269,62 @@ export async function changedPaths(
         paths: scopeStringArray(paths),
     }, { allowIgnoredPaths: true });
     return result.of<LoreDiffFilePayload>(LoreTag.REVISION_DIFF_FILE);
+}
+
+// -- revision metadata ------------------------------------------------------
+
+/**
+ * Attach string metadata to the CURRENT revision.
+ *
+ * There is no revision argument - the args struct does not have one - so this only
+ * ever writes to wherever the repository is now. A caller labelling a commit has to
+ * run it AFTER the commit, and like every other write it is not durable until
+ * {@link flushRepository}.
+ *
+ * Everything is written as `STRING`. The format array is what tells Lore how to parse
+ * the text it is handed, and the alternatives (`NUMERIC`, `BINARY`) would make the
+ * value unreadable to a client that expected the text back verbatim.
+ */
+export async function setRevisionMetadata(
+    globals: LoreGlobals,
+    entries: Readonly<Record<string, string>>,
+): Promise<void> {
+    const keys = Object.keys(entries);
+    if (keys.length === 0) return;
+    await invoke("revisionMetadataSet", globals, {
+        keys: scopeStringArray(keys),
+        values: scopeStringArray(keys.map((key) => entries[key])),
+        // One format per entry, read by index. Same length as the other two arrays by
+        // construction rather than by agreement between call sites.
+        formats: loreMetadataTypeArray(keys.map(() => LORE_METADATA_TYPES.STRING)),
+    });
+}
+
+/**
+ * One metadata key on one revision, or undefined when the revision does not carry it.
+ *
+ * Absent is a normal answer, not a failure: nothing obliges a revision to have any
+ * metadata, and every revision written before Studio started labelling them has none.
+ */
+export async function getRevisionMetadata(
+    globals: LoreGlobals,
+    revision: LoreHex,
+    key: string,
+): Promise<LoreMetadataPayload | undefined> {
+    const result = await invoke("revisionMetadataGet", globals, {
+        key: scopeString(key),
+        revision: scopeString(revision),
+    });
+    return result.of<LoreMetadataPayload>(LoreTag.METADATA).find((entry) => entry.key === key);
+}
+
+/** Every metadata key on one revision. */
+export async function listRevisionMetadata(
+    globals: LoreGlobals,
+    revision: LoreHex,
+): Promise<LoreMetadataPayload[]> {
+    const result = await invoke("revisionMetadataList", globals, { revision: scopeString(revision) });
+    return result.of<LoreMetadataPayload>(LoreTag.METADATA);
 }
 
 // -- content ----------------------------------------------------------------

@@ -13,6 +13,15 @@ import { Check, Ellipsis, Plus } from "lucide-react";
 import type { PanelComponentProps } from "../types";
 import { ContextMenu, Progress, type ContextMenuDef } from "@/lib/components/elements";
 import { useWorkspace } from "../../context";
+import { freezeContextMenuRows, useFreezeGuard } from "../../components/ui/freezeGuard";
+
+/**
+ * The voice locale menu rows that keep working while frozen: the two exports.
+ *
+ * They write a CSV to a path the author picks, which is outside the project - the freeze is about the
+ * project, not about the author's desktop. Import and Remove Language write the project and are off.
+ */
+const FREEZE_READ_ONLY_VOICE_MENU_IDS: ReadonlySet<string> = new Set(["export-script", "export-pickup"]);
 import { useRegistry } from "../../registry";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
@@ -57,7 +66,7 @@ const INPUT_CLASS =
     "h-7 min-w-0 flex-1 rounded-md border border-edge bg-surface-raised px-2 text-xs text-fg outline-none placeholder:text-fg-subtle focus:border-primary/50";
 
 const GHOST_ROW_CLASS =
-    "flex h-7 w-full items-center justify-center gap-1 rounded-md border border-dashed border-edge text-2xs text-fg-subtle transition-colors hover:border-edge-strong hover:text-fg";
+    "flex h-7 w-full items-center justify-center gap-1 rounded-md border border-dashed border-edge text-2xs text-fg-subtle transition-colors hover:border-edge-strong hover:text-fg disabled:cursor-not-allowed disabled:opacity-40";
 
 /** Autonym for a language code via Intl (e.g. "ja" → "日本語"); falls back to the code. */
 function autonymFor(code: string): string {
@@ -73,6 +82,9 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
     const { t } = useTranslation();
+    // Adding and removing a voice language, and importing audio, write the project. Auditioning,
+    // switching locale and exporting a recording script do not.
+    const freeze = useFreezeGuard();
 
     const voiceService = useMemo(
         () => (context && isInitialized ? context.services.get<VoiceService>(Services.Voice) : null),
@@ -384,6 +396,10 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
             },
         ];
     }, [localeMenu, handleExportScript, handleImportAudio, handleRemoveLocale, t]);
+    const frozenLocaleMenuItems = useMemo(
+        () => freezeContextMenuRows(localeMenuItems, freeze.frozen, FREEZE_READ_ONLY_VOICE_MENU_IDS),
+        [freeze, localeMenuItems],
+    );
 
     const locales = config?.voicedLocales ?? [];
 
@@ -474,6 +490,7 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                             type="button"
                             className={`mt-1 ${GHOST_ROW_CLASS}`}
                             onClick={() => setAddingLocale(true)}
+                            {...freeze.writes()}
                         >
                             <Plus className="h-3 w-3" /> {t("workspace.voice.panel.addLanguage")}
                         </button>
@@ -533,7 +550,7 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
             </div>
             {localeMenu ? (
                 <ContextMenu
-                    items={localeMenuItems}
+                    items={frozenLocaleMenuItems}
                     position={localeMenu.position}
                     onClose={() => setLocaleMenu(null)}
                 />

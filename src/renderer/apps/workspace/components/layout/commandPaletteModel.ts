@@ -12,6 +12,7 @@ import {
     isActionMenuSeparator,
     isActionVisible,
 } from "../ui/actionMenuModel";
+import { isActionFrozenOut, isFreezeExemptActionGroup } from "../ui/freezeActionPolicy";
 
 /**
  * A command registered directly on the CommandService - one that does not already exist as a
@@ -72,6 +73,19 @@ export interface PaletteCommandSources {
     focusContext: FocusContext | null;
     /** Resolves an i18n key to the active locale's string (imperative `translate`). */
     translate: (key: TranslationKey) => string;
+    /**
+     * Whether the workspace is frozen, which drops the actions a frozen top bar disables.
+     *
+     * Not cosmetic. The top bar renders those buttons greyed with a reason, but the palette runs the
+     * SAME registrations, so without this the Build icon is dead to the mouse and one Ctrl+P away
+     * from running - and the point of disabling them is the side effects the write boundary cannot
+     * catch (kicking off a build, calling out to a service, changing a global setting).
+     *
+     * Omitted rather than listed-and-inert because that is already this list's convention for a
+     * disabled action, and an un-runnable search result is noise; the top bar is where the greyed
+     * control explains itself.
+     */
+    frozen?: boolean;
 }
 
 const FALLBACK_FOCUS: FocusContext = { area: FocusArea.None };
@@ -114,7 +128,9 @@ function resolveLabel(
  *    reached a second way, not a new one. Keybindings without a `description` are internal (no
  *    user-facing name) and are skipped entirely.
  *  - Disabled actions and context-gated entries whose `when` fails for the current focus are
- *    omitted. An icon-only action (no label) falls back to its tooltip for a title.
+ *    omitted, as are the actions a frozen workspace turns off - the palette runs the same
+ *    registrations the top bar does, so leaving them here would make a greyed button one Ctrl+P
+ *    away from running. An icon-only action (no label) falls back to its tooltip for a title.
  *  - Registered panels become "open <panel>" navigation commands, slotted after the actions.
  */
 export function collectPaletteCommands(sources: PaletteCommandSources): PaletteCommand[] {
@@ -130,6 +146,7 @@ export function collectPaletteCommands(sources: PaletteCommandSources): PaletteC
         workspace,
         focusContext,
         translate,
+        frozen = false,
     } = sources;
 
     const out: PaletteCommand[] = [];
@@ -170,8 +187,8 @@ export function collectPaletteCommands(sources: PaletteCommandSources): PaletteC
             });
         });
 
-    const pushAction = (action: ActionDefinition, category: string | undefined) => {
-        if (action.disabled || seenIds.has(action.id)) {
+    const pushAction = (action: ActionDefinition, category: string | undefined, frozenOut = false) => {
+        if (action.disabled || frozenOut || seenIds.has(action.id)) {
             return;
         }
         // Icon-only toolbar buttons (Dev Mode, Preview, Build…) carry a tooltip, not a label -
@@ -200,25 +217,27 @@ export function collectPaletteCommands(sources: PaletteCommandSources): PaletteC
     // 2) Standalone toolbar actions (those not living inside a group).
     actions
         .filter(action => !action.group && isActionVisible(action, focusContext))
-        .forEach(action => pushAction(action, undefined));
+        .forEach(action => pushAction(action, undefined, isActionFrozenOut(action, frozen)));
 
     // 3) Grouped actions / menus. Flatten submenus; the group's label is the category.
-    const walkItems = (items: ActionMenuItem[], category: string | undefined) => {
+    const walkItems = (items: ActionMenuItem[], category: string | undefined, frozenOut: boolean) => {
         for (const item of getVisibleActionMenuItems(items, focusContext)) {
             if (isActionMenuSeparator(item)) {
                 continue;
             }
             if (isActionMenuAction(item)) {
-                pushAction(item, category);
+                pushAction(item, category, frozenOut);
                 continue;
             }
             // Submenu: keep the top-level group label as the category (submenu nesting is shallow).
-            walkItems(item.items, category);
+            walkItems(item.items, category, frozenOut);
         }
     };
     actionGroups.forEach(group => {
         const category = group.labelKey ? translate(group.labelKey) : group.label;
-        walkItems(getActionGroupItems(group), category);
+        // Decided per GROUP, not per item: a menu entry does not carry the group it was declared in,
+        // so asking `isActionFrozenOut` about it would read every File entry as unexempt.
+        walkItems(getActionGroupItems(group), category, frozen && !isFreezeExemptActionGroup(group.id));
     });
 
     // 4) Sidebar/dock panels → "open <panel>" navigation commands. Body panels open by flipping

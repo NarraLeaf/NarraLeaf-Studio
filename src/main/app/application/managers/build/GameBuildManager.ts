@@ -625,9 +625,42 @@ export class GameBuildManager {
         return session.snapshot;
     }
 
+    /**
+     * Record a checkpoint before the build touches anything.
+     *
+     * One of the three unconditional checkpoints: a build is the moment an author most
+     * wants a mark in the history, because it is what they will come back to when the
+     * shipped thing is wrong. It writes into the output directory, which the author is
+     * free to point inside the project.
+     *
+     * Best effort, and silent when there is nothing to do: a project with no repository,
+     * a host with no backend, and an unchanged tree all answer "no revision" rather than
+     * failing. A version control problem must never be the reason a build does not run.
+     */
+    private async checkpointBeforeBuild(session: BuildSession): Promise<void> {
+        try {
+            const result = await this.app.getVcsManager().checkpoint(session.projectPath, "build");
+            if (result) {
+                this.emit(session, {
+                    level: "info",
+                    source: "Build",
+                    message: `version control checkpoint ${result.revision.slice(0, 12)}`,
+                });
+            }
+        } catch (error) {
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: `could not record a version control checkpoint: ${error instanceof Error ? error.message : String(error)}`,
+            });
+        }
+    }
+
     private async run(session: BuildSession, entry: GameRuntimeLaunchEntry, request: GameBuildRequest): Promise<void> {
         const projectPath = session.projectPath;
         this.emit(session, { level: "info", source: "Build", message: "production build started" });
+
+        await this.checkpointBeforeBuild(session);
 
         const projectConfig = await readProjectConfigFromDir(projectPath).catch(() => null);
         const hostPlatform = currentGameBuildPlatform();

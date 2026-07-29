@@ -21,6 +21,7 @@ import {
     endEditorTabDrag,
 } from "@/apps/workspace/dnd/editorTabDragContract";
 import { WorkspacePanelErrorBoundary } from "../WorkspacePanelErrorBoundary";
+import { useWorkspaceReloadGeneration } from "@/lib/workspace/hooks/useWorkspaceReloadGeneration";
 import { useTranslation } from "@/lib/i18n";
 
 /** px of breathing room left beside the active tab when it is scrolled into view. */
@@ -53,6 +54,10 @@ export function EditorGroup({ group }: EditorGroupProps) {
     const activeTab = group.tabs.find((tab) => tab.id === group.focus);
 
     const maxActiveEditors = useMaxActiveEditors();
+    // Part of every mounted tab's key. A working-tree reload replaces the documents under these tabs,
+    // so a tab whose scene/graph/asset is gone has to re-resolve rather than keep rendering what it
+    // loaded before; see useWorkspaceReloadGeneration.
+    const reloadGeneration = useWorkspaceReloadGeneration(context);
 
     // Keep-alive: keep up to `maxActiveEditors` most-recently-active tabs mounted (hidden with
     // display:none) so their DOM scroll position, focus, and in-memory state survive a tab switch
@@ -548,7 +553,7 @@ export function EditorGroup({ group }: EditorGroupProps) {
                     const isActive = tab.id === group.focus;
                     return (
                         <div
-                            key={tab.id}
+                            key={`${tab.id}:${reloadGeneration}`}
                             className="h-full w-full"
                             style={{ display: isActive ? undefined : "none" }}
                             aria-hidden={isActive ? undefined : true}

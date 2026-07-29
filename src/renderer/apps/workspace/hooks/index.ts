@@ -8,6 +8,9 @@ export { useMaxActiveEditors } from "./useMaxActiveEditors";
 // Current project display name
 export { useProjectDisplayName } from "./useProjectDisplayName";
 
+// Whether project data is frozen (drives disabled affordances, not correctness)
+export { useWorkspaceFrozen } from "./useWorkspaceFrozen";
+
 // UI Service hooks
 export {
     useUIService,

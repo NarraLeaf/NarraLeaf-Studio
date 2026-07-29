@@ -2,6 +2,7 @@ import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/L
 import { ownerRefToIndexKey } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
 import type { Blueprint } from "@shared/types/blueprint/document";
 import { useTranslation } from "@/lib/i18n";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 
 type Props = {
     blueprint: Blueprint;
@@ -15,6 +16,9 @@ type Props = {
  */
 export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevision }: Props) {
     const { t } = useTranslation();
+    // Making a sibling revision writes the blueprint document. Switching which existing revision is
+    // active writes too - it is what the game runs - so both are off; the list itself stays readable.
+    const freeze = useFreezeGuard();
     if (blueprint.owner.kind === "sharedAsset") {
         return (
             <p className="text-2xs text-fg-subtle">{t("blueprint.revisions.sharedAssetSingle")}</p>
@@ -38,7 +42,8 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
                         <li key={id} className="flex items-center gap-2">
                             <button
                                 type="button"
-                                className={`truncate text-left font-mono text-2xs ${active ? "text-primary" : "text-fg-muted hover:text-fg"}`}
+                                className={`truncate text-left font-mono text-2xs disabled:cursor-not-allowed disabled:opacity-40 ${active ? "text-primary" : "text-fg-muted hover:text-fg"}`}
+                                {...freeze.writes(false)}
                                 onClick={() => {
                                     if (!active) {
                                         localBp.setActivePrivateBlueprintForOwnerKey(ownerKey, id);
@@ -56,7 +61,8 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
                 {allowTypeScriptRevision ? (
                     <button
                         type="button"
-                        className="rounded-md border border-edge bg-fill-subtle px-2 py-1 text-2xs text-fg hover:bg-fill"
+                        className="rounded-md border border-edge bg-fill-subtle px-2 py-1 text-2xs text-fg hover:bg-fill disabled:cursor-not-allowed disabled:opacity-40"
+                        {...freeze.writes()}
                         onClick={() => {
                             const newId = localBp.createSiblingPrivateBlueprintForOwnerKey(ownerKey, "typescript");
                             onReopenRevision?.(newId);
@@ -67,7 +73,8 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
                 ) : null}
                 <button
                     type="button"
-                    className="rounded-md border border-edge bg-fill-subtle px-2 py-1 text-2xs text-fg hover:bg-fill"
+                    className="rounded-md border border-edge bg-fill-subtle px-2 py-1 text-2xs text-fg hover:bg-fill disabled:cursor-not-allowed disabled:opacity-40"
+                    {...freeze.writes()}
                     onClick={() => {
                         const newId = localBp.createSiblingPrivateBlueprintForOwnerKey(ownerKey, "visual");
                         onReopenRevision?.(newId);
