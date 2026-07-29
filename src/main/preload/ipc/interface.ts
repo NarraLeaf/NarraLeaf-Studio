@@ -9,6 +9,7 @@ import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, W
 import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "@shared/types/gameBuild";
+import type { SigningCredential, SigningCredentialImport, SigningInspectResult } from "@shared/types/signing";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
@@ -348,6 +349,26 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.gameBuildSelectOutputDir, { defaultPath }) as Promise<RequestStatus<{ path: string | null }>>,
         preflight: (projectPath: string, request: GameBuildRequest) =>
             ipcClient.invoke(IPCEventType.gameBuildPreflight, { projectPath, request }) as Promise<RequestStatus<{ findings: BuildPreflightFinding[] }>>,
+    },
+
+    /**
+     * The machine's code-signing credential vault. Nothing here returns a
+     * password: `import` sends the plain secrets up once and everything else
+     * deals in the redacted credential.
+     */
+    signing: {
+        list: () =>
+            ipcClient.invoke(IPCEventType.signingList, {}) as Promise<RequestStatus<{ credentials: SigningCredential[] }>>,
+        /** `input` holds plain passwords. Do not log it or keep it after the call. */
+        import: (input: SigningCredentialImport) =>
+            ipcClient.invoke(IPCEventType.signingImport, { input }) as Promise<RequestStatus<{ credential: SigningCredential }>>,
+        remove: (id: string) =>
+            ipcClient.invoke(IPCEventType.signingRemove, { id }) as Promise<RequestStatus<{ removed: boolean }>>,
+        inspect: (id: string) =>
+            ipcClient.invoke(IPCEventType.signingInspect, { id }) as Promise<RequestStatus<SigningInspectResult>>,
+        /** `storePassword` is plain text. Do not log it or keep it after the call. */
+        keystoreAliases: (file: string, storePassword: string) =>
+            ipcClient.invoke(IPCEventType.signingKeystoreAliases, { file, storePassword }) as Promise<RequestStatus<{ aliases: string[] }>>,
     },
 
     blueprintPersistence: {

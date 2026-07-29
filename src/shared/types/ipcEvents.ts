@@ -37,6 +37,11 @@ import type {
 } from "./menu";
 import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
 import type {
+    SigningCredential,
+    SigningCredentialImport,
+    SigningInspectResult,
+} from "./signing";
+import type {
     RevisionId,
     VcsAvailability,
     VcsBlobRequest,
@@ -156,6 +161,12 @@ export enum IPCEventType {
     gameBuildGetStatus = "gameBuild.getStatus",
     gameBuildSelectOutputDir = "gameBuild.selectOutputDir",
     gameBuildPreflight = "gameBuild.preflight",
+
+    signingList = "signing.list",
+    signingImport = "signing.import",
+    signingRemove = "signing.remove",
+    signingInspect = "signing.inspect",
+    signingKeystoreAliases = "signing.keystoreAliases",
 
     blueprintPersistenceGetAll = "blueprintPersistence.getAll",
     blueprintPersistenceGetValue = "blueprintPersistence.getValue",
@@ -451,7 +462,7 @@ export type IPCEvents = {
             path: string;
         };
     };
-} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameBuildEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCPrivilegedEvents & IPCVcsEvents;
+} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameBuildEvents & IPCSigningEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCPrivilegedEvents & IPCVcsEvents;
 
 /**
  * Version control. Every event carries `projectPath`: Studio is
@@ -1245,6 +1256,84 @@ export type IPCGameBuildEvents = {
         };
         response: {
             findings: BuildPreflightFinding[];
+        };
+    };
+};
+
+/**
+ * The machine's code-signing credential vault.
+ *
+ * Passwords travel one way only. `import` carries the plain secrets the author
+ * just typed up to the main process, which seals them immediately; no response
+ * here ever carries a secret back, and there is deliberately no "read the
+ * password" event. Unsealing happens in the main process alone, when a build
+ * actually needs the material.
+ */
+export type IPCSigningEvents = {
+    [IPCEventType.signingList]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>,
+        response: {
+            /** Redacted: metadata only, never a password. */
+            credentials: SigningCredential[];
+        };
+    };
+    /**
+     * Import a credential: the material files are copied into the vault and the
+     * secrets in the payload are sealed. The payload holds plain passwords - do
+     * not log it, do not keep it, do not send it anywhere else.
+     */
+    [IPCEventType.signingImport]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            input: SigningCredentialImport;
+        },
+        response: {
+            credential: SigningCredential;
+        };
+    };
+    [IPCEventType.signingRemove]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            id: string;
+        },
+        response: {
+            /** False when the id was already gone. */
+            removed: boolean;
+        };
+    };
+    /**
+     * Read the credential's certificate for display: subject, issuer, validity,
+     * thumbprint. Never key material.
+     */
+    [IPCEventType.signingInspect]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            id: string;
+        },
+        response: SigningInspectResult;
+    };
+    /**
+     * The signing keys inside a keystore the author has picked but not imported
+     * yet, so the import form can offer them instead of asking for an alias
+     * typed from memory. Same one-way traffic as `import`: the password goes up
+     * and only the names come back.
+     */
+    [IPCEventType.signingKeystoreAliases]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            /** Absolute path the author picked; nothing is copied or kept. */
+            file: string;
+            /** Plain text - do not log it or keep it after the call. */
+            storePassword: string;
+        },
+        response: {
+            aliases: string[];
         };
     };
 };

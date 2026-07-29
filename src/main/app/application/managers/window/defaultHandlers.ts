@@ -49,6 +49,13 @@ import {
     GameBuildSelectOutputDirHandler,
     GameBuildStartHandler,
 } from "./handlers/gameBuildAction";
+import {
+    SigningImportHandler,
+    SigningInspectHandler,
+    SigningKeystoreAliasesHandler,
+    SigningListHandler,
+    SigningRemoveHandler,
+} from "./handlers/signingAction";
 import { PluginPermissionGrantHandler, PluginPermissionPromptLaunchHandler } from "./handlers/pluginPermissionAction";
 import {
     PluginApproveHandler,
@@ -163,6 +170,13 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new GameBuildGetStatusHandler(),
         new GameBuildSelectOutputDirHandler(),
         new GameBuildPreflightHandler(),
+
+        // Code-signing credential vault (machine-level; no handler returns a secret)
+        new SigningListHandler(),
+        new SigningImportHandler(),
+        new SigningRemoveHandler(),
+        new SigningInspectHandler(),
+        new SigningKeystoreAliasesHandler(),
 
         // Blueprint persistent variable storage handlers
         new BlueprintPersistenceGetAllHandler(),

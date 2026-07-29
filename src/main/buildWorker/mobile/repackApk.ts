@@ -4,7 +4,7 @@ import { patchArscPackageName } from "./arsc";
 import { signApkV2 } from "./apkSigningV2";
 import { BufferZipOutput, writeZip, type ZipWriteEntry } from "./zipWriter";
 import type { AndroidShellTemplate } from "./mobileShellManifest";
-import type { SigningIdentity } from "./signingIdentity";
+import type { ApkSigningIdentity } from "./signingIdentity";
 
 /**
  * Android repack orchestration: turn the prebuilt, unsigned shell APK template
@@ -53,8 +53,13 @@ export type RepackApkInput = {
     shellConfigJson: string;
     /** Icon slot (zip entry path) → replacement PNG bytes. */
     iconPngBySlot?: Record<string, Buffer>;
-    /** The debug signing identity the APK is signed with. */
-    signingIdentity: SigningIdentity;
+    /**
+     * The identity the APK is signed with, and its leaf-first certificate
+     * chain: the machine debug identity by default, the author's release
+     * keystore when the project points at one. Resolved by the caller, which
+     * also logs which one it picked.
+     */
+    signingIdentity: ApkSigningIdentity;
     /** Fixed timestamp for reproducible output. */
     mtime: Date;
 };
