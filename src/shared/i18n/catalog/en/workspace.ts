@@ -195,6 +195,8 @@ export const workspace = {
             categoryView: "View",
             // Category + titles for the editor-tab commands (act on the active tab).
             categoryEditor: "Editor",
+            // Category for the version-control commands (freeze, and later: commit, history).
+            categoryVersionControl: "Version Control",
             editor: {
                 closeTab: "Close Tab",
                 closeOthers: "Close Other Tabs",
@@ -307,6 +309,12 @@ export const workspace = {
             unreadableDetailQuarantined: "{reason} The file was left exactly as it was, and a copy of it is at {path}.",
             consoleUnreadable: "read failed ({kind}): {path} - {reason}",
             consoleQuarantined: "kept a copy of the unreadable file at {path}",
+            // A write refused because the workspace is frozen. Not a failure: nothing is wrong, and
+            // nothing will be retried. The wording has to say why, or it reads as a bug.
+            frozenTitle: "Nothing is being saved right now",
+            frozenDetailRevision: "You are looking at version {version}. Your project files are left untouched until you go back to the current version.",
+            frozenDetailManual: "The workspace is frozen, so changes are not written to your project. Unfreeze it to start saving again.",
+            consoleFrozen: "write refused, workspace frozen ({reason}): {path}",
             // Names for the things that auto-save, used when a flush fails.
             stores: {
                 uiDocument: "interface document",
@@ -317,6 +325,16 @@ export const workspace = {
                 variables: "variable registry",
                 characters: "characters",
             },
+        },
+        // Freezing the workspace: project data stops being written, editor state carries on. Named
+        // for what the author gets ("stop saving"), not for the mechanism.
+        freeze: {
+            command: "Freeze Project (Stop Saving Changes)",
+            release: "Unfreeze Project (Resume Saving Changes)",
+            enteredTitle: "Project frozen",
+            enteredDetail: "Your project files are left untouched until you unfreeze it.",
+            leftTitle: "Project unfrozen",
+            leftDetail: "Changes are being saved again.",
         },
         // Keyboard-shortcut customization (Settings window → Editor) + the "?" cheat sheet overlay.
         keybindings: {

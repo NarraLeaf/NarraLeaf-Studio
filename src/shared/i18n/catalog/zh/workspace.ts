@@ -188,6 +188,8 @@ export const workspace = {
             categoryView: "视图",
             // 编辑器标签命令的分类与标题（作用于当前活动标签）。
             categoryEditor: "编辑器",
+            // 版本控制命令的分类（冻结，以及后续的提交、历史）。
+            categoryVersionControl: "版本控制",
             editor: {
                 closeTab: "关闭标签页",
                 closeOthers: "关闭其他标签页",
@@ -296,6 +298,12 @@ export const workspace = {
             unreadableDetailQuarantined: "{reason} 文件保持原样，其副本已保存在 {path}。",
             consoleUnreadable: "读取失败（{kind}）：{path} - {reason}",
             consoleQuarantined: "已保留无法读取的文件副本：{path}",
+            // 因工作区冻结而被拒绝的写入。这不是失败：没有出错，也不会重试。文案必须说清原因，
+            // 否则读起来就是个 bug。
+            frozenTitle: "当前不会保存任何改动",
+            frozenDetailRevision: "你正在查看版本 {version}。在回到当前版本之前，项目文件不会被改动。",
+            frozenDetailManual: "工作区已冻结，改动不会写入项目。解除冻结后才会重新保存。",
+            consoleFrozen: "写入被拒绝，工作区已冻结（{reason}）：{path}",
             // 自动保存对象的名称，刷盘失败时使用。
             stores: {
                 uiDocument: "界面文档",
@@ -306,6 +314,16 @@ export const workspace = {
                 variables: "变量注册表",
                 characters: "角色",
             },
+        },
+        // 冻结工作区：项目数据停止写入，编辑器状态照常。命名按作者能感知的效果（「停止保存」）来，
+        // 而不是按机制来。
+        freeze: {
+            command: "冻结项目（停止保存改动）",
+            release: "解除冻结（恢复保存改动）",
+            enteredTitle: "项目已冻结",
+            enteredDetail: "在解除冻结之前，项目文件不会被改动。",
+            leftTitle: "已解除冻结",
+            leftDetail: "改动会重新写入项目。",
         },
         // 快捷键自定义（设置 tab）+「?」速查浮层。
         keybindings: {

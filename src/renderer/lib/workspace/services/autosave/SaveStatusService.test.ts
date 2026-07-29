@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FsRejectErrorCode } from "@shared/types/os";
+import { freezeProjectWrites, refuseFrozenWrite, thawProjectWrites } from "@/lib/app/writeFreeze";
 import type { FsWriteOutcome } from "../core/FileSystem";
 import { Services, type WorkspaceContext } from "../services";
 import { DebouncedSaver } from "./DebouncedSaver";
@@ -55,6 +56,8 @@ async function makeHarness(): Promise<Harness> {
         log,
     };
 }
+
+const PROJECT = "D:/projects/my-game";
 
 const failure = (path: string, code = FsRejectErrorCode.IO_ERROR): FsWriteOutcome => ({
     path,
@@ -170,5 +173,50 @@ describe("SaveStatusService", () => {
 
         saver.schedule();
         expect(changed).toHaveBeenCalledTimes(1);
+    });
+});
+
+/**
+ * The reporting half of the freeze gate. A refused write is a no-op by design, so this service is
+ * the only thing standing between the author and a workspace that silently discards their typing.
+ */
+describe("SaveStatusService while the workspace is frozen", () => {
+    afterEach(() => {
+        thawProjectWrites();
+    });
+
+    it("raises one notice for the frozen stretch, and a console line per refusal", async () => {
+        const { showSticky, log } = await makeHarness();
+        freezeProjectWrites({ projectPath: PROJECT, reason: { kind: "manual" } });
+
+        refuseFrozenWrite(`${PROJECT}/editor/story/index.json`);
+        refuseFrozenWrite(`${PROJECT}/project.json`);
+
+        // One refused save is often several refusals (the parent directory, then the file), and an
+        // import of fifty assets would otherwise bury the workspace in identical toasts.
+        expect(showSticky).toHaveBeenCalledTimes(1);
+        expect(log).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not treat a refusal as a failed save", async () => {
+        const { service } = await makeHarness();
+        freezeProjectWrites({ projectPath: PROJECT, reason: { kind: "manual" } });
+
+        refuseFrozenWrite(`${PROJECT}/project.json`);
+
+        // `failures` is the set of writes still OWED - it turns the status bar red and retryNow
+        // replays it. Replaying a frozen-out write later is the accident the gate exists to prevent.
+        expect(service.getFailures()).toHaveLength(0);
+        expect(service.getStatus()).toBe("clean");
+    });
+
+    it("takes the notice down when the workspace thaws", async () => {
+        const { close } = await makeHarness();
+        freezeProjectWrites({ projectPath: PROJECT, reason: { kind: "manual" } });
+        refuseFrozenWrite(`${PROJECT}/project.json`);
+
+        thawProjectWrites();
+
+        expect(close).toHaveBeenCalledWith("toast-1");
     });
 });

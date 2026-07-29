@@ -34,6 +34,7 @@ import { ReferenceService } from "./references/ReferenceService";
 import { VariableRegistryService } from "./variables/VariableRegistryService";
 import { SaveStatusService } from "./autosave/SaveStatusService";
 import { VersionControlService } from "./core/VersionControlService";
+import { WorkspaceFreezeService } from "./core/WorkspaceFreezeService";
 
 export class ServiceRegistry {
     private services: Record<Services, Service> = {
@@ -71,6 +72,7 @@ export class ServiceRegistry {
         [Services.VariableRegistry]: VariableRegistryService.getInstance(),
         [Services.SaveStatus]: SaveStatusService.getInstance(),
         [Services.VersionControl]: VersionControlService.getInstance(),
+        [Services.WorkspaceFreeze]: WorkspaceFreezeService.getInstance(),
     };
 
     public get<T extends Service>(service: Services): T {
