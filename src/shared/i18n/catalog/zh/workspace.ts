@@ -304,7 +304,7 @@ export const workspace = {
             frozenDetailRevision: "你正在查看版本 {version}。在回到当前版本之前，项目文件不会被改动。",
             frozenDetailManual: "工作区已冻结，改动不会写入项目。解除冻结后才会重新保存。",
             consoleFrozen: "写入被拒绝，工作区已冻结（{reason}）：{path}",
-            // 自动保存对象的名称，刷盘失败时使用。
+            // 持有项目数据的各方名称：刷盘失败时用，重读工作树失败时也用。
             stores: {
                 uiDocument: "界面文档",
                 uiGraph: "界面蓝图",
@@ -313,7 +313,17 @@ export const workspace = {
                 voice: "语音库",
                 variables: "变量注册表",
                 characters: "角色",
+                project: "项目设置",
+                assets: "资产库",
             },
+        },
+        // 重读工作树：磁盘上的内容不再是编辑器显示的内容（解除冻结、恢复版本）。正常情况下作者
+        // 什么都不该看到——只有某一部分读不回来时才出声，因为那时面板里是旧内容。
+        reload: {
+            failedTitle: "项目没有完整重新读取",
+            failedDetail: "以下内容仍是重读之前的：{stores}。重新打开项目可再试一次。",
+            console: "已从磁盘重读项目（{cause}）：{count} 项",
+            consoleFailed: "无法重读 {label}：{error}",
         },
         // 冻结工作区：项目数据停止写入，编辑器状态照常。命名按作者能感知的效果（「停止保存」）来，
         // 而不是按机制来。

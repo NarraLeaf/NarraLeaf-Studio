@@ -1,5 +1,5 @@
 import koffi from "koffi";
-import { LORE_EVENT_PAYLOAD_OFFSET, LORE_EVENT_TAGS } from "./abi/definitions";
+import { LORE_EVENT_PAYLOAD_OFFSET, LORE_EVENT_TAGS, LORE_METADATA_TAGS } from "./abi/definitions";
 import type { LoreLibrary } from "./library";
 import { decodeBytes, decodeCount, decodeHash, decodeOptionalHash, decodeString, type LoreHex } from "./values";
 
@@ -131,13 +131,31 @@ export interface LoreBranchInfoPayload {
 export interface LoreBranchCreatePayload { name: string; latest?: LoreHex; isCommit: boolean }
 export interface LoreLogPayload { level: number; message: string; location: string }
 
+/**
+ * One metadata entry, as reported by the metadata read verbs.
+ *
+ * `text` is present only for a STRING value. Everything else is reported with its
+ * `tag` and no value rather than coerced: the payload is a union, and reading a
+ * NUMERIC's first eight bytes as a `LoreString` pointer would dereference the number.
+ * Studio writes only strings, so a foreign tag means another client wrote the key.
+ */
+export interface LoreMetadataPayload { key: string; tag: number; text?: string }
+
 /** A decoded event: the tag, plus a payload when Studio has a decoder for it. */
 export interface LoreEvent<T = unknown> {
     tag: number;
     data?: T;
 }
 
-type Decoder = (raw: Record<string, unknown>) => unknown;
+/**
+ * A payload decoder.
+ *
+ * `pointer` is the raw event pointer, passed because one payload cannot be read from
+ * the decoded struct alone: see the METADATA decoder, where the value is a union whose
+ * real offset the struct declaration deliberately does not describe. Every other
+ * decoder ignores it.
+ */
+type Decoder = (raw: Record<string, unknown>, pointer: unknown) => unknown;
 
 /** Struct-typed fields decode to nested objects; this keeps the casts in one place. */
 const nested = (raw: unknown, field: string): Record<string, unknown> =>
@@ -208,6 +226,42 @@ function decoderTable(library: LoreLibrary): Map<number, Decoder> {
         message: decodeString(nested(raw, "message")),
         location: decodeString(nested(raw, "location")),
     }));
+
+    /**
+     * A metadata entry, whose value is a tagged union.
+     *
+     * The union is read off the event pointer rather than out of the decoded struct,
+     * and the offset is computed rather than assumed:
+     *
+     *  - `LoreMetadata` is declared here as `{ uint32_t tag; uint8_t data[48]; }`, which
+     *    koffi lays out with `data` at offset 4. The real union is 8-aligned - it has
+     *    pointer members - so it actually begins at offset 8. Decoding through `data`
+     *    would read four bytes of padding as the front of the value.
+     *  - Only a STRING is read. The other six tags are reported with no value, because
+     *    a NUMERIC's eight bytes read as a `LoreString` would be dereferenced as a
+     *    pointer, which is a crash rather than a wrong answer.
+     *
+     * The generated SDK arrives at the same offset the same way (`offsetof(data)` plus
+     * `sizeof(uint32_t)`), which is the only machine-readable evidence for the padding.
+     */
+    const metadataValueOffset = LORE_EVENT_PAYLOAD_OFFSET
+        + koffi.offsetof(type("LoreMetadataEventData"), "value")
+        + koffi.offsetof(type("LoreMetadata"), "data")
+        + koffi.sizeof("uint32_t");
+
+    table.set(LoreTag.METADATA, (raw, pointer): LoreMetadataPayload => {
+        const value = nested(raw, "value");
+        const tag = decodeCount(value.tag);
+        if (tag !== LORE_METADATA_TAGS.STRING) {
+            return { key: decodeString(nested(raw, "key")), tag };
+        }
+        const text = koffi.decode(pointer, metadataValueOffset, type("LoreString")) as Record<string, unknown>;
+        return {
+            key: decodeString(nested(raw, "key")),
+            tag,
+            text: decodeString(text),
+        };
+    });
 
     table.set(LoreTag.PATH_IGNORE, (raw): LorePathIgnorePayload => ({
         path: decodeString(nested(raw, "path")),
@@ -431,6 +485,7 @@ function decoderTable(library: LoreLibrary): Map<number, Decoder> {
 
 /** Which struct decodes which tag. Kept next to the table it feeds. */
 const PAYLOAD_STRUCTS: Readonly<Record<number, string>> = {
+    [LoreTag.METADATA]: "LoreMetadataEventData",
     [LoreTag.ERROR]: "LoreErrorEventData",
     [LoreTag.COMPLETE]: "LoreCompleteEventData",
     [LoreTag.LOG]: "LoreLogEventData",
@@ -481,5 +536,5 @@ export function decodeEvent(library: LoreLibrary, pointer: unknown): LoreEvent {
     if (!structName || !decoder) return { tag };
 
     const raw = koffi.decode(pointer, LORE_EVENT_PAYLOAD_OFFSET, library.type(structName)) as Record<string, unknown>;
-    return { tag, data: decoder(raw) };
+    return { tag, data: decoder(raw, pointer) };
 }

@@ -11,6 +11,7 @@ import {
     isWorkspaceAssetDragEvent,
 } from "@/apps/workspace/modules/assets/dnd/assetDragContract";
 import { applyMultiAssetDragImage } from "@/apps/workspace/modules/assets/dnd/multiAssetDragImage";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 
 /** Report ids moved by an in-panel drop so cut-clipboard styling can be updated. */
 export interface InternalAssetDropCompletedInfo {
@@ -49,6 +50,11 @@ export function useDragAndDrop({
     onWorkspaceDragSessionStart,
     onWorkspaceDragSessionEnd,
 }: UseDragAndDropParams) {
+    // Dropping INTO the panel moves or imports, so it is off while frozen. Dragging OUT of it is not:
+    // that is how an author hands an asset to another editor, the receiving side refuses its own write,
+    // and killing it would break a read-only gesture in the name of a freeze. So `handleDragStart` is
+    // deliberately left alone and only the drop targets stop lighting up.
+    const freeze = useFreezeGuard();
     const [draggedItem, setDraggedItem] = useState<DraggedItemState | null>(null);
     const [dropTargetId, setDropTargetId] = useState<string | null>(null);
     const [dragOver, setDragOver] = useState(false);
@@ -101,8 +107,11 @@ export function useDragAndDrop({
     const handlePanelDragOver = useCallback((event: DragEvent) => {
         event.preventDefault();
         event.stopPropagation();
+        if (freeze.frozen) {
+            return;
+        }
         setDragOver(true);
-    }, []);
+    }, [freeze]);
 
     const handlePanelDragLeave = useCallback((event: DragEvent) => {
         event.preventDefault();
@@ -116,6 +125,9 @@ export function useDragAndDrop({
         event.preventDefault();
         event.stopPropagation();
 
+        if (freeze.frozen) {
+            return;
+        }
         const isExternalFiles = event.dataTransfer.types.includes("Files");
         const isExternalAssetDrag = isWorkspaceAssetDragEvent(event.dataTransfer) && !draggedItem;
 
@@ -129,14 +141,14 @@ export function useDragAndDrop({
                 event.dataTransfer.dropEffect = "copy";
             }
         }
-    }, [draggedItem]);
+    }, [draggedItem, freeze]);
 
     const handleDropOnItem = useCallback(
         async (event: DragEvent, targetType: AssetType, targetGroup: AssetGroup | null) => {
             event.preventDefault();
             event.stopPropagation();
 
-            if (!context || !draggedItem) return;
+            if (!context || !draggedItem || freeze.frozen) return;
 
             const assetsService = context.services.get<AssetsService>(Services.Assets);
 
@@ -209,6 +221,7 @@ export function useDragAndDrop({
             draggedItem,
             filteredAssets,
             filteredGroups,
+            freeze,
             groups,
             isDescendantGroup,
             onDropCompleted,
