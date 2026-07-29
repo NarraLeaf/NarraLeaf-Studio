@@ -1,3 +1,4 @@
+import type { StudioStateStoreNamespace } from "@shared/vcs/serviceStores";
 import { Service } from "../Service";
 import { Services, WorkspaceContext } from "../services";
 import { ServiceAssetsService } from "./ServiceAssetsService";
@@ -38,12 +39,15 @@ function sameOrder(a: readonly string[], b: readonly string[]): boolean {
 
 /**
  * Per-project list of recently used colors (most-recent first, de-duplicated, capped), persisted to
- * `editor/services/recent_colors.json` so the palette history travels with the project and resets
+ * `.nlstudio/services/recent_colors.json` so the palette history travels with the project and resets
  * when switching projects. Backs the {@link useRecentColors} / {@link addRecentColor} module in the
  * properties framework (which proxies to this singleton).
+ *
+ * Per-project but not part of the project: a tool's memory of the last few clicks, so it is
+ * classified as Studio state and kept out of version control (`@shared/vcs/serviceStores`).
  */
 export class RecentColorsService extends Service<RecentColorsService> {
-    private static readonly Namespace = "recent_colors";
+    private static readonly Namespace: StudioStateStoreNamespace = "recent_colors";
     private colors: string[] = [];
     private readonly listeners = new Set<() => void>();
     private ready = false;
