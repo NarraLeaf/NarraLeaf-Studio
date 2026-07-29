@@ -202,6 +202,17 @@ export default defineRuntimePlugin({
 
 推荐把节点定义放进 `src/nodes.ts` 由两个入口共同 import：studio 入口注册完整定义（palette + 编辑器预览），runtime 入口注册游戏 execute。这样 execute 逻辑只写一次。内建 Gallery 插件（`src/builtin-plugins/gallery/`）是参照实现。
 
+### ⚠ 插件 UI 用的 Tailwind class 必须已经存在于样式表里
+
+插件面板渲染在 Studio 窗口里，共用**同一份**已经编译好的 Tailwind 样式表——插件自己的 bundle 里没有 CSS。
+Tailwind 只会生成它在 `content` glob 扫到的 class，所以：
+
+- **内建插件**（`src/builtin-plugins/`）已被 `tailwind.config.js` 的 content 收录，随便写。
+  （这条是 2026-07-28 补的：在那之前内建插件不在扫描范围内，Gallery 的
+  `grid-cols-[repeat(auto-fill,minmax(150px,1fr))]` 从未被生成，网格静默塌成一列。）
+- **第三方插件**在构建时并不存在，**无法**让样式表新增 class。只能使用 Studio 自己已经用到的
+  utility。写了没有的 class 不会报错，只会毫无效果——这类 bug 极难自查，务必先在真 app 里看一眼。
+
 execute 拿到的 `ctx` 只有 `params` / `resolveInput` / `eventName` / `eventPayload` / `signal` / `game`。宿主能力一律走 `ctx.game`——也就是 `setup(app)` 收到的同一个能力门控对象，manifest 里 `contributes.runtimeCapabilities` 声明什么就有什么：
 
 ```ts
