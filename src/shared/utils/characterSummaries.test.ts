@@ -32,6 +32,40 @@ describe("mapCharacterStoreEntriesToSummaries", () => {
         expect(summary.id).toBe("char-alice");
     });
 
+    it("forwards a puppet's resting pose", () => {
+        const [summary] = mapCharacterStoreEntriesToSummaries([entry({
+            id: "char-doll",
+            name: "Doll",
+            appearance: {
+                kind: "puppet",
+                assetId: "asset-model",
+                backend: "some-runtime",
+                defaultState: { motion: " walk ", expression: "", skin: null },
+            },
+        })]);
+
+        expect(summary.appearance).toMatchObject({
+            kind: "puppet",
+            defaultState: { motion: "walk", expression: null, skin: null },
+        });
+    });
+
+    it("drops a resting pose with nothing in it", () => {
+        // All three cleared is the same state as no default at all; forwarding the triple would
+        // make every consumer downstream have to know that it means nothing.
+        const [summary] = mapCharacterStoreEntriesToSummaries([entry({
+            id: "char-doll",
+            appearance: {
+                kind: "puppet",
+                assetId: "asset-model",
+                backend: "some-runtime",
+                defaultState: { motion: null, expression: "  ", skin: 7 },
+            },
+        })]);
+
+        expect(summary.appearance).not.toHaveProperty("defaultState");
+    });
+
     it("skips entries with no usable id", () => {
         expect(mapCharacterStoreEntriesToSummaries([
             entry({ id: "", name: "Alice" }),
