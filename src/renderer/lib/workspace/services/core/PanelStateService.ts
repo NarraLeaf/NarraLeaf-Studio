@@ -1,3 +1,4 @@
+import type { StudioStateStoreNamespace } from "@shared/vcs/serviceStores";
 import { Service } from "../Service";
 import { Services, WorkspaceContext } from "../services";
 import { ServiceAssetsService } from "./ServiceAssetsService";
@@ -14,7 +15,9 @@ const DEFAULT_STORE: PanelStateStore = {
 };
 
 export class PanelStateService extends Service<PanelStateService> {
-    private static readonly Namespace = "panel_state";
+    // Typed against the classification table so a rename cannot quietly drop this store
+    // back into the versioned tree; it lands in `.nlstudio/services/` instead.
+    private static readonly Namespace: StudioStateStoreNamespace = "panel_state";
     private store: PanelStateStore = { ...DEFAULT_STORE };
     private dirty = false;
     private saveTimer: ReturnType<typeof setTimeout> | null = null;

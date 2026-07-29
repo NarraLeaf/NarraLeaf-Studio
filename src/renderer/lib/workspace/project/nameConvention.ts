@@ -29,6 +29,17 @@ export const ProjectNameConvention = {
     NLCache: [".nlstudio/"],
     Plugins: [".nlstudio", "plugins/"],
     EditorConfig: [".nlstudio", "editor.json"],
+    /**
+     * Service stores that hold Studio's own state rather than the author's project -
+     * panel layout, toast history, recent colours. Same flat `<namespace>.json` layout
+     * as {@link EditorServices}; which of the two a store uses is decided by one table,
+     * `@shared/vcs/serviceStores`.
+     *
+     * Under `.nlstudio/` because that is what `isVersioned` excludes, and the layout
+     * being versioned is what made freezing the workspace freeze the author's panels
+     * (plan 2026-07-28-002 §4.1).
+     */
+    StudioServices: [".nlstudio", "services/"],
 
     Assets: ["assets/"],
     ProjectResources: ["resources/"],
