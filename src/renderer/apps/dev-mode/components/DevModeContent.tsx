@@ -19,6 +19,7 @@ import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { BlueprintPersistenceProjectRef } from "@shared/types/ipcEvents";
 import type { DevModeSaveProjectRef } from "@shared/types/devModeSave";
 import { getInterface } from "@/lib/app/bridge";
+import { AppHost, AppProtocol } from "@shared/types/constants";
 import { useTranslation } from "@/lib/i18n";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
@@ -656,6 +657,62 @@ export function DevModeContent(props: DevModeContentProps) {
         return result.data.url;
     }, []);
 
+    /**
+     * Author-supplied puppet backends, read straight out of the open project.
+     *
+     * `<project>/runtimes/puppet/<name>/index.js` — one directory per runtime, mirroring how
+     * Ren'Py and TyranoScript have authors install the SDKs Studio is not allowed to ship. A Dev
+     * Mode window already holds a recursive read grant on the project directory, so nothing here
+     * widens what the preview can reach: each file becomes a single-use `app://fs/{hash}` URL, the
+     * same currency assets travel in.
+     */
+    const listPuppetBackendModules = useCallback(async () => {
+        if (!projectPath) {
+            return [];
+        }
+        const root = `${projectPath}/runtimes/puppet`;
+        const listing = await getInterface().fs.list(root);
+        if (!listing.success || !listing.data.ok) {
+            // No such directory is the normal case — most projects use no puppet runtime at all.
+            return [];
+        }
+        // Two read modes, and the difference matters. A raw grant is served as
+        // `application/octet-stream`, which the module loader refuses outright ("Expected a
+        // JavaScript-or-Wasm module script"), so the entry file has to go through the text path
+        // where the handler types it from its extension. Everything the backend asks for
+        // afterwards is model data — textures, skeletons — and must stay raw or the bytes are
+        // decoded into a string and ruined.
+        const grantUrl = async (filePath: string, mode: "text" | "raw"): Promise<string> => {
+            const request = mode === "text"
+                ? await getInterface().fs.requestRead(filePath, "utf-8")
+                : await getInterface().fs.requestReadRaw(filePath);
+            if (!request.success) {
+                throw new Error(request.error ?? `Cannot read ${filePath}`);
+            }
+            if (!request.data.ok) {
+                throw new Error(request.data.error.message ?? `Cannot read ${filePath}`);
+            }
+            return `${AppProtocol}://${AppHost.Fs}/${request.data.data}`;
+        };
+        return Promise.all(listing.data.data
+            .filter(entry => entry.type === "directory")
+            .map(async entry => {
+                const directory = `${root}/${entry.fileName}`;
+                return {
+                    id: entry.fileName,
+                    url: await grantUrl(`${directory}/index.js`, "text"),
+                    resolveFile: (relativePath: string) => {
+                        const normalized = relativePath.replace(/\\/g, "/").replace(/^\.\//, "");
+                        // The module names its own siblings; it does not get to name anything else.
+                        if (normalized.startsWith("/") || normalized.split("/").includes("..")) {
+                            return Promise.reject(new Error(`Path escapes the backend directory: ${relativePath}`));
+                        }
+                        return grantUrl(`${directory}/${normalized}`, "raw");
+                    },
+                };
+            }));
+    }, [projectPath]);
+
     const requireProjectRef = useCallback((operation: string): DevModeSaveProjectRef => {
         if (!projectRef) {
             throw new Error(`${operation}: project is not available`);
@@ -902,6 +959,7 @@ export function DevModeContent(props: DevModeContentProps) {
             log,
             resolveStoryAssetUrl,
             saveStore,
+            listPuppetBackendModules,
             quitApplication,
             getFullscreen,
             setFullscreen,
@@ -916,6 +974,7 @@ export function DevModeContent(props: DevModeContentProps) {
         onDebugEvent,
         persistenceAdapter,
         quitApplication,
+        listPuppetBackendModules,
         resolveStoryAssetUrl,
         runtimePlugins.ready,
         saveStore,
