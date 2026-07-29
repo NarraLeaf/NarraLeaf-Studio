@@ -1,5 +1,6 @@
 import {
     CharacterAppearanceKind,
+    isCharacterAppearanceKind,
     CharacterAvatarEntry,
     CharacterAvatarTable,
     CharacterAxis,
@@ -12,6 +13,7 @@ import {
     LayeredAppearance,
     PortraitCrop,
     PresetAppearance,
+    PuppetAppearance,
     ResolvedLayeredDefinition,
 } from "./types";
 import type { PsdFingerprint } from "@shared/types/psdImport";
@@ -32,9 +34,13 @@ function newId(prefix: string): string {
 }
 
 export function emptyAppearance(kind: CharacterAppearanceKind): ICharacterAppearance {
-    return kind === "layered"
-        ? { kind: "layered", canvas: null, axes: [], layers: [], snapshots: [] }
-        : { kind: "preset", poses: [], defaultPoseId: null };
+    if (kind === "layered") {
+        return { kind: "layered", canvas: null, axes: [], layers: [], snapshots: [] };
+    }
+    if (kind === "puppet") {
+        return { kind: "puppet", assetId: null, backend: "", entry: null, size: null, options: {} };
+    }
+    return { kind: "preset", poses: [], defaultPoseId: null };
 }
 
 function cloneAvatars(avatars: CharacterAvatarTable | undefined): CharacterAvatarTable | undefined {
@@ -56,6 +62,25 @@ function cloneAvatars(avatars: CharacterAvatarTable | undefined): CharacterAvata
  * silently dropped on the next save.
  */
 function cloneAppearance(appearance: ICharacterAppearance): ICharacterAppearance {
+    if (appearance?.kind === "puppet") {
+        const puppet = appearance as PuppetAppearance;
+        const width = Number(puppet.size?.width);
+        const height = Number(puppet.size?.height);
+        return {
+            kind: "puppet",
+            assetId: puppet.assetId ?? null,
+            backend: typeof puppet.backend === "string" ? puppet.backend : "",
+            entry: puppet.entry ?? null,
+            // A zero or non-finite box would reach the engine as a real size and collapse the
+            // element, where `null` means "the stage" — so a malformed one degrades to the default.
+            size: Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0
+                ? { width, height }
+                : null,
+            // Opaque by contract: cloned one level, never inspected. A backend's options are its
+            // own vocabulary and Studio has no business knowing a key of it.
+            options: { ...(puppet.options ?? {}) },
+        };
+    }
     if (appearance?.kind === "layered") {
         return {
             kind: "layered",
@@ -104,7 +129,7 @@ export class CharacterAppearance {
     private assetChangeCallback: AssetChangeCallback | null = null;
 
     constructor(private appearance: ICharacterAppearance, private onChange: (() => void) | null = null) {
-        if (!appearance || (appearance.kind !== "preset" && appearance.kind !== "layered")) {
+        if (!appearance || !isCharacterAppearanceKind(appearance.kind)) {
             this.appearance = emptyAppearance("preset");
         }
     }
@@ -172,6 +197,8 @@ export class CharacterAppearance {
             for (const pose of this.appearance.poses) {
                 if (pose.assetId) ids.add(pose.assetId);
             }
+        } else if (this.appearance.kind === "puppet") {
+            if (this.appearance.assetId) ids.add(this.appearance.assetId);
         } else {
             for (const layer of this.appearance.layers) {
                 if (layer.assetId) ids.add(layer.assetId);
@@ -191,9 +218,13 @@ export class CharacterAppearance {
 
     // ---------------------------------------------------------------- avatars
 
-    /** Every differential's dialog avatar, keyed by avatar key. Both kinds carry the same table. */
+    /**
+     * Every differential's dialog avatar, keyed by avatar key. The two image-backed kinds carry the
+     * same table; a puppet has no differentials to key one on — what it is doing is runtime state
+     * the backend names — so it carries none, and its avatar is the profile's `defaultAvatarAssetId`.
+     */
     public getAvatars(): CharacterAvatarTable {
-        return this.appearance.avatars ?? {};
+        return (this.appearance.kind === "puppet" ? undefined : this.appearance.avatars) ?? {};
     }
 
     public getAvatar(key: string): CharacterAvatarEntry | null {
@@ -206,7 +237,7 @@ export class CharacterAppearance {
      * the baker just deleted.
      */
     public setAvatar(key: string, entry: CharacterAvatarEntry | null): void {
-        if (!key) return;
+        if (!key || this.appearance.kind === "puppet") return;
         const avatars = { ...this.getAvatars() };
         const next = entry && (entry.baked || entry.overrideAssetId) ? { ...entry } : null;
         if (next) {
@@ -328,6 +359,61 @@ export class CharacterAppearance {
     public resolvePoseAssetId(poseId: string | undefined | null): string | null {
         const pose = poseId ? this.getPose(poseId) : this.getPose(this.getDefaultPoseId() ?? "");
         return pose?.assetId ?? null;
+    }
+
+    // ---------------------------------------------------------------- puppet
+
+    /** The puppet declaration, or null when this character is not one. */
+    public getPuppet(): PuppetAppearance | null {
+        return this.appearance.kind === "puppet" ? this.appearance : null;
+    }
+
+    /** The model bundle this puppet draws. */
+    public setPuppetAsset(assetId: string | null): void {
+        const puppet = this.getPuppet();
+        if (!puppet) return;
+        this.notifyAssetChange(puppet.assetId, assetId);
+        puppet.assetId = assetId;
+        this.notifyChange();
+    }
+
+    /**
+     * The registered backend that draws it. Free text rather than a checked reference: the runtime
+     * is a directory the author drops into their project and may not be installed on the machine
+     * the story is being written on. A name nothing answers to degrades to an empty box at runtime
+     * (the engine's own behaviour), which is the honest outcome for "the renderer is not here".
+     */
+    public setPuppetBackend(backend: string): void {
+        const puppet = this.getPuppet();
+        if (!puppet) return;
+        puppet.backend = backend.trim();
+        this.notifyChange();
+    }
+
+    public setPuppetEntry(entry: string | null): void {
+        const puppet = this.getPuppet();
+        if (!puppet) return;
+        const trimmed = entry?.trim() ?? "";
+        puppet.entry = trimmed || null;
+        this.notifyChange();
+    }
+
+    /** The stage box, or null for the stage size. */
+    public setPuppetSize(size: { width: number; height: number } | null): void {
+        const puppet = this.getPuppet();
+        if (!puppet) return;
+        puppet.size = size && size.width > 0 && size.height > 0
+            ? { width: size.width, height: size.height }
+            : null;
+        this.notifyChange();
+    }
+
+    /** Replace the whole options object. Passed to the backend verbatim; never read here. */
+    public setPuppetOptions(options: Record<string, unknown>): void {
+        const puppet = this.getPuppet();
+        if (!puppet) return;
+        puppet.options = { ...options };
+        this.notifyChange();
     }
 
     // --------------------------------------------------------------- layered
@@ -639,6 +725,12 @@ export class CharacterAppearance {
     public resolveDrawList(selection: { poseId?: string | null; tags?: CharacterTagSelection | null }): (string | null)[] {
         if (this.appearance.kind === "preset") {
             return [this.resolvePoseAssetId(selection.poseId)];
+        }
+        // A puppet draws no images at all — its interior is a backend's business, and Studio has no
+        // way to render one outside a running game. Empty rather than a placeholder slot: every
+        // caller treats an entry as "an image belongs here", and a puppet has none.
+        if (this.appearance.kind === "puppet") {
+            return [];
         }
         const tags = this.resolveTagSelection(selection.tags ?? undefined);
         return this.getLayers().map(layer => (

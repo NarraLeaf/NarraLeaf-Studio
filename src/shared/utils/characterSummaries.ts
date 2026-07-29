@@ -41,6 +41,32 @@ function named(entry: unknown): { id: string; name: string } | null {
 function mapAppearance(appearance: unknown): CharacterAppearanceSummary {
     const kind = (appearance as { kind?: unknown } | null)?.kind;
 
+    if (kind === "puppet") {
+        const raw = appearance as {
+            assetId?: unknown;
+            backend?: unknown;
+            entry?: unknown;
+            size?: { width?: unknown; height?: unknown } | null;
+            options?: unknown;
+        };
+        const width = Number(raw.size?.width);
+        const height = Number(raw.size?.height);
+        return {
+            kind: "puppet",
+            assetId: trimmed(raw.assetId) || null,
+            backend: trimmed(raw.backend),
+            entry: trimmed(raw.entry) || null,
+            size: Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0
+                ? { width, height }
+                : null,
+            // Forwarded whole, unvalidated past "is an object": these are the backend's own
+            // vocabulary and anything this mapper pruned would be a knob Studio silently ate.
+            options: raw.options && typeof raw.options === "object" && !Array.isArray(raw.options)
+                ? { ...(raw.options as Record<string, unknown>) }
+                : {},
+        };
+    }
+
     if (kind === "layered") {
         const raw = appearance as {
             canvas?: { width?: unknown; height?: unknown } | null;

@@ -48,6 +48,12 @@ export const ProjectNameConvention = {
     AssetsContent: ["assets", "content/"],
     AssetsDataShard: (id: string) => ["assets", "content", ...splitId(id)],
     Scripts: ["scripts/"],
+    /**
+     * Author-supplied drawing runtimes for the engine's puppet seam — one directory per backend,
+     * each with an `index.js`. Studio ships none and is not allowed to (card 2026-07-27-002), so
+     * this is where the author puts theirs, the way Ren'Py and TyranoScript ask for an SDK.
+     */
+    PuppetRuntimes: ["runtimes", "puppet/"],
 
     // Editor Related Files
     // These files are not packaged into the product
