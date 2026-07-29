@@ -75,6 +75,7 @@ Workspace/editor 设置：
 
 - 项目身份和元数据：name、identifier、metadata、resolution 等，写 `.nlproj` / legacy `project.json`。
 - 会影响项目运行或导出的内容：story library、story document、UI document、UI graph、asset metadata、scripts。
+- 成品游戏对玩家的行为：`app.autoSave`（自动保存开关 / 间隔 / 保留数量），写 `.nlproj`，由 `bundleAssembler` 烘焙进 bundle 交给游戏运行时。UI 在「项目 → 游戏」。
 - 项目内容内部的业务选择：例如 `editor/story/index.json` 里的 `defaultStoryId`，它是项目 story library 的 convenience 字段。
 
 必须写 `global.json` 的内容：

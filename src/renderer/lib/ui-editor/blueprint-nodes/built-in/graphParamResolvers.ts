@@ -119,6 +119,8 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_END_MODE,
     BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_FADE_DURATION,
     BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LATEST,
+    BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST,
     BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET,
     BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY,
     BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
@@ -2380,6 +2382,20 @@ function resolveSelfOutput(
             portId === "entries" ||
             portId === "isFullscreen" ||
             portId === "count")
+    ) {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
+    // Kept separate from the list above rather than folded into it: `id` is an
+    // *input* pin name on the save nodes there, and only these two publish it as
+    // an output.
+    if (
+        (selfNode.type === BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LATEST) &&
+        (portId === "entries" ||
+            portId === "count" ||
+            portId === "id" ||
+            portId === "hasAutoSave" ||
+            portId === "timestamp")
     ) {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }

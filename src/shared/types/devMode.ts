@@ -2,6 +2,7 @@ import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintDocument, SharedBlueprintAsset } from "./blueprint/document";
 import type { PersistentVariableRuntimeTable } from "./variables/registry";
 import type { GameLocalizationBundle } from "./localization";
+import type { AutoSaveConfiguration } from "./saves";
 import type { GameVoiceBundle } from "./voice";
 import type { UIDocument } from "./ui-editor/document";
 import type { UIGraphDocument } from "./ui-editor/graph";
@@ -182,6 +183,12 @@ export type DevModeBundle = {
      * voice set up.
      */
     voice?: GameVoiceBundle;
+    /**
+     * Automatic saving, baked from `.nlproj` `app.autoSave`. Always present on a
+     * freshly assembled bundle; absent only on ones that predate the feature,
+     * which the game app reads as "the defaults" (autosaving is on by default).
+     */
+    autoSave?: AutoSaveConfiguration;
     scripts?: Record<string, unknown>;
     compiled?: Record<string, unknown>;
     meta?: Record<string, unknown>;

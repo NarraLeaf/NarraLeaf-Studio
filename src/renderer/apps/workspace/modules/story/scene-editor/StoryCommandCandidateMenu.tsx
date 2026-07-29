@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { Hash } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 
@@ -11,8 +13,14 @@ import { useTranslation } from "@/lib/i18n";
  * slot looks like one menu that changes its contents as the caret moves, not three menus.
  */
 
-/** Structurally identical to the rows file's own placement type; declared here to avoid an import cycle. */
-type PopupPlacement = "above" | "below";
+/**
+ * Structurally identical to the rows file's own frame type; declared here to avoid an import cycle.
+ *
+ * `style` is a VIEWPORT-anchored box and the menu portals into it, because the row it belongs to
+ * cannot hold it: every virtualised row wrapper carries a `translateY`, and that transform makes a
+ * stacking context an overhanging `absolute` panel cannot escape — the following rows painted over it.
+ */
+type AnchoredMenuFrame = { placement: "above" | "below"; style: CSSProperties };
 
 export type StoryCandidateItem = {
     /** Stable within one list. Values are not unique on their own (two assets may share a name). */
@@ -77,7 +85,7 @@ export function StoryCommandCandidateMenu(props: {
     onHighlight: (key: string) => void;
     onChoose: (item: StoryCandidateItem) => void;
     onCancel: () => void;
-    placement: PopupPlacement;
+    frame: AnchoredMenuFrame;
 }) {
     const { t } = useTranslation();
     const listRef = useRef<HTMLDivElement | null>(null);
@@ -92,13 +100,11 @@ export function StoryCommandCandidateMenu(props: {
         });
     }, [props.activeKey]);
 
-    return (
+    return createPortal(
         <div
             ref={listRef}
-            className={[
-                "absolute left-0 z-50 max-h-72 w-[320px] overflow-auto rounded-xl border border-edge bg-surface-raised p-1 shadow-xl",
-                props.placement === "above" ? "bottom-full mb-1" : "top-full mt-1",
-            ].join(" ")}
+            className="z-[70] max-h-72 w-[320px] overflow-auto rounded-xl border border-edge bg-surface-raised p-1 shadow-xl"
+            style={props.frame.style}
             role="listbox"
             onMouseDown={event => {
                 // Keep the caret in the slot: the menu is an extension of the line being typed.
@@ -136,6 +142,7 @@ export function StoryCommandCandidateMenu(props: {
                     );
                 })
             )}
-        </div>
+        </div>,
+        globalThis.document.body,
     );
 }

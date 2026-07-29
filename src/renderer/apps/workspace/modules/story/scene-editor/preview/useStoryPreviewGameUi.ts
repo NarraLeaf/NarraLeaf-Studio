@@ -220,6 +220,8 @@ export function useStoryPreviewGameUi(input: {
             listSaveIds: async () => [],
             getSaveMetadata: async () => null,
             getSavePreview: async () => null,
+            writeAutoSaveInGame: notAvailable("Auto Save"),
+            listAutoSaves: async () => [],
             isInGame: () => true,
             quitGame: notAvailable("Quit Game"),
             ...liveGameCallbacks,
