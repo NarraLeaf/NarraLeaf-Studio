@@ -20,6 +20,7 @@ const CONTEXT: StoryCommandContext = {
         { name: "met", ref: { scope: "scene", variableId: "v2" }, valueType: "boolean" },
     ],
     appearanceByCharacterId: { c1: [{ id: "t1", name: "smile" }] },
+    puppetCharacterIds: [],
 };
 
 /** The catalog entry a line resolves to, so a test failure names the message rather than a key. */

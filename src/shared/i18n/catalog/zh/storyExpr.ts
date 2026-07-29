@@ -30,6 +30,7 @@ export const storyExpr = {
         unknownLabel: "本场景中没有名为「{value}」的标签",
         unknownVariable: "没有名为「{value}」的变量",
         unknownForm: "{characterName} 没有「{value}」这个表情",
+        notPuppetCharacter: "{value} 不是由运行时绘制的角色，没有动作或皮肤可设置",
         ambiguousName: "有多个东西叫「{value}」，请重命名其中一个",
         conflictingParams: "{keys} 不能写在同一行，请拆成两行",
         expressionError: "{message}",

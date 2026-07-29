@@ -131,9 +131,17 @@ export function buildStoryCommandContext(input: {
     // tags (across every axis — the engine resolves each against the group that owns it, so the
     // command surface does not have to ask which axis the author meant).
     const appearanceByCharacterId: Record<string, StoryCommandAppearanceRef[]> = {};
+    // A puppet character's differentials are not missing, they do not exist: what it looks like and
+    // what it is doing are named by the model its backend loaded. So it contributes no appearance
+    // refs at all, and instead lands here - which is what lets `/face` keep one slot for all three
+    // appearance kinds and `/motion` / `/skin` refuse the two Studio draws itself.
+    const puppetCharacterIds: string[] = [];
     const characters: StoryCommandNamedRef[] = input.characters.map(character => {
         const id = character.profile.getId();
         const appearance = character.profile.appearance;
+        if (appearance.getKind() === "puppet") {
+            puppetCharacterIds.push(id);
+        }
         appearanceByCharacterId[id] = appearance.getKind() === "preset"
             ? appearance.getPoses().map(pose => ({ id: pose.id, name: pose.name }))
             // Every tag of every axis, flat: the engine resolves a tag against the group that owns
@@ -159,6 +167,7 @@ export function buildStoryCommandContext(input: {
         labels: sceneLabelNames(input.scene),
         variables: variableEntries(input.document, input.scene, input.persistentVariables ?? []),
         appearanceByCharacterId,
+        puppetCharacterIds,
         stageObjects: collectStageObjects(input.document, input.sceneId, input.scene),
     };
 }

@@ -506,6 +506,11 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
             if (payload.operation === "setName") {
                 return `${operation} ${name} → ${payload.displayName || translate("story.describe.unnamed")}`;
             }
+            // A puppet state row's whole content is the name it requests, and the blank case is not a
+            // gap but the meaning: no request, so the model rests.
+            if (payload.operation === "setMotion" || payload.operation === "setSkin" || (payload.operation === "expression" && payload.puppetName !== undefined)) {
+                return `${operation} ${name} → ${payload.puppetName?.trim() || translate("story.describe.puppetNone")}`;
+            }
             return `${operation} ${name}`;
         }
         if (payload.action === "audio") {
