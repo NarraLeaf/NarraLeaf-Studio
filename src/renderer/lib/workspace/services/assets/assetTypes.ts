@@ -6,6 +6,17 @@ export enum AssetType {
     /** Shared blueprint asset (M2); content is {@link import("@shared/types/blueprint/document").SharedBlueprintAsset} JSON */
     Blueprint = "blueprint",
     Font = "font",
+    /**
+     * A **model bundle**: many files that form one authored thing (a Live2D or Spine character),
+     * stored as a directory rather than a single blob.
+     *
+     * The reason it cannot be flattened into per-file assets: a model's manifest references its
+     * siblings by relative path (`Hiyori.2048/texture_00.png`), and the alternative to keeping the
+     * tree is rewriting those manifests - which would mean Studio learning to parse every model
+     * format there is. So the imported tree is preserved verbatim under the asset id, and the entry
+     * file is served from a URL those relative names resolve against.
+     */
+    Model = "model",
     Other = "other",
 }
 
@@ -59,6 +70,47 @@ export type OtherAssetMetadata = {
     size: number;
 };
 
+/**
+ * What reading a model bundle reports. Derived from the directory on disk on every read, like every
+ * other `*AssetMetadata` here - the only thing persisted in the asset record is the author's entry
+ * override (`AssetExtras.modelEntry`), because that is the one value that is a decision rather than
+ * an observation.
+ */
+export type ModelAssetMetadata = {
+    /**
+     * The entry file, relative to the asset root. e.g. "Hiyori.model3.json"
+     *
+     * Empty when neither detection nor an author override could name one. A read still succeeds in
+     * that state - the bundle's files are on disk and intact, the author just has to say which one
+     * is the entry - and it is the inspector's job to show that, not the reader's job to fail.
+     */
+    entry: string;
+    /** Every file in the bundle, relative to the asset root, stable order. */
+    files: string[];
+    /** Total bytes. */
+    size: number;
+};
+
+/**
+ * The "contents" of a model bundle - a listing, not bytes.
+ *
+ * Every other asset type hands back the file's bytes here, but a bundle is tens of megabytes across
+ * dozens of files and nothing in Studio wants all of it in memory: consumers either show a summary
+ * or hand the engine a URL. Bytes are reached through the served entry URL instead.
+ */
+export type ModelBundleContents = {
+    entry: string;
+    /** Same list as {@link ModelAssetMetadata.files}. */
+    files: string[];
+    /** Format guessed from the file tree, for display only. Never parsed from the model itself. */
+    format: import("@shared/utils/modelBundle").ModelBundleFormat;
+    /**
+     * Present when the entry could not be determined from the tree. The record is still valid and
+     * its files are intact - the author simply has to say which file is the entry.
+     */
+    entryUnresolved?: "ambiguous" | "none";
+};
+
 export type AssetData<Type extends AssetType> = Type extends AssetType.Image ? {
     data: Uint8Array;
     metadata: ImageAssetMetadata;
@@ -77,6 +129,9 @@ export type AssetData<Type extends AssetType> = Type extends AssetType.Image ? {
 } : Type extends AssetType.Font ? {
     data: Uint8Array;
     metadata: FontAssetMetadata;
+} : Type extends AssetType.Model ? {
+    data: ModelBundleContents;
+    metadata: ModelAssetMetadata;
 } : Type extends AssetType.Other ? {
     data: Uint8Array;
     metadata: OtherAssetMetadata;
@@ -116,6 +171,18 @@ export const AssetExtensions = {
         "eot",                 // Embedded OpenType (legacy IE but harmless)
         "svg", "otc"           // SVG fonts & OpenType collections (rare but supported)
     ],
+    /**
+     * A model bundle is picked as a *directory*, not by extension, so this list is never handed to a
+     * file dialog (the import path branches to `fs.selectDirectory`). It stays `["*"]` because the
+     * contents of a bundle are whatever the exporting tool wrote - filtering by extension is exactly
+     * the behaviour that would break it.
+     */
+    [AssetType.Model]: ["*"],
     // Allow any file for the Other type
     [AssetType.Other]: ["*"],
 };
+
+/** Whether assets of this type are a directory tree rather than a single file. */
+export function isBundleAssetType(type: AssetType): boolean {
+    return type === AssetType.Model;
+}

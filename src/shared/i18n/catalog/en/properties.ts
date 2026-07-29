@@ -210,6 +210,20 @@ export const properties = {
             schemaValue: "Schema: {schema}",
             noSchema: "No schema",
         },
+        model: {
+            title: "Model Properties",
+            info: "Model Information",
+            entry: "Entry File",
+            entryAuto: "Detected: {entry}",
+            entryUnresolvedNone: "No entry file could be identified. Choose one.",
+            entryUnresolvedAmbiguous: "More than one file could be the entry. Choose one.",
+            files: "Files",
+            fileCount: {
+                one: "{count} file",
+                other: "{count} files",
+            },
+            browse: "Bundle Contents",
+        },
         other: {
             title: "File Properties",
             info: "File Information",

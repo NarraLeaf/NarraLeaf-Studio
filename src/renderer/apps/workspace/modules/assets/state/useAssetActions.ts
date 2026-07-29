@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'react';
 import { Asset, AssetGroup } from '@/lib/workspace/services/assets/types';
-import { AssetExtensions, AssetType } from '@/lib/workspace/services/assets/assetTypes';
+import { AssetExtensions, AssetType, isBundleAssetType } from '@/lib/workspace/services/assets/assetTypes';
 import { runReplaceAssetContentFlow } from '@/lib/workspace/assets/replaceAssetContentFlow';
 import type { ImportQueueController } from './useImportQueue';
 import { WorkspaceContext } from '@/lib/workspace/services/services';
@@ -349,6 +349,14 @@ export function useAssetActions({
                 return;
             }
             paths = expansion.files;
+        } else if (isBundleAssetType(type)) {
+            // A model bundle is authored as a folder and imported as one asset, so the picker asks
+            // for folders. An extension-filtered file dialog cannot express "this whole tree".
+            const selection = await getInterface().fs.selectDirectory(true);
+            if (!selection.success || !selection.data.ok) {
+                return;
+            }
+            paths = selection.data.data;
         } else {
             // Picked here rather than inside the importer so the queue knows the file list up front:
             // it is what "3 of 20" counts against, and what a retry replays.

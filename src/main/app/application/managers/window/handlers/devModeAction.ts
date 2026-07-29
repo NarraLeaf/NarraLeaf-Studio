@@ -172,7 +172,9 @@ function promoteDevModeAssetGrant(window: AppWindow<WindowAppType.DevMode>, url:
     if (parsed.protocol !== `${AppProtocol}:` || parsed.hostname !== AppHost.Fs) {
         return;
     }
-    const hash = parsed.pathname.replace(/^\/+/, "");
+    // Only the first segment is the grant - a model bundle resolves to
+    // `app://fs/{hash}/{entry}`, whose trailing path is a file *inside* the grant.
+    const hash = parsed.pathname.replace(/^\/+/, "").split("/")[0];
     if (!hash) {
         return;
     }

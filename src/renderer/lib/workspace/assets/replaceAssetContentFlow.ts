@@ -1,5 +1,5 @@
 import { getInterface } from "@/lib/app/bridge";
-import { AssetExtensions } from "@/lib/workspace/services/assets/assetTypes";
+import { AssetExtensions, isBundleAssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetSource } from "@/lib/workspace/services/assets/types";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -31,7 +31,11 @@ export async function runReplaceAssetContentFlow(
         return "failed";
     }
 
-    const selection = await getInterface().fs.selectFile(AssetExtensions[asset.type], false);
+    // A bundle is replaced by another folder, not another file: swapping one file inside a model
+    // would leave a tree whose manifest names files from two different exports.
+    const selection = isBundleAssetType(asset.type)
+        ? await getInterface().fs.selectDirectory(false)
+        : await getInterface().fs.selectFile(AssetExtensions[asset.type], false);
     if (!selection.success || !selection.data.ok) {
         return "cancelled";
     }

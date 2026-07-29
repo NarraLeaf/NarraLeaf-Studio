@@ -2,7 +2,7 @@ import { ProjectNameConvention, isValidAssetStorageId } from "@/lib/workspace/pr
 import { RendererError } from "@shared/utils/error";
 import { FileSystemService } from "../../core/FileSystem";
 import { Services, WorkspaceContext } from "../../services";
-import { AssetType } from "../assetTypes";
+import { AssetType, isBundleAssetType } from "../assetTypes";
 import { Asset, AssetExtras, AssetSource, AssetsMap } from "../types";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { AssetsService } from "../../core/AssetsService";
@@ -289,6 +289,7 @@ export class AssetsMetadataManager {
             [AssetType.JSON]: {},
             [AssetType.Blueprint]: {},
             [AssetType.Font]: {},
+            [AssetType.Model]: {},
             [AssetType.Other]: {},
         };
 
@@ -362,6 +363,12 @@ export class AssetsMetadataManager {
         let hasChanges = false;
 
         for (const type of Object.values(AssetType)) {
+            // A model bundle is a directory: it has no extension, and deriving one from its display
+            // name would invent `ext: "2048"` for a folder called `Hiyori.2048` and then mark the
+            // shard dirty on every single open trying to re-apply it.
+            if (isBundleAssetType(type)) {
+                continue;
+            }
             for (const asset of Object.values(data[type])) {
                 if (asset && asset.ext === undefined) {
                     // Extract extension from filename
