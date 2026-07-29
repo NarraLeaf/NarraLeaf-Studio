@@ -35,6 +35,7 @@ import { VariableRegistryService } from "./variables/VariableRegistryService";
 import { SaveStatusService } from "./autosave/SaveStatusService";
 import { VersionControlService } from "./core/VersionControlService";
 import { WorkspaceFreezeService } from "./core/WorkspaceFreezeService";
+import { PuppetDescriptionService } from "./puppet/PuppetDescriptionService";
 
 export class ServiceRegistry {
     private services: Record<Services, Service> = {
@@ -49,6 +50,7 @@ export class ServiceRegistry {
         [Services.RecentColors]: RecentColorsService.getInstance(),
         [Services.Story]: StoryService.getInstance(),
         [Services.Character]: CharacterService.getInstance(),
+        [Services.PuppetDescription]: PuppetDescriptionService.getInstance(),
         [Services.UIDocument]: UIDocumentService.getInstance(),
         [Services.RuntimeBridge]: UIRuntimeBridgeService.getInstance(),
         [Services.UIEditorState]: UIEditorStateService.getInstance(),
