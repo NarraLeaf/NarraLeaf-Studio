@@ -15,7 +15,7 @@ import type { DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/dev
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import type { PrivilegedActor } from "@shared/types/privileged";
-import type { RevisionId, VcsAvailability, VcsHistoryEntry, VcsInitOptions, VcsRepositoryInfo, VcsStatus, VcsThreeWayResult } from "@shared/types/vcs";
+import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsHistoryEntry, VcsInitOptions, VcsRepositoryInfo, VcsStatus, VcsThreeWayResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
@@ -315,8 +315,9 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     },
 
     /**
-     * Version control. Reads plus `initRepository`, which is the one write that
-     * cannot wait for the resolve UI - it is how a project gets a repository at all.
+     * Version control. Reads, plus the writes that produce a revision: `initRepository`,
+     * `commit` and `checkpoint`. The writes that need a conflict story - merge, restore -
+     * are still deliberately absent.
      * Blobs arrive base64-encoded - decode at the call site that needs bytes.
      */
     vcs: {
@@ -336,8 +337,18 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
          */
         getStatus: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.vcsGetStatus, { projectPath }) as Promise<RequestStatus<VcsStatus>>,
-        getHistory: (projectPath: string, limit?: number) =>
-            ipcClient.invoke(IPCEventType.vcsGetHistory, { projectPath, limit }) as Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>>,
+        /**
+         * Flushes the renderer's pending saves, stages, commits, and forces Lore's
+         * stores to disk before answering. Slow by nature; await it and show the error.
+         */
+        commit: (projectPath: string, options?: VcsCommitOptions) =>
+            ipcClient.invoke(IPCEventType.vcsCommit, { projectPath, options }) as Promise<RequestStatus<VcsCommitResult>>,
+        /** Same pipeline, labelled a checkpoint. `revision: null` = nothing to record. */
+        checkpoint: (projectPath: string, reason: VcsCheckpointReason) =>
+            ipcClient.invoke(IPCEventType.vcsCheckpoint, { projectPath, reason }) as Promise<RequestStatus<{ revision: VcsCommitResult | null }>>,
+        /** `includeKinds` costs one call per revision; leave it off unless the kinds are shown. */
+        getHistory: (projectPath: string, limit?: number, includeKinds?: boolean) =>
+            ipcClient.invoke(IPCEventType.vcsGetHistory, { projectPath, limit, includeKinds }) as Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>>,
         readBlob: (projectPath: string, revision: RevisionId, path: string) =>
             ipcClient.invoke(IPCEventType.vcsReadBlob, { projectPath, revision, path }) as Promise<RequestStatus<{ contentBase64: string }>>,
         getChangedPaths: (projectPath: string, from: RevisionId, to: RevisionId) =>

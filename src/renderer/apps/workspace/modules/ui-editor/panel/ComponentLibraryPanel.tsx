@@ -8,6 +8,7 @@ import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { ContextMenu, type ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
 import { useTranslation } from "@/lib/i18n";
+import { useFreezeGuard } from "../../../components/ui/freezeGuard";
 
 type ComponentLibraryPanelProps = {
     documentService: UIDocumentService | null;
@@ -74,6 +75,9 @@ export function ComponentLibraryPanel({
     onOpenComponent,
 }: ComponentLibraryPanelProps) {
     const { t, tn } = useTranslation();
+    // The library is browsable while frozen - search, previews, opening a component for reading - and
+    // only creating, renaming, duplicating and deleting are off.
+    const freeze = useFreezeGuard();
     const panelRef = useRef<HTMLDivElement | null>(null);
     const [open, setOpen] = useState(true);
     const [components, setComponents] = useState<UIComponentDefinition[]>([]);
@@ -240,7 +244,7 @@ export function ComponentLibraryPanel({
                 {
                     id: "rename",
                     label: t("uiEditor.componentLibrary.rename"),
-                    disabled: activeIds.length !== 1,
+                    ...freeze.menuRow(activeIds.length !== 1),
                     onClick: () => {
                         hideMenu();
                         void handleRename(component);
@@ -249,6 +253,7 @@ export function ComponentLibraryPanel({
                 {
                     id: "duplicate",
                     label: activeIds.length > 1 ? t("uiEditor.componentLibrary.duplicateSelected") : t("common.duplicate"),
+                    ...freeze.menuRow(),
                     onClick: () => {
                         hideMenu();
                         handleDuplicate(activeIds);
@@ -258,6 +263,7 @@ export function ComponentLibraryPanel({
                 {
                     id: "delete",
                     label: activeIds.length > 1 ? t("uiEditor.componentLibrary.deleteSelected") : t("common.delete"),
+                    ...freeze.menuRow(),
                     onClick: () => {
                         hideMenu();
                         void handleDelete(activeIds);
@@ -267,7 +273,7 @@ export function ComponentLibraryPanel({
             setMenuItems(items);
             showMenu(event);
         },
-        [handleDelete, handleDuplicate, handleRename, hideMenu, onOpenComponent, selectedIds, showMenu, t],
+        [freeze, handleDelete, handleDuplicate, handleRename, hideMenu, onOpenComponent, selectedIds, showMenu, t],
     );
 
     const selectedCount = selectedIds.size;
@@ -310,7 +316,7 @@ export function ComponentLibraryPanel({
                             type="button"
                             className="grid h-8 w-8 place-items-center rounded-md border border-edge text-fg-muted hover:bg-fill hover:text-fg"
                             onClick={() => void handleCreate()}
-                            title={t("uiEditor.componentLibrary.createComponent")}
+                            {...freeze.writes(false, t("uiEditor.componentLibrary.createComponent"))}
                             aria-label={t("uiEditor.componentLibrary.createComponent")}
                         >
                             <Plus className="h-4 w-4" />
@@ -324,7 +330,7 @@ export function ComponentLibraryPanel({
                                 type="button"
                                 className="grid h-7 w-7 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-fg"
                                 onClick={() => handleDuplicate([...selectedIds])}
-                                title={t("uiEditor.componentLibrary.duplicateSelected")}
+                                {...freeze.writes(false, t("uiEditor.componentLibrary.duplicateSelected"))}
                                 aria-label={t("uiEditor.componentLibrary.duplicateSelected")}
                             >
                                 <Copy className="h-3.5 w-3.5" />
@@ -333,7 +339,7 @@ export function ComponentLibraryPanel({
                                 type="button"
                                 className="grid h-7 w-7 place-items-center rounded-md text-danger hover:bg-danger/15"
                                 onClick={() => void handleDelete([...selectedIds])}
-                                title={t("uiEditor.componentLibrary.deleteSelected")}
+                                {...freeze.writes(false, t("uiEditor.componentLibrary.deleteSelected"))}
                                 aria-label={t("uiEditor.componentLibrary.deleteSelected")}
                             >
                                 <Trash2 className="h-3.5 w-3.5" />

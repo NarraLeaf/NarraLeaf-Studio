@@ -174,8 +174,50 @@ export class CharacterService extends Service<CharacterService> implements IChar
         await this.flush();
     }
 
+    /**
+     * Throw away the cast held in memory and read the character store back off the disk.
+     *
+     * A participant of `WorkspaceReloadService`. This service does not use the shared
+     * {@link DebouncedSaver}, so the reload orchestrator cannot drop its debt for it - the 300ms
+     * timer and the dirty flag are cleared here, before the read, because a character created while
+     * writes were refused must not ride the next save to disk.
+     *
+     * {@link loadCharacters} merges rather than replaces (it is only ever called on a fresh service),
+     * so the reset is this method's job: without it a character deleted on disk would come back, and
+     * its asset locks would be held twice.
+     */
+    public async reloadFromDisk(): Promise<void> {
+        if (this.saveTimer) {
+            clearTimeout(this.saveTimer);
+            this.saveTimer = null;
+        }
+        this.dirty = false;
+
+        // Read before dropping anything: a store that cannot be read leaves the cast as it was.
+        const store = await this.getServiceAssetsService().readStore<CharacterStore>(CharacterService.Namespace);
+
+        for (const character of this.listCharacter()) {
+            this.unlockCharacterAssets(character);
+        }
+        for (const id of [...this.characterOrder]) {
+            delete this.characters[id];
+        }
+        this.characterOrder.length = 0;
+        for (const id of Object.keys(this.groups)) {
+            delete this.groups[id];
+        }
+
+        this.applyCharacterStore(store);
+        this.emitChange();
+    }
+
     private async loadCharacters(): Promise<void> {
         const store = await this.getServiceAssetsService().readStore<CharacterStore>(CharacterService.Namespace);
+        this.applyCharacterStore(store);
+    }
+
+    /** Register everything a read store contains. Shared by the first load and by a working-tree reload. */
+    private applyCharacterStore(store: FsRequestResult<CharacterStore>): void {
         if (!store.ok) {
             return;
         }
