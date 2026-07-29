@@ -14,6 +14,15 @@ import type {
     VoiceLocaleEntry,
 } from "@shared/types/voice";
 import type { ProjectDependencyResolution, ProjectDependencyTable } from "@shared/types/pluginDependencies";
+import type {
+    RevisionId,
+    VcsAvailability,
+    VcsFileChange,
+    VcsHistoryEntry,
+    VcsInitOptions,
+    VcsRepositoryInfo,
+    VcsStatus,
+} from "@shared/types/vcs";
 import { Asset, AssetsMap, AssetSource } from "./assets/types";
 import { ServiceRegistry } from "./serviceRegistry";
 import { AssetData, AssetType } from "./assets/assetTypes";
@@ -162,7 +171,8 @@ enum Services {
     // Debug = "debug",
     Localization = "localization",
     Voice = "voice",
-    // VersionControl = "versionControl",
+    /** Repository state for this project: availability, status snapshot, history */
+    VersionControl = "versionControl",
     // Plugin = "plugin",
 }
 
@@ -917,7 +927,28 @@ interface IVoiceService extends IService {
     flushPendingChanges(): Promise<void>;
 }
 
-interface IVersionControlService extends IService { }
+/**
+ * Version control, scoped to this window's project. `getAvailability` first - the
+ * feature is optional and absent on macOS Intel / Windows ARM64 - and nothing here is
+ * safe to poll: the scan behind `refreshStatus` writes staged state.
+ */
+interface IVersionControlService extends IService {
+    getAvailability(): Promise<VcsAvailability>;
+    isRepository(): Promise<boolean>;
+    getInfo(): Promise<VcsRepositoryInfo | null>;
+    getHistory(limit?: number): Promise<VcsHistoryEntry[]>;
+    readBlob(revision: RevisionId, path: string): Promise<Uint8Array>;
+    getChangedPaths(from: RevisionId, to: RevisionId): Promise<string[]>;
+    initRepository(options?: VcsInitOptions): Promise<VcsRepositoryInfo>;
+    /** Scans. Only ever from an explicit request; see VersionControlService. */
+    refreshStatus(): Promise<VcsStatus | null>;
+    /** The last scan's snapshot, without scanning. */
+    getStatus(): VcsStatus | null;
+    /** The snapshot's files with directories dropped; `counts` stays as reported. */
+    getChangedFiles(): VcsFileChange[];
+    invalidateHistory(): void;
+    onStatusChanged(handler: (status: VcsStatus | null) => void): () => void;
+}
 
 // Plugin Services
 interface IPluginService extends IService { }
