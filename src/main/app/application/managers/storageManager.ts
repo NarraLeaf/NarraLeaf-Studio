@@ -461,6 +461,10 @@ export class StorageManager extends Manager {
         return [
             path.join(this.app.getUserDataDir(), UserDataNamespace.Authorization),
             path.join(this.app.getUserDataDir(), UserDataNamespace.Plugins),
+            // Signing credentials: sealed passwords and imported private keys.
+            // Reachable only through the signing IPC surface, which never hands
+            // back a secret - the file-system facade must not be a way around it.
+            path.join(this.app.getUserDataDir(), UserDataNamespace.Signing),
             this.app.getBuiltInPluginsDir(),
         ];
     }
