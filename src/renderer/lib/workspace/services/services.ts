@@ -23,6 +23,7 @@ import type {
     VcsRepositoryInfo,
     VcsStatus,
 } from "@shared/types/vcs";
+import type { WorkspaceFreezeReason } from "../../app/writeFreeze";
 import { Asset, AssetsMap, AssetSource } from "./assets/types";
 import { ServiceRegistry } from "./serviceRegistry";
 import { AssetData, AssetType } from "./assets/assetTypes";
@@ -173,6 +174,8 @@ enum Services {
     Voice = "voice",
     /** Repository state for this project: availability, status snapshot, history */
     VersionControl = "versionControl",
+    /** Whether project data may be written at all, and why not - the write-boundary freeze */
+    WorkspaceFreeze = "workspaceFreeze",
     // Plugin = "plugin",
 }
 
@@ -950,6 +953,20 @@ interface IVersionControlService extends IService {
     onStatusChanged(handler: (status: VcsStatus | null) => void): () => void;
 }
 
+/**
+ * The workspace-wide "may project data be written?" latch. Enforced at the write boundary, not by
+ * the components - see WorkspaceFreezeService. Session-only; never persisted.
+ */
+interface IWorkspaceFreezeService extends IService {
+    /** Flushes what is owed, then stops project-data writes. */
+    freeze(reason: WorkspaceFreezeReason): Promise<void>;
+    thaw(): void;
+    isFrozen(): boolean;
+    /** Why the workspace is frozen, or null when it is not. */
+    getReason(): WorkspaceFreezeReason | null;
+    onChanged(handler: (reason: WorkspaceFreezeReason | null) => void): () => void;
+}
+
 // Plugin Services
 interface IPluginService extends IService { }
 
@@ -968,7 +985,7 @@ export {
     IEditorService, IFileSystemService, IFontService, ILocalizationService, ILoggerService,
     IGlobalSettingsService, IPluginService, IPreviewService, IProjectService, IRuntimeService,
     IService, IServiceAssetsService, IPanelStateService, IStorageService, IStoryService,
-    ITextureService, IUIService, IUuidService, IVersionControlService, IVideoService,
+    ITextureService, IUIService, IUuidService, IVersionControlService, IWorkspaceFreezeService, IVideoService,
     ICharacterService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, IConsoleService, UIEditorStateEvents,
     IProjectDependencyService, IVoiceService, IVariableRegistryService,
