@@ -95,11 +95,30 @@ UI 只读只负责 affordance（别给假的可点按钮）。**正确性由写�
 
 | # | 里程碑 | 依赖 | 产出 |
 |---|---|---|---|
-| **V6a** | 渲染框架 | V2 之外全部 | ✅ 已落地 `ce259898` |
-| **U1** | 冻结机制 | V6a | 写边界 latch（判据 = `isVersioned`）+ 三处旁路写堵住 + 一个最小入口（哪怕只冻到 HEAD），使其从第一天可验收 |
+| **V6a** | 渲染框架 | V2 之外全部 | ✅ 落地 `ce259898` |
+| **U1a** | 冻结的写边界 | V6a | ✅ 落地：闸门在 `createBoundPrivilegedFacade` + `BaseFileSystemService`，判据 = `isVersioned`；命令面板入口 |
+| **U1a′** | Studio 状态搬出版本库 | U1a | ✅ 落地：`panel_state` / `notification_history` / `recent_colors` → `.nlstudio/services/`，分类表 `shared/vcs/serviceStores.ts`，`character` 与插件 store 留在版本库 |
+| **U1b-顶栏** | 顶栏 affordance | U1a | ✅ 落地：注册项渲染但禁用，File/Help 豁免；命令面板套同一张表（否则灰按钮仍能被搜到运行） |
+| **U1c** | 解冻重载 | U1a | ✅ 落地：`WorkspaceReloadService`，参与者静态表；reload 期间另一道静默 hold；丢弃欠账而非补写；清撤销栈 |
+| **V2** | 提交与检查点 | V1, U1c | ✅ 落地：管线 flush→stage→**标记**→commit→flush；检查点由 `observeWrites` 驱动（**绝不扫描**）；`versionControl.checkpointIntervalMinutes`（默认 15，0=关） |
+| **U1b-编辑区** | 编辑区只读 | U1a | 进行中：创建流程、直接操作手势、属性与文本、删除与导入 |
 | **U2** | 入口 | U1 | 顶栏版本控件 + 状态栏位；「启用版本控制」进项目设置与新建向导 |
 | **U3** | 版本轨道 | U2, V2 | 轨道面板、线性历史、变更清单、提交 |
-| **U4** | 冻结下的 Dev Mode | U1 | 把聚焦版本物化到工作集之外的快照目录，指向它编译 |
+| **U4** | 冻结下的 Dev Mode | U1c | 把聚焦版本物化到工作集之外的快照目录，指向它编译 |
+
+### 4.2 V2 之后新增的两条实测（细节在 version-control.md §4.21 / §4.22）
+
+- **`revisionMetadataSet` 写的是暂存修订，不是 HEAD**，而且**没东西暂存时它不报错、会贴到下一次提交上**。
+  所以标记必须在 commit **之前**打，且打之前要先确认有东西可提交（用 `scan:false` 的纯读，不能引入扫描）。
+- **`repositoryFlush` 会等满 store 的 keep-alive 窗口**，与要落盘多少东西无关。默认 10 秒意味着**每次提交
+  10 秒**；`storeKeepAliveSeconds: 1` 把它压到 1 秒，代价是 blob 读突发之间的 store 复用窗口变短（远大于
+  突发内的间隔，可接受）。只给 flush 那一次传 `storeKeepAlive:false` **无效**——等待属于之前那些读。
+
+### 4.3 已知缺口
+
+- **Cmd+Q 跳过「关闭项目前的检查点」**。检查点挂在关闭工作区的请求上，而不是退出应用的 flush 上：
+  那条路有 20 秒硬上限用于有界收尾，而一次提交在大工程上没有上界（stage 要遍历整棵资产树）。
+  工作本身不会丢（退出前的保存 flush 照旧），丢的只是「最后那段进了一个修订」。
 
 U1 单独完工时作者看不见任何东西，所以入口是 U1 的一部分而不是 U2 的——否则冻结要攒到 U2 才
 第一次被真正跑到，而验收要求是亲眼看。

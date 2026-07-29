@@ -52,6 +52,7 @@ import {
     type BlueprintDragConnectEnablement,
     type BlueprintDragConnectSource,
 } from "@/lib/workspace/services/ui-editor/blueprint/blueprintDragConnect";
+import { useFreezeGuard } from "../../../components/ui/freezeGuard";
 import { blueprintFlowNodeTypes } from "./nodeTypes";
 import {
     applyBlueprintFlowNodeSelection,
@@ -324,6 +325,11 @@ function BlueprintFlowCanvasInner({
     // resolves to whichever mounted first. Colons would break React Flow's own
     // querySelector lookups for handles, so strip them out of useId's output.
     const flowId = useId().replace(/:/g, "");
+    // A frozen workspace makes the canvas' four mutating gestures inert - node drag, pin connect,
+    // right-click-to-add, Delete - and leaves selection, panning, zoom and the minimap exactly as they
+    // were. There is nothing to grey out on a drag, so the only honest affordance is that it never
+    // starts; see `components/ui/freezeGuard`.
+    const freeze = useFreezeGuard();
     const { getNodes, screenToFlowPosition, fitView, getViewport, setViewport } = useReactFlow();
     const [nodes, setNodes, onNodesChange] = useNodesState<Node<BlueprintFlowNodeData>>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -1159,10 +1165,20 @@ function BlueprintFlowCanvasInner({
                 onNodeDragStart={onNodeDragStart}
                 onNodeDragStop={onNodeDragStop}
                 onEdgesDelete={onEdgesDelete}
-                onEdgeDoubleClick={onEdgeDoubleClick}
+                // Double-clicking an edge deletes it, so it goes with the rest of the write gestures.
+                onEdgeDoubleClick={freeze.gesture(onEdgeDoubleClick)}
                 onNodesDelete={onNodesDelete}
-                onPaneContextMenu={onPaneContextMenu}
+                // The pane menu is a creation flow: right-click, pick a type, a ghost follows the
+                // cursor, click places the node. Withheld whole rather than refused at the placement
+                // click, so a frozen project never gets as far as showing a ghost it will discard.
+                onPaneContextMenu={freeze.gesture(onPaneContextMenu)}
                 onPaneClick={onPaneClick}
+                // Selection stays on - reading a frozen graph is the point - so only the two gestures
+                // that change it are switched off. React Flow keeps the handles drawn either way, so
+                // the pins the author is inspecting still look like pins.
+                nodesDraggable={!freeze.frozen}
+                nodesConnectable={!freeze.frozen}
+                deleteKeyCode={freeze.frozen ? null : deleteKeyCode ?? null}
                 onNodeClick={onPlacementPreviewNodeClick}
                 onSelectionChange={onSelectionChange}
                 selectionOnDrag={!pendingPlacementEntry}
@@ -1183,7 +1199,6 @@ function BlueprintFlowCanvasInner({
                 id={flowId}
                 className="narraleaf-blueprint-flow bg-surface"
                 proOptions={{ hideAttribution: true }}
-                deleteKeyCode={deleteKeyCode ?? null}
                 edgesReconnectable={false}
                 edgesFocusable
                 elevateEdgesOnSelect

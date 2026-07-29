@@ -315,7 +315,8 @@ export const workspace = {
             frozenDetailRevision: "You are looking at version {version}. Your project files are left untouched until you go back to the current version.",
             frozenDetailManual: "The workspace is frozen, so changes are not written to your project. Unfreeze it to start saving again.",
             consoleFrozen: "write refused, workspace frozen ({reason}): {path}",
-            // Names for the things that auto-save, used when a flush fails.
+            // Names for the things that hold project data - used when a flush fails, and again when a
+            // working-tree re-read cannot reach one of them.
             stores: {
                 uiDocument: "interface document",
                 uiGraph: "interface blueprints",
@@ -324,7 +325,18 @@ export const workspace = {
                 voice: "voice library",
                 variables: "variable registry",
                 characters: "characters",
+                project: "project settings",
+                assets: "asset library",
             },
+        },
+        // Re-reading the working tree: the bytes on disk stopped being what the editors show (leaving a
+        // freeze, restoring a version). The author should normally see nothing at all - this only
+        // speaks up when part of it could not be read back, because that is when a panel is stale.
+        reload: {
+            failedTitle: "The project was not fully reloaded",
+            failedDetail: "These are still showing what they had before: {stores}. Reopen the project to read them again.",
+            console: "re-read the project from disk ({cause}): {count} of them",
+            consoleFailed: "could not re-read {label}: {error}",
         },
         // Freezing the workspace: project data stops being written, editor state carries on. Named
         // for what the author gets ("stop saving"), not for the mechanism.

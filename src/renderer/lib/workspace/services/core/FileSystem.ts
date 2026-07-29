@@ -5,7 +5,7 @@ import { Service } from "../Service";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { AppHost, AppProtocol } from "@shared/types/constants";
 import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
-import { refuseFrozenWrite } from "@/lib/app/writeFreeze";
+import { refuseFrozenWrite, refuseReloadingWrite } from "@/lib/app/writeFreeze";
 import { getInterface } from "@/lib/app/bridge";
 
 /**
@@ -34,6 +34,13 @@ const writeObservers = new Set<(outcome: FsWriteOutcome) => void>();
  * (`observeRefusedWrites`) instead, which is what lets the notice say *frozen* rather than *failed*.
  *
  * See `frozenNoOp` in the privileged facade for why a refusal is not an error.
+ *
+ * The same answer covers a write refused because the working tree is being re-read
+ * (`refuseReloadingWrite`). That hold is enforced here and not in the privileged facade because the
+ * only writes a reload can produce come from a document service's load path, and every one of those
+ * goes through this class - `RendererDocumentStorage`, the asset shards, the service stores. The
+ * facade's direct writers (asset import, project settings) are author actions, and a reload does not
+ * perform them.
  */
 const FROZEN_NO_OP: FsRequestResult<void> = { ok: true, data: undefined };
 
@@ -97,28 +104,28 @@ export class BaseFileSystemService {
     }
 
     public static async write(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
-        if (refuseFrozenWrite(path)) {
+        if (refuseFrozenWrite(path) || refuseReloadingWrite(path)) {
             return FROZEN_NO_OP;
         }
         return reportWriteOutcome(path, await this.put(path, data, encoding));
     }
 
     public static async writeRaw(path: string, data: Uint8Array): Promise<FsRequestResult<void>> {
-        if (refuseFrozenWrite(path)) {
+        if (refuseFrozenWrite(path) || refuseReloadingWrite(path)) {
             return FROZEN_NO_OP;
         }
         return reportWriteOutcome(path, await this.putRaw(path, data));
     }
 
     public static async ensureRegularFile(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
-        if (refuseFrozenWrite(path)) {
+        if (refuseFrozenWrite(path) || refuseReloadingWrite(path)) {
             return FROZEN_NO_OP;
         }
         return reportWriteOutcome(path, this.wrapIPCError(await appPrivilegedFacade.fs.ensureRegularFile(path, data, encoding)));
     }
 
     public static async writeFileNoFollow(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
-        if (refuseFrozenWrite(path)) {
+        if (refuseFrozenWrite(path) || refuseReloadingWrite(path)) {
             return FROZEN_NO_OP;
         }
         return reportWriteOutcome(path, this.wrapIPCError(await appPrivilegedFacade.fs.writeFileNoFollow(path, data, encoding)));

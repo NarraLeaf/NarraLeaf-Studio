@@ -17,6 +17,9 @@ import type { ProjectDependencyResolution, ProjectDependencyTable } from "@share
 import type {
     RevisionId,
     VcsAvailability,
+    VcsCheckpointReason,
+    VcsCommitOptions,
+    VcsCommitResult,
     VcsFileChange,
     VcsHistoryEntry,
     VcsInitOptions,
@@ -24,6 +27,7 @@ import type {
     VcsStatus,
 } from "@shared/types/vcs";
 import type { WorkspaceFreezeReason } from "../../app/writeFreeze";
+import type { WorkspaceReloadCause, WorkspaceReloadResult } from "./core/WorkspaceReloadService";
 import { Asset, AssetsMap, AssetSource } from "./assets/types";
 import { ServiceRegistry } from "./serviceRegistry";
 import { AssetData, AssetType } from "./assets/assetTypes";
@@ -180,6 +184,8 @@ enum Services {
     VersionControl = "versionControl",
     /** Whether project data may be written at all, and why not - the write-boundary freeze */
     WorkspaceFreeze = "workspaceFreeze",
+    /** "The working tree changed under the editors": drops in-memory documents and re-reads them */
+    WorkspaceReload = "workspaceReload",
     // Plugin = "plugin",
 }
 
@@ -961,10 +967,15 @@ interface IVersionControlService extends IService {
     getAvailability(): Promise<VcsAvailability>;
     isRepository(): Promise<boolean>;
     getInfo(): Promise<VcsRepositoryInfo | null>;
-    getHistory(limit?: number): Promise<VcsHistoryEntry[]>;
+    /** `includeKinds` costs one backend call per revision; leave it off unless kinds are shown. */
+    getHistory(limit?: number, options?: { includeKinds?: boolean }): Promise<VcsHistoryEntry[]>;
     readBlob(revision: RevisionId, path: string): Promise<Uint8Array>;
     getChangedPaths(from: RevisionId, to: RevisionId): Promise<string[]>;
     initRepository(options?: VcsInitOptions): Promise<VcsRepositoryInfo>;
+    /** Flushes pending saves, stages, commits, and waits for durability. Throws on failure. */
+    commit(options?: VcsCommitOptions): Promise<VcsCommitResult>;
+    /** Same pipeline, labelled a checkpoint. Null when there was nothing to record. */
+    createCheckpoint(reason: VcsCheckpointReason): Promise<VcsCommitResult | null>;
     /** Scans. Only ever from an explicit request; see VersionControlService. */
     refreshStatus(): Promise<VcsStatus | null>;
     /** The last scan's snapshot, without scanning. */
@@ -989,6 +1000,19 @@ interface IWorkspaceFreezeService extends IService {
     onChanged(handler: (reason: WorkspaceFreezeReason | null) => void): () => void;
 }
 
+/**
+ * "The working tree is no longer what the editors are showing." Drops every in-memory document and
+ * re-reads it, with project writes held off for the whole pass. Thaw is the first caller, restore
+ * (`vcs:working-tree-changed`) the second - see WorkspaceReloadService, whose participant table is
+ * the single place that names everything taking part.
+ */
+interface IWorkspaceReloadService extends IService {
+    reload(cause: WorkspaceReloadCause): Promise<WorkspaceReloadResult>;
+    /** Bumped once per reload; the editor area keys its tabs on it so each re-resolves its subject. */
+    getGeneration(): number;
+    onReloaded(handler: (result: WorkspaceReloadResult) => void): () => void;
+}
+
 // Plugin Services
 interface IPluginService extends IService { }
 
@@ -1007,7 +1031,8 @@ export {
     IEditorService, IFileSystemService, IFontService, ILocalizationService, ILoggerService,
     IGlobalSettingsService, IPluginService, IPreviewService, IProjectService, IRuntimeService,
     IService, IServiceAssetsService, IPanelStateService, IStorageService, IStoryService,
-    ITextureService, IUIService, IUuidService, IVersionControlService, IWorkspaceFreezeService, IVideoService,
+    ITextureService, IUIService, IUuidService, IVersionControlService, IWorkspaceFreezeService,
+    IWorkspaceReloadService, IVideoService,
     ICharacterService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, IConsoleService, UIEditorStateEvents,
     IProjectDependencyService, IVoiceService, IVariableRegistryService, IPuppetDescriptionService,

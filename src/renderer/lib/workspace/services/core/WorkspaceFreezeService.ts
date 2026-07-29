@@ -8,6 +8,9 @@ import {
 import { Service } from "../Service";
 import { Services, type IWorkspaceFreezeService, type WorkspaceContext } from "../services";
 import { SaveStatusService } from "../autosave/SaveStatusService";
+// Type-only: the instance comes from the registry. A value import would put the service that reloads
+// every document into the import graph of the one every document write already consults.
+import type { WorkspaceReloadService } from "./WorkspaceReloadService";
 import { EventEmitter } from "../ui/EventEmitter";
 
 type WorkspaceFreezeEvents = {
@@ -37,8 +40,13 @@ export class WorkspaceFreezeService extends Service<WorkspaceFreezeService> impl
     private unobserve: (() => void) | null = null;
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
-        // Freezing flushes what is owed first, so the saver registry has to be up.
-        await depend([ctx.services.get<SaveStatusService>(Services.SaveStatus)]);
+        // Freezing flushes what is owed first, so the saver registry has to be up; thawing re-reads
+        // the working tree, so the reload service has to be too - `thaw` is called from a click and
+        // cannot wait for a service to come up.
+        await depend([
+            ctx.services.get<SaveStatusService>(Services.SaveStatus),
+            ctx.services.get<WorkspaceReloadService>(Services.WorkspaceReload),
+        ]);
 
         // A project switch re-runs init on the same singleton, and the latch is module-level: a
         // freeze armed for the project that just closed would otherwise refuse writes for the one
@@ -69,21 +77,39 @@ export class WorkspaceFreezeService extends Service<WorkspaceFreezeService> impl
     }
 
     /**
-     * Let project data be written again.
+     * Let project data be written again, and re-read it from disk.
      *
-     * **Thaw does not yet reload anything, and the milestone that shows a past revision cannot ship
-     * until it does.** A refused write is a no-op, so the service that tried it keeps the value in
-     * memory - measured in the running app: a scene created while frozen never reached disk, and
-     * then rode the next successful save there after thawing. Harmless for a manual freeze, where
-     * memory holds the author's own work. Fatal for browsing history, where memory would hold a
-     * PAST revision and the first save after leaving would write it over the working tree - the loss
-     * this gate exists to prevent, arriving one step later.
+     * The reload is not a nicety. A refused write is a no-op, so the service that tried it keeps the
+     * value in memory - measured in the running app: a scene created while frozen never reached disk,
+     * and then rode the next successful save there after thawing. Harmless for a manual freeze, where
+     * memory holds the author's own work. Fatal for browsing history, where memory holds a PAST
+     * revision and the first save after leaving would write it over the working tree - the loss this
+     * gate exists to prevent, arriving one step later. So leaving a freeze drops every in-memory
+     * document and reads the working tree again; `WorkspaceReloadService` is the same signal restore
+     * uses, for the same reason.
      *
-     * The fix is the same one the plan already books for restore: drop in-memory documents and
-     * re-read from disk when the working tree stops being what the editors are showing.
+     * Void rather than async, because this is called straight from UI handlers (the command palette,
+     * the version rail) and a click has nothing to await. The ordering that matters is not the
+     * caller's: writes stay refused from here until the reload has finished, held by the reload
+     * itself, so nothing can be written from pre-thaw memory in between.
      */
     public thaw(): void {
+        if (!this.isFrozen()) {
+            // Nothing was refused, so nothing is holding a value the disk has not got. Re-reading
+            // anyway would drop the undo stacks and remount every editor tab for no reason.
+            return;
+        }
+        const reload = this.getContext().services.get<WorkspaceReloadService>(Services.WorkspaceReload);
+        // Arm the hold before the latch comes off, so the two refusals meet with no gap. Ordered the
+        // other way round, an auto-save timer landing in between is exactly the write this prevents.
+        const reloading = reload.reload("thaw");
         thawProjectWrites();
+        void reloading.catch(error => {
+            // `reload` collects per-participant failures rather than throwing, so reaching here means
+            // the machinery itself broke. The workspace is writable either way, which is why this is
+            // logged and not rethrown into a click handler.
+            console.warn("[WorkspaceFreeze] the post-thaw reload failed", error);
+        });
     }
 
     public isFrozen(): boolean {
