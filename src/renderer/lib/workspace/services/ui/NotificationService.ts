@@ -1,4 +1,5 @@
 import { UIStore } from "./UIStore";
+import type { StudioStateStoreNamespace } from "@shared/vcs/serviceStores";
 import type { ServiceAssetsService } from "../core/ServiceAssetsService";
 import {
     Notification,
@@ -7,8 +8,14 @@ import {
     NotificationAction,
 } from "./types";
 
-/** Per-project store namespace and payload shape for the persisted history. */
-const HISTORY_STORE_NAMESPACE = "notification_history";
+/**
+ * Per-project store namespace and payload shape for the persisted history.
+ *
+ * Studio state, not project content: this is a log of what Studio told this author on this machine,
+ * so it lives in `.nlstudio/services/` and stays out of version control. The annotation is what
+ * binds the name to that classification (`@shared/vcs/serviceStores`).
+ */
+const HISTORY_STORE_NAMESPACE: StudioStateStoreNamespace = "notification_history";
 // v2 added the per-entry `read` flag. v1 payloads are still read (see seedHistory) so an upgrade
 // keeps the user's history; their entries are treated as already read.
 const HISTORY_STORE_VERSION = 2;
