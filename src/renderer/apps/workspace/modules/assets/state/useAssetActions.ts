@@ -12,6 +12,7 @@ import { InputDialog } from '@/lib/components/dialogs/InputDialog';
 import { ClipboardState } from './useClipboard';
 import { getInterface } from '@/lib/app/bridge';
 import { useTranslation } from '@/lib/i18n';
+import { useFreezeGuard } from '@/apps/workspace/components/ui/freezeGuard';
 import type { Translator } from '@shared/i18n';
 import {
     assetSelectionKey,
@@ -141,6 +142,10 @@ export function useAssetActions({
     importQueue,
 }: UseAssetActionsParams) {
     const { t, tn } = useTranslation();
+    // Import is the one asset write with no control to grey out: files arrive by being dropped on the
+    // panel or on a folder tile. Every other action here hangs off a button or a menu row, and those
+    // are disabled where they are rendered.
+    const freeze = useFreezeGuard();
 
     // Use ref to always have latest context inside callbacks to avoid stale closure issues.
     const contextRef = useRef(context);
@@ -297,7 +302,7 @@ export function useAssetActions({
     }, [importQueue, notifyLoading, onActionComplete, t, withAssetsService]);
 
     const handleImport = useCallback(async (type: AssetType, groupId?: string, files?: FileList, dataTransfer?: DataTransfer) => {
-        if (!context) return;
+        if (!context || freeze.frozen) return;
         const uiService = context.services.get<UIService>(Services.UI);
 
         let paths: string[];

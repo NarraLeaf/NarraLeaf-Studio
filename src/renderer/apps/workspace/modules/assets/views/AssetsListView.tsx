@@ -6,6 +6,7 @@ import { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
 import { useAssetsPanelContext } from "../AssetsPanelContext";
 import { ASSET_TYPE_ICONS } from "../constants";
 import { useTranslation } from "@/lib/i18n";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 
 interface AssetsListViewProps {
     dropTargetId: string | null;
@@ -33,6 +34,7 @@ export function AssetsListView({
     disableAnimation,
 }: AssetsListViewProps) {
     const { t } = useTranslation();
+    const freeze = useFreezeGuard();
     const { filteredAssets, filteredGroups, draggedItem } = useAssetsPanelContext();
 
     const hasAnyItems = useMemo(() => Object.values(filteredAssets).some(list => list.length > 0) || Object.values(filteredGroups).some(list => list.length > 0), [filteredAssets, filteredGroups]);
@@ -60,8 +62,8 @@ export function AssetsListView({
                                             e.stopPropagation();
                                             handleImport(type);
                                         }}
-                                        className="p-1 hover:text-primary"
-                                        title={t("common.import")}
+                                        className="p-1 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+                                        {...freeze.writes(false, t("common.import"))}
                                     >
                                         <Upload className="w-3 h-3" />
                                     </button>
@@ -70,8 +72,8 @@ export function AssetsListView({
                                             e.stopPropagation();
                                             handleImportRemote(type);
                                         }}
-                                        className="p-1 hover:text-primary"
-                                        title={t("assets.importRemote")}
+                                        className="p-1 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+                                        {...freeze.writes(false, t("assets.importRemote"))}
                                     >
                                         <Link className="w-3 h-3" />
                                     </button>
@@ -80,8 +82,8 @@ export function AssetsListView({
                                             e.stopPropagation();
                                             handleCreateGroup(type);
                                         }}
-                                        className="p-1 hover:text-primary"
-                                        title={t("assets.menu.newGroup")}
+                                        className="p-1 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+                                        {...freeze.writes(false, t("assets.menu.newGroup"))}
                                     >
                                         <FolderPlus className="w-3 h-3" />
                                     </button>
@@ -125,6 +127,7 @@ export function AssetsListView({
 }
 
 function GroupItem({ group, type, level }: { group: AssetGroup; type: AssetType; level: number }) {
+    const freeze = useFreezeGuard();
     const {
         filteredGroups,
         filteredAssets,
@@ -174,7 +177,9 @@ function GroupItem({ group, type, level }: { group: AssetGroup; type: AssetType;
                 e.stopPropagation();
                 const files = e.dataTransfer.types.includes("Files");
                 const internal = draggedItem && draggedItem.type === type;
-                if (!internal && !files) {
+                // A frozen library never lights up as a drop target: the move and the import are both
+                // refused, and a folder that glows and then keeps its old contents reads as a bug.
+                if (freeze.frozen || (!internal && !files)) {
                     return;
                 }
                 setDragOverLocal(true);

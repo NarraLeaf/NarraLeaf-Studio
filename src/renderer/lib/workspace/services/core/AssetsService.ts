@@ -252,6 +252,56 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         this.remoteAssetsManager = await new RemoteAssetsManager(this, ctx, this.editorRemoteCacheManager).init();
     }
 
+    /**
+     * Read the asset library back off the disk: the metadata shards, the row order, the groups.
+     *
+     * A participant of `WorkspaceReloadService`. Deliberately NOT the whole of {@link init}: the
+     * per-type reader services, the local/remote managers and the thumbnail root are wiring, not
+     * project data, and re-creating them would drop in-flight fetches for no gain. The three managers
+     * rebuilt here are the ones holding what the repository stores.
+     *
+     * Queued shard writes are dropped rather than flushed. They are owed on the library that is being
+     * replaced - an asset imported while writes were refused never reached the shards, and paying the
+     * debt afterwards is exactly the accident this mechanism exists to prevent. The first-open
+     * migrations (missing order files, assets with no `ext`) are dropped with them; they are owed to a
+     * project open, and the next one runs them again.
+     */
+    public async reloadFromDisk(): Promise<void> {
+        const ctx = this.getContext();
+        this.dirtyTypes.clear();
+        this.dirtyOrderTypes.clear();
+
+        // Read into fresh managers and swap only once all three have answered: each one assigns its
+        // own state after its read returns, so a rejected read leaves the live library untouched
+        // rather than half-replaced.
+        const order = await new AssetOrderManager(ctx).init();
+        const metadata = new AssetsMetadataManager(this, ctx);
+        // The shard reader marks types dirty when it fills in a missing `ext`; the flag suppresses the
+        // write it would otherwise fire off mid-reload.
+        this.assetsMetadataInitializing = true;
+        try {
+            await metadata.init();
+        } finally {
+            this.assetsMetadataInitializing = false;
+        }
+        const groups = await new GroupAssetsManager(this, ctx).init();
+
+        this.assetOrderManager = order;
+        this.assetsMetadataManager = metadata;
+        this.groupAssetsManager = groups;
+        this.dirtyTypes.clear();
+        this.dirtyOrderTypes.clear();
+        // Thumbnails are keyed by asset id and cached outside the working set, so a restored asset
+        // would otherwise be drawn with the picture of the one that replaced it.
+        this.thumbnailCache.clear();
+
+        // `groupsUpdated` is the "this type's tree changed" signal the asset browser already listens
+        // to. There is no per-asset event to send: every row may have moved, appeared or gone.
+        for (const type of Object.values(AssetType)) {
+            this.events.emit("groupsUpdated", { type });
+        }
+    }
+
     public getAssetOrderManager(): AssetOrderManager {
         if (!this.assetOrderManager) {
             throw new RendererError("Asset order manager not initialized");

@@ -127,6 +127,16 @@ export const settings = {
             description:
                 "Registry index URL for the UI template store. Leave empty to use the official NarraLeaf registry.",
         },
+        checkpointInterval: {
+            label: "Automatic checkpoint interval",
+            description:
+                "How long to wait before recording a checkpoint in a project's version history. Only ever records when something has changed. Set to 0 to turn automatic checkpoints off.",
+        },
+        versionControlAuthor: {
+            label: "Author name",
+            description:
+                "Recorded as the author of commits and checkpoints. Leave empty to record NarraLeaf Studio instead.",
+        },
         confirmBeforeClose: {
             label: "Confirm before closing a workspace",
             description: "Ask for confirmation when you close a workspace window.",

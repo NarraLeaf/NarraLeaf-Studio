@@ -5,6 +5,7 @@ import { FolderPlus, Folder, Link, Upload, ChevronLeft } from "lucide-react";
 import { useAssetsPanelContext } from "../AssetsPanelContext";
 import { ASSET_TYPE_ICONS } from "../constants";
 import { useTranslation } from "@/lib/i18n";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { AssetThumbnail } from "../components/AssetThumbnail";
 
 interface AssetsIconViewProps {
@@ -72,6 +73,7 @@ export function AssetsIconView({
     onGroupPathChange,
 }: AssetsIconViewProps) {
     const { t, tn } = useTranslation();
+    const freeze = useFreezeGuard();
     const {
         groups,
         filteredAssets,
@@ -216,8 +218,8 @@ export function AssetsIconView({
                                                     e.stopPropagation();
                                                     handleImport(type);
                                                 }}
-                                                className="p-1 rounded-md hover:bg-fill"
-                                                title={t("common.import")}
+                                                className="p-1 rounded-md hover:bg-fill disabled:cursor-not-allowed disabled:opacity-40"
+                                                {...freeze.writes(false, t("common.import"))}
                                             >
                                                 <Upload className="w-4 h-4" />
                                             </button>
@@ -226,8 +228,8 @@ export function AssetsIconView({
                                                     e.stopPropagation();
                                                     handleImportRemote(type);
                                                 }}
-                                                className="p-1 rounded-md hover:bg-fill"
-                                                title={t("assets.importRemote")}
+                                                className="p-1 rounded-md hover:bg-fill disabled:cursor-not-allowed disabled:opacity-40"
+                                                {...freeze.writes(false, t("assets.importRemote"))}
                                             >
                                                 <Link className="w-4 h-4" />
                                             </button>
@@ -236,8 +238,8 @@ export function AssetsIconView({
                                                     e.stopPropagation();
                                                     handleCreateGroup(type);
                                                 }}
-                                                className="p-1 rounded-md hover:bg-fill"
-                                                title={t("assets.menu.newGroup")}
+                                                className="p-1 rounded-md hover:bg-fill disabled:cursor-not-allowed disabled:opacity-40"
+                                                {...freeze.writes(false, t("assets.menu.newGroup"))}
                                             >
                                                 <FolderPlus className="w-4 h-4" />
                                             </button>
@@ -307,6 +309,7 @@ function GroupIconTile({
     onNavigate?: () => void;
 }) {
     const { t, tn } = useTranslation();
+    const freeze = useFreezeGuard();
     const {
         selectedItems,
         clipboard,
@@ -346,7 +349,9 @@ function GroupIconTile({
                 e.stopPropagation();
                 const files = e.dataTransfer.types.includes("Files");
                 const internal = draggedItem && draggedItem.type === type;
-                if (!internal && !files) {
+                // A frozen library never lights up as a drop target: the move and the import are both
+                // refused, and a folder that glows and then keeps its old contents reads as a bug.
+                if (freeze.frozen || (!internal && !files)) {
                     return;
                 }
                 setDragOverLocal(true);

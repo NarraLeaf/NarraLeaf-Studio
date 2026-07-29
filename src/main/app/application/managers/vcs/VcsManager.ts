@@ -2,8 +2,12 @@ import { normalizeProjectPath } from "@shared/utils/recentProject";
 import type {
     VcsAvailability,
     VcsBlobRequest,
+    VcsCheckpointReason,
+    VcsCommitOptions,
+    VcsCommitResult,
     VcsHistoryEntry,
     VcsRepositoryInfo,
+    VcsRevisionKind,
     VcsStatus,
     VcsThreeWayResult,
 } from "@shared/types/vcs";
@@ -44,12 +48,69 @@ interface VcsSession {
     globals: LoreGlobals;
 }
 
+/**
+ * Have one project's window write out every auto-save it still owes, and wait.
+ *
+ * Injected rather than reached for, because only the window layer can do it and this
+ * manager deliberately holds a `BaseApp`. A commit with this missing would still work
+ * and would still be wrong: the revision would describe a document that is about to
+ * change, which is the one failure the pipeline's ordering exists to prevent.
+ *
+ * Must not throw. A workspace that cannot flush is a reason to log, not a reason to
+ * refuse the author their commit.
+ */
+export type PendingSaveFlush = (projectPath: string) => Promise<void>;
+
+/**
+ * What a checkpoint's message says, by why it was taken.
+ *
+ * Not translated, deliberately. A commit message is permanent repository content that
+ * travels to collaborators and outlives the interface language it was written under; a
+ * history where the same automatic checkpoint reads differently depending on who was
+ * looking when it happened is worse than one that reads in English throughout.
+ *
+ * `restore` has no caller yet - restore does not exist (plan §4.4). The reason exists so
+ * that milestone has one thing to call rather than a checkpoint policy to reinvent, and
+ * is deliberately not wired to a stub: a fake restore that resolves without moving the
+ * working tree would be worse than an absent one.
+ */
+const CHECKPOINT_MESSAGES: Readonly<Record<VcsCheckpointReason, string>> = {
+    interval: "Checkpoint",
+    "project-close": "Checkpoint before closing the project",
+    build: "Checkpoint before build",
+    restore: "Checkpoint before restore",
+};
+
+const DEFAULT_COMMIT_MESSAGE = "Commit";
+
+/**
+ * What a project with no configured author name records.
+ *
+ * Deliberately not the OS account name. The identity is written into revisions that
+ * outlive the machine and travel to collaborators once there is a remote, and quietly
+ * publishing the author's login as their name is not a decision Studio gets to make on
+ * their behalf. Naming the tool is honest about what is known: nobody said.
+ */
+export const UNCONFIGURED_IDENTITY = "NarraLeaf Studio";
+
+/**
+ * "Nothing changed" told apart from a genuine failure.
+ *
+ * By name rather than with `instanceof`: the class lives in `repository.ts`, which
+ * nothing above `backend.ts` may reach at module scope, and re-loading the backend
+ * inside a catch block to get at the constructor could replace the error being handled
+ * with a load failure.
+ */
+function isNothingToCommit(error: unknown): boolean {
+    return error instanceof Error && error.name === "NothingToCommitError";
+}
+
 export class VcsManager extends Manager {
     private readonly sessions = new Map<string, VcsSession>();
     /** Serializes work per project so two callers cannot interleave on one store. */
     private readonly operations = new Map<string, Promise<unknown>>();
 
-    constructor(app: BaseApp) {
+    constructor(app: BaseApp, private readonly flushPendingSaves?: PendingSaveFlush) {
         super(app);
     }
 
@@ -91,6 +152,29 @@ export class VcsManager extends Manager {
             // would make repeated diffs of the same two revisions re-fetch every time.
             cache: true,
             storeKeepAlive: true,
+            /**
+             * One second, not the ten-second default, and this number is the difference
+             * between a commit that feels instant and one that appears to hang.
+             *
+             * MEASURED: `repositoryFlush` waits out the remaining keep-alive window of the
+             * last call that kept the store alive. On the default the commit pipeline took
+             * 10,012 ms of which the flush was 9,996; with this set to 1 it is 1,009 ms of
+             * which the flush is 988; with keep-alive off entirely it is 29 ms. Staging and
+             * committing themselves are 5-20 ms in every configuration, so the entire cost
+             * is the wait.
+             *
+             * Also measured, because it is the obvious wrong fix: passing
+             * `storeKeepAlive: false` on the pipeline's own calls changes NOTHING (1,029 ms
+             * with it, 1,009 without). The wait belongs to the reads that came before, so
+             * only the window length can shorten it.
+             *
+             * Kept rather than removed because reopening the store per call is what it
+             * avoids for a burst of blob reads when a diff view opens, and one second is
+             * far longer than the gap inside such a burst. If a future measurement shows
+             * reopening is free, this whole flag can go and commits get the other second
+             * back.
+             */
+            storeKeepAliveSeconds: 1,
         };
     }
 
@@ -174,7 +258,13 @@ export class VcsManager extends Manager {
             // leave an open store handle pointing at nothing.
             const preexisting = backend.isRepositoryDirectory(root);
             try {
-                const created = await backend.initRepository(globals, options);
+                // Through the same resolver as every other write: the first commit's
+                // author must not be the one revision in the repository attributed
+                // differently from the rest.
+                const created = await backend.initRepository(globals, {
+                    ...options,
+                    identity: this.resolveIdentity(options.identity),
+                });
                 this.app.logger.info("[Vcs] Initialised repository", root, created.repositoryId);
                 return {
                     root,
@@ -195,6 +285,107 @@ export class VcsManager extends Manager {
                     });
                 }
             }
+        });
+    }
+
+    /**
+     * Who to record as the author.
+     *
+     * Lore's `identity` is a per-call global rather than repository configuration, so
+     * every write has to answer this. Three sources, in order, and the first is the
+     * seam a logged-in identity plugs into without touching anything else here.
+     */
+    private resolveIdentity(explicit?: string): string {
+        const configured = this.app.getGlobalState().get("versionControl.authorName");
+        return explicit?.trim()
+            || (typeof configured === "string" ? configured.trim() : "")
+            || UNCONFIGURED_IDENTITY;
+    }
+
+    /**
+     * Record the working tree as a new revision.
+     *
+     * The pipeline, in the one order that does not lose data:
+     *
+     * ```
+     * flush the renderer's pending saves -> stage -> label -> commit -> flush Lore
+     * ```
+     *
+     * The label sits before the commit, not after, and that is measured rather than
+     * stylistic - see `commitWorkingTree`.
+     *
+     * **The renderer flush comes first** and is the step that is easy to leave out.
+     * Studio's auto-save is debounced, so at any instant there is usually an edit that
+     * has been typed and not written. Staging before it lands produces a revision that
+     * describes a document already superseded on disk - and the author has no way to
+     * see that, because the file they are looking at is right and only the history is
+     * wrong. It runs inside the per-project serialization so nothing can stage between
+     * the flush and the commit.
+     *
+     * **Lore's flush comes last, and before success is reported.** Not politeness: see
+     * `commitWorkingTree`.
+     *
+     * Throws {@link NothingToCommitError} when the tree has not changed, which for an
+     * author who pressed Commit is the answer rather than an error - the message says
+     * so in words they can read, instead of Lore's "Nothing staged for commit".
+     */
+    public async commit(projectPath: string, options: VcsCommitOptions = {}): Promise<VcsCommitResult> {
+        return this.commitWithKind(projectPath, "commit", options.message?.trim() || DEFAULT_COMMIT_MESSAGE, options);
+    }
+
+    /**
+     * Record a checkpoint: an ordinary revision that the author did not ask for.
+     *
+     * Answers null rather than throwing for the two cases an automatic operation must
+     * treat as normal - the project is not under version control (or this host has no
+     * backend), and nothing has changed since the last revision. An empty revision
+     * every fifteen minutes would make the history unreadable and "restore to before
+     * lunch" unanswerable, so "nothing changed, no revision" holds for the timer and for
+     * all three unconditional checkpoints alike.
+     *
+     * Real failures still throw. A checkpoint that could not be written because the
+     * disk is full is not the same as one that was not needed.
+     */
+    public async checkpoint(
+        projectPath: string,
+        reason: VcsCheckpointReason,
+        options: VcsCommitOptions = {},
+    ): Promise<VcsCommitResult | null> {
+        // Cheaper than it looks - the session is opened once per project and reused by
+        // everything else - and it is what keeps an unversioned project silent rather
+        // than logging a failure every interval for the rest of the session.
+        if (!(await this.isRepository(projectPath))) return null;
+
+        const message = options.message?.trim() || CHECKPOINT_MESSAGES[reason];
+        try {
+            const result = await this.commitWithKind(projectPath, "checkpoint", message, options);
+            this.app.logger.info("[Vcs] Checkpoint", reason, result.revision);
+            return result;
+        } catch (error) {
+            if (isNothingToCommit(error)) return null;
+            throw error;
+        }
+    }
+
+    private async commitWithKind(
+        projectPath: string,
+        kind: VcsRevisionKind,
+        message: string,
+        options: VcsCommitOptions,
+    ): Promise<VcsCommitResult> {
+        return this.serialize(projectPath, async () => {
+            // First, and inside the lock. See the ordering note on `commit`.
+            if (this.flushPendingSaves) {
+                await this.flushPendingSaves(projectPath).catch((error) => {
+                    this.app.logger.warn("[Vcs] Could not flush pending saves before committing", error);
+                });
+            }
+
+            const { session, backend } = await this.sessionFor(projectPath);
+            return backend.commitWorkingTree(
+                { ...session.globals, identity: this.resolveIdentity(options.identity) },
+                { message, kind },
+            );
         });
     }
 
@@ -228,17 +419,40 @@ export class VcsManager extends Manager {
         });
     }
 
-    public async getHistory(projectPath: string, limit = 0): Promise<VcsHistoryEntry[]> {
+    /**
+     * Revisions, newest first.
+     *
+     * `includeKinds` costs one backend call PER REVISION - Lore has no batch metadata
+     * verb - so it is opt-in rather than always on: a history panel that paid for it
+     * unconditionally would open with a few hundred round trips on a long-lived
+     * project. A revision that records no kind comes back with none, which is a real
+     * answer (the first commit predates kinds) and not a default of either one.
+     */
+    public async getHistory(
+        projectPath: string,
+        limit = 0,
+        options: { includeKinds?: boolean } = {},
+    ): Promise<VcsHistoryEntry[]> {
         return this.serialize(projectPath, async () => {
             const { session, backend } = await this.sessionFor(projectPath);
             const graph = await backend.readRevisionGraph(session.globals, limit);
-            return [...graph.values()]
-                .sort((a, b) => b.number - a.number)
-                .map((node) => ({
+            const ordered = [...graph.values()].sort((a, b) => b.number - a.number);
+
+            const entries: VcsHistoryEntry[] = [];
+            for (const node of ordered) {
+                entries.push({
                     revision: node.revision,
                     number: node.number,
                     parents: node.parents,
-                }));
+                    // Sequential on purpose. Re-entering Lore concurrently on one store
+                    // is not a contract this binding makes, and the whole point of a
+                    // single reused store handle is that calls take turns on it.
+                    kind: options.includeKinds
+                        ? await backend.readRevisionKind(session.globals, node.revision)
+                        : undefined,
+                });
+            }
+            return entries;
         });
     }
 
