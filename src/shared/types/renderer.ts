@@ -36,7 +36,7 @@ import type {
 } from "./privileged";
 import { AppEventToken } from "./app";
 import type { LocaleContribution } from "@shared/i18n";
-import type { RevisionId, VcsAvailability, VcsHistoryEntry, VcsRepositoryInfo, VcsThreeWayResult } from "./vcs";
+import type { RevisionId, VcsAvailability, VcsHistoryEntry, VcsInitOptions, VcsRepositoryInfo, VcsStatus, VcsThreeWayResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -292,7 +292,8 @@ export interface RendererPreloadedInterface {
     };
 
     /**
-     * Version control. Read-only until the resolve UI lands.
+     * Version control. Reads, plus `initRepository` - the one write that cannot wait
+     * for the resolve UI, because until it runs there is no repository to read.
      * Every call is per project - Studio is one-project-one-window and the VCS
      * runtime is keyed by project path.
      */
@@ -305,6 +306,18 @@ export interface RendererPreloadedInterface {
         getAvailability(): Promise<RequestStatus<VcsAvailability>>;
         isRepository(projectPath: string): Promise<RequestStatus<{ isRepository: boolean }>>;
         getInfo(projectPath: string): Promise<RequestStatus<VcsRepositoryInfo>>;
+        /**
+         * Create the repository and commit the working set into it. Fails when the
+         * directory already has one. Always the author's explicit act: it writes
+         * `.lore/` into their project and takes an exclusive, BLOCKING lock on it.
+         */
+        initRepository(projectPath: string, options?: VcsInitOptions): Promise<RequestStatus<VcsRepositoryInfo>>;
+        /**
+         * Working-tree changes since the last commit. On demand only - the scan
+         * behind it records newly discovered directories into staged state, so a
+         * timer that calls it reports deletions the author never made (§4.17).
+         */
+        getStatus(projectPath: string): Promise<RequestStatus<VcsStatus>>;
         getHistory(projectPath: string, limit?: number): Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>>;
         /** File contents at a revision, base64-encoded. */
         readBlob(projectPath: string, revision: RevisionId, path: string): Promise<RequestStatus<{ contentBase64: string }>>;
