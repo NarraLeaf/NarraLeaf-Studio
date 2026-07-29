@@ -36,6 +36,7 @@ const assets = {
     [AssetType.JSON]: [],
     [AssetType.Blueprint]: [],
     [AssetType.Font]: [],
+    [AssetType.Model]: [],
     [AssetType.Other]: [],
 } as Record<AssetType, Asset[]>;
 
@@ -46,6 +47,7 @@ const groups = {
     [AssetType.JSON]: [],
     [AssetType.Blueprint]: [],
     [AssetType.Font]: [],
+    [AssetType.Model]: [],
     [AssetType.Other]: [],
 } as Record<AssetType, AssetGroup[]>;
 

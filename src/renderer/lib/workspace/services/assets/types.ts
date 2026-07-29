@@ -62,6 +62,18 @@ export interface AssetExtras {
     /** Audio only: the loop region shown and edited by the audio preview. */
     audioLoop?: AssetAudioLoop;
     /**
+     * Model bundles only: the entry file the author chose, relative to the bundle root.
+     *
+     * The only part of a bundle that is persisted rather than re-read from disk, because it is the
+     * only part that is a *decision*. `files` and `size` are observations and are recomputed on
+     * every read; the entry is a guess Studio made from the file tree that the author may have
+     * corrected, and a guess that silently re-runs would undo the correction.
+     *
+     * Absent means "use the detected entry" - so a bundle whose detection is unambiguous carries no
+     * extra state at all, and re-detection keeps working if a later Studio learns a new format.
+     */
+    modelEntry?: string;
+    /**
      * Superseded by {@link audioLoop}, which replaced a free list of markers with the one in/out
      * pair a clip actually has. Read only so records written by the short-lived cue-point model
      * still open with their points intact - the editor rewrites them as `audioLoop` on the next

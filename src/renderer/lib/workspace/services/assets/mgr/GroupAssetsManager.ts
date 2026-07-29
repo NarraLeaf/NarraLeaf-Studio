@@ -373,6 +373,7 @@ export class GroupAssetsManager {
             [AssetType.JSON]: {},
             [AssetType.Blueprint]: {},
             [AssetType.Font]: {},
+            [AssetType.Model]: {},
             [AssetType.Other]: {},
         };
 
