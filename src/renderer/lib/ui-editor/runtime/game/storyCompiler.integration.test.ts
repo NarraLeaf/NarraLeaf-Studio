@@ -2446,6 +2446,66 @@ describe("puppet characters", () => {
         expect(compiled.diagnostics.some(entry => /names no runtime/.test(entry.message))).toBe(true);
     });
 
+    /**
+     * The three state channels reach the engine's own puppet actions, carrying the author's name
+     * through untouched - Studio never looks up, validates or rewrites it, because the vocabulary
+     * belongs to the model.
+     */
+    it("compiles the three state channels onto the same element the stage rows use", async () => {
+        const stateRow = (id: string, operation: "expression" | "setMotion" | "setSkin", puppetName?: string): StoryBlock => ({
+            id,
+            kind: "action",
+            parentId: null,
+            childrenIds: [],
+            payload: { action: "character", operation, characterId: "char-doll", ...(puppetName !== undefined ? { puppetName } : {}) },
+        });
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                ...characterBlock("enter"),
+                motion: stateRow("motion", "setMotion", "run"),
+                face: stateRow("face", "expression", "smile"),
+                skin: stateRow("skin", "setSkin", "winter"),
+                rest: stateRow("rest", "setMotion"),
+            }, ["row", "motion", "face", "skin", "rest"]),
+            sceneId: "scene-1",
+            characters: [PUPPET],
+            resolveAssetUrl: async assetId => `nlr://bundle/${assetId}/model.json`,
+        });
+
+        const actionsOf = (blockId: string) => compiled.actionIdBindings
+            .filter(binding => binding.blockId === blockId)
+            .flatMap(binding => collectActionTree(binding.action, compiled.story));
+        const one = (blockId: string, type: string) => actionsOf(blockId).find(action => action?.type === type);
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(one("motion", "puppet:setMotion")?.contentNode?.getContent?.()).toEqual(["run"]);
+        expect(one("face", "puppet:setExpression")?.contentNode?.getContent?.()).toEqual(["smile"]);
+        expect(one("skin", "puppet:setSkin")?.contentNode?.getContent?.()).toEqual(["winter"]);
+        // Naming nothing is the engine's `null` - "no request", which visibly clears the channel.
+        expect(one("rest", "puppet:setMotion")?.contentNode?.getContent?.()).toEqual([null]);
+        // All of it lands on the ONE element the enter row created: a puppet cannot be re-sourced.
+        expect(compiled.sceneElements?.["scene-1"]?.puppets.size).toBe(1);
+        expect(one("motion", "puppet:setMotion")?.callee).toBe(compiled.sceneElements?.["scene-1"]?.puppets.get("char-doll"));
+    });
+
+    it("refuses a state channel on a character Studio draws itself", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                row: {
+                    id: "row",
+                    kind: "action",
+                    parentId: null,
+                    childrenIds: [],
+                    payload: { action: "character", operation: "setMotion", characterId: "char-alice", puppetName: "run" },
+                },
+            }, ["row"]),
+            sceneId: "scene-1",
+            characters: [{ id: "char-alice", name: "Alice", appearance: EMPTY_APPEARANCE }],
+        });
+
+        expect(compiled.diagnostics.some(entry => /not drawn by a runtime/.test(entry.message))).toBe(true);
+    });
+
     it("gives a puppet speaker the character-level dialog avatar", async () => {
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument(characterBlock("enter"), ["row"]),

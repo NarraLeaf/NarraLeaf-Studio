@@ -1926,6 +1926,13 @@ async function compileCharacterStageAction(
         return compileCharacterPuppetAction(ctx, block, payload, name, characterAppearance);
     }
 
+    // Runtime state on a character Studio draws itself: there is no backend to ask, and the row was
+    // authored against the wrong character rather than being a no-op worth swallowing.
+    if (payload.operation === "setMotion" || payload.operation === "setSkin") {
+        diagnostic(ctx, "warning", block.id, `${payload.characterId || name} is not drawn by a runtime, so it has no ${payload.operation === "setMotion" ? "motion" : "skin"} to set.`);
+        return statements;
+    }
+
     if (payload.operation === "exit") {
         const image = getImage(ctx, name, { autoFit: true });
         await bindCharacterPortrait(ctx, payload.characterId, image);
@@ -2003,10 +2010,11 @@ async function compileCharacterStageAction(
  * move - and they are compiled through the same `compileDisplayableOperation` an Image row uses,
  * which is the point: a puppet character participates in a scene the way any other character does.
  *
- * `expression` is the one that does not carry over. A puppet has no authoring-time differentials -
- * what it is doing is runtime state the backend names (motion / expression / skin), reachable
- * through the engine's puppet actions rather than through a source swap - so a row asking for one
- * is reported rather than silently dropped.
+ * The other three - `expression`, `setMotion`, `setSkin` - address the INSIDE of the box, which no
+ * other character kind has. They are not a source swap: the row carries a name the backend owns
+ * (`puppetName`), handed over verbatim, and the engine remembers it as persistent state that a saved
+ * game restores. A row that names nothing clears that channel, which is the engine's own `null`:
+ * "the absence of a request", not "leave whatever is there".
  */
 async function compileCharacterPuppetAction(
     ctx: SceneCompileContext,
@@ -2021,9 +2029,17 @@ async function compileCharacterPuppetAction(
     }
     await bindPuppetAvatar(ctx, payload.characterId);
 
+    // Blank and absent both mean `null` - the row requests nothing on this channel, and the model
+    // visibly drops back to whatever it looks like with none applied.
+    const requested = payload.puppetName?.trim() || null;
     if (payload.operation === "expression") {
-        diagnostic(ctx, "warning", block.id, `${payload.characterId || name} is drawn by a runtime, which has no expressions to switch; use the puppet's own state instead.`);
-        return [];
+        return [recordStatement(ctx, puppet.setExpression(requested), block)];
+    }
+    if (payload.operation === "setMotion") {
+        return [recordStatement(ctx, puppet.setMotion(requested), block)];
+    }
+    if (payload.operation === "setSkin") {
+        return [recordStatement(ctx, puppet.setSkin(requested), block)];
     }
 
     const operation = payload.operation === "exit" ? "hide" : payload.operation === "move" ? "transform" : "show";

@@ -47,6 +47,7 @@ export const storyExpr = {
         unknownLabel: "No label named \"{value}\" in this scene.",
         unknownVariable: "No variable named \"{value}\".",
         unknownForm: "{characterName} has no \"{value}\" expression.",
+        notPuppetCharacter: "{value} is not drawn by a runtime, so it has no motion or skin to set.",
         ambiguousName: "More than one thing is called \"{value}\" — rename one.",
         conflictingParams: "{keys} cannot both be set on one line — split it in two.",
         expressionError: "{message}",

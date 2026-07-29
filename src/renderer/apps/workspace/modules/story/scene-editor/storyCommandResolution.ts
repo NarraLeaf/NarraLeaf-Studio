@@ -231,6 +231,18 @@ function resolveAgainstType(
             const characterName = context.characters.find(entry => entry.id === characterId)?.name ?? "";
             return { issue: { code: "unknownForm", span, value, characterName } };
         }
+        case "puppetName": {
+            const characterId = ownerCharacterId(resolved[type.dependsOn]);
+            // Decline rather than complain when the owner is not a runtime-drawn character: on `/face`
+            // this is the second branch of a union whose first branch has already reported (or
+            // resolved) properly, and on `/motion` / `/skin` the fault is the CHARACTER, which the
+            // spec's `validate` reports against the slot the author actually got wrong.
+            if (!characterId || !context.puppetCharacterIds.includes(characterId)) {
+                return null;
+            }
+            const name = value.trim();
+            return name === "" ? null : { value: { kind: "puppetName", channel: type.channel, name } };
+        }
         case "scene": {
             const found = findByName(context.scenes, value);
             if (found === "ambiguous") {

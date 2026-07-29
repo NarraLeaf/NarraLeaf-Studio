@@ -256,7 +256,10 @@ function formatAction(payload: StoryActionPayload, scene: StoryScene, document?:
     if (payload.action === "character") {
         const subject = payload.characterId ? ` ${payload.characterId}` : payload.objectName ? ` ${payload.objectName}` : "";
         // The new label is the whole of a rename, so it rides the projected line like a text's content.
-        const suffix = payload.operation === "setName" && payload.displayName ? ` ${payload.displayName}` : "";
+        // A puppet's requested state name is the same case: the row says nothing without it.
+        const suffix = payload.operation === "setName" && payload.displayName
+            ? ` ${payload.displayName}`
+            : payload.puppetName ? ` ${payload.puppetName}` : "";
         return `/character ${payload.operation}${subject}${suffix}`;
     }
     if (payload.action === "audio") {

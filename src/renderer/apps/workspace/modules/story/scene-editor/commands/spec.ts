@@ -8,6 +8,7 @@ import type {
     StoryCommandStageObjectKind,
     StoryCommandTargetKind,
     StoryCommandValue,
+    StoryPuppetChannel,
 } from "../storyCommandValues";
 import type { StoryCommandGroupId } from "../storyCommandCategories";
 
@@ -165,6 +166,11 @@ export function asText(value: StoryCommandValue | undefined): string | undefined
     return trimmed === "" ? undefined : trimmed;
 }
 
+/** A puppet's requested state name, or undefined - which the payload stores as "no request" (`null`). */
+export function asPuppetName(value: StoryCommandValue | undefined): string | undefined {
+    return value?.kind === "puppetName" ? value.name : undefined;
+}
+
 /** The resolved target of a generic verb (`/show poster`), or undefined while unresolved. */
 export function asTarget(value: StoryCommandValue | undefined): Extract<StoryCommandValue, { kind: "target" }>["target"] | undefined {
     return value?.kind === "target" ? value.target : undefined;
@@ -181,6 +187,17 @@ export function secondsParam(hint = "duration"): StoryCommandParamSpec {
 
 /** The `at=` word list (bible §1.2). Exported so a positional placement slot spells the same three words. */
 export const PLACEMENT_OPTIONS = [{ value: "left" }, { value: "center" }, { value: "right" }] as const;
+
+/**
+ * A state name of a puppet-kind character's backend, on one channel (`/motion Doll run`).
+ *
+ * Never `core`. The engine's `null` on any of these channels is the *absence* of a request, and it
+ * visibly clears - so `/motion Doll` with no name is a legal, meaningful line ("stop running, rest"),
+ * and requiring the name would have deleted the only way to say it.
+ */
+export function puppetNameParam(channel: StoryPuppetChannel, dependsOn: string, hint: string): StoryCommandParamSpec {
+    return { hint, type: { kind: "puppetName", channel, dependsOn }, positional: true };
+}
 
 /** `at=` - a placement. */
 export function placementParam(): StoryCommandParamSpec {

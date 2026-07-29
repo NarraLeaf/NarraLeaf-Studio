@@ -14,6 +14,7 @@ const CONTEXT: StoryCommandContext = {
     labels: ["intro", "retry"],
     variables: [{ name: "gold", ref: { scope: "scene", variableId: "v1" }, valueType: "number" }],
     appearanceByCharacterId: { c1: [{ id: "t1", name: "smile" }, { id: "t2", name: "angry" }] },
+    puppetCharacterIds: [],
     stageObjects: { image: ["hero", "portrait"], text: ["title"], layer: ["fx"], video: ["intro"], audio: ["sound", "music"], vfx: ["rain"] },
 };
 
