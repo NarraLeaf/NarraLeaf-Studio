@@ -53,6 +53,7 @@ import {
     updateStoryMotionKeyframe,
     upsertStoryMotionKeyframe,
 } from "./storyMotionTimeline";
+import { useFreezeGuard } from "../../components/ui/freezeGuard";
 import { StoryMotionStagePreview, type StoryMotionPreviewDragMode } from "./StoryMotionStagePreview";
 import { resolveStoryMotionPreviewTarget } from "./storyMotionPreviewTarget";
 
@@ -104,6 +105,9 @@ export function createStoryMotionEditorTab(payload: StoryMotionEditorPayload): E
 export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabComponentProps<StoryMotionEditorPayload>) {
     const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
+    // Everything that moves a keyframe or a stage handle writes the animation asset. The playhead,
+    // zoom, playback and selection do not, and stay live so a frozen motion can still be watched.
+    const freeze = useFreezeGuard();
     const storyService = useMemo(
         () => context && isInitialized ? context.services.get<StoryService>(Services.Story) : null,
         [context, isInitialized],
@@ -767,25 +771,25 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
             id: "undo",
             key: "mod+z",
             description: "Undo story motion edit",
-            handler: undoTimelineEdit,
+            handler: freeze.run(undoTimelineEdit),
         },
         {
             id: "redo",
             key: "mod+shift+z",
             description: "Redo story motion edit",
-            handler: redoTimelineEdit,
+            handler: freeze.run(redoTimelineEdit),
         },
         {
             id: "delete",
             key: "delete",
             description: "Delete selected keyframe",
-            handler: deleteSelectedKeyframe,
+            handler: freeze.run(deleteSelectedKeyframe),
         },
         {
             id: "backspace",
             key: "backspace",
             description: "Delete selected keyframe",
-            handler: deleteSelectedKeyframe,
+            handler: freeze.run(deleteSelectedKeyframe),
         },
         {
             id: "prev-frame",
@@ -823,7 +827,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
             description: "Move playhead to end",
             handler: () => setPlayheadMs(durationRef.current),
         },
-    ], [deleteSelectedKeyframe, redoTimelineEdit, stepPlayhead, undoTimelineEdit]);
+    ], [deleteSelectedKeyframe, freeze, redoTimelineEdit, stepPlayhead, undoTimelineEdit]);
 
     useKeybindings({
         keybindings,
@@ -1151,6 +1155,11 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                         preview={visiblePreview}
                                         target={previewTarget}
                                         onPointerDrag={startPreviewDrag}
+                                        // The stage handles are drawn only when they can be grabbed. A
+                                        // resize handle IS the gesture affordance - leaving one visible
+                                        // that refuses to move is the half-inert drag that reads as a
+                                        // broken editor, so while frozen the frame is inspect-only.
+                                        interactive={!freeze.frozen}
                                         stageSize={stageSize}
                                         showLabel={false}
                                         backgroundUrl={previewBackgroundUrl}
@@ -1245,7 +1254,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                                     addKeyframeAtTime(track, playheadMs);
                                                 }}
                                                 onPointerDown={event => event.stopPropagation()}
-                                                title={t("motion.editor.addKeyframeAtPlayhead")}
+                                                {...freeze.writes(false, t("motion.editor.addKeyframeAtPlayhead"))}
                                                 aria-label={t("motion.editor.addKeyframeAria", { property: getStoryMotionPropertyMeta(track.property).label })}
                                             >
                                                 <Diamond className="h-3.5 w-3.5" />
@@ -1258,7 +1267,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                                     deleteTrack(track);
                                                 }}
                                                 onPointerDown={event => event.stopPropagation()}
-                                                title={t("motion.editor.deleteTrack")}
+                                                {...freeze.writes(false, t("motion.editor.deleteTrack"))}
                                                 aria-label={t("motion.editor.deleteTrackAria", { property: getStoryMotionPropertyMeta(track.property).label })}
                                             >
                                                 <Trash2 className="h-3.5 w-3.5" />
@@ -1266,7 +1275,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                         </div>
                                         <div
                                             className="relative h-[34px] border-b border-edge-subtle"
-                                            onDoubleClick={event => handleLaneDoubleClick(event, track)}
+                                            onDoubleClick={freeze.gesture((event: ReactMouseEvent<HTMLDivElement>) => handleLaneDoubleClick(event, track))}
                                         >
                                             <div className="absolute top-0 z-20 h-full w-px bg-orange-400/90" style={{ left: playheadMs * pxPerMs }} />
                                             {track.keyframes.map(keyframe => (
@@ -1283,7 +1292,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                                         left: (keyframeDrag?.keyframeId === keyframe.id ? keyframeDrag.timeMs : keyframe.timeMs) * pxPerMs,
                                                     }}
                                                     onClick={() => selectKeyframe(track, keyframe)}
-                                                    onPointerDown={event => startKeyframeDrag(event, track, keyframe)}
+                                                    onPointerDown={freeze.gesture((event: ReactPointerEvent<HTMLButtonElement>) => startKeyframeDrag(event, track, keyframe))}
                                                     title={`${getStoryMotionPropertyMeta(track.property).label} ${formatStoryMotionTime(keyframe.timeMs, STORY_MOTION_FPS)}`}
                                                 />
                                             ))}

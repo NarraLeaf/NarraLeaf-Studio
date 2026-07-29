@@ -11,6 +11,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { useWorkspace } from "../../../context";
 import { useRegistry } from "../../../registry";
+import { useFreezeGuard } from "../../../components/ui/freezeGuard";
 import type { PanelComponentProps } from "../../types";
 import { createStorySceneEditorTab } from "../scene-editor/openStorySceneEditorTab";
 import { openSceneFlowTab } from "../../story-flow/openSceneFlowTab";
@@ -45,6 +46,9 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
     const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
+    // Creating, renaming and deleting write the story document; opening a scene, opening the flow and
+    // picking which story is selected do not, and stay live so a frozen project can still be read.
+    const freeze = useFreezeGuard();
     const [stories, setStories] = useState<StoryLibraryEntry[]>([]);
     const [defaultStoryId, setDefaultStoryId] = useState<StoryId | undefined>();
     const [selectedStoryId, setSelectedStoryId] = useState<StoryId | null>(null);
@@ -297,7 +301,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             {
                 id: "set-default-story",
                 label: t("story.panel.setDefault"),
-                disabled: isDefault,
+                ...freeze.menuRow(isDefault),
                 onClick: () => handleSetDefaultStory(entry),
             },
             {
@@ -308,6 +312,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             {
                 id: "rename-story",
                 label: t("common.rename"),
+                ...freeze.menuRow(),
                 onClick: () => {
                     void handleRenameStory(entry);
                 },
@@ -316,12 +321,13 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             {
                 id: "delete-story",
                 label: t("common.delete"),
+                ...freeze.menuRow(),
                 onClick: () => {
                     void handleDeleteStory(entry);
                 },
             },
         ];
-    }, [defaultStoryId, handleDeleteStory, handleOpenSceneFlow, handleRenameStory, handleSetDefaultStory, t]);
+    }, [defaultStoryId, freeze, handleDeleteStory, handleOpenSceneFlow, handleRenameStory, handleSetDefaultStory, t]);
 
     const handleOpenStoryMenu = useCallback((event: React.MouseEvent, entry: StoryLibraryEntry) => {
         event.stopPropagation();
@@ -414,13 +420,14 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             {
                 id: "set-entry-scene",
                 label: t("story.panel.setEntryScene"),
-                disabled: isEntry,
+                ...freeze.menuRow(isEntry),
                 onClick: () => handleSetEntryScene(scene),
             },
             { id: "scene-actions-separator", separator: true },
             {
                 id: "rename-scene",
                 label: t("common.rename"),
+                ...freeze.menuRow(),
                 onClick: () => {
                     void handleRenameScene(scene);
                 },
@@ -428,12 +435,13 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             {
                 id: "delete-scene",
                 label: t("common.delete"),
+                ...freeze.menuRow(),
                 onClick: () => {
                     void handleDeleteScene(scene);
                 },
             },
         ];
-    }, [document?.entrySceneId, handleDeleteScene, handleOpenScene, handleRenameScene, handleSetEntryScene, t]);
+    }, [document?.entrySceneId, freeze, handleDeleteScene, handleOpenScene, handleRenameScene, handleSetEntryScene, t]);
 
     const handleOpenSceneMenu = useCallback((event: React.MouseEvent, scene: StoryScene) => {
         event.preventDefault();
@@ -483,8 +491,8 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                 </button>
                                 <button
                                     type="button"
-                                    className="p-1 hover:text-primary"
-                                    title={t("story.panel.newStory")}
+                                    className="p-1 hover:text-primary disabled:text-fg-subtle disabled:hover:text-fg-subtle"
+                                    {...freeze.writes(false, t("story.panel.newStory"))}
                                     onClick={() => {
                                         void handleCreateStory();
                                     }}
@@ -553,8 +561,8 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                     </button>
                                     <button
                                         type="button"
-                                        className="p-1 hover:text-primary"
-                                        title={t("story.panel.newChapter")}
+                                        className="p-1 hover:text-primary disabled:text-fg-subtle disabled:hover:text-fg-subtle"
+                                        {...freeze.writes(false, t("story.panel.newChapter"))}
                                         onClick={handleCreateChapter}
                                     >
                                         <Plus className="h-3 w-3" />
@@ -586,8 +594,8 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                             actions={
                                                 <button
                                                     type="button"
-                                                    className="p-1 hover:text-primary"
-                                                    title={t("story.panel.newSceneInChapter")}
+                                                    className="p-1 hover:text-primary disabled:text-fg-subtle disabled:hover:text-fg-subtle"
+                                                    {...freeze.writes(false, t("story.panel.newSceneInChapter"))}
                                                     onClick={() => handleCreateScene(chapter.id)}
                                                 >
                                                     <Plus className="h-3 w-3" />

@@ -118,6 +118,28 @@ export class DebouncedSaver {
     }
 
     /**
+     * Forget everything this saver owes, and wait for a write that is already running.
+     *
+     * The opposite of {@link flush}, and the one thing a working-tree reload needs: the debt is owed
+     * on memory that is about to be thrown away, so paying it would write exactly the bytes the
+     * reload exists to discard - the author's frozen-period edits, or a past revision over their
+     * working tree. The retry ladder goes with it, because a debt kept for a retry is the same write
+     * arriving a few seconds later.
+     *
+     * Two discards around one await, on purpose. The first stops a timer firing while we wait; the
+     * await is unavoidable, because a write already in flight cannot be cancelled and a reload must
+     * not read the disk out from under it; the second clears the debt the failing arm of that write
+     * re-owed itself on the way out.
+     */
+    public async abandon(): Promise<void> {
+        this.discardDebt();
+        if (this.inFlight) {
+            await this.inFlight;
+        }
+        this.discardDebt();
+    }
+
+    /**
      * Write now if anything is pending, and wait for it - including a save that was already in
      * flight. Rethrows the write's error, unlike the timer path (a failed flush still arms the
      * retry, so rethrowing informs the caller without dropping the debt).
@@ -222,6 +244,20 @@ export class DebouncedSaver {
             this.retryTimer = null;
             this.fire();
         }, delay);
+    }
+
+    /**
+     * Drop the pending write, its timers, and the failure streak that would otherwise keep the state
+     * `failed` and the ladder climbing. See {@link abandon}, the only caller.
+     */
+    private discardDebt(): void {
+        this.pending = false;
+        this.clearTimers();
+        this.consecutiveFailures = 0;
+        this.lastError = null;
+        if (!this.inFlight) {
+            this.syncIdleState();
+        }
     }
 
     private syncIdleState(): void {

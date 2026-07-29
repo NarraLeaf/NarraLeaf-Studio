@@ -117,6 +117,14 @@ export const settings = {
             label: "界面模板注册表地址",
             description: "界面模板商店的注册表索引地址，留空则使用 NarraLeaf 官方注册表",
         },
+        checkpointInterval: {
+            label: "自动检查点间隔",
+            description: "间隔多久在项目的版本历史里记录一个检查点。只在确实有改动时记录，填 0 则关闭自动检查点",
+        },
+        versionControlAuthor: {
+            label: "作者名",
+            description: "记录为提交与检查点的作者，留空则记为 NarraLeaf Studio",
+        },
         confirmBeforeClose: {
             label: "关闭工作区时弹出提示",
             description: "关闭工作区窗口时先询问确认",

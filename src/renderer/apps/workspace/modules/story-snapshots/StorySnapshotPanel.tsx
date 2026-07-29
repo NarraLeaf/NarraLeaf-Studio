@@ -12,6 +12,7 @@ import type { PanelComponentProps } from "../types";
 import { useTranslation } from "@/lib/i18n";
 import { Select, type SelectOption } from "@/lib/components/elements";
 import { useWorkspace } from "@/apps/workspace/context";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { Services } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
@@ -110,6 +111,9 @@ function SnapshotValueRow(props: {
 export function StorySnapshotPanel({ payload }: PanelComponentProps<StorySnapshotPanelPayload>) {
     const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
+    // A snapshot is authored content (it ships in the story document), so making and deleting one is a
+    // write. Picking which snapshot is shown is not, and stays live.
+    const freeze = useFreezeGuard();
     const storyId = payload?.storyId;
     const sceneId = payload?.sceneId;
 
@@ -262,18 +266,18 @@ export function StorySnapshotPanel({ payload }: PanelComponentProps<StorySnapsho
                 {selected ? (
                     <button
                         type="button"
-                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-edge text-fg-subtle hover:border-danger/50 hover:text-danger"
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-edge text-fg-subtle hover:border-danger/50 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40"
                         onClick={() => storyService?.deleteSceneSnapshot(storyId, sceneId, selected.id)}
-                        title={t("storySnapshot.delete")}
+                        {...freeze.writes(false, t("storySnapshot.delete"))}
                     >
                         <Trash2 className="h-3.5 w-3.5" />
                     </button>
                 ) : null}
                 <button
                     type="button"
-                    className="flex h-7 shrink-0 items-center gap-1 rounded-md border border-edge px-2 text-2xs text-fg-muted hover:border-primary/50 hover:text-fg"
+                    className="flex h-7 shrink-0 items-center gap-1 rounded-md border border-edge px-2 text-2xs text-fg-muted hover:border-primary/50 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
                     onClick={addSnapshot}
-                    title={t("storySnapshot.add")}
+                    {...freeze.writes(false, t("storySnapshot.add"))}
                 >
                     <Plus className="h-3 w-3" /> {t("common.add")}
                 </button>

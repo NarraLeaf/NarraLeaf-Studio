@@ -1,22 +1,28 @@
 import fs from "fs";
 import path from "path";
-import type {
-    VcsChangeKind,
-    VcsFileChange,
-    VcsInitOptions,
-    VcsStatus,
+import {
+    VCS_REVISION_KIND_KEY,
+    type VcsChangeKind,
+    type VcsCommitResult,
+    type VcsFileChange,
+    type VcsInitOptions,
+    type VcsRevisionKind,
+    type VcsStatus,
 } from "@shared/types/vcs";
 import { renderWorkingSetIgnoreFile } from "./workingSet";
 import {
     commit,
     createRepository,
     flushRepository,
+    getRevisionMetadata,
     history,
     releaseRepository,
     repositoryStatus,
+    setRevisionMetadata,
     stage,
     type LoreGlobals,
     type LoreStatusFilePayload,
+    type StageResult,
 } from "./lore";
 
 /**
@@ -222,6 +228,153 @@ export async function initRepository(
         await discardCreatedRepository(scoped, root);
         throw error;
     }
+}
+
+/**
+ * There was nothing to record, so no revision was made.
+ *
+ * Its own error rather than a null return, because the two callers want opposite
+ * things: an author who pressed Commit needs to be told their tree is unchanged, and
+ * an automatic checkpoint needs to do nothing at all. Both would be served badly by
+ * Lore's own wording, which is what this replaces.
+ *
+ * Empty revisions are not a cosmetic problem. A history where every fifteen minutes
+ * adds an identical entry is one the author cannot read, and "restore to before lunch"
+ * stops being answerable.
+ */
+export class NothingToCommitError extends Error {
+    constructor(readonly root: string) {
+        super(`Nothing has changed in ${root} since the last revision`);
+        this.name = "NothingToCommitError";
+    }
+}
+
+/**
+ * Lore's refusal to make an empty revision.
+ *
+ * Matched on the message because that is the only thing it distinguishes itself by -
+ * the error code is the generic one every failed verb returns. Pinned by
+ * `commit.integration.test.ts`, so a reworded upstream fails a test rather than
+ * turning a routine "nothing changed" into an opaque error in front of an author.
+ */
+function isNothingStaged(error: unknown): boolean {
+    return error instanceof Error && /nothing staged for commit/i.test(error.message);
+}
+
+/**
+ * Whether a commit would record anything, without scanning.
+ *
+ * `scan: false` is what makes this safe to ask: a scanning status is NOT a pure read -
+ * it records newly discovered directories into staged state - while this form reports
+ * only what is already staged (§4.17).
+ *
+ * Two sources because neither is enough alone. The stage result covers what this call
+ * just staged; the staged revision covers work staged earlier and never committed,
+ * which a stage of an unchanged tree reports as zero. Measured: a real change gives
+ * `totalCount: 1` and a staged revision hash, a clean tree gives `totalCount: 0` and
+ * no staged revision at all.
+ */
+async function hasSomethingToCommit(globals: LoreGlobals, staged: StageResult): Promise<boolean> {
+    if ((staged.counts?.totalCount ?? 0) > 0) return true;
+    const status = await repositoryStatus(globals, { scan: false, revisionOnly: true });
+    return Boolean(status.revision?.revisionStaged);
+}
+
+/**
+ * Record the working tree as a new revision.
+ *
+ * The order below is the whole content of this function, and every step is where it is
+ * because moving it loses or corrupts something:
+ *
+ *  1. **Stage the repository root**, not a file list. Lore recurses and applies the
+ *     ignore file itself, so the exclusion policy is enforced by the thing that also
+ *     enforces it during a scan. A path that lands OUTSIDE the repository still raises
+ *     rather than being skipped - `invoke` turns Lore's PATH_IGNORE into an error -
+ *     which is the only reason a mistyped path cannot silently drop an asset out of
+ *     history. (Excluded paths report FILTER_EXCLUDE instead, so the ignore file does
+ *     not trip that guard.)
+ *  2. **Establish that there is something to commit**, and refuse before writing
+ *     anything if there is not. This is not merely a nicer error than Lore's: step 3
+ *     has a side effect that outlives a failed commit.
+ *  3. **Label the revision, BEFORE committing.** Measured, and the opposite of what the
+ *     verb's name suggests: `revisionMetadataSet` writes to the STAGED revision - the
+ *     one the next commit will create - not to the current head. Setting it afterwards
+ *     put every label on the following revision, so a checkpoint read back as a commit
+ *     and the next commit read back as a checkpoint. Measured with the same experiment:
+ *     a set with NOTHING staged does not fail, it waits and attaches to whatever is
+ *     committed next - which is why step 2 comes first, and why every commit path here
+ *     writes the key (a stray label is then overwritten rather than inherited).
+ *  4. **Flush.** NOT politeness. Lore holds branch tips in memory and writes them
+ *     lazily, so a process that commits and exits promptly loses the commit even
+ *     though the call returned a revision - and it is a RACE, not a stable failure,
+ *     so it works until the machine is busy. Reporting success before this is
+ *     reporting a commit that may not exist.
+ *
+ * The renderer's pending saves have to be flushed BEFORE this runs. That is the
+ * caller's job (see VcsManager.commit) because only the main process can ask a window
+ * to do it; a debounced auto-save still owed at step 1 would make this revision
+ * describe a file that is about to change.
+ */
+export async function commitWorkingTree(
+    globals: LoreGlobals,
+    options: { message: string; kind: VcsRevisionKind },
+): Promise<VcsCommitResult> {
+    const staged = await stage(globals, [globals.repositoryPath]);
+    if (!(await hasSomethingToCommit(globals, staged))) {
+        throw new NothingToCommitError(globals.repositoryPath);
+    }
+
+    // Namespaced because these keys share one map with Lore's own - a revision already
+    // carries `branch`, `timestamp`, `message`, `created-by` and `committed-by`.
+    await setRevisionMetadata(globals, { [VCS_REVISION_KIND_KEY]: options.kind });
+
+    let revision;
+    try {
+        revision = await commit(globals, options.message);
+    } catch (error) {
+        if (isNothingStaged(error)) throw new NothingToCommitError(globals.repositoryPath);
+        throw error;
+    }
+
+    await flushRepository(globals);
+
+    return {
+        revision: revision.revision,
+        number: revision.revisionNumber,
+        kind: options.kind,
+        // Directories are excluded: they are counted separately by Lore and an author
+        // reading "12 files" does not mean the folders those files are in.
+        fileCount: (staged.counts?.fileAddCount ?? 0)
+            + (staged.counts?.fileModifyCount ?? 0)
+            + (staged.counts?.fileDeleteCount ?? 0)
+            + (staged.counts?.fileMoveCount ?? 0),
+    };
+}
+
+/**
+ * What kind of revision this is, or undefined when it does not say.
+ *
+ * Undefined is a real answer and the history UI has to render it: the repository's
+ * first commit was written by {@link initRepository} before kinds existed, and any
+ * revision made by another client carries whatever that client wrote. Treating absence
+ * as either kind would mislabel those.
+ *
+ * A failed read degrades to undefined rather than throwing. This is called once per
+ * revision to build a list, and Lore reports "this revision has no such key" the same
+ * way it reports a lookup that went wrong - so the alternative is a history panel that
+ * cannot render because one entry predates a metadata key.
+ */
+export async function readRevisionKind(
+    globals: LoreGlobals,
+    revision: string,
+): Promise<VcsRevisionKind | undefined> {
+    const entry = await getRevisionMetadata(globals, revision, VCS_REVISION_KIND_KEY).catch(() => undefined);
+    return toRevisionKind(entry?.text);
+}
+
+/** Only the two kinds Studio writes. Anything else is another client's vocabulary. */
+function toRevisionKind(value: string | undefined): VcsRevisionKind | undefined {
+    return value === "commit" || value === "checkpoint" ? value : undefined;
 }
 
 /**

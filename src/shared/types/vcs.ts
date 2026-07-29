@@ -82,6 +82,72 @@ export interface VcsInitOptions {
     repositoryUrl?: string;
 }
 
+/**
+ * Why a revision exists: the author asked for it, or the clock did.
+ *
+ * Both are ORDINARY revisions on the ordinary branch, told apart only by the metadata
+ * key below. Deliberately not a separate branch for checkpoints: switching branches
+ * moves the working tree, and a checkpoint that touched the author's files would be a
+ * background task editing their project.
+ */
+export type VcsRevisionKind = "commit" | "checkpoint";
+
+/**
+ * The repository metadata key that records a {@link VcsRevisionKind}.
+ *
+ * Namespaced because the repository is not Studio's private store - the author's own
+ * `lore` CLI and any future collaborator's client see the same metadata, and an
+ * unprefixed `kind` would be a land grab on a shared namespace.
+ *
+ * A revision with no value here is not a checkpoint. That covers the repository's
+ * first commit (written by `initRepository`, which predates kinds) and anything
+ * committed by another client, so the history UI must treat "absent" as "show it"
+ * rather than as a default of either kind.
+ */
+export const VCS_REVISION_KIND_KEY = "narraleaf.kind";
+
+/**
+ * When Studio takes a checkpoint on its own initiative.
+ *
+ * `interval` is the timer; the other three are the unconditional ones, taken at the
+ * moments where the next thing that happens can make the current working tree
+ * unrecoverable. Every one of them still refuses to make an empty revision - a
+ * checkpoint of a tree that has not changed is a lie about the author's history.
+ */
+export type VcsCheckpointReason =
+    /** The `versionControl.checkpointIntervalMinutes` timer, after a versioned write. */
+    | "interval"
+    /** The author is closing the project; nothing will be watching the tree afterwards. */
+    | "project-close"
+    /** A production build is about to run. */
+    | "build"
+    /**
+     * A restore is about to overwrite the working tree.
+     *
+     * No caller yet - restore is a later milestone. Declared so that milestone inherits
+     * the policy instead of reinventing it, and deliberately not backed by a stub.
+     */
+    | "restore";
+
+export interface VcsCommitOptions {
+    /** Recorded verbatim on the revision. Empty means the default for the kind. */
+    message?: string;
+    /**
+     * Who to record as the author. The seam for a logged-in identity; left unset,
+     * the main process resolves it from settings.
+     */
+    identity?: string;
+}
+
+export interface VcsCommitResult {
+    revision: RevisionId;
+    /** Monotonic per repository. */
+    number: number;
+    kind: VcsRevisionKind;
+    /** Files the commit added or changed, as the backend counted them. */
+    fileCount: number;
+}
+
 export interface VcsHistoryEntry {
     revision: RevisionId;
     /** Monotonic per repository; usable as a cheap topological rank. */
@@ -91,6 +157,15 @@ export interface VcsHistoryEntry {
      * Root revisions have none.
      */
     parents: RevisionId[];
+    /**
+     * What kind of revision this is, when the caller asked for kinds.
+     *
+     * Absent both when the caller did not ask and when the revision records no kind,
+     * because reading it costs one backend call PER REVISION - there is no batch verb -
+     * and a history list that paid for it unconditionally would make opening the panel
+     * on a long-lived project a few hundred round trips.
+     */
+    kind?: VcsRevisionKind;
 }
 
 export interface VcsBlobRequest {

@@ -5,6 +5,8 @@ import {
     LORE_CALLBACK_CONFIG,
     LORE_CALLBACK_PROTOTYPE,
     LORE_EVENT_TAGS,
+    LORE_METADATA_TAGS,
+    LORE_METADATA_TYPES,
     LORE_STRUCTS,
     LORE_STRUCT_ALIASES,
     LORE_VERBS,
@@ -89,6 +91,16 @@ describe("Lore ABI", () => {
         for (const [name, value] of Object.entries(LORE_EVENT_TAGS)) {
             expect(upstreamEnums.LoreEventTag[name], `tag ${name}`).toBe(value);
         }
+    });
+
+    it("uses the header's metadata type and tag values", () => {
+        // Both directions matter here, unlike the event tags: the WRITE side picks a
+        // LoreMetadataType and the READ side switches on a LoreMetadataTag, so a
+        // renumbering would either store a string as a number or dereference a number
+        // as a pointer. Full enums rather than the subset Studio uses, because a
+        // renumbering shifts the members we do use.
+        expect(upstreamEnums.LoreMetadataType).toEqual(LORE_METADATA_TYPES);
+        expect(upstreamEnums.LoreMetadataTag).toEqual(LORE_METADATA_TAGS);
     });
 
     it("declares every struct its own fields reference", () => {

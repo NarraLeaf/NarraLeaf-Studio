@@ -200,6 +200,32 @@ export class SaveStatusService extends Service<SaveStatusService> {
     }
 
     /**
+     * Make every registered saver forget what it owes, and drop the "could not read this document"
+     * notices. Called by `WorkspaceReloadService` before it re-reads the working tree.
+     *
+     * Both halves are statements about bytes that are about to be read again:
+     *
+     *  - A pending write is owed on memory the reload is about to replace. `flushAll` here would be
+     *    the defect this whole mechanism exists to fix, one function earlier - see
+     *    {@link DebouncedSaver.abandon}.
+     *  - An "unreadable" toast names a file we are about to re-read. If it is still corrupt the load
+     *    path raises it again within the same call, so nothing is hidden; if it is not, the author
+     *    stops being warned about a file that is now fine.
+     *
+     * The write-failure table is deliberately left alone: those are paths the disk itself rejected,
+     * which a reload says nothing about, and only a later successful write to the same path is
+     * evidence they recovered.
+     */
+    public async prepareForReload(): Promise<void> {
+        await Promise.allSettled([...this.savers.values()].map(entry => entry.saver.abandon()));
+        for (const [path, id] of [...this.corruptToasts]) {
+            this.corruptToasts.delete(path);
+            this.getNotifications()?.close(id);
+        }
+        this.notifyChanged();
+    }
+
+    /**
      * Retry now instead of waiting out the backoff. Safe to call when nothing is owed.
      *
      * Clears the failure table first, then writes. Anything still broken is re-reported by the

@@ -1,5 +1,6 @@
 import type { Workspace } from "@/lib/workspace/workspace";
 import { translate } from "@/lib/i18n";
+import { getProjectWriteFreeze } from "@/lib/app/writeFreeze";
 import { Service } from "../Service";
 import { Services, WorkspaceContext } from "../services";
 import { UIService } from "../core/UIService";
@@ -88,6 +89,10 @@ export class CommandService extends Service<CommandService> {
             workspace,
             focusContext: uiService.focus.getFocus(),
             translate,
+            // Read straight off the latch rather than through WorkspaceFreezeService: this is a
+            // per-window module and the palette is collected on every keystroke, so the freshest
+            // answer with no subscription to keep in sync is the right one here.
+            frozen: getProjectWriteFreeze() !== null,
         });
     }
 
