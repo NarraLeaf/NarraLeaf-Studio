@@ -2094,6 +2094,14 @@ async function getPuppetElement(
         // null is the engine's own default and means the stage size, so it is passed through
         // rather than substituted with a guess at what the stage happens to be.
         size: appearance.size,
+        // The pose the author chose in the inspector. It has to be constructor config rather than a
+        // first action: `IPuppetUserConfig` is what survives `reset()`, so a puppet restored from a
+        // save or re-entered after `newGame()` comes back wearing it. Each channel is independently
+        // optional, and `null` is a real value there - "nothing applied" - so an unset channel is
+        // omitted rather than sent as null, which would overwrite the model's own default.
+        ...(appearance.defaultState?.motion ? { motion: appearance.defaultState.motion } : {}),
+        ...(appearance.defaultState?.expression ? { expression: appearance.defaultState.expression } : {}),
+        ...(appearance.defaultState?.skin ? { skin: appearance.defaultState.skin } : {}),
     });
     ctx.puppets.set(key, puppet);
     return puppet;
