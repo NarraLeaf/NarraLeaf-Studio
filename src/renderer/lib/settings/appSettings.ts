@@ -507,4 +507,39 @@ export const AppSettings: AppSettingDefinition[] = [
         descriptionKey: "settings.items.uiTemplateRegistryUrl.description",
         defaultValue: "",
     },
+    {
+        // Read by the renderer's CheckpointScheduler (VersionControlService) on every
+        // beat, so a change here applies without a restart. 0 turns the timer off.
+        // Only ever fires when a versioned file has actually been written - never by
+        // asking the backend what changed, which is a scan and not a pure read.
+        key: "versionControl.checkpointIntervalMinutes",
+        category: "sync",
+        scope: SettingScope.Global,
+        type: SettingValueType.Integer,
+        label: "Automatic checkpoint interval",
+        labelKey: "settings.items.checkpointInterval.label",
+        description: "How long to wait before recording a checkpoint in a project's version history. Only ever records when something has changed. Set to 0 to turn automatic checkpoints off.",
+        descriptionKey: "settings.items.checkpointInterval.description",
+        defaultValue: 15,
+        min: 0,
+        // A day. Past that the setting is indistinguishable from 0, which is the honest
+        // way to say "do not do this".
+        max: 1440,
+        step: 5,
+        unit: "min",
+    },
+    {
+        // Read by the main process (VcsManager.resolveIdentity) for every commit and
+        // checkpoint. Empty records UNCONFIGURED_IDENTITY; deliberately not the OS
+        // account name, which is not Studio's to publish on the author's behalf.
+        key: "versionControl.authorName",
+        category: "sync",
+        scope: SettingScope.Global,
+        type: SettingValueType.String,
+        label: "Author name",
+        labelKey: "settings.items.versionControlAuthor.label",
+        description: "Recorded as the author of commits and checkpoints. Leave empty to record NarraLeaf Studio instead.",
+        descriptionKey: "settings.items.versionControlAuthor.description",
+        defaultValue: "",
+    },
 ];

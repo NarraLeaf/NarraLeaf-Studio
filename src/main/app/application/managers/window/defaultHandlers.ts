@@ -12,7 +12,7 @@ import {
 import {
     VcsGetAvailabilityHandler, VcsIsRepositoryHandler, VcsGetInfoHandler, VcsGetHistoryHandler, VcsReadBlobHandler,
     VcsGetChangedPathsHandler, VcsGetThreeWayHandler, VcsGetMergeBaseHandler, VcsInitRepositoryHandler,
-    VcsGetStatusHandler,
+    VcsGetStatusHandler, VcsCommitHandler, VcsCheckpointHandler,
 } from "./handlers/vcsAction";
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./handlers/projectWizardAction";
 import { WorkspaceExportProjectPackageHandler, WorkspaceImportProjectPackageHandler } from "./handlers/projectPackageAction";
@@ -237,11 +237,14 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new FsGrantFileAccessHandler(),
         new FsHashHandler(),
 
-        // Version control (reads, plus init - see docs/version-control.md)
+        // Version control (reads, plus the writes that only ever add a revision -
+        // see docs/version-control.md)
         new VcsGetAvailabilityHandler(),
         new VcsIsRepositoryHandler(),
         new VcsGetInfoHandler(),
         new VcsInitRepositoryHandler(),
+        new VcsCommitHandler(),
+        new VcsCheckpointHandler(),
         new VcsGetStatusHandler(),
         new VcsGetHistoryHandler(),
         new VcsReadBlobHandler(),

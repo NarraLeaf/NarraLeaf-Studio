@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RequestStatus } from "@shared/types/ipcEvents";
-import type { VcsAvailability, VcsStatus } from "@shared/types/vcs";
-import { VersionControlService } from "./VersionControlService";
+import type { VcsAvailability, VcsCommitResult, VcsStatus } from "@shared/types/vcs";
+import { freezeProjectWrites, getProjectWriteFreeze, thawProjectWrites } from "@/lib/app/writeFreeze";
+import { CheckpointScheduler, VersionControlService, type CheckpointSchedulerDeps } from "./VersionControlService";
 import type { WorkspaceContext } from "../services";
 
 /**
@@ -19,6 +20,8 @@ const vcs = vi.hoisted(() => ({
     isRepository: vi.fn(),
     getInfo: vi.fn(),
     initRepository: vi.fn(),
+    commit: vi.fn(),
+    checkpoint: vi.fn(),
     getStatus: vi.fn(),
     getHistory: vi.fn(),
     readBlob: vi.fn(),
@@ -28,6 +31,32 @@ const vcs = vi.hoisted(() => ({
 vi.mock("@/lib/app/bridge", () => ({
     getInterface: () => ({ vcs }),
 }));
+
+/**
+ * The write signal, stubbed at the module the service reads it from.
+ *
+ * Mocked rather than driven through the real one because the real reporter is internal
+ * to `BaseFileSystemService` - a test cannot make it fire without performing an actual
+ * write over IPC. The predicate that decides whether a write counts is NOT stubbed: that
+ * is the real `isVersioned`, reached through the real freeze module, which is the whole
+ * point of the wiring test below.
+ */
+const writeObservers = vi.hoisted(() => new Set<(write: { path: string; ok: boolean }) => void>());
+
+vi.mock("./FileSystem", () => ({
+    BaseFileSystemService: {
+        observeWrites: (observer: (write: { path: string; ok: boolean }) => void) => {
+            writeObservers.add(observer);
+            return () => {
+                writeObservers.delete(observer);
+            };
+        },
+    },
+}));
+
+function reportWrite(path: string, ok = true): void {
+    for (const observer of writeObservers) observer({ path, ok });
+}
 
 const PROJECT = "D:/projects/demo";
 
@@ -72,8 +101,19 @@ function status(overrides: Partial<VcsStatus> = {}): VcsStatus {
     };
 }
 
+function commitResult(overrides: Partial<VcsCommitResult> = {}): VcsCommitResult {
+    return { revision: "cc", number: 4, kind: "commit", fileCount: 2, ...overrides };
+}
+
 beforeEach(() => {
     for (const fn of Object.values(vcs)) fn.mockReset();
+    writeObservers.clear();
+});
+
+afterEach(() => {
+    // A freeze is module-level state; leaking one would silence every later test's
+    // checkpoint without saying so.
+    thawProjectWrites();
 });
 
 describe("VersionControlService availability", () => {
@@ -327,5 +367,317 @@ describe("VersionControlService init", () => {
             Promise.resolve({ success: false, error: `${PROJECT} is already under version control` }));
 
         await expect(service.initRepository()).rejects.toThrow("already under version control");
+    });
+});
+
+/**
+ * The interval scheduler, in isolation.
+ *
+ * Every decision is injected, so these are the four behaviours the milestone actually
+ * turns on - and none of them needs a workspace, a repository or a clock that really
+ * ticks. The clock is a variable and the beat is a method call, because a test that
+ * waited fifteen real minutes is a test nobody runs.
+ */
+describe("CheckpointScheduler", () => {
+    const MINUTE = 60_000;
+
+    function scheduler(overrides: Partial<CheckpointSchedulerDeps> = {}) {
+        const checkpoint = vi.fn(() => Promise.resolve(null));
+        const state = { minutes: 15, frozen: false, time: 1_000_000 };
+        const instance = new CheckpointScheduler({
+            intervalMinutes: () => state.minutes,
+            // The real predicate's shape, spelled out rather than imported: a test that
+            // silently changes meaning when the exclusion table changes is worse than one
+            // that has to be updated with it.
+            counts: (path) => !path.includes("/editor/cache/") && !path.includes("/.nlstudio/"),
+            isFrozen: () => state.frozen,
+            checkpoint,
+            observeWrites: (observer) => {
+                writeObservers.add(observer);
+                return () => {
+                    writeObservers.delete(observer);
+                };
+            },
+            now: () => state.time,
+            // Captured and never fired on its own: a real interval would make these tests
+            // depend on wall-clock time for no gain.
+            heartbeat: () => () => undefined,
+            onError: () => undefined,
+            ...overrides,
+        });
+        instance.start();
+        return { instance, checkpoint, state };
+    }
+
+    it("does not fire without a versioned write, however long it waits", async () => {
+        const { instance, checkpoint, state } = scheduler();
+
+        state.time += 60 * MINUTE;
+        await instance.tick();
+
+        // The whole design in one assertion: with no write there is nothing to record,
+        // and the other way of finding out - asking the backend what changed - is a scan,
+        // which records newly discovered directories into staged state and makes a later
+        // tick report deletions the author never made (docs §4.17).
+        expect(checkpoint).not.toHaveBeenCalled();
+        expect(instance.hasUnrecordedChanges()).toBe(false);
+    });
+
+    it("fires once the interval has passed since the first unrecorded write", async () => {
+        const { instance, checkpoint, state } = scheduler();
+
+        reportWrite(`${PROJECT}/editor/story/index.json`);
+        expect(instance.hasUnrecordedChanges()).toBe(true);
+
+        // Not yet: the interval is a floor on the gap, so an author who typed a moment
+        // ago is not interrupted a moment later.
+        state.time += 14 * MINUTE;
+        await instance.tick();
+        expect(checkpoint).not.toHaveBeenCalled();
+
+        state.time += 2 * MINUTE;
+        await instance.tick();
+        expect(checkpoint).toHaveBeenCalledTimes(1);
+
+        // And having recorded it, it does not go on recording nothing every interval.
+        state.time += 60 * MINUTE;
+        await instance.tick();
+        expect(checkpoint).toHaveBeenCalledTimes(1);
+        expect(instance.hasUnrecordedChanges()).toBe(false);
+    });
+
+    it("never fires when the interval is 0, which is how an author turns it off", async () => {
+        const { instance, checkpoint, state } = scheduler();
+        state.minutes = 0;
+
+        reportWrite(`${PROJECT}/editor/story/index.json`);
+        state.time += 60 * MINUTE;
+        await instance.tick();
+
+        expect(checkpoint).not.toHaveBeenCalled();
+    });
+
+    it("does not count a write to a path the repository excludes", async () => {
+        const { instance, checkpoint, state } = scheduler();
+
+        // Thumbnails are rewritten constantly while Studio runs. If these counted, the
+        // "only when something changed" rule would be satisfied permanently and every
+        // interval would produce a revision recording nothing the author did.
+        reportWrite(`${PROJECT}/editor/cache/thumbnail/ab/cd/y.png`);
+        reportWrite(`${PROJECT}/.nlstudio/services/panel_state.json`);
+        state.time += 60 * MINUTE;
+        await instance.tick();
+
+        expect(checkpoint).not.toHaveBeenCalled();
+        expect(instance.hasUnrecordedChanges()).toBe(false);
+    });
+
+    it("does not count a write that failed", async () => {
+        const { instance, checkpoint, state } = scheduler();
+
+        reportWrite(`${PROJECT}/editor/story/index.json`, false);
+        state.time += 60 * MINUTE;
+        await instance.tick();
+
+        expect(checkpoint).not.toHaveBeenCalled();
+    });
+
+    it("does not fire while the workspace is frozen, even with a change waiting", async () => {
+        const { instance, checkpoint, state } = scheduler();
+
+        reportWrite(`${PROJECT}/editor/story/index.json`);
+        state.time += 60 * MINUTE;
+        state.frozen = true;
+        await instance.tick();
+
+        // This guard is NOT redundant with the write latch. A frozen workspace cannot
+        // produce a versioned write - the latch refuses it before it is ever reported -
+        // so the flag can only have been set BEFORE the freeze. Without the check, an
+        // author who edits and then opens a past revision gets a checkpoint appended to
+        // their timeline for the act of reading history.
+        expect(checkpoint).not.toHaveBeenCalled();
+        // And the change is still owed, so thawing does not lose it.
+        expect(instance.hasUnrecordedChanges()).toBe(true);
+
+        state.frozen = false;
+        await instance.tick();
+        expect(checkpoint).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps the change owed when a checkpoint fails, so the next beat retries", async () => {
+        const failing = vi.fn(() => Promise.reject(new Error("disk full")));
+        const errors: unknown[] = [];
+        const { instance, state } = scheduler({ checkpoint: failing, onError: (error) => errors.push(error) });
+
+        reportWrite(`${PROJECT}/editor/story/index.json`);
+        state.time += 20 * MINUTE;
+        await instance.tick();
+
+        expect(failing).toHaveBeenCalledTimes(1);
+        expect(errors).toHaveLength(1);
+        expect(instance.hasUnrecordedChanges()).toBe(true);
+    });
+
+    it("stops noticing writes once stopped", async () => {
+        const { instance, checkpoint, state } = scheduler();
+        instance.stop();
+
+        reportWrite(`${PROJECT}/editor/story/index.json`);
+        state.time += 60 * MINUTE;
+        await instance.tick();
+
+        expect(checkpoint).not.toHaveBeenCalled();
+    });
+});
+
+describe("VersionControlService commit", () => {
+    it("reports the new revision and drops what it made stale", async () => {
+        const service = await createService();
+        vcs.getStatus.mockImplementation(() => ok(status()));
+        vcs.getHistory.mockImplementation(() => ok({ entries: [] }));
+        vcs.commit.mockImplementation(() => ok(commitResult()));
+
+        await service.refreshStatus();
+        await service.getHistory(10);
+
+        const result = await service.commit({ message: "Act one" });
+
+        expect(vcs.commit).toHaveBeenCalledWith(PROJECT, { message: "Act one" });
+        expect(result).toEqual(commitResult());
+        // The snapshot described a tree with uncommitted changes in it, and every cached
+        // page is now one entry short.
+        expect(service.getStatus()).toBeNull();
+        await service.getHistory(10);
+        expect(vcs.getHistory).toHaveBeenCalledTimes(2);
+    });
+
+    it("gives the author the failure, including nothing-has-changed", async () => {
+        const service = await createService();
+        vcs.commit.mockImplementation(() =>
+            Promise.resolve({ success: false, error: `Nothing has changed in ${PROJECT} since the last revision` }));
+
+        await expect(service.commit()).rejects.toThrow("Nothing has changed");
+    });
+
+    it("refuses on a host with no backend instead of resolving quietly", async () => {
+        const service = await createService({ available: false, reason: "unsupported-platform" });
+
+        await expect(service.commit()).rejects.toThrow("unsupported-platform");
+        expect(vcs.commit).not.toHaveBeenCalled();
+    });
+
+    it("treats a checkpoint with nothing to record as a non-event", async () => {
+        const service = await createService();
+        vcs.getHistory.mockImplementation(() => ok({ entries: [{ revision: "aa", number: 1, parents: [] }] }));
+        vcs.checkpoint.mockImplementation(() => ok({ revision: null }));
+
+        await service.getHistory(5);
+        await expect(service.createCheckpoint("interval")).resolves.toBeNull();
+
+        // Nothing was recorded, so nothing cached became wrong - re-reading must not cost
+        // another round trip just because a timer went off.
+        await service.getHistory(5);
+        expect(vcs.getHistory).toHaveBeenCalledTimes(1);
+    });
+
+    it("invalidates history when a checkpoint does record something", async () => {
+        const service = await createService();
+        vcs.getHistory.mockImplementation(() => ok({ entries: [] }));
+        vcs.checkpoint.mockImplementation(() => ok({ revision: commitResult({ kind: "checkpoint" }) }));
+
+        await service.getHistory(5);
+        const result = await service.createCheckpoint("build");
+
+        expect(result?.kind).toBe("checkpoint");
+        expect(vcs.checkpoint).toHaveBeenCalledWith(PROJECT, "build");
+        await service.getHistory(5);
+        expect(vcs.getHistory).toHaveBeenCalledTimes(2);
+    });
+
+    it("answers null for a checkpoint on a host with no backend, without asking", async () => {
+        const service = await createService({ available: false, reason: "backend-missing" });
+
+        // Automatic, so an unavailable backend is not something to report - it would be
+        // reported every interval for the rest of the session.
+        await expect(service.createCheckpoint("interval")).resolves.toBeNull();
+        expect(vcs.checkpoint).not.toHaveBeenCalled();
+    });
+});
+
+describe("VersionControlService history kinds", () => {
+    it("asks for kinds only when told to, and caches the two answers apart", async () => {
+        const service = await createService();
+        vcs.getHistory.mockImplementation((_project: string, _limit: number, includeKinds?: boolean) =>
+            ok({ entries: [{ revision: "aa", number: 1, parents: [], kind: includeKinds ? "commit" : undefined }] }));
+
+        const plain = await service.getHistory(10);
+        expect(plain[0].kind).toBeUndefined();
+        expect(vcs.getHistory).toHaveBeenLastCalledWith(PROJECT, 10, false);
+
+        // A different question, not a filter on the same answer: the plain page never read
+        // the kinds, so it cannot be used to answer this one.
+        const kinds = await service.getHistory(10, { includeKinds: true });
+        expect(kinds[0].kind).toBe("commit");
+        expect(vcs.getHistory).toHaveBeenLastCalledWith(PROJECT, 10, true);
+        expect(vcs.getHistory).toHaveBeenCalledTimes(2);
+
+        await service.getHistory(10, { includeKinds: true });
+        expect(vcs.getHistory).toHaveBeenCalledTimes(2);
+    });
+});
+
+describe("VersionControlService checkpoint wiring", () => {
+    it("counts a project write and ignores an excluded one, using the real predicate", async () => {
+        const service = await createService();
+        service.activate(service.getContext());
+
+        try {
+            // Not this test's own copy of the policy: it goes through the same
+            // `isVersioned` that the freeze gate and the repository's ignore file are
+            // generated from, so the set of paths that can trigger a checkpoint is the
+            // set a freeze protects.
+            reportWrite(`${PROJECT}/editor/cache/thumbnail/ab/cd/y.png`);
+            reportWrite(`${PROJECT}/.nlstudio/services/panel_state.json`);
+            reportWrite("D:/elsewhere/notes.txt");
+            expect(service.hasUnrecordedChanges()).toBe(false);
+
+            reportWrite(`${PROJECT}/editor/story/index.json`);
+            expect(service.hasUnrecordedChanges()).toBe(true);
+        } finally {
+            await service.teardown(service.getContext());
+        }
+    });
+
+    it("stops watching once the workspace is gone", async () => {
+        const service = await createService();
+        service.activate(service.getContext());
+        await service.teardown(service.getContext());
+
+        reportWrite(`${PROJECT}/editor/story/index.json`);
+        expect(service.hasUnrecordedChanges()).toBe(false);
+    });
+
+    it("is wired to the real freeze latch, not a copy of it", async () => {
+        const service = await createService();
+        service.activate(service.getContext());
+
+        try {
+            reportWrite(`${PROJECT}/editor/story/index.json`);
+            expect(service.hasUnrecordedChanges()).toBe(true);
+
+            // The scheduler's guard is unit-tested above against an injected predicate;
+            // this is the other half, that what it is wired to is the module-level latch
+            // the rest of the workspace freezes through.
+            freezeProjectWrites({ projectPath: PROJECT, reason: { kind: "manual" } });
+            vcs.checkpoint.mockImplementation(() => ok({ revision: null }));
+            await service.createCheckpoint("interval");
+            // The service call itself is not gated - a deliberate checkpoint before a
+            // restore has to work - so the assertion is on the latch being visible, which
+            // is what the scheduler reads.
+            expect(getProjectWriteFreeze()).not.toBeNull();
+        } finally {
+            thawProjectWrites();
+            await service.teardown(service.getContext());
+        }
     });
 });

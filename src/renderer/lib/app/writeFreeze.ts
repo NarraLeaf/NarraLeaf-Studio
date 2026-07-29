@@ -62,6 +62,27 @@ const FOLD_CASE = sep === "\\";
 
 let frozen: WorkspaceFreeze | null = null;
 
+/**
+ * The second reason a project-data write is refused: the workspace is re-reading the working tree,
+ * so every in-memory document is either being replaced or has already been thrown away.
+ *
+ * Deliberately NOT the same latch as {@link frozen}, and deliberately invisible:
+ *
+ *  - {@link getProjectWriteFreeze} and {@link observeProjectWriteFreeze} do not see it, because a
+ *    reload is not a state the author is in - it happens *while leaving* one, and a freeze notice
+ *    that blinked back on as the workspace unfroze would read as the unfreeze having failed.
+ *  - a refusal here is not announced on {@link observeRefusedWrites} either. That channel means "your
+ *    work is not being saved", and during a reload nothing of the author's is at stake: the only
+ *    writes it can catch come from a load path re-materialising what it just read off the disk.
+ *    Those get a console line, because a write attempt during a reload is a defect worth finding,
+ *    not a toast.
+ *
+ * Held rather than latched: the reload is async, several services deep, and the window that has to
+ * be closed is the one between "the freeze is gone" and "memory has been replaced". A pending
+ * auto-save firing inside it would write the very bytes the reload exists to discard.
+ */
+let reloadHold: { projectPath: string; depth: number } | null = null;
+
 const freezeObservers = new Set<(freeze: WorkspaceFreeze | null) => void>();
 const refusalObservers = new Set<(refusal: RefusedWrite) => void>();
 
@@ -87,6 +108,40 @@ export function thawProjectWrites(): void {
 /** The active freeze, or null when project data is writable. */
 export function getProjectWriteFreeze(): WorkspaceFreeze | null {
     return frozen;
+}
+
+/**
+ * Refuse project-data writes until the returned function is called, because the working tree is
+ * being re-read into the editors. See {@link reloadHold}.
+ *
+ * Returns the release rather than exposing an `end` of its own so the hold cannot outlive its
+ * caller's `finally`. Re-entrant: nested holds (a restore arriving while a thaw is still reloading)
+ * count, and only the last release lifts it.
+ */
+export function holdProjectWritesForReload(projectPath: string): () => void {
+    if (reloadHold && reloadHold.projectPath === projectPath) {
+        reloadHold.depth += 1;
+    } else {
+        // A window is one project (see the multi-project window model), so a hold naming a different
+        // project is a stale one from a project that has already closed.
+        reloadHold = { projectPath, depth: 1 };
+    }
+    let released = false;
+    return () => {
+        if (released || !reloadHold) {
+            return;
+        }
+        released = true;
+        reloadHold.depth -= 1;
+        if (reloadHold.depth <= 0) {
+            reloadHold = null;
+        }
+    };
+}
+
+/** Whether a working-tree re-read is holding writes off right now. Exported for tests. */
+export function isProjectWriteReloadHeld(): boolean {
+    return reloadHold !== null;
 }
 
 /** Watch freeze and thaw. Returns an unsubscribe. */
@@ -131,6 +186,30 @@ export function refuseFrozenWrite(...paths: (string | null | undefined)[]): Work
         }
     }
     return null;
+}
+
+/**
+ * The reload half of the gate. True when one of `paths` is project data that may not be written
+ * right now because the working tree is being re-read; false when the write may proceed.
+ *
+ * Separate from {@link refuseFrozenWrite} rather than folded into it because the two answers are
+ * reported differently - see {@link reloadHold} - and because a caller that consults only one of
+ * them should read as having made that choice. The write boundary consults both.
+ */
+export function refuseReloadingWrite(...paths: (string | null | undefined)[]): boolean {
+    const hold = reloadHold;
+    if (!hold) {
+        return false;
+    }
+    for (const path of paths) {
+        if (typeof path === "string" && isFrozenProjectData(hold.projectPath, path)) {
+            // Not a toast: nothing of the author's is at stake, but a load path that writes during a
+            // reload is worth finding, and this is the only place that can name the file.
+            console.warn("[writeFreeze] refused a write while the working tree was being re-read", path);
+            return true;
+        }
+    }
+    return false;
 }
 
 /** Whether one absolute path is project data belonging to `projectPath`. Exported for tests. */

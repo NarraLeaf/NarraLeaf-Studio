@@ -3,6 +3,7 @@ import { IPCEvents, IPCEventType, RequestStatus } from "@shared/types/ipcEvents"
 import type {
     RevisionId,
     VcsAvailability,
+    VcsCommitResult,
     VcsHistoryEntry,
     VcsRepositoryInfo,
     VcsStatus,
@@ -18,12 +19,11 @@ import { IPCHandler } from "./IPCHandler";
  * VcsManager - Studio is one-project-one-window, so a project-less VCS call
  * would be ambiguous with two projects open.
  *
- * All of these are reads except {@link VcsInitRepositoryHandler}, and that one is
- * here because it is not a write the resolve UI can wait for: creating the repository
- * is how a project gets one at all, and every other verb answers "not a repository"
- * until it has run. The writes that DO need a conflict story - stage, commit, merge,
- * restore - remain deliberately absent, because a renderer that can commit without
- * one commits into a state nobody can get out of. See docs/version-control.md.
+ * The writes here are the ones that only ever produce a revision:
+ * {@link VcsInitRepositoryHandler}, {@link VcsCommitHandler} and
+ * {@link VcsCheckpointHandler}. None of them can arrive at a conflict - they add to the
+ * author's own branch and never move the working tree - so none of them needs a resolve
+ * UI to exist first. Merge and restore, which do move it, remain deliberately absent.
  */
 
 /**
@@ -87,6 +87,49 @@ export class VcsInitRepositoryHandler extends IPCHandler<IPCEventType.vcsInitRep
 }
 
 /**
+ * Record the working tree as a new revision.
+ *
+ * Long, and the failure has to reach the author: this settles the window's auto-save
+ * debt, stages the whole project, commits, and forces Lore's stores to disk before
+ * answering, because a commit reported before that flush is one that may not survive
+ * the process. "Nothing has changed since the last revision" comes back as a failure
+ * too - it is the answer, phrased so the author can read it.
+ */
+export class VcsCommitHandler extends IPCHandler<IPCEventType.vcsCommit> {
+    readonly name = IPCEventType.vcsCommit;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath, options }: IPCEvents[IPCEventType.vcsCommit]["data"],
+    ): Promise<RequestStatus<VcsCommitResult>> {
+        return this.tryUse(() => window.app.getVcsManager().commit(projectPath, options ?? {}));
+    }
+}
+
+/**
+ * Record a checkpoint, or report that there was nothing to record.
+ *
+ * `revision: null` covers the three cases an automatic operation must treat as normal -
+ * no repository, no backend, nothing changed - and is deliberately a success: the
+ * renderer's interval scheduler calls this, and a failure per interval on a project
+ * that is not under version control would be noise forever.
+ */
+export class VcsCheckpointHandler extends IPCHandler<IPCEventType.vcsCheckpoint> {
+    readonly name = IPCEventType.vcsCheckpoint;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath, reason }: IPCEvents[IPCEventType.vcsCheckpoint]["data"],
+    ): Promise<RequestStatus<{ revision: VcsCommitResult | null }>> {
+        return this.tryUse(async () => ({
+            revision: await window.app.getVcsManager().checkpoint(projectPath, reason),
+        }));
+    }
+}
+
+/**
  * What changed in the working tree since the last commit.
  *
  * Answering this runs a scan, and a scan is not a pure read: discovering a NEW
@@ -114,10 +157,10 @@ export class VcsGetHistoryHandler extends IPCHandler<IPCEventType.vcsGetHistory>
 
     public async handle(
         window: AppWindow,
-        { projectPath, limit }: IPCEvents[IPCEventType.vcsGetHistory]["data"],
+        { projectPath, limit, includeKinds }: IPCEvents[IPCEventType.vcsGetHistory]["data"],
     ): Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>> {
         return this.tryUse(async () => ({
-            entries: await window.app.getVcsManager().getHistory(projectPath, limit ?? 0),
+            entries: await window.app.getVcsManager().getHistory(projectPath, limit ?? 0, { includeKinds }),
         }));
     }
 }

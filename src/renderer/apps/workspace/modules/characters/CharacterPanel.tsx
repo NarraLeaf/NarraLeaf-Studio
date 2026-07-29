@@ -7,6 +7,7 @@ import { SearchBox } from "../assets/components/SearchBox";
 import { FilterSystem, FilterConfig, ActiveFilter } from "../assets/components/FilterSystem";
 import { PanelComponentProps } from "../types";
 import { useWorkspace } from "../../context";
+import { freezeContextMenuRows, useFreezeGuard } from "../../components/ui/freezeGuard";
 import { Character } from "@/lib/workspace/services/character/Character";
 import { CharacterAppearanceKind, CharacterGroup } from "@/lib/workspace/services/character/types";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
@@ -17,6 +18,9 @@ import { PanelStateService } from "@/lib/workspace/services/core/PanelStateServi
 import { Services } from "@/lib/workspace/services/services";
 import { FolderPlus, MoreVertical, RefreshCw, Tag, User, UserPlus, Users } from "lucide-react";
 import { useCharacterFocus } from "./state/useCharacterFocus";
+
+/** The one character-panel menu row that only reads: re-reading the character list off disk. */
+const FREEZE_READ_ONLY_CHARACTER_MENU_IDS: ReadonlySet<string> = new Set(["panel-refresh"]);
 
 type MenuTarget =
     | { type: "panel" }
@@ -41,6 +45,7 @@ interface CharacterPanelState {
 
 export function CharacterPanel({ panelId }: PanelComponentProps) {
     const { t } = useTranslation();
+    const freeze = useFreezeGuard();
     const { context, isInitialized } = useWorkspace();
     const { focusedCharacterId, handleCharacterClick, setFocusToPanel } = useCharacterFocus({ context, panelId });
 
@@ -505,9 +510,12 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         event.stopPropagation();
         const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
         const items = buildContextMenu(target);
-        setMenuItems(items);
+        // Every row here creates, renames, moves or deletes a character or a group - all writes - except
+        // the one that re-reads the list. Menus still open and still list what exists, so a frozen
+        // project can be browsed; the rows are simply inert.
+        setMenuItems(freezeContextMenuRows(items, freeze.frozen, FREEZE_READ_ONLY_CHARACTER_MENU_IDS));
         setMenuState({ visible: true, position: { x: rect.right, y: rect.bottom } });
-    }, [buildContextMenu]);
+    }, [buildContextMenu, freeze]);
 
     const renderCharacterRow = useCallback((item: CharacterItem) => {
         const thumbnailUrl = thumbnails[item.id];
@@ -559,15 +567,16 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                 <div className="flex items-center gap-2">
                     <button
                         onClick={(event) => { event.stopPropagation(); handleMenuOpen(event, { type: "new-character" }); }}
-                        className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors"
+                        className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                         aria-label={t("characters.panel.addCharacter")}
+                        {...freeze.writes(false, t("characters.panel.addCharacter"))}
                     >
                         <UserPlus className="w-4 h-4" />
                     </button>
                     <button
                         onClick={(event) => { event.stopPropagation(); handleCreateGroup(); }}
-                        className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border border-edge-strong bg-fill-subtle text-fg hover:bg-fill transition-colors"
-                        title={t("characters.panel.addGroup")}
+                        className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border border-edge-strong bg-fill-subtle text-fg hover:bg-fill transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                        {...freeze.writes(false, t("characters.panel.addGroup"))}
                     >
                         <FolderPlus className="w-4 h-4" />
                     </button>

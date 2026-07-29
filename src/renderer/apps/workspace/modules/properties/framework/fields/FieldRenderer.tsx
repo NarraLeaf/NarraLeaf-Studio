@@ -20,6 +20,7 @@ import { ImageFillField } from "./ImageFillField";
 import { FontAssetField } from "./FontAssetField";
 import type { FontAssetFieldDefinition, ImageFillFieldDefinition } from "../types";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 
 interface FieldRendererProps<TData> {
     field: FieldDefinition<TData>;
@@ -54,7 +55,25 @@ function wrapBindableField<TData>(
 /**
  * Renders the appropriate field component based on field type
  */
-function FieldRendererInner<TData>({ field, data, onSaving }: FieldRendererProps<TData>) {
+function FieldRendererInner<TData>({ field: definition, data, onSaving }: FieldRendererProps<TData>) {
+    /**
+     * A frozen workspace makes every inspector field read-only through the mechanism the framework
+     * already has, rather than a second one: `readOnly` is a field-definition flag, so the whole switch
+     * below inherits it from one place.
+     *
+     * A copy, never a write back to `definition`: field definitions come from module schemas that are
+     * built once and shared, so setting the flag on the original would leave the inspector read-only
+     * after the thaw.
+     *
+     * `readOnly` is honoured by the text, number, input-group and colour fields; the field types that
+     * ignore it are the remaining gap, not a second design.
+     */
+    const freeze = useFreezeGuard();
+    const field = useMemo(
+        () => (freeze.frozen ? ({ ...definition, readOnly: true } as FieldDefinition<TData>) : definition),
+        [definition, freeze.frozen],
+    );
+
     // Check if field should be hidden
     const isHidden = useMemo(() => {
         if (field.hidden === undefined) return false;

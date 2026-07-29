@@ -7,6 +7,7 @@ import {
 } from "@/lib/ui-editor/tree/resolveInsertTargetParent";
 import { createInitialImageAppearanceFromProps } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { useAssetDropTarget } from "@/apps/workspace/dnd/useAssetDropTarget";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import type { AssetDropContext } from "@/apps/workspace/dnd/types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
@@ -28,6 +29,7 @@ export function useSurfaceImageDrop(params: {
     workspaceContext: WorkspaceContext | null;
 }) {
     const { viewportRef, viewport, documentService, surface, stateService, workspaceContext } = params;
+    const freeze = useFreezeGuard();
 
     const createElementAtClientPoint = useCallback(
         (type: string, point: { x: number; y: number }) => {
@@ -174,7 +176,10 @@ export function useSurfaceImageDrop(params: {
 
     const { dropTargetProps: surfaceImageDropTargetProps, overlayClassName: surfaceImageDropOverlayClass } =
         useAssetDropTarget({
-            canDrop: ({ resolved }) => resolved.length > 0 && resolved.every(a => a.type === AssetType.Image),
+            // Refused at `canDrop` rather than inside `onDrop`, so the canvas never lights up as a drop
+            // target: an overlay that says "drop here" and then discards the image is the half-gesture
+            // that reads as a broken editor.
+            canDrop: ({ resolved }) => !freeze.frozen && resolved.length > 0 && resolved.every(a => a.type === AssetType.Image),
             onDrop: handleImageAssetsDropped,
         });
 

@@ -35,6 +35,7 @@ import { VariableRegistryService } from "./variables/VariableRegistryService";
 import { SaveStatusService } from "./autosave/SaveStatusService";
 import { VersionControlService } from "./core/VersionControlService";
 import { WorkspaceFreezeService } from "./core/WorkspaceFreezeService";
+import { WorkspaceReloadService } from "./core/WorkspaceReloadService";
 import { PuppetDescriptionService } from "./puppet/PuppetDescriptionService";
 
 export class ServiceRegistry {
@@ -75,6 +76,7 @@ export class ServiceRegistry {
         [Services.SaveStatus]: SaveStatusService.getInstance(),
         [Services.VersionControl]: VersionControlService.getInstance(),
         [Services.WorkspaceFreeze]: WorkspaceFreezeService.getInstance(),
+        [Services.WorkspaceReload]: WorkspaceReloadService.getInstance(),
     };
 
     public get<T extends Service>(service: Services): T {
