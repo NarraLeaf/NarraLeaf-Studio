@@ -187,6 +187,51 @@ describe("game runtime artifact compiler", () => {
         }]);
     });
 
+    it("copies each installed puppet runtime directory whole and records it in the pack", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        const backendDir = path.join(projectPath, "runtimes", "puppet", "demo-backend");
+        await fs.mkdir(path.join(backendDir, "nested"), { recursive: true });
+        await fs.writeFile(path.join(backendDir, "index.js"), "export default {};", "utf-8");
+        await fs.writeFile(path.join(backendDir, "nested", "extra.txt"), "sibling bytes", "utf-8");
+        // No index.js: an install that is not loadable is skipped, not fatal.
+        await fs.mkdir(path.join(projectPath, "runtimes", "puppet", "half-installed"), { recursive: true });
+
+        const result = await compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47331));
+
+        expect(result.pack.puppetRuntimes).toEqual([{
+            name: "demo-backend",
+            entryRelativePath: "puppet/demo-backend/index.js",
+            files: ["nested/extra.txt"],
+        }]);
+        await expect(fs.readFile(
+            path.join(result.appDir, "puppet", "demo-backend", "index.js"),
+            "utf-8",
+        )).resolves.toBe("export default {};");
+        // The whole directory travels: a backend that reads its own siblings has to find them.
+        await expect(fs.readFile(
+            path.join(result.appDir, "puppet", "demo-backend", "nested", "extra.txt"),
+            "utf-8",
+        )).resolves.toBe("sibling bytes");
+    });
+
+    it("omits the puppet runtime list when the project installed none", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47332));
+
+        expect(result.pack.puppetRuntimes).toBeUndefined();
+    });
+
     it("copies a plugin sidecar for the platform being built and records it in the pack", async () => {
         const projectPath = path.join(tempDir, "project");
         const runtimeDistDir = path.join(tempDir, "runtime-dist");
