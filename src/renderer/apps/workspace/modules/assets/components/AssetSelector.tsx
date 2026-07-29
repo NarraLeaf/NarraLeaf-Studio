@@ -7,6 +7,7 @@ import {
     FileJson,
     Workflow,
     Type,
+    Boxes,
     File,
     Check,
     X,
@@ -34,6 +35,7 @@ const ASSET_TYPE_ICONS = {
     [AssetType.JSON]: FileJson,
     [AssetType.Blueprint]: Workflow,
     [AssetType.Font]: Type,
+    [AssetType.Model]: Boxes,
     [AssetType.Other]: File,
 };
 

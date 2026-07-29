@@ -17,6 +17,7 @@ function emptyOrders(): Record<AssetType, AssetOrderDocument> {
         [AssetType.JSON]: { assetIds: [], groupIds: [] },
         [AssetType.Blueprint]: { assetIds: [], groupIds: [] },
         [AssetType.Font]: { assetIds: [], groupIds: [] },
+        [AssetType.Model]: { assetIds: [], groupIds: [] },
         [AssetType.Other]: { assetIds: [], groupIds: [] },
     };
 }

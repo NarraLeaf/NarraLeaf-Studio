@@ -67,6 +67,7 @@ export const dialogs = {
         json: "JSON",
         blueprint: "Blueprint",
         font: "Font",
+        model: "Model",
         other: "Other",
     },
 } as const;
