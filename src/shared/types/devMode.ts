@@ -120,6 +120,25 @@ export type CharacterAppearanceSummary =
               options?: Record<string, string | null>;
               hidden?: boolean;
           }[];
+      }
+    | {
+          /**
+           * A box the author's own runtime draws inside. Studio ships no backend and reads none of
+           * `options` — see `PuppetAppearance` for why that is a licensing requirement rather than
+           * a simplification. No avatar table: a puppet has no authoring-time differentials to key
+           * one on, so `defaultAvatarAssetId` is its dialog avatar.
+           */
+          kind: "puppet";
+          /** The model bundle; resolved to its entry-file URL, siblings resolved off it by the engine. */
+          assetId: string | null;
+          /** Backend name, matching a folder under the project's `runtimes/puppet/`. */
+          backend: string;
+          /** A sibling of the bundle's declared entry to use instead of it; null = that entry. */
+          entry: string | null;
+          /** Stage box size in logical pixels; null = the stage size. */
+          size: { width: number; height: number } | null;
+          /** Handed to the backend verbatim. */
+          options: Record<string, unknown>;
       };
 
 export type DevModeStoryLibrary = {
