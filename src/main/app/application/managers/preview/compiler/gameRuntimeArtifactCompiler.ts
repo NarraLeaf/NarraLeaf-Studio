@@ -39,11 +39,14 @@ import {
 } from "../../../../../buildWorker/pluginBuildDependencies";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 import { getMimeType } from "@shared/utils/fs";
+import { detectModelBundleEntry, normalizeBundlePath, sortBundlePaths } from "@shared/utils/modelBundle";
 import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
 import { sanitizeProjectFileName } from "@shared/utils/nlproj";
 import { WEB_APPLE_TOUCH_FILENAME, WEB_FAVICON_FILENAME, writeWebShellFiles } from "./webShell";
 
-const ASSET_TYPES = ["image", "audio", "video", "json", "blueprint", "font", "other"] as const;
+const ASSET_TYPES = ["image", "audio", "video", "json", "blueprint", "font", "model", "other"] as const;
+/** Asset types whose payload is a directory tree rather than one file. */
+const BUNDLE_ASSET_TYPES: ReadonlySet<string> = new Set(["model"]);
 // "native.js" and "gate.js" are opaque support modules of @narraleaf/encryption
 // that the packaged main.js requires (via computed requires the bundler cannot
 // inline) from its own directory at startup; they are produced by the runtime
@@ -179,6 +182,7 @@ type AssetMetadataRecord = {
     hash?: unknown;
     ext?: unknown;
     source?: unknown;
+    extras?: unknown;
 };
 
 export async function compileGameRuntimeArtifact(
@@ -481,6 +485,16 @@ async function copyProjectAssets(input: {
         for (const [assetId, rawAsset] of Object.entries(metadata)) {
             const normalized = normalizeAssetRecord(assetId, type, rawAsset);
             const sourcePath = resolveAssetSourcePath(input.projectPath, normalized);
+            if (BUNDLE_ASSET_TYPES.has(type)) {
+                Object.assign(manifest, await copyAssetBundle({
+                    ...input,
+                    type,
+                    normalized,
+                    sourceDir: sourcePath,
+                    authoredEntry: readAuthoredBundleEntry(rawAsset),
+                }));
+                continue;
+            }
             const sourceLabel = normalized.source === "remote" ? "remote cache" : "local asset";
             // The MIME type is derived from the extension, not from where the
             // bytes land, so it is available even when the store keeps the item
@@ -517,6 +531,133 @@ async function copyProjectAssets(input: {
         }
     }
     return manifest;
+}
+
+/**
+ * Copy one model bundle into the pack: **every file**, keyed `{assetId}/{pathInsideBundle}`.
+ *
+ * The whole tree ships because a model's manifest is the only thing that knows which files matter -
+ * Hiyori names one of its motions solely under `TapBody`, so the root listing does not imply the
+ * file set - and Studio deliberately never parses that manifest. Copying "what looks relevant" is
+ * not something that can be done correctly here.
+ *
+ * The key scheme is what makes the runtime work unchanged: `nlgame://asset/{id}/{rel}` and the web
+ * shell's `./assets/{id}/{rel}` both resolve by manifest key, so `resolveSibling()` arithmetic
+ * against the served entry URL lands on a key that exists. The bare `{id}` also gets an entry,
+ * pointing at the entry file, so a caller holding only the asset id still reaches the manifest.
+ *
+ * One manifest entry per file follows the precedent set by `copyBakedCharacterAvatars`, which
+ * already expands one project artifact into N entries under synthetic ids.
+ */
+async function copyAssetBundle(input: {
+    projectPath: string;
+    assetsDir: string;
+    target: PackTarget;
+    type: string;
+    normalized: ReturnType<typeof normalizeAssetRecord>;
+    sourceDir: string;
+    authoredEntry?: string;
+}): Promise<Record<string, GameRuntimeAssetManifestEntry>> {
+    const { normalized, sourceDir } = input;
+    const manifest: Record<string, GameRuntimeAssetManifestEntry> = {};
+
+    let files: string[];
+    try {
+        files = sortBundlePaths(await listBundleFiles(sourceDir));
+    } catch (error) {
+        throw new Error(
+            `Failed to read model bundle "${normalized.name}" (${normalized.id}) at ${sourceDir}: ` +
+            `${error instanceof Error ? error.message : String(error)}`,
+        );
+    }
+    if (files.length === 0) {
+        throw new Error(`Model bundle "${normalized.name}" (${normalized.id}) is empty at ${sourceDir}`);
+    }
+
+    const authored = input.authoredEntry ? normalizeBundlePath(input.authoredEntry) : null;
+    const entry = authored && files.includes(authored)
+        ? authored
+        : detectModelBundleEntry(files).entry;
+    if (!entry) {
+        // A hard failure, not a warning: a bundle with no entry is an asset the engine cannot mount,
+        // and shipping it produces a game that breaks at the character's first appearance with no
+        // trace back to the build.
+        throw new Error(
+            `Model bundle "${normalized.name}" (${normalized.id}) has no entry file. ` +
+            "Choose one in the asset inspector before building.",
+        );
+    }
+
+    const makeEntry = (key: string, relativePath: string, filePath: string): GameRuntimeAssetManifestEntry => ({
+        id: key,
+        type: input.type,
+        name: key === normalized.id ? normalized.name : `${normalized.name}/${filePath}`,
+        source: "local",
+        relativePath,
+        originalRelativePath: path.relative(input.projectPath, path.join(sourceDir, filePath)).replace(/\\/g, "/"),
+        hash: key === normalized.id ? normalized.hash : undefined,
+        mimeType: getMimeType(filePath),
+    });
+
+    let entryRelativePath = "";
+    for (const filePath of files) {
+        const key = `${normalized.id}/${filePath}`;
+        const absolute = path.join(sourceDir, ...filePath.split("/"));
+        let relativePath: string;
+        try {
+            if (input.target.kind === "sealed") {
+                relativePath = gameRuntimeBundleAssetEntry(key);
+                await input.target.writer.add(relativePath, await fs.readFile(absolute));
+            } else {
+                relativePath = path.posix.join("assets", key);
+                const destination = path.join(input.assetsDir, normalized.id, ...filePath.split("/"));
+                await fs.mkdir(path.dirname(destination), { recursive: true });
+                await fs.copyFile(absolute, destination);
+            }
+        } catch (error) {
+            throw new Error(
+                `Failed to copy model bundle file "${filePath}" of "${normalized.name}" (${normalized.id}) ` +
+                `from ${absolute}: ${error instanceof Error ? error.message : String(error)}`,
+            );
+        }
+        manifest[key] = makeEntry(key, relativePath, filePath);
+        if (filePath === entry) {
+            entryRelativePath = relativePath;
+        }
+    }
+
+    // The bare id resolves to the entry file, and carries the entry path so a caller holding only
+    // the id can build a URL the bundle's own relative references resolve against.
+    manifest[normalized.id] = {
+        ...makeEntry(normalized.id, entryRelativePath, entry),
+        bundleEntry: entry,
+    };
+
+    return manifest;
+}
+
+/** Every regular file under `root`, relative and `/`-separated. */
+async function listBundleFiles(root: string, prefix = ""): Promise<string[]> {
+    const collected: string[] = [];
+    for (const dirent of await fs.readdir(root, { withFileTypes: true })) {
+        const relative = prefix ? `${prefix}/${dirent.name}` : dirent.name;
+        if (dirent.isDirectory()) {
+            collected.push(...await listBundleFiles(path.join(root, dirent.name), relative));
+        } else if (dirent.isFile()) {
+            const normalized = normalizeBundlePath(relative);
+            if (normalized) {
+                collected.push(normalized);
+            }
+        }
+    }
+    return collected;
+}
+
+function readAuthoredBundleEntry(rawAsset: AssetMetadataRecord): string | undefined {
+    const extras = rawAsset?.extras as { modelEntry?: unknown } | undefined;
+    return typeof extras?.modelEntry === "string" && extras.modelEntry.trim()
+        ? extras.modelEntry.trim()
+        : undefined;
 }
 
 /**
