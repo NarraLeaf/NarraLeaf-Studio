@@ -8,6 +8,7 @@ import { FileFormatValidator } from "../assets/FileFormatValidator";
 import { FontService } from "../assets/FontService";
 import { ImageService } from "../assets/ImageService";
 import { JSONService } from "../assets/JSONService";
+import { ModelService } from "../assets/ModelService";
 import { BlueprintService } from "../assets/BlueprintService";
 import { AssetOrderManager } from "../assets/mgr/AssetOrderManager";
 import { AssetsMetadataManager } from "../assets/mgr/AssetsMetadataManager";
@@ -61,6 +62,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     public jsonService: JSONService | null = null;
     public blueprintService: BlueprintService | null = null;
     public fontService: FontService | null = null;
+    public modelService: ModelService | null = null;
     public otherService: OtherService | null = null;
     public fileFormatValidator: FileFormatValidator | null = null;
     private readonly thumbnailCache = new Map<string, string>();
@@ -208,6 +210,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         this.jsonService = new JSONService(ctx);
         this.blueprintService = new BlueprintService(ctx);
         this.fontService = new FontService(ctx);
+        this.modelService = new ModelService(ctx);
         this.otherService = new OtherService(ctx);
 
         // Initialize file format validator

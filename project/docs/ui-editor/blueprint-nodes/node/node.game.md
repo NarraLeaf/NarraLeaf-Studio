@@ -238,7 +238,7 @@ Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(.
 
 `blueprint.game.save.listIds` - List Saves
 
-列出当前 Studio 项目本地普通存档的 id。返回顺序不保证稳定。
+列出当前 Studio 项目本地普通存档的 id。返回顺序不保证稳定。**不含自动存档**——自动存档写在保留 id 命名空间（`@autosave.<n>`）里，由 `List Auto Saves` 列出，因此作者自己的存档界面不必再过滤 Studio 的簿记条目。
 
 - `in` - 执行入口
 - `ids` - `Array<String>` / `string[]`（传出引脚），蓝图引脚类型为 `array`
@@ -271,3 +271,52 @@ Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(.
 - `next` - 读取完成后的执行出口
 
 存档不存在、没有截图或截图不可用时，`preview` 返回 `null`。
+
+## Auto Save
+
+`blueprint.game.autoSave.write` - Auto Save
+
+立即写入一次自动存档，进入保留存档环的下一个槽位（最旧的先被覆盖），并附带截图。
+与定时自动保存写的是同一个环，两者产生的存档没有区别。
+无论「项目 → 游戏 → 自动保存」是否开启都会执行——这一次是作者显式要求的。
+
+- `in` - 执行入口
+- `next` - 写入完成后的执行出口
+
+没有正在运行的游戏时抛出错误（与其它存档节点一致）。自动保存不会替换正在进行的游玩，因此执行会继续。
+
+## List Auto Saves
+
+`blueprint.game.autoSave.list` - List Auto Saves
+
+列出保留命名空间内的全部自动存档，**按时间从新到旧**排序。只列自动存档，`List Saves` 只列玩家存档，两者互不重叠。
+
+- `in` - 执行入口
+- `entries` - `Array<Object>`（传出引脚），蓝图引脚类型为 `array`
+- `count` - `integer`（传出引脚）
+- `next` - 读取完成后的执行出口
+
+每个条目的字段：
+
+- `id` - 存档 id，可直接喂给 `Load Save` / `Get Save Preview` / `Get Save Metadata` / `Delete Save`
+- `slot` - 环内槽位序号
+- `timestamp` - 最后写入时间，Unix 毫秒
+- `createdAt` - 首次写入时间，Unix 毫秒
+- `metadata` - 写入方附带的用户 metadata，没有时为 `null`
+
+条目带的是 **id 而不是序列化后的存档数据**：`SavedGameData` 在图里无法使用，而 id 能直接接进既有的存档节点。
+作者把 `slots` 调小后遗留的槽位仍会被列出（玩家的存档不会因为改配置而消失），只是不会再被轮转覆盖。
+
+## Get Latest Auto Save
+
+`blueprint.game.autoSave.latest` - Get Latest Auto Save
+
+取最新的一条自动存档。「继续游戏」按钮的专用节点：等价于 `List Auto Saves` 的第一条，但省掉取下标和取字段的三个节点。
+
+- `in` - 执行入口
+- `id` - 最新自动存档的 id，`string`（传出引脚）；没有自动存档时为空字符串
+- `hasAutoSave` - `boolean`（传出引脚），用来在没有存档时禁用「继续」
+- `timestamp` - 最后写入时间，Unix 毫秒（传出引脚）；没有自动存档时为 `0`
+- `next` - 读取完成后的执行出口
+
+自动保存的开关、间隔与保留数量在「项目 → 游戏」中配置，随项目一起出货。

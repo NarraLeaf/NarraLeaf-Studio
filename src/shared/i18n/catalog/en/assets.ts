@@ -47,6 +47,7 @@ export const assets = {
         json: "JSON Files",
         blueprint: "Blueprints",
         font: "Fonts",
+        model: "Models",
         other: "Other",
     },
     itemCount: {

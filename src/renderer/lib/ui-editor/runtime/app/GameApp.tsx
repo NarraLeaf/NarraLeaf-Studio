@@ -17,6 +17,12 @@ import {
 } from "@shared/types/localization";
 import { VOICE_LOCALE_STORAGE_KEY } from "@shared/types/voice";
 import {
+    isAutoSaveId,
+    normalizeAutoSaveConfiguration,
+    parseAutoSaveSlotIndex,
+    type AutoSaveEntry,
+} from "@shared/types/saves";
+import {
     GameLocalizationContext,
     type GameLocalizationRuntime,
 } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
@@ -68,6 +74,7 @@ import {
     type CompiledNlrStory,
 } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import { computeStoryStageSnapshot } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
+import { createPuppetStageHandle, loadPuppetBackends } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
 import { sceneVariableDefs, savedVariableDefs } from "@shared/types/story";
 import { resolveStagePreloadTarget } from "@/lib/ui-editor/runtime/game/resolveDefaultLaunchScene";
 import { NlrStageLayer, type NlrStageSession } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
@@ -106,7 +113,14 @@ import { withDeadline } from "./frameTiming";
 import { NavigationController } from "./navigation/NavigationController";
 import { useSurfaceNavigation } from "./navigation/useSurfaceNavigation";
 import type { AppNavEntry, HostAdapterBundle, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
-import type { GameAppFrameContext, GameAppHost, GameAppOverlayContext, GameAppStoryRuntimeBridge } from "./GameAppHost";
+import type {
+    GameAppFrameContext,
+    GameAppHost,
+    GameAppOverlayContext,
+    GameAppSaveRecord,
+    GameAppStoryRuntimeBridge,
+} from "./GameAppHost";
+import { useAutoSave } from "./useAutoSave";
 
 // Outer safety net: if the environment never comes up at all, start the surface system anyway
 // rather than sit on the loading step forever. Generous on purpose — it has to sit *outside*
@@ -865,9 +879,67 @@ export function GameApp(props: GameAppProps): ReactNode {
         });
     }, [loadSave, pluginHost, writeSave]);
 
+    // Player slots only. Autosaves live in the same store under reserved ids and
+    // are listed by List Auto Saves instead, so an authored Save/Load screen
+    // built on this never has to filter Studio's bookkeeping out of its grid.
+    // (The plugin `saves.listIds` surface is deliberately left raw - it is
+    // documented as direct store access, not the authoring view.)
     const listSaveIds = useCallback(async (): Promise<string[]> => {
-        return host.saveStore.listIds();
+        const ids = await host.saveStore.listIds();
+        return ids.filter(id => !isAutoSaveId(id));
     }, [host.saveStore]);
+
+    const autoSaveConfig = useMemo(
+        () => normalizeAutoSaveConfiguration(bundle.autoSave),
+        [bundle.autoSave],
+    );
+
+    /** Every reserved autosave currently on disk, with its timestamps. */
+    const listAutoSaves = useCallback(async (): Promise<AutoSaveEntry[]> => {
+        const ids = (await host.saveStore.listIds()).filter(isAutoSaveId);
+        const entries = await Promise.all(ids.map(async (id): Promise<AutoSaveEntry | null> => {
+            let record: GameAppSaveRecord | null;
+            try {
+                record = await host.saveStore.read(id);
+            } catch {
+                return null; // a corrupt slot must not take the whole list down
+            }
+            if (!record) {
+                return null;
+            }
+            const updatedAt = Date.parse(record.metadata.updatedAt ?? "");
+            const createdAt = Date.parse(record.metadata.createdAt ?? "");
+            return {
+                id,
+                slot: parseAutoSaveSlotIndex(id) ?? 0,
+                timestamp: Number.isFinite(updatedAt) ? updatedAt : 0,
+                createdAt: Number.isFinite(createdAt) ? createdAt : 0,
+                metadata: record.metadata.user ?? null,
+            };
+        }));
+        return entries.filter((entry): entry is AutoSaveEntry => entry !== null)
+            .sort((a, b) => b.timestamp - a.timestamp);
+    }, [host.saveStore]);
+
+    const autoSave = useAutoSave({
+        config: autoSaveConfig,
+        // The same gate `writeSave` itself enforces, so a true here always means
+        // the write can actually serialize something.
+        isPlaying: () => Boolean(
+            gameEnteredRef.current
+            && nlrSession?.id
+            && nlrLiveGameSessionIdRef.current === nlrSession.id
+            && nlrLiveGameRef.current,
+        ),
+        // Screenshots on: the point of an autosave ring is a screen that lists
+        // it, and a list of thumbnail-less rows is a worse feature. The cost is
+        // bounded by the scheduler's play-head gate - an idle game captures
+        // nothing.
+        write: id => writeSave(id, null, true),
+        listStored: listAutoSaves,
+        subscribeStoryAdvanced: storyRuntime.subscribeCurrentAction,
+        log: host.log,
+    });
 
     const getSaveMetadata = useCallback(async (id: string): Promise<unknown> => {
         const record = await host.saveStore.read(id);
@@ -1040,6 +1112,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             listSaveIds,
             getSaveMetadata,
             getSavePreview,
+            writeAutoSaveInGame: autoSave.writeNow,
+            listAutoSaves,
             getHistoryInGame,
             restoreHistoryInGame,
             getCurrentNametag,
@@ -1082,6 +1156,20 @@ export function GameApp(props: GameAppProps): ReactNode {
             // preview, which embeds into arbitrarily small panes).
             minStageSize: { width: 1, height: 1 },
         });
+        // Before the Player mounts, not after: a puppet looks its backend up once, when its
+        // component mounts, so anything registered later is simply not there for it. Failures are
+        // already reported by the loader and never rejected — a broken author-supplied runtime
+        // costs the stage nothing but the characters it would have drawn.
+        if (host.listPuppetBackendModules) {
+            try {
+                const sources = await host.listPuppetBackendModules();
+                if (sources.length > 0) {
+                    await loadPuppetBackends(game, sources, { log: host.log });
+                }
+            } catch (error) {
+                host.log("warning", `Puppet backends could not be discovered: ${normalizeError(error)}`);
+            }
+        }
         const environmentReady = new Promise<void>((resolve, reject) => {
             pendingEnvReadyRef.current.set(sessionId, { resolve, reject });
         });
@@ -1142,8 +1230,12 @@ export function GameApp(props: GameAppProps): ReactNode {
         getNotificationsInGame,
         getSaveMetadata,
         getSavePreview,
+        autoSave.writeNow,
+        listAutoSaves,
         hideDialogInGame,
         host.id,
+        host.log,
+        host.listPuppetBackendModules,
         host.quitApplication,
         host.getFullscreen,
         host.setFullscreen,
@@ -1275,6 +1367,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             onListSaveIds: listSaveIds,
             onGetSaveMetadata: getSaveMetadata,
             onGetSavePreview: getSavePreview,
+            onWriteAutoSave: autoSave.writeNow,
+            onListAutoSaves: listAutoSaves,
             onGetHistory: getHistoryInGame,
             onRestoreHistory: restoreHistoryInGame,
             onGetNametag: getCurrentNametag,
@@ -1348,6 +1442,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         getNotificationsInGame,
         getSaveMetadata,
         getSavePreview,
+        autoSave.writeNow,
+        listAutoSaves,
         hideDialogInGame,
         host.quitApplication,
         host.getFullscreen,
@@ -1512,6 +1608,8 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onListSaveIds: listSaveIds,
                     onGetSaveMetadata: getSaveMetadata,
                     onGetSavePreview: getSavePreview,
+                    onWriteAutoSave: autoSave.writeNow,
+                    onListAutoSaves: listAutoSaves,
                     onGetHistory: getHistoryInGame,
                     onRestoreHistory: restoreHistoryInGame,
                     onGetNametag: getCurrentNametag,
@@ -1616,6 +1714,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         getNotificationsInGame,
         getSaveMetadata,
         getSavePreview,
+        autoSave.writeNow,
+        listAutoSaves,
         hideDialogInGame,
         host.quitApplication,
         host.getFullscreen,
@@ -2046,6 +2146,18 @@ export function GameApp(props: GameAppProps): ReactNode {
                 }
                 nlrLiveGameRef.current = liveGame;
                 nlrLiveGameSessionIdRef.current = sessionId;
+                // Puppets have no authoring surface yet, so the only way to put one on a stage is
+                // from a console. Published on the window rather than a panel because the audience
+                // is whoever is bringing a backend up, and what they need is to poke at a live one.
+                // Remove when a character's appearance can declare a puppet and the story compiler
+                // emits it; nothing in Studio reads this.
+                if (nlrSession?.game.listPuppetBackends().length) {
+                    const gameState = liveGame.getGameState();
+                    if (gameState) {
+                        (window as typeof window & { __NLS_PUPPETS__?: unknown }).__NLS_PUPPETS__ =
+                            createPuppetStageHandle(nlrSession.game, gameState);
+                    }
+                }
                 // Hand the new environment to the runtime plugin host. Called
                 // per session, so a relaunch or hot reload re-binds the engine
                 // events under the plugins' existing listeners.

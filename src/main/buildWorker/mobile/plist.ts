@@ -1,5 +1,14 @@
 /**
- * Info.plist patcher for the iOS repack. Pure: string in → string out, no fs.
+ * XML property lists for the iOS side of the build: an Info.plist patcher for
+ * the repack, and a whole-document reader used by the provisioning-profile
+ * parser. Pure - strings in, values out, no fs.
+ *
+ * The two halves are deliberately different. Patching rewrites values in place
+ * (see below); reading materializes the document as plain JS values, which is
+ * only safe because the documents read this way are small, machine-written and
+ * never round-tripped back out.
+ *
+ * The patcher:
  *
  * The shell template ships a plain-text (XML) Info.plist - the template CI
  * asserts that shape (`plutil -lint`) - so the repack rewrites values in place
@@ -153,6 +162,158 @@ function lineIndent(xml: string, offset: number): string {
     return match ? match[0] : "";
 }
 
+/* ------------------------------------------------------- whole-document read */
+
+export type PlistDictionary = { [key: string]: PlistValue };
+export type PlistValue = string | number | boolean | Date | Buffer | PlistValue[] | PlistDictionary;
+
+/** Text content of an element whose open tag is `open` and close tag is `close`. */
+function elementText(xml: string, open: Token, close: Token): string {
+    return unescapeXml(xml.slice(open.end, close.start));
+}
+
+/** Index of the token closing the element opened at `index`, honoring nesting. */
+function matchingClose(tokens: Token[], index: number): number {
+    const open = tokens[index];
+    let depth = 1;
+    for (let j = index + 1; j < tokens.length; j++) {
+        const token = tokens[j];
+        if (token.selfClosing || token.tag !== open.tag) {
+            continue;
+        }
+        depth += token.isClose ? -1 : 1;
+        if (depth === 0) {
+            return j;
+        }
+    }
+    throw new Error(`Unclosed <${open.tag}> in the property list`);
+}
+
+function parsePlistValue(tokens: Token[], index: number, xml: string): { value: PlistValue; next: number } {
+    const open = tokens[index];
+    if (open.isClose) {
+        throw new Error(`Unexpected </${open.tag}> in the property list`);
+    }
+    // Booleans are always empty elements; every other type may be, and an empty
+    // one means the type's zero value.
+    if (open.tag === "true" || open.tag === "false") {
+        return { value: open.tag === "true", next: open.selfClosing ? index + 1 : matchingClose(tokens, index) + 1 };
+    }
+    if (open.selfClosing) {
+        const empty: Record<string, PlistValue> = {
+            string: "", data: Buffer.alloc(0), array: [], dict: {}, integer: 0, real: 0,
+        };
+        if (!(open.tag in empty)) {
+            throw new Error(`Unsupported empty property list element <${open.tag}/>`);
+        }
+        // A fresh container per call; the table above must not hand out shared ones.
+        const value = open.tag === "array" ? [] : open.tag === "dict" ? {} : empty[open.tag];
+        return { value, next: index + 1 };
+    }
+
+    if (open.tag === "dict") {
+        const dictionary: PlistDictionary = {};
+        let i = index + 1;
+        for (;;) {
+            const token = tokens[i];
+            if (!token) {
+                throw new Error("Unclosed <dict> in the property list");
+            }
+            if (token.tag === "dict" && token.isClose) {
+                return { value: dictionary, next: i + 1 };
+            }
+            if (token.tag !== "key" || token.isClose) {
+                throw new Error(`Expected a <key> in a property list dict, found <${token.tag}>`);
+            }
+            let key = "";
+            if (token.selfClosing) {
+                i += 1;
+            } else {
+                const close = matchingClose(tokens, i);
+                key = elementText(xml, token, tokens[close]);
+                i = close + 1;
+            }
+            const parsed = parsePlistValue(tokens, i, xml);
+            dictionary[key] = parsed.value;
+            i = parsed.next;
+        }
+    }
+
+    if (open.tag === "array") {
+        const values: PlistValue[] = [];
+        let i = index + 1;
+        for (;;) {
+            const token = tokens[i];
+            if (!token) {
+                throw new Error("Unclosed <array> in the property list");
+            }
+            if (token.tag === "array" && token.isClose) {
+                return { value: values, next: i + 1 };
+            }
+            const parsed = parsePlistValue(tokens, i, xml);
+            values.push(parsed.value);
+            i = parsed.next;
+        }
+    }
+
+    const close = matchingClose(tokens, index);
+    const text = elementText(xml, open, tokens[close]);
+    const next = close + 1;
+    switch (open.tag) {
+        case "string":
+            return { value: text, next };
+        case "integer":
+        case "real": {
+            const value = Number(text.trim());
+            if (!Number.isFinite(value)) {
+                throw new Error(`Malformed <${open.tag}> in the property list: "${text.trim()}"`);
+            }
+            return { value, next };
+        }
+        case "date": {
+            const value = new Date(text.trim());
+            if (Number.isNaN(value.getTime())) {
+                throw new Error(`Malformed <date> in the property list: "${text.trim()}"`);
+            }
+            return { value, next };
+        }
+        case "data":
+            // Apple wraps base64 across lines; Buffer.from ignores the newlines.
+            return { value: Buffer.from(text.replace(/\s+/g, ""), "base64"), next };
+        default:
+            throw new Error(`Unsupported property list element <${open.tag}>`);
+    }
+}
+
+/**
+ * Read an XML property list into plain JS values. Binary plists are not
+ * supported and are refused by name - the documents this reads (provisioning
+ * profiles) are XML by Apple's own construction.
+ */
+export function parsePlist(xml: string): PlistValue {
+    if (xml.startsWith("bplist")) {
+        throw new Error("This is a binary property list, which cannot be read here");
+    }
+    const tokens = [...iterateTags(xml)];
+    const rootIndex = tokens.findIndex(token => token.tag === "plist" && !token.isClose);
+    // Some tools emit the bare root element with no <plist> wrapper.
+    const firstIndex = rootIndex >= 0 ? rootIndex + 1 : tokens.findIndex(token => !token.isClose);
+    if (firstIndex < 0 || firstIndex >= tokens.length) {
+        throw new Error("This property list has no root value");
+    }
+    return parsePlistValue(tokens, firstIndex, xml).value;
+}
+
+/** `parsePlist` for a document whose root is a dict, which is the usual case. */
+export function parsePlistDictionary(xml: string): PlistDictionary {
+    const value = parsePlist(xml);
+    if (typeof value !== "object" || value === null || Array.isArray(value)
+        || value instanceof Date || Buffer.isBuffer(value)) {
+        throw new Error("This property list's root value is not a dictionary");
+    }
+    return value;
+}
+
 export type InfoPlistPatch = {
     bundleId?: string;
     displayName?: string;
@@ -179,10 +340,18 @@ function readString(xml: string, children: Map<string, ChildValue>, key: string)
 }
 
 function unescapeXml(value: string): string {
-    return value
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">")
-        .replace(/&amp;/g, "&");
+    return value.replace(
+        /&(?:lt|gt|amp|quot|apos|#(\d+)|#[xX]([0-9a-fA-F]+));/g,
+        (whole, decimal: string | undefined, hex: string | undefined) => {
+            if (decimal !== undefined) {
+                return String.fromCodePoint(Number(decimal));
+            }
+            if (hex !== undefined) {
+                return String.fromCodePoint(parseInt(hex, 16));
+            }
+            return { "&lt;": "<", "&gt;": ">", "&amp;": "&", "&quot;": "\"", "&apos;": "'" }[whole] ?? whole;
+        },
+    );
 }
 
 /** Read the identity fields back - for the repack self-check and tests. */

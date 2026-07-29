@@ -5,6 +5,10 @@ export const project = {
             title: "Details",
             description: "Name, identifier, and metadata",
         },
+        game: {
+            title: "Game",
+            description: "How the finished game behaves for players",
+        },
         assets: {
             title: "Assets",
             description: "Application icons for each platform",
@@ -55,6 +59,15 @@ export const project = {
             ios: "iOS",
             web: "Web",
         },
+    },
+    game: {
+        autoSaveTitle: "Automatic saving",
+        autoSaveDescription: "Save the playthrough on a timer while the player is in the game, so a crash or a closed window costs a moment instead of a session.",
+        autoSaveIntervalTitle: "Save every",
+        autoSaveIntervalDescription: "How often to check. Nothing is written unless the story moved on, so an idle game costs nothing.",
+        autoSaveIntervalUnit: "s",
+        autoSaveSlotsTitle: "Autosaves kept",
+        autoSaveSlotsDescription: "Autosaves rotate through this many slots, oldest overwritten first. They stay out of the player's own save slots and are read with the List Auto Saves node.",
     },
     settings: {
         allowHttpTitle: "Allow HTTP",

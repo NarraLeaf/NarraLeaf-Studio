@@ -3,7 +3,12 @@ import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
 import { encodeProjectConfig } from "@shared/utils/nlproj";
-import { loadGameLocalization, resolveStoryDocumentPathForIndexEntry } from "./bundleAssembler";
+import { DEFAULT_AUTO_SAVE_CONFIGURATION } from "@shared/types/saves";
+import {
+    loadAutoSaveConfiguration,
+    loadGameLocalization,
+    resolveStoryDocumentPathForIndexEntry,
+} from "./bundleAssembler";
 
 const STORY_ID = "00000000-0000-4000-8000-000000000001";
 
@@ -91,5 +96,48 @@ describe("bundleAssembler game localization", () => {
 
         const bundle = await loadGameLocalization(projectPath);
         expect(bundle?.tables).toEqual({});
+    });
+});
+
+describe("bundleAssembler auto save", () => {
+    const tempDirs: string[] = [];
+
+    afterEach(async () => {
+        await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })));
+    });
+
+    async function createProject(autoSave: unknown): Promise<string> {
+        const projectPath = await mkdtemp(path.join(os.tmpdir(), "nls-autosave-test-"));
+        tempDirs.push(projectPath);
+        const encoded = encodeProjectConfig({
+            name: "Test",
+            identifier: "test.project",
+            metadata: {},
+            ...(autoSave ? { app: { autoSave } } : {}),
+        } as never);
+        await writeFile(path.join(projectPath, "project.nlproj"), encoded);
+        return projectPath;
+    }
+
+    // Unlike localization and voice, this one never degrades to `undefined`:
+    // autosaving is on by default, so a project that predates the setting has
+    // to come back configured, not unconfigured.
+    it("gives a project with no autoSave config the defaults", async () => {
+        const projectPath = await createProject(undefined);
+        expect(await loadAutoSaveConfiguration(projectPath)).toEqual(DEFAULT_AUTO_SAVE_CONFIGURATION);
+    });
+
+    it("bakes the authored values into the bundle", async () => {
+        const projectPath = await createProject({ enabled: false, intervalSeconds: 60, slots: 5 });
+        expect(await loadAutoSaveConfiguration(projectPath)).toEqual({
+            enabled: false,
+            intervalSeconds: 60,
+            slots: 5,
+        });
+    });
+
+    it("falls back to the defaults when the project cannot be read", async () => {
+        expect(await loadAutoSaveConfiguration(path.join(os.tmpdir(), "nls-missing-project")))
+            .toEqual(DEFAULT_AUTO_SAVE_CONFIGURATION);
     });
 });

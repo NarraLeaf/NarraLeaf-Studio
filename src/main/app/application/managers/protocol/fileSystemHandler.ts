@@ -134,7 +134,13 @@ export class FileSystemHashHandler implements ProtocolHandler {
 
     async handle(request: Request): Promise<ProtocolResponse> {
         const url = new URL(request.url);
-        const hash = url.pathname.slice(1); // Remove leading slash
+        // First segment is the grant; anything after it is a path *inside* a directory grant
+        // (`app://fs/{hash}/Hiyori.2048/texture_00.png`). Per-file grants have no remainder, and a
+        // remainder against one of them simply fails the lookup below - as it should.
+        const pathname = decodeURIComponent(url.pathname).replace(/^\/+/, "");
+        const separator = pathname.indexOf("/");
+        const hash = separator === -1 ? pathname : pathname.slice(0, separator);
+        const relativePath = separator === -1 ? "" : pathname.slice(separator + 1);
 
         // Get storage info for this hash
         const storageInfo = this.storageManager.get(hash);
@@ -160,6 +166,20 @@ export class FileSystemHashHandler implements ProtocolHandler {
             if (request.method === 'GET') {
                 if (storageInfo.operation !== "read") {
                     return this.methodNotAllowed("Hash is not valid for read operations");
+                }
+                if (storageInfo.directory) {
+                    return await this.handleDirectoryRead(storageInfo, relativePath);
+                }
+                if (relativePath) {
+                    // A per-file grant addressed as if it were a directory. 404 rather than serving
+                    // the file: silently ignoring the path would make a broken sibling reference
+                    // look like it resolved.
+                    this.logger.error(`Hash is not a directory grant: ${hash}/${relativePath}`);
+                    return {
+                        statusCode: 404,
+                        headers: { "Content-Type": "text/plain" },
+                        data: "Not a directory grant: " + hash
+                    };
                 }
                 return await this.handleRead(hash, storageInfo);
             } else if (request.method === 'PUT') {
@@ -189,6 +209,51 @@ export class FileSystemHashHandler implements ProtocolHandler {
             statusCode: 405,
             headers: { "Content-Type": "text/plain" },
             data: message
+        };
+    }
+
+    /**
+     * Serve one file from inside a directory grant.
+     *
+     * Never consumes the grant: the whole point of a bundle is that many files are read through the
+     * same root, and the caller cannot know in advance how many (a Live2D manifest names its motions
+     * lazily). The grant is revoked when its owner window closes instead.
+     *
+     * The Content-Type matters here in a way it does not for per-file grants: these bytes are fetched
+     * by the model runtime, which branches on it (JSON manifests vs. binary `.moc3`), so this path
+     * reports the real MIME type rather than `application/octet-stream`.
+     */
+    private async handleDirectoryRead(storageInfo: FileStorageInfo, relativePath: string): Promise<ProtocolResponse> {
+        const filePath = this.storageManager.resolveDirectoryGrantPath(storageInfo, relativePath);
+        if (!filePath) {
+            this.logger.error(`Rejected directory grant path: ${relativePath}`);
+            return {
+                statusCode: 403,
+                headers: { "Content-Type": "text/plain" },
+                data: "Path is outside the granted directory"
+            };
+        }
+
+        const result = await Fs.readRaw(filePath);
+        if (!result.ok) {
+            const missing = result.error.code === FsRejectErrorCode.NOT_FOUND;
+            this.logger.error(`Error reading bundle file: ${filePath} - ${result.error.message}`);
+            return {
+                statusCode: missing ? 404 : 500,
+                headers: { "Content-Type": "text/plain" },
+                data: missing ? "Not found" : `Failed to read file: ${result.error.message}`
+            };
+        }
+
+        return {
+            statusCode: 200,
+            headers: {
+                "Content-Type": getMimeType(filePath),
+                // Same reasoning as a session grant: the hash is minted per resolve, so cached bytes
+                // cannot outlive the record they belong to.
+                "Cache-Control": "private, max-age=3600"
+            },
+            data: result.data
         };
     }
 

@@ -5,18 +5,22 @@ import { basename, extname, join } from "@shared/utils/path";
 import { ProjectConfig, ProjectMetadata, Resolution } from "../../project/project";
 import { normalizeProjectIconSet, type ProjectIconSet, type ProjectIconSource } from "@shared/types/projectIcons";
 import {
+    AutoSaveConfiguration,
     BuildConfiguration,
     LocalizationConfiguration,
     MobileConfiguration,
     NetworkConfiguration,
     ProjectAppConfiguration,
     SecurityConfiguration,
+    SigningConfiguration,
     VoiceConfiguration,
+    normalizeAutoSaveConfiguration,
     normalizeBuildConfiguration,
     normalizeLocalizationConfiguration,
     normalizeMobileConfiguration,
     normalizeNetworkConfiguration,
     normalizeSecurityConfiguration,
+    normalizeSigningConfiguration,
     normalizeVoiceConfiguration,
 } from "../../project/configuration";
 import { ProjectNameConvention } from "../../project/nameConvention";
@@ -214,6 +218,39 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
     }
 
     /**
+     * Read which signing credential each platform uses, normalized for projects
+     * that predate (or never configured) `app.signing`. Ids only - resolving one
+     * into key material happens in the main process, at build time.
+     */
+    public getSigningConfiguration(): SigningConfiguration {
+        return normalizeSigningConfiguration(this.getProjectConfig().app?.signing);
+    }
+
+    /**
+     * Merge a patch into the signing selection. Passing `undefined` for a
+     * platform clears it (the normalizer drops it), which is how the build
+     * dialog says "build this one unsigned" - so the stored config never carries
+     * an id the author has deselected.
+     */
+    public async updateSigningConfiguration(patch: Partial<SigningConfiguration>): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const signing = normalizeSigningConfiguration({
+                ...normalizeSigningConfiguration(config.app?.signing),
+                ...patch,
+            });
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                signing,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /**
      * Update the mobile shell settings. Read by the mobile repack, which writes
      * them into the shell config the packaged game reads at startup.
      */
@@ -227,6 +264,38 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
                 ...config.app,
                 network: normalizeNetworkConfiguration(config.app?.network),
                 mobile,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /**
+     * Read the effective automatic-saving policy, falling back to the defaults
+     * (on, every 5s, 3 slots) for projects that predate the `app.autoSave`
+     * config.
+     */
+    public getAutoSaveConfiguration(): AutoSaveConfiguration {
+        return normalizeAutoSaveConfiguration(this.getProjectConfig().app?.autoSave);
+    }
+
+    /**
+     * Merge a partial patch into the automatic-saving policy. Written by the
+     * project Game settings page and baked into the bundle the game app runs
+     * its autosave scheduler off.
+     */
+    public async updateAutoSaveConfiguration(patch: Partial<AutoSaveConfiguration>): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const autoSave = normalizeAutoSaveConfiguration({
+                ...normalizeAutoSaveConfiguration(config.app?.autoSave),
+                ...patch,
+            });
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                autoSave,
             };
             return {
                 ...config,

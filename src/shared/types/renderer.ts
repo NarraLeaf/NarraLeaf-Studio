@@ -12,6 +12,7 @@ import type { MissingRecentProject } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
+import type { SigningCredential, SigningCredentialImport, SigningInspectResult } from "./signing";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
@@ -36,7 +37,7 @@ import type {
 } from "./privileged";
 import { AppEventToken } from "./app";
 import type { LocaleContribution } from "@shared/i18n";
-import type { RevisionId, VcsAvailability, VcsHistoryEntry, VcsRepositoryInfo, VcsThreeWayResult } from "./vcs";
+import type { RevisionId, VcsAvailability, VcsHistoryEntry, VcsInitOptions, VcsRepositoryInfo, VcsStatus, VcsThreeWayResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -121,6 +122,11 @@ export interface RendererPreloadedInterface {
         directorySize(path: string): Promise<RequestStatus<FsRequestResult<DirectorySizeResult>>>;
         requestRead(path: string, encoding: BufferEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
         requestReadRaw(path: string): Promise<RequestStatus<FsRequestResult<string>>>;
+        /**
+         * Grant read access to a directory tree, served as `app://fs/{hash}/{relative/path}`.
+         * Studio-internal (not on the plugin privileged surface) - see the IPC event's note.
+         */
+        requestReadDir(path: string): Promise<RequestStatus<FsRequestResult<string>>>;
         requestWrite(path: string, encoding: BufferEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
         requestWriteRaw(path: string): Promise<RequestStatus<FsRequestResult<string>>>;
         ensureRegularFile(path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
@@ -292,7 +298,8 @@ export interface RendererPreloadedInterface {
     };
 
     /**
-     * Version control. Read-only until the resolve UI lands.
+     * Version control. Reads, plus `initRepository` - the one write that cannot wait
+     * for the resolve UI, because until it runs there is no repository to read.
      * Every call is per project - Studio is one-project-one-window and the VCS
      * runtime is keyed by project path.
      */
@@ -305,6 +312,18 @@ export interface RendererPreloadedInterface {
         getAvailability(): Promise<RequestStatus<VcsAvailability>>;
         isRepository(projectPath: string): Promise<RequestStatus<{ isRepository: boolean }>>;
         getInfo(projectPath: string): Promise<RequestStatus<VcsRepositoryInfo>>;
+        /**
+         * Create the repository and commit the working set into it. Fails when the
+         * directory already has one. Always the author's explicit act: it writes
+         * `.lore/` into their project and takes an exclusive, BLOCKING lock on it.
+         */
+        initRepository(projectPath: string, options?: VcsInitOptions): Promise<RequestStatus<VcsRepositoryInfo>>;
+        /**
+         * Working-tree changes since the last commit. On demand only - the scan
+         * behind it records newly discovered directories into staged state, so a
+         * timer that calls it reports deletions the author never made (§4.17).
+         */
+        getStatus(projectPath: string): Promise<RequestStatus<VcsStatus>>;
         getHistory(projectPath: string, limit?: number): Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>>;
         /** File contents at a revision, base64-encoded. */
         readBlob(projectPath: string, revision: RevisionId, path: string): Promise<RequestStatus<{ contentBase64: string }>>;
@@ -321,6 +340,35 @@ export interface RendererPreloadedInterface {
         selectOutputDir(defaultPath?: string): Promise<RequestStatus<{ path: string | null }>>;
         /** Run the build's checks without building; advisory, `start` re-checks. */
         preflight(projectPath: string, request: GameBuildRequest): Promise<RequestStatus<{ findings: BuildPreflightFinding[] }>>;
+    };
+
+    /**
+     * The machine's code-signing credential vault. Machine-level, not per
+     * project: a project only ever stores a credential id, so opening it
+     * elsewhere leaves the id dangling until the same credential is imported
+     * there.
+     *
+     * No call returns a password. `import` is the one direction a secret
+     * travels - up, once, straight into the OS keyring.
+     */
+    signing: {
+        /** Redacted credentials: metadata only. */
+        list(): Promise<RequestStatus<{ credentials: SigningCredential[] }>>;
+        /**
+         * File fields are absolute paths the author picked; the vault copies each
+         * one in. Secret fields are plain text - do not log the payload or hold
+         * it after the call resolves.
+         */
+        import(input: SigningCredentialImport): Promise<RequestStatus<{ credential: SigningCredential }>>;
+        remove(id: string): Promise<RequestStatus<{ removed: boolean }>>;
+        /** Certificate subject / issuer / validity / thumbprint, for display. */
+        inspect(id: string): Promise<RequestStatus<SigningInspectResult>>;
+        /**
+         * The signing keys inside a keystore the author has picked but not
+         * imported yet, so the import form can offer them. `storePassword` is
+         * plain text and travels the same one way `import` does.
+         */
+        keystoreAliases(file: string, storePassword: string): Promise<RequestStatus<{ aliases: string[] }>>;
     };
 
     blueprintPersistence: {

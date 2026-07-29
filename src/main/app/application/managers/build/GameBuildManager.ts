@@ -1,9 +1,10 @@
 import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
-import { shell, utilityProcess, type UtilityProcess } from "electron";
+import { safeStorage, shell, utilityProcess, type UtilityProcess } from "electron";
 import { RUNTIME_BUNDLE_FILENAME, RUNTIME_SUPPORT_FILENAME } from "@narraleaf/encryption";
 import { App } from "@/app/app";
+import { UserDataNamespace } from "@shared/types/constants";
 import type { DevModeConsoleLogPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry } from "@shared/types/gameRuntime";
 import {
@@ -28,6 +29,14 @@ import {
     type GameBuildStateSnapshot,
     type GameBuildTarget,
 } from "@shared/types/gameBuild";
+import {
+    SIGNING_CREDENTIAL_MATERIAL_FIELDS,
+    SIGNING_CREDENTIAL_PLATFORM,
+    SIGNING_CREDENTIAL_SECRET_FIELDS,
+    type ResolvedSigningMaterial,
+    type SigningCredential,
+    type SigningPlatform,
+} from "@shared/types/signing";
 import { resolveGameRuntimeInitialBackgroundColor } from "@shared/utils/gameRuntimeEntrySurface";
 import { Fs } from "@shared/utils/fs";
 import type { ProjectConfigData } from "@shared/utils/nlproj";
@@ -39,32 +48,52 @@ import {
     checkOutputDir,
     collectBuildDependencyRequirements,
     collectSidecarRequirements,
+    daysUntil,
+    findGpgBinary,
     isValidProjectVersion,
     MIN_ICON_SIZE,
     readMobileOrientation,
     readProjectIdentifier,
+    readProjectSigningIds,
     readProjectVersion,
     sidecarLosesExecBit,
     sidecarTargetPlatform,
+    signingCredentialSupportedOnHost,
+    signingExpiryCode,
+    signingPlatformForTarget,
+    signingReachesNetwork,
 } from "./preflight";
+import { findSigntool } from "./signtoolDiscovery";
 import { readIconSlotSizes, writeScaledIcons } from "./mobileIcons";
 import { loadMobileShellTemplateForApp } from "./mobileShellTemplate";
 import { resolveMobileSigningIdentity } from "./mobileSigningIdentity";
 import { payloadExceedsLimit } from "../../../../buildWorker/mobile/runMobileRepack";
+import { resolveZsignTool, type ZsignTool } from "../../../../buildWorker/mobile/zsignTool";
+import {
+    parseProvisioningProfile,
+    profileCoversBundleId,
+    type ProvisioningProfile,
+} from "../../../../buildWorker/mobile/provisioningProfile";
 import type { MobileShellConfigV1 } from "@/buildWorker/mobile/mobileShellManifest";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
+import { certificateContainer, certificateExpiry, inspectCertificateFile } from "../security/certificateInspect";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
+import { SigningVault, type SecretSealer } from "../security/signingVault";
 import { type GameRuntimeArtifactCompileResult } from "../preview/compiler/gameRuntimeArtifactCompiler";
 import { compileGameRuntimeArtifactInWorker } from "../preview/compiler/compileGameRuntimeArtifactInWorker";
 import { buildWebIndexHtml, WEB_APPLE_TOUCH_FILENAME, WEB_FAVICON_FILENAME } from "../preview/compiler/webShell";
 import { formatPreviewProcessOutput } from "../preview/PreviewManager";
 import { selectRuntimePluginsForPack, type RuntimePluginPackSelection } from "../preview/selectRuntimePlugins";
 import type {
+    GameBuildWorkerAndroidSigning,
     GameBuildWorkerConfig,
     GameBuildWorkerFuses,
+    GameBuildWorkerGpgSigning,
+    GameBuildWorkerIosSigning,
     GameBuildWorkerMobileJob,
     GameBuildWorkerOutboundMessage,
+    GameBuildWorkerWindowsSigning,
 } from "@/buildWorker/protocol";
 
 type BuildSession = {
@@ -136,8 +165,164 @@ export function gameFusesForPlatform(platform: GameBuildDesktopPlatform, hasSign
     };
 }
 
+/** The signing material a build resolved, by the slot the project selected it under. */
+export type ResolvedBuildSigning = Partial<Record<SigningPlatform, ResolvedSigningMaterial>>;
+
+/**
+ * Whether a desktop target ships with a real code signature, which is what
+ * `gameFusesForPlatform` turns asar integrity validation on for.
+ *
+ * Only Windows can answer yes today. macOS signing needs Apple tooling that runs
+ * on a Mac and is a separate batch; Linux "signing" is detached GPG signatures
+ * over the artifacts - distribution integrity, not an OS-enforced signature over
+ * the binary - and Electron has no asar-integrity support there regardless.
+ */
+export function hasSigningIdentityForPlatform(
+    platform: GameBuildDesktopPlatform,
+    signing: ResolvedBuildSigning,
+): boolean {
+    return platform === "windows" && Boolean(signing.windows);
+}
+
+/**
+ * Whether every password this material needs actually came back unsealed. A
+ * `null` means the keyring refused (it is unavailable, or the credential was
+ * imported under a different OS account) - never that the password is empty.
+ *
+ * Exhaustive rather than defaulting to true: a new credential kind with a secret
+ * must state its answer here, or a build would carry a null password into the
+ * worker and fail somewhere far less legible.
+ */
+export function signingSecretsResolved(material: ResolvedSigningMaterial): boolean {
+    switch (material.kind) {
+        case "windows-pfx":
+            return material.password !== null;
+        case "android-keystore":
+            return material.storePassword !== null && material.keyPassword !== null;
+        case "ios-apple":
+            return material.p12Password !== null;
+        case "windows-store":
+        case "windows-azure":
+        case "linux-gpg":
+            return true;
+    }
+}
+
+/**
+ * Map an unsealed credential onto what electron-builder needs for Authenticode.
+ * Returns null when the credential is not a Windows one, or when its password
+ * never came back - callers check `signingSecretsResolved` first so they can say
+ * which of the two happened.
+ */
+export function toWorkerWindowsSigning(
+    material: ResolvedSigningMaterial,
+    options: { signtoolPath?: string } = {},
+): GameBuildWorkerWindowsSigning | null {
+    // The timestamp server is left unset throughout: electron-builder's own
+    // default (DigiCert) is the same one we would name, and no credential kind
+    // carries an override to honour yet.
+    const common = options.signtoolPath ? { signtoolPath: options.signtoolPath } : {};
+    switch (material.kind) {
+        case "windows-pfx":
+            return material.password === null
+                ? null
+                : { source: "pfx", certificateFile: material.file, certificatePassword: material.password, ...common };
+        case "windows-store":
+            return {
+                source: "certificate-store",
+                ...(material.subjectName ? { certificateSubjectName: material.subjectName } : {}),
+                ...(material.sha1 ? { certificateSha1: material.sha1 } : {}),
+                ...common,
+            };
+        case "windows-azure":
+            return {
+                source: "azure",
+                endpoint: material.endpoint,
+                codeSigningAccountName: material.codeSigningAccountName,
+                certificateProfileName: material.certificateProfileName,
+                publisherName: material.publisherName,
+            };
+        default:
+            return null;
+    }
+}
+
+/** Map an unsealed credential onto the GPG identity the artifact signatures use. */
+export function toWorkerGpgSigning(material: ResolvedSigningMaterial): GameBuildWorkerGpgSigning | null {
+    if (material.kind !== "linux-gpg") {
+        return null;
+    }
+    return { keyId: material.keyId, ...(material.gpgPath ? { gpgPath: material.gpgPath } : {}) };
+}
+
+/** Map an unsealed credential onto the Android release keystore the repack signs with. */
+export function toWorkerAndroidSigning(material: ResolvedSigningMaterial): GameBuildWorkerAndroidSigning | null {
+    if (material.kind !== "android-keystore"
+        || material.storePassword === null
+        || material.keyPassword === null) {
+        return null;
+    }
+    return {
+        keystoreFile: material.file,
+        alias: material.alias,
+        storePassword: material.storePassword,
+        keyPassword: material.keyPassword,
+    };
+}
+
+/**
+ * The path of the resolved iOS signing tool, or a build failure.
+ *
+ * Throws rather than returning null: by the time this is asked, the author has
+ * chosen an Apple credential, and quietly emitting an unsigned .ipa - a package
+ * iOS refuses to install - is the one outcome worse than stopping. Preflight
+ * asks the same question while the dialog is open, so this is the backstop
+ * rather than the usual path.
+ */
+export function iosSigningToolPathFrom(tool: ZsignTool): string {
+    if (!tool.available) {
+        throw new Error(`This build asks for a signed iOS package, but ${tool.detail}.`);
+    }
+    return tool.path;
+}
+
+/**
+ * Map an unsealed credential onto the Apple identity the .ipa is signed with.
+ *
+ * `toolPath` comes in rather than being looked up here so this stays a pure
+ * mapping, but it is not optional: a job that asks for a signed .ipa without a
+ * tool to sign it with should never reach the worker.
+ */
+export function toWorkerIosSigning(
+    material: ResolvedSigningMaterial,
+    toolPath: string,
+): GameBuildWorkerIosSigning | null {
+    if (material.kind !== "ios-apple" || material.p12Password === null) {
+        return null;
+    }
+    return {
+        p12File: material.p12File,
+        p12Password: material.p12Password,
+        provisioningProfileFile: material.provisioningProfileFile,
+        toolPath,
+    };
+}
+
+/**
+ * Electron's keyring. Wrapped in functions rather than passed as methods so the
+ * vault's own guards catch a host where `safeStorage` is unavailable, instead of
+ * this module throwing at import time.
+ */
+const electronSealer: SecretSealer = {
+    isEncryptionAvailable: () => safeStorage.isEncryptionAvailable(),
+    encryptString: (plainText: string) => safeStorage.encryptString(plainText),
+    decryptString: (encrypted: Buffer) => safeStorage.decryptString(encrypted),
+};
+
 export class GameBuildManager {
     private readonly sessions = new Map<string, BuildSession>();
+    /** Lazily built: the vault needs a user-data dir, which a test double has no reason to provide. */
+    private signingVaultCache: SigningVault | null = null;
 
     constructor(private readonly app: App) {}
 
@@ -373,11 +558,14 @@ export class GameBuildManager {
             findings.push({ code: "web-unprotected", severity: "warning", section: "content" });
         }
         if (mobileTargets.length > 0) {
-            findings.push(...await this.mobilePreflight(normalizedProjectPath, mobileTargets));
+            findings.push(...await this.mobilePreflight(normalizedProjectPath));
         }
-        if (desktopTargets.length > 0) {
-            findings.push({ code: "unsigned", severity: "warning", section: "content" });
-        }
+        findings.push(...await this.signingPreflight(
+            projectConfig,
+            targets,
+            hostPlatform,
+            normalizeIosBundleId(appId),
+        ));
 
         const outputDir = request.outputDir?.trim()
             ? path.resolve(request.outputDir.trim())
@@ -480,6 +668,15 @@ export class GameBuildManager {
             );
         }
         const identity = this.resolveIdentity(session, projectConfig, projectPath);
+        // Everything the credentials this build needs unseals to. Resolved here,
+        // before the compile: a credential this machine cannot use fails the
+        // build either way, and finding out after several minutes of packing
+        // assets is a worse way to learn it. See resolveSigningForBuild for why
+        // a problem with a configured credential throws rather than degrades.
+        const signing = await this.resolveSigningForBuild(session, projectConfig, targets);
+        // Build-level rather than per-target: the detached signatures cover
+        // every artifact this build writes, whatever platform produced it.
+        const gpgSigning = signing.linux ? toWorkerGpgSigning(signing.linux) : null;
 
         const pluginSelection = await this.selectRuntimePlugins(projectPath, projectConfig);
         if (pluginSelection.errors.length > 0) {
@@ -594,9 +791,6 @@ export class GameBuildManager {
         const outputDir = request.outputDir?.trim()
             ? path.resolve(request.outputDir.trim())
             : path.join(projectPath, DEFAULT_OUTPUT_DIR_NAME);
-        // v1 ships unsigned/ad-hoc, so asar integrity stays off (see
-        // gameFusesForPlatform). A future code-signing batch flips this true.
-        const hasSigningIdentity = false;
         const electronMirror = this.readElectronMirror();
         const crossTargets = desktopTargets.filter(target => target.platform !== hostPlatform);
         if (electronMirror && crossTargets.length > 0) {
@@ -623,15 +817,17 @@ export class GameBuildManager {
             ...(request.compression ? { compression: request.compression } : {}),
             ...(electronMirror ? { electronMirror } : {}),
             asarUnpack: buildAsarUnpackPatterns(Boolean(encryptionKey)),
+            ...(gpgSigning ? { gpg: gpgSigning } : {}),
             targets: await Promise.all(desktopTargets.map(async target => ({
                 platform: target.platform,
                 formats: target.formats,
                 arch: normalizeGameBuildArch(target.platform, target.arch),
-                fuses: gameFusesForPlatform(target.platform, hasSigningIdentity),
+                fuses: gameFusesForPlatform(target.platform, hasSigningIdentityForPlatform(target.platform, signing)),
                 ...(target.platform === hostPlatform
                     ? { electronDist: resolveElectronDistDirForApp(this.app) }
                     : {}),
                 ...await this.resolveTargetIcon(session, projectPath, projectConfig, target.platform),
+                ...await this.resolveDesktopTargetSigning(session, target.platform, signing),
             }))),
             ...(webTarget && webArtifact ? {
                 web: {
@@ -651,6 +847,7 @@ export class GameBuildManager {
                     // When set, the repack protects every payload file with this
                     // key and writes it into shell-config for the shell's decoder.
                     contentKey: encryptionKey,
+                    signing,
                 }),
             } : {}),
         };
@@ -726,14 +923,47 @@ export class GameBuildManager {
     }
 
     /**
-     * The mobile-only preflight checks: that the templates this Studio ships
-     * are actually there, that the payload can fit, and the standing caveats
-     * of a debug-signed sideload.
+     * The signing block a desktop target carries into electron-builder. Windows
+     * only: the other two desktop platforms are covered on
+     * `hasSigningIdentityForPlatform`.
+     *
+     * Throws rather than dropping the block if the material will not map - by
+     * this point resolveSigningForBuild has already matched the credential to
+     * the platform, so a null here means the two disagree about what a Windows
+     * credential is, and silently shipping unsigned is the one outcome an author
+     * who configured signing must never get.
      */
-    private async mobilePreflight(
-        projectPath: string,
-        mobileTargets: { platform: GameBuildMobilePlatform }[],
-    ): Promise<BuildPreflightFinding[]> {
+    private async resolveDesktopTargetSigning(
+        session: BuildSession,
+        platform: GameBuildDesktopPlatform,
+        signing: ResolvedBuildSigning,
+    ): Promise<{ signing?: GameBuildWorkerWindowsSigning }> {
+        if (platform !== "windows" || !signing.windows) {
+            return {};
+        }
+        // The host probe belongs here rather than in the worker: which signtool
+        // exists is a fact about this machine, and the worker is handed answers.
+        const signtoolPath = await findSigntool();
+        const material = toWorkerWindowsSigning(signing.windows, { ...(signtoolPath ? { signtoolPath } : {}) });
+        if (!material) {
+            throw new Error("The Windows signing credential could not be prepared for this build.");
+        }
+        this.emit(session, {
+            level: "info",
+            source: "Build",
+            message: "the Windows build is code signed, so asar integrity validation is enabled; "
+                + "signing contacts a timestamp server",
+        });
+        return { signing: material };
+    }
+
+    /**
+     * The mobile-only preflight checks: that the templates this Studio ships are
+     * actually there, and that the payload can fit. What identity the package is
+     * signed with belongs to signingPreflight, which answers it for every
+     * platform in one place.
+     */
+    private async mobilePreflight(projectPath: string): Promise<BuildPreflightFinding[]> {
         const findings: BuildPreflightFinding[] = [];
         try {
             await loadMobileShellTemplateForApp(this.app);
@@ -763,16 +993,302 @@ export class GameBuildManager {
                 detail: { size: `${(assetBytes / 1024 ** 3).toFixed(2)} GiB` },
             });
         }
-        if (mobileTargets.some(target => target.platform === "android")) {
-            findings.push({ code: "unsigned-android", severity: "warning", section: "content" });
+        return findings;
+    }
+
+    /**
+     * Everything preflight can say about signing, in one place: what the project
+     * asked for, whether this machine can deliver it, and - when it asked for
+     * nothing - the standing caveats of shipping unsigned.
+     *
+     * Reads the vault but never unseals anything: `secretsAvailable` answers the
+     * only question preflight has about a password, without producing one. A
+     * dialog that is merely open must not be holding the author's private keys.
+     */
+    private async signingPreflight(
+        projectConfig: ProjectConfigData | null,
+        targets: GameBuildTarget[],
+        hostPlatform: GameBuildDesktopPlatform,
+        iosBundleId: string,
+    ): Promise<BuildPreflightFinding[]> {
+        const findings: BuildPreflightFinding[] = [];
+        const ids = readProjectSigningIds(projectConfig);
+        const vault = this.signingVault();
+
+        // The unsigned caveats are now conditional: they describe a platform
+        // nobody pointed at a credential. Once one is configured, whatever is
+        // wrong with it is reported instead, and repeating "this is unsigned"
+        // would be plainly false.
+        const unsignedDesktop = targets.filter(isDesktopTarget).some(target => {
+            const slot = signingPlatformForTarget(target.platform);
+            return slot === null || !ids[slot];
+        });
+        if (unsignedDesktop) {
+            findings.push({ code: "unsigned", severity: "warning", section: "signing" });
         }
-        if (mobileTargets.some(target => target.platform === "ios")) {
+        if (targets.some(target => target.platform === "android") && !ids.android) {
+            findings.push({ code: "unsigned-android", severity: "warning", section: "signing" });
+        }
+        if (targets.some(target => target.platform === "ios") && !ids.ios) {
             // Not the same caveat as Android's: an .ipa without a signature
             // cannot be installed at all, so this is a prerequisite the author
             // must act on, not a limitation they can ignore.
-            findings.push({ code: "unsigned-ios", severity: "warning", section: "content" });
+            findings.push({ code: "unsigned-ios", severity: "warning", section: "signing" });
+        }
+
+        const slots = new Set(
+            targets.map(target => signingPlatformForTarget(target.platform))
+                .filter((slot): slot is SigningPlatform => slot !== null),
+        );
+        // Checked whenever one is configured, not only alongside a Linux target:
+        // the GPG signatures cover every artifact, and resolveSigningForBuild
+        // will go looking for this credential on the same terms.
+        if (ids.linux) {
+            slots.add("linux");
+        }
+        for (const platform of slots) {
+            const id = ids[platform];
+            if (!id) {
+                continue;
+            }
+            // The id is deliberately absent from every finding below: it is an
+            // opaque internal handle, and the author knows their credentials by
+            // the label they gave them.
+            const credential = vault ? await vault.get(id).catch(() => null) : null;
+            // A credential of the wrong kind counts as "not here" rather than
+            // earning its own code: the dialog only ever offers the kinds a
+            // platform can use, so this is a hand-edited or stale config, and
+            // what the author has to do about it is the same either way.
+            if (!vault || !credential || SIGNING_CREDENTIAL_PLATFORM[credential.kind] !== platform) {
+                findings.push({
+                    code: "signing-credential-missing",
+                    severity: "error",
+                    section: "signing",
+                    detail: { platform },
+                });
+                continue;
+            }
+            if (!signingCredentialSupportedOnHost(credential.kind, hostPlatform)) {
+                findings.push({
+                    code: "signing-host-unsupported",
+                    severity: "error",
+                    section: "signing",
+                    detail: { platform, host: hostPlatform },
+                });
+            }
+            if (SIGNING_CREDENTIAL_SECRET_FIELDS[credential.kind].length > 0
+                && !await vault.secretsAvailable(id).catch(() => false)) {
+                findings.push({
+                    code: "signing-secret-unavailable",
+                    severity: "error",
+                    section: "signing",
+                    detail: { platform },
+                });
+            }
+            if (signingReachesNetwork(credential.kind)) {
+                findings.push({
+                    code: "signing-needs-network",
+                    severity: "warning",
+                    section: "signing",
+                    detail: { platform },
+                });
+            }
+            if (credential.kind === "linux-gpg"
+                && !await findGpgBinary({ ...(credential.gpgPath ? { configuredPath: credential.gpgPath } : {}) })) {
+                findings.push({
+                    code: "signing-tool-missing",
+                    severity: "error",
+                    section: "signing",
+                    detail: { platform, tool: "gpg" },
+                });
+            }
+            findings.push(...await this.signingExpiryPreflight(vault, credential, platform));
+            if (platform === "android") {
+                // Signed, and still not publishable on Play - which is exactly
+                // the assumption a release keystore invites.
+                findings.push({ code: "signing-android-not-play", severity: "warning", section: "signing" });
+            }
+            if (platform === "ios" && targets.some(target => target.platform === "ios")) {
+                findings.push(...await this.iosProfilePreflight(vault, credential, iosBundleId));
+            }
         }
         return findings;
+    }
+
+    /**
+     * Whether the Apple credential's provisioning profile actually covers the
+     * app this build produces.
+     *
+     * Worth checking here rather than only at signing time: the signing step is
+     * the last thing a mobile build does, so a profile issued for a different
+     * app id costs the author the entire build before saying so. The signer
+     * still refuses on its own - this is the early warning, not the guard.
+     *
+     * A profile that cannot be read at all is left to the signer to report: it
+     * has the file open anyway and its error names the actual parse failure,
+     * which is more use than "something is wrong with your profile".
+     */
+    private async iosProfilePreflight(
+        vault: SigningVault,
+        credential: SigningCredential,
+        bundleId: string,
+    ): Promise<BuildPreflightFinding[]> {
+        const profilePath = vault.materialPath(credential, "provisioningProfileFile");
+        if (!profilePath) {
+            return [];
+        }
+        let profile: ProvisioningProfile;
+        try {
+            profile = parseProvisioningProfile(await fs.readFile(profilePath));
+        } catch {
+            return [];
+        }
+        const coverage = profileCoversBundleId(profile, bundleId);
+        if (coverage.matches) {
+            return [];
+        }
+        return [{
+            code: "signing-ios-profile-mismatch",
+            severity: "error",
+            section: "signing",
+            detail: { bundleId, profileAppId: profile.applicationIdentifier },
+        }];
+    }
+
+    /** Where the vendored iOS signing tool lives on this machine. */
+    private async resolveIosSigningToolPath(): Promise<string> {
+        return iosSigningToolPathFrom(await resolveZsignTool(this.app));
+    }
+
+    /**
+     * The expiry findings for one credential's certificate.
+     *
+     * Every certificate worth checking here lives inside a PKCS#12 or a JKS,
+     * whose certificate bags are encrypted under the store password - so this
+     * unseals the credential to read them. The passwords are dropped when the
+     * call returns; what comes back is `SigningInspectResult`, which by its type
+     * carries only certificate facts.
+     *
+     * A credential whose certificate this process cannot reach at all - one in
+     * the Windows certificate store, or in Azure - has no container and is
+     * skipped. Its expiry is the signing tool's business, not ours.
+     */
+    private async signingExpiryPreflight(
+        vault: SigningVault,
+        credential: SigningCredential,
+        platform: SigningPlatform,
+    ): Promise<BuildPreflightFinding[]> {
+        const material = await vault.resolveMaterial(credential.id);
+        const container = material ? certificateContainer(material) : null;
+        if (!container) {
+            return [];
+        }
+        const inspected = await inspectCertificateFile(container.file, container.secrets).catch(() => null);
+        if (!inspected?.available) {
+            return [];
+        }
+        const { certificate } = inspected;
+        const code = signingExpiryCode(certificateExpiry(certificate));
+        if (!code) {
+            return [];
+        }
+        return [{
+            code,
+            severity: code === "signing-credential-expiring" ? "warning" : "error",
+            section: "signing",
+            detail: {
+                platform,
+                notBefore: isoDate(certificate.notBefore),
+                notAfter: isoDate(certificate.notAfter),
+                days: String(daysUntil(certificate.notAfter)),
+            },
+        }];
+    }
+
+    /**
+     * The machine's credential vault, or null when this manager has no storage
+     * to read it from (a test double). Machine-level, so one instance serves
+     * every project this manager builds.
+     */
+    private signingVault(): SigningVault | null {
+        if (this.signingVaultCache) {
+            return this.signingVaultCache;
+        }
+        try {
+            const root = this.app.storageManager.getNamespacePath(UserDataNamespace.Signing);
+            this.signingVaultCache = new SigningVault({ root, sealer: electronSealer });
+        } catch {
+            return null;
+        }
+        return this.signingVaultCache;
+    }
+
+    /**
+     * Unseal the credentials this build needs, one per platform the request
+     * covers. **The only place a build holds a password**, and the reason every
+     * failure below throws rather than degrades: an author who configured signing
+     * and got an unsigned artifact anyway would not find out until their players
+     * did.
+     *
+     * Nothing here reaches `emit` with a value read out of the vault. The console
+     * gets the credential's label, which is the author's own words for it.
+     */
+    private async resolveSigningForBuild(
+        session: BuildSession,
+        projectConfig: ProjectConfigData | null,
+        targets: GameBuildTarget[],
+    ): Promise<ResolvedBuildSigning> {
+        const ids = readProjectSigningIds(projectConfig);
+        const needed = new Set(
+            targets.map(target => signingPlatformForTarget(target.platform))
+                .filter((slot): slot is SigningPlatform => slot !== null),
+        );
+        // The GPG slot is not tied to the target that shares its name: its
+        // detached signatures go beside every artifact this build writes. So it
+        // is resolved whenever the author configured one, whether or not a Linux
+        // target is in the request - which is the only way it is reachable at
+        // all from a Windows host, where a Linux target cannot be built.
+        if (ids.linux) {
+            needed.add("linux");
+        }
+        const slots = [...needed].filter(slot => ids[slot]);
+        if (slots.length === 0) {
+            return {};
+        }
+        const vault = this.signingVault();
+        if (!vault) {
+            throw new Error("This project is configured to sign its builds, but the credential vault is unavailable.");
+        }
+        const signing: ResolvedBuildSigning = {};
+        for (const platform of slots) {
+            const id = ids[platform]!;
+            const credential = await vault.get(id);
+            if (!credential) {
+                throw new Error(
+                    `No signing credential for ${platform} on this machine. Import it in the build dialog's `
+                    + "Signing section, or clear the selection to build unsigned.",
+                );
+            }
+            if (SIGNING_CREDENTIAL_PLATFORM[credential.kind] !== platform) {
+                throw new Error(
+                    `The credential "${credential.label}" cannot sign a ${platform} build. Pick one for ${platform}.`,
+                );
+            }
+            const material = await vault.resolveMaterial(id);
+            if (!material || !signingSecretsResolved(material)) {
+                throw new Error(
+                    `The password for "${credential.label}" could not be read on this machine. It is sealed with the `
+                    + "system keyring, so importing it again under this user account restores access.",
+                );
+            }
+            signing[platform] = material;
+            this.emit(session, {
+                level: "info",
+                source: "Build",
+                message: `signing the ${platform} build with "${credential.label}"`,
+            });
+        }
+        return signing;
     }
 
     /**
@@ -792,6 +1308,8 @@ export class GameBuildManager {
             site: GameRuntimeArtifactCompileResult;
             /** Opaque protection key, or undefined for a plain (unprotected) build. */
             contentKey?: string;
+            /** Credentials this build already unsealed; the mobile slots may be empty. */
+            signing: ResolvedBuildSigning;
         },
     ): Promise<GameBuildWorkerMobileJob> {
         const template = await loadMobileShellTemplateForApp(this.app);
@@ -846,6 +1364,21 @@ export class GameBuildManager {
                     + "Each of major, minor and patch must fit its budget (major ≤ 2099, minor and patch ≤ 999).",
                 );
             }
+            const releaseKeystore = input.signing.android ? toWorkerAndroidSigning(input.signing.android) : null;
+            if (releaseKeystore) {
+                // The one thing an author must know before they hand this build
+                // to a player who already has the previous one: Android refuses
+                // an update whose signer changed, with a message ("app not
+                // installed") that says nothing about why.
+                this.emit(session, {
+                    level: "warning",
+                    source: "Build",
+                    message: "the Android build is signed with your release keystore instead of the local debug "
+                        + "identity; a device that has a debug-signed build of this game must uninstall it first. "
+                        + "A signed APK is for sideloading and stores that take APKs - Google Play accepts only AABs, "
+                        + "which this pipeline does not produce.",
+                });
+            }
             job.android = {
                 templateApkPath: template.androidTemplatePath,
                 outputName: mobileExportFileName("android", identity.artifactBaseName, identity.version),
@@ -853,6 +1386,7 @@ export class GameBuildManager {
                 versionName: identity.version,
                 versionCode,
                 signingIdentity: await resolveMobileSigningIdentity(this.app.getUserDataDir()),
+                ...(releaseKeystore ? { signing: releaseKeystore } : {}),
                 ...await this.resolveMobileIcons(session, {
                     projectPath: input.projectPath,
                     projectConfig: input.projectConfig,
@@ -874,12 +1408,16 @@ export class GameBuildManager {
                 });
             }
             const bundleVersion = deriveIosBundleVersion(identity.version);
+            const appleIdentity = input.signing.ios
+                ? toWorkerIosSigning(input.signing.ios, await this.resolveIosSigningToolPath())
+                : null;
             job.ios = {
                 templateAppZipPath: template.iosTemplatePath,
                 outputName: mobileExportFileName("ios", identity.artifactBaseName, identity.version),
                 bundleId,
                 shortVersionString: bundleVersion,
                 bundleVersion,
+                ...(appleIdentity ? { signing: appleIdentity } : {}),
                 ...await this.resolveMobileIcons(session, {
                     projectPath: input.projectPath,
                     projectConfig: input.projectConfig,
@@ -1125,6 +1663,15 @@ export class GameBuildManager {
     private projectKey(projectPath: string): string {
         return path.resolve(projectPath);
     }
+}
+
+/**
+ * The date half of an ISO timestamp, for a message about a certificate's
+ * validity window. The time of day is noise there, and a raw ISO string with a
+ * `T` and a `Z` in it reads like a machine talking.
+ */
+function isoDate(timestamp: string): string {
+    return timestamp.slice(0, 10);
 }
 
 async function fileExists(filePath: string): Promise<boolean> {

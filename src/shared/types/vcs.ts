@@ -65,6 +65,23 @@ export interface VcsRepositoryInfo {
     revisionCount: number;
 }
 
+/**
+ * What the author gets to decide when they put a project under version control.
+ *
+ * Shared rather than main-only because enabling version control is a renderer-driven
+ * act - it is the one write that cannot wait for the resolve UI, since without it a
+ * project has no repository for anything else to read. Every field is optional; the
+ * defaults are what "just turn it on" means.
+ */
+export interface VcsInitOptions {
+    /** Author recorded on the first commit, and persisted into the repository config. */
+    identity?: string;
+    description?: string;
+    message?: string;
+    /** Only for a repository created against a known remote; a placeholder is used otherwise. */
+    repositoryUrl?: string;
+}
+
 export interface VcsHistoryEntry {
     revision: RevisionId;
     /** Monotonic per repository; usable as a cheap topological rank. */
