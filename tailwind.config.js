@@ -2,6 +2,17 @@
 module.exports = {
     content: [
         './src/renderer/**/*.{ts,tsx,js,jsx,html}',
+        // Built-in plugins are compiled from this repo and render inside Studio
+        // windows, sharing this one stylesheet — but they are bundled separately
+        // by esbuild, so nothing here scans them unless we say so. Without this
+        // glob a built-in plugin silently gets only the utilities some renderer
+        // file happens to use too, and any class it alone needs is never
+        // emitted (a missing `grid-cols-[...]` collapses its grid to one column).
+        //
+        // Third-party plugins cannot be covered this way: they are not present
+        // at build time, so they are limited to the utilities this stylesheet
+        // already carries.
+        './src/builtin-plugins/**/*.{ts,tsx}',
         './project/assets/**/*.ejs',
     ],
     // Dark is the default and light is the prefers-color-scheme override (see
