@@ -131,9 +131,24 @@ export function AssetSelector({
         position: { top: number; left: number };
     } | null>(null);
 
+    /**
+     * Seed the selection from the caller's ids when the dialog opens, or when
+     * those ids actually change.
+     *
+     * Keyed by value rather than by array identity. `selectedIds` defaults to a
+     * fresh `[]` and callers routinely pass an inline literal, so an
+     * identity-keyed effect re-ran on *every* render - including the one caused
+     * by ticking a checkbox, which wiped the selection again immediately. That
+     * made multi-select impossible to use: `multiple` was only ever exercised by
+     * the Gallery plugin, and its "pick several images at once" silently
+     * selected nothing. Single-select callers never noticed because that path
+     * confirms on click and never reads `selection`.
+     */
+    const selectedIdsKey = selectedIds.join();
     useEffect(() => {
         setSelection(new Set(selectedIds));
-    }, [selectedIds, visible]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by value; see above
+    }, [selectedIdsKey, visible]);
 
     const typeAssets = useMemo(() => assets[assetType] ?? [], [assets, assetType]);
     const filteredTypeAssets = useMemo(() => filteredAssets[assetType] ?? [], [filteredAssets, assetType]);
