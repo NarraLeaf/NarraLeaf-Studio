@@ -3,6 +3,7 @@ import { AlignLeft, BookOpen, Camera, Check, ChevronDown, ChevronRight, FileText
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useTranslation } from "@/lib/i18n";
 import type { EditorComponentProps } from "../../types";
 import { PanelPosition } from "../../../registry/types";
@@ -388,6 +389,10 @@ function StorySceneOverviewBlock(props: {
 
 export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentProps<StorySceneEditorTabPayload | undefined>) {
     const { t } = useTranslation();
+    // Adding, duplicating, reordering and deleting rows write the scene. Reading it, playing from a row,
+    // opening the inspector, changing the row density and using Find all stay live while frozen -
+    // density is editor state, not project data, and Find without Replace only navigates.
+    const freeze = useFreezeGuard();
     const editor = useStorySceneEditorController(tabId, payload);
     // The command reference overlay (WI-2), opened from the header. Local state, not a panel — it is a
     // read-only reference the author dips into, not a docked surface, so it mirrors the cheat sheet.
@@ -1670,16 +1675,16 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const menuRoots = editor.selectionRootIds();
     const menuAllDisabled = menuRoots.length > 0 && menuRoots.every(id => scene.blocks[id]?.disabled);
     const rowMenuItems: ContextMenuDef = menuTarget ? [
-        { id: "insert-above", label: t("story.rowMenu.insertAbove"), onClick: () => editor.startInsertBefore(menuTarget) },
-        { id: "insert-below", label: t("story.rowMenu.insertBelow"), onClick: () => editor.startInsertAfter(menuTarget, true) },
+        { id: "insert-above", label: t("story.rowMenu.insertAbove"), ...freeze.menuRow(), onClick: () => editor.startInsertBefore(menuTarget) },
+        { id: "insert-below", label: t("story.rowMenu.insertBelow"), ...freeze.menuRow(), onClick: () => editor.startInsertAfter(menuTarget, true) },
         { id: "sep-insert", separator: true },
-        { id: "duplicate", label: t("story.rowMenu.duplicate"), onClick: () => editor.duplicateSelection() },
-        { id: "disable", label: menuAllDisabled ? t("story.rowMenu.enable") : t("story.rowMenu.disable"), onClick: () => editor.toggleDisableSelection() },
+        { id: "duplicate", label: t("story.rowMenu.duplicate"), ...freeze.menuRow(), onClick: () => editor.duplicateSelection() },
+        { id: "disable", label: menuAllDisabled ? t("story.rowMenu.enable") : t("story.rowMenu.disable"), ...freeze.menuRow(), onClick: () => editor.toggleDisableSelection() },
         { id: "sep-op", separator: true },
         { id: "play", label: t("story.rowMenu.playFromHere"), onClick: () => playFromRow(menuTarget) },
         { id: "inspector", label: t("story.rowMenu.openInspector"), onClick: () => editor.activateBlockForInspectorOrOp(menuTarget) },
         { id: "sep-del", separator: true },
-        { id: "delete", label: t("story.rowMenu.delete"), onClick: () => void editor.deleteRows(editor.selectedBlockIds.size > 0 ? [...editor.selectedBlockIds] : [menuTarget]) },
+        { id: "delete", label: t("story.rowMenu.delete"), ...freeze.menuRow(), onClick: () => void editor.deleteRows(editor.selectedBlockIds.size > 0 ? [...editor.selectedBlockIds] : [menuTarget]) },
     ] : [];
 
     return (
@@ -1933,8 +1938,10 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                             editor.addRowFocused
                                 ? "bg-primary/10 text-fg-muted ring-1 ring-inset ring-primary/50"
                                 : "text-fg-subtle hover:bg-fill-subtle hover:text-fg-muted",
+                            "disabled:cursor-not-allowed disabled:opacity-40",
                         ].join(" ")}
                         onClick={() => editor.startInsertAfter(null, true)}
+                        {...freeze.writes()}
                     >
                         <Plus className="h-4 w-4 text-primary" />
                         {t("story.sceneEditor.addRow")}

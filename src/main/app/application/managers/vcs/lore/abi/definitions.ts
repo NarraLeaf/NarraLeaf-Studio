@@ -95,6 +95,14 @@ export const LORE_STRUCTS = {
     },
     LoreStorageGetItemArray: { ptr: "LoreStorageGetItem*", count: "uintptr_t" },
     LoreMetadataTypeArray: { ptr: "LoreMetadataType*", count: "uintptr_t" },
+    /**
+     * One metadata value: a discriminant plus the union it selects.
+     *
+     * The `data` field is the ONE deliberate divergence from the header - see
+     * {@link ABI_DIVERGENCES}. The union is never read through this declaration;
+     * `events.ts` decodes the selected member off the event pointer at its real offset.
+     */
+    LoreMetadata: { tag: "uint32_t", data: "uint8_t[48]" },
     LoreFileStageCountData: {
         directoryModifyCount: "uint64_t",
         directoryAddCount: "uint64_t",
@@ -182,6 +190,18 @@ export const LORE_STRUCTS = {
     LoreRevisionInfoArgs: { revision: "LoreString", delta: "uint8_t", metadata: "uint8_t" },
     LoreRevisionDiffArgs: { revisionSource: "LoreString", revisionTarget: "LoreString", paths: "LoreStringArray" },
     LoreRevisionRestoreArgs: { message: "LoreString" },
+    /**
+     * No revision field: the write always lands on the CURRENT revision. The read
+     * verbs below take one, which is the only reason a past revision's kind is
+     * readable at all.
+     */
+    LoreRevisionMetadataSetArgs: {
+        keys: "LoreStringArray",
+        values: "LoreStringArray",
+        formats: "LoreMetadataTypeArray",
+    },
+    LoreRevisionMetadataGetArgs: { key: "LoreString", revision: "LoreString" },
+    LoreRevisionMetadataListArgs: { revision: "LoreString" },
     LoreStorageOpenArgs: {
         repositoryPath: "LoreString",
         inMemory: "uint8_t",
@@ -202,6 +222,7 @@ export const LORE_STRUCTS = {
     LoreBranchInfoArgs: { branch: "LoreString" },
 
     // -- events -----------------------------------------------------------------
+    LoreMetadataEventData: { key: "LoreString", value: "LoreMetadata" },
     LoreErrorEventData: { errorType: "uint32_t", errorInner: "LoreString" },
     LoreCompleteEventData: { status: "int32_t", error: "LoreErrorDetail" },
     LoreEndEventData: { unused: "uint32_t" },
@@ -405,6 +426,33 @@ export const LORE_EVENT_TAGS = {
 export type LoreEventTagName = keyof typeof LORE_EVENT_TAGS;
 
 /**
+ * `LoreMetadataType` - how Lore parses the string a metadata write hands it.
+ *
+ * Every value crosses the boundary as a `LoreString`; this is what says whether the
+ * text is the value or the spelling of one. Studio only writes STRING, but the whole
+ * enum is transcribed so `definitions.test.ts` catches a renumbering that would make
+ * a string be parsed as a number.
+ */
+export const LORE_METADATA_TYPES = { BINARY: 0, NUMERIC: 1, STRING: 2 } as const;
+
+/**
+ * `LoreMetadataTag` - which member of the metadata union a value carries.
+ *
+ * Read side only, and load-bearing: the discriminant is what makes decoding the union
+ * safe. A value tagged anything but STRING must not be read as a `LoreString`, because
+ * the first eight bytes of a NUMERIC would be dereferenced as a pointer.
+ */
+export const LORE_METADATA_TAGS = {
+    ADDRESS: 0,
+    BOOLEAN: 1,
+    BINARY: 2,
+    CONTEXT: 3,
+    HASH: 4,
+    NUMERIC: 5,
+    STRING: 6,
+} as const;
+
+/**
  * Payload offset inside an event blob.
  *
  * The blob is `{ uint32_t tag; <payload>; }` with the payload aligned to 8, so the
@@ -449,6 +497,9 @@ export const LORE_VERBS = {
     revisionInfo: { symbol: "lore_revision_info", args: "LoreRevisionInfoArgs" },
     revisionDiff: { symbol: "lore_revision_diff", args: "LoreRevisionDiffArgs" },
     revisionRestore: { symbol: "lore_revision_restore", args: "LoreRevisionRestoreArgs" },
+    revisionMetadataSet: { symbol: "lore_revision_metadata_set", args: "LoreRevisionMetadataSetArgs" },
+    revisionMetadataGet: { symbol: "lore_revision_metadata_get", args: "LoreRevisionMetadataGetArgs" },
+    revisionMetadataList: { symbol: "lore_revision_metadata_list", args: "LoreRevisionMetadataListArgs" },
     storageOpen: { symbol: "lore_storage_open", args: "LoreStorageOpenArgs" },
     storageClose: { symbol: "lore_storage_close", args: "LoreStorageCloseArgs" },
     storageGet: { symbol: "lore_storage_get", args: "LoreStorageGetArgs" },
@@ -468,4 +519,20 @@ export type LoreVerbName = keyof typeof LORE_VERBS;
  * Where this file intentionally differs from `upstream.json`, and why.
  * `definitions.test.ts` reads this list; anything not in it must match exactly.
  */
-export const ABI_DIVERGENCES: Readonly<Record<string, string>> = {};
+export const ABI_DIVERGENCES: Readonly<Record<string, string>> = {
+    /**
+     * The header spells the payload `uint8_t[sizeof(LoreMetadataUnion)]`, a symbolic
+     * size the snapshot keeps symbolic so an added union member shows up as a diff
+     * rather than as a changed magic number. koffi needs a literal, and 48 is that
+     * size: the widest member is `LoreAddress` (a 32-byte hash plus a 16-byte context).
+     *
+     * The stand-in is a byte array rather than a union because the payload is NEVER
+     * read through this struct. koffi lays the array out at offset 4, immediately after
+     * the tag, while the real union is 8-aligned (it has pointer members) and therefore
+     * starts at offset 8 - which is why `events.ts` decodes the selected member off the
+     * event pointer at an explicit offset instead of reaching into `data`. The generated
+     * SDK does exactly the same thing, adding `sizeof(uint32_t)` to `offsetof(data)`,
+     * which is the evidence for the padding.
+     */
+    LoreMetadata: "uint8_t[sizeof(LoreMetadataUnion)] resolved to its measured size, 48",
+};

@@ -282,6 +282,61 @@ export class StoryService extends Service<StoryService> implements IStoryService
         return this.loadStory(storyId);
     }
 
+    /**
+     * Throw away every story held in memory and read the library back off the disk.
+     *
+     * A participant of `WorkspaceReloadService`; see it for why this exists at all. The case that
+     * forces it: a story or scene created while the workspace was frozen never reached the disk (the
+     * write was refused), but this service kept it, and the next successful save wrote it there.
+     *
+     * Written read-first: the index is re-read before anything is dropped, so an index that cannot
+     * be read leaves the workspace showing the stories it already had - stale but coherent, which
+     * half a library is not.
+     */
+    public async reloadFromDisk(): Promise<void> {
+        const previouslyLoaded = [...this.documents.keys()];
+
+        await this.loadLibrary();
+        await this.loadAnimationIndex();
+
+        this.documents.clear();
+        this.animationAssets.clear();
+        this.revision = 0;
+        this.lastSavedRevision = 0;
+        this.setDirty(false);
+
+        // A story the re-read index no longer lists took its asset locks with it, and nothing else
+        // releases them: `syncLibraryAssetLocks` only visits stories the index still names.
+        for (const storyId of [...this.storyAssetLocks.keys()]) {
+            if (!this.getStoryEntry(storyId)) {
+                this.releaseStoryAssetLocks(storyId);
+            }
+        }
+
+        // Re-open what was open, one document at a time. One that cannot be read is left *not
+        // loaded* - the state `getStoryDocument` already reports and `flush` already skips over -
+        // rather than half-parsed, and it does not stop the other stories coming back.
+        const failures: string[] = [];
+        for (const storyId of previouslyLoaded) {
+            if (!this.getStoryEntry(storyId)) {
+                // Never reached the index on disk, so from here on it does not exist. Its editor tab
+                // re-resolves to "scene not found"; see `WorkspaceReloadService`.
+                continue;
+            }
+            try {
+                await this.loadStory(storyId);
+            } catch (error) {
+                failures.push(`${storyId} (${error instanceof Error ? error.message : String(error)})`);
+            }
+        }
+
+        await this.syncLibraryAssetLocks();
+
+        if (failures.length > 0) {
+            throw new RendererError(`Could not re-read ${failures.length} story document(s): ${failures.join("; ")}`);
+        }
+    }
+
     public async loadLibrary(): Promise<StoryLibraryIndex> {
         const fs = this.getFileSystem();
         const indexPath = this.getIndexPath();
