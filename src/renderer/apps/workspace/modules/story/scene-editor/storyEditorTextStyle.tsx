@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { getInterface } from "@/lib/app/bridge";
 import type { StoryEditorDensity } from "./storyEditorSessionStore";
@@ -87,19 +87,50 @@ export const STORY_ROW_BOX_VAR = "--nl-story-row-box";
 export const STORY_GUTTER_VAR = "--nl-story-gutter";
 /** The CSS variable a dialogue row sizes its speaker portrait (and a group member's rail slot) from. */
 export const STORY_AVATAR_VAR = "--nl-story-avatar";
-/** The CSS variable the row grid sizes its drag-handle column from. */
-export const STORY_HANDLE_VAR = "--nl-story-handle";
+/** The CSS variable the row grid sizes its speaker-name column from. */
+export const STORY_NAME_VAR = "--nl-story-name";
 
 /**
- * Width of the drag-handle column, between the line numbers and the content (U1 WI-2).
+ * The drag-handle column is gone: the grip now rides in the line-number box and swaps with the number
+ * on hover, so the two anchors that only ever matter one at a time stop each holding their own column.
+ * That is 20px of chrome the words get back on every row of the document.
  *
- * Constant across the tiers, but published with the density variables rather than pinned in the
- * stylesheet: the row grid, the insert slot's grid and the tail "+" button all need it as a literal
- * length, and one variable they read beats three hard-coded 20s that drift apart. Every consumer
- * still spells the fallback, so a row rendered outside the editor root (tests, isolated previews)
- * keeps a sane column instead of collapsing.
+ * Nothing else moved into the gap — the badge column starts where the handle used to.
  */
-export const STORY_HANDLE_PX = 20;
+
+/**
+ * The speaker-name column: names hang right-aligned against the body edge, so `[icon][gap][name][text]`
+ * puts every row's words — dialogue, narration and action alike — on ONE x.
+ *
+ * This is not a walk-back of U1's "one baseline" ruling, it is that ruling applied correctly. What U1
+ * banned was an edge that floats with *content*: the nametag used to sit inline in front of the first
+ * line, so the words started after the name and therefore at a different x for every speaker — five
+ * left edges on one screen, four of them accidental. A column whose width is a property of the SCENE
+ * rather than of the row is deterministic: two fixed edges, both of which mean something.
+ *
+ * The width is measured from the scene's own cast (see `StoryNameColumnProbe`) rather than pinned at a
+ * constant, because a constant is wrong in both directions at once — 100px truncates "Mysterious
+ * Voice" and wastes 60px on a cast of Nattou / YouKi / 澪. It is clamped at both ends so a single
+ * absurd name cannot eat the line, and it never changes while scrolling: collapsing a container hides
+ * rows, but the cast is read from `scene.blocks`, not from what is on screen.
+ */
+export const STORY_NAME_MIN_PX = 56;
+/** Ceiling for the name column. Past this a name truncates rather than taking the line with it. */
+export const STORY_NAME_MAX_PX = 176;
+/**
+ * Breathing room between a name's last glyph and the speech bar it hangs against.
+ *
+ * The probe measures bare glyphs, but the tag renders inside a hover chip whose `px-1` is pulled back
+ * out by a negative margin — the padding contributes nothing to layout, yet it still counts against
+ * the chip's `max-w-full`, so a column sized to the glyphs alone truncates the very name it was
+ * measured from. 14 = the chip's 8px of padding plus 6px that reads as a gap.
+ */
+const STORY_NAME_PAD_PX = 14;
+
+/** The name column's width for a cast whose widest name measures `measuredPx`. */
+export function storyNameWidth(measuredPx: number): number {
+    return Math.round(Math.min(STORY_NAME_MAX_PX, Math.max(STORY_NAME_MIN_PX, measuredPx + STORY_NAME_PAD_PX)));
+}
 
 /**
  * Gutter at two digits — chevron (14) + gap (2) + two tabular digits at the line number's 11px type.
@@ -126,12 +157,12 @@ export function storyGutterWidth(rowCount: number): number {
  * to the rows below. Applied alongside `data-story-density`, which stays as the attribute selectors
  * and the tests read.
  */
-export function storyEditorRootStyle(density: StoryEditorDensity, rowCount: number): CSSProperties {
+export function storyEditorRootStyle(density: StoryEditorDensity, rowCount: number, nameWidth = STORY_NAME_MIN_PX): CSSProperties {
     return {
         [STORY_ROW_BOX_VAR]: `${STORY_DENSITY_METRICS[density].rowBox}px`,
         [STORY_GUTTER_VAR]: `${storyGutterWidth(rowCount)}px`,
         [STORY_AVATAR_VAR]: `${STORY_DENSITY_METRICS[density].avatar}px`,
-        [STORY_HANDLE_VAR]: `${STORY_HANDLE_PX}px`,
+        [STORY_NAME_VAR]: `${nameWidth}px`,
     } as CSSProperties;
 }
 
@@ -195,5 +226,61 @@ export function StoryEditorTextStyleProvider({ children, density }: { children: 
         <StoryEditorTextStyleContext.Provider value={style}>
             {children}
         </StoryEditorTextStyleContext.Provider>
+    );
+}
+
+/**
+ * Measures the widest name in a scene's cast and reports the column width that fits it.
+ *
+ * Rendered rather than computed: the nametag's font is a *preference* — family "Default" resolves to
+ * whatever the surrounding Studio UI inherits, and the size is scaled by the density — so any attempt
+ * to rebuild the font string for `canvas.measureText` is a second copy of the cascade that will drift
+ * from the first one. Laying the names out in the same tree, under the same style the tag itself uses,
+ * cannot drift: it IS the cascade.
+ *
+ * Off-screen at a negative x rather than `visibility: hidden` inside the flow — a hidden element still
+ * takes part in layout, and this one must not widen the row list. Negative x creates no scroll in LTR.
+ */
+export function StoryNameColumnProbe({ labels, onMeasure }: { labels: string[]; onMeasure: (width: number) => void }) {
+    const ref = useRef<HTMLDivElement | null>(null);
+    const style = useStoryEditorTextStyle();
+    // The cast as a dependency. A fresh array identity every render would re-run the effect on every
+    // render; the joined text changes exactly when the names do.
+    const key = labels.join(" ");
+    useLayoutEffect(() => {
+        const element = ref.current;
+        if (!element) {
+            return;
+        }
+        const measure = () => {
+            let widest = 0;
+            for (const child of Array.from(element.children)) {
+                widest = Math.max(widest, child.getBoundingClientRect().width);
+            }
+            // A hidden tree measures zero on every child. Publishing that would pin the column at its
+            // floor and — because nothing about the cast has changed — never correct itself, which is
+            // exactly the bug this guard exists for: the tab mounts while its editor group still has it
+            // hidden, the layout effect runs there, and every name in the scene truncates for the rest
+            // of the session. The observer below is what re-measures once the tree is real.
+            if (widest > 0) {
+                onMeasure(storyNameWidth(widest));
+            }
+        };
+        measure();
+        // Fires when the probe first gets a box (hidden becomes shown), and again whenever the resolved
+        // font changes the glyphs' width — including a typeface change made in another window.
+        const observer = new ResizeObserver(measure);
+        observer.observe(element);
+        return () => observer.disconnect();
+    }, [key, style.fontSize, style.fontFamily, onMeasure]);
+    return (
+        <div
+            ref={ref}
+            aria-hidden
+            className="pointer-events-none absolute top-0 h-0 overflow-hidden whitespace-nowrap font-medium"
+            style={{ ...style, left: -9999 }}
+        >
+            {labels.map(label => <span key={label} className="inline-block">{label}</span>)}
+        </div>
     );
 }

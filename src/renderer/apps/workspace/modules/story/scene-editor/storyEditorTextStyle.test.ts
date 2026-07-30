@@ -4,11 +4,13 @@ import {
     STORY_AVATAR_VAR,
     STORY_DENSITY_METRICS,
     STORY_GUTTER_VAR,
-    STORY_HANDLE_PX,
-    STORY_HANDLE_VAR,
+    STORY_NAME_MAX_PX,
+    STORY_NAME_MIN_PX,
+    STORY_NAME_VAR,
     STORY_ROW_BOX_VAR,
     storyEditorRootStyle,
     storyGutterWidth,
+    storyNameWidth,
 } from "./storyEditorTextStyle";
 
 /**
@@ -54,11 +56,41 @@ describe("story editor density metrics", () => {
     });
 
     it("publishes every row-chrome variable from one style object", () => {
-        const style = storyEditorRootStyle("comfortable", 12) as Record<string, string>;
+        const style = storyEditorRootStyle("comfortable", 12, 96) as Record<string, string>;
         expect(style[STORY_ROW_BOX_VAR]).toBe(`${STORY_DENSITY_METRICS.comfortable.rowBox}px`);
         expect(style[STORY_GUTTER_VAR]).toBe(`${storyGutterWidth(12)}px`);
         expect(style[STORY_AVATAR_VAR]).toBe(`${STORY_DENSITY_METRICS.comfortable.avatar}px`);
-        expect(style[STORY_HANDLE_VAR]).toBe(`${STORY_HANDLE_PX}px`);
+        expect(style[STORY_NAME_VAR]).toBe("96px");
+    });
+
+    /**
+     * A scene rendered before its cast has been measured (first paint, or a scene with no dialogue at
+     * all) must still publish a column — a missing width would collapse the nametag onto the words and
+     * undo the one edge the layout exists to hold.
+     */
+    it("falls back to the floor when no cast has been measured", () => {
+        const style = storyEditorRootStyle("compact", 12) as Record<string, string>;
+        expect(style[STORY_NAME_VAR]).toBe(`${STORY_NAME_MIN_PX}px`);
+    });
+});
+
+describe("speaker-name column", () => {
+    it("holds the floor for a cast of short names", () => {
+        expect(storyNameWidth(0)).toBe(STORY_NAME_MIN_PX);
+        expect(storyNameWidth(20)).toBe(STORY_NAME_MIN_PX);
+    });
+
+    it("grows with the widest name, plus room to clear the speech bar", () => {
+        expect(storyNameWidth(100)).toBeGreaterThan(100);
+        expect(storyNameWidth(120)).toBeGreaterThan(storyNameWidth(100));
+    });
+
+    /**
+     * One absurd name must not take the line with it: past the ceiling the name truncates instead, which
+     * costs one row its full name and costs the document nothing.
+     */
+    it("caps so a single long name cannot eat the words", () => {
+        expect(storyNameWidth(4000)).toBe(STORY_NAME_MAX_PX);
     });
 });
 
