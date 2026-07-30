@@ -1029,12 +1029,35 @@ function normalizeScene(scene: StoryScene): StoryScene {
             block.childrenIds = [];
         }
     }
+    const bgm = normalizeSceneBgm(scene.bgm);
     return {
         ...scene,
         description: typeof scene.description === "string" ? scene.description : "",
         defaultBackgroundAssetId: normalizeOptionalString(scene.defaultBackgroundAssetId),
+        ...(bgm ? { bgm } : { bgm: undefined }),
         rootBlockIds,
         blocks,
+    };
+}
+
+/**
+ * The scene's opening track. A record with no asset id names nothing playable, so it is dropped
+ * rather than carried - which also means a cleared picker leaves no residue in the document.
+ */
+function normalizeSceneBgm(value: StoryScene["bgm"]): StoryScene["bgm"] {
+    const assetId = normalizeOptionalString(value?.assetId);
+    if (!value || !assetId) {
+        return undefined;
+    }
+    const volume = typeof value.volume === "number" && Number.isFinite(value.volume)
+        ? Math.min(1, Math.max(0, value.volume))
+        : undefined;
+    const fadeMs = normalizeOptionalNonNegativeNumber(value.fadeMs);
+    return {
+        assetId,
+        ...(volume !== undefined ? { volume } : {}),
+        ...(typeof value.loop === "boolean" ? { loop: value.loop } : {}),
+        ...(fadeMs !== undefined ? { fadeMs } : {}),
     };
 }
 

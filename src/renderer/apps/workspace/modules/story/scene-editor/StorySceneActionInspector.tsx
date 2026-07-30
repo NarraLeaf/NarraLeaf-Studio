@@ -386,6 +386,7 @@ const audioOperationOptions = (t: TFunc): SelectOption[] => [
     { value: "setVolume", label: t("storyInspector.audioOperation.setVolume") },
     { value: "setRate", label: t("storyInspector.audioOperation.setRate") },
     { value: "muteSound", label: t("storyInspector.audioOperation.muteSound") },
+    { value: "seekSound", label: t("storyInspector.audioOperation.seekSound") },
 ];
 
 const screenEffectOptions = (t: TFunc): SelectOption[] => [
@@ -816,6 +817,7 @@ function ActionPayloadFields(props: {
                         onChange={assetId => props.onChange({ ...payload, assetId })}
                     />
                     <SecondsField label={t("storyInspector.audio.fade")} value={payload.fadeMs} onChange={fadeMs => props.onChange({ ...payload, fadeMs })} />
+                    <SecondsField label={t("storyInspector.audio.seekTime")} value={payload.timeMs} onChange={timeMs => props.onChange({ ...payload, timeMs })} />
                     <NumberField label={t("storyInspector.audio.volume")} value={payload.volume} onChange={volume => props.onChange({ ...payload, volume })} />
                     <NumberField label={t("storyInspector.audio.rate")} value={payload.rate} onChange={rate => props.onChange({ ...payload, rate })} />
                     <CheckboxField label={t("storyInspector.audio.loop")} checked={Boolean(payload.loop)} onChange={loop => props.onChange({ ...payload, loop })} />
