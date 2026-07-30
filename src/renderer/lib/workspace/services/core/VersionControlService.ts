@@ -353,26 +353,28 @@ export class VersionControlService extends Service<VersionControlService> implem
      * fragments over the network (docs §6). Show a loading state; there is
      * deliberately no synchronous accessor to fall back on.
      *
-     * `includeKinds` asks which revisions are checkpoints. It is opt-in because the
-     * backend has no batch metadata verb, so it costs one call PER REVISION - and it is
-     * part of the cache key rather than a filter on one cached list, because a page read
-     * without kinds cannot answer a later question about them.
+     * `includeDetails` asks what each revision says about itself: its kind, message,
+     * timestamp and author. It is opt-in because the backend has no batch metadata verb,
+     * so it costs one call PER REVISION - and it is part of the cache key rather than a
+     * filter on one cached list, because a page read without details cannot answer a
+     * later question about them.
      *
-     * The message, timestamp and author arrive on the SAME read and are deliberately NOT
-     * a third state of that key: the main process reads them out of the one metadata call
-     * the kind already pays for, so there is no such thing as a page that has kinds and
-     * lacks them. Splitting the key per field would double the cached pages and re-pay
-     * that per-revision cost for data already in hand.
+     * All four arrive on the SAME read and are deliberately NOT separate states of that
+     * key: the main process reads them out of one metadata call, so there is no such
+     * thing as a page that has the kind and lacks the message. Splitting the key per
+     * field would double the cached pages and re-pay that per-revision cost for data
+     * already in hand - which is what the flag's name has to say, and why it is not
+     * called `includeKinds`.
      */
-    public async getHistory(limit = 0, options: { includeKinds?: boolean } = {}): Promise<VcsHistoryEntry[]> {
-        const includeKinds = options.includeKinds === true;
-        const key = `${limit}:${includeKinds ? "kinds" : "plain"}`;
+    public async getHistory(limit = 0, options: { includeDetails?: boolean } = {}): Promise<VcsHistoryEntry[]> {
+        const includeDetails = options.includeDetails === true;
+        const key = `${limit}:${includeDetails ? "details" : "plain"}`;
         const cached = this.history.get(key);
         if (cached) return cached;
 
         const pending = (async () => {
             if (!(await this.isAvailable())) return [];
-            const result = await getInterface().vcs.getHistory(this.projectPath(), limit, includeKinds);
+            const result = await getInterface().vcs.getHistory(this.projectPath(), limit, includeDetails);
             return result.success ? result.data.entries : [];
         })();
         this.history.set(key, pending);

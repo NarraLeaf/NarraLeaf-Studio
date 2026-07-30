@@ -20,12 +20,14 @@ import {
     revisionLabel,
     shortRevision,
     type FlatHistoryEntry,
+    type VersionRailPresence,
 } from "./versionRailModel";
 import { registerVersionRailBridge } from "./versionRailController";
 
 interface VersionRailProps {
     surface: VersionSurface;
-    expanded: boolean;
+    /** Absent / strip / panel, from `resolveVersionRailPresence`. The layout owns the decision. */
+    presence: VersionRailPresence;
     onExpandedChange: (expanded: boolean) => void;
 }
 
@@ -38,25 +40,32 @@ interface VersionRailProps {
  * is a column of its own rather than a panel in the left dock - a panel would have taken the place of
  * the very things the author came here to read.
  *
- * **Collapsed it is not decoration.** At 48px - the same width as the selector rail beside it - it is
- * the persistent "you are looking at a historical version" indicator, and it is the way back to
- * expanded. That is why it stays mounted in every state except an unavailable backend, and why it
- * carries the return-to-current control even at 48px: a frozen workspace the author cannot get out of
- * is the worst outcome this feature has, so the escape hatch exists in BOTH states.
+ * **The 48px strip exists only while the workspace is frozen**, because what it expresses is control
+ * over a temporary state: it is the indicator that project data is not being saved, and it carries the
+ * way out. At HEAD there is no strip and the rail costs the layout nothing - it is an openable panel
+ * reached from the status cell or the top-bar widget, and closing it leaves nothing behind. Frozen, it
+ * is not dismissible into nothing: an escape hatch the author can hide is not an escape hatch. The
+ * rule itself is in `resolveVersionRailPresence`, not here.
+ *
+ * **Which is why this component stays mounted even at `absent`.** The bridge those two callers use is
+ * registered from here, so a rail that unmounted at HEAD would be a rail nobody could open - and the
+ * commit form lives inside the panel, so that would leave commit with no home at all.
  *
  * Its width is fed to the dock solver through `DockEnv.versionRailWidth` (see `dockLayoutModel`), not
  * added as a column beside it. A column the solver does not know about squeezes the editor under its
  * 480px floor, and the last time that account did not balance the result was a resize loop.
  */
-export function VersionRail({ surface, expanded, onExpandedChange }: VersionRailProps) {
+export function VersionRail({ surface, presence, onExpandedChange }: VersionRailProps) {
     const { t } = useTranslation();
     const { state, busy, error, history } = surface;
     const onRevision = state.kind === "revision";
     const visible = isVersionSurfaceVisible(state);
+    const open = presence === "panel";
 
     // The status-bar cell and the top-bar widget both promise "click to open the rail" and neither is
-    // in this tree. Registered only while the rail is actually shown, so on a host with no version
-    // control those callers cannot conjure a column that must not exist.
+    // in this tree. Registered whenever version control EXISTS rather than whenever the column does:
+    // at HEAD there is no column and those two are the only ways in. On a host with no version control
+    // nothing is registered, so a stale caller cannot conjure a column that must not exist.
     useEffect(() => {
         if (!visible) {
             return;
@@ -67,11 +76,11 @@ export function VersionRail({ surface, expanded, onExpandedChange }: VersionRail
         });
     }, [visible, onExpandedChange]);
 
-    // Reading history is an explicit act - expanding the rail is the author asking for it - and it is
+    // Reading history is an explicit act - opening the panel is the author asking for it - and it is
     // the only thing that happens on open besides the change scan below. Cheap on the second open:
     // revisions are immutable, so `VersionControlService` caches the page.
     useEffect(() => {
-        if (!expanded || !visible || state.kind === "not-a-repository" || state.kind === "probing") {
+        if (!open || state.kind === "not-a-repository" || state.kind === "probing") {
             return;
         }
         surface.loadHistory();
@@ -85,22 +94,23 @@ export function VersionRail({ surface, expanded, onExpandedChange }: VersionRail
         // Keyed by the state kind and the revision on screen: re-reading on every render would be the
         // polling the service's class comment forbids.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [expanded, visible, state.kind, state.kind === "revision" ? state.revision : null]);
+    }, [open, state.kind, state.kind === "revision" ? state.revision : null]);
 
-    if (!visible) {
+    if (presence === "absent") {
         return null;
     }
 
-    if (!expanded) {
+    if (presence === "strip") {
+        // The strip only exists while project data is frozen, so it is ALWAYS tinted and ALWAYS
+        // carries the way out. Nothing else on screen has to be coloured for the author to know their
+        // project is not being saved.
+        const escapeLabel = surface.frozen === "manual"
+            ? t("workspace.shell.freeze.release")
+            : t("workspace.shell.versionControl.returnToCurrent");
         return (
             <div
-                data-workspace-version-rail="collapsed"
-                className={cn(
-                    "flex shrink-0 flex-col items-center gap-1 border-r px-1 py-2",
-                    // The tint IS the mode indicator. Nothing else on screen has to be coloured for the
-                    // author to know they are not looking at their working tree.
-                    onRevision ? "border-primary bg-primary/15" : "border-edge bg-surface-sunken",
-                )}
+                data-workspace-version-rail="strip"
+                className="flex shrink-0 flex-col items-center gap-1 border-r border-primary bg-primary/15 px-1 py-2"
                 style={{ width: VERSION_RAIL_COLLAPSED_WIDTH }}
             >
                 <button
@@ -108,47 +118,49 @@ export function VersionRail({ surface, expanded, onExpandedChange }: VersionRail
                     onClick={() => onExpandedChange(true)}
                     title={onRevision
                         ? t("workspace.shell.versionControl.viewingVersion", { version: shownName(state) })
-                        : t("workspace.shell.versionControl.open")}
+                        : t("workspace.shell.freeze.enteredTitle")}
                     aria-label={t("workspace.shell.versionControl.open")}
-                    className={cn(
-                        "flex h-10 w-10 items-center justify-center rounded-md transition-colors cursor-default",
-                        onRevision ? "text-primary hover:bg-fill" : "text-fg-muted hover:bg-fill hover:text-fg",
-                    )}
+                    className="flex h-10 w-10 items-center justify-center rounded-md text-primary transition-colors cursor-default hover:bg-fill"
                 >
                     {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <History className="h-4 w-4" />}
                 </button>
 
+                <button
+                    type="button"
+                    onClick={surface.returnToCurrent}
+                    title={escapeLabel}
+                    aria-label={escapeLabel}
+                    className="flex h-10 w-10 items-center justify-center rounded-md text-primary transition-colors cursor-default hover:bg-fill"
+                >
+                    <RotateCcw className="h-4 w-4" />
+                </button>
+
                 {onRevision && (
-                    <>
-                        <button
-                            type="button"
-                            onClick={surface.returnToCurrent}
-                            title={t("workspace.shell.versionControl.returnToCurrent")}
-                            aria-label={t("workspace.shell.versionControl.returnToCurrent")}
-                            className="flex h-10 w-10 items-center justify-center rounded-md text-primary transition-colors cursor-default hover:bg-fill"
-                        >
-                            <RotateCcw className="h-4 w-4" />
-                        </button>
-                        {/* Vertical because 48px has no room for `#12` horizontally, and the label is the
-                            other half of the indicator - a tint alone does not say WHICH version.
-                            `writingMode` inline rather than as a utility class: narraleaf-react injects a
-                            Tailwind v4 sheet over this app, and betting on a generated utility here has
-                            burned us before. */}
-                        <span
-                            className="text-2xs tabular-nums text-primary"
-                            style={{ writingMode: "vertical-rl" }}
-                        >
-                            {shownName(state)}
-                        </span>
-                    </>
+                    /* Vertical because 48px has no room for `#12` horizontally, and the label is the
+                       other half of the indicator - a tint alone does not say WHICH version.
+                       `writingMode` inline rather than as a utility class: narraleaf-react injects a
+                       Tailwind v4 sheet over this app, and betting on a generated utility here has
+                       burned us before. */
+                    <span
+                        className="text-2xs tabular-nums text-primary"
+                        style={{ writingMode: "vertical-rl" }}
+                    >
+                        {shownName(state)}
+                    </span>
                 )}
             </div>
         );
     }
 
+    // Closing the panel leaves the strip while frozen and leaves nothing at HEAD, so it does not claim
+    // to collapse into a column that will not be there.
+    const dismissLabel = surface.frozen !== null
+        ? t("workspace.shell.versionControl.collapse")
+        : t("workspace.shell.versionControl.close");
+
     return (
         <div
-            data-workspace-version-rail="expanded"
+            data-workspace-version-rail="panel"
             className={cn(
                 "flex shrink-0 flex-col border-r bg-surface-sunken",
                 onRevision ? "border-primary" : "border-edge",
@@ -165,8 +177,8 @@ export function VersionRail({ surface, expanded, onExpandedChange }: VersionRail
                 <button
                     type="button"
                     onClick={() => onExpandedChange(false)}
-                    title={t("workspace.shell.versionControl.collapse")}
-                    aria-label={t("workspace.shell.versionControl.collapse")}
+                    title={dismissLabel}
+                    aria-label={dismissLabel}
                     className="flex h-6 w-6 items-center justify-center rounded-md text-fg-muted transition-colors cursor-default hover:bg-fill hover:text-fg"
                 >
                     <ChevronsLeft className="h-4 w-4" />
@@ -212,42 +224,62 @@ export function VersionRail({ surface, expanded, onExpandedChange }: VersionRail
 /**
  * Who and what the author is looking at, plus the way back.
  *
- * The identity is the revision NUMBER and its short hash, and that is all this can honestly show
- * today: message, time and author are not readable from here - `VcsHistoryEntry` carries revision,
- * number and parents, and no verb anywhere below it returns the rest (see the report accompanying this
- * pass). The three lines belong under the heading below, in the same order the plan lists them.
+ * Leads with what the revision SAYS - its message - and drops the number and short hash to the line
+ * below, where they are still the thing that tells two revisions apart by eye and still match what the
+ * widget and the status cell show. All three metadata fields are optional, and absent renders as
+ * absent: a revision with no message falls back to naming itself, and a missing author leaves no line
+ * rather than an empty one. The repository's own first commit carries none of the three, so this is the
+ * ordinary case and not a defensive branch.
+ *
+ * Metadata is only in hand once the history page has been read, which opening the panel does. Before
+ * that (and for a revision older than the page) the identity is shown alone - the alternative would be
+ * a per-revision backend call from a render.
  */
 function FocusedVersion({ surface }: { surface: VersionSurface }) {
-    const { t } = useTranslation();
-    const { state } = surface;
+    const { t, locale } = useTranslation();
+    const { state, focused } = surface;
     const onRevision = state.kind === "revision";
+    const time = focused?.timestamp !== undefined ? formatRevisionTime(focused.timestamp, locale) : null;
+    const author = focused?.author?.trim() || null;
 
     return (
-        <div className={cn("border-b px-3 py-3", onRevision ? "border-primary/40 bg-primary/10" : "border-edge")}>
-            <div className="flex items-baseline gap-2">
-                <span className={cn("text-sm font-medium tabular-nums", onRevision ? "text-primary" : "text-fg")}>
-                    {onRevision
+        <div
+            data-vcs-seam="revision-metadata"
+            className={cn("border-b px-3 py-3", onRevision ? "border-primary/40 bg-primary/10" : "border-edge")}
+        >
+            <p className={cn("truncate text-sm font-medium", onRevision ? "text-primary" : "text-fg")}>
+                {focused?.message?.trim()
+                    // No message: the revision names itself, which is what this line said before the
+                    // metadata was readable at all. "Current version" would be a lie in the two states
+                    // where there is no version: a repository nobody has committed to, and a project
+                    // with no repository at all.
+                    || (onRevision
                         ? shownName(state)
-                        // "Current version" would be a lie in the two states where there is no version:
-                        // a repository nobody has committed to, and a project with no repository at all.
                         : state.kind === "empty"
                             ? t("workspace.shell.versionControl.noHistory")
                             : state.kind === "not-a-repository"
                                 ? t("workspace.shell.versionControl.notVersioned")
-                                : t("workspace.shell.versionControl.currentVersion")}
-                </span>
-                {state.kind === "current" && state.number !== null && (
-                    <span className="text-2xs tabular-nums text-fg-subtle">{revisionLabel(state.number)}</span>
-                )}
-                {(state.kind === "current" || state.kind === "revision") && (
-                    <span className="font-mono text-2xs text-fg-subtle">
+                                : t("workspace.shell.versionControl.currentVersion"))}
+            </p>
+
+            {(time || author) && (
+                <p className="mt-0.5 truncate text-2xs text-fg-muted">
+                    {[time, author].filter(Boolean).join(" · ")}
+                </p>
+            )}
+
+            {/* The identity, kept: it is what the widget and the status cell show, and the hash is the
+                only thing that separates two revisions carrying the same message. */}
+            {(state.kind === "current" || state.kind === "revision") && (
+                <div className="mt-0.5 flex items-baseline gap-2 text-2xs text-fg-subtle">
+                    {numberLabel(state, focused) && (
+                        <span className="tabular-nums">{numberLabel(state, focused)}</span>
+                    )}
+                    <span className="font-mono">
                         {shortRevision(state.kind === "current" ? state.head : state.revision)}
                     </span>
-                )}
-            </div>
-
-            {/* Message / time / author go here. */}
-            <div data-vcs-seam="revision-metadata" />
+                </div>
+            )}
 
             {onRevision && (
                 <button
@@ -261,6 +293,50 @@ function FocusedVersion({ surface }: { surface: VersionSurface }) {
             )}
         </div>
     );
+}
+
+/**
+ * `#4`, from whichever source has it: the freeze's own label, the head's number, or the history row.
+ *
+ * Null rather than a placeholder when none of them does - which happens for the beat between opening
+ * the panel and the page arriving, and for a preview entered without a label. The hash beside it always
+ * names the revision, so a missing number costs nothing.
+ */
+function numberLabel(state: VersionSurface["state"], focused: FlatHistoryEntry | null): string | null {
+    if (state.kind === "revision") {
+        return state.label ?? (focused ? revisionLabel(focused.number) : null);
+    }
+    if (state.kind === "current") {
+        return state.number !== null
+            ? revisionLabel(state.number)
+            : focused ? revisionLabel(focused.number) : null;
+    }
+    return null;
+}
+
+/**
+ * A revision's time, in the reader's locale.
+ *
+ * The stored value is **epoch milliseconds, UTC** - measured by bracketing a commit between two
+ * `Date.now()` readings, not inferred - so it is handed to `Date` unconverted. Reading it as seconds
+ * dates every revision to 1970 and reading seconds as ms lands them in the year 56000; both look like
+ * a permanent UI defect. The year is included because a history outlives a calendar year, unlike the
+ * notification list this mirrors.
+ *
+ * Non-finite is rejected rather than rendered: nothing obliges another client to write a number here,
+ * and `Invalid Date` in the rail would read as a corrupt repository.
+ */
+function formatRevisionTime(timestamp: number, locale: string): string | null {
+    if (!Number.isFinite(timestamp)) {
+        return null;
+    }
+    return new Date(timestamp).toLocaleString(locale, {
+        year: "numeric",
+        month: "numeric",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+    });
 }
 
 /**

@@ -970,8 +970,8 @@ interface IVersionControlService extends IService {
     getAvailability(): Promise<VcsAvailability>;
     isRepository(): Promise<boolean>;
     getInfo(): Promise<VcsRepositoryInfo | null>;
-    /** `includeKinds` costs one backend call per revision; leave it off unless kinds are shown. */
-    getHistory(limit?: number, options?: { includeKinds?: boolean }): Promise<VcsHistoryEntry[]>;
+    /** `includeDetails` costs one backend call per revision; leave it off unless they are shown. */
+    getHistory(limit?: number, options?: { includeDetails?: boolean }): Promise<VcsHistoryEntry[]>;
     readBlob(revision: RevisionId, path: string): Promise<Uint8Array>;
     /** Every document at one revision in one round trip; `null` = absent at that revision. */
     readRevisionDocuments(revision: RevisionId, paths?: readonly string[]): Promise<Map<string, string | null>>;

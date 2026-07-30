@@ -157,10 +157,10 @@ export class VcsGetHistoryHandler extends IPCHandler<IPCEventType.vcsGetHistory>
 
     public async handle(
         window: AppWindow,
-        { projectPath, limit, includeKinds }: IPCEvents[IPCEventType.vcsGetHistory]["data"],
+        { projectPath, limit, includeDetails }: IPCEvents[IPCEventType.vcsGetHistory]["data"],
     ): Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>> {
         return this.tryUse(async () => ({
-            entries: await window.app.getVcsManager().getHistory(projectPath, limit ?? 0, { includeKinds }),
+            entries: await window.app.getVcsManager().getHistory(projectPath, limit ?? 0, { includeDetails }),
         }));
     }
 }

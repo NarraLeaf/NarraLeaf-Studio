@@ -13,8 +13,8 @@ import { RAIL_SELECTOR_WIDTH } from "./dockLayoutModel";
  */
 
 /**
- * Collapsed width. The same 48px as the sidebar selector rail, and that is a product decision rather
- * than a coincidence: the collapsed rail IS the persistent "you are looking at a historical version"
+ * Strip width. The same 48px as the sidebar selector rail, and that is a product decision rather
+ * than a coincidence: the strip IS the persistent "you are looking at a historical version"
  * indicator, and it reads as part of the window's left edge only if it lines up with the rail beside
  * it (plan 2026-07-28-002 §1). Derived from {@link RAIL_SELECTOR_WIDTH} so the two cannot drift.
  */
@@ -24,17 +24,75 @@ export const VERSION_RAIL_COLLAPSED_WIDTH = RAIL_SELECTOR_WIDTH;
 export const VERSION_RAIL_EXPANDED_WIDTH = 320;
 
 /**
- * The width the dock solver has to be told about.
+ * How much of the window's left edge the version rail is occupying.
  *
- * `visible: false` answers 0 rather than the collapsed width, because an unavailable backend means
- * the column does not exist at all - see {@link resolveVersionSurfaceState}, which is what decides
- * that. Feeding this straight into `DockEnv.versionRailWidth` is the whole contract.
+ * Three answers rather than two, because a rail that is *reachable* and a rail that is *always
+ * there* are different things and the difference is the whole of the owner's second correction:
+ *
+ * - `absent` - no column, and **0 in the dock account**. The rail is still openable from the status
+ *   cell and the top-bar widget, which is what keeps the commit form (`data-vcs-seam="commit-form"`,
+ *   inside the panel) reachable at HEAD - a preview is read-only by construction, so if the panel
+ *   were reachable only from a preview, commit would have no home at all.
+ * - `strip` - the persistent 48px indicator. It exists only while project data is frozen, because
+ *   what it expresses is control over a temporary state, and it is the way back out of it.
+ * - `panel` - the 320px panel the author asked for.
  */
-export function versionRailWidth(visible: boolean, expanded: boolean): number {
-    if (!visible) {
-        return 0;
+export type VersionRailPresence = "absent" | "strip" | "panel";
+
+/**
+ * The width the dock solver has to be told about. Feeding this straight into
+ * `DockEnv.versionRailWidth` is the whole contract.
+ */
+export function versionRailWidth(presence: VersionRailPresence): number {
+    switch (presence) {
+        case "absent":
+            return 0;
+        case "strip":
+            return VERSION_RAIL_COLLAPSED_WIDTH;
+        case "panel":
+            return VERSION_RAIL_EXPANDED_WIDTH;
     }
-    return expanded ? VERSION_RAIL_EXPANDED_WIDTH : VERSION_RAIL_COLLAPSED_WIDTH;
+}
+
+export interface VersionRailPresenceInputs {
+    /** Which of the six surface states this window is in. */
+    state: VersionSurfaceState;
+    /** The author has the panel open - the persisted `ui.versionRail.expanded` preference. */
+    expanded: boolean;
+    /**
+     * Project data is frozen right now, for ANY reason.
+     *
+     * A revision preview and the palette's manual freeze are treated alike deliberately. Both are a
+     * temporary state the author is standing in and has to be able to leave, and a manually frozen
+     * workspace with no visible way out is strictly worse than a strip nobody asked for: the author
+     * would be left with a project that silently refuses to save. Reading the freeze rather than
+     * `state.kind === "revision"` is what makes the manual case reachable at all - a manual freeze
+     * leaves the surface state on `current`.
+     */
+    frozen: boolean;
+}
+
+/**
+ * Whether the rail is a column right now, and which one.
+ *
+ * The ordering is the argument:
+ *
+ * 1. An unavailable backend wins over everything, `expanded` included. Version control is an
+ *    OPTIONAL capability, so there is no state in which a stale preference may conjure a column for
+ *    a feature this build never shipped (see {@link isVersionSurfaceVisible}).
+ * 2. `expanded` beats `frozen`: the panel supersedes the strip rather than sitting beside it.
+ * 3. `frozen` is the ONLY thing that makes the rail persistent. At HEAD, in a project with no
+ *    repository, and on a host with no backend, closing the panel therefore leaves nothing behind -
+ *    which is the correction, and the reason this returns `absent` in the ordinary case.
+ */
+export function resolveVersionRailPresence(inputs: VersionRailPresenceInputs): VersionRailPresence {
+    if (!isVersionSurfaceVisible(inputs.state)) {
+        return "absent";
+    }
+    if (inputs.expanded) {
+        return "panel";
+    }
+    return inputs.frozen ? "strip" : "absent";
 }
 
 /**
@@ -110,7 +168,9 @@ export function resolveVersionSurfaceState(inputs: VersionSurfaceInputs): Versio
 }
 
 /**
- * Whether the version-control surfaces exist at all.
+ * Whether the version-control surfaces exist at all: the top-bar widget, the status-bar cell, and
+ * whether the rail can be OPENED (see {@link resolveVersionRailPresence}, which decides separately
+ * whether it is also a persistent column).
  *
  * False for exactly one state, and the rule is stronger than "disabled": version control is an
  * OPTIONAL capability (no native build for macOS Intel or Windows ARM64), so on those machines it is
@@ -121,10 +181,10 @@ export function resolveVersionSurfaceState(inputs: VersionSurfaceInputs): Versio
  * hidden), and deliberately: a freeze is a state the author put themselves in and can leave, so there
  * has to be something to hover. An unsupported platform is neither.
  *
- * True while PROBING, so the column does not pop into the layout a beat after every project open. The
- * cost is a frame of rail on a machine that turns out not to support it, and that is bounded: the
- * unsupported-platform answer short-circuits on an OS/arch comparison before anything is dlopened
- * (`loadVcsBackend`), so it is one IPC round trip rather than a 29MB library load.
+ * True while PROBING, so the widget and the cell do not appear a beat after every project open. The
+ * cost is bounded: the unsupported-platform answer short-circuits on an OS/arch comparison before
+ * anything is dlopened (`loadVcsBackend`), so it is one IPC round trip rather than a 29MB library
+ * load. It costs no layout reflow at all now that probing produces no column.
  */
 export function isVersionSurfaceVisible(state: VersionSurfaceState): boolean {
     return state.kind !== "unavailable";
@@ -148,8 +208,17 @@ export function unavailableReasonKey(reason: VcsUnavailableReason): TranslationK
 export interface FlatHistoryEntry {
     revision: RevisionId;
     number: number;
-    /** Only present when the caller asked for kinds. Absent is normal - see {@link isCheckpoint}. */
+    /** Only present when the caller asked for details. Absent is normal - see {@link isCheckpoint}. */
     kind?: VcsHistoryEntry["kind"];
+    /**
+     * What the revision says it is. Absent when nobody wrote one, which is a real answer: the
+     * repository's first commit is written by `initRepository` and carries no message at all.
+     */
+    message?: VcsHistoryEntry["message"];
+    /** Epoch milliseconds, UTC. Absent when the revision records no time. */
+    timestamp?: VcsHistoryEntry["timestamp"];
+    /** Whatever identity the committing client was configured with. Absent when it had none. */
+    author?: VcsHistoryEntry["author"];
     /**
      * This revision has more than one parent, so the line the rail draws through it hides a second
      * ancestry. Marked rather than expanded: the rail is a linear list by decision, and an
@@ -192,12 +261,68 @@ export function flattenFirstParent(entries: readonly VcsHistoryEntry[]): FlatHis
             revision: cursor.revision,
             number: cursor.number,
             kind: cursor.kind,
+            // Spread rather than four assignments, for the reason `VcsManager.getHistory` spreads:
+            // a key the revision does not carry has to stay ABSENT. Assigning `message: undefined`
+            // makes the key present, and a present-but-undefined author renders as a blank line
+            // where the honest answer is nothing at all.
+            ...pickMetadata(cursor),
             merge: cursor.parents.length > 1,
         });
         const parent: RevisionId | undefined = cursor.parents[0];
         cursor = parent ? byRevision.get(parent) : undefined;
     }
     return out;
+}
+
+/**
+ * What a revision says about itself: its message, when it was made, and who made it.
+ *
+ * All three optional, and that is not defensiveness - the repository's first commit is written by
+ * `initRepository` and carries none of them, and another client may write any subset. A missing key
+ * has to render as ABSENT rather than as an empty line.
+ */
+export type RevisionMetadata = Pick<FlatHistoryEntry, "message" | "timestamp" | "author">;
+
+function pickMetadata(entry: VcsHistoryEntry): RevisionMetadata {
+    const out: RevisionMetadata = {};
+    if (entry.message !== undefined) out.message = entry.message;
+    if (entry.timestamp !== undefined) out.timestamp = entry.timestamp;
+    if (entry.author !== undefined) out.author = entry.author;
+    return out;
+}
+
+/**
+ * The revision the surfaces are focused on: the one being previewed, else the head.
+ *
+ * The two states that have no revision at all - a repository with nothing in it, a project with no
+ * repository - answer null, which is what stops the focused block from looking one up.
+ */
+export function focusedRevision(state: VersionSurfaceState): RevisionId | null {
+    if (state.kind === "revision") {
+        return state.revision;
+    }
+    if (state.kind === "current") {
+        return state.head;
+    }
+    return null;
+}
+
+/**
+ * That revision's row in a history page.
+ *
+ * Null when the page does not reach it, which is ordinary rather than exceptional: the page is
+ * bounded (`VERSION_HISTORY_PAGE`) and nothing has been read at all until the panel is opened. The
+ * caller renders the identity it already has and leaves the metadata out - the alternative would be
+ * a per-revision backend call from a render.
+ */
+export function findRevisionRow(
+    rows: readonly FlatHistoryEntry[] | null,
+    revision: RevisionId | null,
+): FlatHistoryEntry | null {
+    if (!rows || !revision) {
+        return null;
+    }
+    return rows.find(row => row.revision === revision) ?? null;
 }
 
 /**
