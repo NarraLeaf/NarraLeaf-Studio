@@ -12,14 +12,12 @@ import { listProjectPuppetRuntimes } from "@/lib/workspace/services/puppet/proje
 import {
     puppetChoiceOptions,
     type PuppetDescriptionRequest,
-    type PuppetDescriptionUnavailableReason,
 } from "@/lib/workspace/services/puppet/puppetDescriptionModel";
-import type { TranslationKey } from "@shared/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import { Box, FolderOpen, RefreshCw, X } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PuppetPreview } from "./PuppetPreview";
-import { usePuppetDescription } from "./usePuppetDescription";
+import { puppetDescribeStatusKey, puppetDescriptionRequestFor, usePuppetDescription } from "./usePuppetDescription";
 
 const ROW = "flex items-center gap-2 rounded-md border border-edge bg-fill-subtle px-2 py-1.5 text-xs";
 const ICON_BTN = "p-1 rounded-md text-fg-muted hover:text-fg hover:bg-fill transition-colors";
@@ -32,18 +30,6 @@ function Field(props: { label: string; children: React.ReactNode }) {
             {props.children}
         </div>
     );
-}
-
-/** Where the three lists came from, said in one line. */
-function describeStatusKey(reason: PuppetDescriptionUnavailableReason | null | undefined): TranslationKey {
-    switch (reason) {
-        case "no-model": return "characters.editor.puppet.describeNoModel";
-        case "no-backend": return "characters.editor.puppet.describeNoBackend";
-        case "backend-missing": return "characters.editor.puppet.describeBackendMissing";
-        case "not-described": return "characters.editor.puppet.describeNotSupported";
-        case "failed": return "characters.editor.puppet.describeFailed";
-        default: return "characters.editor.puppet.describeOk";
-    }
 }
 
 /**
@@ -176,23 +162,13 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
     }, [appearance]);
 
     /**
-     * What the description lookup is asked about.
-     *
-     * Only the four values that decide what a backend would load. The resting pose is deliberately
-     * out: applying a motion does not change which motions exist, and putting it in here would
-     * re-mount the model every time the author picked one.
+     * What the description lookup is asked about. Memoised on the puppet's individual fields rather
+     * than on the appearance object, which is mutable and the same reference across an edit.
      */
-    const request = useMemo<PuppetDescriptionRequest | null>(() => (
-        puppet?.assetId && puppet.backend
-            ? {
-                assetId: puppet.assetId,
-                backend: puppet.backend,
-                entry: puppet.entry,
-                options: puppet.options,
-                size: puppet.size,
-            }
-            : null
-    ), [puppet?.assetId, puppet?.backend, puppet?.entry, puppet?.options, puppet?.size]);
+    const request = useMemo<PuppetDescriptionRequest | null>(
+        () => puppetDescriptionRequestFor(appearance),
+        [appearance, puppet?.assetId, puppet?.backend, puppet?.entry, puppet?.options, puppet?.size],
+    );
 
     const { result, loading, refresh } = usePuppetDescription(request);
     const description = result?.status === "ok" ? result.description : null;
@@ -325,7 +301,7 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
                     <span className="min-w-0 flex-1 truncate">
                         {loading
                             ? t("characters.editor.puppet.describing")
-                            : t(describeStatusKey(result?.status === "unavailable" ? result.reason : null))}
+                            : t(puppetDescribeStatusKey(result?.status === "unavailable" ? result.reason : null))}
                     </span>
                     <button
                         className={ICON_BTN}

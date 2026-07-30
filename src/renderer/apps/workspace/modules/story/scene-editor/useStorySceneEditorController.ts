@@ -30,6 +30,8 @@ import { canCommit, parseCommandLine } from "./storyCommandParser";
 import { resolveCommandLine, type StoryCommandResolvedArgs } from "./storyCommandResolution";
 import { getCommandSpec } from "./commands/registry";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import type { PuppetDescriptionService } from "@/lib/workspace/services/puppet/PuppetDescriptionService";
+import type { StoryPuppetVocabulary } from "./storyCommandValues";
 
 import { collectTempSpeakers, promoteTempSpeaker } from "@/lib/workspace/services/story/storyModel";
 import { CHARACTERS_PANEL_ID } from "../../characters";
@@ -92,6 +94,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const panelStateService = useMemo(() => (context && isInitialized ? context.services.get<PanelStateService>(Services.PanelState) : null), [context, isInitialized]);
     /** Owner of the persistent-variable declarations the story's `persistent` scope points at. */
     const blueprintService = useMemo(() => (context && isInitialized ? context.services.get<LocalBlueprintService>(Services.LocalBlueprint) : null), [context, isInitialized]);
+    /** What a puppet character's model says it contains - the source of every motion / expression / skin the editor offers. */
+    const puppetDescriptionService = useMemo(() => (context && isInitialized ? context.services.get<PuppetDescriptionService>(Services.PuppetDescription) : null), [context, isInitialized]);
     // When on, a leading "@" in an insert slot is rewritten to "/" so it opens the action creator -
     // the escape hatch for a Simplified-Chinese IME, which types "、" for the "/" key. Defaults on for
     // a Simplified-Chinese device; the user can override it in Settings (Editor).
@@ -223,6 +227,12 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * show up in this editor's candidates without a reload.
      */
     const [blueprintRevision, setBlueprintRevision] = useState(0);
+    /**
+     * Bumped when a puppet model has described itself. The lookup mounts the author's own runtime, so
+     * it cannot be awaited on a render path - the editor draws with whatever answers are already in,
+     * and this brings it back when one more lands.
+     */
+    const [puppetRevision, setPuppetRevision] = useState(0);
 
     /**
      * A freeze that lands while a row is open for editing closes the editor, discarding the draft.
@@ -312,6 +322,15 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         });
     }, [blueprintService]);
 
+    useEffect(() => {
+        if (!puppetDescriptionService) {
+            return;
+        }
+        return puppetDescriptionService.onDescriptionChanged(() => {
+            setPuppetRevision(revision => revision + 1);
+        });
+    }, [puppetDescriptionService]);
+
     const scene = useMemo(() => (document && sceneId ? document.scenes[sceneId] ?? null : null), [document, sceneId]);
     /**
      * Temp speakers alive anywhere in this story, offered back as candidates. Derived from the
@@ -320,6 +339,47 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      */
     const tempSpeakers = useMemo(() => (document ? collectTempSpeakers(document) : []), [document]);
     const characters = useMemo(() => characterService?.listCharacter() ?? [], [characterRevision, characterService]);
+
+    /**
+     * The puppet characters, and whichever of their models have already described themselves.
+     *
+     * Every puppet character in the project, not only the ones this scene mentions: the command line
+     * offers a list the moment the author names a character, which is before any row exists to scan
+     * for. The cost is bounded - the service dedupes concurrent lookups, remembers the answer for the
+     * session and caches it under `editor/cache/`, so a model is mounted once per change to the model
+     * or its runtime rather than once per scene opened.
+     */
+    const puppetCharacters = useMemo(
+        () => characters.filter(character => character.profile.appearance.getKind() === "puppet").map(character => character.profile.getId()),
+        [characters],
+    );
+
+    useEffect(() => {
+        if (!puppetDescriptionService) {
+            return;
+        }
+        for (const characterId of puppetCharacters) {
+            // Fire and forget: it never throws (an unavailable description is a normal return value),
+            // and `onDescriptionChanged` above is what brings an answer back into the render.
+            void puppetDescriptionService.describeCharacter(characterId);
+        }
+    }, [puppetCharacters, puppetDescriptionService]);
+
+    const puppetByCharacterId = useMemo(() => {
+        const vocabularies: Record<string, StoryPuppetVocabulary> = {};
+        for (const characterId of puppetCharacters) {
+            const description = puppetDescriptionService?.peekCharacter(characterId);
+            if (description) {
+                vocabularies[characterId] = {
+                    motions: description.motions,
+                    expressions: description.expressions,
+                    skins: description.skins,
+                    params: description.params,
+                };
+            }
+        }
+        return vocabularies;
+    }, [puppetCharacters, puppetDescriptionService, puppetRevision]);
 
     /** What a name typed on the command line may refer to. Rebuilt as the project changes under it. */
     const commandContext = useMemo(
@@ -330,8 +390,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             sceneId,
             scene,
             persistentVariables: blueprintService?.listPersistentVariables() ?? [],
+            puppetByCharacterId,
         }),
-        [assetsService, blueprintService, blueprintRevision, characters, document, sceneId, scene],
+        [assetsService, blueprintService, blueprintRevision, characters, document, puppetByCharacterId, sceneId, scene],
     );
     // Each dialogue speaker's accumulated appearance (WI-3), so a dialogue row's avatar can follow the
     // most recent enter/expression. Keyed on the scene's content, not on collapse.
