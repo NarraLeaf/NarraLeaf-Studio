@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, FolderOpen, Plus } from "lucide-react";
+import { ChevronDown, FolderOpen, History, Loader2, Plus, RotateCcw } from "lucide-react";
 import { getInterface } from "@/lib/app/bridge";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
@@ -8,6 +8,9 @@ import type { ProjectService } from "@/lib/workspace/services/core/ProjectServic
 import type { RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
 import { useWorkspace } from "../../context";
 import { useOpenRecentProject, useRecentProjects } from "../../hooks/useRecentProjects";
+import type { VersionSurface } from "../../hooks/useVersionSurface";
+import { focusedRevision, isVersionSurfaceVisible, shortRevision, versionFace } from "./versionRailModel";
+import { openVersionRail } from "./versionRailController";
 
 /**
  * PyCharm-style project switcher for the title bar: the current project's name with a dropdown of
@@ -21,9 +24,11 @@ import { useOpenRecentProject, useRecentProjects } from "../../hooks/useRecentPr
  * project is its own explicit action, with its own confirmation.
  *
  * Lives at the left of the title bar (before the action bar), so it reads as the window's identity
- * the way an IDE's project name does.
+ * the way an IDE's project name does — and version control lives INSIDE its menu (see
+ * {@link VersionSection}) rather than as a second control beside it, because the top bar was naming
+ * the version twice: once there and once in the status bar, which shows it permanently.
  */
-export function ProjectSwitcher() {
+export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSurface }) {
     const { t } = useTranslation();
     const { context } = useWorkspace();
     const recentProjects = useRecentProjects();
@@ -63,6 +68,8 @@ export function ProjectSwitcher() {
         };
     }, [open]);
 
+    const close = useCallback(() => setOpen(false), []);
+
     const handleSwitch = useCallback((projectPath: string) => {
         setOpen(false);
         // Focuses the project's window when it already has one; opens one alongside otherwise.
@@ -91,6 +98,10 @@ export function ProjectSwitcher() {
 
     return (
         <div className="relative" ref={containerRef}>
+            {/* The face names the PROJECT and nothing else. The version deliberately does not appear
+                here: the status bar already shows it permanently and tints it while a past revision is
+                on screen, and the point of folding the old top-bar widget into this menu was to stop
+                the window from saying the same thing in two places. */}
             <button
                 type="button"
                 onClick={() => setOpen(value => !value)}
@@ -134,7 +145,9 @@ export function ProjectSwitcher() {
                         </div>
                     )}
 
-                    <div className="h-px bg-fill-strong my-1 mx-2" />
+                    <VersionSection surface={versionSurface} onAct={close} />
+
+                    <MenuSeparator />
 
                     <SwitcherAction icon={<FolderOpen className="w-4 h-4" />} label={t("workspace.shell.projectSwitcher.openProject")} onClick={handleOpenFolder} />
                     <SwitcherAction icon={<Plus className="w-4 h-4" />} label={t("workspace.shell.projectSwitcher.newProject")} onClick={handleNewProject} />
@@ -142,6 +155,100 @@ export function ProjectSwitcher() {
             )}
         </div>
     );
+}
+
+/**
+ * The version-control section of the switcher's menu: which version this window is a view of, and the
+ * two or three things that can be offered without reading the repository.
+ *
+ * **It shows an identity, never a change count.** A count would need a status scan, a scan is not a
+ * pure read — it records newly discovered directories into the repository's staged state, so a menu
+ * that kept its number fresh would report deletions the author never made (docs/version-control.md
+ * §4.17) — and a number that only updated when something else happened to refresh it would be worse
+ * than none. So: which version, plus the actions. Anything more — the change list, the history, the
+ * commit form — opens the rail, which is the surface that owns them.
+ *
+ * **On a host with no version control the whole section does not exist.** Not a disabled row: version
+ * control is an optional capability with no native build for macOS Intel or Windows ARM64, so on those
+ * machines it was never shipped, and a greyed entry with a tooltip tells an author their install is
+ * broken when nothing is. The judgement is `isVersionSurfaceVisible`, shared with the rail and the
+ * status cell. The separator ABOVE the section is drawn here rather than by the caller for that same
+ * reason — a gate in one place cannot leave a separator stranded against another.
+ *
+ * The line it shows comes from `versionFace`, shared with the status-bar cell and the rail, so the
+ * three cannot name one version three ways. It carries its own identity now because the top bar no
+ * longer shows one: the menu has to say which version this is before it offers to leave it.
+ */
+function VersionSection({ surface, onAct }: { surface: VersionSurface; onAct: () => void }) {
+    const { t } = useTranslation();
+    const { state, busy } = surface;
+
+    if (!isVersionSurfaceVisible(state)) {
+        return null;
+    }
+
+    const onRevision = state.kind === "revision";
+    const face = versionFace({ state, branch: surface.branch }, t);
+    // The head, or the revision being previewed — null in the two states that name no revision at all.
+    const revision = focusedRevision(state);
+    const run = (action: () => void) => () => {
+        onAct();
+        action();
+    };
+
+    return (
+        <>
+            <MenuSeparator />
+
+            <div className="px-3 pt-1.5 pb-1 text-2xs tracking-wide text-fg-subtle">
+                {t("workspace.shell.versionControl.title")}
+            </div>
+
+            <div
+                className="flex items-baseline gap-2 px-3 pb-1.5"
+                // The UNCUT line: a branch name too long for the face still belongs somewhere.
+                title={onRevision
+                    ? t("workspace.shell.versionControl.viewingVersion", { version: face.full })
+                    : face.full !== face.text ? face.full : undefined}
+            >
+                {busy && <Loader2 className="h-3 w-3 shrink-0 animate-spin text-fg-subtle" />}
+                <span className={cn("truncate text-sm tabular-nums", onRevision ? "text-primary" : "text-fg")}>
+                    {face.text}
+                </span>
+                {/* The hash is the only thing that distinguishes two revisions carrying the same label. */}
+                {revision && (
+                    <span className="shrink-0 font-mono text-2xs text-fg-subtle">{shortRevision(revision)}</span>
+                )}
+            </div>
+
+            {onRevision && (
+                <SwitcherAction
+                    icon={<RotateCcw className="w-4 h-4" />}
+                    label={t("workspace.shell.versionControl.returnToCurrent")}
+                    onClick={run(surface.returnToCurrent)}
+                />
+            )}
+
+            {state.kind === "not-a-repository" && (
+                <SwitcherAction
+                    icon={<Plus className="w-4 h-4" />}
+                    label={t("workspace.shell.versionControl.enable")}
+                    onClick={run(surface.enableVersionControl)}
+                />
+            )}
+
+            {/* Everything that needs a scan or the history lives in the rail. */}
+            <SwitcherAction
+                icon={<History className="w-4 h-4" />}
+                label={t("workspace.shell.versionControl.open")}
+                onClick={run(openVersionRail)}
+            />
+        </>
+    );
+}
+
+function MenuSeparator() {
+    return <div className="h-px bg-fill-strong my-1 mx-2" />;
 }
 
 function RecentProjectRow({ project, onSelect }: { project: RecentlyOpenedProject; onSelect: () => void }) {

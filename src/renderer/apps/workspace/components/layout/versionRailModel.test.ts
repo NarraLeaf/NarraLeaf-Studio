@@ -725,7 +725,7 @@ describe("labels", () => {
 });
 
 /**
- * The one line the status-bar cell, the top-bar widget and the rail's focused block all show.
+ * The one line the status-bar cell, the switcher menu and the rail's focused block all show.
  *
  * Exhaustive over the six surface states crossed with the branch cases, because this is precisely
  * the kind of judgement a screenshot cannot audit: on the default branch the answer is supposed to
