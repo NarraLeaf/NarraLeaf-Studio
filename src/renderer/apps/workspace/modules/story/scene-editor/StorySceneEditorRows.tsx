@@ -823,8 +823,11 @@ function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; ac
             ].join(" ")}
         >
             {/* Icons, not words: the cluster sits at the end of every row and two text buttons cost
-                three times the width while saying what the glyph and its tooltip already say. The
-                labels stay as `aria-label`, so the accessible names did not change with the look. */}
+                three times the width while saying what the glyph and its tooltip already say.
+                What the accessible names must NOT do is inherit the old visible text: "Insert" and
+                "Delete" were fine as words next to each other in a row's context, and are a verb with
+                no object once they are the only thing a screen reader gets. They now carry the same
+                sentence as the tooltip, minus the keybinding. */}
             <button
                 type="button"
                 tabIndex={-1}

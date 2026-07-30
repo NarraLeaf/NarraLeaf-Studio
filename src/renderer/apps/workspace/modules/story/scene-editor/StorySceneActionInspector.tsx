@@ -2716,6 +2716,7 @@ function VoiceInspectorSection({ block }: { block: StoryBlock }) {
                         type="button"
                         className={`grid h-7 w-7 shrink-0 place-items-center rounded-md border border-edge bg-surface-raised transition-colors hover:text-fg ${voice.isPlaying ? "text-primary" : "text-fg-muted"}`}
                         title={voice.isPlaying ? t("story.rows.voiceStop") : t("story.rows.voicePlay")}
+                        aria-label={voice.isPlaying ? t("story.rows.voiceStop") : t("story.rows.voicePlay")}
                         onClick={voice.toggleAudition}
                     >
                         {voice.isPlaying ? <Square className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
