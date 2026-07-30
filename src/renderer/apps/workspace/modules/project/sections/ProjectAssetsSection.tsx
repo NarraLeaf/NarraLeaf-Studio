@@ -4,6 +4,7 @@ import { Slider } from "@/lib/components/elements";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
 import { useTranslation } from "@/lib/i18n";
+import { isDeferredWriteAllowed, useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import {
     DEFAULT_OPAQUE_BACKGROUND,
     MAX_ICON_INSET,
@@ -51,6 +52,7 @@ const TILE_SIZE = 60;
 
 export function ProjectAssetsSection({ projectService, uiService, onConfigChange }: ProjectSectionProps) {
     const { t } = useTranslation();
+    const freeze = useFreezeGuard();
     const [set, setSet] = useState<ProjectIconSet | null>(null);
     const [previews, setPreviews] = useState<Partial<Record<ProjectIconOutputId | "master", string>>>({});
     const [selected, setSelected] = useState<ProjectIconTarget | null>(null);
@@ -75,12 +77,20 @@ export function ProjectAssetsSection({ projectService, uiService, onConfigChange
      * Bake, persist whatever moved, and reload the previews. Called on open as
      * well as after every edit: an up-to-date project performs reads only, so
      * the common case leaves the working tree untouched.
+     *
+     * "Reads only" is the common case, not the guarantee - the bake persists
+     * whatever moved - so while frozen it loads the previews and skips both the
+     * bake and the write. Same deferral as the character avatars; the effect
+     * below re-runs on thaw because `frozen` is one of its inputs.
      */
     const refresh = useCallback(async (next?: ProjectIconSet) => {
         setBusy(true);
         try {
-            const report = await bakeProjectIcons(projectService, next ?? projectService.getProjectIconSet());
-            const persisted = await projectService.updateProjectIconSet(() => report.set);
+            let persisted = projectService.getProjectIconSet();
+            if (isDeferredWriteAllowed(freeze.frozen)) {
+                const report = await bakeProjectIcons(projectService, next ?? persisted);
+                persisted = await projectService.updateProjectIconSet(() => report.set);
+            }
             setSet(persisted);
             onConfigChange(projectService.getProjectConfig());
 
@@ -105,7 +115,7 @@ export function ProjectAssetsSection({ projectService, uiService, onConfigChange
         } finally {
             setBusy(false);
         }
-    }, [onConfigChange, projectService, releaseUrls, uiService]);
+    }, [freeze.frozen, onConfigChange, projectService, releaseUrls, uiService]);
 
     useEffect(() => {
         void refresh();
@@ -138,6 +148,11 @@ export function ProjectAssetsSection({ projectService, uiService, onConfigChange
         return null;
     }
 
+    // Importing a master or an override opens a file dialog and copies into the project; the inset,
+    // background and clear controls all re-bake. `busy` stays folded in so a control mid-write still
+    // says so rather than blaming the freeze. Selecting a platform tile is a read and is untouched.
+    const frozen = freeze.writes(busy);
+
     const spec = selected ? set.specs[selected] : null;
 
     return (
@@ -146,7 +161,7 @@ export function ProjectAssetsSection({ projectService, uiService, onConfigChange
                 type="button"
                 className="mx-auto grid h-24 w-24 place-items-center overflow-hidden rounded-lg border border-dashed border-edge-strong bg-fill-subtle transition-colors hover:border-primary"
                 onClick={() => void importInto("master")}
-                disabled={busy}
+                disabled={frozen.disabled}
                 aria-label={t("project.assets.master")}
             >
                 {previews.master
@@ -182,7 +197,7 @@ export function ProjectAssetsSection({ projectService, uiService, onConfigChange
                                     type="button"
                                     className={ICON_BUTTON_CLASS}
                                     onClick={() => editSpec(selected, { override: null })}
-                                    disabled={busy}
+                                    disabled={frozen.disabled}
                                     aria-label={t("project.assets.clearOverride")}
                                 >
                                     <X className="h-3.5 w-3.5" />
@@ -192,7 +207,7 @@ export function ProjectAssetsSection({ projectService, uiService, onConfigChange
                                 type="button"
                                 className="grid h-7 w-7 place-items-center overflow-hidden rounded-md border border-dashed border-edge-strong transition-colors hover:border-primary"
                                 onClick={() => void importInto(selected)}
-                                disabled={busy}
+                                disabled={frozen.disabled}
                                 aria-label={t("project.assets.chooseOverride")}
                             >
                                 <ImageIcon className="h-3.5 w-3.5 text-fg-subtle" />
@@ -207,7 +222,7 @@ export function ProjectAssetsSection({ projectService, uiService, onConfigChange
                             min={0}
                             max={Math.round(MAX_ICON_INSET * 100)}
                             step={1}
-                            disabled={busy}
+                            disabled={frozen.disabled}
                             onValueChange={setInsetDraft}
                             onValueCommit={value => {
                                 // The draft outlives the commit on purpose. Clearing it
@@ -238,7 +253,7 @@ export function ProjectAssetsSection({ projectService, uiService, onConfigChange
                                 value={{ hex: backgroundDraft ?? spec.background ?? DEFAULT_OPAQUE_BACKGROUND }}
                                 displayMode="icon-hex"
                                 allowOpacity={false}
-                                disabled={busy}
+                                disabled={frozen.disabled}
                                 onChange={value => setBackgroundDraft(value.hex)}
                                 onCommit={value => {
                                     const hex = value.hex.toUpperCase();
@@ -252,7 +267,7 @@ export function ProjectAssetsSection({ projectService, uiService, onConfigChange
                                     type="button"
                                     className={ICON_BUTTON_CLASS}
                                     onClick={() => void editSpec(selected, { background: null })}
-                                    disabled={busy}
+                                    disabled={frozen.disabled}
                                     aria-label={t("project.assets.clearBackground")}
                                 >
                                     <X className="h-3.5 w-3.5" />

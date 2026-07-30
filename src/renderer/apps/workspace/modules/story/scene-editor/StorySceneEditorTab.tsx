@@ -41,6 +41,7 @@ import {
 import { stopVoiceAudition } from "./voiceAudition";
 import { STORY_DENSITY_METRICS, StoryEditorTextStyleProvider, storyEditorRootStyle } from "./storyEditorTextStyle";
 import { StoryRowActionsContext, type StoryRowActions } from "./storyRowActions";
+import { toReadOnlyStoryKeybindings, toReadOnlyStoryRowActions } from "./storySceneReadOnly";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { TranslationKey } from "@shared/i18n";
 import { getCharacterName, getContainerHeaderInfo, getTextSegment } from "./storySceneBlockUtils";
@@ -582,8 +583,15 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         t,
     ]);
 
+    // Frozen: the editing bindings stay registered and do nothing. See `storySceneReadOnly` for why
+    // they are not simply unregistered.
+    const effectiveKeybindings = useMemo(
+        () => toReadOnlyStoryKeybindings(keybindings, freeze.frozen),
+        [freeze.frozen, keybindings],
+    );
+
     useKeybindings({
-        keybindings,
+        keybindings: effectiveKeybindings,
         enabled: editor.isInitialized && Boolean(editor.context && payload?.storyId && payload.sceneId),
         when: whenEditorFocused(tabId),
         idPrefix: `story-scene-editor-${tabId}`,
@@ -1614,6 +1622,14 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         };
     }, []);
 
+    // Frozen: every editing action becomes a no-op while selection, folding, the row menu and the
+    // inspector stay live. Identity changes only when the freeze flips, so the `memo` on the row - and
+    // with it the cost of typing on a long scene - is unaffected in between.
+    const effectiveRowActions = useMemo(
+        () => toReadOnlyStoryRowActions(rowActions, freeze.frozen),
+        [freeze.frozen, rowActions],
+    );
+
     if (!editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
         return (
             <div className="flex h-full items-center justify-center p-6 text-sm text-fg-muted">
@@ -1689,7 +1705,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
 
     return (
         <StoryEditorTextStyleProvider density={editor.density}>
-        <StoryRowActionsContext.Provider value={rowActions}>
+        <StoryRowActionsContext.Provider value={effectiveRowActions}>
         <div
             ref={editor.rootRef}
             tabIndex={0}
@@ -1700,7 +1716,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             onFocusCapture={handleEditorFocusCapture}
             onKeyDown={editor.handleKeyDown}
             onCopy={editor.copySelectionToClipboard}
-            onPaste={editor.handlePaste}
+            onPaste={freeze.run(editor.handlePaste)}
         >
             <div className="flex min-h-[44px] items-center gap-3 border-b border-edge px-3">
                 <div className="flex min-w-0 items-center gap-2">

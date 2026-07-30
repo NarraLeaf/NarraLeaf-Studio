@@ -5,21 +5,28 @@
  */
 
 import { HintPopover, Switch } from "@/lib/components/elements";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 
 export function SettingShell({
     title,
     description,
     hint,
+    titleAttr,
     children,
 }: {
     title: string;
     description: string;
     /** Optional caveat shown behind a small info icon next to the title. */
     hint?: string;
+    /**
+     * Hover text for the whole row. The freeze reason goes here rather than on the control, because a
+     * `disabled` switch or select never reports a hover of its own on every platform.
+     */
+    titleAttr?: string;
     children: React.ReactNode;
 }) {
     return (
-        <section className="flex items-start justify-between gap-3 rounded-md border border-edge bg-fill-subtle p-3">
+        <section className="flex items-start justify-between gap-3 rounded-md border border-edge bg-fill-subtle p-3" title={titleAttr}>
             <div className="min-w-0">
                 <div className="flex items-center gap-1.5 text-sm font-medium text-fg">
                     <span>{title}</span>
@@ -49,13 +56,17 @@ export function SettingRow({
     disabled?: boolean;
     onChange: (value: boolean) => void;
 }) {
+    // Every project setting writes `project.json`, so the whole surface goes read-only together. Read
+    // here rather than in each section so a new setting row is frozen the day it is added.
+    const freeze = useFreezeGuard();
+    const frozen = freeze.writes(disabled);
     return (
-        <SettingShell title={title} description={description} hint={hint}>
+        <SettingShell title={title} description={description} hint={hint} titleAttr={frozen.title}>
             <Switch
                 size="sm"
                 checked={checked}
                 loading={loading}
-                disabled={disabled}
+                disabled={frozen.disabled}
                 onCheckedChange={onChange}
                 aria-label={title}
             />
