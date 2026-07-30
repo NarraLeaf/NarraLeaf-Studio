@@ -101,6 +101,16 @@ export interface LoreTreeNodeInfoPayload {
     errorCode: number;
 }
 
+/**
+ * One directory entry, as `revisionTreeListChildren` reports it.
+ *
+ * The same JS shape as a node info, deliberately: the two C structs differ (a child
+ * carries no repository/revision pair and no `fileId`) but everything a caller does
+ * with either is name + kind + address, and one shape means a tree walk can hand its
+ * entries to the same address reader.
+ */
+export type LoreTreeChildPayload = LoreTreeNodeInfoPayload;
+
 export interface LoreTreeCloseCompletePayload { id: number; errorCode: number }
 
 export interface LoreBranchEntryPayload {
@@ -427,6 +437,22 @@ function decoderTable(library: LoreLibrary): Map<number, Decoder> {
         errorCode: decodeCount(raw.errorCode),
     }));
 
+    table.set(LoreTag.REVISION_TREE_CHILD, (raw): LoreTreeChildPayload => {
+        const address = nested(raw, "address");
+        return {
+            id: decodeCount(raw.id),
+            nodeId: decodeCount(raw.nodeId),
+            name: decodeString(nested(raw, "name")),
+            parentId: decodeCount(raw.parentId),
+            kind: decodeCount(raw.kind),
+            mode: decodeCount(raw.mode),
+            size: decodeCount(raw.size),
+            hash: decodeHash(nested(address, "hash")),
+            context: decodeHash(nested(address, "context")),
+            errorCode: decodeCount(raw.errorCode),
+        };
+    });
+
     table.set(LoreTag.REVISION_TREE_NODE_INFO, (raw): LoreTreeNodeInfoPayload => {
         const address = nested(raw, "address");
         return {
@@ -512,6 +538,7 @@ const PAYLOAD_STRUCTS: Readonly<Record<number, string>> = {
     [LoreTag.STORAGE_GET_ITEM_COMPLETE]: "LoreStorageGetItemCompleteEventData",
     [LoreTag.REVISION_TREE_LOADED]: "LoreRevisionTreeLoadedEventData",
     [LoreTag.REVISION_TREE_RESOLVE_PATH_COMPLETE]: "LoreRevisionTreeResolvePathCompleteEventData",
+    [LoreTag.REVISION_TREE_CHILD]: "LoreRevisionTreeChildEventData",
     [LoreTag.REVISION_TREE_NODE_INFO]: "LoreRevisionTreeNodeInfoEventData",
     [LoreTag.REVISION_TREE_CLOSE_COMPLETE]: "LoreRevisionTreeCloseCompleteEventData",
     [LoreTag.BRANCH_LIST_ENTRY]: "LoreBranchListEntryEventData",

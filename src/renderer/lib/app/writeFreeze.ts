@@ -214,8 +214,21 @@ export function refuseReloadingWrite(...paths: (string | null | undefined)[]): b
 
 /** Whether one absolute path is project data belonging to `projectPath`. Exported for tests. */
 export function isFrozenProjectData(projectPath: string, absolutePath: string): boolean {
+    return versionedProjectRelativePath(projectPath, absolutePath) !== null;
+}
+
+/**
+ * Where `absolutePath` lives inside `projectPath` if the repository stores it, else null.
+ *
+ * The same predicate as {@link isFrozenProjectData}, keeping the relative path it had to
+ * compute anyway. The read side needs it: a document source answers project-relative
+ * paths, and re-deriving one there would be a second implementation of the project-root
+ * comparison this module owns - including the Windows case-folding rule that a second
+ * copy would get subtly wrong.
+ */
+export function versionedProjectRelativePath(projectPath: string, absolutePath: string): string | null {
     const relative = repositoryRelative(projectPath, absolutePath);
-    return relative !== null && isVersioned(relative);
+    return relative !== null && isVersioned(relative) ? relative : null;
 }
 
 /**
