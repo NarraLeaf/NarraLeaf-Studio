@@ -1,5 +1,6 @@
 import path from "path";
 import type { WorkspaceFreezeKind } from "@shared/types/ipcEvents";
+import type { RevisionId } from "@shared/types/vcs";
 
 /**
  * Whether a project's workspace is frozen, as its renderer last reported it.
@@ -27,11 +28,29 @@ import type { WorkspaceFreezeKind } from "@shared/types/ipcEvents";
 export type WorkspaceFrozenOperation = "production build" | "preview";
 
 /**
+ * What a frozen workspace reported: why, and - when the why is a revision - which one.
+ *
+ * The revision is here rather than in a table of its own because the two facts have exactly one
+ * lifetime between them. A second map keyed the same way would be a second thing to clear when the
+ * window closes, and the failure of forgetting it is a Dev Mode launch compiling a revision the
+ * author left ten minutes ago.
+ *
+ * `revision` is optional even for a `"revision"` freeze, because the report crosses IPC from a
+ * renderer that may be older than this record. Every reader must decide what to do about its absence,
+ * and for Dev Mode the answer is to refuse (see {@link WorkspaceFrozenState}'s consumer in
+ * `devMode/revisionLaunchSource.ts`) - never to fall back to the working tree.
+ */
+export interface WorkspaceFrozenState {
+    kind: WorkspaceFreezeKind;
+    revision?: RevisionId;
+}
+
+/**
  * Only frozen projects are present. Absence is the default and the default is "may run": a record
  * that had to be told something before it would allow anything would refuse the build in every
  * window that never froze - which is nearly all of them.
  */
-const frozenProjects = new Map<string, WorkspaceFreezeKind>();
+const frozenProjects = new Map<string, WorkspaceFrozenState>();
 
 /**
  * The same key the two managers use for their own per-project state (`path.resolve`, which also
@@ -51,16 +70,38 @@ function projectKey(projectPath: string): string {
  * and refuse that project's builds for the rest of the session, with nothing anywhere to explain
  * why.
  */
-export function reportWorkspaceFreeze(projectPath: string, reason: WorkspaceFreezeKind | null): void {
+export function reportWorkspaceFreeze(
+    projectPath: string,
+    reason: WorkspaceFreezeKind | null,
+    revision?: RevisionId,
+): void {
     if (reason === null) {
         frozenProjects.delete(projectKey(projectPath));
         return;
     }
-    frozenProjects.set(projectKey(projectPath), reason);
+    // Only a revision freeze keeps one. A manual freeze that inherited the id of the last revision
+    // browsed would make Dev Mode run history while the author believes they are on their own files -
+    // the working tree IS what is on disk during a manual freeze, so running it is the correct answer.
+    frozenProjects.set(projectKey(projectPath), {
+        kind: reason,
+        ...(reason === "revision" && revision ? { revision } : {}),
+    });
 }
 
 /** Why this project's workspace is frozen, or null when it is not - which is the default. */
 export function getWorkspaceFreeze(projectPath: string): WorkspaceFreezeKind | null {
+    return frozenProjects.get(projectKey(projectPath))?.kind ?? null;
+}
+
+/**
+ * The whole record, for the one caller that needs more than the reason: Dev Mode, which compiles the
+ * revision the author is looking at instead of refusing (plan 2026-07-28-002 §1).
+ *
+ * Separate from {@link getWorkspaceFreeze} so the two refusals that only need the reason keep reading
+ * a `WorkspaceFreezeKind` and cannot accidentally start depending on a field that is allowed to be
+ * missing.
+ */
+export function getWorkspaceFreezeState(projectPath: string): WorkspaceFrozenState | null {
     return frozenProjects.get(projectKey(projectPath)) ?? null;
 }
 

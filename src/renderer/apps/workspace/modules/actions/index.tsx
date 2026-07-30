@@ -1,4 +1,3 @@
-import { useEffect, useMemo, useState } from "react";
 import {
     Package,
     FileText,
@@ -7,7 +6,6 @@ import {
     Archive,
 } from "lucide-react";
 import { ModuleAction, ModuleActionGroup } from "../types";
-import { cn } from "@/lib/utils/cn";
 import { Workspace } from "@/lib/workspace/workspace";
 import { UIService } from "@/lib/workspace/services/ui";
 import { Services } from "@/lib/workspace/services/services";
@@ -16,9 +14,6 @@ import { openAboutTab } from "../about/openAboutTab";
 import { getInterface } from "@/lib/app/bridge";
 import { Separator } from "../../registry/types";
 import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
-import { BuildService } from "@/lib/workspace/services/core/BuildService";
-import type { GameBuildStatus } from "@shared/types/gameBuild";
-import { useWorkspace } from "../../context";
 import { openBuildDialog } from "./BuildDialog";
 import { translate, translateN } from "@/lib/i18n";
 
@@ -32,11 +27,25 @@ import { translate, translateN } from "@/lib/i18n";
  * Opens the production build dialog for the current project.
  *
  * Dev Mode and Preview are no longer standalone actions — the toolbar's Run split-button
- * ({@link RunControl}) owns launching and stopping both. Build keeps its own single-icon button.
+ * ({@link RunControl}) owns launching and stopping both. **Production Build is now folded into that
+ * button's dropdown too**, to make room in the title bar for the version control widget (plan
+ * 2026-07-28-002 §3), so nothing renders this action's icon in the bar any more.
+ *
+ * It stays REGISTERED regardless, and that is load-bearing rather than tidiness: the macOS native
+ * Dev ▸ Build menu item resolves through the action registry (`useMenuActionHandler` looks the id up
+ * and calls this `onClick`), the command palette derives its Build entry from the same registry, and
+ * `freezeActionPolicy` decides through it that a frozen workspace cannot build. Unregistering would
+ * have broken all three, and only on macOS for the first. `ActionBar` skips rendering it by id
+ * instead - see `ACTIONS_OWNED_BY_RUN_CONTROL` there.
+ *
+ * The icon is a plain glyph, not a live status component. The build's status - and the done/failed
+ * notifications that used to be raised from inside the icon - moved to {@link RunControl}, which is
+ * always mounted: an effect living in an icon fired once per place the icon was rendered, so a build
+ * that finished while the command palette was open announced itself twice.
  */
 export const buildAction: ModuleAction = {
     id: "narraleaf-studio:build",
-    icon: <BuildActionIcon />,
+    icon: <Package className="w-4 h-4" />,
     tooltip: "Build project",
     tooltipKey: "actions.build.tooltip",
     onClick: (workspace: Workspace) => {
@@ -44,50 +53,6 @@ export const buildAction: ModuleAction = {
     },
     order: 4,
 };
-
-function BuildActionIcon() {
-    const { context } = useWorkspace();
-    const [status, setStatus] = useState<GameBuildStatus>("idle");
-
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const buildService = context.services.get<BuildService>(Services.Build);
-        const uiService = context.services.get<UIService>(Services.UI);
-        let previous = buildService.getStatus();
-        setStatus(previous);
-        const unsub = buildService.onStateChanged(state => {
-            setStatus(state.status);
-            if (state.status !== previous) {
-                if (state.status === "done") {
-                    uiService.showNotification(translate("build.toast.done"), "success");
-                } else if (state.status === "error") {
-                    uiService.showNotification(state.error ?? translate("build.toast.failed"), "error");
-                }
-            }
-            previous = state.status;
-        });
-        return () => {
-            unsub();
-        };
-    }, [context]);
-
-    // Unlike Dev Mode and Preview, a running build does not turn its button into a
-    // stop control, so the busy state brightens the icon itself against the plain
-    // button background.
-    const iconClass = useMemo(() => {
-        if (status === "error") {
-            return "text-danger";
-        }
-        if (status === "preparing" || status === "compiling" || status === "packaging") {
-            return "text-fg";
-        }
-        return "";
-    }, [status]);
-
-    return <Package className={cn("w-4 h-4", iconClass)} />;
-}
 
 /**
  * File action group

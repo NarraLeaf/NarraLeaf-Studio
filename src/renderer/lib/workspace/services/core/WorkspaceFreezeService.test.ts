@@ -243,7 +243,9 @@ describe("WorkspaceFreezeService", () => {
         // earlier test in this file is still subscribed to the module-level latch (nothing here tears
         // one down), so they all echo the same value.
         await service.freeze({ kind: "revision", revision: "aa" });
-        expect(reportWriteFreeze).toHaveBeenLastCalledWith("revision");
+        // The revision travels with the kind because main does not refuse everything while frozen: Dev
+        // Mode compiles that revision, and it cannot find one from the kind alone (plan §4 U4).
+        expect(reportWriteFreeze).toHaveBeenLastCalledWith("revision", "aa");
 
         service.thaw();
         expect(reportWriteFreeze).toHaveBeenLastCalledWith(null);
