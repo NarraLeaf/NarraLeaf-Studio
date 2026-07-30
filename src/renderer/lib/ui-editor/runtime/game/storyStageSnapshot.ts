@@ -65,7 +65,11 @@ export type StageSnapshotEffects = {
  * a pose set in an earlier scene and carried across a `jump` is not (see the WI-2 report).
  */
 export type StageSnapshotCamera = {
-    /** Settled NLR transform props (position/zoom/rotation) - pre-posed via setDisplayableTransformProps. */
+    /**
+     * Settled NLR transform props (position/zoom/rotation) - pre-posed via
+     * setDisplayableTransformProps. A `/camera motion` row contributes its animation's settled end
+     * state here, through the same `storyTransformRefFinalProps` a displayable's motion uses.
+     */
     props: Record<string, unknown>;
     /** Camera darkness (0-1), the only `/camera` effect; re-applied as `camera.darken(d, 0)`. */
     effects: StageSnapshotEffects;
@@ -401,7 +405,7 @@ class SnapshotWalker {
                 this.applyLayer(block, payload);
                 return;
             case "camera":
-                this.applyCamera(payload);
+                this.applyCamera(block, payload);
                 return;
             case "setVariable":
                 this.applySetVariable(block, payload);
@@ -555,13 +559,20 @@ class SnapshotWalker {
      * Values are clamped with the same idiom the compiler's `compileCameraAction` uses, because the
      * pose is pre-posed directly onto the camera and never passes through that compile path.
      */
-    private applyCamera(payload: Extract<StoryActionPayload, { action: "camera" }>): void {
+    private applyCamera(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "camera" }>): void {
         if (payload.operation === "reset") {
             this.camera = null;
             return;
         }
         const camera = this.camera ?? (this.camera = { props: {}, effects: {} });
         switch (payload.operation) {
+            case "motion":
+                // A camera motion settles like any other transform, and this class already holds the
+                // animation assets - so the shot a `/camera motion` row leaves behind is reconstructed
+                // rather than dropped, and a row launch placed after it opens on the same frame the
+                // real playthrough would show.
+                camera.props = mergeTransformProps(camera.props, this.finalProps(payload.motion, "none", block.id));
+                return;
             case "pan":
                 camera.props.position = getPresetPosition("custom", {
                     xalign: payload.position?.xalign ?? 0.5,
