@@ -133,13 +133,14 @@ export function storyNameWidth(measuredPx: number): number {
 }
 
 /**
- * Gutter at two digits — chevron (14) + gap (2) + two tabular digits at the line number's 11px type.
+ * Gutter at two digits — chevron (14) + gap (2) + two tabular digits at 11px + 8px of trailing gap.
  *
- * Was 36 with a 4px gap and 12px digits. The line number is an anchor, not a reading surface (U1
- * WI-2): it keeps its column, one size smaller and tighter to the fold chevron, and the 6px it gives
- * up goes to the words — as does the handle column's 8px next to it.
+ * That last 8 is not slack. Without it the last digit sat flush against the next column, so the
+ * number read as a prefix of the row rather than as an index beside it — the same 8px every other
+ * boundary in the row gets. The 20px the drag-handle column gave up when the grip moved into the
+ * number's box more than pays for it.
  */
-const GUTTER_BASE_PX = 30;
+const GUTTER_BASE_PX = 38;
 /** One tabular digit at the gutter's 11px type. */
 const GUTTER_DIGIT_PX = 6;
 
