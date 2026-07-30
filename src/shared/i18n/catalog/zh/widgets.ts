@@ -273,7 +273,7 @@ export const widgets = {
         placeholderBackendMissing: "本工程没有名为“{backend}”的运行时",
         placeholderLoading: "正在加载模型…",
         placeholderError: "运行时出错：{error}",
-        placeholderBudget: "未绘制——本画面已经绘制了 {limit} 个模型",
+        placeholderBudget: "未绘制——本窗口已经绘制了 {drawn} 个模型",
         placeholderRuntimeNote: "Studio 不提供渲染器，需要作者自备",
     },
     rectangleInspector: {

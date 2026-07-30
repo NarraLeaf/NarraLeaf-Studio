@@ -38,9 +38,14 @@
  * A widget that does not get a lease is drawn as an explanatory box saying so (see the widget's
  * `renderer.tsx`), and a Surface authored past the limit raises a `resourceDiagnostics` warning.
  * Truncating silently would be the worst of the three options: it looks exactly like success.
+ *
+ * That box reports {@link SurfacePuppetLease.drawn} - the count read off this queue - and not the
+ * budget constant. The two agree in a correct system, which is why the constant looked like a fine
+ * substitute right up until the accounting was wrong, and then the box told an author that eight
+ * models were drawn while one was.
  */
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useId, useSyncExternalStore } from "react";
 
 export const SURFACE_PUPPET_CONTEXT_BUDGET = 8;
 
@@ -53,6 +58,20 @@ export const SURFACE_PUPPET_CONTEXT_BUDGET = 8;
  *
  * First-come rather than most-recent (which is what Chromium itself does) for the reason above: the
  * author is looking at the models that arrived first.
+ *
+ * ## The entries are *renderer instances*, not elements
+ *
+ * This is the correction to a real defect, not a nuance. Keyed by element id, one element drawn by two
+ * renderer instances at once - the canvas and a Surface panel preview, which is routine - produced one
+ * shared claim, and then the first instance to unmount released the lease the *other* one was still
+ * using. Since a claim is made once from an effect keyed on `[key, wanted]`, and neither changed, the
+ * survivor never re-claimed: it sat at "not drawn" for the life of the window, holding no context,
+ * mounting no backend, with nothing logged. A fully configured model simply never appeared.
+ *
+ * Per-instance ids fix it in the direction that is also *correct accounting*: two instances of one
+ * element mount two backends and therefore hold two WebGL contexts, which the element-keyed version
+ * undercounted by exactly the amount that made it look safe. And no instance can name another's id,
+ * so nobody can revoke a lease they do not hold.
  */
 const claims: string[] = [];
 const listeners = new Set<() => void>();
@@ -68,19 +87,22 @@ function emit(): void {
 }
 
 /**
- * Register interest in a context. Idempotent — a re-render must not push a widget to the back of the
- * queue, which would make the set of drawn models flicker on every keystroke.
+ * Register one renderer instance's interest in a context.
+ *
+ * Idempotent — a re-render must not push a widget to the back of the queue, which would make the set of
+ * drawn models flicker on every keystroke. `holderId` identifies the *instance* (see above): it comes
+ * from `useId()`, so no two live claimants can collide and no claimant can be named by another.
  */
-export function claimSurfacePuppetContext(key: string): void {
-    if (claims.includes(key)) {
+export function claimSurfacePuppetContext(holderId: string): void {
+    if (claims.includes(holderId)) {
         return;
     }
-    claims.push(key);
+    claims.push(holderId);
     emit();
 }
 
-export function releaseSurfacePuppetContext(key: string): void {
-    const at = claims.indexOf(key);
+export function releaseSurfacePuppetContext(holderId: string): void {
+    const at = claims.indexOf(holderId);
     if (at < 0) {
         return;
     }
@@ -88,8 +110,8 @@ export function releaseSurfacePuppetContext(key: string): void {
     emit();
 }
 
-export function isSurfacePuppetContextGranted(key: string): boolean {
-    const at = claims.indexOf(key);
+export function isSurfacePuppetContextGranted(holderId: string): boolean {
+    const at = claims.indexOf(holderId);
     return at >= 0 && at < SURFACE_PUPPET_CONTEXT_BUDGET;
 }
 
@@ -108,38 +130,64 @@ export function subscribeSurfacePuppetContexts(listener: () => void): () => void
     return () => { listeners.delete(listener); };
 }
 
-/** Test seam. A module-level queue would otherwise leak one test's widgets into the next. */
+/** Test seam. A module-level queue would otherwise leak one test's holders into the next. */
 export function __resetSurfacePuppetContextBudget(): void {
     claims.length = 0;
+}
+
+export interface SurfacePuppetLease {
+    /** Whether this instance may mount a backend. */
+    granted: boolean;
+    /**
+     * How many models are drawn in this window *right now*.
+     *
+     * Read from the queue rather than assumed to be the budget. The two are equal in a correct system -
+     * a denial can only happen once the queue is full - which is exactly why the constant made a fine
+     * substitute right up until the accounting was wrong, and then the box confidently told the author
+     * that eight models were drawn while one was. A number that comes from the store cannot do that.
+     */
+    drawn: number;
 }
 
 /**
  * Hold a lease for as long as `wanted` stays true, and report whether one was granted.
  *
- * The claim is made from an effect rather than during render: a render that mutated the queue would
- * decide the answer for every *other* widget as a side effect of drawing this one, and React is free
- * to throw a render away. So the first render after `wanted` turns true reads `false` and the effect's
- * notification brings the second one - one extra render, in exchange for a queue that is never
+ * The claim is keyed on this component instance, not on anything about the element it is drawing: see
+ * the note on {@link claims}. Nothing is passed in, so no caller can hand over an identity that another
+ * instance also uses.
+ *
+ * The claim is made from an effect rather than during render, because a render that mutated the queue
+ * would decide the answer for every *other* widget as a side effect of drawing this one, and React is
+ * free to throw a render away. So the first render after `wanted` turns true reads `false` and the
+ * effect's notification brings the second one - one extra render, in exchange for a queue that is never
  * written from a render pass.
  */
-export function useSurfacePuppetContextLease(key: string, wanted: boolean): boolean {
+export function useSurfacePuppetContextLease(wanted: boolean): SurfacePuppetLease {
+    const holderId = useId();
+    // Two subscriptions rather than one returning an object: `getSnapshot` must return a value that
+    // compares equal across calls, and a fresh object every time is an infinite render loop.
     const granted = useSyncExternalStore(
         subscribeSurfacePuppetContexts,
-        () => wanted && isSurfacePuppetContextGranted(key),
+        () => wanted && isSurfacePuppetContextGranted(holderId),
         () => false,
+    );
+    const drawn = useSyncExternalStore(
+        subscribeSurfacePuppetContexts,
+        surfacePuppetContextsGranted,
+        () => 0,
     );
 
     useEffect(() => {
         if (!wanted) {
             return;
         }
-        claimSurfacePuppetContext(key);
+        claimSurfacePuppetContext(holderId);
         // Releasing on the way out is what makes the budget breathe: a widget scrolled off the canvas
-        // or emptied by the author hands its context to whoever was waiting.
-        return () => { releaseSurfacePuppetContext(key); };
-    }, [key, wanted]);
+        // or emptied by the author hands its context to whoever was waiting. Only ever its own.
+        return () => { releaseSurfacePuppetContext(holderId); };
+    }, [holderId, wanted]);
 
-    return granted;
+    return { granted, drawn };
 }
 
 /** The queue, in order, including the denied tail. Test seam for the promotion behaviour. */
