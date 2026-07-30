@@ -5,75 +5,57 @@ import { Check, Edit3, Plus, Search, Spline, X } from "lucide-react";
 import type {
     StoryAnimationAsset,
     StoryAnimationIndexEntry,
-    StoryDisplayableTargetKind,
     StoryDocument,
+    StoryMotionTargetKind,
     StoryTransformRef,
 } from "@shared/types/story";
-import { formatStorySecondsLabel } from "@shared/utils/storyTime";
-import { useTranslation, type UseTranslation } from "@/lib/i18n";
+import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
 import { Services } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { ProjectService } from "@/lib/workspace/services/core/ProjectService";
-import { Select } from "@/lib/components/elements/Select";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { createStoryMotionEditorTab, resolveStoryMotionStageSize } from "./StoryMotionEditorTab";
 import { resolveStoryMotionPreviewTarget } from "./storyMotionPreviewTarget";
-import { StoryMotionStagePreview } from "./StoryMotionStagePreview";
+import { StoryMotionLoopPreview } from "./StoryMotionLoopPreview";
+import { StoryMotionPresetGallery } from "./StoryMotionPresetGallery";
+import { motionSummary } from "./storyMotionSummary";
 import type { StoryMotionActionContext } from "./storyMotionTypes";
-import {
-    STORY_MOTION_TEMPLATES,
-    createStoryMotionName,
-    createStoryMotionTemplateTimeline,
-    getStoryMotionDurationMs,
-    getStoryMotionPropertyMeta,
-    sampleStoryMotionPreview,
-    type StoryMotionTemplateName,
-} from "./storyMotionTimeline";
+import { getStoryMotionPreset } from "./storyMotionPresets";
+import { createStoryMotionName } from "./storyMotionTimeline";
 
 const WINDOW_TITLEBAR_HEIGHT = 40;
 const HOVER_DELAY_MS = 340;
 const PREVIEW_BOX = { width: 300, height: 176 };
 const PREVIEW_GAP = 12;
-const PREVIEW_LOOP_GAP_MS = 1100;
-const PREVIEW_FRAME_MS = 1000 / 30;
 
 const ICON_BUTTON_CLASS = controlButtonClass();
 const TOOL_BUTTON_CLASS = "inline-flex h-8 items-center gap-1.5 rounded-md border border-edge bg-fill-subtle px-2 text-xs text-fg hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40";
 
-const STORY_MOTION_TEMPLATE_KEYS = {
-    "Fade in + slide": "fadeInSlide",
-    "Center pop": "centerPop",
-    "Look around": "lookAround",
-    "Flash": "flash",
-} as const satisfies Record<StoryMotionTemplateName, string>;
+/** Which half of the picker is showing: the project's own motions, or the preset library. */
+type MotionSelectorTab = "project" | "presets";
 
 function clamp(value: number, min: number, max: number): number {
     return Math.min(Math.max(value, min), max);
 }
 
-export function motionSummary(asset: StoryAnimationAsset, t: UseTranslation["t"]): string {
-    const duration = formatStorySecondsLabel(getStoryMotionDurationMs(asset.timeline));
-    const tracks = asset.timeline?.tracks ?? [];
-    const labels = tracks
-        .slice(0, 3)
-        .map(track => t(`motion.propertyLabel.${track.property}`))
-        .join(", ");
-    return `${duration}${labels ? ` / ${labels}${tracks.length > 3 ? "..." : ""}` : ""}`;
-}
+export { motionSummary };
 
 /**
  * Anchored portal picker for Story Motion assets, modelled on the project asset selector.
- * Lists the animation assets for the current target kind and renders a live, looping motion
- * preview when a row is hovered (via {@link StoryMotionStagePreview}).
+ *
+ * Two halves: the project's own motions for this target kind (live looping preview on hover), and the
+ * preset library. The presets tab is what a project with no motions yet opens on — the old flow put a
+ * four-item template dropdown beside a "New" button, which meant the author had to already know what
+ * "Center pop" looked like before pressing anything.
  */
 export function MotionSelector(props: {
     visible: boolean;
     value: string | undefined;
-    targetKind: StoryDisplayableTargetKind;
+    targetKind: StoryMotionTargetKind;
     actionContext: StoryMotionActionContext;
     anchorRef: RefObject<HTMLElement | null>;
     onClose: () => void;
@@ -93,27 +75,23 @@ export function MotionSelector(props: {
 
     const [assets, setAssets] = useState<StoryAnimationIndexEntry[]>([]);
     const [query, setQuery] = useState("");
-    const [template, setTemplate] = useState<typeof STORY_MOTION_TEMPLATES[number]>("Fade in + slide");
+    const [tab, setTab] = useState<MotionSelectorTab>("project");
     const [hovered, setHovered] = useState<{ id: string; top: number; left: number } | null>(null);
     const [anchorStyle, setAnchorStyle] = useState({ top: 0, left: 0, width: 360 });
     const panelRef = useRef<HTMLDivElement | null>(null);
     const hoverTimer = useRef<number | null>(null);
 
-    const templateOptions = useMemo(
-        () => STORY_MOTION_TEMPLATES.map(option => ({
-            value: option,
-            label: t(`motion.templates.${STORY_MOTION_TEMPLATE_KEYS[option]}`),
-        })),
-        [t],
-    );
-
     useEffect(() => {
         if (!storyService || !props.visible) {
             return;
         }
-        setAssets([...storyService.listAnimationAssets()]);
+        const initial = storyService.listAnimationAssets();
+        setAssets([...initial]);
+        // A project with no motion for this target has nothing to show in the project tab, so the
+        // popover opens on the library instead of on an empty list.
+        setTab(initial.some(asset => asset.targetKind === props.targetKind) ? "project" : "presets");
         return storyService.onAnimationsChanged(index => setAssets([...index.animations]));
-    }, [storyService, props.visible]);
+    }, [storyService, props.visible, props.targetKind]);
 
     useEffect(() => {
         if (!props.visible) {
@@ -206,21 +184,52 @@ export function MotionSelector(props: {
         setHovered(null);
     }, []);
 
-    const createAndBind = useCallback(async () => {
+    /**
+     * Create a motion and bind it. With a preset id the new asset is seeded from the library (its
+     * timeline, its repeat count, and a localized name); without one it is the blank motion the
+     * timeline editor opens on.
+     */
+    const createAndBind = useCallback(async (presetId?: string) => {
         if (!storyService) {
             return;
         }
+        const preset = presetId ? getStoryMotionPreset(presetId) : undefined;
         const asset = await storyService.createAnimationAsset({
-            name: createStoryMotionName(props.targetKind, template),
+            name: createStoryMotionName(
+                t(`motion.targetKind.${props.targetKind}`),
+                preset ? t(`motion.preset.${preset.id}`) : t("motion.blankMotionName"),
+            ),
             targetKind: props.targetKind,
-            timeline: createStoryMotionTemplateTimeline(template),
+            timeline: preset?.build(),
+            config: preset?.config,
         });
         props.onSelect(asset.id);
-    }, [props, storyService, template]);
+    }, [props, storyService, t]);
 
     const openEditor = useCallback((assetId: string) => {
         openEditorTab(createStoryMotionEditorTab({ animationId: assetId, actionContext: props.actionContext }));
     }, [openEditorTab, props.actionContext]);
+
+    // The preview subject for the preset gallery: the very displayable (or camera) this action drives,
+    // so a preset is auditioned on the author's own stage rather than on a placeholder.
+    const storyDocument = useMemo<StoryDocument | null>(() => {
+        if (!storyService || !props.visible) {
+            return null;
+        }
+        try {
+            return storyService.getStoryDocument(props.actionContext.storyId);
+        } catch {
+            return null;
+        }
+    }, [storyService, props.visible, props.actionContext.storyId]);
+    const galleryTarget = useMemo(() => resolveStoryMotionPreviewTarget({
+        document: storyDocument,
+        sceneId: props.actionContext.sceneId,
+        blockId: props.actionContext.blockId,
+        fallbackKind: props.targetKind,
+        fallbackLabel: t("motion.fallbackLabel"),
+    }), [storyDocument, props.actionContext, props.targetKind, t]);
+    const stageSize = useMemo(() => resolveStoryMotionStageSize(projectService), [projectService]);
 
     if (!props.visible) {
         return null;
@@ -242,29 +251,55 @@ export function MotionSelector(props: {
                 onMouseDown={event => event.stopPropagation()}
             >
                 <div className="flex items-center gap-2 border-b border-edge p-2">
-                    <EnhancedInput
-                        className="flex-1"
-                        value={query}
-                        onChange={setQuery}
-                        placeholder={t("motion.searchStoryMotions")}
-                        leftIcon={<Search className="h-3.5 w-3.5 text-fg-subtle" />}
-                    />
-                    <Select
-                        className="w-40"
-                        size="sm"
-                        options={templateOptions}
-                        value={template}
-                        onChange={value => setTemplate(value as typeof STORY_MOTION_TEMPLATES[number])}
-                        portalMenu
-                        menuZIndex={90}
-                    />
-                    <button className={TOOL_BUTTON_CLASS} type="button" onClick={createAndBind} disabled={!storyService}>
-                        <Plus className="h-3.5 w-3.5" />
-                        {t("common.new")}
-                    </button>
+                    <div className="inline-flex shrink-0 overflow-hidden rounded-md border border-edge bg-surface">
+                        {(["project", "presets"] as const).map((option, index) => (
+                            <button
+                                key={option}
+                                type="button"
+                                className={[
+                                    "h-8 px-2 text-xs transition-colors",
+                                    index > 0 ? "border-l border-edge" : "",
+                                    tab === option ? "bg-primary/20 text-primary" : "text-fg-muted hover:bg-fill-subtle hover:text-fg",
+                                ].join(" ")}
+                                onClick={() => setTab(option)}
+                            >
+                                {t(`motion.selector.tab.${option}`)}
+                            </button>
+                        ))}
+                    </div>
+                    {tab === "project" ? (
+                        <>
+                            <EnhancedInput
+                                className="flex-1"
+                                value={query}
+                                onChange={setQuery}
+                                placeholder={t("motion.searchStoryMotions")}
+                                leftIcon={<Search className="h-3.5 w-3.5 text-fg-subtle" />}
+                            />
+                            <button className={TOOL_BUTTON_CLASS} type="button" onClick={() => void createAndBind()} disabled={!storyService}>
+                                <Plus className="h-3.5 w-3.5" />
+                                {t("common.new")}
+                            </button>
+                        </>
+                    ) : (
+                        <span className="min-w-0 flex-1 truncate text-2xs text-fg-subtle">
+                            {t(`motion.targetKind.${props.targetKind}`)}
+                        </span>
+                    )}
                 </div>
+                {tab === "presets" ? (
+                    <div className="min-h-0 flex-1 overflow-auto p-1">
+                        <StoryMotionPresetGallery
+                            targetKind={props.targetKind}
+                            target={galleryTarget}
+                            stageSize={stageSize}
+                            disabled={!storyService}
+                            onPick={presetId => void createAndBind(presetId)}
+                        />
+                    </div>
+                ) : (
                 <div className="min-h-0 flex-1 overflow-auto p-1">
-                    {/* Nothing to list: the list is empty. The New button is one row above, inside
+                    {/* Nothing to list: the list is empty. The Presets tab is one row above, inside
                         the same popover, so a sentence pointing at it adds only height. */}
                     {filteredAssets.length === 0 ? null : filteredAssets.map(asset => {
                         const selected = props.value === asset.id;
@@ -304,6 +339,7 @@ export function MotionSelector(props: {
                         );
                     })}
                 </div>
+                )}
             </div>
         </div>
     );
@@ -332,11 +368,10 @@ function MotionHoverPreview(props: {
     storyService: StoryService;
     projectService: ProjectService | null;
     actionContext: StoryMotionActionContext;
-    fallbackKind: StoryDisplayableTargetKind;
+    fallbackKind: StoryMotionTargetKind;
 }) {
     const { t } = useTranslation();
     const [asset, setAsset] = useState<StoryAnimationAsset | null>(null);
-    const [timeMs, setTimeMs] = useState(0);
 
     useEffect(() => {
         let disposed = false;
@@ -347,37 +382,8 @@ function MotionHoverPreview(props: {
         return () => { disposed = true; };
     }, [props.animationId, props.storyService]);
 
-    const timeline = asset?.timeline;
-    const durationMs = useMemo(() => getStoryMotionDurationMs(timeline), [timeline]);
-
-    useEffect(() => {
-        if (!asset) {
-            setTimeMs(0);
-            return;
-        }
-        let frame = 0;
-        let startedAt: number | null = null;
-        let lastPaint = 0;
-        const duration = Math.max(1, durationMs);
-        const cycle = duration + PREVIEW_LOOP_GAP_MS;
-        const tick = (time: number) => {
-            if (startedAt === null) {
-                startedAt = time;
-            }
-            if (lastPaint === 0 || time - lastPaint >= PREVIEW_FRAME_MS) {
-                const elapsed = (time - startedAt) % cycle;
-                setTimeMs(Math.round(Math.min(elapsed, duration)));
-                lastPaint = time;
-            }
-            frame = requestAnimationFrame(tick);
-        };
-        frame = requestAnimationFrame(tick);
-        return () => cancelAnimationFrame(frame);
-    }, [asset, durationMs]);
-
-    const preview = useMemo(() => sampleStoryMotionPreview(timeline, timeMs), [timeline, timeMs]);
     const stageSize = useMemo(() => resolveStoryMotionStageSize(props.projectService), [props.projectService]);
-    const document = useMemo<StoryDocument | null>(() => {
+    const storyDocument = useMemo<StoryDocument | null>(() => {
         try {
             return props.storyService.getStoryDocument(props.actionContext.storyId);
         } catch {
@@ -385,16 +391,14 @@ function MotionHoverPreview(props: {
         }
     }, [props.storyService, props.actionContext.storyId, asset]);
     const target = useMemo(() => resolveStoryMotionPreviewTarget({
-        document,
+        document: storyDocument,
         sceneId: props.actionContext.sceneId,
         blockId: props.actionContext.blockId,
         fallbackKind: asset?.targetKind ?? props.fallbackKind,
         fallbackLabel: asset?.name ?? t("motion.fallbackLabel"),
         previewAssetId: asset?.previewAssetId,
-    }), [document, props.actionContext, props.fallbackKind, asset, t]);
+    }), [storyDocument, props.actionContext, props.fallbackKind, asset, t]);
     const { url: backgroundUrl } = useAssetObjectUrl(asset?.previewBackgroundAssetId ?? null);
-
-    const scale = Math.min(PREVIEW_BOX.width / stageSize.width, PREVIEW_BOX.height / stageSize.height);
 
     return (
         <div
@@ -402,27 +406,15 @@ function MotionHoverPreview(props: {
             className="pointer-events-none z-[70] overflow-hidden rounded-lg border border-edge-strong bg-black/80 shadow-2xl backdrop-blur"
         >
             {asset ? (
-                <div className="relative flex h-full w-full items-center justify-center overflow-hidden">
-                    <div style={{ width: stageSize.width * scale, height: stageSize.height * scale }}>
-                        <div style={{ width: stageSize.width, height: stageSize.height, transform: `scale(${scale})`, transformOrigin: "top left" }}>
-                            <StoryMotionStagePreview
-                                preview={preview}
-                                target={target}
-                                onPointerDrag={() => undefined}
-                                interactive={false}
-                                stageSize={stageSize}
-                                showLabel={false}
-                                backgroundUrl={backgroundUrl}
-                            />
-                        </div>
-                    </div>
-                    <div className="absolute left-2 top-2 truncate rounded-md bg-black/55 px-1.5 py-0.5 text-2xs font-medium text-white">
-                        {asset.name}
-                    </div>
-                    <div className="absolute right-2 bottom-2 rounded-md bg-black/55 px-1.5 py-0.5 text-2xs text-white/70">
-                        {motionSummary(asset, t)}
-                    </div>
-                </div>
+                <StoryMotionLoopPreview
+                    timeline={asset.timeline}
+                    target={target}
+                    stageSize={stageSize}
+                    box={PREVIEW_BOX}
+                    backgroundUrl={backgroundUrl}
+                    caption={asset.name}
+                    footer={motionSummary(asset, t)}
+                />
             ) : (
                 <div className="grid h-full w-full place-items-center text-xs text-white/70">{t("motion.selector.loadingPreview")}</div>
             )}
@@ -436,7 +428,7 @@ function MotionHoverPreview(props: {
  */
 export function MotionField(props: {
     value: StoryTransformRef | undefined;
-    targetKind: StoryDisplayableTargetKind;
+    targetKind: StoryMotionTargetKind;
     motionLabel: string;
     actionContext: StoryMotionActionContext;
     onChange: (value: StoryTransformRef | undefined) => void;
@@ -489,10 +481,13 @@ export function MotionField(props: {
                 onClick={() => setSelectorOpen(open => !open)}
             >
                 <Spline className="h-3.5 w-3.5 shrink-0 text-primary" />
-                <span className={["truncate", animationId ? "" : "italic text-fg-subtle"].join(" ")}>
+                {/* The name gets the whole field. The duration/properties summary used to sit here too
+                    and, in an inspector-width panel, it won: a bound motion read as "Stag…" with a
+                    tidy "0.42s / Position" beside it. The summary is one hover away in the picker and
+                    on the row in the editor; which motion is bound is the thing this control is for. */}
+                <span className={["min-w-0 truncate", animationId ? "" : "italic text-fg-subtle"].join(" ")}>
                     {asset?.name ?? (animationId ? t("motion.field.motionAsset") : t("motion.field.choosePlaceholder"))}
                 </span>
-                {asset ? <span className="ml-auto shrink-0 text-2xs text-fg-subtle">{motionSummary(asset, t)}</span> : null}
             </button>
             {animationId ? (
                 <>

@@ -215,6 +215,17 @@ export type StoryStageObjectKind = "image" | "text" | "layer" | "video" | "vfx";
  */
 export type StoryDisplayableTargetKind = Exclude<StoryStageObjectKind, "video" | "vfx"> | "character";
 
+/**
+ * What a Story Motion asset animates. Every displayable kind, plus the stage camera.
+ *
+ * Deliberately NOT the same type as {@link StoryDisplayableTargetKind}: that one is the input to
+ * `targetParam(accepts)` and to the command sidebar's subject cut, so widening it would list the
+ * camera as a candidate target for `/transform` and `/fx`. The camera has its own command
+ * (`/camera motion`), and only the motion *library* needs to know that a camera shot is a thing a
+ * motion can be authored for.
+ */
+export type StoryMotionTargetKind = StoryDisplayableTargetKind | "camera";
+
 /** Declaration for a scene variable (backed by NLR `Scene.local`). */
 export type StorySceneVariableDefinition = {
     id: string;
@@ -594,7 +605,7 @@ export type StoryActionPayload =
            * Additive: no document written before this carries it, so no schema bump.
            */
           action: "camera";
-          operation: "pan" | "zoom" | "rotate" | "darken" | "reset";
+          operation: "pan" | "zoom" | "rotate" | "darken" | "reset" | "motion";
           /** `pan` — where the view centres. The command line fills the three placements; the inspector, any align. */
           position?: StoryAlignPositionValue;
           /** `zoom` — 1 is neutral. Clamped away from 0/negative at compile time. */
@@ -603,6 +614,16 @@ export type StoryActionPayload =
           rotation?: number;
           /** `darken` — 0 (normal) to 1 (black). Clamped at compile time; the engine does not clamp. */
           darkness?: number;
+          /**
+           * `motion` — a Story Motion driving the camera, i.e. a whole keyframed shot (a handheld
+           * shake, a slow push-in) instead of one settled pose. The engine's `Camera` is a
+           * `Displayable`, so it takes a `Transform` exactly like a sprite does; this is the same
+           * {@link StoryTransformRef} `/transform` carries, and it is read only in `animation` mode —
+           * the other five operations already *are* the presets a `preset` mode would offer.
+           *
+           * `durationMs`/`easing` are dead for this operation: the timing lives in the keyframes.
+           */
+          motion?: StoryTransformRef;
           durationMs?: number;
           easing?: string;
       }
@@ -935,7 +956,7 @@ export type StoryAnimationIndex = {
 export type StoryAnimationIndexEntry = {
     id: StoryAnimationAssetId;
     name: string;
-    targetKind: StoryDisplayableTargetKind;
+    targetKind: StoryMotionTargetKind;
     documentPath: string;
     createdAt: string;
     updatedAt: string;
@@ -945,7 +966,7 @@ export type StoryAnimationAsset = {
     schemaVersion: StoryAnimationSchemaVersion;
     id: StoryAnimationAssetId;
     name: string;
-    targetKind: StoryDisplayableTargetKind;
+    targetKind: StoryMotionTargetKind;
     timeline?: StoryAnimationTimeline;
     sequences: StoryAnimationSequence[];
     config?: StoryAnimationConfig;
