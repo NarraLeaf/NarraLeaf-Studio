@@ -82,7 +82,11 @@ export function getQuickParams(block: StoryBlock): QuickParam[] {
     }
     if (payload.action === "camera") {
         // The camera's `d=` is the whole feel of the move — the one knob worth a token on the row.
-        return [durationParam("d", "d", payload.durationMs ?? 0, undefined, ms => ({ ...payload, durationMs: ms }))];
+        // Except under `motion`, where the timing lives in the bound Story Motion's keyframes: an
+        // editable `d=` there would offer to tune a number nothing reads.
+        return payload.operation === "motion"
+            ? []
+            : [durationParam("d", "d", payload.durationMs ?? 0, undefined, ms => ({ ...payload, durationMs: ms }))];
     }
     if (payload.action === "audio") {
         const params: QuickParam[] = [];

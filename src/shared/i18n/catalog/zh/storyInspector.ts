@@ -64,6 +64,7 @@ export const storyInspector = {
         layer: "图层",
         character: "角色",
         displayable: "可显示对象",
+        camera: "舞台镜头",
     },
     variableScope: {
         scene: "场景",
@@ -206,7 +207,17 @@ export const storyInspector = {
         pan: "平移",
         rotate: "旋转",
         darken: "压暗舞台",
+        motion: "运镜动作",
         reset: "复位镜头",
+    },
+
+    cameraOperationShort: {
+        zoom: "推拉",
+        pan: "平移",
+        rotate: "旋转",
+        darken: "压暗",
+        motion: "运镜",
+        reset: "复位",
     },
 
     camera: {
