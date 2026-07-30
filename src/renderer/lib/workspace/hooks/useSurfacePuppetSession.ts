@@ -19,6 +19,7 @@ import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
 import type { PuppetDescriptionService } from "@/lib/workspace/services/puppet/PuppetDescriptionService";
 import type { SurfacePuppetOpener, SurfacePuppetSessionState } from "@/lib/ui-editor/runtime/game/surfacePuppetSession";
+import { useSurfacePuppetOpener } from "@/lib/ui-editor/runtime/game/surfacePuppetHosts";
 import {
     useSurfacePuppetMount,
     type UseSurfacePuppetSessionInput,
@@ -27,7 +28,11 @@ import {
 export type { UseSurfacePuppetSessionInput };
 
 /**
- * The lifecycle a Surface puppet widget needs, in the editor canvas.
+ * The lifecycle a Surface puppet widget needs, in a Studio window.
+ *
+ * Only the *first* arm of the chain is built here — workspace services. The rest of the order (Dev Mode
+ * registry, then the packaged bridge, then quiet `missing-backend`) lives in `surfacePuppetHosts.ts`,
+ * shared with the runtime copy of this hook, because an order implemented twice becomes two orders.
  *
  * Never throws and never rejects: an unconfigured widget, a project with no runtime installed, and a
  * model asset that has gone missing all come back as `missing-backend` with a reason. See the
@@ -39,12 +44,12 @@ export function useSurfacePuppetSession(input: UseSurfacePuppetSessionInput): Su
         context = useWorkspace().context;
     } catch {
         // Dev Mode draws Surfaces outside the workspace provider - the same allowance
-        // `useAssetObjectUrl` makes. There is no project object to find the author's runtime through
-        // there, so the widget stays an empty box rather than half-mounting.
+        // `useAssetObjectUrl` makes. It has the project but not the services, so this arm declines and
+        // the chain's Dev Mode arm picks it up.
         context = null;
     }
 
-    const opener = useMemo<SurfacePuppetOpener | null>(() => {
+    const workspaceOpener = useMemo<SurfacePuppetOpener | null>(() => {
         if (!context) {
             return null;
         }
@@ -61,5 +66,5 @@ export function useSurfacePuppetSession(input: UseSurfacePuppetSessionInput): Su
         }, container, { size, onWarn });
     }, [context]);
 
-    return useSurfacePuppetMount(opener, input);
+    return useSurfacePuppetMount(useSurfacePuppetOpener(workspaceOpener), input);
 }
