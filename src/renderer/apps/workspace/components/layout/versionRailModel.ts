@@ -5,7 +5,8 @@ import type {
     VcsHistoryEntry,
     VcsUnavailableReason,
 } from "@shared/types/vcs";
-import type { TranslationKey } from "@shared/i18n";
+import { VCS_DEFAULT_BRANCH } from "@shared/types/vcs";
+import type { TranslationKey, Translator } from "@shared/i18n";
 import { RAIL_SELECTOR_WIDTH } from "./dockLayoutModel";
 
 /**
@@ -618,4 +619,133 @@ export function shortRevision(revision: RevisionId, length = 7): string {
 /** How the rail and every other surface names one revision: `#4`. */
 export function revisionLabel(number: number): string {
     return `#${number}`;
+}
+
+/**
+ * What separates the branch from the version number. A middle dot rather than a slash, because a
+ * slash is part of branch names (`feature/audio`) and would read as one more path segment.
+ */
+const BRANCH_SEPARATOR = " · ";
+
+/** Shown while the first probe is out. One round trip long; a word would flash on every open. */
+const PROBING_FACE = "—";
+
+/**
+ * How much of a branch name a surface will show before cutting it.
+ *
+ * There has to be a ceiling, and it has to be applied HERE rather than by CSS. The status-bar cell
+ * truncates from the end, so letting a 60-character branch name run into a `truncate` class would
+ * cut off `#12` - the one part of the line that says which version this is - and leave the author
+ * reading a branch name with no version at all.
+ */
+export const VERSION_BRANCH_MAX_CHARS = 14;
+
+export interface VersionFaceInputs {
+    /** Which of the six surface states this window is in. */
+    state: VersionSurfaceState;
+    /**
+     * The branch the repository is on, from `VcsRepositoryInfo.branch`.
+     *
+     * Shown only when it is NOT {@link VCS_DEFAULT_BRANCH}. An author who never left it would
+     * otherwise pay width on every surface for a fact that is always true, while an author who
+     * branched with their own `lore` CLI is exactly the person a bare `#12` misleads.
+     */
+    branch?: string | null;
+    /**
+     * The focused history row's number, for the states that carry no number of their own - the beat
+     * between opening the panel and the page arriving, and a preview entered without a label.
+     */
+    rowNumber?: number | null;
+    /**
+     * What names the version when no NUMBER is known.
+     *
+     * `hash` for the two narrow surfaces: the short hash is all they have, and something that
+     * identifies the revision beats nothing. `omit` for the rail, which prints the hash on its own
+     * line right beside this one and would otherwise print it twice.
+     */
+    unnumbered?: "hash" | "omit";
+}
+
+export interface VersionFace {
+    /** What to render. Empty only under `unnumbered: "omit"`, where the caller draws nothing. */
+    text: string;
+    /**
+     * The same line with nothing cut, for the `title`. Equal to {@link text} when nothing was cut,
+     * which is how a caller decides whether a tooltip is owed at all.
+     */
+    full: string;
+}
+
+/**
+ * The one line every version surface shows: the status-bar cell, the top-bar widget, and the rail's
+ * focused block.
+ *
+ * One function for all three because they answer the same question, and three copies of the answer
+ * drift - which has already happened once in this feature's life (a commit left the rail on `#3`
+ * beside a cell still reading `#2`). The branch is the reason it exists now: a rule spelled out in
+ * three components is a rule that will be spelled out three ways.
+ *
+ * Takes the translator rather than handing back keys, because two of the six states are prose and
+ * the other four are composed strings; a caller that had to switch on which kind it got back would
+ * be re-implementing the decision this function exists to own. Tests pass an identity `t`.
+ */
+export function versionFace(inputs: VersionFaceInputs, t: Translator["t"]): VersionFace {
+    const identity = versionIdentity(inputs, t);
+    const branch = shownBranch(inputs);
+    if (!branch || !identity) {
+        return { text: identity, full: identity };
+    }
+    const cut = branch.length > VERSION_BRANCH_MAX_CHARS
+        ? `${branch.slice(0, VERSION_BRANCH_MAX_CHARS - 1)}…`
+        : branch;
+    return {
+        text: `${cut}${BRANCH_SEPARATOR}${identity}`,
+        full: `${branch}${BRANCH_SEPARATOR}${identity}`,
+    };
+}
+
+/**
+ * The branch worth naming, or null.
+ *
+ * Null for the default branch AND for the empty string the backend reports when it did not say -
+ * neither tells the author anything they can act on. Null too in every state that does not name a
+ * version: "No versions yet" is about the repository, and prefixing a branch onto it would suggest
+ * the emptiness were somehow local to that branch.
+ */
+function shownBranch(inputs: VersionFaceInputs): string | null {
+    if (inputs.state.kind !== "current" && inputs.state.kind !== "revision") {
+        return null;
+    }
+    const branch = inputs.branch?.trim();
+    if (!branch || branch === VCS_DEFAULT_BRANCH) {
+        return null;
+    }
+    return branch;
+}
+
+/** What names this version on its own, before the branch is considered. */
+function versionIdentity(inputs: VersionFaceInputs, t: Translator["t"]): string {
+    const { state } = inputs;
+    const fromRow = inputs.rowNumber !== undefined && inputs.rowNumber !== null
+        ? revisionLabel(inputs.rowNumber)
+        : null;
+    switch (state.kind) {
+        case "revision":
+            return state.label ?? fromRow ?? unnumbered(state.revision, inputs);
+        case "current":
+            return (state.number !== null ? revisionLabel(state.number) : null)
+                ?? fromRow
+                ?? unnumbered(state.head, inputs);
+        case "not-a-repository":
+            return t("workspace.shell.versionControl.notVersioned");
+        case "empty":
+            return t("workspace.shell.versionControl.noHistory");
+        default:
+            // Probing, and the unreachable `unavailable` - every surface renders nothing there.
+            return PROBING_FACE;
+    }
+}
+
+function unnumbered(revision: RevisionId, inputs: VersionFaceInputs): string {
+    return inputs.unnumbered === "omit" ? "" : shortRevision(revision);
 }
