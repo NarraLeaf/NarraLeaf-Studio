@@ -415,12 +415,12 @@ export const workspace = {
             // of their project rather than with the error, because the assumption they would
             // otherwise make - "it failed, so nothing happened" - is the opposite of the truth, and
             // they would carry on working on a project that quietly went back a week. `{action}` is
-            // the Record-a-version button, named from its own string so the sentence cannot come to
+            // the Submit-a-version button, named from its own string so the sentence cannot come to
             // point at a control that no longer says that.
-            restoreNotRecordedTitle: "Your files were restored, but the version was not recorded",
+            restoreNotRecordedTitle: "Your files were restored, but the version was not submitted",
             restoreNotRecordedDetail:
-                "Your project files are now the ones from version {version}. Recording that as a new "
-                + "version failed ({error}). Nothing is lost - press \"{action}\" to record it yourself.",
+                "Your project files are now the ones from version {version}. Submitting that as a new "
+                + "version failed ({error}). Nothing is lost - press \"{action}\" to submit it yourself.",
             // A project with no repository. Named for what is missing, not for the mechanism.
             //
             // Short because two of its three homes are narrow: the status-bar cell and the top-bar
@@ -435,7 +435,10 @@ export const workspace = {
             enable: "Enable version control",
             // One line, because enabling writes into the author's project folder and takes an
             // exclusive lock on it - so it says what it will do before they press it.
-            enableHint: "Records a version history inside this project's folder.",
+            // "Keeps" rather than "Records": this line is about the history that will exist, not
+            // about the act - and leaving the one surviving "record" in author-facing copy directly
+            // under a button that now says "Submit a version" would read as two names for one thing.
+            enableHint: "Keeps a version history inside this project's folder.",
             enabling: "Setting up version control…",
             // A repository that exists and holds nothing - which is NOT `notVersioned` above, and
             // the wording keeps them apart on purpose: "not versioned" is a project the feature was
@@ -458,17 +461,19 @@ export const workspace = {
             merge: "Merge",
             changes: "Changes",
             refreshChanges: "Check for changes",
-            // The button that records a version. "Record" rather than "Commit" because every other
+            // The button that submits a version. "Submit" rather than "Commit" because every other
             // line here speaks of versions, and an author who has never used version control has no
-            // reason to know the word.
-            commit: "Record a version",
+            // reason to know the word - and "Submit" rather than "Record" because the remote lore
+            // server this grows into will call the same action a submission, so the word is settled
+            // now instead of half the surfaces being renamed later.
+            commit: "Submit a version",
             // A question rather than an instruction, and it says "optional" because it is: an empty
             // message is a valid revision, and one with no message names itself in the list above.
             commitPlaceholder: "What changed? (optional)",
             commitMessage: "Version message",
             // Never instant: the pipeline settles this window's unsaved work, stages the whole
             // project, and waits for the backend to put its stores on disk.
-            committing: "Recording this version…",
+            committing: "Submitting this version…",
             // "Nobody has looked yet", which is not the same as "clean" - and the difference matters,
             // because looking is a scan and this surface never does it on its own.
             changesUnknown: "Not checked",
@@ -490,12 +495,12 @@ export const workspace = {
             },
             // Where a move or a copy came from. `{path}` is repository-relative, like the row itself.
             changeFromPath: "from {path}",
-            // The only change that stops a version from being recorded, which is why it is called out
+            // The only change that stops a version from being submitted, which is why it is called out
             // and why it sorts to the top of the list rather than sitting wherever the path puts it.
             changeConflict: "Unresolved conflict",
             // The list is capped. Said out loud, because a list that quietly stopped at fifty would
-            // be read as "that is everything", and the author would record a version believing they
-            // had seen all of what they were recording.
+            // be read as "that is everything", and the author would submit a version believing they
+            // had seen all of what they were submitting.
             changesMore: "{count} more not shown",
             // Checkpoints are the ones Studio recorded on a timer; there are dozens on a writing day.
             showCheckpoints: "Show {count} checkpoints",
