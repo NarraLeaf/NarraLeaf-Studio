@@ -77,6 +77,15 @@ UI 只读只负责 affordance（别给假的可点按钮）。**正确性由写�
 **没堵、且是有意的**：游戏构建的最终输出目录（作者可以把它指到项目里）。构建是 IPC 直达主进程的，
 从渲染层拦是做样子——按 §1 的裁决，这一拦要落在主进程，属 U4。
 
+**同一条论证有第二面：「离开视图」也不能靠组件记得。** 恢复期间是主进程在逐个文件重写工作树，
+渲染层的写闸门根本看不见它；这时任何一条出口——命令面板、项目切换器菜单（它读的是另一个
+`useVersionSurface`，压根不知道有恢复在跑）、以后谁加的快捷键——只要走到 `thaw()`，重读进编辑器的
+就是一棵写了一半的树，下一次保存再把这个混血写回磁盘，全程无声。所以闸门同样落在服务上：
+`WorkspaceFreezeService.holdRelease()`，通用语义是「现在有东西在改磁盘，离开这个视图会读到半成品」，
+计数、可重入、释放幂等，与 `holdProjectWritesForReload` 同形。`VersionControlService.restoreRevision`
+全程持有，**并且必须在自己 `thaw()`/`reload()` 之前释放**，否则它被自己挡住、作者永远留在历史视图里。
+组件那一层照旧只管 affordance（恢复期间命令面板那条 `when` 返回 false，不出现）。
+
 ## 3. 界面形态
 
 ```
@@ -116,6 +125,7 @@ UI 只读只负责 affordance（别给假的可点按钮）。**正确性由写�
 | **U1d** | 工作区能显示某个修订 | U1c | ✅ 落地：`DocumentSource` 端口（`@shared/documents/documentSource`）+ 读边界闸门（`lib/app/documentSource.ts`）；`reload(cause, source)`；`WorkspaceFreezeService.showRevision` / `VersionControlService.showRevision`；详见 §4.2.3 |
 | **U2** | 入口 | U1 | ✅ 部分落地：顶栏版本控件 + 状态栏位已有；「启用版本控制」目前**只在轨道里**，进项目设置与新建向导仍未做 |
 | **U3** | 版本轨道 | U2, V2 | ✅ 落地：轨道面板、线性历史、变更清单、提交。四个接缝见 §4.5 |
+| **V4-整工程** | 恢复到某个版本 | V2, U1c, U3 | ✅ 落地：`revisionRestore.ts`（纯策略 + 端口）+ `VcsManager.restoreRevision` + `vcs.restoreRevision` IPC；入口在 `FocusedVersion`，带确认。**恢复=新提交，绝不倒退历史**；动手前 `createCheckpoint("restore")`，打不出来就中止；素材字节一起恢复（与 Dev Mode 快照相反）；删除只认 `isVersioned`、逐个文件、无任何 `recursive:true`。**单文档恢复仍未做** |
 | **U4** | 冻结下的 Dev Mode | U1c | ✅ 落地：快照落 `.nlstudio/devmode/revisions/<rev前16位>`（按版本命名、每次启动重建、会话结束删除）；`DevModeSession.sourcePath` 取代 `projectPath` 喂编译；冻结记录多带一个 `revision`；读不出来就**拒绝启动**，绝不回落工作树。详见 §4.2.4 |
 
 ### 4.2 V2 之后新增的两条实测（细节在 version-control.md §4.21 / §4.22）

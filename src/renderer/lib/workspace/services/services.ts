@@ -24,6 +24,8 @@ import type {
     VcsHistoryEntry,
     VcsInitOptions,
     VcsRepositoryInfo,
+    VcsRestoreOptions,
+    VcsRestoreResult,
     VcsStatus,
 } from "@shared/types/vcs";
 import type { WorkspaceFreezeReason } from "../../app/writeFreeze";
@@ -979,6 +981,13 @@ interface IVersionControlService extends IService {
     showRevision(revision: RevisionId, label?: string): Promise<void>;
     /** Leave a revision view: the working tree is read back in and writes are allowed again. */
     showWorkingTree(): void;
+    /**
+     * Overwrite the working tree with one revision and record the result as a new one.
+     *
+     * The only method here that changes the author's files. Checkpoints first, never removes a
+     * revision, and leaves the version view + re-reads every document before it resolves.
+     */
+    restoreRevision(revision: RevisionId, options?: VcsRestoreOptions): Promise<VcsRestoreResult>;
     /** The revision the editors are showing, or null for the working tree. */
     getShownRevision(): RevisionId | null;
     getChangedPaths(from: RevisionId, to: RevisionId): Promise<string[]>;
@@ -1011,6 +1020,15 @@ interface IWorkspaceFreezeService extends IService {
      * goes to the network. Takes no checkpoint - browsing history has zero side effects.
      */
     showRevision(source: DocumentSource, label?: string): Promise<WorkspaceReloadResult>;
+    /**
+     * Keep the workspace in its current view - `thaw` refuses - until the returned function runs.
+     *
+     * For anything that rewrites project files from outside the editors: leaving mid-rewrite re-reads
+     * a half-written tree. Not a version-control flag; see the implementation for why that matters.
+     */
+    holdRelease(): () => void;
+    /** Whether anything is holding the workspace in its current view. */
+    isReleaseHeld(): boolean;
     thaw(): void;
     isFrozen(): boolean;
     /** Why the workspace is frozen, or null when it is not. */
