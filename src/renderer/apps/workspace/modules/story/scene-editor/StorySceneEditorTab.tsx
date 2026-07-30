@@ -1994,13 +1994,13 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         onClick={() => editor.startInsertAfter(null, true)}
                         {...freeze.writes()}
                     >
-                        {/* Mirrors a row: the name column stays empty, the "+" takes the plate box, and
+                        {/* Mirrors a row: the "+" takes the plate box, the name column stays empty, and
                             the words land on the body edge — so the tail of the list does not step out
                             of the one column the whole document reads down. */}
-                        <span className="w-[var(--nl-story-name,56px)] shrink-0 pr-2" aria-hidden />
                         <span className="flex w-[var(--nl-story-avatar,28px)] shrink-0 items-center">
                             <Plus className="h-4 w-4 text-primary" />
                         </span>
+                        <span className="w-[var(--nl-story-name,56px)] shrink-0" aria-hidden />
                         {t("story.sceneEditor.addRow")}
                     </button>
                 )}
