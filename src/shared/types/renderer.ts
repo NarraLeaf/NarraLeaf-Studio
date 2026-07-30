@@ -38,7 +38,7 @@ import type {
 } from "./privileged";
 import { AppEventToken } from "./app";
 import type { LocaleContribution } from "@shared/i18n";
-import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsHistoryEntry, VcsInitOptions, VcsRepositoryInfo, VcsStatus, VcsThreeWayResult } from "./vcs";
+import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsHistoryEntry, VcsInitOptions, VcsRepositoryInfo, VcsRestoreOptions, VcsRestoreResult, VcsStatus, VcsThreeWayResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -353,6 +353,24 @@ export interface RendererPreloadedInterface {
          * is a success, because an empty revision per interval is not history.
          */
         checkpoint(projectPath: string, reason: VcsCheckpointReason): Promise<RequestStatus<{ revision: VcsCommitResult | null }>>;
+        /**
+         * Write one revision's content over the working tree and record it as a new revision.
+         *
+         * The only call on this surface that changes the author's files, and three properties are
+         * part of the contract rather than implementation detail:
+         *
+         *  - a checkpoint is committed BEFORE anything is written, and a failure to take one aborts
+         *    the restore rather than proceeding;
+         *  - no revision is removed - restoring `#12` onto a project at `#61` produces `#62`, and
+         *    `#13`..`#61` are all still there;
+         *  - only paths under version control are touched, in either direction. `.nlstudio/`,
+         *    `editor/cache`, `dist` and `.lore/` are outside the operation.
+         *
+         * Long: two commit pipelines plus a rewrite of the whole versioned tree. The caller must
+         * leave any revision view and re-read every document once it resolves - the bytes under the
+         * editors are no longer the ones they were read from.
+         */
+        restoreRevision(projectPath: string, revision: RevisionId, options?: VcsRestoreOptions): Promise<RequestStatus<VcsRestoreResult>>;
         /**
          * `includeDetails` costs one call per revision; leave it off unless the details are
          * shown. One call carries `kind`, `message`, `timestamp` and `author` together -

@@ -15,7 +15,7 @@ import type { DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/dev
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import type { PrivilegedActor } from "@shared/types/privileged";
-import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsHistoryEntry, VcsInitOptions, VcsRepositoryInfo, VcsStatus, VcsThreeWayResult } from "@shared/types/vcs";
+import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsHistoryEntry, VcsInitOptions, VcsRepositoryInfo, VcsRestoreOptions, VcsRestoreResult, VcsStatus, VcsThreeWayResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
@@ -317,9 +317,9 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     },
 
     /**
-     * Version control. Reads, plus the writes that produce a revision: `initRepository`,
-     * `commit` and `checkpoint`. The writes that need a conflict story - merge, restore -
-     * are still deliberately absent.
+     * Version control. Reads, the writes that produce a revision (`initRepository`, `commit`,
+     * `checkpoint`), and `restoreRevision` - the only one that overwrites the author's files.
+     * Merge, which is the write that needs a conflict story, is still deliberately absent.
      * Blobs arrive base64-encoded - decode at the call site that needs bytes.
      */
     vcs: {
@@ -348,6 +348,15 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         /** Same pipeline, labelled a checkpoint. `revision: null` = nothing to record. */
         checkpoint: (projectPath: string, reason: VcsCheckpointReason) =>
             ipcClient.invoke(IPCEventType.vcsCheckpoint, { projectPath, reason }) as Promise<RequestStatus<{ revision: VcsCommitResult | null }>>,
+        /**
+         * Write one revision's content over the working tree and record it as a new revision.
+         *
+         * The only call here that touches the author's files. It checkpoints first (and aborts if
+         * it cannot), and it never removes a revision - `#12` restored at `#61` produces `#62`.
+         * The caller must leave any revision view and re-read every document afterwards.
+         */
+        restoreRevision: (projectPath: string, revision: RevisionId, options?: VcsRestoreOptions) =>
+            ipcClient.invoke(IPCEventType.vcsRestoreRevision, { projectPath, revision, options }) as Promise<RequestStatus<VcsRestoreResult>>,
         /**
          * `includeDetails` costs one call per revision; leave it off unless the details
          * are shown. One call carries the kind, message, timestamp and author together.
