@@ -29,6 +29,7 @@ import { buildStoryCommandContext } from "./storyCommandContext";
 import { canCommit, parseCommandLine } from "./storyCommandParser";
 import { resolveCommandLine, type StoryCommandResolvedArgs } from "./storyCommandResolution";
 import { getCommandSpec } from "./commands/registry";
+import { opensInspectorAfterCommit } from "./commands/spec";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 
 import { collectTempSpeakers, promoteTempSpeaker } from "@/lib/workspace/services/story/storyModel";
@@ -1463,9 +1464,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return false;
         }
         const block = spec.build(args, { generateId: () => uuidService.generate(), context: commandContext });
-        insertBlock(block, editorMode.slot.afterBlockId, spec.inspectorAfterCommit === true, { target: editorMode.slot.target, replaceBlockId: editorMode.slot.replaceBlockId });
+        const openInspector = opensInspectorAfterCommit(spec, block);
+        insertBlock(block, editorMode.slot.afterBlockId, openInspector, { target: editorMode.slot.target, replaceBlockId: editorMode.slot.replaceBlockId });
         scaffoldContainer(block, args.test?.kind === "expression" ? args.test.expression : undefined);
-        if (spec.inspectorAfterCommit) {
+        if (openInspector) {
             return true;
         }
         // A speaker with no line yet (`/say Alice`) lands the caret in the body, exactly as picking a

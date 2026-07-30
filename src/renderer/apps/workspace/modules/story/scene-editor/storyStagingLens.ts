@@ -103,9 +103,12 @@ function actionDurationMs(payload: StoryActionPayload): number | undefined {
         case "displayable":
             return payload.durationMs;
         // The camera's whole point in a `parallel` is running against a sprite move, so its bar has to
-        // be drawn to scale rather than as an unknown-width stub (2026-07-24-006 §12.7).
+        // be drawn to scale rather than as an unknown-width stub (2026-07-24-006 §12.7). A `motion` row
+        // is the exception: its real length is in the bound Story Motion's keyframes, which this pure
+        // function cannot read, and `durationMs` there is a leftover default - drawing it would be a
+        // confidently wrong bar rather than an honest unknown.
         case "camera":
-            return payload.durationMs;
+            return payload.operation === "motion" ? undefined : payload.durationMs;
         // A vfx fade is the same case: "the rain fades in while the camera pushes past" is the typical
         // parallel, and the engine's show/hide WAIT for the fade, so the bar is a real footprint. Its
         // instant operations (pause/resume/setRate) carry no duration and stay unknown.

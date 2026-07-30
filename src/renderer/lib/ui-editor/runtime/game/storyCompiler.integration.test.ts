@@ -1899,6 +1899,85 @@ describe("compileStudioStoryToNlr voice", () => {
         expect(propsOf("dark")).toEqual([expect.objectContaining({ filter: "brightness(0)" })]);
     });
 
+    it("compiles /camera motion into a camera Transform, and settles its end pose into the snapshot", async () => {
+        // The camera is a Displayable in the engine, so a Story Motion drives it exactly as it drives a
+        // sprite. Two things this pins: the transform reaches `story.camera` (not some other element),
+        // and the motion's settled end state is what a row-precise launch pre-poses - the pose is the
+        // shot the author left the camera in, so a launch after this row must not open on neutral.
+        const animation: StoryAnimationAsset = {
+            schemaVersion: 1,
+            id: "00000000-0000-4000-8000-000000000501",
+            name: "Camera push in",
+            targetKind: "camera",
+            sequences: [],
+            timeline: {
+                tracks: [{
+                    id: "track-zoom",
+                    property: "zoom",
+                    keyframes: [
+                        { id: "kf-zoom-0", timeMs: 0, value: 1, easing: "linear" },
+                        { id: "kf-zoom-1600", timeMs: 1600, value: 1.35, easing: "easeInOut" },
+                    ],
+                }],
+            },
+        };
+        const blocks: Record<string, StoryBlock> = {
+            shot: {
+                id: "shot",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "camera", operation: "motion", motion: { mode: "animation", animationId: animation.id } },
+            },
+            target: narrationBlock("target", "target-text", "After the push"),
+        };
+        const document = baseDocument(blocks, ["shot", "target"]);
+
+        const compiled = await compileStudioStoryToNlr({
+            document,
+            sceneId: "scene-1",
+            animations: { [animation.id]: animation },
+        });
+        const transforms = getDisplayableTransforms(
+            compiled.actionIdBindings
+                .filter(binding => binding.blockId === "shot")
+                .flatMap(binding => collectActionTree(binding.action, compiled.story)),
+        );
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(transforms[0]?.sequences?.map(sequence => sequence.props)).toEqual([
+            expect.objectContaining({ zoom: 1 }),
+            expect.objectContaining({ zoom: 1.35 }),
+        ]);
+
+        const snapshot = computeStoryStageSnapshot({
+            document,
+            sceneId: "scene-1",
+            targetBlockId: "target",
+            animations: { [animation.id]: animation },
+        });
+        expect(snapshot.camera).toEqual({ props: { zoom: 1.35 }, effects: {} });
+    });
+
+    it("diagnoses a /camera motion row with nothing bound instead of emitting a broken transform", async () => {
+        const blocks: Record<string, StoryBlock> = {
+            shot: {
+                id: "shot",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "camera", operation: "motion" },
+            },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["shot"]),
+            sceneId: "scene-1",
+        });
+
+        expect(compiled.actionIdBindings.some(binding => binding.blockId === "shot")).toBe(false);
+        expect(compiled.diagnostics.map(diagnostic => diagnostic.level)).toEqual(["warning"]);
+    });
+
     it("pre-poses the stage camera when a row-precise launch starts after a /camera op", async () => {
         // A launch that starts after `/camera zoom 2` must open on the zoomed shot. The pose is
         // pre-posed onto story.camera through the same DevTools path the built-in layers use, and its

@@ -1897,6 +1897,20 @@ function compileCameraAction(
             return [recordStatement(ctx, camera.darken(Math.min(1, Math.max(0, finiteOr(payload.darkness, 0))), duration, easing), block)];
         case "reset":
             return [recordStatement(ctx, camera.reset(duration, easing), block)];
+        case "motion": {
+            // A whole keyframed shot rather than one settled pose. `Camera` is a `Displayable`, so it
+            // takes the same `Transform` a sprite does, built by the same function `/transform` uses -
+            // which also owns the missing-id / unknown-asset diagnostics. `durationMs` and `easing` are
+            // deliberately ignored: the timing is in the keyframes, and honouring the row's `d=` too
+            // would silently compete with them.
+            const motion = payload.motion;
+            if (!motion || motion.mode !== "animation") {
+                diagnostic(ctx, "warning", block.id, "Camera motion is missing a Story Motion binding.");
+                return [];
+            }
+            const transform = createAnimationTransform(motion, ctx, block.id, "none");
+            return transform ? [recordStatement(ctx, camera.transform(transform), block)] : [];
+        }
         default:
             return [];
     }
