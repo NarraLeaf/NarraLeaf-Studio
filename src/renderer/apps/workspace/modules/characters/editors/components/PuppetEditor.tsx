@@ -235,15 +235,28 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
             </Field>
 
             <Field label={t("characters.editor.puppet.backend")}>
-                <Select
-                    options={backendOptions}
-                    value={puppet.backend}
-                    placeholder={t("characters.editor.puppet.noBackend")}
-                    size="sm"
-                    fullWidth
-                    portalMenu
-                    onChange={value => appearance.setPuppetBackend(String(value))}
-                />
+                {/* "You have not chosen one" and "there are none to choose" are different
+                    situations, and one label for both told the author the project carried no
+                    runtimes while two sat in the dropdown. Only the empty list says "installed",
+                    and it says where to put one - the same swap `ChoiceField` makes above. */}
+                {backendOptions.length === 0 ? (
+                    <span
+                        className="min-w-0 flex-1 truncate text-fg-subtle"
+                        title={t("characters.editor.puppet.noBackendInstalledHint")}
+                    >
+                        {t("characters.editor.puppet.noBackendInstalled")}
+                    </span>
+                ) : (
+                    <Select
+                        options={backendOptions}
+                        value={puppet.backend}
+                        placeholder={t("characters.editor.puppet.chooseBackend")}
+                        size="sm"
+                        fullWidth
+                        portalMenu
+                        onChange={value => appearance.setPuppetBackend(String(value))}
+                    />
+                )}
             </Field>
 
             <Field label={t("characters.editor.puppet.entry")}>
