@@ -81,7 +81,7 @@ export function WorkspaceFreezeCommands() {
                 when: () => !freezeService.isFrozen(),
                 run: async () => {
                     // Availability first, and answered in the author's own words. Every surface that
-                    // can be hidden on an unsupported host IS hidden (the rail, the widget, the status
+                    // can be hidden on an unsupported host IS hidden (the rail, the switcher menu, the status
                     // cell all render nothing), but a palette entry's `when` is synchronous and this
                     // answer is not, so this is the one place left where the author can ask a question
                     // the machine cannot answer. The two messages differ because their fixes do: an

@@ -58,7 +58,7 @@ interface VersionRailProps {
  * **The 48px strip exists only while the workspace is frozen**, because what it expresses is control
  * over a temporary state: it is the indicator that project data is not being saved, and it carries the
  * way out. At HEAD there is no strip and the rail costs the layout nothing - it is an openable panel
- * reached from the status cell or the top-bar widget, and closing it leaves nothing behind. Frozen, it
+ * reached from the status cell or the switcher menu, and closing it leaves nothing behind. Frozen, it
  * is not dismissible into nothing: an escape hatch the author can hide is not an escape hatch. The
  * rule itself is in `resolveVersionRailPresence`, not here.
  *
@@ -77,7 +77,7 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
     const visible = isVersionSurfaceVisible(state);
     const open = presence === "panel";
 
-    // The status-bar cell and the top-bar widget both promise "click to open the rail" and neither is
+    // The status-bar cell and the switcher menu both promise "click to open the rail" and neither is
     // in this tree. Registered whenever version control EXISTS rather than whenever the column does:
     // at HEAD there is no column and those two are the only ways in. On a host with no version control
     // nothing is registered, so a stale caller cannot conjure a column that must not exist.
@@ -255,7 +255,7 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
  *
  * Leads with what the revision SAYS - its message - and drops the number and short hash to the line
  * below, where they are still the thing that tells two revisions apart by eye and still match what the
- * widget and the status cell show. All three metadata fields are optional, and absent renders as
+ * switcher menu and the status cell show. All three metadata fields are optional, and absent renders as
  * absent: a revision with no message falls back to naming itself, and a missing author leaves no line
  * rather than an empty one. The repository's own first commit carries none of the three, so this is the
  * ordinary case and not a defensive branch.
@@ -301,7 +301,7 @@ function FocusedVersion({ surface }: { surface: VersionSurface }) {
                 </p>
             )}
 
-            {/* The identity, kept: it is what the widget and the status cell show, and the hash is the
+            {/* The identity, kept: it is what the switcher menu and the status cell show, and the hash is the
                 only thing that separates two revisions carrying the same message. Through the same
                 `versionFace` as those two, `unnumbered: "omit"` because the hash is already the span
                 beside it - this is the one surface that would otherwise print it twice. */}

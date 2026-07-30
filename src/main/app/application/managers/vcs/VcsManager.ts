@@ -451,8 +451,8 @@ export class VcsManager extends Manager {
     /**
      * Where this project stands: its identity, its head, and the branch that head is on.
      *
-     * **A pure read, and it has to stay one.** This is what the status-bar cell and the top-bar
-     * widget ask on every project open and after every revision, so anything here that scanned
+     * **A pure read, and it has to stay one.** This is what the status-bar cell and the switcher
+     * menu ask on every project open and after every revision, so anything here that scanned
      * would turn an ambient readout into a writer of staged state (docs §4.17). `readBranchIdentity`
      * is `scan: false, revisionOnly: true` for exactly that reason.
      *

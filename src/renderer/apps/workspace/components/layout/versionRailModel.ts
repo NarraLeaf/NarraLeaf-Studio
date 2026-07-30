@@ -37,7 +37,7 @@ export const VERSION_RAIL_EXPANDED_WIDTH = 320;
  * there* are different things and the difference is the whole of the owner's second correction:
  *
  * - `absent` - no column, and **0 in the dock account**. The rail is still openable from the status
- *   cell and the top-bar widget, which is what keeps the commit form (`data-vcs-seam="commit-form"`,
+ *   cell and the switcher menu, which is what keeps the commit form (`data-vcs-seam="commit-form"`,
  *   inside the panel) reachable at HEAD - a preview is read-only by construction, so if the panel
  *   were reachable only from a preview, commit would have no home at all.
  * - `strip` - the persistent 48px indicator. It exists only while project data is frozen, because
@@ -105,7 +105,7 @@ export function resolveVersionRailPresence(inputs: VersionRailPresenceInputs): V
 /**
  * What the author is looking at, and therefore what every version-control surface renders.
  *
- * One resolver for the rail, the top-bar widget and the status-bar cell, because three surfaces that
+ * One resolver for the rail, the switcher menu and the status-bar cell, because three surfaces that
  * each decided for themselves would eventually disagree - and "the top bar says this project has no
  * repository while the rail shows its history" is the kind of contradiction that makes an author
  * distrust the whole feature.
@@ -175,7 +175,7 @@ export function resolveVersionSurfaceState(inputs: VersionSurfaceInputs): Versio
 }
 
 /**
- * Whether the version-control surfaces exist at all: the top-bar widget, the status-bar cell, and
+ * Whether the version-control surfaces exist at all: the switcher menu, the status-bar cell, and
  * whether the rail can be OPENED (see {@link resolveVersionRailPresence}, which decides separately
  * whether it is also a persistent column).
  *
@@ -188,10 +188,10 @@ export function resolveVersionSurfaceState(inputs: VersionSurfaceInputs): Versio
  * hidden), and deliberately: a freeze is a state the author put themselves in and can leave, so there
  * has to be something to hover. An unsupported platform is neither.
  *
- * True while PROBING, so the widget and the cell do not appear a beat after every project open. The
- * cost is bounded: the unsupported-platform answer short-circuits on an OS/arch comparison before
- * anything is dlopened (`loadVcsBackend`), so it is one IPC round trip rather than a 29MB library
- * load. It costs no layout reflow at all now that probing produces no column.
+ * True while PROBING, so the menu section and the cell do not appear a beat after every project
+ * open. The cost is bounded: the unsupported-platform answer short-circuits on an OS/arch
+ * comparison before anything is dlopened (`loadVcsBackend`), so it is one IPC round trip rather than
+ * a 29MB library load. It costs no layout reflow at all now that probing produces no column.
  */
 export function isVersionSurfaceVisible(state: VersionSurfaceState): boolean {
     return state.kind !== "unavailable";
@@ -677,7 +677,7 @@ export interface VersionFace {
 }
 
 /**
- * The one line every version surface shows: the status-bar cell, the top-bar widget, and the rail's
+ * The one line every version surface shows: the status-bar cell, the switcher menu, and the rail's
  * focused block.
  *
  * One function for all three because they answer the same question, and three copies of the answer
