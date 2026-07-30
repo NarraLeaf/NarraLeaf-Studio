@@ -7225,9 +7225,11 @@ describe("sound node transport", () => {
                     duck: {
                         id: "duck",
                         type: BLUEPRINT_NODE_TYPE_SOUND_SET_VOLUME,
-                        params: { volume: 0.25, fadeMs: 800 },
+                        // Seconds on the pin, milliseconds at the host capability - the same boundary
+                        // `Delay`'s `Duration (s)` and every story line's time sit on.
+                        params: { volume: 0.25, fade: 0.8 },
                     },
-                    jump: { id: "jump", type: BLUEPRINT_NODE_TYPE_SOUND_SEEK, params: { timeMs: 30000 } },
+                    jump: { id: "jump", type: BLUEPRINT_NODE_TYPE_SOUND_SEEK, params: { time: 30 } },
                 },
                 edges: [
                     { from: { nodeId: "play", port: "next" }, to: { nodeId: "duck", port: "in" } },
