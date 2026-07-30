@@ -1,10 +1,15 @@
 /**
- * The character inspector's view of what a model contains.
+ * What a model contains, for an inspector that has to draw dropdowns from it.
  *
  * A thin adapter over `PuppetDescriptionService`: it decides *when* to ask (the puppet's identity
  * changed) and keeps the answer in React state. The lookup itself lives in the service on purpose —
  * a story row offering a character's motions needs the same answer, and a hook is not reachable
  * from a command's parameter resolver.
+ *
+ * Lives under `lib/workspace/hooks/` beside `useAssetObjectUrl` and `useSurfacePuppetSession` rather
+ * than inside the character editor that first needed it: the `nl.puppet` widget's inspector asks the
+ * same question, and a widget reaching into `apps/workspace/modules/characters` for it would be the
+ * wrong dependency.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";

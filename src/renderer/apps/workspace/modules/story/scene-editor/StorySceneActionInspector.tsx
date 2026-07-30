@@ -66,7 +66,7 @@ import {
     puppetDescribeStatusKey,
     puppetDescriptionRequestFor,
     usePuppetDescription,
-} from "@/apps/workspace/modules/characters/editors/components/usePuppetDescription";
+} from "@/lib/workspace/hooks/usePuppetDescription";
 import { puppetChoiceOptions } from "@/lib/workspace/services/puppet/puppetDescriptionModel";
 import { CameraActionEditor } from "./CameraActionEditor";
 import {

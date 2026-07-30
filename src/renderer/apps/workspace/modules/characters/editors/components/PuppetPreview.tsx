@@ -17,7 +17,7 @@ import { Services } from "@/lib/workspace/services/services";
 import type { PuppetDescriptionService } from "@/lib/workspace/services/puppet/PuppetDescriptionService";
 import type { PuppetDescriptionRequest } from "@/lib/workspace/services/puppet/puppetDescriptionModel";
 import { stablePuppetJson } from "@/lib/workspace/services/puppet/puppetDescriptionModel";
-import type { PuppetModelSession } from "@/lib/workspace/services/puppet/puppetModelSession";
+import type { PuppetModelSession } from "@/lib/ui-editor/runtime/game/puppetModelSession";
 import type { PuppetDefaultState } from "@/lib/workspace/services/character/types";
 
 const PREVIEW_HEIGHT_PX = 168;

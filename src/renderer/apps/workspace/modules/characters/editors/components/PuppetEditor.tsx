@@ -25,8 +25,12 @@ import { Services } from "@/lib/workspace/services/services";
 import { Box, Download, FolderOpen, FolderPlus, RefreshCw, X } from "lucide-react";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+    puppetDescribeStatusKey,
+    puppetDescriptionRequestFor,
+    usePuppetDescription,
+} from "@/lib/workspace/hooks/usePuppetDescription";
 import { PuppetPreview } from "./PuppetPreview";
-import { puppetDescribeStatusKey, puppetDescriptionRequestFor, usePuppetDescription } from "./usePuppetDescription";
 
 /**
  * The asset type a model bundle is.

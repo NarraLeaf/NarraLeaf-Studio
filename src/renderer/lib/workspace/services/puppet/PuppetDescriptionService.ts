@@ -57,7 +57,8 @@ import {
     grantModelBundleUrl,
     readPuppetRuntimeStamp,
 } from "./projectPuppetRuntimes";
-import { createPuppetModelSession, type PuppetModelSession } from "./puppetModelSession";
+import { createPuppetModelSession, type PuppetModelSession } from "@/lib/ui-editor/runtime/game/puppetModelSession";
+import { SurfacePuppetUnavailableError } from "@/lib/ui-editor/runtime/game/surfacePuppetSession";
 
 /** The box a model is mounted into when nobody asked for a particular one. */
 const DEFAULT_PROBE_SIZE: PuppetSize = { width: 512, height: 512 };
@@ -235,9 +236,16 @@ export class PuppetDescriptionService
     /**
      * Mount the model into a container the caller owns, and keep it there.
      *
-     * The character editor's preview. The description path disposes its model the moment it has an
-     * answer; a preview keeps it, so the author can watch a motion play. Rejects rather than
-     * degrading — a preview panel has somewhere to put the failure.
+     * The character editor's preview, and a Surface puppet widget on the canvas. The description path
+     * disposes its model the moment it has an answer; these keep it, so the author can watch a motion
+     * play. Rejects rather than degrading — both callers have somewhere to put the failure.
+     *
+     * **Two kinds of rejection, and callers do act on them differently.** A
+     * {@link SurfacePuppetUnavailableError} means there was never anything to mount — no model asset,
+     * no backend named, or the named runtime is not installed — which is the ordinary condition of most
+     * projects and has to degrade to an empty box rather than to an error. Anything else means a
+     * runtime was found and then misbehaved. The distinction rides in the error's type rather than in
+     * its message, so no caller has to pattern-match prose to tell a normal project from a broken one.
      */
     public async openSession(
         request: PuppetDescriptionRequest,
@@ -246,7 +254,13 @@ export class PuppetDescriptionService
     ): Promise<PuppetModelSession> {
         const planned = await this.plan(request);
         if (!planned.ok) {
-            throw new Error(planned.result.message ?? planned.result.reason);
+            const { reason, message } = planned.result;
+            throw new SurfacePuppetUnavailableError(
+                // `plan()` cannot answer `not-described` — that is only decided after a mount — but the
+                // union permits it, so it folds into the nearest honest reason instead of being cast away.
+                reason === "no-backend" || reason === "backend-missing" ? reason : "no-model",
+                message ?? reason,
+            );
         }
         const { plan } = planned;
         const session = await createPuppetModelSession({
