@@ -870,13 +870,28 @@ export class VcsManager extends Manager {
      *
      * Closing also releases Lore's exclusive repository lock, which other
      * processes block on rather than fail against.
+     *
+     * **Serialized like every other operation, and that is not tidiness.** This used to close the
+     * store the moment a window reported itself gone, without regard for work already running on
+     * it - and a history read is not instant (one metadata call per revision, taken in turn). Pull
+     * the handle out from under one and the read does not fail cleanly: it is left waiting on a
+     * store that no longer exists, so the panel that asked stays on "Reading the version history"
+     * for the rest of the session with nothing anywhere to say why. Queuing behind the in-flight
+     * work costs the close a moment and makes that state unreachable.
+     *
+     * The session is removed from the map BEFORE the queue, deliberately: anything arriving after
+     * this call must open a fresh session rather than join one that is on its way out.
      */
     public async closeProject(projectPath: string): Promise<void> {
         const key = normalizeProjectPath(projectPath);
         const session = this.sessions.get(key);
         if (!session) return;
         this.sessions.delete(key);
+        return this.serialize(projectPath, () => this.releaseSession(session));
+    }
 
+    /** The teardown itself, run with exclusive access to the project - see {@link closeProject}. */
+    private async releaseSession(session: VcsSession): Promise<void> {
         const backend = await requireVcsBackend().catch(() => null);
         if (!backend) return;
 
