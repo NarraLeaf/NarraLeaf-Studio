@@ -77,6 +77,7 @@ import {
 import type { MobileShellConfigV1 } from "@/buildWorker/mobile/mobileShellManifest";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
+import { getWorkspaceFreeze, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
 import { certificateContainer, certificateExpiry, inspectCertificateFile } from "../security/certificateInspect";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
 import { SigningVault, type SecretSealer } from "../security/signingVault";
@@ -334,6 +335,13 @@ export class GameBuildManager {
      * Run the build's own checks without building, so the dialog can show what
      * would go wrong before the user commits. Advisory only: `run` re-checks
      * everything and stays the authority (see preflight.ts).
+     *
+     * Deliberately NOT refused while the workspace is frozen. It starts no work
+     * and writes nothing - every check here reads (`checkOutputDir` probes with
+     * `access`, the vault answers `secretsAvailable` without unsealing) - so
+     * there is nothing for a freeze to be inconsistent with, and refusing would
+     * replace the dialog's findings with an error about a build nobody asked
+     * for yet. {@link start} is where the refusal belongs.
      */
     public async preflight(projectPath: string, request: GameBuildRequest): Promise<BuildPreflightFinding[]> {
         const normalizedProjectPath = path.resolve(projectPath);
@@ -588,6 +596,11 @@ export class GameBuildManager {
      * Kick off a build and return immediately; progress streams to the
      * workspace console and the renderer polls getStatus. One build per
      * project at a time.
+     *
+     * Refuses while the workspace is frozen. The Build control is already
+     * disabled there, but a build is IPC straight into this method - a
+     * keybinding, a plugin, a stale renderer or a second window can still ask,
+     * and this is the only place that can say no (plan 2026-07-28-002 §4.3).
      */
     public start(projectPath: string, entry: GameRuntimeLaunchEntry, request: GameBuildRequest): GameBuildStateSnapshot {
         const normalizedProjectPath = path.resolve(projectPath);
@@ -604,6 +617,23 @@ export class GameBuildManager {
             cancelled: false,
         };
         this.sessions.set(key, session);
+        const frozen = getWorkspaceFreeze(normalizedProjectPath);
+        if (frozen) {
+            const message = workspaceFrozenMessage(frozen, "production build");
+            // Refused before anything happens - before the checkpoint, before the
+            // compile. Recorded on the session so the build dialog shows the
+            // reason, and emitted verbatim rather than through failSession, whose
+            // "build failed:" prefix would send the author looking for a broken
+            // toolchain instead of at the revision they are reading.
+            session.snapshot = {
+                status: "error",
+                startedAt: session.snapshot.startedAt,
+                finishedAt: Date.now(),
+                error: message,
+            };
+            this.emit(session, { level: "error", source: "Build", message });
+            return session.snapshot;
+        }
         void this.run(session, entry, request).catch(error => {
             this.failSession(session, error instanceof Error ? error.message : String(error));
         });
