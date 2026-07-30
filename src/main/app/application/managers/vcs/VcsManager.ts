@@ -435,14 +435,15 @@ export class VcsManager extends Manager {
     /**
      * Revisions, newest first.
      *
-     * `includeKinds` costs one backend call PER REVISION - Lore has no batch metadata
+     * `includeDetails` costs one backend call PER REVISION - Lore has no batch metadata
      * verb - so it is opt-in rather than always on: a history panel that paid for it
      * unconditionally would open with a few hundred round trips on a long-lived
      * project. A revision that records no kind comes back with none, which is a real
      * answer (the first commit predates kinds) and not a default of either one.
      *
      * That one call is `revisionMetadataList`, which hands back EVERY key on the
-     * revision, so the flag also fills in the message, timestamp and author. Measured on
+     * revision, so the flag fills in the message, timestamp and author too - which is
+     * what it is named for, all four rather than the kind alone. Measured on
      * a six-revision repository (median of nine): `revisionHistory` + 6 metadata calls
      * either way - 2.5ms without kinds, 7.1ms with, where the single-key read it replaces
      * accounted for 4.2ms of that against the whole map's 5.6ms. Asking for the kind and
@@ -451,7 +452,7 @@ export class VcsManager extends Manager {
     public async getHistory(
         projectPath: string,
         limit = 0,
-        options: { includeKinds?: boolean } = {},
+        options: { includeDetails?: boolean } = {},
     ): Promise<VcsHistoryEntry[]> {
         return this.serialize(projectPath, async () => {
             const { session, backend } = await this.sessionFor(projectPath);
@@ -463,7 +464,7 @@ export class VcsManager extends Manager {
                 // Sequential on purpose. Re-entering Lore concurrently on one store is
                 // not a contract this binding makes, and the whole point of a single
                 // reused store handle is that calls take turns on it.
-                const details = options.includeKinds
+                const details = options.includeDetails
                     ? await backend.readRevisionDetails(session.globals, node.revision)
                     : {};
                 entries.push({
