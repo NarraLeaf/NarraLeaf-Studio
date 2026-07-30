@@ -208,8 +208,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.send(IPCEventType.workspaceMenuSync, { model }),
         reportLoadResult: (ok: boolean) =>
             ipcClient.send(IPCEventType.workspaceReportLoadResult, { ok }),
-        reportWriteFreeze: (reason: WorkspaceFreezeKind | null) =>
-            ipcClient.send(IPCEventType.workspaceReportWriteFreeze, { reason }),
+        reportWriteFreeze: (reason: WorkspaceFreezeKind | null, revision?: RevisionId) =>
+            ipcClient.send(IPCEventType.workspaceReportWriteFreeze, { reason, revision }),
         onOpenViewRequest: (handler: (view: WorkspaceViewRequest) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceOpenView, (data) => handler(data.view)),
     },
@@ -348,7 +348,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         /** Same pipeline, labelled a checkpoint. `revision: null` = nothing to record. */
         checkpoint: (projectPath: string, reason: VcsCheckpointReason) =>
             ipcClient.invoke(IPCEventType.vcsCheckpoint, { projectPath, reason }) as Promise<RequestStatus<{ revision: VcsCommitResult | null }>>,
-        /** `includeKinds` costs one call per revision; leave it off unless the kinds are shown. */
+        /**
+         * `includeKinds` costs one call per revision; leave it off unless the kinds are
+         * shown. The message, timestamp and author ride along on the same call.
+         */
         getHistory: (projectPath: string, limit?: number, includeKinds?: boolean) =>
             ipcClient.invoke(IPCEventType.vcsGetHistory, { projectPath, limit, includeKinds }) as Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>>,
         readBlob: (projectPath: string, revision: RevisionId, path: string) =>

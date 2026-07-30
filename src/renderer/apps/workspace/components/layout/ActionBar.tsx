@@ -11,6 +11,21 @@ import { isActionFrozenOut, resolveFrozenActionDisabled } from "../ui/freezeActi
 import { RunControl } from "../../modules/actions/RunControl";
 import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
 import { useTranslation } from "@/lib/i18n";
+import { WorkspaceMenuAction } from "@shared/types/menu";
+
+/**
+ * Registered actions the Run split-button draws itself, so this bar must not draw them a second time.
+ *
+ * Currently just Production Build, folded into the Run dropdown to free the room the version control
+ * widget needs (plan 2026-07-28-002 §3). A table of ids here rather than a flag on the definition, for
+ * `freezeActionPolicy`'s reason: the decision is Studio's, and a registrant - a plugin above all - has
+ * no business declaring that some other control renders it.
+ *
+ * Skipped, never unregistered. The macOS Dev ▸ Build menu item resolves the id through the action
+ * registry, and so do the command palette and the freeze policy; dropping the registration would have
+ * broken all three, the first of them only on macOS.
+ */
+const ACTIONS_OWNED_BY_RUN_CONTROL: ReadonlySet<string> = new Set<string>([WorkspaceMenuAction.Build]);
 
 interface ActionBarProps {
     /**
@@ -26,8 +41,10 @@ interface ActionBarProps {
  * Filters actions based on focus context and when conditions
  *
  * The Run split-button ({@link RunControl}) is rendered first, with the standalone registry actions
- * (the Build icon, plugin actions) packed right beside it, then — off macOS — the File/Help
- * dropdowns. Keeping Build adjacent to Run makes the run/build controls read as one cluster.
+ * (plugin actions) packed right beside it, then — off macOS — the File/Help dropdowns. Production
+ * Build is inside the Run button's own dropdown rather than beside it, so the run/build controls read
+ * as one thing and the title bar has room for the version widget; see
+ * {@link ACTIONS_OWNED_BY_RUN_CONTROL}.
  *
  * While the workspace is frozen the standalone actions render as usual but disabled, and which ones
  * escape that is decided by {@link resolveFrozenActionDisabled} - a table in Studio's source, never a
@@ -53,7 +70,11 @@ export function ActionBar({ hideAllGroups = false }: ActionBarProps) {
     }, [context]);
 
     // Filter visible actions that are not part of any group
-    const standaloneActions = actions.filter((action) => !action.group && isActionVisible(action, focusContext));
+    const standaloneActions = actions.filter(
+        (action) => !action.group
+            && !ACTIONS_OWNED_BY_RUN_CONTROL.has(action.id)
+            && isActionVisible(action, focusContext),
+    );
     const visibleActionGroups = hideAllGroups
         ? []
         : actionGroups.filter((group) => getVisibleActionMenuItems(getActionGroupItems(group), focusContext).length > 0);

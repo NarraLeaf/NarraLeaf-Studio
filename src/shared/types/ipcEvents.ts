@@ -574,6 +574,10 @@ export type IPCVcsEvents = {
      * Revisions, newest first. `includeKinds` costs one backend call per revision -
      * there is no batch metadata verb - so it is opt-in, and entries come back without
      * a `kind` when it is off.
+     *
+     * That one call returns the whole metadata map, so the flag also fills in `message`,
+     * `timestamp` and `author` at no extra cost. All four stay optional: a revision is
+     * not obliged to carry any of them.
      */
     [IPCEventType.vcsGetHistory]: {
         type: IPCMessageType.request,
@@ -1037,7 +1041,8 @@ export type IPCWorkspaceEvents = {
      *
      * Main refuses the production build and the Preview runtime while it is - both are started in
      * main and reached by IPC, so a disabled button in the top bar does not stop them. Dev Mode is
-     * deliberately still allowed (plan 2026-07-28-002 §1).
+     * allowed and runs the revision instead (plan 2026-07-28-002 §1), which is why `revision`
+     * travels with the kind.
      *
      * A message rather than a request: the renderer has nothing to do with the answer, and the
      * freeze changes on a human's timescale.
@@ -1045,8 +1050,20 @@ export type IPCWorkspaceEvents = {
     [IPCEventType.workspaceReportWriteFreeze]: {
         type: IPCMessageType.message,
         consumer: IPCType.Host,
-        /** Null when this project's data may be written again. */
-        data: { reason: WorkspaceFreezeKind | null };
+        data: {
+            /** Null when this project's data may be written again. */
+            reason: WorkspaceFreezeKind | null;
+            /**
+             * Which revision the workspace is showing, when `reason` is `"revision"`.
+             *
+             * Optional in the type and load-bearing in practice: Dev Mode compiles the revision the
+             * author is looking at, so main needs the id and not only the fact of a freeze. A
+             * `"revision"` freeze that arrives without one makes main REFUSE the launch rather than
+             * fall back to the working tree - running the current game while the author is reading
+             * version #1 is the failure U4 exists to prevent.
+             */
+            revision?: RevisionId;
+        };
         response: never;
     };
     [IPCEventType.workspaceBlueprintNavigateFromPreview]: {

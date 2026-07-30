@@ -166,6 +166,36 @@ export interface VcsHistoryEntry {
      * on a long-lived project a few hundred round trips.
      */
     kind?: VcsRevisionKind;
+    /**
+     * What the revision says it is, as its author wrote it.
+     *
+     * Read from the same per-revision metadata call as {@link kind} and gated by the
+     * same flag, so it costs nothing extra once kinds are asked for.
+     *
+     * Optional because it genuinely can be missing: nothing in the backend obliges a
+     * revision to carry a message, and one written by another client carries whatever
+     * that client wrote. Absent must render as absent - an empty string here would show
+     * as a commit with a blank title rather than as one that did not say.
+     */
+    message?: string;
+    /**
+     * When the revision was made, in **epoch milliseconds** (UTC).
+     *
+     * Milliseconds is measured, not assumed: the backend records this key as its
+     * numeric metadata type and the value read back off a fresh commit falls inside the
+     * wall-clock window around it in ms. Reading it as seconds dates every revision to
+     * January 1970; reading a seconds value as ms lands it in the year 56000. Either
+     * looks like a UI defect forever.
+     */
+    timestamp?: number;
+    /**
+     * Who the backend recorded as the committer.
+     *
+     * A free-form identity string, not an account: it is whatever the committing client
+     * was configured with, so it can be a name, an email, or Studio's own fallback for
+     * a project whose author name is unset.
+     */
+    author?: string;
 }
 
 export interface VcsBlobRequest {
