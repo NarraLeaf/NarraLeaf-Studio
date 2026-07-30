@@ -92,7 +92,7 @@ export class VcsInitRepositoryHandler extends IPCHandler<IPCEventType.vcsInitRep
  * Long, and the failure has to reach the author: this settles the window's auto-save
  * debt, stages the whole project, commits, and forces Lore's stores to disk before
  * answering, because a commit reported before that flush is one that may not survive
- * the process. "Nothing has changed since the last revision" comes back as a failure
+ * the process. "Nothing has changed since the last version" comes back as a failure
  * too - it is the answer, phrased so the author can read it.
  */
 export class VcsCommitHandler extends IPCHandler<IPCEventType.vcsCommit> {
