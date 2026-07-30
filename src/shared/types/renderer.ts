@@ -213,8 +213,12 @@ export interface RendererPreloadedInterface {
          * disabled controls in the top bar are affordance, not enforcement. Reported on every change
          * AND once at startup: the renderer's latch is module-level and not persisted, so a window
          * that reloads mid-freeze has to clear what main still believes.
+         *
+         * `revision` accompanies a `"revision"` freeze, because Dev Mode is not refused - it compiles
+         * that revision, and main cannot find it from the kind alone. Omitting it makes main refuse the
+         * launch instead of running the working tree.
          */
-        reportWriteFreeze(reason: WorkspaceFreezeKind | null): void;
+        reportWriteFreeze(reason: WorkspaceFreezeKind | null, revision?: RevisionId): void;
         /** Main asking this workspace to reveal a surface on the Settings window's behalf. */
         onOpenViewRequest(handler: (view: WorkspaceViewRequest) => void): AppEventToken;
     };
@@ -348,7 +352,11 @@ export interface RendererPreloadedInterface {
          * is a success, because an empty revision per interval is not history.
          */
         checkpoint(projectPath: string, reason: VcsCheckpointReason): Promise<RequestStatus<{ revision: VcsCommitResult | null }>>;
-        /** `includeKinds` costs one call per revision; leave it off unless kinds are shown. */
+        /**
+         * `includeKinds` costs one call per revision; leave it off unless kinds are shown.
+         * The same call carries `message`, `timestamp` and `author`, so asking for kinds
+         * gets those too.
+         */
         getHistory(projectPath: string, limit?: number, includeKinds?: boolean): Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>>;
         /** File contents at a revision, base64-encoded. */
         readBlob(projectPath: string, revision: RevisionId, path: string): Promise<RequestStatus<{ contentBase64: string }>>;
