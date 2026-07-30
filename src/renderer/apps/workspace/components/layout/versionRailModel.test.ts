@@ -11,7 +11,9 @@ import {
     findRevisionRow,
     flattenFirstParent,
     focusedRevision,
+    hasMoreHistory,
     hiddenCheckpointCount,
+    nextHistoryLimit,
     isCommitFormPresent,
     isVersionSurfaceVisible,
     resolveVersionRailPresence,
@@ -619,6 +621,92 @@ describe("buildChangeList", () => {
         expect(Number.isInteger(VERSION_CHANGE_LIST_LIMIT)).toBe(true);
         expect(VERSION_CHANGE_LIST_LIMIT).toBeGreaterThan(0);
         expect(buildChangeList([change("a.json")]).rows).toHaveLength(1);
+    });
+});
+
+/**
+ * The paging judgement, which is the one thing in this feature that is easy to get quietly wrong.
+ *
+ * "Is there more history" is answered from the RAW entry count, never from the rows on screen, and
+ * the two are nowhere near each other: a read of fifty entries can draw three rows. Getting it
+ * backwards does not look like a bug - it looks like a project that ends where it does not, and the
+ * author has no way to tell it is lying.
+ */
+describe("hasMoreHistory", () => {
+    it("offers more when the read filled its limit", () => {
+        expect(hasMoreHistory({ limit: 50, received: 50 })).toBe(true);
+    });
+
+    it("stops when the read came back short, which is how a history ends", () => {
+        expect(hasMoreHistory({ limit: 50, received: 37 })).toBe(false);
+    });
+
+    it("stops on an empty read", () => {
+        expect(hasMoreHistory({ limit: 50, received: 0 })).toBe(false);
+    });
+
+    it("stops when the read asked for everything, because there is no 'more' than all", () => {
+        // 0 is `VersionControlService.getHistory`'s "all of them", so a full answer is the whole
+        // history and a `received >= limit` comparison against it would be true forever.
+        expect(hasMoreHistory({ limit: 0, received: 0 })).toBe(false);
+        expect(hasMoreHistory({ limit: 0, received: 400 })).toBe(false);
+    });
+
+    it("keeps offering when a full page of entries collapses to three rows", () => {
+        // The regression this predicate exists for. Fifty revisions, forty-seven of them the
+        // 15-minute timer's - which is an ORDINARY writing day, not a corner case. The rail draws
+        // three rows; counting them would tell the author their project starts here while hundreds
+        // of revisions sit unread behind it.
+        const page: VcsHistoryEntry[] = [];
+        for (let number = 50; number >= 1; number--) {
+            const parents = number > 1 ? [`r${number - 1}`] : [];
+            // Three real commits, at the top, the middle and the bottom of the page.
+            const kind = number === 50 || number === 25 || number === 1 ? "commit" : "checkpoint";
+            page.push(entry(number, `r${number}`, parents, kind));
+        }
+
+        const rows = collapseCheckpoints(flattenFirstParent(page));
+        expect(page).toHaveLength(50);
+        expect(rows).toHaveLength(3);
+        expect(hasMoreHistory({ limit: 50, received: page.length })).toBe(true);
+    });
+
+    it("keeps offering when the first-parent walk drops most of the page", () => {
+        // The other half of the same trap, and it does not need checkpoints at all: everything
+        // reachable only through a second parent is dropped by `flattenFirstParent`, so a page full
+        // of a merged-in branch's revisions walks to three rows with no collapse involved.
+        const page: VcsHistoryEntry[] = [
+            entry(50, "c", ["b", "s48"]),
+            entry(49, "b", ["a"]),
+            entry(1, "a"),
+        ];
+        for (let number = 48; number >= 2; number--) {
+            page.push(entry(number, `s${number}`, [number > 2 ? `s${number - 1}` : "a"]));
+        }
+
+        expect(page).toHaveLength(50);
+        expect(flattenFirstParent(page)).toHaveLength(3);
+        expect(hasMoreHistory({ limit: 50, received: page.length })).toBe(true);
+    });
+
+    it("does not go quiet if a read answers with more than was asked for", () => {
+        // A limit is a ceiling the backend honours, not a promise it makes. Being wrong in this
+        // direction would hide the way further back outright, so the comparison is >= not ===.
+        expect(hasMoreHistory({ limit: 50, received: 51 })).toBe(true);
+    });
+});
+
+describe("nextHistoryLimit", () => {
+    it("grows by a whole step each time", () => {
+        expect(nextHistoryLimit(50, 50)).toBe(100);
+        expect(nextHistoryLimit(100, 50)).toBe(150);
+    });
+
+    it("grows from the limit that was requested, not from what came back", () => {
+        // The caller passes the REQUESTED limit. Feeding a short answer's length in here instead
+        // would make the window shrink on the very press meant to widen it - which is why the
+        // surface keeps the two numbers side by side rather than deriving one from the rows.
+        expect(nextHistoryLimit(150, 50)).toBe(200);
     });
 });
 

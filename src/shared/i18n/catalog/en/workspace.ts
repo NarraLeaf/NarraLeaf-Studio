@@ -398,6 +398,11 @@ export const workspace = {
             noHistory: "No versions yet",
             history: "History",
             loadingHistory: "Reading the version history…",
+            // The end of the list, when the read stopped at its limit rather than at the beginning
+            // of the project. Says what the author gets, not how it is fetched - "load more" would
+            // describe the mechanism, and the mechanism (re-read with a larger limit) is not
+            // something they should have to know about.
+            loadMoreHistory: "Show older versions",
             // The first read of a revision on a project with a remote fetches it over the network,
             // so this is a real wait rather than a courtesy spinner.
             loadingRevision: "Opening that version…",
