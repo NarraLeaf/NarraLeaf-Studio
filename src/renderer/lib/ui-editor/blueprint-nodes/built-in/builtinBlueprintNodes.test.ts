@@ -343,6 +343,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     getChoiceCount: () => 0,
                     isNvlMode: () => false,
                     isCurrentTextRead: () => false,
+                    isTextRead: () => false,
                     clearTextRead: async () => undefined,
                     choose: async () => undefined,
                     next: async () => undefined,
@@ -353,6 +354,13 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     setSentenceSpeed: async () => undefined,
                     getPreference: () => 0,
                     setPreference: async () => undefined,
+                },
+                sound: {
+                    play: async () => null,
+                    stop: async () => undefined,
+                    pause: async () => undefined,
+                    resume: async () => undefined,
+                    isPlaying: () => false,
                 },
                 devtools: {
                     log: () => undefined,
@@ -465,6 +473,7 @@ function createPageNavigationHostAdapter(
                     getChoiceCount: () => 0,
                     isNvlMode: () => false,
                     isCurrentTextRead: () => false,
+                    isTextRead: () => false,
                     clearTextRead: async () => undefined,
                     choose: async () => undefined,
                     next: async () => undefined,
@@ -475,6 +484,13 @@ function createPageNavigationHostAdapter(
                     setSentenceSpeed: async () => undefined,
                     getPreference: () => 0,
                     setPreference: async () => undefined,
+                },
+                sound: {
+                    play: async () => null,
+                    stop: async () => undefined,
+                    pause: async () => undefined,
+                    resume: async () => undefined,
+                    isPlaying: () => false,
                 },
                 devtools: {
                     log: () => undefined,
@@ -587,6 +603,7 @@ function createGameSaveHostAdapter(options: {
                     getChoiceCount: () => options.choiceCount ?? 0,
                     isNvlMode: () => options.nvlMode ?? false,
                     isCurrentTextRead: () => options.textRead ?? false,
+                    isTextRead: () => false,
                     clearTextRead: async () => {
                         options.clearTextReadCalls?.push(true);
                     },
@@ -615,6 +632,13 @@ function createGameSaveHostAdapter(options: {
                     setPreference: async (key, value) => {
                         options.preferenceWrites?.push({ key, value });
                     },
+                },
+                sound: {
+                    play: async () => null,
+                    stop: async () => undefined,
+                    pause: async () => undefined,
+                    resume: async () => undefined,
+                    isPlaying: () => false,
                 },
                 devtools: {
                     log: () => undefined,
@@ -2492,9 +2516,17 @@ describe("built-in blueprint nodes", () => {
         expect(gameReadyHead?.role).toBe("eventHead");
         expect(gameReadyHead?.scope).toEqual({ ownerKinds: ["globalMain"] });
         expect(gameReadyHead?.pins.map(pin => pin.id)).toEqual(["then"]);
-        expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_START_STORY)?.pins.map(pin => pin.id)).toEqual([
+        // The three optional target pins are what let a data-driven screen (a
+        // recollection list) pick the scene at runtime; the pickers stay for the
+        // hand-authored "New Game" case.
+        const startStory = gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_START_STORY);
+        expect(startStory?.pins.map(pin => pin.id)).toEqual([
             "in",
+            "storyId",
+            "sceneId",
+            "startBlockId",
         ]);
+        expect(startStory?.pins.filter(pin => pin.id !== "in").every(pin => pin.optional)).toBe(true);
         expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG)?.pins.map(pin => pin.id)).toEqual([
             "nametag",
         ]);

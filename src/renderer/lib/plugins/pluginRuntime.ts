@@ -17,6 +17,7 @@ import {
     type PluginCleanup,
     type PluginMessageBundle,
     type PluginTranslator,
+    type PluginVoiceUnitEntry,
 } from "@/plugin";
 import type { BlueprintNodeDef } from "@/lib/ui-editor/blueprint-nodes/types";
 import type {
@@ -29,6 +30,10 @@ import { isActionMenuAction, isActionMenuSeparator } from "@/apps/workspace/comp
 import type { ActionGroup, ActionMenuItem } from "@/apps/workspace/registry/types";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
+import { VoiceService } from "@/lib/workspace/services/voice/VoiceService";
+import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
+import { extractVoiceableRows } from "@/lib/workspace/services/voice/voiceModel";
+import { listSceneIdsInDocumentOrder } from "@shared/types/story/order";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
@@ -593,6 +598,25 @@ export function createPluginApp(
                 has: type => widgetModuleRegistry.has(type),
             },
             story: {
+                listStories: () => story.listStories().map(entry => ({
+                    id: entry.id,
+                    name: entry.name,
+                })),
+                listScenes: async storyId => {
+                    const id = storyId.trim();
+                    if (!id) {
+                        return [];
+                    }
+                    // A story the author has not opened yet is not in memory;
+                    // load it rather than reporting it as having no scenes.
+                    const document = await story.loadStory(id);
+                    return listSceneIdsInDocumentOrder(document).flatMap(sceneId => {
+                        const scene = document.scenes[sceneId];
+                        return scene
+                            ? [{ id: scene.id, name: scene.name || scene.runtimeName || scene.id, storyId: id }]
+                            : [];
+                    });
+                },
                 actions: {
                     register: registration => {
                         assertOwnedId(descriptor.plugin.id, registration.id ?? "", "story action");
@@ -602,6 +626,64 @@ export function createPluginApp(
                         assertOwnedId(descriptor.plugin.id, registration.id ?? "", "story action");
                         return trackReturn(story.registerPluginAction(registration));
                     })),
+                },
+            },
+            voice: {
+                /**
+                 * Every recorded take, joined to the line it voices so the
+                 * author recognises it by text rather than by unit id.
+                 *
+                 * A project with no voice configured yields an empty list, not
+                 * an error: "no voice yet" is a normal state for a plugin panel
+                 * offering to curate it.
+                 */
+                listUnits: async localeCode => {
+                    const voice = ctx.services.get<VoiceService>(Services.Voice);
+                    const locales = voice.getConfiguration().voicedLocales;
+                    const wanted = localeCode?.trim()
+                        ? locales.filter(entry => entry.code === localeCode.trim())
+                        : locales;
+                    if (wanted.length === 0) {
+                        return [];
+                    }
+                    // Line text lives in the story documents, keyed by the same
+                    // unit id the voice table uses.
+                    const characters = ctx.services.get<CharacterService>(Services.Character);
+                    // The row carries a character *id*; a plugin panel showing a
+                    // UUID where a speaker's name belongs is unusable, so it is
+                    // resolved here and falls back to the id only if the
+                    // character was deleted.
+                    const speakerName = (characterId: string | undefined): string | null => {
+                        if (!characterId) {
+                            return null;
+                        }
+                        return characters.getCharacter(characterId)?.profile.getName() || characterId;
+                    };
+                    const rowsByUnitId = new Map<string, { text: string; character: string | null }>();
+                    for (const entry of story.listStories()) {
+                        const document = await story.loadStory(entry.id);
+                        for (const row of extractVoiceableRows(document)) {
+                            rowsByUnitId.set(row.unitId, {
+                                text: row.sourceText,
+                                character: speakerName(row.characterId),
+                            });
+                        }
+                    }
+                    const units: PluginVoiceUnitEntry[] = [];
+                    for (const locale of wanted) {
+                        const document = await voice.loadDocument(locale.code);
+                        for (const [unitId, unit] of Object.entries(document.units)) {
+                            const line = rowsByUnitId.get(unitId);
+                            units.push({
+                                unitId,
+                                locale: locale.code,
+                                text: line?.text ?? "",
+                                character: line?.character ?? null,
+                                durationSec: unit.duration ?? null,
+                            });
+                        }
+                    }
+                    return units;
                 },
             },
             blueprintNodes: {

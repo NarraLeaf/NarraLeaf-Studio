@@ -8,7 +8,7 @@ import {
     type ReactNode,
 } from "react";
 import { Handle, Position, useReactFlow, type NodeProps } from "@xyflow/react";
-import { Image as ImageIcon, Keyboard as KeyboardIcon, Link2, Minus, Plus, X } from "lucide-react";
+import { Image as ImageIcon, Keyboard as KeyboardIcon, Link2, Minus, Music, Plus, X } from "lucide-react";
 import type { BlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import {
     BLUEPRINT_NODE_PARAM_DISPLAYABLE_ANIMATION_FROM_EXPLICIT,
@@ -168,6 +168,91 @@ function useImageAssetDisplayName(assetId: string | null): string | null {
         const assetsService = context.services.get<AssetsService>(Services.Assets);
         return assetsService.getAssets()[AssetType.Image]?.[assetId]?.name ?? null;
     }, [assetId, context]);
+}
+
+/**
+ * Audio has no thumbnail, so its picker is a name row rather than the image
+ * card below. Stores a bare asset-id string: unlike images there is no existing
+ * envelope wire format for audio to match.
+ */
+function AudioAssetPickerRow({
+    value,
+    onChange,
+    disabled = false,
+}: {
+    value: unknown;
+    onChange?: (assetId: string | null) => void;
+    disabled?: boolean;
+}) {
+    const { t } = useTranslation();
+    const assetId = typeof value === "string" && value.trim() ? value.trim() : null;
+    const [selectorOpen, setSelectorOpen] = useState(false);
+    const anchorRef = useRef<HTMLButtonElement | null>(null);
+    let context: ReturnType<typeof useWorkspace>["context"] | null = null;
+    try {
+        context = useWorkspace().context;
+    } catch {
+        context = null;
+    }
+    const assetName = useMemo(() => {
+        if (!assetId || !context) {
+            return null;
+        }
+        const assetsService = context.services.get<AssetsService>(Services.Assets);
+        return assetsService.getAssets()[AssetType.Audio]?.[assetId]?.name ?? null;
+    }, [assetId, context]);
+
+    return (
+        <div
+            className="nodrag min-w-0"
+            onMouseDown={stopFlowNodePointerBubble}
+            onPointerDown={stopFlowNodePointerBubble}
+        >
+            <button
+                ref={anchorRef}
+                type="button"
+                disabled={disabled}
+                title={assetName ?? undefined}
+                className={`flex w-full min-w-0 items-center gap-1.5 rounded-md border border-edge bg-surface px-2 py-1 text-left text-2xs ${
+                    disabled ? "cursor-default opacity-80" : "hover:border-primary/35 hover:bg-fill-subtle"
+                }`}
+                onClick={() => setSelectorOpen(true)}
+            >
+                <Music size={11} className="shrink-0 text-fg-subtle" />
+                <span className={`min-w-0 flex-1 truncate ${assetId ? "text-fg" : "text-fg-subtle"}`}>
+                    {assetId
+                        ? assetName ?? t("blueprint.image.missing")
+                        : t("blueprint.image.select")}
+                </span>
+                {assetId && !disabled && (
+                    <span
+                        role="button"
+                        tabIndex={-1}
+                        aria-label={t("common.clear")}
+                        className="shrink-0 text-fg-subtle hover:text-danger"
+                        onClick={event => {
+                            event.stopPropagation();
+                            onChange?.(null);
+                        }}
+                    >
+                        <X size={10} />
+                    </span>
+                )}
+            </button>
+            <AssetSelector
+                visible={selectorOpen}
+                assetType={AssetType.Audio}
+                multiple={false}
+                anchorRef={anchorRef}
+                selectedIds={assetId ? [assetId] : []}
+                onClose={() => setSelectorOpen(false)}
+                onConfirm={assets => {
+                    onChange?.(assets[0]?.id ?? null);
+                    setSelectorOpen(false);
+                }}
+            />
+        </div>
+    );
 }
 
 function ImageAssetPickerCard({
@@ -1264,6 +1349,8 @@ function InspectorParamOnCard({
                 <BlueprintColorValueControl value={raw} onChange={v => onPatchNodeParam(nodeId, spec.key, v)} />
             ) : spec.kind === "imageAsset" ? (
                 <ImageAssetPickerCard value={raw} onChange={v => onPatchNodeParam(nodeId, spec.key, v)} />
+            ) : spec.kind === "audioAsset" ? (
+                <AudioAssetPickerRow value={raw} onChange={v => onPatchNodeParam(nodeId, spec.key, v)} />
             ) : spec.kind === "keyboardBinding" ? (
                 <KeyboardBindingCardControl value={raw} onChange={v => onPatchNodeParam(nodeId, spec.key, v)} />
             ) : spec.kind === "buttonCursor" ? (

@@ -101,6 +101,8 @@ import {
     BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
     BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN,
+    BLUEPRINT_NODE_TYPE_SOUND_IS_PLAYING,
+    BLUEPRINT_NODE_TYPE_SOUND_PLAY,
     BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_FN_HEAD,
     BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD,
@@ -2367,6 +2369,10 @@ function resolveSelfOutput(
             selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW ||
             selfNode.type === BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET ||
             selfNode.type === BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN ||
+            // Sound transport: Play Sound publishes `handle`, Is Sound Playing
+            // publishes `isPlaying`.
+            selfNode.type === BLUEPRINT_NODE_TYPE_SOUND_PLAY ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_SOUND_IS_PLAYING ||
             // Localization getters are latent and all publish onto a `value` pin.
             selfNode.type === BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_CURRENT_LANGUAGE ||
             selfNode.type === BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT ||
@@ -2381,6 +2387,8 @@ function resolveSelfOutput(
             portId === "preview" ||
             portId === "entries" ||
             portId === "isFullscreen" ||
+            portId === "handle" ||
+            portId === "isPlaying" ||
             portId === "count")
     ) {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
