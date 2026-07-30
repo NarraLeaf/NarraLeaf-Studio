@@ -3,6 +3,7 @@ import type { StoryBlock } from "@shared/types/story";
 import { parseCommandLine } from "../../storyCommandParser";
 import { resolveCommandLine, type StoryCommandContext } from "../../storyCommandResolution";
 import { getCommandSpec, listCommandSpecs } from "../registry";
+import { opensInspectorAfterCommit } from "../spec";
 import { declarationFromArgs } from "./variables";
 
 /**
@@ -456,6 +457,24 @@ describe("logic and effects", () => {
         expect(build("/camera pan")).toMatchObject({ payload: { operation: "pan", position: { xalign: 0.5 } } });
         // The operation is the required core (B9): a bare `/camera` has nothing to commit.
         expect(getCommandSpec("camera")?.params.op.core).toBe(true);
+    });
+
+    it("/camera motion commits an unbound Story Motion ref and routes only that line to the inspector", () => {
+        // The knob for `motion` is a motion ASSET, which no command line can name - so the line lands
+        // the ref in animation mode and the inspector does the picking. The other five operations are
+        // complete as typed, and yanking the caret out of those rows would stop the author mid-flow;
+        // hence a predicate rather than the spec-wide boolean `/fx` and `/vfx` use.
+        const shot = build("/camera motion");
+        expect(shot).toMatchObject({
+            kind: "action",
+            payload: { action: "camera", operation: "motion", motion: { mode: "animation" } },
+        });
+        const spec = getCommandSpec("camera");
+        expect(opensInspectorAfterCommit(spec, shot)).toBe(true);
+        expect(opensInspectorAfterCommit(spec, build("/camera zoom 1.5"))).toBe(false);
+        expect(opensInspectorAfterCommit(spec, build("/camera reset"))).toBe(false);
+        // `/camera shot` is the alias, and it resolves to the canonical operation (bible B6).
+        expect(build("/cam shot")).toMatchObject({ payload: { action: "camera", operation: "motion" } });
     });
 
     it("/vfx places a looping overlay and names it off the clip", () => {
