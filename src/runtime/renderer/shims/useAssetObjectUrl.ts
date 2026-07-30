@@ -10,7 +10,13 @@ type AssetObjectUrlState = {
     error: string | null;
 };
 
-export function useAssetObjectUrl(assetId?: string | null): AssetObjectUrlState {
+/**
+ * `assetType` exists only to match the workspace hook's signature. The packaged game resolves every
+ * asset through one id-keyed protocol handler (`nlgame://asset/<id>`), which serves whatever the
+ * pack manifest says the bytes are - so the pool a Studio author picked from is not information the
+ * runtime needs, or has.
+ */
+export function useAssetObjectUrl(assetId?: string | null, _assetType?: unknown): AssetObjectUrlState {
     const [state, setState] = useState<AssetObjectUrlState>({
         url: null,
         metadata: null,
