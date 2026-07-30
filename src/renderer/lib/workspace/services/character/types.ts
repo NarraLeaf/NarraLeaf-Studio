@@ -1,5 +1,7 @@
 import type { NormalizedCrop } from "@/lib/utils/headCrop";
 import type { PsdFingerprint } from "@shared/types/psdImport";
+import type { PuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
+import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
 
 /** A portrait framing rect in normalized (0–1) image coordinates — the same shape as {@link NormalizedCrop}. */
 export type PortraitCrop = NormalizedCrop;
@@ -59,29 +61,18 @@ export interface CharacterEditorProfile extends CharacterBaseProfile {
 }
 
 /**
- * How a character's sprite is built. Chosen when the character is created; changing it is a cold
- * switch that discards the previous kind's data, because the two carry nothing in common and there
- * is no conversion between them (user ruling 2026-07-26).
- *
- * - `preset` — N finished sprites, one per named pose. N = 1 is the plain single-image character.
- * - `layered` — a stack of layers composited at runtime and switched by tag.
- * - `puppet` — a box on the stage whose interior an author-supplied runtime draws.
+ * The kind vocabulary lives in `@shared/utils/characterAppearanceKinds` because shared code reads it
+ * too (`characterSummaries.ts` maps a stored appearance into the Dev Mode bundle). Re-exported here
+ * so this module stays the one place the character model is imported from — every shape below is
+ * still owned here.
  */
-export type CharacterAppearanceKind = "preset" | "layered" | "puppet";
-
-/**
- * Every kind the current model knows, in one place.
- *
- * Enumerated rather than inferred because two loaders check it and they must agree: the appearance
- * constructor (which falls back to an empty preset) and the store migration (which reads an
- * unrecognised kind as the *pre-rework* store and rewrites it). A kind added to the union but not
- * to this list is therefore not merely unhandled — it is deleted on the next load.
- */
-export const CHARACTER_APPEARANCE_KINDS: readonly CharacterAppearanceKind[] = ["preset", "layered", "puppet"];
-
-export function isCharacterAppearanceKind(value: unknown): value is CharacterAppearanceKind {
-    return CHARACTER_APPEARANCE_KINDS.includes(value as CharacterAppearanceKind);
-}
+export type { CharacterAppearanceKind, PuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
+export {
+    CHARACTER_APPEARANCE_KINDS,
+    PUPPET_APPEARANCE_KINDS,
+    isCharacterAppearanceKind,
+    isPuppetAppearanceKind,
+} from "@shared/utils/characterAppearanceKinds";
 
 /**
  * Everything an author can rename is an `{ id, name }` pair, and the `id` is what everything else
@@ -213,7 +204,13 @@ export interface CharacterSnapshot extends CharacterNamed {
  * profile-level `defaultAvatarAssetId` is a puppet character's avatar.
  */
 export interface PuppetAppearance {
-    kind: "puppet";
+    /**
+     * Which runtime this character was created for. One of three names for one shape — see
+     * {@link PuppetAppearanceKind}. It is *not* a renderer-specific field in the sense the comment
+     * above rules out: it names the runtime the author chose, exactly as `backend` does, and carries
+     * no knob any renderer defines.
+     */
+    kind: PuppetAppearanceKind;
     /**
      * The model asset. Null until the author picks one, and a puppet with no model compiles to
      * nothing — the engine's `src` is required and there is no meaningful empty value for it.
@@ -266,6 +263,19 @@ export interface PuppetDefaultState {
 }
 
 export type ICharacterAppearance = PresetAppearance | LayeredAppearance | PuppetAppearance;
+
+/**
+ * Narrow an appearance to the puppet arm.
+ *
+ * Distinct from {@link isPuppetAppearanceKind}, which answers about a kind *string* and therefore
+ * cannot narrow the object holding it — a predicate on `appearance.kind` tells TypeScript nothing
+ * about `appearance`. Every place that used to discriminate with `kind === "puppet"` needs this one
+ * instead, and the three-way `||` it replaces would have to be kept in step with
+ * `PUPPET_APPEARANCE_KINDS` by hand.
+ */
+export function isPuppetAppearance(appearance: ICharacterAppearance | null | undefined): appearance is PuppetAppearance {
+    return isPuppetAppearanceKind(appearance?.kind);
+}
 
 /** A chosen tag per axis, keyed by axis id. Partial selections are legal and mean "leave the rest". */
 export type CharacterTagSelection = Record<string, string>;

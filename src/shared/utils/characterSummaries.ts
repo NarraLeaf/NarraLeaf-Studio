@@ -3,6 +3,7 @@ import type {
     CharacterAvatarSummaryEntry,
     DevModeCharacterSummary,
 } from "@shared/types/devMode";
+import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
 
 function trimmed(value: unknown): string {
     return typeof value === "string" ? value.trim() : "";
@@ -61,7 +62,12 @@ function named(entry: unknown): { id: string; name: string } | null {
 function mapAppearance(appearance: unknown): CharacterAppearanceSummary {
     const kind = (appearance as { kind?: unknown } | null)?.kind;
 
-    if (kind === "puppet") {
+    // All three puppet kinds collapse onto one summary arm on purpose. `live2d` / `spine` / `puppet`
+    // are the same shape, and the distinction is an *authoring* one — which runtime the author picked,
+    // so Studio can say what is missing before a model exists. Downstream of here nothing can act on
+    // it: the engine resolves a puppet by its `backend` name and has no concept of a product, so a
+    // fourth summary arm per runtime would be a distinction the runtime cannot observe.
+    if (isPuppetAppearanceKind(kind)) {
         const raw = appearance as {
             assetId?: unknown;
             backend?: unknown;

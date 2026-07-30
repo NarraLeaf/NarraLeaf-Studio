@@ -40,6 +40,7 @@ import { useWorkspace } from "@/apps/workspace/context";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import type { Character } from "@/lib/workspace/services/character/Character";
+import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
 import { Select, type SelectOption } from "@/lib/components/elements";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
@@ -1413,7 +1414,7 @@ function CharacterActionEditor(props: {
                     onChange={objectName => onChange({ ...payload, objectName })}
                 />
             </FieldGrid>
-            {selectedCharacter && selectedCharacter.profile.appearance.getKind() === "puppet" ? (
+            {selectedCharacter && isPuppetAppearanceKind(selectedCharacter.profile.appearance.getKind()) ? (
                 // The third appearance kind answers "which look" with a name only the model knows, so
                 // the picker has nothing to show and a field is the honest control.
                 <Section title={t("storyInspector.section.appearance")}>
