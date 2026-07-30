@@ -339,6 +339,19 @@ export const workspace = {
             // 隐藏，正是为了给这句话留一个可悬浮的落点。
             unavailable: "项目冻结期间不可用——解除冻结后即可继续使用。",
         },
+        // 用真编辑器浏览历史，在版本轨道做出来之前的入口。故意只做「上一个版本」而不是选择器：
+        // 选版本需要一份列表，那份列表就是轨道本身；而一个人手上够不着的里程碑没法验收。
+        revisionView: {
+            showPrevious: "查看上一个版本（只读）",
+            leave: "回到当前版本",
+            loadingTitle: "正在读取上一个版本…",
+            loadingDetail: "首次读取某个版本可能需要从远端取回。",
+            shownTitle: "正在查看版本 {revision}",
+            shownDetail: "编辑器为只读，磁盘上的文件不会被改动。",
+            noneTitle: "没有更早的版本",
+            noneDetail: "这个项目只有一个版本，没有更早的内容可看。",
+            failedTitle: "无法显示该版本",
+        },
         // 快捷键自定义（设置 tab）+「?」速查浮层。
         keybindings: {
             searchPlaceholder: "搜索快捷键…",
