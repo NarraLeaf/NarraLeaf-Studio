@@ -276,7 +276,7 @@ export const widgets = {
         placeholderBackendMissing: "No runtime named “{backend}” is installed in this project.",
         placeholderLoading: "Loading the model…",
         placeholderError: "The runtime failed: {error}",
-        placeholderBudget: "Not drawn — this Surface already draws {limit} models.",
+        placeholderBudget: "Not drawn — {drawn} models are already drawn in this window.",
         placeholderRuntimeNote: "Studio ships no renderer; the author supplies one.",
     },
     rectangleInspector: {

@@ -5,10 +5,7 @@ import { useTranslation } from "@/lib/i18n";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/chrome/RectangleChromeRenderer";
 import { useSurfacePuppetSession } from "@/lib/workspace/hooks/useSurfacePuppetSession";
-import {
-    SURFACE_PUPPET_CONTEXT_BUDGET,
-    useSurfacePuppetContextLease,
-} from "@/lib/ui-editor/runtime/game/surfacePuppetContextBudget";
+import { useSurfacePuppetContextLease } from "@/lib/ui-editor/runtime/game/surfacePuppetContextBudget";
 import { getPuppetProps, puppetWidgetRequest, puppetWidgetSize, puppetWidgetState } from "./helpers";
 
 /**
@@ -113,7 +110,7 @@ const RUNTIME_NOTE_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 export function PuppetRenderer(props: WidgetRendererProps): ReactElement {
-    const { element, hostAdapter, instanceKey } = props;
+    const { element, hostAdapter } = props;
     const { t } = useTranslation();
     const puppetProps = getPuppetProps(element);
     const [box, setBox] = useState<HTMLDivElement | null>(null);
@@ -128,16 +125,17 @@ export function PuppetRenderer(props: WidgetRendererProps): ReactElement {
     const request = puppetWidgetRequest(puppetProps);
     const configured = request !== null;
 
-    /**
-     * One key per rendered instance, not per element: a `nl.list` item template renders the same
-     * element once per row, and each row is its own model holding its own context.
-     */
-    const leaseKey = instanceKey ? `${element.id}#${instanceKey}` : element.id;
     const nearViewport = useNearViewport(box);
     const visible = element.layout.visible !== false;
     const wantsContext = configured && visible && nearViewport;
-    const leased = useSurfacePuppetContextLease(leaseKey, wantsContext);
-    const denied = wantsContext && !leased;
+    /**
+     * The lease is this *instance's*, and the hook keys it that way itself - not by element id.
+     * The element-keyed version was a real defect: two renderer instances of one element (the canvas
+     * plus a Surface panel preview) shared one claim, and the first to unmount revoked the survivor's
+     * lease, which then never came back. See `surfacePuppetContextBudget.ts`.
+     */
+    const lease = useSurfacePuppetContextLease(wantsContext);
+    const denied = wantsContext && !lease.granted;
 
     const size = puppetWidgetSize(element);
     const stateKey = encodeStableJson(puppetWidgetState(puppetProps));
@@ -152,7 +150,7 @@ export function PuppetRenderer(props: WidgetRendererProps): ReactElement {
 
     const puppet = useSurfacePuppetSession({
         host: box,
-        enabled: leased,
+        enabled: lease.granted,
         request,
         state,
         size,
@@ -192,7 +190,9 @@ export function PuppetRenderer(props: WidgetRendererProps): ReactElement {
                         {t(key, {
                             backend: puppetProps.backend,
                             error: puppet.error ?? "",
-                            limit: SURFACE_PUPPET_CONTEXT_BUDGET,
+                            // The live count, never the constant: the first time those two disagreed,
+                            // the box told the author eight models were drawn while one was.
+                            drawn: lease.drawn,
                         })}
                     </span>
                     {/* Repeated on the box, because "supply your own renderer" is the single thing an
