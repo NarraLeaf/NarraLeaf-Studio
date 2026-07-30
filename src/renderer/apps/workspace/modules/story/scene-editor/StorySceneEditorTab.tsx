@@ -1652,7 +1652,6 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             addInside: parentId => latest().editor.addInsideContainer(parentId),
             addBranch: (conditionId, branch) => latest().editor.addConditionBranch(conditionId, branch),
             playFromRow: blockId => latest().playFromRow(blockId),
-            toggleLens: blockId => latest().editor.toggleContainerLens(blockId),
         };
     }, []);
 
@@ -1925,7 +1924,6 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     editInitialCaret={editor.editorMode.kind === "text" && editor.editorMode.blockId === row.block.id ? (editor.editorMode.caret ?? "end") : undefined}
                                     textInputRef={editor.textInputRef}
                                     tempSpeakers={editor.tempSpeakers}
-                                    lensActive={editor.lensContainerIds.has(row.block.id)}
                                     density={editor.density}
                                 />
                                 )}

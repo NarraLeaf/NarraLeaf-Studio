@@ -75,7 +75,7 @@ export function BlockOverview(props: {
         // sits on the same left edge as the prose it directs, so tone is the only thing left to tell
         // the two apart. Making that tone quiet — rather than a colour that competes with the words —
         // is what stops a screenful of rows reading as noise.
-        <span className="flex min-w-0 flex-1 items-center gap-1 truncate text-sm italic text-fg-muted" style={props.textStyle}>
+        <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center gap-1 truncate text-sm italic text-fg-muted" style={props.textStyle}>
             {fragments.map((fragment, index) =>
                 fragment.kind === "text"
                     ? <span key={`t${index}`} className="truncate">{fragment.text}</span>
