@@ -206,7 +206,7 @@ export function useSurfaceCanvasContextMenu(params: {
                     },
                 },
             });
-            setMenuItems(freezeContextMenuRows(items, freeze.frozen, FREEZE_READ_ONLY_CANVAS_MENU_IDS));
+            setMenuItems(freezeContextMenuRows(items, freeze.frozen, FREEZE_READ_ONLY_CANVAS_MENU_IDS, freeze.reason));
             showMenu(event);
         },
         [

@@ -10,6 +10,12 @@ export interface ContextMenuItemDef {
     /** Leading icon; when the menu has `iconsEnabled`, the column is still reserved if this is omitted. */
     icon?: ReactNode;
     disabled?: boolean;
+    /**
+     * Hover text for the row. Added for the frozen-workspace pass: a greyed row used to carry no reason
+     * at all, so the author saw half a menu switched off and nothing saying why. Putting it here rather
+     * than in the label keeps a disabled menu a menu instead of a paragraph.
+     */
+    tooltip?: string;
     onClick?: () => void;
     submenu?: ContextMenuItemDef[];
     /**
@@ -337,6 +343,7 @@ function ContextMenuItem({
                         ? "bg-primary/20 text-fg"
                         : "text-fg-muted hover:bg-fill hover:text-fg",
                 )}
+                title={item.tooltip}
                 onClick={handleClick}
                 onMouseEnter={handleMouseEnter}
                 onMouseDown={(e) => e.stopPropagation()}

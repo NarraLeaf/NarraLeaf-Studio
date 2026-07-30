@@ -11,6 +11,7 @@ import { useCompositedSprite } from "@/lib/workspace/hooks/useCompositedSprite";
 import type { NormalizedCrop } from "@/lib/utils/headCrop";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { isRowTextEditable } from "./storySceneReadOnly";
 import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
 import { getCommandGhost } from "./storyCommandGhost";
@@ -563,6 +564,10 @@ function TextEditBox(props: {
     stacked?: boolean;
 }) {
     const { t } = useTranslation();
+    // Second enforcement point for the row text (see isRowTextEditable): even with the state
+    // transitions gated, a freeze can land while a row is already open, and the field would keep taking
+    // keystrokes the browser applies on its own.
+    const freeze = useFreezeGuard();
     const dialoguePayload = props.block.kind === "nodeAction" && props.block.payload.action === "dialogue"
         ? props.block.payload
         : null;
@@ -710,6 +715,7 @@ function TextEditBox(props: {
                 ref={props.editorRef}
                 initialRuns={initialRuns}
                 initialCaret={props.initialCaret}
+                readOnly={!isRowTextEditable(freeze.frozen)}
                 // Edit in place, VS Code style: no box, no sunken background, no horizontal padding — the
                 // caret lands exactly where the read-only text sat. The active/selected row highlight is
                 // the "you are here" signal, so the field needs none of its own. See the interaction model.
@@ -801,6 +807,9 @@ function TextEditBox(props: {
  */
 function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; active: boolean }) {
     const { t } = useTranslation();
+    // The two buttons that sit on every hovered row. Greyed with the freeze reason rather than hidden:
+    // a row whose end cluster vanished would read as a broken editor, not as a frozen project.
+    const freeze = useFreezeGuard();
     // Rendered from the bindings themselves, never spelled out: `mod` is ⌘ or Ctrl depending on the
     // platform, and a hardcoded label is how a hint drifts from the key it claims to describe.
     const isMac = isMacPlatform();
@@ -819,9 +828,9 @@ function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; ac
             <button
                 type="button"
                 tabIndex={-1}
-                title={t("story.rows.insertTitle", { keys: insertKeys })}
+                {...freeze.writes(false, t("story.rows.insertTitle", { keys: insertKeys }))}
                 aria-label={t("story.rows.insert")}
-                className="grid h-6 w-6 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-primary"
+                className="grid h-6 w-6 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-muted"
                 onClick={event => {
                     event.stopPropagation();
                     props.onInsertAfter();
@@ -832,9 +841,9 @@ function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; ac
             <button
                 type="button"
                 tabIndex={-1}
-                title={t("story.rows.deleteTitle", { keys: deleteKeys })}
+                {...freeze.writes(false, t("story.rows.deleteTitle", { keys: deleteKeys }))}
                 aria-label={t("story.rows.delete")}
-                className="grid h-6 w-6 place-items-center rounded-md text-fg-muted hover:bg-danger/10 hover:text-danger"
+                className="grid h-6 w-6 place-items-center rounded-md text-fg-muted hover:bg-danger/10 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-muted"
                 onClick={event => {
                     event.stopPropagation();
                     props.onDelete();
@@ -2373,6 +2382,9 @@ function CharacterSelectTrigger(props: {
     heading?: boolean;
 }) {
     const { t } = useTranslation();
+    // A frozen row keeps its nametag readable and stops offering the picker, which is also the way a
+    // new character gets created from a typed name.
+    const freeze = useFreezeGuard();
     const rootRef = useRef<HTMLDivElement | null>(null);
     const pickerRef = useRef<HTMLDivElement | null>(null);
     const inputRef = useRef<HTMLInputElement | null>(null);
@@ -2470,6 +2482,7 @@ function CharacterSelectTrigger(props: {
                         event.preventDefault();
                         event.stopPropagation();
                     }}
+                    {...freeze.writes()}
                     onClick={event => {
                         event.stopPropagation();
                         beginEditing();
