@@ -5,6 +5,8 @@ import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import {
     getVideoPreviewRestartGeneration,
     isVideoPreviewPlaying,
+    releaseVideoPreviewPlayback,
+    setVideoPreviewPlaying,
     subscribeVideoPreviewPlayback,
 } from "@/lib/ui-editor/interaction/videoPreviewPlayback";
 import { getVideoProps } from "./helpers";
@@ -72,6 +74,14 @@ export function VideoRenderer(props: WidgetRendererProps) {
     const preview = useVideoPreviewState(element.id, !isLiveHost);
     const shouldPlay = isLiveHost ? videoProps.autoplay : preview.playing;
 
+    // Nothing else gives the preview store a lifetime - see `releaseVideoPreviewPlayback`.
+    useEffect(() => {
+        if (isLiveHost) {
+            return;
+        }
+        return () => releaseVideoPreviewPlayback(element.id);
+    }, [element.id, isLiveHost]);
+
     // A paused canvas still has to show something, so metadata is fetched even when the author asked
     // for `preload="none"` - otherwise the widget is an empty box until the game runs.
     const preload = isLiveHost ? videoProps.preload : "metadata";
@@ -92,7 +102,9 @@ export function VideoRenderer(props: WidgetRendererProps) {
         }
         node.currentTime = 0;
         // Only the generation change is meaningful; the first render must not rewind a live preview.
-    }, [preview.restartGeneration, isLiveHost]);
+        // `sourceUrl` is a dependency because there is no `<video>` to rewind until it resolves: a
+        // restart clicked while the blob URL was still loading used to be dropped on the floor.
+    }, [preview.restartGeneration, isLiveHost, sourceUrl]);
 
     useEffect(() => {
         const node = videoRef.current;
@@ -126,6 +138,13 @@ export function VideoRenderer(props: WidgetRendererProps) {
                     // Never `autoPlay`: on the canvas playback is driven by the docker bar, and in a
                     // live host by the effect above, which can also react to a later prop change.
                     autoPlay={false}
+                    // The clip can stop without the store being told - it reaches its end with
+                    // `loop` off, or the author pauses it with the native control strip - and then
+                    // the docker bar offers Pause over a stopped video and replaying takes two
+                    // clicks. Reporting back is what keeps the button honest.
+                    onEnded={isLiveHost ? undefined : () => setVideoPreviewPlaying(element.id, false)}
+                    onPause={isLiveHost ? undefined : () => setVideoPreviewPlaying(element.id, false)}
+                    onPlay={isLiveHost ? undefined : () => setVideoPreviewPlaying(element.id, true)}
                 />
             ) : null}
         </RectangleChromeRenderer>

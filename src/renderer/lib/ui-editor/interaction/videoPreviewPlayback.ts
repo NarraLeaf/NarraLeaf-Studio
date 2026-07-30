@@ -70,7 +70,29 @@ export function subscribeVideoPreviewPlayback(listener: Listener): () => void {
     };
 }
 
-/** Test seam; also used when a Surface editor tears down so a reopened canvas starts paused. */
+/**
+ * Forget one widget, called when its renderer unmounts.
+ *
+ * This is what actually keeps the "opens paused" ruling true, and it has to hang off the renderer's
+ * lifetime because nothing else here has one: switching Surfaces, closing the editor tab and
+ * deleting the element all unmount the renderer and none of them notify this module. Without it the
+ * set is also unbounded - an id enters on the first Play and never leaves for the rest of the
+ * session - so returning to a Surface replayed every clip the author had ever started on it, which
+ * is the wall of moving pictures the ruling exists to prevent.
+ *
+ * Safe under `React.StrictMode` (on in dev, `renderApp.tsx:105`): its mount / cleanup / mount
+ * sequence is synchronous, so the only thing the intervening cleanup can discard is state nobody
+ * has had the chance to set.
+ */
+export function releaseVideoPreviewPlayback(elementId: string): void {
+    const had = playingElementIds.delete(elementId);
+    const hadGeneration = restartGenerationByElementId.delete(elementId);
+    if (had || hadGeneration) {
+        emit();
+    }
+}
+
+/** Test seam only. Production clears per element through {@link releaseVideoPreviewPlayback}. */
 export function resetVideoPreviewPlayback(): void {
     const had = playingElementIds.size > 0 || restartGenerationByElementId.size > 0;
     playingElementIds.clear();
