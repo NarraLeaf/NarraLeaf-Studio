@@ -7,6 +7,7 @@ import { VersionControlService } from "@/lib/workspace/services/core/VersionCont
 import { NotificationType } from "@/lib/workspace/services/ui/types";
 import { translate } from "@/lib/i18n";
 import { useWorkspace } from "../../context";
+import { unavailableReasonKey } from "./versionRailModel";
 
 /**
  * The way into and out of the frozen workspace - and into and out of a past revision - until the
@@ -79,6 +80,21 @@ export function WorkspaceFreezeCommands() {
                 categoryKey: "workspace.shell.commandPalette.categoryVersionControl",
                 when: () => !freezeService.isFrozen(),
                 run: async () => {
+                    // Availability first, and answered in the author's own words. Every surface that
+                    // can be hidden on an unsupported host IS hidden (the rail, the widget, the status
+                    // cell all render nothing), but a palette entry's `when` is synchronous and this
+                    // answer is not, so this is the one place left where the author can ask a question
+                    // the machine cannot answer. The two messages differ because their fixes do: an
+                    // unsupported OS/arch is the machine, a missing or unloadable backend is the
+                    // installation - see `unavailableReasonKey`.
+                    const availability = await versionControl.getAvailability();
+                    if (!availability.available) {
+                        notify(
+                            translate("workspace.shell.revisionView.failedTitle"),
+                            translate(unavailableReasonKey(availability.reason)),
+                        );
+                        return;
+                    }
                     // Two entries, newest first: the head, and the one before it. Enough to reach the
                     // behaviour without a picker, and `getHistory` is cached so opening the palette
                     // repeatedly does not re-read (nor scan - see VersionControlService).

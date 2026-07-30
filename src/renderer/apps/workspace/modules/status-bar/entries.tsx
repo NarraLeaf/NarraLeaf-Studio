@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Bell, BookText, CircleDot, Keyboard, Loader2, Monitor, Moon, Sun, TriangleAlert } from "lucide-react";
+import { Bell, BookText, CircleDot, GitBranch, History, Keyboard, Loader2, Monitor, Moon, Sun, TriangleAlert } from "lucide-react";
 import { useWorkspace } from "../../context";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
@@ -17,7 +17,14 @@ import { openDashboardTab } from "../dashboard";
 import { NOTIFICATIONS_PANEL_ID } from "../notifications";
 import { StatusEntry } from "./StatusEntry";
 import { useActiveRunMode } from "./useActiveRunMode";
-import type { TranslationKey } from "@shared/i18n";
+import { useVersionSurface } from "../../hooks/useVersionSurface";
+import { openVersionRail } from "../../components/layout/versionRailController";
+import {
+    revisionLabel,
+    shortRevision,
+    type VersionSurfaceState,
+} from "../../components/layout/versionRailModel";
+import type { TranslationKey, Translator } from "@shared/i18n";
 
 const ZOOM_SETTINGS_KEY = "ui.zoomPercent";
 const THEME_SETTINGS_KEY = "ui.themeMode";
@@ -353,6 +360,65 @@ export function NotificationsEntry() {
             </span>
         </StatusEntry>
     );
+}
+
+/**
+ * The version cell: which version this window is a view of, click opens the rail.
+ *
+ * **What this shows for complex history is deliberately undecided.** Branches and merges have no
+ * agreed representation in 24px of status bar yet (plan 2026-07-28-002 §6, "状态栏那一位显示什么"), so
+ * this is built as a replaceable slot with the simple case filled in: the revision number, tinted
+ * while a past revision is on screen. {@link versionStatusText} is the seam - whatever the decision
+ * turns out to be, it replaces that function and nothing else here.
+ *
+ * Silent in exactly two states: no version control on this host (it was never shipped for this
+ * OS/arch, so a cell would be reporting on a feature that does not exist) and while the first probe
+ * is still out. It speaks up for a project with no repository, because "not under version control"
+ * is a thing the author needs to be able to notice.
+ */
+export function VersionEntry() {
+    const { t } = useTranslation();
+    // Its own reader rather than the layout's: this cell is not in the rail's tree, and the service
+    // caches availability and the head page, so a second reader costs one `isRepository` round trip
+    // at mount and nothing after. Notably it does not scan - see useVersionSurface.
+    const { state } = useVersionSurface();
+
+    if (state.kind === "unavailable" || state.kind === "probing") {
+        return null;
+    }
+    const onRevision = state.kind === "revision";
+
+    return (
+        <StatusEntry
+            emphasis={onRevision}
+            title={onRevision
+                ? t("workspace.shell.versionControl.viewingVersion", { version: versionStatusText(state, t) })
+                : t("workspace.shell.versionControl.open")}
+            onClick={openVersionRail}
+        >
+            {onRevision ? <History className="h-3 w-3" /> : <GitBranch className="h-3 w-3" />}
+            <span className="max-w-[14ch] truncate tabular-nums">{versionStatusText(state, t)}</span>
+        </StatusEntry>
+    );
+}
+
+/**
+ * The text in the cell. **The undecided part**: today it is the revision number (`#4`), or the short
+ * hash when a revision view carries no label, or a phrase for the two states with no version at all.
+ * A branch name, an ahead/behind marker or a merge indicator would all go here - and none of them is
+ * decided, which is why the rest of {@link VersionEntry} does not depend on the shape of the answer.
+ */
+function versionStatusText(state: VersionSurfaceState, t: Translator["t"]): string {
+    switch (state.kind) {
+        case "revision":
+            return state.label ?? shortRevision(state.revision);
+        case "current":
+            return state.number !== null ? revisionLabel(state.number) : shortRevision(state.head);
+        case "not-a-repository":
+            return t("workspace.shell.versionControl.notVersioned");
+        default:
+            return t("workspace.shell.versionControl.noHistory");
+    }
 }
 
 export function ShortcutsEntry() {

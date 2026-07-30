@@ -289,6 +289,7 @@ export const workspace = {
                 notifications: "Notifications",
                 theme: "Theme switcher",
                 zoom: "Zoom level",
+                version: "Version",
             },
         },
         // Save reporting: the sticky toast raised when a file cannot be written, and the lines the
@@ -366,6 +367,57 @@ export const workspace = {
             noneTitle: "There is no earlier revision",
             noneDetail: "This project has only one revision, so there is nothing earlier to show.",
             failedTitle: "Could not show that revision",
+        },
+        // The version control surfaces: the rail down the far left, the title-bar widget right of the
+        // project switcher, and the status-bar cell. All three name a VERSION and never a change
+        // count - counting needs a scan, and a scan is not a pure read (docs/version-control.md §4.17).
+        versionControl: {
+            title: "Version",
+            open: "Open the version rail",
+            collapse: "Collapse the version rail",
+            // Hover text on the collapsed rail, the widget and the status cell while a past revision is
+            // on screen. `{version}` is the revision's own label, e.g. `#4`.
+            viewingVersion: "You are looking at version {version}",
+            currentVersion: "Current version",
+            // The escape hatch, and the reason it appears in both rail states: a frozen workspace the
+            // author cannot get out of is the worst thing this feature can do to them.
+            returnToCurrent: "Return to the current version",
+            returning: "Returning to the current version…",
+            // A project with no repository. Named for what is missing, not for the mechanism.
+            notVersioned: "No version history",
+            enable: "Enable version control",
+            // One line, because enabling writes into the author's project folder and takes an
+            // exclusive lock on it - so it says what it will do before they press it.
+            enableHint: "Records a version history inside this project's folder.",
+            enabling: "Setting up version control…",
+            noHistory: "No versions yet",
+            history: "History",
+            loadingHistory: "Reading the version history…",
+            // The first read of a revision on a project with a remote fetches it over the network,
+            // so this is a real wait rather than a courtesy spinner.
+            loadingRevision: "Opening that version…",
+            showVersion: "Show this version in the editors",
+            // A revision with more than one parent. Marked rather than expanded: the rail is a linear
+            // list, and an unmarked merge would be a linear list that lies.
+            merge: "Merge",
+            changes: "Changes",
+            refreshChanges: "Check for changes",
+            // "Nobody has looked yet", which is not the same as "clean" - and the difference matters,
+            // because looking is a scan and this surface never does it on its own.
+            changesUnknown: "Not checked",
+            noChanges: "No changes",
+            changesCount: "{count} changed",
+            // Checkpoints are the ones Studio recorded on a timer; there are dozens on a writing day.
+            showCheckpoints: "Show {count} checkpoints",
+            hideCheckpoints: "Hide checkpoints",
+            // Version control is OPTIONAL - Epic ships no native backend for macOS Intel or Windows
+            // ARM64 - so these two say different things because the author can only act on one of
+            // them. Neither is rendered as a disabled control: on those machines the feature was never
+            // shipped, and a greyed rail would report a broken installation where there is none.
+            unavailable: {
+                platform: "Version control is not available on this machine.",
+                installation: "Version control is not available in this installation of Studio.",
+            },
         },
         // Keyboard-shortcut customization (Settings window → Editor) + the "?" cheat sheet overlay.
         keybindings: {

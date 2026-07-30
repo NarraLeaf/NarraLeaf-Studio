@@ -18,6 +18,9 @@ import { getVcsAvailability, requireVcsBackend, type VcsBackend } from "./backen
 // at load time. See backend.ts for why that matters.
 import type { LoreGlobals, LoreHex, StoreHandle } from "./lore";
 import type { InitRepositoryOptions } from "./repository";
+// Value import, and safe to be one: this module only touches `fs` and the working-set predicate,
+// and imports the reader for types alone.
+import { materializeRevisionSnapshot, type RevisionSnapshotResult } from "./revisionSnapshot";
 
 /**
  * Owns Lore state for open projects.
@@ -437,6 +440,13 @@ export class VcsManager extends Manager {
      * unconditionally would open with a few hundred round trips on a long-lived
      * project. A revision that records no kind comes back with none, which is a real
      * answer (the first commit predates kinds) and not a default of either one.
+     *
+     * That one call is `revisionMetadataList`, which hands back EVERY key on the
+     * revision, so the flag also fills in the message, timestamp and author. Measured on
+     * a six-revision repository (median of nine): `revisionHistory` + 6 metadata calls
+     * either way - 2.5ms without kinds, 7.1ms with, where the single-key read it replaces
+     * accounted for 4.2ms of that against the whole map's 5.6ms. Asking for the kind and
+     * then asking again for the rest would have been the only version that cost more.
      */
     public async getHistory(
         projectPath: string,
@@ -450,16 +460,20 @@ export class VcsManager extends Manager {
 
             const entries: VcsHistoryEntry[] = [];
             for (const node of ordered) {
+                // Sequential on purpose. Re-entering Lore concurrently on one store is
+                // not a contract this binding makes, and the whole point of a single
+                // reused store handle is that calls take turns on it.
+                const details = options.includeKinds
+                    ? await backend.readRevisionDetails(session.globals, node.revision)
+                    : {};
                 entries.push({
                     revision: node.revision,
                     number: node.number,
                     parents: node.parents,
-                    // Sequential on purpose. Re-entering Lore concurrently on one store
-                    // is not a contract this binding makes, and the whole point of a
-                    // single reused store handle is that calls take turns on it.
-                    kind: options.includeKinds
-                        ? await backend.readRevisionKind(session.globals, node.revision)
-                        : undefined,
+                    // Spread rather than four assignments so a key the revision does not
+                    // carry stays ABSENT instead of arriving as an explicit undefined -
+                    // which survives the IPC hop as a present-but-null field.
+                    ...details,
                 });
             }
             return entries;
@@ -541,6 +555,50 @@ export class VcsManager extends Manager {
                         && suffixes.some((suffix) => entry.path.toLowerCase().endsWith(suffix)),
                 },
             );
+        });
+    }
+
+    /**
+     * Write one revision out as a project directory the compile path can be pointed at, and answer
+     * where it landed and what it cost.
+     *
+     * Dev Mode's reason for existing: while the workspace shows a past revision, Run has to compile
+     * that revision rather than the working tree (plan 2026-07-28-002 §1). See `revisionSnapshot.ts`
+     * for where the directory lives, what it deliberately leaves out, and why.
+     *
+     * Inside the per-project serialization, so a materialisation and a commit cannot interleave on one
+     * store handle. That also means a launch waits behind an in-flight commit rather than racing it,
+     * which is the right order: the revision it is about to read is only complete once that commit is.
+     */
+    public async materializeRevisionSnapshot(
+        projectPath: string,
+        revision: string,
+        options: { onProgress?: (message: string) => void } = {},
+    ): Promise<RevisionSnapshotResult> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            return materializeRevisionSnapshot({
+                projectPath: session.root,
+                revision,
+                onProgress: options.onProgress,
+                source: {
+                    // One tree walk for the whole revision, then the bytes by address. On a project
+                    // with a remote the first read fetches fragments over the network
+                    // (docs/version-control.md §6), which is why the walk is not repeated per file.
+                    list: () => backend.listFilesAt(
+                        session.globals,
+                        session.store,
+                        session.repositoryId,
+                        revision,
+                    ),
+                    read: (entry) => backend.readEntryBytes(
+                        session.globals,
+                        session.store,
+                        session.repositoryId,
+                        entry,
+                    ),
+                },
+            });
         });
     }
 
