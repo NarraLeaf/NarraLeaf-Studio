@@ -18,6 +18,22 @@
  * anyone's runtime.
  */
 
+/**
+ * `runtimes/puppet` — the project directory holding one folder per backend, as path segments.
+ *
+ * Here because four places need to agree on it: the editor (which lists what is installed), the
+ * installer (which writes one), the pack step (which copies them into a game), and Dev Mode (which
+ * loads them). The renderer's `ProjectNameConvention.PuppetRuntimes` is the same path in that module's
+ * own directory-marking notation and is checked against this one by a test.
+ */
+export const PUPPET_RUNTIMES_PROJECT_DIR = ["runtimes", "puppet"] as const;
+
+/**
+ * The file a backend directory is loaded through, everywhere. A directory without it is not an
+ * install — the pack step skips it with a warning and the editor reports it as incomplete.
+ */
+export const PUPPET_RUNTIME_ENTRY_FILE = "index.js";
+
 /** A runtime Studio can name. Not an exhaustive list of what an author may install. */
 export type KnownPuppetRuntimeId = "live2d" | "spine";
 
