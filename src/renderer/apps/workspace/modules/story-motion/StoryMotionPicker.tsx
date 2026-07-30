@@ -3,10 +3,10 @@ import { Check, Edit3, Plus, Search, Spline, X } from "lucide-react";
 import type {
     StoryAnimationAsset,
     StoryAnimationIndexEntry,
-    StoryDisplayableTargetKind,
+    StoryMotionTargetKind,
     StoryTransformRef,
 } from "@shared/types/story";
-import { useTranslation, type UseTranslation } from "@/lib/i18n";
+import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
 import { Services } from "@/lib/workspace/services/services";
@@ -14,31 +14,18 @@ import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { Select } from "@/lib/components/elements/Select";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
-import { motionSummary } from "./MotionSelector";
+import { motionSummary } from "./storyMotionSummary";
 import { createStoryMotionEditorTab } from "./StoryMotionEditorTab";
 import type { StoryMotionActionContext } from "./storyMotionTypes";
-import {
-    STORY_MOTION_TEMPLATES,
-    createStoryMotionName,
-    createStoryMotionTemplateTimeline,
-    getStoryMotionDurationMs,
-    getStoryMotionPropertyMeta,
-    type StoryMotionTemplateName,
-} from "./storyMotionTimeline";
+import { createStoryMotionName } from "./storyMotionTimeline";
+import { STORY_MOTION_PRESETS, getStoryMotionPreset, storyMotionPresetsForTargetKind } from "./storyMotionPresets";
 
 const ICON_BUTTON_CLASS = controlButtonClass();
 const TOOL_BUTTON_CLASS = "inline-flex h-8 items-center gap-1.5 rounded-md border border-edge bg-fill-subtle px-2 text-xs text-fg hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40";
 
-const STORY_MOTION_TEMPLATE_KEYS = {
-    "Fade in + slide": "fadeInSlide",
-    "Center pop": "centerPop",
-    "Look around": "lookAround",
-    "Flash": "flash",
-} as const satisfies Record<StoryMotionTemplateName, string>;
-
 export function StoryMotionPicker(props: {
     value: StoryTransformRef | undefined;
-    targetKind: StoryDisplayableTargetKind;
+    targetKind: StoryMotionTargetKind;
     motionLabel: string;
     actionContext: StoryMotionActionContext;
     onChange: (value: StoryTransformRef | undefined) => void;
@@ -55,11 +42,11 @@ export function StoryMotionPicker(props: {
     const [selectedAsset, setSelectedAsset] = useState<StoryAnimationAsset | null>(null);
     const [pickerOpen, setPickerOpen] = useState(false);
     const [query, setQuery] = useState("");
-    const [template, setTemplate] = useState<typeof STORY_MOTION_TEMPLATES[number]>("Fade in + slide");
-    const templateOptions = useMemo(() => STORY_MOTION_TEMPLATES.map(option => ({
-        value: option,
-        label: t(`motion.templates.${STORY_MOTION_TEMPLATE_KEYS[option]}`),
-    })), [t]);
+    const [presetId, setPresetId] = useState<string>(STORY_MOTION_PRESETS[0].id);
+    const presetOptions = useMemo(() => storyMotionPresetsForTargetKind(props.targetKind).map(preset => ({
+        value: preset.id,
+        label: t(`motion.preset.${preset.id}`),
+    })), [props.targetKind, t]);
 
     useEffect(() => {
         if (!storyService) {
@@ -114,10 +101,15 @@ export function StoryMotionPicker(props: {
         if (!storyService) {
             return;
         }
+        const preset = getStoryMotionPreset(presetId);
         const asset = await storyService.createAnimationAsset({
-            name: createStoryMotionName(props.targetKind, template),
+            name: createStoryMotionName(
+                t(`motion.targetKind.${props.targetKind}`),
+                preset ? t(`motion.preset.${preset.id}`) : t("motion.blankMotionName"),
+            ),
             targetKind: props.targetKind,
-            timeline: createStoryMotionTemplateTimeline(template),
+            timeline: preset?.build(),
+            config: preset?.config,
         });
         props.onChange({
             ...(props.value ?? {}),
@@ -126,7 +118,7 @@ export function StoryMotionPicker(props: {
             preset: undefined,
         });
         setPickerOpen(false);
-    }, [props, storyService, template]);
+    }, [presetId, props, storyService, t]);
 
     const openEditor = useCallback((assetId: string | undefined) => {
         if (!assetId) {
@@ -194,9 +186,9 @@ export function StoryMotionPicker(props: {
                         <Select
                             className="w-44"
                             size="sm"
-                            options={templateOptions}
-                            value={template}
-                            onChange={value => setTemplate(value as typeof STORY_MOTION_TEMPLATES[number])}
+                            options={presetOptions}
+                            value={presetId}
+                            onChange={value => setPresetId(String(value))}
                             portalMenu
                             menuZIndex={80}
                         />

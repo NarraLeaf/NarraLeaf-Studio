@@ -12,6 +12,7 @@ export const motion = {
         character: "Character",
         text: "Text",
         layer: "Layer",
+        camera: "Camera",
     },
 
     propertyLabel: {
@@ -47,15 +48,62 @@ export const motion = {
         anticipate: "Anticipate",
     },
 
-    templates: {
-        fadeInSlide: "Fade in + slide",
-        centerPop: "Center pop",
-        lookAround: "Look around",
-        flash: "Flash",
+    // A preset is a ready-made move an author picks from the library; the id is the preset's own,
+    // shared with `storyMotionPresets.ts`.
+    presetCategory: {
+        entrance: "Entrance",
+        exit: "Exit",
+        emphasis: "Emphasis",
+        idle: "Idle",
+        reaction: "Reaction",
+        camera: "Camera",
     },
+
+    preset: {
+        fadeInSlide: "Fade in + slide",
+        centerPop: "Pop in",
+        slideInLeft: "Slide in from left",
+        slideInRight: "Slide in from right",
+        dropIn: "Drop in",
+        spinIn: "Spin in",
+        fadeOutSlide: "Fade out + slide",
+        shrinkOut: "Shrink out",
+        flash: "Flash",
+        pulse: "Pulse",
+        heartbeat: "Heartbeat",
+        jump: "Jump",
+        zoomPunch: "Zoom punch",
+        breathe: "Breathe",
+        float: "Float",
+        sway: "Sway",
+        shake: "Shake",
+        impactShake: "Impact shake",
+        nod: "Nod",
+        headShake: "Shake head",
+        recoil: "Recoil",
+        dizzy: "Dizzy",
+        lookAround: "Look around",
+        fallOver: "Fall over",
+        cameraShake: "Shake",
+        cameraImpact: "Impact",
+        cameraPushIn: "Push in",
+        cameraPullBack: "Pull back",
+        cameraPanSweep: "Pan sweep",
+        cameraDutchTilt: "Dutch tilt",
+        cameraZoomPunch: "Zoom punch",
+        cameraDriftIn: "Slow drift",
+        cameraQuake: "Quake",
+    },
+
+    /** Name for a motion created empty, with no preset behind it. */
+    blankMotionName: "Motion",
 
     selector: {
         loadingPreview: "Loading preview…",
+        tab: {
+            project: "Project",
+            presets: "Presets",
+        },
     },
 
     field: {

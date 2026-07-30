@@ -3,6 +3,7 @@ import { RendererError } from "@shared/utils/error";
 import {
     StoryAnimationAsset,
     StoryAnimationAssetId,
+    StoryAnimationConfig,
     StoryAnimationIndex,
     StoryAnimationIndexEntry,
     StoryAnimationSequence,
@@ -464,6 +465,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         targetKind?: StoryAnimationIndexEntry["targetKind"];
         timeline?: StoryAnimationTimeline;
         sequences?: StoryAnimationSequence[];
+        config?: StoryAnimationConfig;
     }): Promise<StoryAnimationAsset> {
         const now = new Date().toISOString();
         const animationId = this.generateUniqueAnimationId();
@@ -474,6 +476,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
             targetKind,
             timeline: input.timeline,
             sequences: input.sequences,
+            config: input.config,
             now,
         });
         const entry = createStoryAnimationIndexEntry({

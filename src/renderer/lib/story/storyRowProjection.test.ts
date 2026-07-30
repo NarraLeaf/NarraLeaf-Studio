@@ -51,6 +51,24 @@ describe("storyRowSentence — the sentence the editor shows", () => {
         expect(storyRowSentence(block, lookups)).toBe("Set background outside_s.jpg d 5s");
     });
 
+    it("names the Story Motion a camera row is driving, and degrades to the operation without a table", () => {
+        // Several `/camera motion` rows in one scene are otherwise all just "Motion". The Dev Mode
+        // timeline is the caller with no motion table, and it must still read as a camera row rather
+        // than printing a uuid.
+        const block = action({
+            action: "camera",
+            operation: "motion",
+            motion: { mode: "animation", animationId: "anim-1" },
+        });
+        expect(storyRowSentence(block, { ...bare, motionName: id => (id === "anim-1" ? "Camera Shake" : null) }))
+            .toBe("Motion Camera Shake");
+        expect(storyRowSentence(block, bare)).toBe("Motion");
+        expect(storyRowSentence(block, { ...bare, motionName: () => null })).toBe("Motion");
+        // An unbound motion row has nothing to name, table or not.
+        expect(storyRowSentence(action({ action: "camera", operation: "motion" }), { ...bare, motionName: () => "x" }))
+            .toBe("Motion");
+    });
+
     it("falls back to the id when the caller has no asset table, and says so when the table misses", () => {
         const block = action({ action: "setBackground", assetId: "asset-1" });
         expect(storyRowSentence(block, bare)).toBe("Set background asset-1");
