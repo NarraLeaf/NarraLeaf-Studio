@@ -17,6 +17,11 @@ import {
     debugUIDoubleClick,
     describeDoubleClickTarget,
 } from "@/lib/ui-editor/interaction/doubleClickDebug";
+import {
+    isSurfaceGestureEnabled,
+    UI_EDITOR_WRITABLE,
+    type UIEditorReadOnly,
+} from "@/lib/ui-editor/interaction/readOnlyInteraction";
 
 type SurfaceDoubleClickEvent = {
     target: EventTarget | null;
@@ -62,8 +67,12 @@ export function useSurfaceDoubleClick(params: {
     tool: UITool;
     stateService: EditorStateService;
     documentService: EditorDocumentService;
+    /** Read-only: the double-click still drills into containers, it just never opens an editor. */
+    readOnly?: UIEditorReadOnly;
 }) {
-    const { surfaceId, tool, stateService, documentService } = params;
+    const { surfaceId, tool, stateService, documentService, readOnly = UI_EDITOR_WRITABLE } = params;
+    const inlineTextEditEnabled = isSurfaceGestureEnabled("inlineTextEdit", readOnly);
+    const imageCropEnabled = isSurfaceGestureEnabled("imageCrop", readOnly);
 
     return useCallback(
         (event: SurfaceDoubleClickEvent) => {
@@ -102,7 +111,7 @@ export function useSurfaceDoubleClick(params: {
                     isSelectedSingle,
                     selectedSingleElementId,
                 });
-                if (!editable || !isSelectedSingle) {
+                if (!inlineTextEditEnabled || !editable || !isSelectedSingle) {
                     return false;
                 }
                 event.preventDefault();
@@ -146,7 +155,7 @@ export function useSurfaceDoubleClick(params: {
                 });
                 return;
             }
-            for (const elementId of candidateElementIds) {
+            for (const elementId of imageCropEnabled ? candidateElementIds : []) {
                 if (
                     beginImageCropEdit({
                         documentService,
@@ -162,6 +171,6 @@ export function useSurfaceDoubleClick(params: {
                 }
             }
         },
-        [documentService, stateService, surfaceId, tool.kind]
+        [documentService, imageCropEnabled, inlineTextEditEnabled, stateService, surfaceId, tool.kind]
     );
 }

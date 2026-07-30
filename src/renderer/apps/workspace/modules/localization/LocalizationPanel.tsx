@@ -391,7 +391,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
         return items;
     }, [localeMenu, handleSetSource, handleExportCsv, handleImportCsv, handleRemoveLocale, t]);
     const frozenLocaleMenuItems = useMemo(
-        () => freezeContextMenuRows(localeMenuItems, freeze.frozen, FREEZE_READ_ONLY_LOCALIZATION_MENU_IDS),
+        () => freezeContextMenuRows(localeMenuItems, freeze.frozen, FREEZE_READ_ONLY_LOCALIZATION_MENU_IDS, freeze.reason),
         [freeze, localeMenuItems],
     );
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, Lock } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { TextArea } from "@/lib/components/elements";
 import type { ProjectMetadata } from "@/lib/workspace/project/project";
@@ -103,6 +104,11 @@ function DetailField({
     multiline?: boolean;
 }) {
     const { t } = useTranslation();
+    // Name, version, author, website and description all commit to `project.json` on blur - which is
+    // the trap: a frozen field takes the whole edit and only refuses at the blur nobody watches. So the
+    // field is disabled rather than merely refused, and the reason is on it.
+    const freeze = useFreezeGuard();
+    const frozen = freeze.writes();
     const [draft, setDraft] = useState(initialValue);
     const [saving, setSaving] = useState(false);
 
@@ -130,7 +136,7 @@ function DetailField({
     }, [draft, initialValue, multiline, onCommit, onError, saving]);
 
     return (
-        <label className="grid gap-1.5">
+        <label className="grid gap-1.5" title={frozen.title}>
             <div className="flex items-center gap-1.5">
                 <span className="text-xs font-medium text-fg-subtle">{label}</span>
                 {required ? <span className="text-2xs text-fg-subtle">{t("project.details.required")}</span> : null}
@@ -144,11 +150,13 @@ function DetailField({
                     placeholder={placeholder}
                     rows={3}
                     fullWidth
+                    disabled={frozen.disabled}
                 />
             ) : (
                 <EnhancedInput
                     value={draft}
                     onChange={setDraft}
+                    disabled={frozen.disabled}
                     onBlur={() => void commit()}
                     onKeyDown={event => {
                         if (event.key === "Enter") {
