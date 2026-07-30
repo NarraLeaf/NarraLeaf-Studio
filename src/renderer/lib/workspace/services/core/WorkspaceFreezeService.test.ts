@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { thawProjectWrites } from "@/lib/app/writeFreeze";
+import type { DocumentSource } from "@shared/documents/documentSource";
+import { getProjectWriteFreeze, thawProjectWrites } from "@/lib/app/writeFreeze";
+import { clearProjectDocumentSource, getProjectDocumentSource } from "@/lib/app/documentSource";
 import { BaseFileSystemService } from "./FileSystem";
+import type { WorkspaceReloadResult } from "./WorkspaceReloadService";
 import { WorkspaceFreezeService } from "./WorkspaceFreezeService";
 import { Services, type WorkspaceContext } from "../services";
 
@@ -19,20 +22,56 @@ const PROJECT = "D:/projects/my-game";
 const privilegedFs = vi.hoisted(() => ({
     requestWrite: vi.fn(),
     requestWriteRaw: vi.fn(),
+    requestRead: vi.fn(),
     copyFile: vi.fn(),
     deleteFile: vi.fn(),
     createDir: vi.fn(),
     ensureRegularFile: vi.fn(),
 }));
 
+/** The freeze report main consults before it starts a build or a preview of its own. */
+const reportWriteFreeze = vi.hoisted(() => vi.fn());
+
 vi.mock("@/lib/app/bridge", () => ({
-    getInterface: () => ({}),
+    getInterface: () => ({ workspace: { reportWriteFreeze } }),
     getPrivilegedInterface: () => ({ fs: privilegedFs }),
 }));
 
 const flushAll = vi.fn(async () => undefined);
-const reload = vi.fn(async () => ({ cause: "thaw" as const, reloaded: [], failures: [] }));
-const fetchMock = vi.fn(async () => ({ ok: true, statusText: "OK" }));
+const reload = vi.fn(async (): Promise<WorkspaceReloadResult> => ({
+    cause: "thaw",
+    origin: { kind: "working-tree" },
+    reloaded: [],
+    failures: [],
+}));
+const fetchMock = vi.fn(async () => ({ ok: true, statusText: "OK", text: async () => "on-disk" }));
+
+/** The bytes the working tree would answer with, so a redirected read is visibly different. */
+const WORKING_TREE_TEXT = "on-disk";
+const STORY_INDEX = "editor/story/index.json";
+
+/**
+ * A revision source that records every read and what the freeze latch said at the time.
+ *
+ * The recording is the point of the ordering test: asking the service afterwards whether it froze
+ * proves only that it eventually did, and the failure being guarded against is a read that happened
+ * first.
+ */
+function createRevisionSource(revision: string, documents: Record<string, string>) {
+    const reads: { path: string; frozen: boolean }[] = [];
+    let prewarms = 0;
+    const source: DocumentSource = {
+        origin: { kind: "revision", revision },
+        read: async (path) => {
+            reads.push({ path, frozen: getProjectWriteFreeze() !== null });
+            return documents[path] ?? null;
+        },
+        prewarm: async () => {
+            prewarms += 1;
+        },
+    };
+    return { source, reads, prewarmCount: () => prewarms };
+}
 
 function createContext(): WorkspaceContext {
     return {
@@ -56,12 +95,14 @@ beforeEach(() => {
     }
     flushAll.mockClear();
     reload.mockClear();
+    reportWriteFreeze.mockClear();
     fetchMock.mockClear();
     vi.stubGlobal("fetch", fetchMock);
 });
 
 afterEach(() => {
     thawProjectWrites();
+    clearProjectDocumentSource();
     vi.unstubAllGlobals();
 });
 
@@ -180,6 +221,162 @@ describe("WorkspaceFreezeService", () => {
 
         expect(seen).toEqual(["manual", null]);
         stop();
+    });
+
+    /**
+     * Main starts the production build and the Preview runtime itself, so a greyed-out control cannot
+     * stop them - it refuses both while frozen and has to be told (plan 2026-07-28-002 §4.3).
+     *
+     * Told on both edges, and once at startup: this latch is module-level and never persisted, so a
+     * window that reloads mid-freeze comes back writable while main would still believe it is frozen
+     * and refuse that project's builds for the rest of the session.
+     */
+    it("tells main the freeze state, on both edges and once at startup", async () => {
+        const service = await createService();
+
+        // Startup, and reported even though nothing is frozen: that is the report that clears a
+        // record main was left holding by the window this one replaced.
+        expect(reportWriteFreeze).toHaveBeenCalledTimes(1);
+        expect(reportWriteFreeze).toHaveBeenCalledWith(null);
+
+        // The edges are read off the last call rather than the whole list: every service built by an
+        // earlier test in this file is still subscribed to the module-level latch (nothing here tears
+        // one down), so they all echo the same value.
+        await service.freeze({ kind: "revision", revision: "aa" });
+        // The revision travels with the kind because main does not refuse everything while frozen: Dev
+        // Mode compiles that revision, and it cannot find one from the kind alone (plan §4 U4).
+        expect(reportWriteFreeze).toHaveBeenLastCalledWith("revision", "aa");
+
+        service.thaw();
+        expect(reportWriteFreeze).toHaveBeenLastCalledWith(null);
+    });
+
+    /**
+     * The window this closes: a service holding a historical document in a workspace that still
+     * accepts writes. One auto-save timer landing there and the revision is on disk, over the author's
+     * work - the loss the freeze exists to prevent, arriving from the other direction.
+     *
+     * Read through the real boundary rather than by calling the source: the claim is that the
+     * PARTICIPANTS read the revision, and they read through `BaseFileSystemService`.
+     */
+    it("arms the freeze before a single byte of the revision is read", async () => {
+        const service = await createService();
+        const revision = createRevisionSource("rev-1", { [STORY_INDEX]: "{\"stories\":[]}" });
+        reload.mockImplementationOnce(async () => {
+            await BaseFileSystemService.read(`${PROJECT}/${STORY_INDEX}`, "utf-8");
+            return { cause: "revision", origin: { kind: "working-tree" }, reloaded: [], failures: [] };
+        });
+
+        await service.showRevision(revision.source, "#3");
+
+        expect(revision.reads).toEqual([{ path: STORY_INDEX, frozen: true }]);
+        expect(service.getReason()).toEqual({ kind: "revision", revision: "rev-1", label: "#3" });
+        expect(reload).toHaveBeenCalledWith("revision", revision.source);
+    });
+
+    it("reads project data out of the revision, and leaves the disk alone", async () => {
+        const service = await createService();
+        const revision = createRevisionSource("rev-1", { [STORY_INDEX]: "from-the-revision" });
+
+        await service.showRevision(revision.source);
+
+        const shown = await BaseFileSystemService.read(`${PROJECT}/${STORY_INDEX}`, "utf-8");
+        expect(shown).toEqual({ ok: true, data: "from-the-revision" });
+        // Not one round trip to the host for the file: the answer never came from the disk.
+        expect(privilegedFs.requestRead).not.toHaveBeenCalled();
+    });
+
+    /**
+     * `null` from the source is an ANSWER: a document added after the revision has to reach the
+     * service's "missing, use defaults" branch, which is the NOT_FOUND every load path already knows.
+     * Reported any other way, the service would report a broken project instead of an empty one.
+     */
+    it("reports a document the revision does not contain as missing, not as a failure", async () => {
+        const service = await createService();
+        await service.showRevision(createRevisionSource("rev-1", {}).source);
+
+        const missing = await BaseFileSystemService.read(`${PROJECT}/${STORY_INDEX}`, "utf-8");
+        const exists = await BaseFileSystemService.isFileExists(`${PROJECT}/${STORY_INDEX}`);
+
+        expect(missing.ok).toBe(false);
+        expect(missing.ok ? null : missing.error.code).toBe("NOT_FOUND");
+        expect(exists).toEqual({ ok: true, data: false });
+    });
+
+    /**
+     * Editor state is not the author's project (plan §1), and it is not versioned either - so it goes
+     * on reading and writing the disk while a revision is shown. A revision view that also showed the
+     * panel layout from that revision would look like a broken application.
+     */
+    it("leaves non-versioned reads on the disk while a revision is shown", async () => {
+        const service = await createService();
+        const revision = createRevisionSource("rev-1", {});
+
+        await service.showRevision(revision.source);
+        const layout = await BaseFileSystemService.read(`${PROJECT}/.nlstudio/services/panel_state.json`, "utf-8");
+
+        expect(layout).toEqual({ ok: true, data: WORKING_TREE_TEXT });
+        expect(revision.reads).toEqual([]);
+    });
+
+    it("writes nothing while a revision is shown, including the save a migration would want", async () => {
+        const service = await createService();
+        await service.showRevision(createRevisionSource("rev-1", { [STORY_INDEX]: "{}" }).source);
+
+        // What a service does after `parse` migrated an older schema on load. It must answer success -
+        // failing it would turn "this is an old revision" into "this project will not open" - and it
+        // must not reach the host.
+        const migrationSave = await BaseFileSystemService.write(`${PROJECT}/${STORY_INDEX}`, "{\"version\":9}", "utf-8");
+
+        expect(migrationSave.ok).toBe(true);
+        expect(privilegedFs.requestWrite).not.toHaveBeenCalled();
+    });
+
+    it("returns to the working tree and thaws when the author leaves", async () => {
+        const service = await createService();
+        const revision = createRevisionSource("rev-1", { [STORY_INDEX]: "from-the-revision" });
+        await service.showRevision(revision.source);
+        expect(getProjectDocumentSource()).toBe(revision.source);
+
+        service.thaw();
+
+        expect(getProjectDocumentSource()).toBeNull();
+        expect(service.isFrozen()).toBe(false);
+        await expect(BaseFileSystemService.read(`${PROJECT}/${STORY_INDEX}`, "utf-8"))
+            .resolves.toEqual({ ok: true, data: WORKING_TREE_TEXT });
+        await BaseFileSystemService.write(`${PROJECT}/${STORY_INDEX}`, "{}", "utf-8");
+        expect(privilegedFs.requestWrite).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * The window on the way OUT, which is the mirror of the one on the way in: the revision has to
+     * stop answering reads BEFORE the latch comes off, or the pass that is supposed to replace
+     * historical memory reads the history straight back in and then unfreezes on top of it.
+     */
+    it("stops the revision answering reads before it lifts the latch", async () => {
+        const service = await createService();
+        await service.showRevision(createRevisionSource("rev-1", { [STORY_INDEX]: "from-the-revision" }).source);
+        const seen: { source: boolean; frozen: boolean }[] = [];
+        reload.mockImplementationOnce(async () => {
+            seen.push({ source: getProjectDocumentSource() !== null, frozen: getProjectWriteFreeze() !== null });
+            return { cause: "thaw", origin: { kind: "working-tree" }, reloaded: [], failures: [] };
+        });
+
+        service.thaw();
+        await Promise.resolve();
+
+        expect(seen).toEqual([{ source: false, frozen: true }]);
+    });
+
+    it("refuses a working-tree source, which would freeze the workspace for no visible reason", async () => {
+        const service = await createService();
+
+        await expect(service.showRevision({
+            origin: { kind: "working-tree" },
+            read: async () => null,
+            prewarm: async () => undefined,
+        })).rejects.toThrow(/needs a revision source/);
+        expect(service.isFrozen()).toBe(false);
     });
 
     /**

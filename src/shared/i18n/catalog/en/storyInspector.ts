@@ -302,6 +302,7 @@ export const storyInspector = {
         setVolume: "Set volume",
         setRate: "Set rate",
         muteSound: "Mute / unmute",
+        seekSound: "Seek",
     },
 
     screenEffectOption: {
@@ -357,6 +358,7 @@ export const storyInspector = {
         bgmAsset: "BGM asset",
         soundAsset: "Sound asset",
         fade: "Fade (s)",
+        seekTime: "Seek to (s)",
         volume: "Volume",
         rate: "Rate",
         loop: "Loop",
@@ -400,12 +402,21 @@ export const storyInspector = {
         displayName: "Speaks as",
         chooseHint: "Choose a character to pick its appearance.",
         overrideImage: "Override image",
-        // A character its own runtime draws: the names come from the model, so these are plain
-        // fields rather than pickers, and empty is a request (clear it), not an unfilled slot.
+        // A character its own runtime draws: the names come from the model, so these fields are filled
+        // from what the model reported about itself, and empty is a request (clear it) rather than an
+        // unfilled slot - which is why each channel names what clearing it looks like.
         puppetMotion: "Motion",
         puppetExpression: "Expression",
         puppetSkin: "Skin",
         puppetNone: "none",
+        puppetSkinDefault: "model default",
+        puppetParams: "Parameters",
+        puppetParamId: "Parameter",
+        puppetParamValue: "Value",
+        puppetParamAdd: "Add parameter",
+        puppetParamRemove: "Remove parameter",
+        puppetNoParams: "This row sets no parameters yet.",
+        notPuppetHint: "This character is drawn by Studio, so it has no runtime state to set.",
     },
 
     asset: {

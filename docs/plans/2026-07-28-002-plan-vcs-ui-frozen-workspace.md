@@ -102,9 +102,10 @@ UI 只读只负责 affordance（别给假的可点按钮）。**正确性由写�
 | **U1c** | 解冻重载 | U1a | ✅ 落地：`WorkspaceReloadService`，参与者静态表；reload 期间另一道静默 hold；丢弃欠账而非补写；清撤销栈 |
 | **V2** | 提交与检查点 | V1, U1c | ✅ 落地：管线 flush→stage→**标记**→commit→flush；检查点由 `observeWrites` 驱动（**绝不扫描**）；`versionControl.checkpointIntervalMinutes`（默认 15，0=关） |
 | **U1b-编辑区** | 编辑区只读 | U1a | ✅ 落地：创建流程、直接操作手势、行内文本、属性字段；机制在 `components/ui/freezeGuard.ts` + `lib/ui-editor/interaction/readOnlyInteraction.ts` |
+| **U1d** | 工作区能显示某个修订 | U1c | ✅ 落地：`DocumentSource` 端口（`@shared/documents/documentSource`）+ 读边界闸门（`lib/app/documentSource.ts`）；`reload(cause, source)`；`WorkspaceFreezeService.showRevision` / `VersionControlService.showRevision`；详见 §4.2.3 |
 | **U2** | 入口 | U1 | 顶栏版本控件 + 状态栏位；「启用版本控制」进项目设置与新建向导 |
 | **U3** | 版本轨道 | U2, V2 | 轨道面板、线性历史、变更清单、提交 |
-| **U4** | 冻结下的 Dev Mode | U1c | 把聚焦版本物化到工作集之外的快照目录，指向它编译 |
+| **U4** | 冻结下的 Dev Mode | U1c | ✅ 落地：快照落 `.nlstudio/devmode/revisions/<rev前16位>`（按版本命名、每次启动重建、会话结束删除）；`DevModeSession.sourcePath` 取代 `projectPath` 喂编译；冻结记录多带一个 `revision`；读不出来就**拒绝启动**，绝不回落工作树。详见 §4.2.4 |
 
 ### 4.2 V2 之后新增的两条实测（细节在 version-control.md §4.21 / §4.22）
 
@@ -139,6 +140,48 @@ UI 只读只负责 affordance（别给假的可点按钮）。**正确性由写�
 - `StoryFindBar` 的替换；`StorySceneActionInspector` 的自制编辑器（转场、VFX、镜头、角色动作）
 - 构建对话框（其主进程那一半属 U4）
 - 基于 `div` 的自制按钮不受 `fieldset` 约束（那条只作用于表单控件）
+
+### 4.2.3 U1d 的四条结论（都是实测，不是设计偏好）
+
+1. **修订是可枚举的**。`lore_revision_tree_list_children` 在 win32 build 的 263 个导出符号里
+   （不属于 SDK 声明而库没有的那三个写侧 verb），已绑定并在 `revisionReader.integration.test.ts`
+   对真仓库跑通：一次 `listTreeChildren` 一个目录，child 事件自带 name/kind/size/address，所以路径
+   和内容地址来自同一次遍历，不需要每个文件一次 `resolvePath`。**这条很关键**：备选方案是从文档
+   注册表猜路径，而注册表至今只认识迁到 spec 的 4 种（共 14 种），猜出来的清单是残缺的。
+2. **闸门在读边界，不在九个服务里**。与 §2 同一条论证，只是换到读侧：一是**文档是懒加载的**
+   （`StoryService.loadStory` 在 tab 第一次问它时才读），穿参数只能覆盖当时已打开的那些，之后打开
+   的每一个都会静默读工作树；二是九个服务里只有三个走 `DocumentStorage` 端口，另外六个直接用
+   `FileSystemService`，穿参数等于新造六个可以忘记的接缝。所以 `BaseFileSystemService.read` /
+   `isFileExists` 在有 source 时改答 source，判据仍是 `isVersioned`——`.nlstudio/`、`editor/cache`、
+   `dist` 照旧读磁盘，否则历史视图连面板布局都是历史的，看起来就是应用坏了。
+3. **只重定向文本，不重定向 `readRaw`**。source 答的是字符串，而走 `readRaw` 的是作者的素材：为了
+   重绘一张缩略图把几 MB 的图 base64 过 IPC 不值得。所以历史视图里**文档是历史的、素材字节是当下的**
+   ——这是明说的限制，不是漏掉。
+4. **进出各有一个必须关掉的窗口**。进：先冻结再读，否则内存里有历史文档而工作区还能写，一个
+   autosave 定时器就把修订写到工作树上（§4.1 第 1 条的损失换个方向到达）。出：先撤 source 再撤闸门，
+   否则那趟本该替换历史内存的重读会把历史再读回来、然后在它上面解冻。另外 reload 的**合并**必须
+   按版本区分：两趟读的是不同版本时排队而不是合并，否则「进入还没读完就离开」会把进入那趟的结果
+   交给离开的调用方。
+
+### 4.2.4 U4 的实测与两条明说的限制
+
+- **成本可以忽略，但只有在不复制素材的前提下。** 在 `D:/Temp/nls-vcs-proj-withhistory`（两个修订）上实测：
+  一个修订共 72 个文件，**文档 50 个 / 3.62 MiB，素材字节 22 个 / 73.78 MiB**——95% 的字节是素材。
+  只物化文档 **89 ms**；连素材一起物化 209 ms。跳过素材的理由不是这 120 ms，而是**规模与磨损**：
+  一个 2GB 美术的工程每按一次 Run 就往作者项目里写 2GB，而且**换不到任何行为差别**（下一条）。
+- **限制一：素材字节是当下的，不是历史的。** 编译管线一个素材字节都不读（bundle 里只有 assetId），
+  Dev Mode 窗口的素材 URL 是**回头问它的 workspace 窗口**要的（`DevModeResolveAssetUrlHandler`），
+  而 workspace 按 §4.2.3 第 3 条读磁盘。所以历史版本里的立绘显示的是**现在**那张图，作者已删掉的
+  那张则整个显示不出来。要把这半边也变成历史，得改渲染层的素材解析，是另一个里程碑。
+- **限制二：启动时定一次，之后不重解。** 作者按 Run 时看的是哪个版本，跑完的就是那个版本；启动途中
+  离开版本不会中止。同理该会话的 reload 重编同一个快照（而且**修订会话不装文件监听**——快照不会变，
+  监听工作树只会让作者一次无关的保存把正在跑的历史版本重启一遍）。要跑别的，重新启动。
+- **Dev Mode 存档与网络策略仍取工作树**：`readProjectAllowHttp` 故意读当前配置（历史版本不该有机会
+  放宽网络策略），存档按项目路径 keying，因此历史版本写的存档和当前游戏的混在一处。
+
+**顺带修正**：作者时的 quarantine 在显示修订期间必须关掉——读不动的字节是**修订的**，作者磁盘上
+那份是好的，把它复制进 `.nlstudio/quarantine/` 是给一份好文件贴上「坏了」的标签。`loadDocument`
+本来就有正确的落点（corrupt + 没能 quarantine + 服务不加载）。
 
 ### 4.3 已知缺口
 

@@ -17,6 +17,10 @@ import { Services, type IVersionControlService, type WorkspaceContext } from "..
 import type { GlobalSettingsService } from "../GlobalSettingsService";
 import { EventEmitter } from "../ui/EventEmitter";
 import { BaseFileSystemService } from "./FileSystem";
+import { RevisionDocumentSource } from "./RevisionDocumentSource";
+// Type-only: the instance comes from the registry. Version control drives the freeze; the freeze does
+// not know version control exists (see WorkspaceFreezeService for why that separation is deliberate).
+import type { WorkspaceFreezeService } from "./WorkspaceFreezeService";
 
 /**
  * The renderer's side of version control.
@@ -353,6 +357,12 @@ export class VersionControlService extends Service<VersionControlService> implem
      * backend has no batch metadata verb, so it costs one call PER REVISION - and it is
      * part of the cache key rather than a filter on one cached list, because a page read
      * without kinds cannot answer a later question about them.
+     *
+     * The message, timestamp and author arrive on the SAME read and are deliberately NOT
+     * a third state of that key: the main process reads them out of the one metadata call
+     * the kind already pays for, so there is no such thing as a page that has kinds and
+     * lacks them. Splitting the key per field would double the cached pages and re-pay
+     * that per-revision cost for data already in hand.
      */
     public async getHistory(limit = 0, options: { includeKinds?: boolean } = {}): Promise<VcsHistoryEntry[]> {
         const includeKinds = options.includeKinds === true;
@@ -382,6 +392,75 @@ export class VersionControlService extends Service<VersionControlService> implem
         const result = await getInterface().vcs.readBlob(this.projectPath(), revision, path);
         if (!result.success) throw new Error(result.error);
         return decodeBase64(result.data.contentBase64);
+    }
+
+    /**
+     * Every document at one revision, in one round trip. `null` means the revision does
+     * not contain that path.
+     *
+     * The backing read for {@link showRevision}. Throws rather than degrading, for
+     * {@link readBlob}'s reason: an empty answer here would render as a project whose
+     * every document was deleted at that revision.
+     */
+    public async readRevisionDocuments(
+        revision: RevisionId,
+        paths?: readonly string[],
+    ): Promise<Map<string, string | null>> {
+        const result = await getInterface().vcs.readRevisionDocuments(
+            this.projectPath(),
+            revision,
+            paths ? [...paths] : undefined,
+        );
+        if (!result.success) throw new Error(result.error);
+        const documents = new Map<string, string | null>();
+        for (const entry of result.data.documents) {
+            documents.set(entry.path, entry.contentBase64 === null ? null : decodeUtf8(entry.contentBase64));
+        }
+        return documents;
+    }
+
+    /**
+     * Show a past revision in the real editors, and stay there until {@link showWorkingTree}.
+     *
+     * One call on purpose: the two halves - arming the freeze and re-reading from the revision - are
+     * only safe in one order, and a caller that could do them separately could do them in the wrong
+     * one. `WorkspaceFreezeService.showRevision` is where that ordering is written down; this method
+     * is what makes the revision id enough to ask.
+     *
+     * Slow. The prewarm inside it reads the revision's documents in a single batch, and on a project
+     * with a remote that batch goes to the network (docs/version-control.md §6). Await it and show
+     * progress; there is deliberately no fire-and-forget form.
+     */
+    public async showRevision(revision: RevisionId, label?: string): Promise<void> {
+        const availability = await this.getAvailability();
+        if (!availability.available) {
+            throw new Error(`Version control is not available on this machine (${availability.reason})`);
+        }
+        const source = new RevisionDocumentSource(revision, {
+            readRevisionDocuments: (target, paths) => this.readRevisionDocuments(target, paths),
+        });
+        await this.freezeService().showRevision(source, label);
+    }
+
+    /**
+     * Leave a revision view: the working tree is read back into the editors and project data becomes
+     * writable again.
+     *
+     * A no-op when the workspace was not frozen, which is what makes it safe to call from a control
+     * that does not know the current state.
+     */
+    public showWorkingTree(): void {
+        this.freezeService().thaw();
+    }
+
+    /** The revision the editors are showing, or null when they are showing the working tree. */
+    public getShownRevision(): RevisionId | null {
+        const reason = this.freezeService().getReason();
+        return reason?.kind === "revision" ? reason.revision : null;
+    }
+
+    private freezeService(): WorkspaceFreezeService {
+        return this.getContext().services.get<WorkspaceFreezeService>(Services.WorkspaceFreeze);
     }
 
     /** Paths that differ between two revisions - the filter before diffing. */
@@ -565,4 +644,16 @@ function decodeBase64(base64: string): Uint8Array {
         bytes[i] = binary.charCodeAt(i);
     }
     return bytes;
+}
+
+/**
+ * A document's text out of the base64 the channel carries.
+ *
+ * Lenient rather than `fatal: true`: a versioned file that is not valid UTF-8 has to reach the
+ * document layer and be reported as unreadable there, the same way a corrupt working-tree file is.
+ * Throwing here instead would take down the whole batch - one bad blob, and the author sees an
+ * unexplained failure rather than one document that could not be read.
+ */
+function decodeUtf8(base64: string): string {
+    return new TextDecoder("utf-8").decode(decodeBase64(base64));
 }

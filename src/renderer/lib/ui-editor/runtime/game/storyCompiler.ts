@@ -98,6 +98,8 @@ import {
 import type { GameLocalizationBundle } from "@shared/types/localization";
 import { resolveLocaleChain } from "@shared/types/localization";
 import type { GameVoiceBundle } from "@shared/types/voice";
+import type { AudioClipRegion } from "@shared/types/audio";
+import { audioClipRegionToSoundConfig } from "@shared/types/audio";
 import { parseTranslatedText } from "@shared/utils/localizationText";
 import {
     boolProp,
@@ -312,6 +314,11 @@ export type CompiledSceneElements = {
     layers: Map<string, Layer>;
     /** Puppet-kind characters, keyed by the same stage name their image-backed siblings use. */
     puppets: Map<string, Puppet>;
+    /**
+     * Named sounds this scene's compile built, keyed by the name the sound-control family addresses
+     * them by - `bgm` for the music channel, the derived object name for a `/sound`.
+     */
+    sounds: Map<string, Sound>;
 };
 
 export type CompiledNlrStory = {
@@ -373,6 +380,8 @@ export type StagePreviewCompileInput = {
     /** M-VAR: persistent variable registry table, baked into the bundle; replaces the old blueprint-doc field. */
     persistentVariables?: PersistentVariableRuntimeTable;
     persistence?: StoryPersistenceBridge;
+    /** In/out points marked on audio assets; see {@link CompileInput.audioClips}. */
+    audioClips?: Record<string, AudioClipRegion>;
     /**
      * Fires synchronously once the pre-posed stage state has been fully applied (elements
      * registered, residual effects settled) - the first frame at which the stage is a faithful
@@ -440,6 +449,8 @@ type SceneCompileContext = {
     localization?: SceneLocalizationResolver;
     /** Active voice language's unit id → clip URL map; absent when the project has no voice or the host passes none. */
     voiceIdMap?: Record<string, string>;
+    /** Asset id → marked in/out points, folded into every `Sound` this compile builds. */
+    audioClips?: Record<string, AudioClipRegion>;
     /** Fn declarations shared across all story-action blueprints in this scene. */
     sceneFnCatalog: StoryActionFnCatalog;
     images: Map<string, Image>;
@@ -475,6 +486,14 @@ type CompileInput = {
     /** Game voice (bundle payload + current voice-language getter); see {@link StoryVoiceRuntime}. */
     voice?: StoryVoiceRuntime;
     /**
+     * In/out points marked on audio assets, keyed by asset id (the bundle's `audio.clips`).
+     *
+     * Every `Sound` this compile builds folds the region of its own asset in, so a clip loops where
+     * the author marked it rather than over the whole file. Absent means "no clip is marked", which
+     * plays everything whole.
+     */
+    audioClips?: Record<string, AudioClipRegion>;
+    /**
      * Row-precise launch ("play from here" in Dev Mode). When set, the entry scene is replaced by a
      * one-shot pre-posed scene: the stage arrives at `targetBlockId`'s settled state (from the
      * snapshot) and then plays the real story forward from that row — following jumps into the other
@@ -486,6 +505,12 @@ type CompileInput = {
 
 const EMPTY_IMAGE_SRC = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'></svg>";
 const SCENE_INITIAL_BACKGROUND_BLOCK_ID = "__scene_initial_background";
+const SCENE_BACKGROUND_MUSIC_BLOCK_ID = "__scene_background_music";
+/**
+ * The reserved registry name the sound-control family addresses when no target is given
+ * (`/vol 0.5` is the music channel). Mirrors `BGM_OBJECT_NAME` in the editor.
+ */
+const BGM_SOUND_NAME = "bgm";
 const EMPTY_STORY_ID = "__nlr_empty_story__";
 const EMPTY_SCENE_ID = "__nlr_empty_scene__";
 const UNKNOWN_CHARACTER_ID = "__unknown_character__";
@@ -538,12 +563,15 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     const voiceIdMap = input.voice
         ? await buildSceneVoiceMap({ voice: input.voice, resolveAssetUrl, assetUrlCache, diagnostics })
         : undefined;
+    const sceneBackgroundMusic = new Map<string, Sound>();
     const allScenes = await createNlrScenes({
         document: input.document,
         resolveAssetUrl,
         assetUrlCache,
         diagnostics,
         voiceIdMap,
+        audioClips: input.audioClips,
+        backgroundMusic: sceneBackgroundMusic,
     });
 
     // Single Storable-backed namespace seeded with every saved variable's default.
@@ -568,6 +596,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     // Document order, so the Problems panel reads down the story instead of down a UUID sort.
     for (const scene of listScenesInDocumentOrder(input.document)) {
         const nlrScene = allScenes[scene.id];
+        const sceneMusic = sceneBackgroundMusic.get(scene.id);
         const sceneFnCatalog = collectSceneStoryActionFns({
             document: input.document,
             blueprintDocument: input.blueprintDocument,
@@ -599,7 +628,10 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             layers: new Map(),
             videos: new Map(),
             vfx: new Map(),
-            sounds: new Map(),
+            // Seeded with the scene's configured track under the name the sound-control family
+            // defaults to, so `/vol 0.5` on a scene with music means what it looks like.
+            sounds: sceneMusic ? new Map([[BGM_SOUND_NAME, sceneMusic]]) : new Map(),
+            audioClips: input.audioClips,
             animations,
             resolveAssetUrl,
             assetUrlCache,
@@ -618,7 +650,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         }
         const statements = await compileBlockList(ctx, scene.rootBlockIds);
         nlrScene.action([...seeds, ...statements] as unknown as Parameters<Scene["action"]>[0]);
-        sceneElements[scene.id] = { images: ctx.images, texts: ctx.texts, layers: ctx.layers, puppets: ctx.puppets };
+        sceneElements[scene.id] = { images: ctx.images, texts: ctx.texts, layers: ctx.layers, puppets: ctx.puppets, sounds: ctx.sounds };
     }
 
     // Row-precise launch: the story enters through a one-shot pre-posed scene that arrives at the
@@ -719,9 +751,21 @@ async function buildLaunchEntryScene(params: {
         })
         : snapshot.background?.color
             ?? await resolveSceneInitialBackground({ scene, resolveAssetUrl, assetUrlCache, diagnostics });
+    // A row-precise launch replaces the scene, so it has to carry the scene's own music too -
+    // otherwise "play from here" is the one way to enter a scene silently.
+    const launchMusic = await resolveSceneBackgroundMusic({
+        scene,
+        audioClips: input.audioClips,
+        resolveAssetUrl,
+        assetUrlCache,
+        diagnostics,
+    });
     const launchScene = new Scene(
         scene.runtimeName || scene.name || scene.id,
-        backgroundSrc ? { background: backgroundSrc } : undefined,
+        {
+            ...(backgroundSrc ? { background: backgroundSrc } : {}),
+            ...(launchMusic ? { backgroundMusic: launchMusic.sound, backgroundMusicFade: launchMusic.fadeMs } : {}),
+        },
     );
 
     const ctx: SceneCompileContext = {
@@ -755,7 +799,8 @@ async function buildLaunchEntryScene(params: {
         layers: new Map(),
         videos: new Map(),
         vfx: new Map(),
-        sounds: new Map(),
+        sounds: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.sound]]) : new Map(),
+        audioClips: input.audioClips,
         animations: params.animations,
         resolveAssetUrl,
         assetUrlCache,
@@ -958,6 +1003,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         videos: new Map(),
         vfx: new Map(),
         sounds: new Map(),
+        audioClips: input.audioClips,
         animations,
         resolveAssetUrl,
         assetUrlCache,
@@ -1106,7 +1152,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         diagnostics,
         characters: ctx.characters,
         avatarAssetIdByUrl: ctx.avatarAssetIdByUrl,
-        sceneElements: { [scene.id]: { images: ctx.images, texts: ctx.texts, layers: ctx.layers, puppets: ctx.puppets } },
+        sceneElements: { [scene.id]: { images: ctx.images, texts: ctx.texts, layers: ctx.layers, puppets: ctx.puppets, sounds: ctx.sounds } },
         playbackStop,
     };
 }
@@ -1208,6 +1254,16 @@ async function createNlrScenes(input: {
     diagnostics: NlrStoryCompileDiagnostic[];
     /** Active voice language's unit id → clip URL map, shared by every scene (voice ids are global). */
     voiceIdMap?: Record<string, string>;
+    /** Asset id → marked in/out points, so a scene's own track loops where the author marked it. */
+    audioClips?: Record<string, AudioClipRegion>;
+    /**
+     * Filled with each scene's configured track, keyed by Studio scene id.
+     *
+     * The caller seeds it into that scene's sound registry under the reserved name `bgm`, which is
+     * what makes `/vol 0.5` and `/seek bgm 30` address the scene's own music. Without it the control
+     * family would answer "no background music is set" on precisely the scene that has some.
+     */
+    backgroundMusic?: Map<string, Sound>;
 }): Promise<Record<string, Scene>> {
     const scenes: Record<string, Scene> = {};
     const voices = input.voiceIdMap && Object.keys(input.voiceIdMap).length > 0 ? input.voiceIdMap : undefined;
@@ -1234,12 +1290,29 @@ async function createNlrScenes(input: {
             assetUrlCache: input.assetUrlCache,
             diagnostics: input.diagnostics,
         });
-        const config: { background?: string; voices?: Record<string, string> } = {};
+        const config: {
+            background?: string;
+            voices?: Record<string, string>;
+            backgroundMusic?: Sound;
+            backgroundMusicFade?: number;
+        } = {};
         if (background) {
             config.background = background;
         }
         if (voices) {
             config.voices = voices;
+        }
+        const music = await resolveSceneBackgroundMusic({
+            scene,
+            audioClips: input.audioClips,
+            resolveAssetUrl: input.resolveAssetUrl,
+            assetUrlCache: input.assetUrlCache,
+            diagnostics: input.diagnostics,
+        });
+        if (music) {
+            config.backgroundMusic = music.sound;
+            config.backgroundMusicFade = music.fadeMs;
+            input.backgroundMusic?.set(scene.id, music.sound);
         }
         scenes[scene.id] = new Scene(
             runtimeName,
@@ -1267,6 +1340,50 @@ async function resolveSceneInitialBackground(input: {
         assetUrlCache: input.assetUrlCache,
         diagnostics: input.diagnostics,
     });
+}
+
+/**
+ * The scene's own opening track, as engine scene config.
+ *
+ * Constructor config rather than a leading `setBackgroundMusic` statement, because the engine plays
+ * `backgroundMusic` during the scene's *init* - so it is already going when the first row runs, and
+ * it survives a load into the middle of the scene. A statement could do neither.
+ *
+ * `loop` defaults to true: a scene's track is meant to outlast the scene, and the in/out points on
+ * the asset only become a loop region when the clip loops.
+ */
+async function resolveSceneBackgroundMusic(input: {
+    scene: StoryScene;
+    audioClips?: Record<string, AudioClipRegion>;
+    resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
+    assetUrlCache: Map<string, string | null>;
+    diagnostics: NlrStoryCompileDiagnostic[];
+}): Promise<{ sound: Sound; fadeMs: number } | null> {
+    const bgm = input.scene.bgm;
+    const assetId = bgm?.assetId?.trim();
+    if (!bgm || !assetId) {
+        return null;
+    }
+    const url = await resolveAssetUrlCached({
+        assetId,
+        assetType: "audio",
+        blockId: SCENE_BACKGROUND_MUSIC_BLOCK_ID,
+        resolveAssetUrl: input.resolveAssetUrl,
+        assetUrlCache: input.assetUrlCache,
+        diagnostics: input.diagnostics,
+    });
+    if (!url) {
+        return null;
+    }
+    return {
+        sound: Sound.bgm({
+            src: url,
+            loop: bgm.loop ?? true,
+            volume: bgm.volume ?? 1,
+            ...audioClipRegionToSoundConfig(input.audioClips?.[assetId]),
+        }),
+        fadeMs: bgm.fadeMs ?? 0,
+    };
 }
 
 async function compileBlockList(ctx: SceneCompileContext, blockIds: readonly string[]): Promise<NlrStatement[]> {
@@ -1928,8 +2045,9 @@ async function compileCharacterStageAction(
 
     // Runtime state on a character Studio draws itself: there is no backend to ask, and the row was
     // authored against the wrong character rather than being a no-op worth swallowing.
-    if (payload.operation === "setMotion" || payload.operation === "setSkin") {
-        diagnostic(ctx, "warning", block.id, `${payload.characterId || name} is not drawn by a runtime, so it has no ${payload.operation === "setMotion" ? "motion" : "skin"} to set.`);
+    if (payload.operation === "setMotion" || payload.operation === "setSkin" || payload.operation === "setParams") {
+        const channel = payload.operation === "setMotion" ? "motion" : payload.operation === "setSkin" ? "skin" : "parameters";
+        diagnostic(ctx, "warning", block.id, `${payload.characterId || name} is not drawn by a runtime, so it has no ${channel} to set.`);
         return statements;
     }
 
@@ -2010,11 +2128,15 @@ async function compileCharacterStageAction(
  * move - and they are compiled through the same `compileDisplayableOperation` an Image row uses,
  * which is the point: a puppet character participates in a scene the way any other character does.
  *
- * The other three - `expression`, `setMotion`, `setSkin` - address the INSIDE of the box, which no
- * other character kind has. They are not a source swap: the row carries a name the backend owns
- * (`puppetName`), handed over verbatim, and the engine remembers it as persistent state that a saved
- * game restores. A row that names nothing clears that channel, which is the engine's own `null`:
- * "the absence of a request", not "leave whatever is there".
+ * The other four - `expression`, `setMotion`, `setSkin`, `setParams` - address the INSIDE of the box,
+ * which no other character kind has. They are not a source swap: the row carries a name the backend
+ * owns (`puppetName`), handed over verbatim, and the engine remembers it as persistent state that a
+ * saved game restores. A row that names nothing clears that channel, which is the engine's own
+ * `null`: "the absence of a request", not "leave whatever is there".
+ *
+ * `setParams` is the one that is not a single name. Its payload is a map and the engine's `setParam`
+ * merges, so it compiles to one statement per entry - and a parameter has no `null`: an absent key
+ * means "keep the model's own default", which is why nothing here clears one.
  */
 async function compileCharacterPuppetAction(
     ctx: SceneCompileContext,
@@ -2040,6 +2162,15 @@ async function compileCharacterPuppetAction(
     }
     if (payload.operation === "setSkin") {
         return [recordStatement(ctx, puppet.setSkin(requested), block)];
+    }
+    if (payload.operation === "setParams") {
+        // One statement per entry. `Puppet.setParam` merges - it sets one id and leaves the others
+        // alone - so the row's whole map arrives as a run of calls with no read-modify-write in
+        // between, and the order among them cannot matter. A row asking for nothing compiles to
+        // nothing rather than to a no-op statement the timeline would then have to draw.
+        return Object.entries(payload.params ?? {})
+            .filter(([id, value]) => id.trim() !== "" && Number.isFinite(value))
+            .map(([id, value]) => recordStatement(ctx, puppet.setParam(id.trim(), value), block));
     }
 
     const operation = payload.operation === "exit" ? "hide" : payload.operation === "move" ? "transform" : "show";
@@ -2171,17 +2302,22 @@ async function compileAudioAction(
 ): Promise<NlrStatement[]> {
     if (payload.operation === "setBgm") {
         if (!payload.assetId) {
-            ctx.sounds.delete("bgm");
+            ctx.sounds.delete(BGM_SOUND_NAME);
             return [recordStatement(ctx, ctx.nlrScene.setBackgroundMusic(null, payload.fadeMs), block)];
         }
         const url = await resolveAsset(ctx, payload.assetId, "audio", block.id);
         if (!url) {
             return [];
         }
-        const sound = Sound.bgm({ src: url, loop: payload.loop ?? true, volume: payload.volume ?? 1 });
+        const sound = Sound.bgm({
+            src: url,
+            loop: payload.loop ?? true,
+            volume: payload.volume ?? 1,
+            ...clipRegionConfig(ctx, payload.assetId),
+        });
         // The reserved name the sound-control family defaults to: `/vol 0.5` addresses the music
         // channel by registering the BGM handle under "bgm" (see BGM_OBJECT_NAME in the editor).
-        ctx.sounds.set("bgm", sound);
+        ctx.sounds.set(BGM_SOUND_NAME, sound);
         return [recordStatement(ctx, ctx.nlrScene.setBackgroundMusic(sound, payload.fadeMs), block)];
     }
 
@@ -2205,6 +2341,10 @@ async function compileAudioAction(
             return [recordStatement(ctx, sound.setRate(payload.rate ?? 1), block)];
         case "muteSound":
             return [recordStatement(ctx, sound.mute(payload.muted ?? true), block)];
+        case "seekSound":
+            // Seconds at the engine boundary, milliseconds in the payload - the same conversion
+            // every other time in this compiler makes.
+            return [recordStatement(ctx, sound.seek((payload.timeMs ?? 0) / 1000), block)];
         default:
             return [];
     }
@@ -2700,9 +2840,21 @@ async function getSound(
         loop: payload.loop ?? false,
         volume: payload.volume ?? 1,
         rate: payload.rate ?? 1,
+        ...clipRegionConfig(ctx, assetId),
     });
     ctx.sounds.set(name, sound);
     return sound;
+}
+
+/**
+ * The in/out points marked on an asset, as `Sound` config.
+ *
+ * Applied to every sound the compiler builds, not only background music: an out point trims a sound
+ * effect's tail as usefully as it loops a track's body, and the author marked one region per asset -
+ * asking them to mark it again per row would be a second source of truth.
+ */
+function clipRegionConfig(ctx: SceneCompileContext, assetId: string | undefined): { seek: number; endTime?: number } {
+    return audioClipRegionToSoundConfig(assetId ? ctx.audioClips?.[assetId] : undefined);
 }
 
 /**

@@ -25,19 +25,35 @@ export const GALLERY_STORE_NAMESPACE = `${PLUGIN_ID}.items`;
 export const RUNTIME_UNLOCKED_KEY = `${PLUGIN_ID}.unlocked`;
 
 /**
- * What a catalog entry represents. Only `cg` ships today; `scene` (回想 / scene
- * recollection) and `voice` (voice EXTRA) are reserved so those features can
- * land as new kinds in the same catalog rather than a parallel one - see
- * docs/plans/2026-07-28-002-plan-gallery-recollection-and-voice-extra.md.
+ * What a catalog entry represents.
+ *
+ * The four EXTRA columns of a commercial visual novel share one skeleton - an
+ * unlockable set with groups, spoiler masking and progress - so they are kinds
+ * in one catalog rather than four parallel systems. Concretely, an album is an
+ * entry whose variants are its tracks, which is the same shape as an artwork
+ * whose variants are its differentials; the unlock record, group filter,
+ * masking and stats therefore work on all of them unchanged.
  *
  * Readers must treat an unknown kind as "not mine" and skip it, so a project
  * authored in a newer Studio degrades instead of breaking.
+ *
+ * See docs/plans/2026-07-29-001-plan-gallery-extra-suite.md.
  */
-export type GalleryEntryKind = "cg";
+export type GalleryEntryKind = "cg" | "scene" | "music" | "voice";
 
-export const GALLERY_ENTRY_KINDS: readonly GalleryEntryKind[] = ["cg"];
+export const GALLERY_ENTRY_KINDS: readonly GalleryEntryKind[] = ["cg", "scene", "music", "voice"];
 
-/** A single differential of an artwork (expression / outfit / stage variation). */
+/** True for kinds whose variants carry an audio asset rather than only art. */
+export function isAudioGalleryKind(kind: GalleryEntryKind): boolean {
+    return kind === "music" || kind === "voice";
+}
+
+/**
+ * One member of an entry: a differential of an artwork, a track of an album, or
+ * a line of a voice set. Which fields matter depends on the parent's kind; the
+ * unused ones stay absent rather than null so a CG never carries empty audio
+ * keys around.
+ */
 export type GalleryVariant = {
     id: string;
     name: string;
@@ -50,33 +66,60 @@ export type GalleryVariant = {
      */
     thumbnailAssetId?: string | null;
     thumbnailAssetName?: string | null;
+    /** `music`: the track. `voice`: set when a line is backed by a loose clip. */
+    audioAssetId?: string | null;
+    audioAssetName?: string | null;
+    /** Known clip length, for a track list that shows durations without decoding. */
+    durationSec?: number | null;
+    /**
+     * `voice`: the voice unit id, which is the story line's `textId` - the same
+     * key the translation table and the engine's voiceId use. The clip itself is
+     * resolved from the shipped voice table at runtime, so a voice entry does
+     * not duplicate the asset id.
+     */
+    voiceUnitId?: string | null;
+    /** `voice`: the line text as it read when picked, for a subtitle in the viewer. */
+    lineText?: string | null;
 };
 
-/** One gallery artwork, holding an ordered list of differentials. */
+/**
+ * Where a `scene` entry replays from. `startBlockId` narrows the replay to a
+ * specific row, which the host's launch compile already supports; absent means
+ * the scene start.
+ */
+export type GalleryScenePayload = {
+    storyId: string | null;
+    sceneId: string | null;
+    startBlockId?: string | null;
+};
+
+/** One gallery entry, holding an ordered list of members. */
 export type GalleryArtwork = {
     id: string;
     name: string;
     kind: GalleryEntryKind;
-    /** Author-facing blurb shown in a CG viewer. Withheld while locked. */
+    /** Author-facing blurb shown in a viewer. Withheld while locked. */
     description: string;
-    /** Group this artwork belongs to, or null for ungrouped. */
+    /** Group this entry belongs to, or null for ungrouped. */
     groupId: string | null;
     variants: GalleryVariant[];
-    /** Variant shown as the artwork's cover. Falls back to the first variant. */
+    /** Variant shown as the entry's cover. Falls back to the first variant. */
     coverVariantId: string | null;
     /**
-     * Silhouette drawn in place of the cover while the artwork is locked.
+     * Silhouette drawn in place of the cover while the entry is locked.
      * Falls back to the catalog-wide placeholder in settings.
      */
     lockedImageAssetId: string | null;
     lockedImageAssetName?: string | null;
     /**
-     * Secret artwork: omitted from the entries projection entirely until it is
+     * Secret entry: omitted from the entries projection entirely until it is
      * unlocked, rather than shown as an empty slot. The distinction matters -
      * a visible locked slot tells the player there is something to find, and
      * for some content that is itself the spoiler.
      */
     hidden: boolean;
+    /** `scene` only: what to replay. */
+    scene?: GalleryScenePayload | null;
     createdAt: number;
     updatedAt: number;
 };
@@ -100,7 +143,12 @@ export type GallerySettings = {
 
 export const DEFAULT_LOCKED_NAME_MASK = "???";
 
-export const GALLERY_STORE_VERSION = 3 as const;
+/**
+ * v4 adds the non-CG kinds and their fields. Reading a v3 store needs no
+ * migration step: every v3 entry already carries `kind: "cg"`, and the new
+ * variant fields are optional, so the v3 normalizer's output is already valid v4.
+ */
+export const GALLERY_STORE_VERSION = 4 as const;
 
 export type GalleryStoreData = {
     version: typeof GALLERY_STORE_VERSION;
@@ -166,6 +214,10 @@ function randomToken(): string {
     return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
+function readPositiveNumber(value: unknown): number | null {
+    return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
+}
+
 function normalizeVariant(raw: unknown, index: number): GalleryVariant | null {
     const record = readRecord(raw);
     if (!record) {
@@ -176,16 +228,43 @@ function normalizeVariant(raw: unknown, index: number): GalleryVariant | null {
         return null;
     }
     const thumbnailAssetId = readNullableAssetId(record.thumbnailAssetId);
+    const audioAssetId = readNullableAssetId(record.audioAssetId);
+    const durationSec = readPositiveNumber(record.durationSec);
+    const voiceUnitId = readNullableAssetId(record.voiceUnitId);
+    const lineText = typeof record.lineText === "string" && record.lineText ? record.lineText : null;
+    // Kind-specific fields are omitted rather than nulled, so a CG variant does
+    // not carry four empty audio keys through every projection and save.
     return {
         id,
-        name: readTrimmedString(record.name) || `Variant ${index + 1}`,
+        name: readTrimmedString(record.name) || `Item ${index + 1}`,
         imageAssetId: readNullableAssetId(record.imageAssetId),
         imageAssetName: readNullableAssetId(record.imageAssetName),
         ...(thumbnailAssetId ? {
             thumbnailAssetId,
             thumbnailAssetName: readNullableAssetId(record.thumbnailAssetName),
         } : {}),
+        ...(audioAssetId ? {
+            audioAssetId,
+            audioAssetName: readNullableAssetId(record.audioAssetName),
+        } : {}),
+        ...(durationSec !== null ? { durationSec } : {}),
+        ...(voiceUnitId ? { voiceUnitId } : {}),
+        ...(lineText ? { lineText } : {}),
     };
+}
+
+function normalizeScenePayload(value: unknown): GalleryScenePayload | null {
+    const record = readRecord(value);
+    if (!record) {
+        return null;
+    }
+    const storyId = readTrimmedString(record.storyId) || null;
+    const sceneId = readTrimmedString(record.sceneId) || null;
+    const startBlockId = readTrimmedString(record.startBlockId) || null;
+    if (!storyId && !sceneId) {
+        return null;
+    }
+    return { storyId, sceneId, ...(startBlockId ? { startBlockId } : {}) };
 }
 
 /**
@@ -237,11 +316,17 @@ function normalizeArtwork(raw: unknown, now: number): GalleryArtwork | null {
         .filter((variant): variant is GalleryVariant => variant !== null);
     const coverVariantId = readTrimmedString(record.coverVariantId);
     const kind = readTrimmedString(record.kind);
+    // v2 predates `kind`; everything authored then was an artwork. An unknown
+    // kind (a project from a newer Studio) also reads as "cg" rather than being
+    // dropped, so the author still sees their entry and can retype it.
+    const safeKind = GALLERY_ENTRY_KINDS.includes(kind as GalleryEntryKind)
+        ? kind as GalleryEntryKind
+        : "cg";
+    const scene = safeKind === "scene" ? normalizeScenePayload(record.scene) : null;
     return {
         id,
         name: readTrimmedString(record.name) || id,
-        // v2 predates `kind`; everything authored then was an artwork.
-        kind: GALLERY_ENTRY_KINDS.includes(kind as GalleryEntryKind) ? kind as GalleryEntryKind : "cg",
+        kind: safeKind,
         description: typeof record.description === "string" ? record.description : "",
         groupId: readTrimmedString(record.groupId) || null,
         variants,
@@ -251,6 +336,7 @@ function normalizeArtwork(raw: unknown, now: number): GalleryArtwork | null {
         lockedImageAssetId: readNullableAssetId(record.lockedImageAssetId),
         lockedImageAssetName: readNullableAssetId(record.lockedImageAssetName),
         hidden: record.hidden === true,
+        ...(scene ? { scene } : {}),
         createdAt: readTimestamp(record.createdAt, now),
         updatedAt: readTimestamp(record.updatedAt, now),
     };
@@ -424,9 +510,21 @@ export type GalleryEntryView = {
     thumbnail: GalleryImageAssetValue | null;
     thumbnailAssetId: string;
     coverVariantId: string;
+    /**
+     * `music` / `voice`: the cover member's clip, ready for Play Sound. Empty
+     * while locked, like the art.
+     */
+    audioAssetId: string;
+    durationSec: number;
+    /** `voice`: the cover member's unit id, for Resolve Voice Asset. */
+    voiceUnitId: string;
+    /** `scene`: where Start Game should replay from. Empty while locked. */
+    storyId: string;
+    sceneId: string;
+    startBlockId: string;
 };
 
-/** One differential of an artwork, for a CG viewer's variant strip. */
+/** One member of an entry: a differential, a track, or a voice line. */
 export type GalleryVariantView = {
     index: number;
     id: string;
@@ -439,11 +537,19 @@ export type GalleryVariantView = {
     thumbnail: GalleryImageAssetValue | null;
     thumbnailAssetId: string;
     isCover: boolean;
+    /** `music` / `voice`: the clip. Empty while locked. */
+    audioAssetId: string;
+    durationSec: number;
+    /** `voice`: unit id and the line text for a subtitle. Empty while locked. */
+    voiceUnitId: string;
+    lineText: string;
 };
 
 export type GalleryProjectionOptions = {
     /** Restrict to one group id. Empty or absent means every group. */
     groupId?: string | null;
+    /** Restrict to one kind. Empty or absent means every kind. */
+    kind?: GalleryEntryKind | null;
     /** Drop locked entries entirely, for a "collected only" view. */
     onlyUnlocked?: boolean;
 };
@@ -467,10 +573,14 @@ export function projectGalleryEntries(
 ): GalleryEntryView[] {
     const groupNames = new Map(store.groups.map(group => [group.id, group.name] as const));
     const groupFilter = options.groupId?.trim() || "";
+    const kindFilter = options.kind ?? null;
     const views: GalleryEntryView[] = [];
 
     for (const artwork of store.items) {
         if (groupFilter && (artwork.groupId ?? "") !== groupFilter) {
+            continue;
+        }
+        if (kindFilter && artwork.kind !== kindFilter) {
             continue;
         }
         const isUnlocked = isArtworkUnlocked(artwork, unlocked);
@@ -508,6 +618,15 @@ export function projectGalleryEntries(
             thumbnail: toImageAssetValue(thumbnailAssetId),
             thumbnailAssetId: thumbnailAssetId ?? "",
             coverVariantId: cover?.id ?? "",
+            // Audio, voice and scene coordinates follow the same discipline as
+            // the art: withheld while locked. A scene id is a spoiler too - it
+            // names the chapter the player has not reached.
+            audioAssetId: isUnlocked ? cover?.audioAssetId ?? "" : "",
+            durationSec: isUnlocked ? cover?.durationSec ?? 0 : 0,
+            voiceUnitId: isUnlocked ? cover?.voiceUnitId ?? "" : "",
+            storyId: isUnlocked ? artwork.scene?.storyId ?? "" : "",
+            sceneId: isUnlocked ? artwork.scene?.sceneId ?? "" : "",
+            startBlockId: isUnlocked ? artwork.scene?.startBlockId ?? "" : "",
         });
     }
     return views;
@@ -547,6 +666,10 @@ export function projectGalleryVariants(
             thumbnail: toImageAssetValue(thumbnailAssetId),
             thumbnailAssetId: thumbnailAssetId ?? "",
             isCover: variant.id === coverId,
+            audioAssetId: isUnlocked ? variant.audioAssetId ?? "" : "",
+            durationSec: isUnlocked ? variant.durationSec ?? 0 : 0,
+            voiceUnitId: isUnlocked ? variant.voiceUnitId ?? "" : "",
+            lineText: isUnlocked ? variant.lineText ?? "" : "",
         });
     }
     return views;
@@ -571,9 +694,10 @@ export type GalleryStats = {
 export function computeGalleryStats(
     store: GalleryStoreData,
     unlocked: Set<string>,
-    options: Pick<GalleryProjectionOptions, "groupId"> = {},
+    options: Pick<GalleryProjectionOptions, "groupId" | "kind"> = {},
 ): GalleryStats {
     const groupFilter = options.groupId?.trim() || "";
+    const kindFilter = options.kind ?? null;
     let total = 0;
     let unlockedCount = 0;
     let variantTotal = 0;
@@ -581,6 +705,9 @@ export function computeGalleryStats(
 
     for (const artwork of store.items) {
         if (groupFilter && (artwork.groupId ?? "") !== groupFilter) {
+            continue;
+        }
+        if (kindFilter && artwork.kind !== kindFilter) {
             continue;
         }
         const isUnlocked = isArtworkUnlocked(artwork, unlocked);

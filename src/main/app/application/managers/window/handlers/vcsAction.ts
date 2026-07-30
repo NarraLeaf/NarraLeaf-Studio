@@ -180,6 +180,28 @@ export class VcsReadBlobHandler extends IPCHandler<IPCEventType.vcsReadBlob> {
     }
 }
 
+export class VcsReadRevisionDocumentsHandler extends IPCHandler<IPCEventType.vcsReadRevisionDocuments> {
+    readonly name = IPCEventType.vcsReadRevisionDocuments;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath, revision, paths }: IPCEvents[IPCEventType.vcsReadRevisionDocuments]["data"],
+    ): Promise<RequestStatus<{ documents: { path: string; contentBase64: string | null }[] }>> {
+        return this.tryUse(async () => {
+            const read = await window.app.getVcsManager().readRevisionDocuments(projectPath, revision, { paths });
+            // An array rather than a record: a repository-relative path is arbitrary text
+            // and `__proto__` as an object key is not something to find out about later.
+            return {
+                documents: [...read].map(([path, bytes]) => ({
+                    path,
+                    contentBase64: bytes === null ? null : bytes.toString("base64"),
+                })),
+            };
+        });
+    }
+}
+
 export class VcsGetChangedPathsHandler extends IPCHandler<IPCEventType.vcsGetChangedPaths> {
     readonly name = IPCEventType.vcsGetChangedPaths;
     readonly type = IPCMessageType.request;

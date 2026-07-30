@@ -10,6 +10,7 @@ import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { AssetsMap } from "@/lib/workspace/services/assets/types";
 import { listSceneDisplayableTargets } from "../../story-motion/storyMotionPreviewTarget";
 import type { StoryCommandAppearanceRef, StoryCommandContext, StoryCommandNamedRef, StoryCommandStageObjects, StoryCommandVariableEntry } from "./storyCommandResolution";
+import type { StoryPuppetVocabulary } from "./storyCommandValues";
 
 /**
  * Project a live project onto the flat, name-keyed view the command line resolves against.
@@ -127,6 +128,15 @@ export function buildStoryCommandContext(input: {
     scene: StoryScene | null;
     /** Blueprint-declared persistent (game-level) variables from the M-VAR registry; empty when none. */
     persistentVariables?: readonly VariableRegistryEntry[];
+    /**
+     * What each puppet character's model reported about itself, for the ones that have been asked and
+     * answered. Omit a character - or the whole map - and the surface degrades to free text.
+     *
+     * An input rather than a lookup because this projection is pure by design: the answer comes from
+     * mounting the author's own runtime, which is a service's job (`PuppetDescriptionService`), and a
+     * context built in a test has no project to mount anything from.
+     */
+    puppetByCharacterId?: Readonly<Record<string, StoryPuppetVocabulary>>;
 }): StoryCommandContext {
     // What a `/show` row can name after the character: a preset character's poses, a layered one's
     // tags (across every axis — the engine resolves each against the group that owns it, so the
@@ -169,6 +179,13 @@ export function buildStoryCommandContext(input: {
         variables: variableEntries(input.document, input.scene, input.persistentVariables ?? []),
         appearanceByCharacterId,
         puppetCharacterIds,
+        // Only the characters that ARE puppets, so a stale entry left behind by an appearance the
+        // author changed from `puppet` to `layered` cannot go on offering motions.
+        puppetByCharacterId: Object.fromEntries(
+            puppetCharacterIds
+                .map(id => [id, input.puppetByCharacterId?.[id]] as const)
+                .filter((entry): entry is readonly [string, StoryPuppetVocabulary] => entry[1] !== undefined),
+        ),
         stageObjects: collectStageObjects(input.document, input.sceneId, input.scene),
     };
 }
