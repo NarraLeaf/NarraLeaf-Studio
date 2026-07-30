@@ -231,32 +231,47 @@ export const resume = defineStoryCommand({
 /**
  * `/seek` - the one operation with no generic verb to absorb it.
  *
- * Its target is not omissible: `/seek 3` with an implied BGM would be a sound operation NLR's `Sound`
- * does not have, so the clip has to be named. Seconds on the line, milliseconds in the payload, like
+ * It reaches audio as well as video (the engine grew `Sound.seek`), which makes it the same
+ * dispatch-on-target shape as `/stop` and `/pause`: the token names the verb, the resolved target
+ * decides which payload the line writes. Seconds on the line, milliseconds in the payload, like
  * every other time in this vocabulary.
+ *
+ * The target stays non-omissible even now that BGM could answer it. `/seek 3` reads as "three
+ * seconds into… what?", and unlike `/vol 0.5` — where the music channel is the overwhelmingly common
+ * subject — jumping the play head is something an author does to a clip they are thinking about by
+ * name. `/seek bgm 30` is one word longer and unambiguous.
  */
 export const seek = defineStoryCommand({
     id: "seek",
     token: "seek",
-    category: "video",
-    examples: ["/seek clip 12"],
+    // `accepts` files it under both 视频 and 声音 in the sidebar; this only picks the single section
+    // the flat `/` menu prints it under, and the omitted target falls back to audio.
+    category: "sound",
+    examples: ["/seek clip 12", "/seek bgm 30"],
     params: {
-        target: targetParam(["video"], { core: true }),
+        target: targetParam(["video", "audio"], { core: true, fallbackKind: "audio" }),
         time: { hint: "seekTime", type: { kind: "number", min: 0 }, positional: true, core: true },
     },
     build(args, ctx): StoryBlock {
-        return {
-            id: ctx.generateId(),
-            parentId: null,
-            childrenIds: [],
-            kind: "action",
-            payload: {
-                action: "video",
-                operation: "seek",
-                objectName: asTarget(args.target)?.name ?? "video",
-                timeMs: asDurationMs(args.time) ?? 0,
-            },
-        };
+        const target = asTarget(args.target);
+        const timeMs = asDurationMs(args.time) ?? 0;
+        if (target?.type === "stageObject" && target.objectKind === "video") {
+            return {
+                id: ctx.generateId(),
+                parentId: null,
+                childrenIds: [],
+                kind: "action",
+                payload: {
+                    action: "video",
+                    operation: "seek",
+                    objectName: target.name,
+                    timeMs,
+                },
+            };
+        }
+        return audioControlBlock("seekSound", args, ctx.generateId, payload => {
+            payload.timeMs = timeMs;
+        });
     },
 });
 

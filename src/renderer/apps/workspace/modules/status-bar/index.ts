@@ -6,6 +6,7 @@ import {
     ShortcutsEntry,
     ThemeEntry,
     SaveStatusEntry,
+    VersionEntry,
     WordCountEntry,
     ZoomEntry,
 } from "./entries";
@@ -47,6 +48,15 @@ export const builtInStatusBarEntries: StatusBarEntryModule[] = [
         labelKey: "workspace.shell.statusBar.entries.wordCount",
         alignment: StatusBarAlignment.Left,
         component: WordCountEntry,
+    },
+    {
+        // After the word count, so the version sits inboard of the writing readout: which version you
+        // are in matters less often than what you are writing, and the outer edge belongs to the
+        // thing the eye returns to.
+        id: "narraleaf-studio:status-bar/version",
+        labelKey: "workspace.shell.statusBar.entries.version",
+        alignment: StatusBarAlignment.Left,
+        component: VersionEntry,
     },
     {
         id: "narraleaf-studio:status-bar/shortcuts",

@@ -14,8 +14,11 @@ import type { PuppetDescriptionService } from "@/lib/workspace/services/puppet/P
 import type {
     PuppetDescriptionRequest,
     PuppetDescriptionResult,
+    PuppetDescriptionUnavailableReason,
 } from "@/lib/workspace/services/puppet/puppetDescriptionModel";
 import { stablePuppetJson } from "@/lib/workspace/services/puppet/puppetDescriptionModel";
+import type { CharacterAppearance } from "@/lib/workspace/services/character/CharacterAppearance";
+import type { TranslationKey } from "@shared/i18n";
 
 export interface PuppetDescriptionView {
     /** Null while the first lookup is in flight, and whenever there is nothing to ask about. */
@@ -65,4 +68,55 @@ export function usePuppetDescription(request: PuppetDescriptionRequest | null): 
 
     const refresh = useCallback(() => { setNonce(value => value + 1); }, []);
     return { result, loading, refresh };
+}
+
+/**
+ * What to ask about, for a character whose appearance is a puppet — or null for one that is not.
+ *
+ * The four values that decide what a backend would load, and nothing else. The resting pose is
+ * deliberately out: applying a motion does not change which motions exist, and putting it in here
+ * would re-mount the model every time the author picked one.
+ *
+ * Shared because two surfaces need the identical mapping — the character editor and the story
+ * inspector — and a second copy of it would be a second answer to "is this the same model".
+ */
+export function puppetDescriptionRequestFor(appearance: CharacterAppearance | undefined): PuppetDescriptionRequest | null {
+    // `getPuppet()` already answers null for a kind that is not runtime-drawn, and it answers for all
+    // three that are - so it is asked directly. A `getKind() === "puppet"` guard here would have
+    // starved every `live2d` and `spine` character of its description while looking like a null check.
+    const puppet = appearance?.getPuppet() ?? null;
+    if (!puppet?.assetId || !puppet.backend) {
+        return null;
+    }
+    return {
+        assetId: puppet.assetId,
+        backend: puppet.backend,
+        entry: puppet.entry,
+        options: puppet.options,
+        size: puppet.size,
+    };
+}
+
+/**
+ * Where a description came from, said in one line — the author's only way to tell "the model has no
+ * animations" from "Studio never managed to ask it".
+ *
+ * The keys live under `characters.editor.puppet.*` because that is where they were written, but they
+ * describe the *model*, not the character editor, and the story inspector shows the same sentence
+ * about the same fact. One table rather than two catalogues that drift.
+ */
+export function puppetDescribeStatusKey(reason: PuppetDescriptionUnavailableReason | null | undefined): TranslationKey {
+    switch (reason) {
+        case "no-model": return "characters.editor.puppet.describeNoModel";
+        case "no-backend": return "characters.editor.puppet.describeNoBackend";
+        case "backend-missing": return "characters.editor.puppet.describeBackendMissing";
+        case "not-described": return "characters.editor.puppet.describeNotSupported";
+        case "failed": return "characters.editor.puppet.describeFailed";
+        // Exhaustive rather than defaulting: a `default` arm reported a *new* kind of unavailability as
+        // "filled from the model", which is the one answer that is certainly wrong. `null` - the
+        // description succeeded - is the only case that maps to the success line.
+        case null:
+        case undefined:
+            return "characters.editor.puppet.describeOk";
+    }
 }

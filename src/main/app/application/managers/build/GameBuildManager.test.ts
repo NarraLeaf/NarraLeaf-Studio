@@ -1,6 +1,7 @@
 import path from "path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GameRuntimeLaunchEntry } from "@shared/types/gameRuntime";
+import { forgetWorkspaceFreeze, reportWorkspaceFreeze } from "../../utils/workspaceFreeze";
 import {
     deriveGameAppId,
     GameBuildManager,
@@ -89,6 +90,57 @@ describe("GameBuildManager.start fail-fast guards", () => {
             expect(manager.getStatus(projectPath).status).toBe("error");
         });
         expect(manager.getStatus(projectPath).error).toContain("banana");
+    });
+});
+
+describe("GameBuildManager.start while the workspace is frozen", () => {
+    const makeManager = () => new GameBuildManager({
+        logger: { error: () => undefined },
+    } as unknown as ConstructorParameters<typeof GameBuildManager>[0]);
+    const entry = {} as GameRuntimeLaunchEntry;
+    const projectPath = path.join("/nonexistent", "frozen-project");
+    // The unknown platform is the marker that the build actually entered run(): it is the first
+    // thing run() throws on, and it throws before anything is compiled or spawned.
+    const request = { targets: [{ platform: "banana" as never, formats: ["zip" as const] }] };
+
+    afterEach(() => {
+        forgetWorkspaceFreeze(projectPath);
+    });
+
+    it("refuses, naming the revision the author is reading", () => {
+        // The Build control is already disabled while frozen; this is the same refusal for the
+        // callers a disabled button does not reach - a keybinding, a plugin, a second window.
+        reportWorkspaceFreeze(projectPath, "revision");
+        const manager = makeManager();
+        const snapshot = manager.start(projectPath, entry, request);
+
+        expect(snapshot.status).toBe("error");
+        expect(snapshot.error).toContain("Leave the revision");
+        // Refused before run(): had it started, this is what it would have failed on instead.
+        expect(snapshot.error).not.toContain("banana");
+        // And the dialog, which polls, sees the same reason rather than an idle build.
+        expect(manager.getStatus(projectPath).error).toBe(snapshot.error);
+    });
+
+    it("refuses a hand-frozen workspace with the remedy that fits it", () => {
+        reportWorkspaceFreeze(projectPath, "manual");
+        const snapshot = makeManager().start(projectPath, entry, request);
+
+        expect(snapshot.status).toBe("error");
+        expect(snapshot.error).toContain("Unfreeze the workspace");
+    });
+
+    it("builds again once the workspace is thawed", async () => {
+        reportWorkspaceFreeze(projectPath, "revision");
+        reportWorkspaceFreeze(projectPath, null);
+        const manager = makeManager();
+        const snapshot = manager.start(projectPath, entry, request);
+
+        // Started, not refused - the freeze record defaults to allowing and a thaw restores that.
+        expect(snapshot.status).toBe("preparing");
+        await vi.waitFor(() => {
+            expect(manager.getStatus(projectPath).error).toContain("banana");
+        });
     });
 });
 

@@ -32,16 +32,16 @@ import {
 } from "@shared/types/story";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
 import { useTranslation } from "@/lib/i18n";
-import type { Translator } from "@shared/i18n";
+import type { Translator, TranslationKey } from "@shared/i18n";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronRight, Copy, ExternalLink, Image as ImageIcon, Mic, Music, Palette, Play, Square, Trash2, Video } from "lucide-react";
+import { ChevronDown, ChevronRight, Copy, ExternalLink, Image as ImageIcon, Mic, Music, Palette, Play, RefreshCw, Square, Trash2, Video } from "lucide-react";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { useWorkspace } from "@/apps/workspace/context";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
-import { Select, type SelectOption } from "@/lib/components/elements";
+import { Select, Slider, type SelectOption } from "@/lib/components/elements";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
@@ -60,6 +60,13 @@ import { CharacterAppearancePicker } from "./CharacterAppearancePicker";
 import { DisplayableTargetField } from "./DisplayableTargetField";
 import { StoryLayerField } from "./StoryLayerField";
 import { MotionField } from "../../story-motion";
+import { PuppetPreview } from "@/apps/workspace/modules/characters/editors/components/PuppetPreview";
+import {
+    puppetDescribeStatusKey,
+    puppetDescriptionRequestFor,
+    usePuppetDescription,
+} from "@/apps/workspace/modules/characters/editors/components/usePuppetDescription";
+import { puppetChoiceOptions } from "@/lib/workspace/services/puppet/puppetDescriptionModel";
 
 const FIELD_LABEL_CLASS = "block text-xs font-medium text-fg-muted mb-1";
 const TEXTAREA_CLASS = "w-full resize-none rounded-md border border-edge bg-surface-raised px-3 py-2 text-sm text-fg-muted outline-none transition-colors focus:border-primary/50 disabled:cursor-not-allowed disabled:opacity-50";
@@ -387,6 +394,7 @@ const audioOperationOptions = (t: TFunc): SelectOption[] => [
     { value: "setVolume", label: t("storyInspector.audioOperation.setVolume") },
     { value: "setRate", label: t("storyInspector.audioOperation.setRate") },
     { value: "muteSound", label: t("storyInspector.audioOperation.muteSound") },
+    { value: "seekSound", label: t("storyInspector.audioOperation.seekSound") },
 ];
 
 const screenEffectOptions = (t: TFunc): SelectOption[] => [
@@ -817,6 +825,7 @@ function ActionPayloadFields(props: {
                         onChange={assetId => props.onChange({ ...payload, assetId })}
                     />
                     <SecondsField label={t("storyInspector.audio.fade")} value={payload.fadeMs} onChange={fadeMs => props.onChange({ ...payload, fadeMs })} />
+                    <SecondsField label={t("storyInspector.audio.seekTime")} value={payload.timeMs} onChange={timeMs => props.onChange({ ...payload, timeMs })} />
                     <NumberField label={t("storyInspector.audio.volume")} value={payload.volume} onChange={volume => props.onChange({ ...payload, volume })} />
                     <NumberField label={t("storyInspector.audio.rate")} value={payload.rate} onChange={rate => props.onChange({ ...payload, rate })} />
                     <CheckboxField label={t("storyInspector.audio.loop")} checked={Boolean(payload.loop)} onChange={loop => props.onChange({ ...payload, loop })} />
@@ -1304,6 +1313,268 @@ function clampAlign(value: number | undefined): number | undefined {
     return value === undefined ? undefined : Math.min(1, Math.max(0, value));
 }
 
+/** The three channels of `PuppetState` a character row can address, and which list fills each one. */
+type PuppetChannel = "motion" | "expression" | "skin";
+
+const PUPPET_CHANNEL_LABEL: Record<PuppetChannel, TranslationKey> = {
+    motion: "storyInspector.character.puppetMotion",
+    expression: "storyInspector.character.puppetExpression",
+    skin: "storyInspector.character.puppetSkin",
+};
+
+/**
+ * Blank means the engine's `null` on every channel, but `null` does not *look* the same on each: a
+ * cleared motion is the model at rest, a cleared expression is whatever the motion and skin make, a
+ * cleared skin is the model's own default. Naming the outcome is the difference between a field that
+ * reads as unfilled and one that reads as a choice.
+ */
+const PUPPET_CHANNEL_NONE: Record<PuppetChannel, TranslationKey> = {
+    motion: "storyInspector.character.puppetNone",
+    expression: "storyInspector.character.puppetNone",
+    skin: "storyInspector.character.puppetSkinDefault",
+};
+
+/**
+ * The control for one puppet channel: the names the model reported, the model itself, and where the
+ * list came from.
+ *
+ * The reason this is not a plain text field. A puppet's motions, expressions and skins are named by
+ * the model, not enumerated in the project — so for a while the honest control looked like free text,
+ * and the author typed a name from memory that nothing could check. That stopped being true when the
+ * engine's `PuppetInstance.describe()` landed and `PuppetDescriptionService` began mounting the
+ * author's own runtime to ask: the names exist, in the editor, synchronously, and every other action
+ * in this inspector picks from a list.
+ *
+ * It still degrades to free text, per field and not per model — a skeleton with eleven animations and
+ * no expressions gets a list for its animations and a text box for its face — because a backend is
+ * free to implement no `describe()` at all and a project written on one machine opens on another that
+ * never installed the runtime. The status line is what tells those two apart; without it "no options"
+ * and "not asked" look identical.
+ */
+function PuppetChannelControl(props: {
+    character: Character;
+    channel: PuppetChannel;
+    value: string;
+    onChange: (value: string) => void;
+}) {
+    const { t } = useTranslation();
+    const appearance = props.character.profile.appearance;
+    const puppet = appearance.getKind() === "puppet" ? appearance.getPuppet() : null;
+    // Memoised on the puppet's individual fields: the appearance object is mutable and keeps the same
+    // reference across an edit, so depending on it alone would never re-ask.
+    const request = useMemo(
+        () => puppetDescriptionRequestFor(appearance),
+        [appearance, puppet?.assetId, puppet?.backend, puppet?.entry, puppet?.options, puppet?.size],
+    );
+    const { result, loading, refresh } = usePuppetDescription(request);
+    const description = result?.status === "ok" ? result.description : null;
+    const available = props.channel === "motion"
+        ? description?.motions
+        : props.channel === "expression"
+            ? description?.expressions
+            : description?.skins;
+
+    const placeholder = t(PUPPET_CHANNEL_NONE[props.channel]);
+    // A name the model no longer lists is kept at the head of the options rather than dropped, so a
+    // re-exported model shows the author what went missing instead of silently rewriting the row.
+    const names = puppetChoiceOptions(available ?? [], props.value || null);
+    const options: SelectOption[] | undefined = names.length > 0
+        ? [{ value: "", label: placeholder }, ...names.map(name => ({ value: name, label: name }))]
+        : undefined;
+
+    /** The state the preview is put in: the character's resting pose with this row's channel applied. */
+    const previewState = useMemo(() => ({
+        ...appearance.getPuppetDefaultState(),
+        [props.channel]: props.value || null,
+    }), [appearance, props.channel, props.value]);
+
+    return (
+        <div className="grid grid-cols-1 gap-2">
+            <div className="max-w-sm">
+                <TextField
+                    label={t(PUPPET_CHANNEL_LABEL[props.channel])}
+                    value={props.value}
+                    placeholder={placeholder}
+                    options={options}
+                    onChange={props.onChange}
+                />
+            </div>
+            <PuppetPreview request={request} state={previewState} />
+            {request ? (
+                <div className="flex items-center gap-2 text-2xs text-fg-subtle">
+                    <span className="min-w-0 flex-1 truncate">
+                        {loading
+                            ? t("characters.editor.puppet.describing")
+                            : t(puppetDescribeStatusKey(result?.status === "unavailable" ? result.reason : null))}
+                    </span>
+                    <button
+                        type="button"
+                        className="rounded-md p-1 text-fg-muted transition-colors hover:bg-fill hover:text-fg"
+                        aria-label={t("characters.editor.puppet.redescribe")}
+                        title={t("characters.editor.puppet.redescribe")}
+                        onClick={refresh}
+                    >
+                        <RefreshCw className={`h-3 w-3${loading ? " animate-spin" : ""}`} />
+                    </button>
+                </div>
+            ) : null}
+        </div>
+    );
+}
+
+/**
+ * The numeric-parameter rows of a `setParams` block.
+ *
+ * A parameter is the one free channel a model describes with a *shape* — an id, a range and a default
+ * — which is why it earns controls rather than a text box: the id is picked from what the model
+ * reported, and the value rides a slider that cannot leave the range. Where the model said nothing,
+ * both degrade (a text id, an unbounded number) rather than disappearing.
+ *
+ * The row holds a **map**, not one pair, because one authorial gesture is several parameters — turning
+ * a head is three of them moving together. `Puppet.setParam` merges, so the compiler emitting one call
+ * per entry is exactly equivalent to the row's intent.
+ */
+function PuppetParamRows(props: {
+    character: Character;
+    params: Record<string, number>;
+    onChange: (params: Record<string, number>) => void;
+}) {
+    const { t } = useTranslation();
+    const appearance = props.character.profile.appearance;
+    const puppet = appearance.getKind() === "puppet" ? appearance.getPuppet() : null;
+    const request = useMemo(
+        () => puppetDescriptionRequestFor(appearance),
+        [appearance, puppet?.assetId, puppet?.backend, puppet?.entry, puppet?.options, puppet?.size],
+    );
+    const { result, loading, refresh } = usePuppetDescription(request);
+    const specs = result?.status === "ok" ? result.description.params : [];
+    const entries = Object.entries(props.params);
+
+    /** Rename a key while keeping its position, so the list does not reorder under the author's cursor. */
+    const renameKey = (from: string, to: string) => {
+        const next: Record<string, number> = {};
+        for (const [id, value] of entries) {
+            next[id === from ? to : id] = value;
+        }
+        delete next[""];
+        props.onChange(next);
+    };
+
+    /** The first id the model reported that this row does not already carry. */
+    const nextUnusedId = specs.find(spec => !(spec.id in props.params));
+
+    return (
+        <div className="grid grid-cols-1 gap-2">
+            {entries.length === 0 ? (
+                <div className="text-xs text-fg-subtle">{t("storyInspector.character.puppetNoParams")}</div>
+            ) : null}
+            {entries.map(([id, value]) => {
+                const spec = specs.find(entry => entry.id === id);
+                // Ids the model listed, plus this row's own even when the model no longer lists it, minus
+                // the ones already spoken for on other rows - picking a duplicate would silently merge two.
+                const options: SelectOption[] | undefined = specs.length > 0
+                    ? [
+                        ...(spec ? [] : [{ value: id, label: id }]),
+                        ...specs.filter(entry => entry.id === id || !(entry.id in props.params)).map(entry => ({ value: entry.id, label: entry.id })),
+                    ]
+                    : undefined;
+                return (
+                    // Two lines per parameter, not one. The inspector is a ~360px column, and an
+                    // id + slider + number + delete on one row overflowed it: the id select collapsed
+                    // to its chevron, the number field left the panel, and the whole pane grew a
+                    // horizontal scrollbar. `min-w-0` on each flex child is the other half of the fix -
+                    // a flex item's default `min-width:auto` refuses to shrink below its content.
+                    <div key={id} className="rounded-md border border-edge/60 p-1.5">
+                        <div className="flex items-end gap-1.5">
+                            <div className="min-w-0 flex-1">
+                                <TextField
+                                    label={t("storyInspector.character.puppetParamId")}
+                                    value={id}
+                                    options={options}
+                                    onChange={next => renameKey(id, next.trim())}
+                                />
+                            </div>
+                            <button
+                                type="button"
+                                className="mb-1 shrink-0 rounded-md p-1 text-fg-subtle transition-colors hover:bg-fill hover:text-fg"
+                                aria-label={t("storyInspector.character.puppetParamRemove")}
+                                title={t("storyInspector.character.puppetParamRemove")}
+                                onClick={() => {
+                                    const next = { ...props.params };
+                                    delete next[id];
+                                    props.onChange(next);
+                                }}
+                            >
+                                <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                        </div>
+                        <div className="mt-1.5 flex items-center gap-2">
+                            {spec ? (
+                                <Slider
+                                    className="min-w-0 flex-1"
+                                    min={spec.min}
+                                    max={spec.max}
+                                    // A rig parameter is continuous and its range may be a fraction of
+                                    // one unit, so the step is derived from the range, not left at 1.
+                                    step={Math.max((spec.max - spec.min) / 200, 0.001)}
+                                    value={value}
+                                    onValueChange={next => props.onChange({ ...props.params, [id]: next })}
+                                />
+                            ) : null}
+                            <NumericDraftEnhancedInput
+                                committedDisplay={String(value)}
+                                onFiniteNumber={next => props.onChange({ ...props.params, [id]: next })}
+                                onEmpty={() => props.onChange({ ...props.params, [id]: 0 })}
+                                type="text"
+                                inputMode="decimal"
+                                popoverWhenNarrow={false}
+                                className={spec ? "w-14 shrink-0" : "min-w-0 flex-1"}
+                                inputClassName="h-7 w-full rounded-md border border-edge bg-surface-raised px-1.5 text-right text-xs text-fg outline-none focus:border-primary/50"
+                            />
+                            {spec ? (
+                                // The range the model gave. Without it the slider is a knob with no
+                                // scale - `-30…30` says what dragging it all the way will do.
+                                <span className="shrink-0 text-2xs tabular-nums text-fg-subtle">{spec.min}…{spec.max}</span>
+                            ) : null}
+                        </div>
+                    </div>
+                );
+            })}
+            <div className="flex items-center gap-2">
+                <button
+                    type="button"
+                    className="rounded-md border border-edge px-2 py-1 text-2xs text-fg-muted transition-colors hover:bg-fill hover:text-fg"
+                    onClick={() => props.onChange({
+                        ...props.params,
+                        // The model's own default for the parameter, which is the value that changes
+                        // nothing - so a freshly added row is visible without having moved the model yet.
+                        [nextUnusedId?.id ?? ""]: nextUnusedId?.default ?? 0,
+                    })}
+                    // Every id the model has is already on the row, and an un-described model has no id
+                    // to invent - in both cases there is nothing left to add.
+                    disabled={specs.length > 0 && !nextUnusedId}
+                >
+                    {t("storyInspector.character.puppetParamAdd")}
+                </button>
+                <span className="min-w-0 flex-1 truncate text-2xs text-fg-subtle">
+                    {loading
+                        ? t("characters.editor.puppet.describing")
+                        : t(puppetDescribeStatusKey(result?.status === "unavailable" ? result.reason : null))}
+                </span>
+                <button
+                    type="button"
+                    className="rounded-md p-1 text-fg-muted transition-colors hover:bg-fill hover:text-fg"
+                    aria-label={t("characters.editor.puppet.redescribe")}
+                    title={t("characters.editor.puppet.redescribe")}
+                    onClick={refresh}
+                >
+                    <RefreshCw className={`h-3 w-3${loading ? " animate-spin" : ""}`} />
+                </button>
+            </div>
+        </div>
+    );
+}
+
 type CharacterActionPayload = Extract<StoryActionPayload, { action: "character" }>;
 
 function CharacterActionEditor(props: {
@@ -1356,25 +1627,69 @@ function CharacterActionEditor(props: {
         || authoredObjectName === derivedObjectName
         || characterStageName(payload.characterId, payload.objectName) !== authoredObjectName;
 
-    // A puppet state row addresses the inside of the box: no stage name, no transform, no transition,
-    // and no appearance picker either - the names live in the model, not in the project, so the field
-    // is a plain one. Blank is not "unfilled": it is the engine's `null`, the request to clear.
-    if (payload.operation === "setMotion" || payload.operation === "setSkin") {
+    // The free numeric channel. Its own arm rather than a third `PuppetChannelControl` because it is
+    // the one that is not a single name: a map of ids to numbers, each with the range the model gave.
+    if (payload.operation === "setParams") {
         return (
-            <FieldGrid cols={2}>
-                <SelectField
-                    label={t("storyInspector.field.character")}
-                    options={characterOptions}
-                    value={payload.characterId ?? ""}
-                    onChange={updateCharacter}
-                />
-                <TextField
-                    label={t(payload.operation === "setMotion" ? "storyInspector.character.puppetMotion" : "storyInspector.character.puppetSkin")}
-                    value={payload.puppetName ?? ""}
-                    placeholder={t("storyInspector.character.puppetNone")}
-                    onChange={puppetName => onChange({ ...payload, puppetName })}
-                />
-            </FieldGrid>
+            <div className="grid grid-cols-1 gap-3">
+                <FieldGrid cols={2}>
+                    <SelectField
+                        label={t("storyInspector.field.character")}
+                        options={characterOptions}
+                        value={payload.characterId ?? ""}
+                        onChange={updateCharacter}
+                    />
+                </FieldGrid>
+                {selectedCharacter && selectedCharacter.profile.appearance.getKind() === "puppet" ? (
+                    <Section title={t("storyInspector.character.puppetParams")}>
+                        <PuppetParamRows
+                            character={selectedCharacter}
+                            params={payload.params ?? {}}
+                            onChange={params => onChange({ ...payload, params })}
+                        />
+                    </Section>
+                ) : selectedCharacter ? (
+                    <div className="text-xs text-fg-subtle">{t("storyInspector.character.notPuppetHint")}</div>
+                ) : (
+                    <div className="text-xs text-fg-subtle">{t("storyInspector.character.chooseHint")}</div>
+                )}
+            </div>
+        );
+    }
+
+    // A puppet state row addresses the inside of the box: no stage name, no transform, no transition.
+    // What it does get is the model - the names it reported and a picture of it in the state this row
+    // asks for. Blank is not "unfilled": it is the engine's `null`, the request to clear.
+    if (payload.operation === "setMotion" || payload.operation === "setSkin") {
+        const channel = payload.operation === "setMotion" ? "motion" : "skin";
+        return (
+            <div className="grid grid-cols-1 gap-3">
+                <FieldGrid cols={2}>
+                    <SelectField
+                        label={t("storyInspector.field.character")}
+                        options={characterOptions}
+                        value={payload.characterId ?? ""}
+                        onChange={updateCharacter}
+                    />
+                </FieldGrid>
+                {selectedCharacter && selectedCharacter.profile.appearance.getKind() === "puppet" ? (
+                    <Section title={t("storyInspector.section.appearance")}>
+                        <PuppetChannelControl
+                            character={selectedCharacter}
+                            channel={channel}
+                            value={payload.puppetName ?? ""}
+                            onChange={puppetName => onChange({ ...payload, puppetName })}
+                        />
+                    </Section>
+                ) : selectedCharacter ? (
+                    // A character Studio draws itself has no runtime state to ask for. The command line
+                    // refuses the line outright (`notPuppetCharacter`); a row that got here through the
+                    // inspector says the same thing rather than offering a field the compile ignores.
+                    <div className="text-xs text-fg-subtle">{t("storyInspector.character.notPuppetHint")}</div>
+                ) : (
+                    <div className="text-xs text-fg-subtle">{t("storyInspector.character.chooseHint")}</div>
+                )}
+            </div>
         );
     }
 
@@ -1415,17 +1730,15 @@ function CharacterActionEditor(props: {
                 />
             </FieldGrid>
             {selectedCharacter && isPuppetAppearanceKind(selectedCharacter.profile.appearance.getKind()) ? (
-                // The third appearance kind answers "which look" with a name only the model knows, so
-                // the picker has nothing to show and a field is the honest control.
+                // The three runtime-drawn kinds answer "which look" with a name only the model knows - so
+                // the project-side picker has nothing to show, and the model is asked instead.
                 <Section title={t("storyInspector.section.appearance")}>
-                    <div className="max-w-sm">
-                        <TextField
-                            label={t("storyInspector.character.puppetExpression")}
-                            value={payload.puppetName ?? ""}
-                            placeholder={t("storyInspector.character.puppetNone")}
-                            onChange={puppetName => onChange({ ...payload, puppetName })}
-                        />
-                    </div>
+                    <PuppetChannelControl
+                        character={selectedCharacter}
+                        channel="expression"
+                        value={payload.puppetName ?? ""}
+                        onChange={puppetName => onChange({ ...payload, puppetName })}
+                    />
                 </Section>
             ) : selectedCharacter ? (
                 <Section title={t("storyInspector.section.appearance")}>
