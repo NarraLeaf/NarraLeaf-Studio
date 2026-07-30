@@ -604,6 +604,65 @@ describe("VersionControlService commit", () => {
     });
 });
 
+/**
+ * Every surface that names a version reads the head for itself, so a revision one of them causes is
+ * invisible to the others. Measured on a real app before this event existed: committing from the
+ * rail left it on `#3` beside a status-bar cell still reading `#2`.
+ */
+describe("VersionControlService revision announcements", () => {
+    it("announces every revision, whoever caused it", async () => {
+        const service = await createService();
+        vcs.commit.mockImplementation(() => ok(commitResult()));
+        vcs.checkpoint.mockImplementation(() => ok({ revision: commitResult({ kind: "checkpoint" }) }));
+        vcs.initRepository.mockImplementation(() => ok({
+            root: PROJECT,
+            repositoryId: "ff",
+            head: "aa",
+            revisionCount: 1,
+        }));
+
+        const seen: string[] = [];
+        const stop = service.onRevisionRecorded(() => seen.push("recorded"));
+
+        await service.initRepository();
+        await service.commit({ message: "Act one" });
+        // The one nobody pressed a button for, and therefore the one with no other moment at
+        // which a surface would think to look.
+        await service.createCheckpoint("interval");
+
+        expect(seen).toHaveLength(3);
+        stop();
+        await service.commit({ message: "Act two" });
+        expect(seen).toHaveLength(3);
+    });
+
+    it("says nothing when a checkpoint had nothing to record", async () => {
+        const service = await createService();
+        vcs.checkpoint.mockImplementation(() => ok({ revision: null }));
+
+        let announced = 0;
+        service.onRevisionRecorded(() => { announced += 1; });
+        await service.createCheckpoint("interval");
+
+        // No revision exists that did not before, so every surface is still right and re-reading
+        // the head would be work the interval timer caused for nothing.
+        expect(announced).toBe(0);
+    });
+
+    it("is not a status signal - it never makes anything scan", async () => {
+        const service = await createService();
+        vcs.commit.mockImplementation(() => ok(commitResult()));
+
+        service.onRevisionRecorded(() => { /* a surface re-reading its identity */ });
+        await service.commit();
+
+        expect(vcs.getStatus).not.toHaveBeenCalled();
+        // And the snapshot is dropped rather than refreshed: null is "nobody has looked", which
+        // is the honest answer until someone asks (docs/version-control.md §4.17).
+        expect(service.getStatus()).toBeNull();
+    });
+});
+
 describe("VersionControlService history kinds", () => {
     it("asks for kinds only when told to, and caches the two answers apart", async () => {
         const service = await createService();

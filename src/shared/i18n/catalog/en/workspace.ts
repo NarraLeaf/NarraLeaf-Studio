@@ -407,6 +407,17 @@ export const workspace = {
             merge: "Merge",
             changes: "Changes",
             refreshChanges: "Check for changes",
+            // The button that records a version. "Record" rather than "Commit" because every other
+            // line here speaks of versions, and an author who has never used version control has no
+            // reason to know the word.
+            commit: "Record a version",
+            // A question rather than an instruction, and it says "optional" because it is: an empty
+            // message is a valid revision, and one with no message names itself in the list above.
+            commitPlaceholder: "What changed? (optional)",
+            commitMessage: "Version message",
+            // Never instant: the pipeline settles this window's unsaved work, stages the whole
+            // project, and waits for the backend to put its stores on disk.
+            committing: "Recording this version…",
             // "Nobody has looked yet", which is not the same as "clean" - and the difference matters,
             // because looking is a scan and this surface never does it on its own.
             changesUnknown: "Not checked",

@@ -59,6 +59,22 @@ import type { WorkspaceFreezeService } from "./WorkspaceFreezeService";
 type VersionControlServiceEvents = {
     /** Null once the cached snapshot is dropped, e.g. on teardown or after init. */
     statusChanged: VcsStatus | null;
+    /**
+     * A revision now exists that did not before, so HEAD has moved.
+     *
+     * Every surface that names a version reads the head for itself - the rail, the top-bar widget
+     * and the status-bar cell are three separate readers by design - and none of them can see a
+     * commit made through another one. Without this they disagree on screen: the rail says `#3`
+     * while the cell still says `#2`, which is the contradiction that makes an author stop
+     * believing the feature.
+     *
+     * Fires for the automatic checkpoint too, where it matters more: nobody pressed anything, so
+     * there is no other moment at which a surface would think to look.
+     *
+     * **Not a substitute for a scan.** It says the head moved, never what is in the working tree
+     * (see the class comment on why nothing here may refresh a status on its own).
+     */
+    revisionRecorded: void;
 };
 
 /** The settings key holding the checkpoint interval in minutes. 0 disables. */
@@ -543,10 +559,14 @@ export class VersionControlService extends Service<VersionControlService> implem
      * cached history page is now one entry short. Deliberately does NOT scan to replace
      * the snapshot: a scan is not a pure read (see the class comment), so what to do next
      * is the caller's decision, not this method's.
+     *
+     * The event is what stops the version surfaces from drifting apart - they each read the
+     * head themselves and none of them can see a revision another one caused.
      */
     private afterRevision(): void {
         this.history.clear();
         this.setStatus(null);
+        this.events.emit("revisionRecorded", undefined);
     }
 
     /**
@@ -617,6 +637,16 @@ export class VersionControlService extends Service<VersionControlService> implem
 
     public onStatusChanged(handler: (status: VcsStatus | null) => void): () => void {
         return this.events.on("statusChanged", handler);
+    }
+
+    /**
+     * A revision was recorded - by a commit, a checkpoint, or the repository being created.
+     *
+     * Subscribe from anything that displays which version this project is on. Re-reading the head
+     * here is cheap and does not scan: one `isRepository` round trip and a one-entry history read.
+     */
+    public onRevisionRecorded(handler: () => void): () => void {
+        return this.events.on("revisionRecorded", handler);
     }
 
     private async isAvailable(): Promise<boolean> {
