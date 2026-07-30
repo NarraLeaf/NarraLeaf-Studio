@@ -99,23 +99,28 @@ const volumeIn: BlueprintNodePinDef = {
     allowInlineLiteral: true,
 };
 
+/**
+ * Seconds, like every other time an author types into a blueprint (`Delay`'s `Duration (s)`, the
+ * animation nodes) and like every time on a story line. Milliseconds are an internal unit: the host
+ * capability speaks them, and the conversion happens at this boundary and nowhere else.
+ */
 const fadeIn: BlueprintNodePinDef = {
-    id: "fadeMs",
+    id: "fade",
     kind: "input",
     semantic: "data",
-    valueType: "integer",
-    label: "Fade (ms)",
+    valueType: "float",
+    label: "Fade (s)",
     optional: true,
     allowInlineLiteral: true,
 };
 
 /** Where to move the play head, measured from the start of the file rather than from the in point. */
 const timeIn: BlueprintNodePinDef = {
-    id: "timeMs",
+    id: "time",
     kind: "input",
     semantic: "data",
-    valueType: "integer",
-    label: "Time (ms)",
+    valueType: "float",
+    label: "Time (s)",
     allowInlineLiteral: true,
 };
 
@@ -137,6 +142,12 @@ function readPin(ctx: SoundExecuteCtx, pinId: string): unknown {
         instanceKey: ctx.instanceKey,
         executionOwner: ctx.executionOwner,
     });
+}
+
+/** A seconds pin as the milliseconds the host capability takes. Negative and unset both read as 0. */
+function readSecondsAsMs(ctx: SoundExecuteCtx, portId: string): number {
+    const seconds = readOptionalNumber(readPin(ctx, portId)) ?? 0;
+    return seconds > 0 ? Math.round(seconds * 1000) : 0;
 }
 
 function readOptionalNumber(value: unknown): number | undefined {
@@ -229,7 +240,7 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
         async execute(ctx) {
             await requireHostApi(ctx).sound.stop(
                 normalizeBlueprintSoundHandle(readPin(ctx, "handle")),
-                readOptionalNumber(readPin(ctx, "fadeMs")) ?? 0,
+                readSecondsAsMs(ctx, "fade"),
             );
             return { nextPort: "next" };
         },
@@ -278,7 +289,7 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
             await requireHostApi(ctx).sound.setVolume(
                 requireHandle(ctx, "Set Sound Volume"),
                 readOptionalNumber(readPin(ctx, "volume")) ?? 1,
-                readOptionalNumber(readPin(ctx, "fadeMs")) ?? 0,
+                readSecondsAsMs(ctx, "fade"),
             );
             return { nextPort: "next" };
         },
@@ -295,7 +306,7 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
         async execute(ctx) {
             await requireHostApi(ctx).sound.seek(
                 requireHandle(ctx, "Seek Sound"),
-                readOptionalNumber(readPin(ctx, "timeMs")) ?? 0,
+                readSecondsAsMs(ctx, "time"),
             );
             return { nextPort: "next" };
         },
