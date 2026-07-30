@@ -2,8 +2,8 @@
   "manifestVersion": 2,
   "id": "narraleaf.gallery",
   "name": "Gallery",
-  "version": "2.0.0",
-  "description": "Author a CG gallery - single artworks or multi-differential sets, grouped into categories - and drive it from blueprint graphs.",
+  "version": "3.0.0",
+  "description": "Author the EXTRA screens - CG gallery, scene recollection, music appreciation and voice extras - and drive them from blueprint graphs.",
   "publisher": "NarraLeaf Studio",
   "entries": {
     "studio": "main.js",
@@ -30,7 +30,8 @@
       "narraleaf.gallery.items"
     ],
     "runtimeCapabilities": [
-      "store"
+      "store",
+      "events"
     ]
   },
   "permissions": []

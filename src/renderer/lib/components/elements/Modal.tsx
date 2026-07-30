@@ -21,6 +21,34 @@ export function dialogFooterButtonClass(options: {
     return `${base} bg-fill-subtle hover:bg-fill text-fg-muted`;
 }
 
+/**
+ * Escape closes the dialog, for a dialog that is not a {@link Modal}.
+ *
+ * A handful of overlays are hand-built rather than wrapped in `Modal` because they position against
+ * a trigger instead of centring - the asset picker and the thumbnail cropper - and each of them
+ * silently lacked the one keystroke every dialog is expected to answer. This is the behaviour
+ * `Modal` has always had, lifted out so there is one definition of it rather than a copy per
+ * overlay.
+ *
+ * Deliberately on the bubble phase: anything nested that means to answer Escape itself - a menu that
+ * would otherwise be orphaned above a closed dialog - keeps precedence by calling `stopPropagation`,
+ * exactly as it would inside a `Modal`.
+ */
+export function useEscapeToClose(active: boolean, onClose: () => void): void {
+    useEffect(() => {
+        if (!active) {
+            return;
+        }
+        const handleEscape = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                onClose();
+            }
+        };
+        document.addEventListener("keydown", handleEscape);
+        return () => document.removeEventListener("keydown", handleEscape);
+    }, [active, onClose]);
+}
+
 export interface ModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -58,23 +86,15 @@ export function Modal({
     className = "",
 }: ModalProps) {
     const { t } = useTranslation();
+    useEscapeToClose(isOpen && closeOnEscape, onClose);
     useEffect(() => {
-        const handleEscape = (e: KeyboardEvent) => {
-            if (closeOnEscape && e.key === "Escape") {
-                onClose();
-            }
-        };
-
         if (isOpen) {
-            document.addEventListener("keydown", handleEscape);
             document.body.style.overflow = "hidden";
         }
-
         return () => {
-            document.removeEventListener("keydown", handleEscape);
             document.body.style.overflow = "unset";
         };
-    }, [isOpen, closeOnEscape, onClose]);
+    }, [isOpen]);
 
     if (!isOpen) return null;
 

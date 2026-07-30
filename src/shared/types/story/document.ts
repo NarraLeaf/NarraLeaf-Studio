@@ -132,6 +132,16 @@ export type StoryScene = {
     runtimeName: string;
     description?: string;
     defaultBackgroundAssetId?: string;
+    /**
+     * The music this scene opens with. The engine plays it as part of the scene's own init, so it is
+     * already going when the first row runs — which is what "this scene's track" means and what a
+     * leading `/bgm` row can never be (the row plays *after* the scene is on screen).
+     *
+     * Additive: no document written before this carries it, so no schema bump — the same rule
+     * `camera` and `vfx` were added under. Absent means the scene inherits whatever is already
+     * playing, which is how a story that changes music with `/bgm` rows has always behaved.
+     */
+    bgm?: StorySceneBgm;
     rootBlockIds: StoryBlockId[];
     blocks: Record<StoryBlockId, StoryBlock>;
     /**
@@ -154,10 +164,32 @@ export type StorySceneSnapshot = {
     values: Record<string, StoryLiteralValue>;
 };
 
+/**
+ * A scene's opening background music.
+ *
+ * `loop` defaults to true because a scene's music is meant to still be playing when the player
+ * reaches the end of the scene, and because the in/out points an author marks on the asset only
+ * become a loop region when it loops.
+ *
+ * Volume and fade live here rather than being read off the asset: the same track can open a quiet
+ * scene and a loud one, and the fade is a property of *this* transition into *this* scene.
+ */
+export type StorySceneBgm = {
+    assetId: string;
+    /** 0-1. Absent = full volume. */
+    volume?: number;
+    /** Absent = loop. */
+    loop?: boolean;
+    /** Cross-fade into this track, in milliseconds. Absent = cut. */
+    fadeMs?: number;
+};
+
 export type StorySceneUpdate = {
     name?: string;
     description?: string;
     defaultBackgroundAssetId?: string | null;
+    /** `null` clears the scene's music; a partial patch replaces the whole record. */
+    bgm?: StorySceneBgm | null;
 };
 
 /**
@@ -358,7 +390,7 @@ export type StoryActionPayload =
            * indexes and inspects as a character row, and a puppet participates in a scene the way any
            * other character does. On a character Studio draws itself they are a compile diagnostic.
            */
-          operation: "enter" | "move" | "exit" | "expression" | "setName" | "setMotion" | "setSkin";
+          operation: "enter" | "move" | "exit" | "expression" | "setName" | "setMotion" | "setSkin" | "setParams";
           characterId?: string;
           assetId?: string;
           objectName?: string;
@@ -389,6 +421,23 @@ export type StoryActionPayload =
            * `camera` and `vfx` were added under.
            */
           puppetName?: string;
+          /**
+           * `setParams` — the numeric parameters of the model this row sets, keyed by the model's own id.
+           *
+           * **A map rather than one pair per row, because one gesture is several parameters.** Turning a
+           * head is `ParamAngleX`, `ParamAngleY` and `ParamAngleZ` moving together; a row each would
+           * make three rows out of one authorial act. The engine's `Puppet.setParam` *merges* — it sets
+           * one id and leaves every other alone — so N calls from one row are exactly equivalent to the
+           * row's intent, and the compiler emits one per entry.
+           *
+           * Unlike the three named channels there is no `null` here: the engine's `PuppetState.params`
+           * documents an absent key as "keep the model's own default for it", so clearing a parameter
+           * means dropping the key rather than nulling it. Dropping every key leaves a row that asks for
+           * nothing, which compiles to nothing.
+           *
+           * Additive, like `puppetName` above: no document written before this carries it.
+           */
+          params?: Record<string, number>;
           /** `setName` — the label shown from this row on. Empty is legal: some reveals hide the name again. */
           displayName?: string;
           transition?: StoryTransitionRef;
@@ -404,7 +453,8 @@ export type StoryActionPayload =
               | "resumeSound"
               | "setVolume"
               | "setRate"
-              | "muteSound";
+              | "muteSound"
+              | "seekSound";
           objectName?: string;
           assetId?: string;
           fadeMs?: number;
@@ -412,6 +462,8 @@ export type StoryActionPayload =
           rate?: number;
           muted?: boolean;
           loop?: boolean;
+          /** `seekSound` — where to move the play head, in milliseconds (seconds on the line). */
+          timeMs?: number;
       }
     | {
           action: "setVariable";

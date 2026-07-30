@@ -38,7 +38,11 @@ export const characters = {
             selectModel: "Choose a model",
             clearModel: "Remove model",
             backend: "Runtime",
-            noBackend: "None installed",
+            // Two different situations, and "None installed" was saying the second when it meant the
+            // first: the project had two runtimes and both were one click away.
+            chooseBackend: "Choose a runtime",
+            noBackendInstalled: "No runtime installed",
+            noBackendInstalledHint: "Add one as a folder under runtimes/puppet/, each with an index.js",
             entry: "Entry",
             entryDefault: "Default",
             size: "Size",

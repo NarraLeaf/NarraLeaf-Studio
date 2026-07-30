@@ -4,6 +4,7 @@ import {
     toBlueprintImageAsset,
     type BlueprintElementRef,
     type BlueprintImageAsset,
+    type BlueprintSoundHandle,
 } from "@shared/types/blueprint/valueTypes";
 import { truncateDebugEventMessage } from "./DebugBridge";
 import {
@@ -294,6 +295,7 @@ export type BlueprintHostApiRuntime = {
         isNvlMode: () => boolean;
         /** True while a dialog line is on screen and its message is marked read. */
         isCurrentTextRead: () => boolean;
+        isTextRead: (textId: string) => boolean;
         /** Wipe the persisted text-read record (all stories). */
         clearTextRead: () => Promise<void>;
         choose: (index: number) => Promise<void>;
@@ -306,9 +308,41 @@ export type BlueprintHostApiRuntime = {
         getPreference: (key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue;
         setPreference: (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => Promise<void>;
     };
+    sound: {
+        play: (input: BlueprintSoundPlayInput) => Promise<BlueprintSoundHandle | null>;
+        stop: (handle: BlueprintSoundHandle | null, fadeMs?: number) => Promise<void>;
+        pause: (handle: BlueprintSoundHandle) => Promise<void>;
+        resume: (handle: BlueprintSoundHandle) => Promise<void>;
+        /** Ramp rather than jump when `fadeMs` is set - this is also the fade-out/duck node. */
+        setVolume: (handle: BlueprintSoundHandle, volume: number, fadeMs?: number) => Promise<void>;
+        /** Milliseconds from the start of the file, not from the clip's in point. */
+        seek: (handle: BlueprintSoundHandle, timeMs: number) => Promise<void>;
+        isPlaying: (handle: BlueprintSoundHandle) => boolean;
+    };
     devtools: {
         log: (level: string, message: string) => void;
     };
+};
+
+/**
+ * Which mixer channel a clip plays on. These are the engine's own `SoundType`
+ * values, so the player's per-channel volume preference applies without the
+ * host doing anything.
+ */
+export const BLUEPRINT_SOUND_CHANNELS = ["bgm", "sound", "voice"] as const;
+export type BlueprintSoundChannel = (typeof BLUEPRINT_SOUND_CHANNELS)[number];
+
+export function normalizeBlueprintSoundChannel(value: unknown): BlueprintSoundChannel {
+    return BLUEPRINT_SOUND_CHANNELS.includes(value as BlueprintSoundChannel)
+        ? value as BlueprintSoundChannel
+        : "sound";
+}
+
+export type BlueprintSoundPlayInput = {
+    assetId: string;
+    channel: BlueprintSoundChannel;
+    loop: boolean;
+    volume: number;
 };
 
 /**
@@ -348,6 +382,8 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onGetChoiceCount?: () => number;
     onIsNvlMode?: () => boolean;
     onIsCurrentTextRead?: () => boolean;
+    /** Per-id read check. Absent without a tracker (story preview); reads as false. */
+    onIsTextRead?: (textId: string) => boolean;
     onClearTextRead?: () => Promise<void> | void;
     onSelectChoice?: (index: number) => Promise<void> | void;
     onNext?: () => Promise<void> | void;
@@ -358,6 +394,19 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onSetSentenceSpeed?: (cps: number) => Promise<void> | void;
     onGetGamePreference?: (key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue;
     onSetGamePreference?: (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => Promise<void> | void;
+    /**
+     * Sound transport, backed by the engine's audio path. Absent in environments
+     * with no running game (the editor preview), where the sound nodes degrade
+     * to a warned no-op rather than throwing - a Page previewed in Studio should
+     * still lay out, just silently.
+     */
+    onPlaySound?: (input: BlueprintSoundPlayInput) => Promise<BlueprintSoundHandle | null> | BlueprintSoundHandle | null;
+    onStopSound?: (handle: BlueprintSoundHandle | null, fadeMs: number) => Promise<void> | void;
+    onPauseSound?: (handle: BlueprintSoundHandle) => Promise<void> | void;
+    onResumeSound?: (handle: BlueprintSoundHandle) => Promise<void> | void;
+    onSetSoundVolume?: (handle: BlueprintSoundHandle, volume: number, fadeMs: number) => Promise<void> | void;
+    onSeekSound?: (handle: BlueprintSoundHandle, timeMs: number) => Promise<void> | void;
+    onIsSoundPlaying?: (handle: BlueprintSoundHandle) => boolean;
     emit: (event: BlueprintDebugEvent) => void;
     onOpenSurface: (surfaceId: string, props?: Record<string, unknown>) => void | Promise<void>;
     onCloseLayer: () => void | Promise<void>;
@@ -1423,6 +1472,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onGetChoiceCount,
         onIsNvlMode,
         onIsCurrentTextRead,
+        onIsTextRead,
         onClearTextRead,
         onSelectChoice,
         onNext,
@@ -1433,6 +1483,13 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onSetSentenceSpeed,
         onGetGamePreference,
         onSetGamePreference,
+        onPlaySound,
+        onStopSound,
+        onPauseSound,
+        onResumeSound,
+        onSetSoundVolume,
+        onSeekSound,
+        onIsSoundPlaying,
         emit,
         onOpenSurface,
         onCloseLayer,
@@ -2703,6 +2760,15 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     emitHostCall(emit, cap, "return");
                 }
             },
+            isTextRead: (textId: string) => {
+                const cap = "game.isTextRead";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return onIsTextRead ? onIsTextRead(textId) : false;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
             clearTextRead: async () => {
                 const cap = "game.clearTextRead";
                 emitHostCall(emit, cap, "call");
@@ -2831,6 +2897,81 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         throw new Error("setPreference: game runtime is not available");
                     }
                     await onSetGamePreference(safeKey, safeValue);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+        },
+        sound: {
+            /**
+             * Absent backend = no running game (editor preview). A warned no-op
+             * beats throwing: the author is looking at layout, not listening.
+             */
+            play: async (input: BlueprintSoundPlayInput) => {
+                const cap = "sound.play";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onPlaySound) {
+                        return null;
+                    }
+                    return await onPlaySound(input) ?? null;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            stop: async (handle: BlueprintSoundHandle | null, fadeMs = 0) => {
+                const cap = "sound.stop";
+                emitHostCall(emit, cap, "call");
+                try {
+                    await onStopSound?.(handle, Math.max(0, fadeMs));
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            pause: async (handle: BlueprintSoundHandle) => {
+                const cap = "sound.pause";
+                emitHostCall(emit, cap, "call");
+                try {
+                    await onPauseSound?.(handle);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            resume: async (handle: BlueprintSoundHandle) => {
+                const cap = "sound.resume";
+                emitHostCall(emit, cap, "call");
+                try {
+                    await onResumeSound?.(handle);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setVolume: async (handle: BlueprintSoundHandle, volume: number, fadeMs = 0) => {
+                const cap = "sound.setVolume";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // Clamped, not rejected: a slider bound to the wrong range asking for 1.2 means
+                    // "as loud as it goes", and a dead control is the worse answer.
+                    const safeVolume = Number.isFinite(volume) ? Math.min(1, Math.max(0, volume)) : 1;
+                    await onSetSoundVolume?.(handle, safeVolume, Math.max(0, fadeMs));
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            seek: async (handle: BlueprintSoundHandle, timeMs: number) => {
+                const cap = "sound.seek";
+                emitHostCall(emit, cap, "call");
+                try {
+                    await onSeekSound?.(handle, Number.isFinite(timeMs) ? Math.max(0, timeMs) : 0);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            isPlaying: (handle: BlueprintSoundHandle) => {
+                const cap = "sound.isPlaying";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return onIsSoundPlaying?.(handle) ?? false;
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

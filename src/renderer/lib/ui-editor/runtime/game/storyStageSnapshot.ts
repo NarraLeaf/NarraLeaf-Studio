@@ -430,7 +430,7 @@ class SnapshotWalker {
             // earlier `/face` would silently revert to the default look in a row-precise launch.
             return;
         }
-        if (payload.operation === "setMotion" || payload.operation === "setSkin") {
+        if (payload.operation === "setMotion" || payload.operation === "setSkin" || payload.operation === "setParams") {
             // The inside of a puppet's box, which no image record models: the snapshot tracks where a
             // thing sits and whether it is visible, and a motion changes neither. Falling through
             // would `ensure` an image record for a character that has no sprite at all.

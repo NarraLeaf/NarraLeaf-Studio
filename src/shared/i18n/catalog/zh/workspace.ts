@@ -280,6 +280,7 @@ export const workspace = {
                 notifications: "通知",
                 theme: "主题切换",
                 zoom: "缩放比例",
+                version: "版本",
             },
         },
         // 保存反馈：文件写不进去时弹出的常驻提示，以及「存储」控制台频道的日志行。
@@ -338,6 +339,66 @@ export const workspace = {
             // 「冻结的项目就是这个样子」，而不是在每个按钮上读一套不同的说辞。控件是禁用而不是
             // 隐藏，正是为了给这句话留一个可悬浮的落点。
             unavailable: "项目冻结期间不可用——解除冻结后即可继续使用。",
+        },
+        // 用真编辑器浏览历史，在版本轨道做出来之前的入口。故意只做「上一个版本」而不是选择器：
+        // 选版本需要一份列表，那份列表就是轨道本身；而一个人手上够不着的里程碑没法验收。
+        revisionView: {
+            showPrevious: "查看上一个版本（只读）",
+            leave: "回到当前版本",
+            loadingTitle: "正在读取上一个版本…",
+            loadingDetail: "首次读取某个版本可能需要从远端取回。",
+            shownTitle: "正在查看版本 {revision}",
+            shownDetail: "编辑器为只读，磁盘上的文件不会被改动。",
+            noneTitle: "没有更早的版本",
+            noneDetail: "这个项目只有一个版本，没有更早的内容可看。",
+            failedTitle: "无法显示该版本",
+        },
+        // 版本控制的三个界面：最左侧的版本轨道、项目切换器右边的顶栏控件、状态栏那一位。三者一律只说
+        // 「哪个版本」，绝不显示变更数——数变更要扫描，而扫描不是纯读（docs/version-control.md §4.17）。
+        versionControl: {
+            title: "版本",
+            open: "打开版本轨道",
+            collapse: "折叠版本轨道",
+            // 正在看历史版本时，折叠轨道、顶栏控件与状态栏那一位的悬停文案。`{version}` 是该版本自己的
+            // 标签，例如 `#4`。
+            viewingVersion: "你正在查看版本 {version}",
+            currentVersion: "当前版本",
+            // 逃生口，也是它为什么在轨道的两种状态下都在：让作者卡在一个出不去的冻结工作区里，
+            // 是这个功能能造成的最坏结果。
+            returnToCurrent: "回到当前版本",
+            returning: "正在回到当前版本…",
+            // 还没有版本库的项目。按「缺什么」命名，而不是按机制命名。
+            notVersioned: "没有版本历史",
+            enable: "启用版本控制",
+            // 只有一行：启用会往作者的项目目录里写东西并对它取独占锁，所以在他按下之前先说清做什么。
+            enableHint: "在这个项目的目录里记录版本历史。",
+            enabling: "正在设置版本控制…",
+            noHistory: "还没有版本",
+            history: "历史",
+            loadingHistory: "正在读取版本历史…",
+            // 配了远端的项目首次读取某个版本会走网络，所以这是真的在等，不是礼貌性的转圈。
+            loadingRevision: "正在打开该版本…",
+            showVersion: "在编辑器里显示这个版本",
+            // 有一个以上父级的版本。标记而不是展开：轨道是线性列表，而不加标记的合并会让这个
+            // 线性列表说假话。
+            merge: "合并",
+            changes: "变更",
+            refreshChanges: "检查变更",
+            // 「还没人看过」，这和「干净」不是一回事——而这个区别很重要，因为「看」就是一次扫描，
+            // 这个界面绝不自己发起。
+            changesUnknown: "未检查",
+            noChanges: "没有变更",
+            changesCount: "{count} 项变更",
+            // 检查点是 Studio 按计时器记下的；写一天下来会有几十个。
+            showCheckpoints: "显示 {count} 个检查点",
+            hideCheckpoints: "隐藏检查点",
+            // 版本控制是**可选能力**——Epic 不为 macOS Intel 与 Windows ARM64 提供原生后端——所以
+            // 这两句话不一样，因为作者只有其中一种情况能自己动手。两者都不渲染成禁用控件：在那些
+            // 机器上这个功能从未发货，灰掉的轨道会把一台好机器说成装坏了。
+            unavailable: {
+                platform: "这台机器上没有版本控制。",
+                installation: "这个 Studio 安装里没有版本控制。",
+            },
         },
         // 快捷键自定义（设置 tab）+「?」速查浮层。
         keybindings: {
