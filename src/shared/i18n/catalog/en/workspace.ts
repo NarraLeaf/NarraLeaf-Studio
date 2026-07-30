@@ -353,6 +353,20 @@ export const workspace = {
             // than hidden precisely so there is something to hover.
             unavailable: "Not available while the project is frozen — unfreeze it to use this again.",
         },
+        // Browsing history in the real editors, until the version rail exists. "Previous" rather than
+        // a picker on purpose: choosing a revision needs a list, the list is the rail, and a milestone
+        // whose behaviour cannot be reached by a person cannot be accepted.
+        revisionView: {
+            showPrevious: "Show the Previous Revision (Read-Only)",
+            leave: "Return to the Current Version",
+            loadingTitle: "Reading the previous revision…",
+            loadingDetail: "The first read of a revision may fetch it from the remote.",
+            shownTitle: "Showing revision {revision}",
+            shownDetail: "The editors are read-only, and your files on disk are untouched.",
+            noneTitle: "There is no earlier revision",
+            noneDetail: "This project has only one revision, so there is nothing earlier to show.",
+            failedTitle: "Could not show that revision",
+        },
         // Keyboard-shortcut customization (Settings window → Editor) + the "?" cheat sheet overlay.
         keybindings: {
             searchPlaceholder: "Search shortcuts…",
