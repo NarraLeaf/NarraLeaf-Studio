@@ -18,8 +18,8 @@ import type { TranslationKey } from "@shared/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import { Box, FolderOpen, RefreshCw, X } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePuppetDescription } from "@/lib/workspace/hooks/usePuppetDescription";
 import { PuppetPreview } from "./PuppetPreview";
-import { usePuppetDescription } from "./usePuppetDescription";
 
 const ROW = "flex items-center gap-2 rounded-md border border-edge bg-fill-subtle px-2 py-1.5 text-xs";
 const ICON_BTN = "p-1 rounded-md text-fg-muted hover:text-fg hover:bg-fill transition-colors";
