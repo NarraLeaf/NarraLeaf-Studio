@@ -798,7 +798,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         const hasNameChange = patch.name !== undefined && nextName !== scene.name;
         const hasDescriptionChange = patch.description !== undefined && nextDescription !== (scene.description ?? "");
         const hasBackgroundChange = patch.defaultBackgroundAssetId !== undefined && nextBackgroundAssetId !== (scene.defaultBackgroundAssetId ?? undefined);
-        if (!hasNameChange && !hasDescriptionChange && !hasBackgroundChange) {
+        // The service is the authority on what a bgm patch means; this only decides whether the edit is
+        // worth an undo step, so comparing the whole record is both sufficient and cheap.
+        const hasBgmChange = patch.bgm !== undefined
+            && JSON.stringify(patch.bgm ?? null) !== JSON.stringify(scene.bgm ?? null);
+        if (!hasNameChange && !hasDescriptionChange && !hasBackgroundChange && !hasBgmChange) {
             return false;
         }
 
