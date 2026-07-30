@@ -7,7 +7,7 @@ import {
     type ReactNode,
 } from "react";
 import { AnimatePresence, MotionConfig, useReducedMotion } from "motion/react";
-import { type LiveGame, type SavedGame } from "narraleaf-react";
+import { Sound, SoundType, type LiveGame, type SavedGame } from "narraleaf-react";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
 import {
     LOCALE_STORAGE_KEY,
@@ -98,6 +98,19 @@ import {
     fastForwardToNextChoice,
     restoreLiveGameToHistory,
 } from "./gameUiSlots";
+import { createSoundTransport } from "./soundTransport";
+
+/**
+ * Blueprint channel name -> the engine's mixer channel. The string values match,
+ * but the engine types the field as its own enum, and going through this map
+ * means a renamed enum member breaks the build here rather than silently
+ * routing every clip to the default channel.
+ */
+const BLUEPRINT_CHANNEL_TO_SOUND_TYPE = {
+    bgm: SoundType.Bgm,
+    sound: SoundType.Sound,
+    voice: SoundType.Voice,
+} as const;
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
@@ -589,6 +602,16 @@ export function GameApp(props: GameAppProps): ReactNode {
         return textReadTrackerRef.current?.isCurrentTextRead() === true;
     }, []);
 
+    /**
+     * Has this specific line ever been read. Backs the voice EXTRA lock, since
+     * the read set and the voice table share one key space (the line's textId).
+     * No tracker means no game yet, which reads as "not read" rather than
+     * throwing - an EXTRA screen opened from the title menu still lays out.
+     */
+    const hasReadTextInGame = useCallback((textId: string): boolean => {
+        return textReadTrackerRef.current?.hasRead(textId) === true;
+    }, []);
+
     const clearTextReadInGame = useCallback(async (): Promise<void> => {
         const tracker = textReadTrackerRef.current;
         if (tracker) {
@@ -656,6 +679,30 @@ export function GameApp(props: GameAppProps): ReactNode {
         currentDialogNametagRef,
         dialogVirtualClickTargetRef: nlrDialogVirtualClickTargetRef,
     }), [requireActiveLiveGame]);
+
+    /**
+     * Backs the blueprint `sound` family. Built once per host and ref-backed, so
+     * its identity is stable across relaunches; it reads the live game through
+     * the ref and degrades to a warned no-op when there is none.
+     *
+     * `Sound.sound` vs the per-channel constructors: the channel is passed as
+     * `type` so the engine routes it, which is what makes the player's volume
+     * settings apply. `Sound.bgm()` is deliberately not used - the engine blocks
+     * `play()` on a bgm-typed element, and the token path here is the other one.
+     */
+    const soundTransport = useMemo(() => createSoundTransport({
+        getLiveGame: () => nlrLiveGameRef.current,
+        resolveAssetUrl: (assetId, assetType) => host.resolveStoryAssetUrl(assetId, assetType),
+        createSound: ({ src, channel, loop, volume }) => new Sound({
+            src,
+            type: BLUEPRINT_CHANNEL_TO_SOUND_TYPE[channel],
+            loop,
+            volume,
+        }),
+        log: (level, message) => host.log(level, message),
+    }), [host]);
+
+    useEffect(() => () => soundTransport.dispose(), [soundTransport]);
 
     const fastForwardToNextChoiceInGame = useCallback(async (): Promise<void> => {
         const liveGame = requireActiveLiveGame("Skip To Next Choice");
@@ -1376,6 +1423,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             onGetChoiceCount: getChoiceCountInGame,
             onIsNvlMode: isNvlModeInGame,
             onIsCurrentTextRead: isCurrentTextReadInGame,
+            onIsTextRead: hasReadTextInGame,
             onClearTextRead: clearTextReadInGame,
             onSelectChoice: selectChoiceInGame,
             onNext: nextInGame,
@@ -1386,6 +1434,11 @@ export function GameApp(props: GameAppProps): ReactNode {
             onSetSentenceSpeed: setSentenceSpeedInGame,
             onGetGamePreference: getGamePreferenceInGame,
             onSetGamePreference: setGamePreferenceInGame,
+            onPlaySound: soundTransport.play,
+            onStopSound: soundTransport.stop,
+            onPauseSound: soundTransport.pause,
+            onResumeSound: soundTransport.resume,
+            onIsSoundPlaying: soundTransport.isPlaying,
             onWidgetPatch: (elementId, patch) => {
                 applyWidgetRuntimePatch({
                     setWidgetPatchesByScope,
@@ -1617,6 +1670,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onGetChoiceCount: getChoiceCountInGame,
                     onIsNvlMode: isNvlModeInGame,
                     onIsCurrentTextRead: isCurrentTextReadInGame,
+                    onIsTextRead: hasReadTextInGame,
                     onClearTextRead: clearTextReadInGame,
                     onSelectChoice: selectChoiceInGame,
                     onNext: nextInGame,
@@ -1627,6 +1681,11 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onSetSentenceSpeed: setSentenceSpeedInGame,
                     onGetGamePreference: getGamePreferenceInGame,
                     onSetGamePreference: setGamePreferenceInGame,
+                    onPlaySound: soundTransport.play,
+                    onStopSound: soundTransport.stop,
+                    onPauseSound: soundTransport.pause,
+                    onResumeSound: soundTransport.resume,
+                    onIsSoundPlaying: soundTransport.isPlaying,
                     onWidgetPatch: (elementId, patch) => {
                         applyWidgetRuntimePatch({
                             setWidgetPatchesByScope,
