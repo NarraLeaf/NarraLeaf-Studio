@@ -93,15 +93,75 @@ export type StoryCommandContext = {
      * nothing to key. What it does have is asked of the live model, which this layer cannot reach.
      */
     puppetCharacterIds: readonly string[];
+    /**
+     * What each puppet character's model said it contains, for the characters whose model has been
+     * asked and answered.
+     *
+     * **A missing key and an empty list are different facts, and the difference is load-bearing.**
+     * Missing means nobody has an answer — no runtime installed on this machine, a backend that
+     * implements no `describe()`, a model that failed to load, or simply a lookup still in flight.
+     * Present means the model spoke. Only a present entry licenses saying a name is wrong; a missing
+     * one may only stay quiet, because the name the author typed is probably right and it is Studio
+     * that cannot check it.
+     *
+     * Kept apart from {@link appearanceByCharacterId} on purpose: that map's elements are project
+     * refs with ids that survive a rename, while a puppet name is the model's own string and has no
+     * id to point at. Merging them would blur exactly the distinction `/face`'s two branches rest on.
+     */
+    puppetByCharacterId: Readonly<Record<string, StoryPuppetVocabulary>>;
     /** Named objects on stage in the current scene, per kind. */
     stageObjects: StoryCommandStageObjects;
+};
+
+/**
+ * One puppet model's vocabulary, as the story editor consumes it.
+ *
+ * A narrowing of the engine's `PuppetDescription` to the parts an authoring surface offers: the
+ * three named channels and the numeric parameters. `size` is left out because a story row never
+ * asks about the box, and keeping it out is what lets this type be built in a test without the
+ * engine.
+ */
+export type StoryPuppetVocabulary = {
+    motions: readonly string[];
+    expressions: readonly string[];
+    skins: readonly string[];
+    params: readonly StoryPuppetParamSpec[];
+};
+
+/** A numeric parameter a model reported, bounds included — enough to draw a control that cannot go out of range. */
+export type StoryPuppetParamSpec = {
+    id: string;
+    min: number;
+    max: number;
+    default: number;
 };
 
 export const EMPTY_STORY_COMMAND_CONTEXT: StoryCommandContext = {
     images: [], audio: [], videos: [], characters: [], tempSpeakers: [], scenes: [], labels: [], variables: [], appearanceByCharacterId: {},
     puppetCharacterIds: [],
+    puppetByCharacterId: {},
     stageObjects: EMPTY_STORY_COMMAND_STAGE_OBJECTS,
 };
+
+/** The names a puppet character offers on one channel, or `[]` when its model has not been asked. */
+export function puppetChannelNames(
+    context: Pick<StoryCommandContext, "puppetByCharacterId">,
+    characterId: string | undefined,
+    channel: StoryPuppetChannel,
+): readonly string[] {
+    const vocabulary = characterId ? context.puppetByCharacterId[characterId] : undefined;
+    if (!vocabulary) {
+        return [];
+    }
+    switch (channel) {
+        case "motion":
+            return vocabulary.motions;
+        case "expression":
+            return vocabulary.expressions;
+        case "skin":
+            return vocabulary.skins;
+    }
+}
 
 /** The resolved subject of a generic verb - what `/show poster` dispatches its block type on. */
 export type StoryCommandTargetValue =
@@ -133,6 +193,8 @@ export type StoryCommandValue =
      * because there is none to carry: the vocabulary lives in the model, not in the project.
      */
     | { kind: "puppetName"; channel: StoryPuppetChannel; name: string }
+    /** A numeric parameter of a puppet character's model, by the id the model gave it. */
+    | { kind: "puppetParam"; id: string }
     | { kind: "scene"; sceneId: string }
     /** A label declared in this scene - stored as declared, so it matches what the engine sees. */
     | { kind: "label"; name: string }

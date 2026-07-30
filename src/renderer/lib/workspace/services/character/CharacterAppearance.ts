@@ -1,6 +1,8 @@
 import {
     CharacterAppearanceKind,
     isCharacterAppearanceKind,
+    isPuppetAppearance,
+    isPuppetAppearanceKind,
     CharacterAvatarEntry,
     CharacterAvatarTable,
     CharacterAxis,
@@ -18,6 +20,7 @@ import {
     ResolvedLayeredDefinition,
 } from "./types";
 import type { PsdFingerprint } from "@shared/types/psdImport";
+import { knownPuppetRuntimeFor } from "@shared/utils/puppetRuntimes";
 
 export type AssetChangeCallback = (oldAssetId: string | null, newAssetId: string | null) => void;
 
@@ -38,8 +41,18 @@ export function emptyAppearance(kind: CharacterAppearanceKind): ICharacterAppear
     if (kind === "layered") {
         return { kind: "layered", canvas: null, axes: [], layers: [], snapshots: [] };
     }
-    if (kind === "puppet") {
-        return { kind: "puppet", assetId: null, backend: "", entry: null, size: null, options: {} };
+    if (isPuppetAppearanceKind(kind)) {
+        return {
+            kind,
+            assetId: null,
+            // A named kind knows which runtime it wants, so it starts pointed at that runtime's
+            // conventional folder instead of making the author type it. `puppet` — the kind for a
+            // runtime the author wrote — has no name to guess and starts empty.
+            backend: knownPuppetRuntimeFor(kind)?.backend ?? "",
+            entry: null,
+            size: null,
+            options: {},
+        };
     }
     return { kind: "preset", poses: [], defaultPoseId: null };
 }
@@ -85,12 +98,15 @@ function cloneAvatars(avatars: CharacterAvatarTable | undefined): CharacterAvata
  * silently dropped on the next save.
  */
 function cloneAppearance(appearance: ICharacterAppearance): ICharacterAppearance {
-    if (appearance?.kind === "puppet") {
-        const puppet = appearance as PuppetAppearance;
+    if (isPuppetAppearance(appearance)) {
+        const puppet = appearance;
         const width = Number(puppet.size?.width);
         const height = Number(puppet.size?.height);
         return {
-            kind: "puppet",
+            // Carried through rather than written as a literal: the three puppet kinds share this
+            // whole arm, and collapsing them here would silently retype every Live2D character as a
+            // generic one on the next save.
+            kind: puppet.kind,
             assetId: puppet.assetId ?? null,
             backend: typeof puppet.backend === "string" ? puppet.backend : "",
             entry: puppet.entry ?? null,
@@ -225,7 +241,7 @@ export class CharacterAppearance {
             for (const pose of this.appearance.poses) {
                 if (pose.assetId) ids.add(pose.assetId);
             }
-        } else if (this.appearance.kind === "puppet") {
+        } else if (isPuppetAppearance(this.appearance)) {
             if (this.appearance.assetId) ids.add(this.appearance.assetId);
         } else {
             for (const layer of this.appearance.layers) {
@@ -252,7 +268,7 @@ export class CharacterAppearance {
      * the backend names — so it carries none, and its avatar is the profile's `defaultAvatarAssetId`.
      */
     public getAvatars(): CharacterAvatarTable {
-        return (this.appearance.kind === "puppet" ? undefined : this.appearance.avatars) ?? {};
+        return (isPuppetAppearance(this.appearance) ? undefined : this.appearance.avatars) ?? {};
     }
 
     public getAvatar(key: string): CharacterAvatarEntry | null {
@@ -265,7 +281,7 @@ export class CharacterAppearance {
      * the baker just deleted.
      */
     public setAvatar(key: string, entry: CharacterAvatarEntry | null): void {
-        if (!key || this.appearance.kind === "puppet") return;
+        if (!key || isPuppetAppearance(this.appearance)) return;
         const avatars = { ...this.getAvatars() };
         const next = entry && (entry.baked || entry.overrideAssetId) ? { ...entry } : null;
         if (next) {
@@ -393,7 +409,7 @@ export class CharacterAppearance {
 
     /** The puppet declaration, or null when this character is not one. */
     public getPuppet(): PuppetAppearance | null {
-        return this.appearance.kind === "puppet" ? this.appearance : null;
+        return isPuppetAppearance(this.appearance) ? this.appearance : null;
     }
 
     /** The model bundle this puppet draws. */
@@ -779,7 +795,7 @@ export class CharacterAppearance {
         // A puppet draws no images at all — its interior is a backend's business, and Studio has no
         // way to render one outside a running game. Empty rather than a placeholder slot: every
         // caller treats an entry as "an image belongs here", and a puppet has none.
-        if (this.appearance.kind === "puppet") {
+        if (isPuppetAppearance(this.appearance)) {
             return [];
         }
         const tags = this.resolveTagSelection(selection.tags ?? undefined);

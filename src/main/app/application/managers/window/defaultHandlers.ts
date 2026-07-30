@@ -11,13 +11,15 @@ import {
 } from "./handlers/fsAction";
 import {
     VcsGetAvailabilityHandler, VcsIsRepositoryHandler, VcsGetInfoHandler, VcsGetHistoryHandler, VcsReadBlobHandler,
-    VcsGetChangedPathsHandler, VcsGetThreeWayHandler, VcsGetMergeBaseHandler, VcsInitRepositoryHandler,
-    VcsGetStatusHandler, VcsCommitHandler, VcsCheckpointHandler,
+    VcsReadRevisionDocumentsHandler, VcsGetChangedPathsHandler, VcsGetThreeWayHandler, VcsGetMergeBaseHandler,
+    VcsInitRepositoryHandler,
+    VcsGetStatusHandler, VcsCommitHandler, VcsCheckpointHandler, VcsRestoreRevisionHandler,
 } from "./handlers/vcsAction";
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./handlers/projectWizardAction";
 import { WorkspaceExportProjectPackageHandler, WorkspaceImportProjectPackageHandler } from "./handlers/projectPackageAction";
 import { PsdBakeHandler, PsdOpenHandler } from "./handlers/psdImport";
 import { WorkspaceLaunchHandler, WorkspaceOpenRecentHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler, WorkspaceExportConsoleLogsHandler, WorkspaceMenuSyncHandler, WorkspaceReportLoadResultHandler } from "./handlers/workspaceAction";
+import { WorkspaceReportWriteFreezeHandler } from "./handlers/workspaceFreezeAction";
 import {
     DevModeFullscreenGetHandler,
     DevModeFullscreenSetHandler,
@@ -76,6 +78,7 @@ import {
     UITemplateFetchBundleHandler,
     UITemplateRegistryFetchHandler,
 } from "./handlers/uiTemplateAction";
+import { PuppetRuntimeInstallSdkHandler } from "./handlers/puppetRuntimeAction";
 import {
     BlueprintPersistenceGetAllHandler,
     BlueprintPersistenceGetValueHandler,
@@ -141,6 +144,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new WorkspaceExportConsoleLogsHandler(),
         new WorkspaceMenuSyncHandler(),
         new WorkspaceReportLoadResultHandler(),
+        new WorkspaceReportWriteFreezeHandler(),
 
         // Dev mode handlers
         new DevModeLaunchHandler(),
@@ -202,6 +206,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new PluginInstallFromRegistryHandler(),
         new UITemplateRegistryFetchHandler(),
         new UITemplateFetchBundleHandler(),
+        new PuppetRuntimeInstallSdkHandler(),
 
         // Actor-aware privileged facade handlers
         new PrivilegedFsCallHandler(),
@@ -237,17 +242,19 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new FsGrantFileAccessHandler(),
         new FsHashHandler(),
 
-        // Version control (reads, plus the writes that only ever add a revision -
-        // see docs/version-control.md)
+        // Version control (reads, the writes that only ever add a revision, and restore -
+        // the one that overwrites the working tree. See docs/version-control.md)
         new VcsGetAvailabilityHandler(),
         new VcsIsRepositoryHandler(),
         new VcsGetInfoHandler(),
         new VcsInitRepositoryHandler(),
         new VcsCommitHandler(),
         new VcsCheckpointHandler(),
+        new VcsRestoreRevisionHandler(),
         new VcsGetStatusHandler(),
         new VcsGetHistoryHandler(),
         new VcsReadBlobHandler(),
+        new VcsReadRevisionDocumentsHandler(),
         new VcsGetChangedPathsHandler(),
         new VcsGetThreeWayHandler(),
         new VcsGetMergeBaseHandler(),

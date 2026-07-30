@@ -1,3 +1,4 @@
+import type { AudioClipRegion } from "@shared/types/audio";
 import { AssetType } from "./assetTypes";
 
 export enum AssetSource {
@@ -51,12 +52,12 @@ export interface Asset<Type extends AssetType = AssetType, Source extends AssetS
  * One pair per asset, not a list of markers: a clip has exactly one region worth naming, and the
  * thing downstream wants to ask is "where does this loop", which a bag of markers cannot answer.
  * Either end may stand alone while the author is still deciding.
+ *
+ * The same shape the game bundle carries ({@link AudioClipRegion}) - deliberately one type, because
+ * the region an author marks here is the region the engine plays. `@shared/types/audio` owns the
+ * normalizer both sides read it with.
  */
-export interface AssetAudioLoop {
-    /** Offset from the start of the clip, in milliseconds. */
-    inMs?: number;
-    outMs?: number;
-}
+export type AssetAudioLoop = AudioClipRegion;
 
 export interface AssetExtras {
     /** Audio only: the loop region shown and edited by the audio preview. */

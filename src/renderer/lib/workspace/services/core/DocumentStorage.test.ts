@@ -4,6 +4,7 @@ import { DocumentPathError } from "@shared/documents/documentPath";
 import { voiceDocumentSpec } from "@shared/documents/specs";
 import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
 import { join } from "@shared/utils/path";
+import { clearProjectDocumentSource, pushProjectDocumentSource } from "@/lib/app/documentSource";
 import { RendererDocumentStorage, type DocumentFileSystem } from "./DocumentStorage";
 
 const ROOT = join("D:/projects", "my-game");
@@ -147,5 +148,36 @@ describe("RendererDocumentStorage", () => {
         ))).toBe("{truncated");
         // And the file itself was never written to.
         expect(harness.calls.filter(call => call.startsWith("write "))).toEqual([]);
+    });
+
+    /**
+     * A blob that will not parse gets the same "not loaded" treatment as a corrupt working-tree
+     * document - but it must NOT be quarantined, because the bytes that failed belong to the revision
+     * and the author's copy on disk is fine. Quarantining would file a perfectly good working copy
+     * under a name that says it is broken, and would write into `.nlstudio/` (which is not frozen) to
+     * do it.
+     */
+    it("does not quarantine while a revision is being shown - the working copy is not the broken one", async () => {
+        const harness = createHarness();
+        harness.files.set(join(ROOT, "editor", "voice", "ja.json"), "{truncated");
+        const release = pushProjectDocumentSource(ROOT, {
+            origin: { kind: "revision", revision: "rev-1" },
+            read: async () => null,
+            prewarm: async () => undefined,
+        });
+
+        try {
+            const result = await loadDocument(voiceDocumentSpec, harness.storage, "editor/voice/ja.json");
+
+            // Still corrupt, still reported, still "not loaded" - only the copy did not happen.
+            expect(result.status).toBe("corrupt");
+            expect(result.status === "corrupt" && result.quarantinePath).toBeNull();
+            expect(result.status === "corrupt" && String((result.quarantineFailure as Error)?.message))
+                .toMatch(/belongs to the revision being shown/);
+            expect(harness.calls.filter(call => call.startsWith("copyFile "))).toEqual([]);
+        } finally {
+            release();
+            clearProjectDocumentSource();
+        }
     });
 });

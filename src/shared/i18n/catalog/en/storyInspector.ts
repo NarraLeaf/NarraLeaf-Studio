@@ -71,6 +71,7 @@ export const storyInspector = {
         layer: "Layer",
         character: "Character",
         displayable: "Displayable",
+        camera: "Stage camera",
     },
 
     variableScope: {
@@ -231,7 +232,19 @@ export const storyInspector = {
         rotate: "Rotate",
         // "stage", not "screen": this is the camera's brightness, not `/vignette`'s in-scene mask.
         darken: "Darken stage",
+        motion: "Camera motion",
         reset: "Reset camera",
+    },
+
+    // The picker labels: short enough that six fit side by side. The full names above stay as each
+    // button's tooltip, so `Darken stage` still gets to say *stage* where it matters.
+    cameraOperationShort: {
+        zoom: "Zoom",
+        pan: "Pan",
+        rotate: "Rotate",
+        darken: "Darken",
+        motion: "Motion",
+        reset: "Reset",
     },
 
     camera: {
@@ -302,6 +315,7 @@ export const storyInspector = {
         setVolume: "Set volume",
         setRate: "Set rate",
         muteSound: "Mute / unmute",
+        seekSound: "Seek",
     },
 
     screenEffectOption: {
@@ -357,6 +371,7 @@ export const storyInspector = {
         bgmAsset: "BGM asset",
         soundAsset: "Sound asset",
         fade: "Fade (s)",
+        seekTime: "Seek to (s)",
         volume: "Volume",
         rate: "Rate",
         loop: "Loop",
@@ -400,12 +415,21 @@ export const storyInspector = {
         displayName: "Speaks as",
         chooseHint: "Choose a character to pick its appearance.",
         overrideImage: "Override image",
-        // A character its own runtime draws: the names come from the model, so these are plain
-        // fields rather than pickers, and empty is a request (clear it), not an unfilled slot.
+        // A character its own runtime draws: the names come from the model, so these fields are filled
+        // from what the model reported about itself, and empty is a request (clear it) rather than an
+        // unfilled slot - which is why each channel names what clearing it looks like.
         puppetMotion: "Motion",
         puppetExpression: "Expression",
         puppetSkin: "Skin",
         puppetNone: "none",
+        puppetSkinDefault: "model default",
+        puppetParams: "Parameters",
+        puppetParamId: "Parameter",
+        puppetParamValue: "Value",
+        puppetParamAdd: "Add parameter",
+        puppetParamRemove: "Remove parameter",
+        puppetNoParams: "This row sets no parameters yet.",
+        notPuppetHint: "This character is drawn by Studio, so it has no runtime state to set.",
     },
 
     asset: {

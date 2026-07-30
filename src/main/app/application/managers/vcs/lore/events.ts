@@ -101,6 +101,16 @@ export interface LoreTreeNodeInfoPayload {
     errorCode: number;
 }
 
+/**
+ * One directory entry, as `revisionTreeListChildren` reports it.
+ *
+ * The same JS shape as a node info, deliberately: the two C structs differ (a child
+ * carries no repository/revision pair and no `fileId`) but everything a caller does
+ * with either is name + kind + address, and one shape means a tree walk can hand its
+ * entries to the same address reader.
+ */
+export type LoreTreeChildPayload = LoreTreeNodeInfoPayload;
+
 export interface LoreTreeCloseCompletePayload { id: number; errorCode: number }
 
 export interface LoreBranchEntryPayload {
@@ -134,12 +144,12 @@ export interface LoreLogPayload { level: number; message: string; location: stri
 /**
  * One metadata entry, as reported by the metadata read verbs.
  *
- * `text` is present only for a STRING value. Everything else is reported with its
- * `tag` and no value rather than coerced: the payload is a union, and reading a
- * NUMERIC's first eight bytes as a `LoreString` pointer would dereference the number.
- * Studio writes only strings, so a foreign tag means another client wrote the key.
+ * `text` is present only for a STRING value, `numeric` only for a NUMERIC one. The other
+ * five tags are reported with their `tag` and no value rather than coerced: the payload
+ * is a union, and reading one member as another dereferences a number as a pointer.
+ * Studio writes only strings; a revision's own `timestamp` is where NUMERIC comes from.
  */
-export interface LoreMetadataPayload { key: string; tag: number; text?: string }
+export interface LoreMetadataPayload { key: string; tag: number; text?: string; numeric?: number }
 
 /** A decoded event: the tag, plus a payload when Studio has a decoder for it. */
 export interface LoreEvent<T = unknown> {
@@ -237,12 +247,17 @@ function decoderTable(library: LoreLibrary): Map<number, Decoder> {
      *    koffi lays out with `data` at offset 4. The real union is 8-aligned - it has
      *    pointer members - so it actually begins at offset 8. Decoding through `data`
      *    would read four bytes of padding as the front of the value.
-     *  - Only a STRING is read. The other six tags are reported with no value, because
-     *    a NUMERIC's eight bytes read as a `LoreString` would be dereferenced as a
-     *    pointer, which is a crash rather than a wrong answer.
+     *  - Only STRING and NUMERIC are read, each as its own union member. The other five
+     *    tags are reported with no value, because a value read as the wrong member is a
+     *    crash rather than a wrong answer - a NUMERIC's eight bytes decoded as a
+     *    `LoreString` would be dereferenced as a pointer.
      *
      * The generated SDK arrives at the same offset the same way (`offsetof(data)` plus
      * `sizeof(uint32_t)`), which is the only machine-readable evidence for the padding.
+     *
+     * NUMERIC is read because a revision's `timestamp` is one - measured, it is the only
+     * non-STRING key on an ordinary revision - and it is what the history UI dates a
+     * commit by. Without it, the value silently arrives as absent.
      */
     const metadataValueOffset = LORE_EVENT_PAYLOAD_OFFSET
         + koffi.offsetof(type("LoreMetadataEventData"), "value")
@@ -252,15 +267,15 @@ function decoderTable(library: LoreLibrary): Map<number, Decoder> {
     table.set(LoreTag.METADATA, (raw, pointer): LoreMetadataPayload => {
         const value = nested(raw, "value");
         const tag = decodeCount(value.tag);
-        if (tag !== LORE_METADATA_TAGS.STRING) {
-            return { key: decodeString(nested(raw, "key")), tag };
+        const key = decodeString(nested(raw, "key"));
+        if (tag === LORE_METADATA_TAGS.STRING) {
+            const text = koffi.decode(pointer, metadataValueOffset, type("LoreString")) as Record<string, unknown>;
+            return { key, tag, text: decodeString(text) };
         }
-        const text = koffi.decode(pointer, metadataValueOffset, type("LoreString")) as Record<string, unknown>;
-        return {
-            key: decodeString(nested(raw, "key")),
-            tag,
-            text: decodeString(text),
-        };
+        if (tag === LORE_METADATA_TAGS.NUMERIC) {
+            return { key, tag, numeric: decodeCount(koffi.decode(pointer, metadataValueOffset, "uint64_t")) };
+        }
+        return { key, tag };
     });
 
     table.set(LoreTag.PATH_IGNORE, (raw): LorePathIgnorePayload => ({
@@ -427,6 +442,22 @@ function decoderTable(library: LoreLibrary): Map<number, Decoder> {
         errorCode: decodeCount(raw.errorCode),
     }));
 
+    table.set(LoreTag.REVISION_TREE_CHILD, (raw): LoreTreeChildPayload => {
+        const address = nested(raw, "address");
+        return {
+            id: decodeCount(raw.id),
+            nodeId: decodeCount(raw.nodeId),
+            name: decodeString(nested(raw, "name")),
+            parentId: decodeCount(raw.parentId),
+            kind: decodeCount(raw.kind),
+            mode: decodeCount(raw.mode),
+            size: decodeCount(raw.size),
+            hash: decodeHash(nested(address, "hash")),
+            context: decodeHash(nested(address, "context")),
+            errorCode: decodeCount(raw.errorCode),
+        };
+    });
+
     table.set(LoreTag.REVISION_TREE_NODE_INFO, (raw): LoreTreeNodeInfoPayload => {
         const address = nested(raw, "address");
         return {
@@ -512,6 +543,7 @@ const PAYLOAD_STRUCTS: Readonly<Record<number, string>> = {
     [LoreTag.STORAGE_GET_ITEM_COMPLETE]: "LoreStorageGetItemCompleteEventData",
     [LoreTag.REVISION_TREE_LOADED]: "LoreRevisionTreeLoadedEventData",
     [LoreTag.REVISION_TREE_RESOLVE_PATH_COMPLETE]: "LoreRevisionTreeResolvePathCompleteEventData",
+    [LoreTag.REVISION_TREE_CHILD]: "LoreRevisionTreeChildEventData",
     [LoreTag.REVISION_TREE_NODE_INFO]: "LoreRevisionTreeNodeInfoEventData",
     [LoreTag.REVISION_TREE_CLOSE_COMPLETE]: "LoreRevisionTreeCloseCompleteEventData",
     [LoreTag.BRANCH_LIST_ENTRY]: "LoreBranchListEntryEventData",
