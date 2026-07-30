@@ -84,6 +84,16 @@ const CHECKPOINT_MESSAGES: Readonly<Record<VcsCheckpointReason, string>> = {
 const DEFAULT_COMMIT_MESSAGE = "Commit";
 
 /**
+ * Size ceiling on one document read out of a revision, when the caller did not name the
+ * paths it wants.
+ *
+ * Generous on purpose - a story document with a few thousand blocks is well under it -
+ * and it exists only to keep a mis-selected asset out of the batch. Anything genuinely
+ * larger has to be asked for by path.
+ */
+const DEFAULT_REVISION_DOCUMENT_MAX_BYTES = 8 * 1024 * 1024;
+
+/**
  * What a project with no configured author name records.
  *
  * Deliberately not the OS account name. The identity is written into revisions that
@@ -486,6 +496,51 @@ export class VcsManager extends Manager {
             const { session, backend } = await this.sessionFor(projectPath);
             for (const relative of paths) backend.repositoryPath(session.root, relative);
             return backend.blobsAt(session.globals, session.store, session.repositoryId, revision, paths);
+        });
+    }
+
+    /**
+     * Every document at one revision, read in a single pass over its tree.
+     *
+     * This is what "the workspace shows a past revision" reads through, so it answers
+     * the two questions that per-path reads cannot:
+     *
+     *  - **absent is `null`, not a throw** - a document added after the revision has to
+     *    put its editor in the same "missing, use defaults" state as at project open;
+     *  - **one round trip** - the first read of a revision on a project with a remote
+     *    fetches fragments over the network (docs/version-control.md §6), and nine
+     *    document services asking one path at a time would pay that latency nine times.
+     *
+     * With no `paths`, the caller gets every file whose name matches `suffixes` and
+     * whose size is within `maxBytes`. Both filters exist because the tree also holds
+     * the author's assets: a project with 400MB of art would otherwise base64 the lot
+     * across IPC to answer "what did this scene look like?".
+     */
+    public async readRevisionDocuments(
+        projectPath: string,
+        revision: string,
+        options: { paths?: readonly string[]; suffixes?: readonly string[]; maxBytes?: number } = {},
+    ): Promise<Map<string, Buffer | null>> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            if (options.paths) {
+                // Lore silently *ignores* a path outside the repository rather than
+                // rejecting it, so the guard has to happen here - same as readBlob.
+                for (const relative of options.paths) backend.repositoryPath(session.root, relative);
+            }
+            const suffixes = options.suffixes ?? [".json"];
+            const maxBytes = options.maxBytes ?? DEFAULT_REVISION_DOCUMENT_MAX_BYTES;
+            return backend.documentsAt(
+                session.globals,
+                session.store,
+                session.repositoryId,
+                revision,
+                {
+                    paths: options.paths,
+                    accept: (entry) => entry.size <= maxBytes
+                        && suffixes.some((suffix) => entry.path.toLowerCase().endsWith(suffix)),
+                },
+            );
         });
     }
 

@@ -130,6 +130,7 @@ export enum IPCEventType {
     workspaceFlushPendingSaves = "workspace.flushPendingSaves",
     workspaceResolveAssetUrl = "workspace.resolveAssetUrl",
     workspaceResolveImageAssetUrl = "workspace.resolveImageAssetUrl",
+    workspaceReportWriteFreeze = "workspace.reportWriteFreeze",
     workspaceBlueprintNavigateFromPreview = "workspace.blueprint.navigateFromPreview",
     workspaceBlueprintDebugEvent = "workspace.blueprint.debugEvent",
     workspaceDevModeConsoleLog = "workspace.devMode.consoleLog",
@@ -217,6 +218,7 @@ export enum IPCEventType {
     vcsGetStatus = "vcs.getStatus",
     vcsGetHistory = "vcs.getHistory",
     vcsReadBlob = "vcs.readBlob",
+    vcsReadRevisionDocuments = "vcs.readRevisionDocuments",
     vcsGetChangedPaths = "vcs.getChangedPaths",
     vcsGetThreeWay = "vcs.getThreeWay",
     vcsGetMergeBase = "vcs.getMergeBase",
@@ -237,6 +239,17 @@ export type BlueprintPersistenceProjectRef = {
     projectIdentifier?: string;
     projectPath: string;
 };
+
+/**
+ * Why a workspace is frozen, as it travels to main - the `kind` of the renderer's
+ * `WorkspaceFreezeReason` and nothing else.
+ *
+ * Only the kind crosses, because main only needs it to pick the sentence it tells the author
+ * ("leave the revision" vs "unfreeze"). The revision id and label are the renderer's business.
+ * A third kind added to the reason will fail to compile at the reporting call site, which is the
+ * right place to be asked what to say about it.
+ */
+export type WorkspaceFreezeKind = "revision" | "manual";
 
 export type IPCEvents = {
     [IPCEventType.getPlatform]: {
@@ -573,6 +586,21 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: VcsBlobRequest,
         response: { contentBase64: string };
+    };
+    /**
+     * Every document at one revision, in one round trip.
+     *
+     * Batched rather than one call per path because the first read of a revision on a
+     * project with a remote goes to the network (docs/version-control.md §6). Omitting
+     * `paths` asks for whatever the revision holds that looks like a document; naming
+     * them asks for exactly those, and `contentBase64: null` means the revision does not
+     * contain that path - which is an answer, not a failure.
+     */
+    [IPCEventType.vcsReadRevisionDocuments]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; revision: RevisionId; paths?: string[] },
+        response: { documents: { path: string; contentBase64: string | null }[] };
     };
     [IPCEventType.vcsGetChangedPaths]: {
         type: IPCMessageType.request,
@@ -1003,6 +1031,23 @@ export type IPCWorkspaceEvents = {
             assetId: string;
         };
         response: RequestStatus<{ url: string }>;
+    };
+    /**
+     * The workspace telling main whether its project data is frozen right now.
+     *
+     * Main refuses the production build and the Preview runtime while it is - both are started in
+     * main and reached by IPC, so a disabled button in the top bar does not stop them. Dev Mode is
+     * deliberately still allowed (plan 2026-07-28-002 §1).
+     *
+     * A message rather than a request: the renderer has nothing to do with the answer, and the
+     * freeze changes on a human's timescale.
+     */
+    [IPCEventType.workspaceReportWriteFreeze]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        /** Null when this project's data may be written again. */
+        data: { reason: WorkspaceFreezeKind | null };
+        response: never;
     };
     [IPCEventType.workspaceBlueprintNavigateFromPreview]: {
         type: IPCMessageType.message,
