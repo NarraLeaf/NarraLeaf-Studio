@@ -2588,8 +2588,8 @@ describe("story audio", () => {
 
         expect(compiled.diagnostics).toEqual([]);
         const sound = compiled.sceneElements?.["scene-1"].sounds.get("bgm");
-        expect(sound?.config.seek).toBe(1);
-        expect(sound?.config.endTime).toBe(60);
+        expect((sound as any)?.config.seek).toBe(1);
+        expect((sound as any)?.config.endTime).toBe(60);
     });
 
     it("plays an unmarked clip whole", async () => {
@@ -2601,9 +2601,9 @@ describe("story audio", () => {
         });
 
         const sound = compiled.sceneElements?.["scene-1"].sounds.get("bgm");
-        expect(sound?.config.seek).toBe(0);
+        expect((sound as any)?.config.seek).toBe(0);
         // Present-but-undefined would read as "there is an out point here" to the engine's region check.
-        expect(sound?.config.endTime).toBeUndefined();
+        expect((sound as any)?.config.endTime).toBeUndefined();
     });
 
     it("trims a sound effect with the same markers", async () => {
@@ -2625,8 +2625,8 @@ describe("story audio", () => {
         // One region per asset, applied wherever the asset is played - asking the author to mark it
         // again per row would be a second source of truth.
         const sound = compiled.sceneElements?.["scene-1"].sounds.get("impact");
-        expect(sound?.config.seek).toBe(0.12);
-        expect(sound?.config.endTime).toBe(0.5);
+        expect((sound as any)?.config.seek).toBe(0.12);
+        expect((sound as any)?.config.endTime).toBe(0.5);
     });
 
     it("compiles /seek on a sound as a play-head move in seconds", async () => {

@@ -1,5 +1,5 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 27 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 28 as const;
 
 /** Global runtime state key mirrored from the active NarraLeaf dialog hook. */
 export const BLUEPRINT_GAME_NAMETAG_STATE_KEY = "game.dialog.nametag" as const;
@@ -75,6 +75,12 @@ export type BlueprintHostApiContract = {
     persistence: BlueprintHostApiFamily;
     frame: BlueprintHostApiFamily;
     game: BlueprintHostApiFamily;
+    /**
+     * Audio playback for author-built screens. Distinct from the `game.*Volume` preferences, which
+     * set the player's mix: this family plays a clip *through* that mix, by naming the channel it
+     * belongs to, so a title-screen track obeys the BGM slider without the author wiring anything.
+     */
+    sound: BlueprintHostApiFamily;
     devtools: BlueprintHostApiFamily;
 };
 
@@ -500,6 +506,64 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             async: true,
             input: { key: "", value: null },
             output: null,
+        },
+    },
+    sound: {
+        play: {
+            capabilityId: "sound.play",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { assetId: "", channel: "sound", loop: false, volume: 1, fadeMs: 0 },
+            output: null,
+        },
+        stop: {
+            capabilityId: "sound.stop",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { handle: null, fadeMs: 0 },
+            output: null,
+        },
+        pause: {
+            capabilityId: "sound.pause",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { handle: null, fadeMs: 0 },
+            output: null,
+        },
+        resume: {
+            capabilityId: "sound.resume",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { handle: null, fadeMs: 0 },
+            output: null,
+        },
+        setVolume: {
+            capabilityId: "sound.setVolume",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { handle: null, volume: 1, fadeMs: 0 },
+            output: null,
+        },
+        seek: {
+            capabilityId: "sound.seek",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { handle: null, timeMs: 0 },
+            output: null,
+        },
+        isPlaying: {
+            capabilityId: "sound.isPlaying",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: { handle: null },
+            output: false,
         },
     },
     devtools: {
