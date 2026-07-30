@@ -259,7 +259,10 @@ function formatAction(payload: StoryActionPayload, scene: StoryScene, document?:
         // A puppet's requested state name is the same case: the row says nothing without it.
         const suffix = payload.operation === "setName" && payload.displayName
             ? ` ${payload.displayName}`
-            : payload.puppetName ? ` ${payload.puppetName}` : "";
+            : payload.puppetName ? ` ${payload.puppetName}`
+                // A parameter row projects every pair: this text is the searchable body of the row, so
+                // unlike the one-line summary it must not drop any of them.
+                : Object.entries(payload.params ?? {}).map(([id, value]) => ` ${id}=${value}`).join("");
         return `/character ${payload.operation}${subject}${suffix}`;
     }
     if (payload.action === "audio") {

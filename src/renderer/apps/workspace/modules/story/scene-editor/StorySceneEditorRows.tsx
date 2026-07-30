@@ -1712,7 +1712,7 @@ export function InsertRow(props: {
     const argValuePosition = cursor.kind === "positional" || cursor.kind === "paramValue";
     const argMenuOpen = chooser === "action"
         && (cursor.kind === "paramName" ? argItems.length > 0
-            : argValuePosition && (argItems.length > 0 || (cursor.query.length > 0 && hasCandidateSource(cursor.param))));
+            : argValuePosition && (argItems.length > 0 || (cursor.query.length > 0 && hasCandidateSource(cursor.param, props.commandContext, resolvedArgs))));
     const actionMenuOpen = chooser === "action" && cursor.kind === "commandName";
 
     /**

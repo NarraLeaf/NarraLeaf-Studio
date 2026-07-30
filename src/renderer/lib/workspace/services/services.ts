@@ -867,6 +867,8 @@ interface IPuppetDescriptionService extends IService {
     describeCharacter(characterId: string, options?: { refresh?: boolean }): Promise<PuppetDescriptionResult>;
     /** What is already in memory, for render paths that cannot await. Null means "ask, then re-render". */
     peek(request: PuppetDescriptionRequest): PuppetDescription | null;
+    /** The same look addressed by character - what the story editor holds. Null for a non-puppet, or for an answer not in yet. */
+    peekCharacter(characterId: string): PuppetDescription | null;
     invalidate(request?: PuppetDescriptionRequest): Promise<void>;
     onDescriptionChanged(handler: () => void): () => void;
 }
