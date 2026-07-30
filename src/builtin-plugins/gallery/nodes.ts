@@ -37,6 +37,8 @@ import {
     findArtwork,
     isArtworkUnlocked,
     normalizeGalleryStore,
+    GALLERY_ENTRY_KINDS,
+    type GalleryEntryKind,
     projectGalleryEntries,
     projectGalleryVariants,
     readUnlockedVariantIds,
@@ -67,6 +69,7 @@ const VALUE_TYPE_ARRAY = "array";
 const PARAM_ARTWORK = "galleryItemId";
 const PARAM_VARIANT = "galleryVariantId";
 const PARAM_GROUP = "galleryGroupId";
+const PARAM_KIND = "galleryKind";
 const PIN_ARTWORK_ID = "artworkId";
 const PIN_VARIANT_ID = "variantId";
 const PIN_GROUP_ID = "groupId";
@@ -189,6 +192,25 @@ function groupParam() {
     };
 }
 
+/**
+ * Which EXTRA column this node reads. Static options rather than a dynamic
+ * source: the kinds are a closed set in the plugin's own code, not project data.
+ */
+function kindParam() {
+    return {
+        key: PARAM_KIND,
+        label: "Kind",
+        kind: "select" as const,
+        emptyOptionLabel: "All kinds",
+        options: [
+            { value: "cg", label: "CG" },
+            { value: "scene", label: "Recollection" },
+            { value: "music", label: "Music" },
+            { value: "voice", label: "Voice" },
+        ],
+    };
+}
+
 function readString(value: unknown): string {
     return typeof value === "string" ? value.trim() : "";
 }
@@ -237,6 +259,12 @@ function resolveVariantId(ctx: ExecuteCtx): string {
 
 function resolveGroupId(ctx: ExecuteCtx): string {
     return readString(ctx.resolveInput?.(PIN_GROUP_ID)) || readString(ctx.params[PARAM_GROUP]);
+}
+
+/** Unknown or empty means every kind, so a stale param never empties a gallery. */
+function resolveKind(ctx: ExecuteCtx): GalleryEntryKind | null {
+    const raw = readString(ctx.params[PARAM_KIND]);
+    return GALLERY_ENTRY_KINDS.includes(raw as GalleryEntryKind) ? raw as GalleryEntryKind : null;
 }
 
 function resolveOnlyUnlocked(ctx: ExecuteCtx): boolean {
@@ -322,15 +350,17 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
                 countOut,
                 unlockedCountOut,
             ],
-            inspectorParams: [groupParam()],
+            inspectorParams: [kindParam(), groupParam()],
             // Wire Entries into Set List Content; each row already carries its
             // own lock state and resolved art, so the item template needs no
-            // further gallery node.
+            // further gallery node. Kind picks the EXTRA column: CG grid,
+            // recollection list, music player, voice list.
             execute: async ctx => {
                 const data = store();
                 const unlocked = await readUnlocked(ctx, data.items);
                 const entries = projectGalleryEntries(data, unlocked, {
                     groupId: resolveGroupId(ctx),
+                    kind: resolveKind(ctx),
                     onlyUnlocked: resolveOnlyUnlocked(ctx),
                 });
                 return {
@@ -426,11 +456,14 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
                     label: "Variant Unlocked",
                 },
             ],
-            inspectorParams: [groupParam()],
+            inspectorParams: [kindParam(), groupParam()],
             execute: async ctx => {
                 const data = store();
                 const unlocked = await readUnlocked(ctx, data.items);
-                const stats = computeGalleryStats(data, unlocked, { groupId: resolveGroupId(ctx) });
+                const stats = computeGalleryStats(data, unlocked, {
+                    groupId: resolveGroupId(ctx),
+                    kind: resolveKind(ctx),
+                });
                 return { nextPort: "next", outputValues: { ...stats } };
             },
         },

@@ -22,6 +22,7 @@ import { localVariableBlueprintNodes } from "./localVariableNodes";
 import { mathBlueprintNodes } from "./mathNodes";
 import { persistentVariableBlueprintNodes } from "./persistentVariableNodes";
 import { sliderBlueprintNodes } from "./sliderNodes";
+import { soundBlueprintNodes } from "./soundNodes";
 import { structuralBlueprintNodes } from "./structuralNodes";
 import { textInputBlueprintNodes } from "./textInputNodes";
 import { storyVariableBlueprintNodes } from "./storyVariableNodes";
@@ -48,6 +49,7 @@ export { mathBlueprintNodes } from "./mathNodes";
 export { persistentVariableBlueprintNodes } from "./persistentVariableNodes";
 export { storyVariableBlueprintNodes } from "./storyVariableNodes";
 export { sliderBlueprintNodes } from "./sliderNodes";
+export { soundBlueprintNodes } from "./soundNodes";
 export { textInputBlueprintNodes } from "./textInputNodes";
 export { stringBlueprintNodes } from "./stringNodes";
 export { textBlueprintNodes } from "./textNodes";
@@ -63,6 +65,7 @@ export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
     ...frameBlueprintNodes,
     ...gameBlueprintNodes,
     ...backlogBlueprintNodes,
+    ...soundBlueprintNodes,
     ...controlFlowBlueprintNodes,
     ...dataBlueprintNodes,
     ...collectionBlueprintNodes,

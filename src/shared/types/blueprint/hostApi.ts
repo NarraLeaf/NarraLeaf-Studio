@@ -1,5 +1,5 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 27 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 28 as const;
 
 /** Global runtime state key mirrored from the active NarraLeaf dialog hook. */
 export const BLUEPRINT_GAME_NAMETAG_STATE_KEY = "game.dialog.nametag" as const;
@@ -75,6 +75,7 @@ export type BlueprintHostApiContract = {
     persistence: BlueprintHostApiFamily;
     frame: BlueprintHostApiFamily;
     game: BlueprintHostApiFamily;
+    sound: BlueprintHostApiFamily;
     devtools: BlueprintHostApiFamily;
 };
 
@@ -421,6 +422,14 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             input: {},
             output: false,
         },
+        isTextRead: {
+            capabilityId: "game.isTextRead",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: { textId: "" },
+            output: false,
+        },
         clearTextRead: {
             capabilityId: "game.clearTextRead",
             purity: "effectful",
@@ -500,6 +509,60 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             async: true,
             input: { key: "", value: null },
             output: null,
+        },
+    },
+    /**
+     * Audio playback for authored UI, routed through the engine's own audio
+     * path (`LiveGame.playSound`) rather than a host-side Web Audio backend.
+     *
+     * Going through the engine is the whole point: it owns the per-channel
+     * mixer, so a clip played on the `bgm` channel obeys the player's BGM
+     * volume, the master volume and mute for free. A host that played audio
+     * itself would produce sound the player's settings cannot touch.
+     *
+     * Needed far beyond the gallery - before this family, an authored title
+     * screen could not play a button click.
+     */
+    sound: {
+        play: {
+            capabilityId: "sound.play",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { assetId: "", channel: "sound", loop: false, volume: 1 },
+            output: { kind: "soundHandle", id: "" },
+        },
+        stop: {
+            capabilityId: "sound.stop",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { handle: null, fadeMs: 0 },
+            output: null,
+        },
+        pause: {
+            capabilityId: "sound.pause",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { handle: null },
+            output: null,
+        },
+        resume: {
+            capabilityId: "sound.resume",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { handle: null },
+            output: null,
+        },
+        isPlaying: {
+            capabilityId: "sound.isPlaying",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: false,
+            input: { handle: null },
+            output: false,
         },
     },
     devtools: {
