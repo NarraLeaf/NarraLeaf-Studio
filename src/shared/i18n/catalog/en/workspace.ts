@@ -423,6 +423,29 @@ export const workspace = {
             changesUnknown: "Not checked",
             noChanges: "No changes",
             changesCount: "{count} changed",
+            // The per-file list. Every row is display-only: reading what changed INSIDE a file is a
+            // later milestone, and a row that opened onto nothing would be exactly the promise this
+            // panel has been careful not to make.
+            //
+            // What the marker on each row means. The backend has no "modified" action of its own -
+            // an edited file is reported as KEEP (docs §4.18) and translated on the way out - so
+            // these five are Studio's vocabulary and the author never sees the backend's.
+            changeKind: {
+                added: "Added",
+                modified: "Changed",
+                deleted: "Deleted",
+                moved: "Moved",
+                copied: "Copied",
+            },
+            // Where a move or a copy came from. `{path}` is repository-relative, like the row itself.
+            changeFromPath: "from {path}",
+            // The only change that stops a version from being recorded, which is why it is called out
+            // and why it sorts to the top of the list rather than sitting wherever the path puts it.
+            changeConflict: "Unresolved conflict",
+            // The list is capped. Said out loud, because a list that quietly stopped at fifty would
+            // be read as "that is everything", and the author would record a version believing they
+            // had seen all of what they were recording.
+            changesMore: "{count} more not shown",
             // Checkpoints are the ones Studio recorded on a timer; there are dozens on a writing day.
             showCheckpoints: "Show {count} checkpoints",
             hideCheckpoints: "Hide checkpoints",

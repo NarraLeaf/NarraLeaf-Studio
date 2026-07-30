@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { VcsHistoryEntry } from "@shared/types/vcs";
+import type { VcsFileChange, VcsHistoryEntry } from "@shared/types/vcs";
 import { RAIL_SELECTOR_WIDTH } from "./dockLayoutModel";
 import {
+    VERSION_CHANGE_LIST_LIMIT,
     VERSION_RAIL_COLLAPSED_WIDTH,
     VERSION_RAIL_EXPANDED_WIDTH,
+    buildChangeList,
     canCommit,
     collapseCheckpoints,
     findRevisionRow,
@@ -16,6 +18,8 @@ import {
     resolveVersionSurfaceState,
     revisionLabel,
     shortRevision,
+    sortFileChanges,
+    splitChangePath,
     unavailableReasonKey,
     versionRailWidth,
     type VersionRailPresence,
@@ -443,6 +447,178 @@ describe("collapseCheckpoints", () => {
         expect(hiddenCheckpointCount(flat)).toBe(2);
         expect(hiddenCheckpointCount(flat, { showCheckpoints: true })).toBe(0);
         expect(hiddenCheckpointCount(flat, { keep: new Set(["b"]) })).toBe(1);
+    });
+});
+
+/**
+ * The path split, which is the part a screenshot cannot check: a directory that came back with the
+ * other separator renders as one long file name with no directory at all, and it looks deliberate.
+ */
+describe("splitChangePath", () => {
+    it("gives a repository-root file no directory, rather than an empty one", () => {
+        // Real and ordinary - `nl.config.json` lives at the root - and the renderer branches on null,
+        // so an empty string here would draw a bare `/` in front of every root file.
+        expect(splitChangePath("nl.config.json")).toEqual({ directory: null, name: "nl.config.json" });
+    });
+
+    it("splits a deep path at its LAST separator, keeping the file name whole", () => {
+        expect(splitChangePath("editor/story/chapter-01.json"))
+            .toEqual({ directory: "editor/story", name: "chapter-01.json" });
+    });
+
+    it("reads a backslash path, because the type does not say which separator a scan produced", () => {
+        // docs §4.16 / §4.20: status answers repository-relative paths and the backend is not uniform
+        // about the slash on Windows. Both are `string` and the compiler will not object either way.
+        expect(splitChangePath("editor\\story\\chapter-01.json"))
+            .toEqual({ directory: "editor/story", name: "chapter-01.json" });
+        expect(splitChangePath("assets\\images/bg.png"))
+            .toEqual({ directory: "assets/images", name: "bg.png" });
+    });
+
+    it("collapses repeated separators and ignores a trailing one", () => {
+        expect(splitChangePath("assets//images/bg.png"))
+            .toEqual({ directory: "assets/images", name: "bg.png" });
+        expect(splitChangePath("assets/images/")).toEqual({ directory: "assets", name: "images" });
+    });
+
+    it("keeps a dotfile's name intact instead of reading the leading dot as an extension boundary", () => {
+        expect(splitChangePath(".loreignore")).toEqual({ directory: null, name: ".loreignore" });
+        expect(splitChangePath("project/.gitignore")).toEqual({ directory: "project", name: ".gitignore" });
+    });
+
+    it("does not care what alphabet the path is in", () => {
+        expect(splitChangePath("剧本/第一章/开场.json"))
+            .toEqual({ directory: "剧本/第一章", name: "开场.json" });
+    });
+
+    it("answers something renderable for the degenerate inputs rather than throwing", () => {
+        expect(splitChangePath("")).toEqual({ directory: null, name: "" });
+        expect(splitChangePath("/")).toEqual({ directory: null, name: "" });
+    });
+});
+
+/**
+ * The order and the cap.
+ *
+ * Both are decisions a screenshot of a short list cannot check: a conflict sorted correctly looks the
+ * same as one that happened to be scanned first, and a cap that drops the wrong rows only shows itself
+ * on a project big enough that nobody is reading the list row by row anyway.
+ */
+describe("buildChangeList", () => {
+    const change = (path: string, overrides: Partial<VcsFileChange> = {}): VcsFileChange => ({
+        path,
+        kind: "modified",
+        directory: false,
+        size: 1,
+        staged: false,
+        dirty: true,
+        conflicted: false,
+        conflictUnresolved: false,
+        ...overrides,
+    });
+
+    it("puts an unresolved conflict first, because it is the only change that blocks a commit", () => {
+        const files = [
+            change("a.json"),
+            change("z.json", { conflicted: true, conflictUnresolved: true }),
+            change("b.json"),
+        ];
+        expect(buildChangeList(files).rows.map(row => row.path)).toEqual(["z.json", "a.json", "b.json"]);
+    });
+
+    it("does not promote a conflict that is already resolved", () => {
+        // `conflicted` alone still commits; only the unresolved flag stops it, so only that one earns
+        // the top of the list.
+        const files = [change("a.json"), change("z.json", { conflicted: true })];
+        expect(buildChangeList(files).rows.map(row => row.path)).toEqual(["a.json", "z.json"]);
+    });
+
+    it("orders everything else by path, so one folder's files stay together", () => {
+        const files = [
+            change("editor/story/chapter-02.json"),
+            change("assets/bg.png"),
+            change("editor/story/chapter-01.json"),
+        ];
+        expect(buildChangeList(files).rows.map(row => row.path)).toEqual([
+            "assets/bg.png",
+            "editor/story/chapter-01.json",
+            "editor/story/chapter-02.json",
+        ]);
+    });
+
+    it("ignores case when ordering, and still puts the two spellings in a fixed order", () => {
+        // Total, not merely case-insensitive: two paths differing only in case must not come out in
+        // whatever order the scan happened to hand them over, or the list reshuffles between refreshes.
+        const one = buildChangeList([change("B.json"), change("a.json"), change("b.json")]);
+        const other = buildChangeList([change("b.json"), change("B.json"), change("a.json")]);
+        expect(one.rows.map(row => row.path)).toEqual(other.rows.map(row => row.path));
+        expect(one.rows[0].path).toBe("a.json");
+    });
+
+    it("drops directory entries, which the backend reports as changes in their own right", () => {
+        // One new folder holding one file is TWO entries in a scan; the author wrote one file.
+        const view = buildChangeList([
+            change("assets", { directory: true, kind: "added" }),
+            change("assets/bg.png", { kind: "added" }),
+        ]);
+        expect(view.rows.map(row => row.path)).toEqual(["assets/bg.png"]);
+        expect(view.total).toBe(1);
+    });
+
+    it("caps the list and says how many rows it did not show", () => {
+        const files = Array.from({ length: 130 }, (_, index) => change(`f${String(index).padStart(3, "0")}.json`));
+        const view = buildChangeList(files, 50);
+        expect(view.rows).toHaveLength(50);
+        expect(view.hidden).toBe(80);
+        expect(view.total).toBe(130);
+    });
+
+    it("sorts before capping, so the conflict can never be the row that got cut", () => {
+        // The load-bearing one. Capping a scan-ordered list would hide the change that is stopping the
+        // author's commit, and the panel would show a Commit button refusing with no visible cause.
+        const files = [
+            ...Array.from({ length: 60 }, (_, index) => change(`a${String(index).padStart(3, "0")}.json`)),
+            change("zz-last.json", { conflicted: true, conflictUnresolved: true }),
+        ];
+        const view = buildChangeList(files, 50);
+        expect(view.rows[0].path).toBe("zz-last.json");
+        expect(view.hidden).toBe(11);
+    });
+
+    it("hides nothing when everything fits, so the list only ever admits a real cut", () => {
+        const view = buildChangeList([change("a.json"), change("b.json")], 50);
+        expect(view.hidden).toBe(0);
+        expect(view.rows).toHaveLength(2);
+    });
+
+    it("counts the files it was given whether or not they all fit", () => {
+        // The summary line reads `total`, and it has to keep meaning "how much changed" once the rows
+        // below it stop being all of them.
+        const files = Array.from({ length: 70 }, (_, index) => change(`f${index}.json`));
+        expect(buildChangeList(files, 10).total).toBe(70);
+    });
+
+    it("answers an empty view for a clean tree, which is not the same as never having looked", () => {
+        // Null (nobody scanned) is the caller's business; `[]` reaching here is a scan that found
+        // nothing, and it must not produce a phantom row or a non-zero count.
+        expect(buildChangeList([])).toEqual({ rows: [], hidden: 0, total: 0 });
+    });
+
+    it("does not mutate the snapshot it was handed", () => {
+        // `status.files` is React state shared with every other reader of the surface; sorting it in
+        // place would reorder a snapshot nobody asked to have reordered.
+        const files = [change("z.json"), change("a.json")];
+        const before = files.map(file => file.path);
+        buildChangeList(files);
+        sortFileChanges(files);
+        expect(files.map(file => file.path)).toEqual(before);
+    });
+
+    it("defaults to a bound that is positive and finite", () => {
+        // A cap that fell to zero or NaN would render an empty list on a dirty tree and read as clean.
+        expect(Number.isInteger(VERSION_CHANGE_LIST_LIMIT)).toBe(true);
+        expect(VERSION_CHANGE_LIST_LIMIT).toBeGreaterThan(0);
+        expect(buildChangeList([change("a.json")]).rows).toHaveLength(1);
     });
 });
 
