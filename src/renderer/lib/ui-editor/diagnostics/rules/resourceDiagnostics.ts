@@ -2,8 +2,11 @@ import type { UIElement } from "@shared/types/ui-editor/document";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
 import { UI_VIDEO_ELEMENT_TYPE } from "@shared/types/ui-editor/video";
+import { UI_PUPPET_ELEMENT_TYPE, isPuppetWidgetConfigured } from "@shared/types/ui-editor/puppet";
 import { getButtonProps } from "@/lib/ui-editor/widget-modules/builtin/button/helpers";
 import { getVideoProps } from "@/lib/ui-editor/widget-modules/builtin/video/helpers";
+import { getPuppetProps } from "@/lib/ui-editor/widget-modules/builtin/puppet/helpers";
+import { SURFACE_PUPPET_CONTEXT_BUDGET } from "@/lib/ui-editor/runtime/game/surfacePuppetContextBudget";
 import {
     buttonResolvedVisualToRectangleLike,
     resolveImageRectangleLike,
@@ -35,6 +38,7 @@ function getImageDiagnosticProps(el: UIElement) {
 
 export function collectResourceDiagnostics(elements: UIElement[]): UISurfaceDiagnostic[] {
     const out: UISurfaceDiagnostic[] = [];
+    let drawablePuppets = 0;
     for (const el of elements) {
         if (el.type === "nl.image") {
             const props = getImageDiagnosticProps(el);
@@ -65,6 +69,35 @@ export function collectResourceDiagnostics(elements: UIElement[]): UISurfaceDiag
                     hint: translate("blueprint.diagnostics.resource.videoMissingHint"),
                     elementId: el.id,
                 });
+            }
+        }
+        if (el.type === UI_PUPPET_ELEMENT_TYPE) {
+            const props = getPuppetProps(el);
+            // Both halves are reported, and separately: a model with no runtime to draw it and a
+            // runtime with no model are different mistakes with different fixes, and one message
+            // covering both would name neither.
+            if (!props.assetId) {
+                out.push({
+                    id: `res:puppet:${el.id}`,
+                    severity: "warning",
+                    source: "resource",
+                    message: translate("blueprint.diagnostics.resource.puppetModelMissing", { name: el.name ?? el.type }),
+                    hint: translate("blueprint.diagnostics.resource.puppetModelMissingHint"),
+                    elementId: el.id,
+                });
+            }
+            if (props.backend.length === 0) {
+                out.push({
+                    id: `res:puppet-backend:${el.id}`,
+                    severity: "warning",
+                    source: "resource",
+                    message: translate("blueprint.diagnostics.resource.puppetBackendMissing", { name: el.name ?? el.type }),
+                    hint: translate("blueprint.diagnostics.resource.puppetBackendMissingHint"),
+                    elementId: el.id,
+                });
+            }
+            if (isPuppetWidgetConfigured(props)) {
+                drawablePuppets += 1;
             }
         }
         if (el.type === "nl.container") {
@@ -105,6 +138,33 @@ export function collectResourceDiagnostics(elements: UIElement[]): UISurfaceDiag
                 }
             }
         }
+    }
+    /**
+     * The WebGL context budget, said out loud.
+     *
+     * Every drawable model is one context and the browser keeps about sixteen alive per renderer
+     * process - measured, see `surfacePuppetContextBudget.ts`. Past the budget the widgets that lose
+     * are drawn as an explanatory box rather than blanked, but that box is only visible to whoever is
+     * looking at that part of the canvas, and the whole point of the cap is that it must not be a
+     * silent truncation: silence there reads as "everything is covered" when it is not.
+     *
+     * Counted over the whole Surface rather than over what happens to be on screen, because this is an
+     * authoring-time fact about the document - scrolling changes which widgets are denied, not whether
+     * the Surface asks for more than can be drawn.
+     */
+    if (drawablePuppets > SURFACE_PUPPET_CONTEXT_BUDGET) {
+        out.push({
+            id: "res:puppet-context-budget",
+            severity: "warning",
+            source: "resource",
+            message: translate("blueprint.diagnostics.resource.puppetBudget", {
+                count: drawablePuppets,
+                limit: SURFACE_PUPPET_CONTEXT_BUDGET,
+            }),
+            hint: translate("blueprint.diagnostics.resource.puppetBudgetHint", {
+                limit: SURFACE_PUPPET_CONTEXT_BUDGET,
+            }),
+        });
     }
     return out;
 }
