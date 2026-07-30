@@ -31,7 +31,7 @@ import { useWorkspace } from "../context";
  * {@link VersionSurface.refreshChanges}.** A status scan is not a pure read - discovering a new
  * directory records it into the repository's staged state, so a poll would report deletions the author
  * never made (docs/version-control.md §4.17, and the class comment on `VersionControlService`). The
- * identity reads below (`getAvailability`, `isRepository`, `getHistory`) do not scan, which is why the
+ * identity reads below (`getAvailability`, `isRepository`, `getInfo`) do not scan, which is why the
  * widget shows a version and never a change count.
  */
 
@@ -63,6 +63,13 @@ export const VERSION_HISTORY_PAGE = 50;
 export interface VersionSurface {
     /** Which of the six states every surface renders. */
     state: VersionSurfaceState;
+    /**
+     * The branch the repository is on, or null when there is none to report.
+     *
+     * Feed it to `versionFace`, which is what decides whether it is worth showing - on the default
+     * branch it is not, and no surface may make that judgement for itself.
+     */
+    branch: string | null;
     /**
      * Why project data is frozen, or null when it is writable.
      *
@@ -141,6 +148,7 @@ export function useVersionSurface(): VersionSurface {
     const [isRepository, setIsRepository] = useState<boolean | null>(null);
     const [head, setHead] = useState<RevisionId | null>(null);
     const [headNumber, setHeadNumber] = useState<number | null>(null);
+    const [branch, setBranch] = useState<string | null>(null);
     const [shown, setShown] = useState<{ revision: RevisionId; label?: string } | null>(null);
     const [frozen, setFrozen] = useState<WorkspaceFreezeReason["kind"] | null>(null);
     const [rawHistory, setRawHistory] = useState<FlatHistoryEntry[] | null>(null);
@@ -193,14 +201,18 @@ export function useVersionSurface(): VersionSurface {
         if (!repository) {
             setHead(null);
             setHeadNumber(null);
+            setBranch(null);
             return;
         }
-        // One entry is enough for the identity, and it carries both halves of it - the revision and
-        // its number - so the widget does not need `getInfo` as well. `#4` is what a person reads.
-        const tip = await services.versionControl.getHistory(1);
+        // The whole identity in one pure read: the revision, the number `#4` is made of, and the
+        // branch. A one-entry history read answered the first two just as cheaply and cannot answer
+        // the third at all - the revision graph does not carry a branch name.
+        const info = await services.versionControl.getInfo();
         if (!alive.current) return;
-        setHead(tip[0]?.revision ?? null);
-        setHeadNumber(tip[0]?.number ?? null);
+        setHead(info?.head ?? null);
+        // Zero is the backend's "no revisions", which is the same thing an absent head says.
+        setHeadNumber(info?.head && info.headNumber > 0 ? info.headNumber : null);
+        setBranch(info?.branch.trim() || null);
     }, [services]);
 
     useEffect(() => {
@@ -466,6 +478,7 @@ export function useVersionSurface(): VersionSurface {
 
     return {
         state,
+        branch,
         frozen,
         busy,
         error,

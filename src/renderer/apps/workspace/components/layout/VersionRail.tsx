@@ -33,6 +33,7 @@ import {
     revisionLabel,
     shortRevision,
     splitChangePath,
+    versionFace,
     type FlatHistoryEntry,
     type VersionRailPresence,
 } from "./versionRailModel";
@@ -269,6 +270,10 @@ function FocusedVersion({ surface }: { surface: VersionSurface }) {
     const onRevision = state.kind === "revision";
     const time = focused?.timestamp !== undefined ? formatRevisionTime(focused.timestamp, locale) : null;
     const author = focused?.author?.trim() || null;
+    const face = versionFace(
+        { state, branch: surface.branch, rowNumber: focused?.number, unnumbered: "omit" },
+        t,
+    );
 
     return (
         <div
@@ -297,11 +302,18 @@ function FocusedVersion({ surface }: { surface: VersionSurface }) {
             )}
 
             {/* The identity, kept: it is what the widget and the status cell show, and the hash is the
-                only thing that separates two revisions carrying the same message. */}
+                only thing that separates two revisions carrying the same message. Through the same
+                `versionFace` as those two, `unnumbered: "omit"` because the hash is already the span
+                beside it - this is the one surface that would otherwise print it twice. */}
             {(state.kind === "current" || state.kind === "revision") && (
                 <div className="mt-0.5 flex items-baseline gap-2 text-2xs text-fg-subtle">
-                    {numberLabel(state, focused) && (
-                        <span className="tabular-nums">{numberLabel(state, focused)}</span>
+                    {face.text && (
+                        <span
+                            className="truncate tabular-nums"
+                            title={face.full !== face.text ? face.full : undefined}
+                        >
+                            {face.text}
+                        </span>
                     )}
                     <span className="font-mono">
                         {shortRevision(state.kind === "current" ? state.head : state.revision)}
@@ -321,25 +333,6 @@ function FocusedVersion({ surface }: { surface: VersionSurface }) {
             )}
         </div>
     );
-}
-
-/**
- * `#4`, from whichever source has it: the freeze's own label, the head's number, or the history row.
- *
- * Null rather than a placeholder when none of them does - which happens for the beat between opening
- * the panel and the page arriving, and for a preview entered without a label. The hash beside it always
- * names the revision, so a missing number costs nothing.
- */
-function numberLabel(state: VersionSurface["state"], focused: FlatHistoryEntry | null): string | null {
-    if (state.kind === "revision") {
-        return state.label ?? (focused ? revisionLabel(focused.number) : null);
-    }
-    if (state.kind === "current") {
-        return state.number !== null
-            ? revisionLabel(state.number)
-            : focused ? revisionLabel(focused.number) : null;
-    }
-    return null;
 }
 
 /**
