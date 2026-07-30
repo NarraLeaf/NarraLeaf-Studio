@@ -1,0 +1,120 @@
+---
+title: "plan: 音频表演 —— 场景 BGM、入点/出点、循环/Fade/Seek，以及 Surface 级 sound 能力族"
+type: plan
+status: in-progress
+date: 2026-07-29
+branch: feat/story-audio-performance
+worktree: D:/Temp/nls-audio
+related:
+  - 2026-07-29-001-plan-gallery-extra-suite.md  (§3 sound 能力族 = 本卡 M4，本卡取代该节)
+---
+
+# plan: 音频表演
+
+## 0. 问题陈述（用户口径）
+
+1. **场景配不了背景音乐**——BGM 只能靠剧情行 `/bgm` 起，场景本身没有"这一场的曲子"这个属性。
+2. **资源管理器里标的入点/出点没人读**——`AssetExtras.audioLoop` 只有音频预览器自己写自己读，
+   下游（编译器、运行时、蓝图）一处都不消费。
+3. **循环 / Fade / Seek 这些 VN 常规需求没真跑过**——命令面有 `fade=`/`loop`，但 `/seek` 只认
+   video；场景级 BGM 从来没存在过所以更没验过。
+4. **应用界面（Surface）里完全放不出声音**——蓝图宿主 API 八个族里没有一个音频能力。
+
+## 1. 本轮核实的事实（都读过源码，别按旧结论行动）
+
+| # | 事实 | 出处 |
+|---|---|---|
+| F1 | **引擎 `ISceneUserConfig` 早就有 `backgroundMusic: Sound \| null` + `backgroundMusicFade`**，`SceneAction.initBackgroundMusic` 在场景 init 时播它 | `scene.ts:13-40`、`sceneAction.ts:58-66` |
+| F2 | 编译器建 Scene 时只填 `background` / `voices` 两个 key，**BGM 那两个从来没填过** | `storyCompiler.ts:1237-1247` |
+| F3 | **`@narraleaf/sound` 的 `PlayOptions` 原生支持 loop region**：`startTime`/`endTime`，且 `loop && endTime !== undefined` 时直接设 `AudioBufferSourceNode.loopStart/loopEnd`——无缝硬件级循环 | `@narraleaf/sound/dist/sound/types.d.ts`、`dist/index.js`（`a.loop=g,g&&p!==void 0&&(a.loopStart=u,a.loopEnd=p)`） |
+| F4 | **引擎把 `endTime` 丢了**：`AudioManager` 三处 `channel.play` 只传 `startTime: sound.config.seek`，没有 `endTime` | `AudioManager.ts` `play` / `playSoundToken` / `soundFromData` |
+| F5 | `ISoundUserConfig.seek`（"Initial position in seconds"）**就是入点**，已经通到 `startTime`——入点今天就能用，出点不能 | 同上 |
+| F6 | **`rate` 在播放时被硬编码成 1**：`channel.play({... rate: 1})`，`Sound.sound({rate: 2})` 静默无效（`setRate` 事后调用才生效） | `AudioManager.ts` 三处 |
+| F7 | **`SoundToken.seek(time)` 存在**（07-29-001 的 F3 说"没有 seek"是错的），但引擎没有对应的 action，剧情里够不着 | `soundToken.d.ts`；`actionTypes.ts` 无 `sound:seek` |
+| F8 | **`AudioManager.play` 在不循环时会 await 到曲子播完**，而播放器的 `setBackgroundMusic` await 它——所以**场景 config 里放一首不循环的 BGM 会把场景 init 卡到曲子结束**。`/bgm` 逃过一劫只因为 `SceneAction` 那条没 await | `AudioManager.ts:110-117`、`Scene.tsx:54-72`、`sceneAction.ts:242` |
+| F9 | `LiveGame.playSound()` 走 `playSoundToken`，**绕开** `Sound.play()` 对 bgm 型的拦截 → 07-29-001 的 R-2 在源码层面成立（仍需真机冒烟） | `liveGame.ts:458-463` |
+| F10 | bundleAssembler 已经在读 `assets/assets.metadata.audio.json`（`loadAssetNames`），而且**同一个 assembler 同时服务 Dev Mode 与打包运行时** | `bundleAssembler.ts:224-245`、`gameRuntimeArtifactCompiler.ts:239` |
+| F11 | 蓝图 inspector 参数种类有 `imageAsset`，**没有** `audioAsset`；pin 值类型有 `ImageAsset`，没有音频版 | `blueprint-nodes/types.ts:110-127` |
+
+## 2. 引擎改动（narraleaf-react，M1）
+
+四条，都很小，三条是缺陷修复：
+
+- **E1 出点 / loop region**：`ISoundUserConfig` 加 `endTime?: number`（秒），并入内部
+  `SoundConfig`（必须是 config 不是 state——state 不参与 `channel.play`）。三处
+  `channel.play` 传 `endTime`。语义写进 doc：`seek` = 入点，`endTime` = 出点，
+  `loop: true` 时两者构成循环区间（F3）。
+- **E2 `Sound.seek(seconds)`**：新 action `sound:seek` → `AudioManager.seek` → `token.seek`。
+  撤销记录当前 position 并恢复。
+- **E3 `rate` 缺陷**：`channel.play({rate: sound.state.rate})`（F6）。
+- **E4 场景 BGM 卡死缺陷**：播放器 `setBackgroundMusic` 改用 `playSoundToken`，不再 await
+  整首曲子（F8）。淡出上一首仍然 await。
+
+CHANGELOG 必写（memory `engine-changelog-rule`）。新公开 API → minor 版本。
+**`npm publish` 与"把 dist 拷进共享检出的 node_modules"都要先问用户**——后者会影响
+并行会话（node_modules 是 junction）。
+
+## 3. Studio：入点/出点的传输通道（M2）
+
+- `shared/types/audio.ts`：`AudioClipRegion = { inMs?: number; outMs?: number }` +
+  `normalizeAudioClipRegion()`（含旧 `cuePoints` 兜底——今天这段逻辑只活在
+  `loopHistory.fromAssetExtras` 里，抽到 shared 让编辑器与 assembler 共用一份）。
+- `DevModeBundle.audio?: GameAudioBundle = { clips: Record<assetId, AudioClipRegion> }`，
+  照 `voice` / `localization` 的先例。
+- `bundleAssembler.loadGameAudio()` 读音频 shard 的 `extras.audioLoop`（F10 → Dev Mode
+  与打包运行时同时受益）。只收非空区间，缺/坏文件静默降级。
+- 编辑器预览路径（`compileStagePreviewToNlr`）在渲染层，直接从 `AssetsService` 取 extras。
+
+## 4. Studio：故事内音频（M3）
+
+- **S3-a 场景级 BGM**：`StoryScene.bgm?: StorySceneBgm = { assetId, volume?, loop?, fadeMs? }`
+  （加法式，不动 schemaVersion——`camera`/`vfx` 同款先例）。
+  - 编译器 `resolveSceneBackgroundMusic` → `config.backgroundMusic = Sound.bgm({...})` +
+    `config.backgroundMusicFade`；**`loop` 缺省 true**（与 `/bgm` 一致，也避开 F8 的坑）。
+  - `StorySceneUpdate` 加 `bgm`；`storyModel` normalizer、`StoryService.updateScene`、
+    scene-editor controller 一路带上。
+  - UI：右栏 `storySceneSchema.tsx` 加一块（音频选择 + 音量 + 循环 + 淡入毫秒），
+    与 `defaultBackground` 同构。
+  - `referenceModel`：`scene.bgm.assetId` 进引用表（"谁在用这个资产"、删资产告警）。
+- **S3-b 编译器应用入点/出点**：`/bgm`、`/sound`、场景 BGM 三处都用同一个
+  `applyClipRegion(assetId)` 折出 `{seek, endTime}`。
+- **S3-c `/seek` 通到音频**：`seek` 命令的 `targetParam(["video"])` → `["video","audio"]` +
+  `fallbackKind: "audio"`；新 audio operation `seekSound`（`timeMs`）→ `sound.seek(ms/1000)`。
+  目标仍不可省（`/seek 3` 含义太模糊）。
+
+## 5. Studio：Surface 级 sound 能力族（M4）
+
+- 宿主 API 第八族 `sound`（contract 27 → 28）：
+  `play` / `stop` / `pause` / `resume` / `setVolume` / `seek` / `isPlaying`。
+- 新值类型 `SoundHandle`（`{kind:"soundHandle", id}`），照 `Timer` / `AnimationToken` 的
+  token 先例；宿主持 `SoundToken` 注册表。
+- 新 pin 值类型 `AudioAsset` + 新 inspector 参数种类 `audioAsset`（F11），
+  节点卡上一个音频选择器（复用 `AssetSelector`，无缩略图，显示名字/时长）。
+- 节点（`soundNodes.ts`，Game 类目）：`Play Sound` / `Stop Sound` / `Pause Sound` /
+  `Resume Sound` / `Set Sound Volume` / `Seek Sound` / `Is Sound Playing`。
+  `Play Sound` 的 channel 参数映射 `SoundType`，所以玩家的分轨音量/静音自动生效。
+- 运行时实现在 GameApp：`liveGame.playSound(new Sound({src, type, loop, volume, seek, endTime}))`，
+  URL 走 `host.resolveStoryAssetUrl(assetId, "audio")`，区间走 M2 的 bundle 表。
+  编辑器预览无 liveGame → no-op + 空 handle + 一条 console 警告。
+- **页面退出不自动停声**（沿用 07-29-001 §3.1 的结论）：`Stop Sound` 省略 handle = 停掉本族
+  经手的全部，作者在 Page 退出事件里自己停。观察真实用法后再决定要不要 per-surface 作用域。
+
+## 6. 验收口径
+
+- 单测：编译器（区间折算、场景 BGM config、`/seek` audio 分支）、bundle 装载、
+  节点注册扫描、host bridge。四工程 typecheck。
+- **真 app（orchestrator 亲眼，memory `orchestrator-visual-acceptance`）**：
+  1. 给一个音频资产标入点/出点 → 场景配上它 → 进游戏：从入点起播，到出点无缝回到入点；
+  2. `/vol 0.2 fade=2` 听得出渐变；`/stop fade=1` 渐出；
+  3. `/seek music 30` 跳位；
+  4. 标题页 Surface 上一个按钮 `Play Sound (bgm, loop)` → 出声、BGM 音量滑条实时生效、
+     `Stop Sound` 停得住。
+
+## 7. 已知取舍
+
+- 出点循环只在解码路径（`AudioBufferSourceNode`）成立；`HTMLAudioElement` 流式播放只有
+  朴素 `loop`。引擎 `AudioManager` 总是先 `sound.load()` 解码再播，所以现状恒走解码路径——
+  但如果哪天引擎开了 streaming，区间会静默退化成整曲循环。记录在案。
+- 存档恢复（`soundFromData`）用 `startTime: data.position` 起播，此时 `loopStart` 会等于
+  恢复位置而不是入点。第一轮循环后回到的点会偏。**接受**：代价是重开一次曲子，
+  收益要引擎给 loopStart/startTime 解耦，不值当在本轮做。
