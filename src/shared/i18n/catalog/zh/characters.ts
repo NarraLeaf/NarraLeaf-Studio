@@ -30,7 +30,7 @@ export const characters = {
         deleteGroupDetail: "此分组下的角色将变为未分组状态",
     },
     editor: {
-        kind: { preset: "成品差分", layered: "分层立绘", puppet: "外部运行时" },
+        kind: { preset: "成品差分", layered: "分层立绘", puppet: "自定义运行时" },
         puppet: {
             model: "模型",
             noModel: "未选择",

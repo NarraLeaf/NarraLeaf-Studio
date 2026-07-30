@@ -4,7 +4,7 @@ import { ICharacterService, Services, WorkspaceContext } from "../services";
 import { Character } from "../character/Character";
 import { CharacterProfile } from "../character/CharacterProfile";
 import { CharacterAppearanceKind, CharacterGroup } from "../character/types";
-import { CHARACTER_STORE_VERSION, migrateCharacterStore } from "../character/migrateAppearance";
+import { CHARACTER_STORE_VERSION, isNewerCharacterStore, migrateCharacterStore } from "../character/migrateAppearance";
 import { UuidService } from "./UuidService";
 import { AssetsService } from "./AssetsService";
 import { FileSystemService } from "./FileSystem";
@@ -26,6 +26,11 @@ export class CharacterService extends Service<CharacterService> implements IChar
     private readonly groups: Record<string, CharacterGroup> = {};
     private saveTimer: ReturnType<typeof setTimeout> | null = null;
     private dirty = false;
+    /**
+     * Set when the store on disk was written by a newer Studio. Latches every write off: whatever
+     * this build failed to understand while reading is still on disk, and stays there.
+     */
+    private storeFromNewerStudio = false;
     private listeners: Set<() => void> = new Set();
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
@@ -227,7 +232,25 @@ export class CharacterService extends Service<CharacterService> implements IChar
         if (!store.data?.characters?.length) {
             return;
         }
-        // Runs on every load and is idempotent: a character already on the two-kind model is left
+        // A store from a newer Studio is loaded but never migrated and never written back. Migration
+        // is destructive by design for a kind it does not recognise - it reads one as the pre-rework
+        // model and replaces it with an empty preset - so on a store that may hold kinds from the
+        // future the safe move is to touch nothing at all and say so.
+        if (isNewerCharacterStore(store.data.version)) {
+            this.storeFromNewerStudio = true;
+            this.getContext().services.get<UIService>(Services.UI).showError(
+                `This project's characters were saved by a newer version of NarraLeaf Studio `
+                + `(store version ${store.data.version}, this version reads ${CHARACTER_STORE_VERSION}). `
+                + `They are shown read-only and no character change will be saved. Update Studio to edit them.`,
+            );
+            for (const config of store.data.characters) {
+                const character = Character.fromJSON(config);
+                this.registerCharacter(character);
+                this.lockCharacterAssets(character);
+            }
+            return;
+        }
+        // Runs on every load and is idempotent: a character already on the current model is left
         // alone. Nothing is written back until something else marks the store dirty, so opening a
         // project read-only does not rewrite it.
         const report = migrateCharacterStore(store.data.characters);
@@ -291,6 +314,10 @@ export class CharacterService extends Service<CharacterService> implements IChar
 
     private async flush(): Promise<void> {
         if (!this.dirty) return;
+        // Writing here would serialize what this build understood and drop what it did not. Refusing
+        // costs the author their unsaved edit; writing costs them the characters they made in the
+        // newer Studio, so the trade is not close.
+        if (this.storeFromNewerStudio) return;
         const payload: CharacterStore = {
             version: CHARACTER_STORE_VERSION,
             characters: this.characterOrder
