@@ -120,7 +120,13 @@ export const UNMOUNTED_SURFACE_PUPPET: SurfacePuppetSnapshot = {
 export interface SurfacePuppetMountOptions {
     /** The widget's box. Attempts draw into children of it; its own other children are never touched. */
     host: HTMLElement;
-    open: SurfacePuppetOpener;
+    /**
+     * Null means no host in this window can look a runtime up at all — see the chain in
+     * `surfacePuppetHosts.ts`. Reported as `missing-backend`, quietly, because a host with no lookup
+     * has not failed at anything, and it is the state every Surface is in before one of the arms
+     * arrives.
+     */
+    open: SurfacePuppetOpener | null;
     /**
      * How an attempt's drawing surface is made. Injected for two reasons: a test drives this machine
      * with no DOM at all, and a host that wants a differently-styled surface does not have to fork
@@ -214,6 +220,13 @@ export class SurfacePuppetMount {
             this.publishUnavailable("no-backend");
             return;
         }
+        // No arm of the chain answered. Checked before a surface is made rather than left to an opener
+        // that does not exist: nothing is drawn, nothing is loaded, and nothing throws.
+        if (!this.options.open) {
+            this.publishUnavailable("backend-missing");
+            return;
+        }
+        const open = this.options.open;
 
         // Each attempt draws into a surface of its own rather than into the host directly. Disposing
         // a backend empties the container it was handed, and mounting is asynchronous - so two
@@ -231,7 +244,7 @@ export class SurfacePuppetMount {
         this.current = attempt;
         this.publish({ status: "loading", error: null, reason: null });
 
-        void this.options.open({
+        void open({
             request,
             container: surface,
             size,

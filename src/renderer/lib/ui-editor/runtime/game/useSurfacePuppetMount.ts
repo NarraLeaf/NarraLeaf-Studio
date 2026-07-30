@@ -41,7 +41,12 @@ export interface UseSurfacePuppetSessionInput {
 }
 
 export function useSurfacePuppetMount(
-    /** Null means "this host cannot open sessions right now" — the widget reports `unmounted`. */
+    /**
+     * Null means no arm of the chain in `surfacePuppetHosts.ts` can look a runtime up in this window.
+     * The mount machine reports that as `missing-backend`, not as `unmounted` — the difference is
+     * "nothing can draw this" versus "the host chose not to draw it yet", and only the second is a
+     * decision a widget made.
+     */
     opener: SurfacePuppetOpener | null,
     input: UseSurfacePuppetSessionInput,
 ): SurfacePuppetSessionState {
@@ -60,7 +65,9 @@ export function useSurfacePuppetMount(
     const mountKey = request && enabled ? surfacePuppetIdentity(request) : "";
 
     useEffect(() => {
-        if (!host || !opener || !mountKey) {
+        // `opener` is deliberately absent from this test: a null one still builds a machine, which
+        // reports `missing-backend` for a configured widget nothing in this window can draw.
+        if (!host || !mountKey) {
             setSnapshot(UNMOUNTED_SURFACE_PUPPET);
             return;
         }
