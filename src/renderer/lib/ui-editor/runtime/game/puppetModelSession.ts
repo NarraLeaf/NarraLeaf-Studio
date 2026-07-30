@@ -34,13 +34,21 @@
  *
  * Nothing here names a renderer, and nothing here may. A backend is any ES module that yields the
  * engine's `PuppetBackend`.
+ *
+ * ## Why it lives under `lib/ui-editor` rather than under `lib/workspace/services`
+ *
+ * Because the packaged game runtime has to be able to reach it. Nothing in here touches a workspace
+ * service, a project, or the DOM beyond the container it is handed — every host-specific decision
+ * (which module, which URL, how big) arrives as an argument — so it is shared code, and the runtime
+ * bundle's import guard (`runtimeAliasPlugin` in `project/build/build-runtime.js`) only lets the
+ * runtime see Studio renderer modules that live here.
  */
 
 import { Game } from "narraleaf-react";
 import type { PuppetDescription, PuppetSize, PuppetState } from "narraleaf-react";
-import type { PuppetBackendModuleSource } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
-import { loadPuppetBackends } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
-import { resolveBundleEntry } from "@/lib/ui-editor/runtime/game/storyCompiler";
+import type { PuppetBackendModuleSource } from "./puppetBackendHost";
+import { loadPuppetBackends } from "./puppetBackendHost";
+import { resolveBundleEntry } from "./storyCompiler";
 
 /** How long a `describe()` may take before the editor gives up and falls back to free text. */
 export const PUPPET_DESCRIBE_TIMEOUT_MS = 20_000;
@@ -76,6 +84,15 @@ export interface PuppetModelSession {
     describable: boolean;
     /** Push a complete state. The backend re-poses; the engine's `apply` contract applies unchanged. */
     apply(state: PuppetState): void | Promise<void>;
+    /**
+     * Settles when the backend has drawn its first frame, per the engine's lifecycle.
+     *
+     * Exposed rather than swallowed because a host that only knows "mount returned" cannot tell
+     * `loading` from `ready`, and those are two different pictures to show an author. Resolves
+     * immediately for a backend that implements no `ready()` — the engine checks for it the same way.
+     * Call order matches the engine's: `apply()` the complete initial state first, then this.
+     */
+    ready(): Promise<void>;
     resize(size: PuppetSize): void;
     dispose(): void;
 }
@@ -178,6 +195,7 @@ export async function createPuppetModelSession(
             }
         },
         apply: (state: PuppetState) => instance.apply(state),
+        ready: () => Promise.resolve(instance.ready?.()),
         resize: (size: PuppetSize) => instance.resize?.(size),
         dispose: () => {
             if (disposed) {

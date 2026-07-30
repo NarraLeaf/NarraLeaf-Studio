@@ -57,7 +57,7 @@ import {
     grantModelBundleUrl,
     readPuppetRuntimeStamp,
 } from "./projectPuppetRuntimes";
-import { createPuppetModelSession, type PuppetModelSession } from "./puppetModelSession";
+import { createPuppetModelSession, type PuppetModelSession } from "@/lib/ui-editor/runtime/game/puppetModelSession";
 
 /** The box a model is mounted into when nobody asked for a particular one. */
 const DEFAULT_PROBE_SIZE: PuppetSize = { width: 512, height: 512 };
@@ -224,6 +224,115 @@ export class PuppetDescriptionService
         const planned = await this.plan(request);
         if (!planned.ok) {
             throw new Error(planned.result.message ?? planned.result.reason);
+        }
+        const { plan } = planned;
+
+        if (!options?.refresh) {
+            const remembered = this.memory.get(plan.fingerprint);
+            if (remembered) {
+                return { status: "ok", description: remembered, origin: "memory", fingerprint: plan.fingerprint };
+            }
+            const pending = this.inFlight.get(plan.fingerprint);
+            if (pending) {
+                return pending;
+            }
+            const stored = await this.readCache(plan);
+            if (stored) {
+                this.memory.set(plan.fingerprint, stored.description);
+                this.notify();
+                return { status: "ok", description: stored.description, origin: "disk", fingerprint: plan.fingerprint };
+            }
+        }
+
+        const task = this.probe(plan).finally(() => {
+            if (this.inFlight.get(plan.fingerprint) === task) {
+                this.inFlight.delete(plan.fingerprint);
+            }
+        });
+        this.inFlight.set(plan.fingerprint, task);
+        return task;
+    }
+
+    /**
+     * The same lookup, addressed by character.
+     *
+     * The convenience the rest of Studio reaches for: a story row names a character, not a bundle
+     * and a runtime. A character that is not a puppet answers `no-model`, so a caller can ask
+     * without checking the appearance kind first.
+     */
+    public async describeCharacter(
+        characterId: string,
+        options?: { refresh?: boolean },
+    ): Promise<PuppetDescriptionResult> {
+        const characters = this.getContext().services.get<CharacterService>(Services.Character);
+        const puppet = characters.getCharacter(characterId)?.profile.appearance.getPuppet();
+        if (!puppet?.assetId) {
+            return { status: "unavailable", reason: "no-model" };
+        }
+        return this.describe({
+            assetId: puppet.assetId,
+            backend: puppet.backend,
+            entry: puppet.entry,
+            options: puppet.options,
+            size: puppet.size,
+        }, options);
+    }
+
+    /**
+     * What is already known, synchronously.
+     *
+     * For render paths that must not suspend — a dropdown drawing its options during a keystroke.
+     * Returns null rather than a promise when nothing is in memory; the caller kicks off
+     * {@link describe} and re-renders when {@link onDescriptionChanged} fires.
+     */
+    public peek(request: PuppetDescriptionRequest): PuppetDescription | null {
+        for (const [fingerprint, description] of this.memory) {
+            if (fingerprint.endsWith(`:${puppetDescriptionKey(request)}`)) {
+                return description;
+            }
+        }
+        return null;
+    }
+
+    /** Forget a description, in memory and on disk. Without a request, forgets everything in memory. */
+    public async invalidate(request?: PuppetDescriptionRequest): Promise<void> {
+        this.memory.clear();
+        this.inFlight.clear();
+        if (request) {
+            const filesystem = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+            await filesystem.deleteFile(this.cachePath(puppetDescriptionKey(request))).catch(() => undefined);
+        }
+        this.notify();
+    }
+
+    /**
+     * Mount the model into a container the caller owns, and keep it there.
+     *
+     * The character editor's preview, and a Surface puppet widget on the canvas. The description path
+     * disposes its model the moment it has an answer; these keep it, so the author can watch a motion
+     * play. Rejects rather than degrading — both callers have somewhere to put the failure.
+     *
+     * **Two kinds of rejection, and callers do act on them differently.** A
+     * {@link SurfacePuppetUnavailableError} means there was never anything to mount — no model asset,
+     * no backend named, or the named runtime is not installed — which is the ordinary condition of most
+     * projects and has to degrade to an empty box rather than to an error. Anything else means a
+     * runtime was found and then misbehaved. The distinction rides in the error's type rather than in
+     * its message, so no caller has to pattern-match prose to tell a normal project from a broken one.
+     */
+    public async openSession(
+        request: PuppetDescriptionRequest,
+        container: HTMLDivElement,
+        options?: { size?: PuppetSize; onWarn?: (message: string) => void },
+    ): Promise<PuppetModelSession> {
+        const planned = await this.plan(request);
+        if (!planned.ok) {
+            const { reason, message } = planned.result;
+            throw new SurfacePuppetUnavailableError(
+                // `plan()` cannot answer `not-described` — that is only decided after a mount — but the
+                // union permits it, so it folds into the nearest honest reason instead of being cast away.
+                reason === "no-backend" || reason === "backend-missing" ? reason : "no-model",
+                message ?? reason,
+            );
         }
         const { plan } = planned;
         const session = await createPuppetModelSession({
