@@ -349,11 +349,11 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         checkpoint: (projectPath: string, reason: VcsCheckpointReason) =>
             ipcClient.invoke(IPCEventType.vcsCheckpoint, { projectPath, reason }) as Promise<RequestStatus<{ revision: VcsCommitResult | null }>>,
         /**
-         * `includeKinds` costs one call per revision; leave it off unless the kinds are
-         * shown. The message, timestamp and author ride along on the same call.
+         * `includeDetails` costs one call per revision; leave it off unless the details
+         * are shown. One call carries the kind, message, timestamp and author together.
          */
-        getHistory: (projectPath: string, limit?: number, includeKinds?: boolean) =>
-            ipcClient.invoke(IPCEventType.vcsGetHistory, { projectPath, limit, includeKinds }) as Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>>,
+        getHistory: (projectPath: string, limit?: number, includeDetails?: boolean) =>
+            ipcClient.invoke(IPCEventType.vcsGetHistory, { projectPath, limit, includeDetails }) as Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>>,
         readBlob: (projectPath: string, revision: RevisionId, path: string) =>
             ipcClient.invoke(IPCEventType.vcsReadBlob, { projectPath, revision, path }) as Promise<RequestStatus<{ contentBase64: string }>>,
         /** Every document at one revision in one round trip; `contentBase64: null` = absent there. */

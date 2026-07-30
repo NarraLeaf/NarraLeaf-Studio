@@ -7,14 +7,22 @@
  * `commandPaletteController`: one window-local function pointer, deliberately not a service, dead once
  * the layout unmounts.
  *
+ * **Load-bearing rather than convenient.** At HEAD there is no rail column at all, so these two are
+ * the only ways in - and the commit form lives inside the rail's panel, on a surface that is read-only
+ * by construction while a revision is being previewed. A rail reachable only from a preview would
+ * leave commit with nowhere to live.
+ *
  * Nothing here holds the rail's state. The rail owns it (and persists it), which is what keeps the
  * expanded/collapsed decision in one place instead of two that can disagree.
  */
 
 export interface VersionRailBridge {
-    /** Expand the rail. Idempotent: already-expanded is a no-op, not a toggle. */
+    /** Open the panel. Idempotent: already-open is a no-op, not a toggle. */
     open: () => void;
-    /** Collapse it back to the 48px indicator strip. */
+    /**
+     * Close it: back to the 48px strip while the workspace is frozen, to nothing at HEAD - the rail is
+     * a persistent column only while it has a temporary state to express (`resolveVersionRailPresence`).
+     */
     collapse: () => void;
 }
 

@@ -41,13 +41,14 @@ import {
     DOCK_REGIONS,
     EDITOR_FLOOR,
     applyResize,
+    railColumnOffsets,
     resolveDock,
     type DockEnv,
 } from "./dockLayoutModel";
 import { DEFAULT_COLLAPSED_PANEL_IDS } from "./sidebarPanelGroup";
 import { VersionRail } from "./VersionRail";
 import { VersionControlWidget } from "./VersionControlWidget";
-import { isVersionSurfaceVisible, versionRailWidth } from "./versionRailModel";
+import { resolveVersionRailPresence, versionRailWidth } from "./versionRailModel";
 import { useVersionSurface } from "../../hooks/useVersionSurface";
 
 interface WorkspaceLayoutProps {
@@ -129,9 +130,10 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     // Panels folded into the left rail's collapse group (mirror of UIStore, persisted here)
     const [collapsedLeftPanels, setCollapsedLeftPanels] = useState<string[] | null>(null);
 
-    // The version rail: the leftmost column, and the one fixed column whose width changes. Owned here
-    // rather than by the rail itself because the dock solver has to be told about it — an unaccounted
-    // column squeezes the editor below its floor and the overflow loops (see DockEnv.versionRailWidth).
+    // The version rail: the leftmost column, the one fixed column whose width changes, and the one
+    // that is usually not there at all. Owned here rather than by the rail itself because the dock
+    // solver has to be told about it — an unaccounted column squeezes the editor below its floor and
+    // the overflow loops (see DockEnv.versionRailWidth).
     const [versionRailExpanded, setVersionRailExpanded] = useState(false);
     // One reader shared by the rail and the title-bar widget, so the two can never disagree about
     // which version this window is a view of.
@@ -303,9 +305,8 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     setBottomPanelHeight(bottomHeight);
                     bottomPanelHeightRef.current = bottomHeight;
                 }
-                // Defaults to collapsed: the 48px strip is the resting state, and 320px of rail on a
-                // first launch would take a third of the left half from an author who has not asked
-                // for version control yet.
+                // Defaults to closed. An author who has not asked for version control gets no column
+                // at all - not even the 48px strip, which exists only while the workspace is frozen.
                 const railExpanded = await settingsService.get<boolean>(SETTINGS_KEYS.VERSION_RAIL_EXPANDED);
                 setVersionRailExpanded(railExpanded === true);
                 if (leftPanel !== undefined) setActiveLeftPanelId(leftPanel);
@@ -379,9 +380,16 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         debouncedSaveSettings,
     ]);
 
-    // What the version rail is taking out of the horizontal chain: 0 when version control is
-    // unavailable (the column does not exist at all), 48 collapsed, 320 expanded.
-    const railWidth = versionRailWidth(isVersionSurfaceVisible(versionSurface.state), versionRailExpanded);
+    // Whether the version rail is a column at all, and which one. `absent` is the ordinary answer -
+    // the strip exists only while project data is frozen, because what it expresses is control over
+    // that temporary state; the panel is openable at any time from the status cell or the widget.
+    const railPresence = resolveVersionRailPresence({
+        state: versionSurface.state,
+        expanded: versionRailExpanded,
+        frozen: versionSurface.frozen !== null,
+    });
+    // What that takes out of the horizontal chain: 0 absent, 48 strip, 320 panel.
+    const railWidth = versionRailWidth(railPresence);
     versionRailWidthRef.current = railWidth;
 
     // Live environment for the sizing solver, rebuilt from the current viewport + visibility.
@@ -742,7 +750,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     Its width is in the dock account above (dockEnv.versionRailWidth), never outside it. */}
                 <VersionRail
                     surface={versionSurface}
-                    expanded={versionRailExpanded}
+                    presence={railPresence}
                     onExpandedChange={setVersionRailExpanded}
                 />
 
@@ -819,8 +827,14 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             {/* Status Bar */}
             {statusBarVisible && <StatusBar />}
 
-            {/* Bottom Panel Selector (overlays left selector, just above the status bar) */}
-            <div className="absolute left-0" style={{ bottom: statusBarHeight }}>
+            {/* Bottom Panel Selector — in the SELECTOR rail's column, just above the status bar, so its
+                triggers line up with the left dock's. Absolutely positioned, so unlike every column in
+                the flex row above it has to be told where that column starts: `left-0` was right until
+                the version rail appeared to the left of the selector rail, and then the bottom triggers
+                sat in the version rail's column while the left dock's stayed one column over (measured
+                in the running app at x≈29 against x≈90). One column holds both docks' items; the
+                version rail is a column of its own and does not adopt them. */}
+            <div className="absolute" style={{ bottom: statusBarHeight, left: railColumnOffsets(dockEnv).sidebarRail }}>
                 <BottomPanelSelector
                     visible={bottomPanelVisible}
                     activeId={activeBottomPanelId}

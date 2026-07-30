@@ -574,7 +574,7 @@ export type IPCVcsEvents = {
         response: VcsStatus;
     };
     /**
-     * Revisions, newest first. `includeKinds` costs one backend call per revision -
+     * Revisions, newest first. `includeDetails` costs one backend call per revision -
      * there is no batch metadata verb - so it is opt-in, and entries come back without
      * a `kind` when it is off.
      *
@@ -585,7 +585,7 @@ export type IPCVcsEvents = {
     [IPCEventType.vcsGetHistory]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
-        data: { projectPath: string; limit?: number; includeKinds?: boolean },
+        data: { projectPath: string; limit?: number; includeDetails?: boolean },
         response: { entries: VcsHistoryEntry[] };
     };
     [IPCEventType.vcsReadBlob]: {
