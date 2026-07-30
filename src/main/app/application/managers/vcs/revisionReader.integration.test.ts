@@ -17,6 +17,8 @@ import {
     blobsAt,
     changedPaths,
     closeStore,
+    documentsAt,
+    listFilesAt,
     openStore,
     readRepositoryIdentity,
     readRevisionGraph,
@@ -147,6 +149,84 @@ describe.skipIf(!supported)("revisionReader", () => {
         expect(result.theirs).toEqual(V2);
         expect(result.base).toEqual(V2);
     }, 120_000);
+
+    /**
+     * The capability the whole "show a past revision in the real editors" milestone rests on.
+     *
+     * `lore_revision_tree_list_children` is not one of the three verbs the SDK declares and the library
+     * does not export - it IS in the DLL's export table - but a symbol being present is not the same as
+     * the walk working, so this asserts the walk against a real tree. Without it the alternative was
+     * guessing a revision's paths from the document registry, which only knows the four kinds migrated
+     * to specs.
+     */
+    it("enumerates every file at a revision by walking its tree", async () => {
+        const atFirst = await listFilesAt(globals, store, repositoryId, rev1);
+        const atHead = await listFilesAt(globals, store, repositoryId, rev3);
+
+        // Nested, so the walk has to have descended rather than just listed the root.
+        expect(atFirst.map(entry => entry.path)).toContain(REL);
+        const sprite = atFirst.find(entry => entry.path === REL);
+        expect(sprite?.size).toBe(V1.length);
+        // Enumeration is per revision, not per repository: the size changed between them.
+        expect(atHead.find(entry => entry.path === REL)?.size).toBe(V3.length);
+        // Directories are descended into, never reported as files of their own.
+        expect(atFirst.map(entry => entry.path)).not.toContain("assets");
+    }, 120_000);
+
+    /**
+     * The acceptance oracle's core, at this layer: the working tree has moved on, and the revision
+     * still reads back byte-for-byte what was committed.
+     */
+    it("reads a revision byte-exactly after the working tree has moved on", async () => {
+        const absolute = path.join(root, REL);
+        fs.writeFileSync(absolute, Buffer.from("WORKING TREE, UNCOMMITTED"));
+
+        const read = await documentsAt(globals, store, repositoryId, rev1, { paths: [REL] });
+
+        expect(read.get(REL)).toEqual(V1);
+        // And the working tree was not touched to answer it.
+        expect(fs.readFileSync(absolute)).toEqual(Buffer.from("WORKING TREE, UNCOMMITTED"));
+
+        // Put it back, so the tests after this one see the tree they were set up with.
+        fs.writeFileSync(absolute, V3);
+    }, 120_000);
+
+    /**
+     * A document added after the revision is `null`, not a throw. The editor has to land in its
+     * "missing, use defaults" state - the same one as at project open - and the per-path reader cannot
+     * give that: `revisionTreeResolvePath` reports a missing path by failing the call, which is
+     * indistinguishable from a backend fault.
+     */
+    it("answers null for a path the revision does not contain, while the per-path read throws", async () => {
+        const later = await commitBytes("assets/added-in-a-later-revision.bin", Buffer.from("later"), "add");
+
+        const early = await documentsAt(globals, store, repositoryId, rev1, {
+            paths: [REL, "assets/added-in-a-later-revision.bin"],
+        });
+        expect(early.get(REL)).toEqual(V1);
+        expect(early.get("assets/added-in-a-later-revision.bin")).toBeNull();
+
+        // Present once the revision that added it is the one being read.
+        const atHead = await documentsAt(globals, store, repositoryId, later, {
+            paths: ["assets/added-in-a-later-revision.bin"],
+        });
+        expect(atHead.get("assets/added-in-a-later-revision.bin")).toEqual(Buffer.from("later"));
+
+        // The distinction this exists for: the same missing path through the per-path reader fails.
+        await expect(blobAt(globals, store, repositoryId, rev1, "assets/added-in-a-later-revision.bin"))
+            .rejects.toThrow();
+    }, 180_000);
+
+    it("selects by size and name when the caller has no path list of its own", async () => {
+        const big = await commitBytes("assets/too-big.bin", Buffer.alloc(4096, 7), "big");
+
+        const read = await documentsAt(globals, store, repositoryId, big, {
+            accept: entry => entry.size < 1024 && entry.path.endsWith(".bin"),
+        });
+
+        expect([...read.keys()]).not.toContain("assets/too-big.bin");
+        expect(read.get("assets/added-in-a-later-revision.bin")).toEqual(Buffer.from("later"));
+    }, 180_000);
 
     it("reports an absent base rather than an empty one for a file added on one side", async () => {
         // add/add: the file does not exist in the common ancestor. Treating the

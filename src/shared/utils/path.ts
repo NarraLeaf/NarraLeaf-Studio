@@ -1,6 +1,16 @@
 /**
  * Browser-compatible path module polyfill
  * Provides Node.js path API compatibility for renderer process
+ *
+ * Two separators go in, one comes out. Windows reads `/` and `\` as the same character - and this
+ * polyfill is fed both, constantly: a project on a Windows machine resolves to
+ * `D:/proj\runtimes/puppet`, and a model bundle names its own files `Hiyori.2048/texture_00.png`.
+ * Parsing against a single stored separator meant `basename("a/b.png")` answered `"a/b.png"` and
+ * `dirname` answered `"."`, silently, for every such path.
+ *
+ * Where it deliberately parts from `path.win32`: the separator it *writes* is the one the input
+ * already used, not the platform's. `join("/Users/nomen/x", "y.nlproj")` keeps its forward slashes
+ * rather than being rewritten into a Windows path it never was.
  */
 
 export interface ParsedPath {
@@ -24,11 +34,59 @@ class PathPolyfill {
     private readonly isWindows: boolean;
     public readonly sep: string;
     public readonly delimiter: string;
+    /** Every character this platform accepts as a separator when *reading* a path. */
+    private readonly separators: readonly string[];
+    /** Splits on any accepted separator. Not global, so `exec` stays stateless. */
+    private readonly separatorPattern: RegExp;
 
     constructor(isWindows: boolean = false) {
         this.isWindows = isWindows;
         this.sep = isWindows ? '\\' : '/';
         this.delimiter = isWindows ? ';' : ':';
+        // POSIX does not read `\` as a separator: it is a legal character in a file name there.
+        this.separators = isWindows ? ['\\', '/'] : ['/'];
+        this.separatorPattern = isWindows ? /[\\/]/ : /\//;
+    }
+
+    /** Whether `char` separates path segments on this platform. */
+    private isSeparator(char: string | undefined): boolean {
+        return char !== undefined && this.separators.includes(char);
+    }
+
+    private endsWithSeparator(path: string): boolean {
+        return path.length > 0 && this.isSeparator(path[path.length - 1]);
+    }
+
+    private lastSeparatorIndex(path: string): number {
+        for (let i = path.length - 1; i >= 0; i--) {
+            if (this.isSeparator(path[i])) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Which separator to *write*.
+     *
+     * The first one the input already uses wins; only a path carrying none at all falls back to the
+     * platform's. Rewriting `/Users/nomen/x` into `\Users\nomen\x` because the editor happens to run
+     * on Windows would corrupt a path that was never a Windows path.
+     */
+    private preferredSeparator(...paths: string[]): string {
+        if (!this.isWindows) {
+            return '/';
+        }
+        for (const path of paths) {
+            if (typeof path !== 'string') {
+                continue;
+            }
+            const match = this.separatorPattern.exec(path);
+            if (match) {
+                return match[0];
+            }
+        }
+        return this.sep;
     }
 
     /**
@@ -77,6 +135,9 @@ class PathPolyfill {
     join(...paths: string[]): string {
         if (paths.length === 0) return '.';
 
+        // Decided over every segment before any of them is written, so that the separator this
+        // inserts cannot be the one that later decides the style (`join("project", "/editor")`).
+        const sep = this.preferredSeparator(...paths);
         let joined = '';
 
         for (let i = 0; i < paths.length; i++) {
@@ -90,7 +151,7 @@ class PathPolyfill {
                 joined = path;
             } else {
                 const normalizedPath = this.stripLeadingSeparators(path);
-                joined = joined + (joined.endsWith(this.sep) ? '' : this.sep) + normalizedPath;
+                joined = joined + (this.endsWithSeparator(joined) ? '' : sep) + normalizedPath;
             }
         }
 
@@ -156,23 +217,10 @@ class PathPolyfill {
             };
         }
 
-        // Handle root
-        let root = '';
-        if (this.isAbsolute(path)) {
-            if (this.isWindows && path.startsWith('\\\\')) {
-                // UNC path
-                root = '\\\\';
-            } else {
-                root = path.substring(0, path.indexOf(this.sep) + 1);
-                if (root === '' && this.isWindows) {
-                    // Drive letter
-                    root = path.substring(0, 3);
-                }
-            }
-        }
+        const root = this.rootOf(path);
 
-        // Find last separator
-        const lastSepIndex = path.lastIndexOf(this.sep);
+        // Find last separator, counting either kind
+        const lastSepIndex = this.lastSeparatorIndex(path);
 
         // Handle base and dir
         let base = '';
@@ -189,6 +237,11 @@ class PathPolyfill {
         } else {
             base = path.substring(lastSepIndex + 1);
             dir = path.substring(0, lastSepIndex);
+            // `/Mao` and `D:\Mao` sit *in* their root, so the root separator belongs to the
+            // directory; cutting at the last separator would leave `""` and `"D:"`.
+            if (dir.length < root.length) {
+                dir = root;
+            }
         }
 
         // Parse base into name and ext
@@ -205,6 +258,28 @@ class PathPolyfill {
     }
 
     /**
+     * The leading portion a path cannot be walked out of: `/`, `//`, `D:\`, `D:`, or nothing.
+     *
+     * Reported with the separator the caller wrote, not the platform's, so it stays a prefix of the
+     * path it came from - `parse("D:/x").root` is `"D:/"`.
+     */
+    private rootOf(path: string): string {
+        if (!this.isAbsolute(path)) {
+            return '';
+        }
+        if (!this.isWindows) {
+            return '/';
+        }
+        if (this.isSeparator(path[0])) {
+            // A leading pair of separators is a UNC root; a lone one is rooted on the current drive.
+            return this.isSeparator(path[1]) ? path.substring(0, 2) : path.substring(0, 1);
+        }
+        // Drive letter. Rooted only when a separator follows: `D:x` is relative to the drive's own
+        // working directory, so its root is the bare drive.
+        return this.isSeparator(path[2]) ? path.substring(0, 3) : path.substring(0, 2);
+    }
+
+    /**
      * Format a path object into a path string
      */
     format(pathObject: ParsedPath): string {
@@ -213,6 +288,8 @@ class PathPolyfill {
         }
 
         let path = '';
+        // The inverse of `parse`, so it writes back the style `parse` read.
+        const sep = this.preferredSeparator(pathObject.dir ?? '', pathObject.root ?? '');
 
         // Root
         if (pathObject.root) {
@@ -222,8 +299,8 @@ class PathPolyfill {
         // Dir
         if (pathObject.dir) {
             path += pathObject.dir;
-            if (!pathObject.root && !path.endsWith(this.sep)) {
-                path += this.sep;
+            if (!pathObject.root && !this.endsWithSeparator(path)) {
+                path += sep;
             }
         }
 
@@ -250,14 +327,16 @@ class PathPolyfill {
 
         if (path === '') return '.';
 
+        const sep = this.preferredSeparator(path);
         const isAbsolutePath = this.isAbsolute(path);
-        const hasTrailingSeparator = path.length > 1 && path.endsWith(this.sep);
+        const hasTrailingSeparator = path.length > 1 && this.endsWithSeparator(path);
 
         // Handle Windows drive letters
         const isWindowsPath = this.isWindows && /^[A-Za-z]:/.test(path);
+        const isUncPath = this.isWindows && this.isSeparator(path[0]) && this.isSeparator(path[1]);
 
         // Split into segments
-        let segments = path.split(this.sep);
+        const segments = path.split(this.separatorPattern);
 
         // Process segments
         const result: string[] = [];
@@ -284,22 +363,29 @@ class PathPolyfill {
             }
         }
 
-        let normalized = result.join(this.sep);
+        let normalized = result.join(sep);
 
         if (isAbsolutePath) {
-            if (this.isWindows && path.startsWith('\\\\')) {
-                normalized = '\\\\' + normalized;
-            } else if (!this.isWindows) {
-                normalized = this.sep + normalized;
+            if (isUncPath) {
+                normalized = sep + sep + normalized;
+            } else if (isWindowsPath) {
+                // The drive already leads `result`. Only `D:\..`, collapsed to the bare drive, has
+                // lost the separator that made it a root.
+                if (result.length === 1 && this.isSeparator(path[2])) {
+                    normalized += sep;
+                }
+            } else {
+                // A POSIX root - including one typed on Windows, which `path.win32` also keeps.
+                normalized = sep + normalized;
             }
         }
 
         if (!normalized) {
-            return isAbsolutePath ? this.sep : '.';
+            return isAbsolutePath ? sep : '.';
         }
 
-        if (hasTrailingSeparator && normalized !== this.sep && !normalized.endsWith(this.sep)) {
-            normalized += this.sep;
+        if (hasTrailingSeparator && normalized !== sep && !this.endsWithSeparator(normalized)) {
+            normalized += sep;
         }
 
         return normalized;
@@ -314,7 +400,9 @@ class PathPolyfill {
         }
 
         if (this.isWindows) {
-            return /^[A-Za-z]:/.test(path) || path.startsWith('\\\\');
+            // A leading separator of either kind is a root, the way `path.win32` reads it. Dropping
+            // that is what turned every POSIX path handed to a Windows editor into a relative one.
+            return /^[A-Za-z]:/.test(path) || this.isSeparator(path[0]);
         } else {
             return path.startsWith('/');
         }
@@ -340,9 +428,11 @@ class PathPolyfill {
 
         if (from === to) return '';
 
+        const sep = this.preferredSeparator(from, to);
+
         // Split paths into segments
-        const fromSegments = from.split(this.sep).filter(s => s !== '');
-        const toSegments = to.split(this.sep).filter(s => s !== '');
+        const fromSegments = from.split(this.separatorPattern).filter(s => s !== '');
+        const toSegments = to.split(this.separatorPattern).filter(s => s !== '');
 
         // Find common prefix
         let commonIndex = 0;
@@ -364,7 +454,7 @@ class PathPolyfill {
             relativeSegments.push(toSegments[i]);
         }
 
-        return relativeSegments.join(this.sep) || '.';
+        return relativeSegments.join(sep) || '.';
     }
 
     /**
