@@ -243,6 +243,65 @@ docker 条上给播放/暂停 + 回到首帧的开关，只影响画布预览，
 
 ---
 
+## 4.9 第一阶段验收结果（orchestrator 亲手，2026-07-29）
+
+环境：worktree 构建 + CDP 9401 / `NLS_DEV_RELOAD_PORT=5620`，
+夹具 `D:/Temp/nls-surface-acc`（`nls-puppet-l2d` 的副本，另存 pristine），
+三个控件**直接写进 `editor/ui/uidoc.json`**（见「未验到」第 1 条）。
+前置守卫全绿：`document.hidden === false`、`--nl-editor-surface-opacity === 1`。
+
+**已亲眼验到：**
+
+1. docker 溢出菜单里两条都在，且**领头**；模型控件作者面标签是 **"Spine2D / Live2D Model"**（用户裁决）。截图留证。
+2. 点溢出条目**真的会武装插入工具**（溢出按钮进 active 态）。
+3. 视频控件渲染真实解码帧，`paused === true`、`readyState === 4`、`preload="metadata"`、无 `autoplay` 属性
+   —— **裁决 3 成立，且不是空盒子而是真的停在首帧**。
+4. 视频源是 **1080×1920 竖片**、`transform: none`，落进 480×270 横盒里由 `contain` 加黑边——
+   **画面看着"倒着"是竖片信箱化的正常结果，不是翻转缺陷**（我一度怀疑，查了 `videoWidth/Height` 才否掉）。
+5. **Hiyori 真的画出来了并且在动**：canvas 450×675（=360×540×1.25 DPR，DPR 处理正确）、
+   `isContextLost() === false`；`Page.captureScreenshot` 连拍四帧**字节各不相同**。
+   ⚠️ 第一次连拍三帧**完全相同**，原因是 canvas 当时被 Properties 面板压住——
+   **量之前必须先确认被测对象没被遮挡**，否则测的是一块不动的像素。
+6. 未配置的模型控件安静降级：「Pick a model bundle and a runtime. / Studio ships no renderer; the author supplies one.」
+   不抛、不白屏。
+7. 检查器字段齐全：Model bundle（显示 **Hiyori** + Clear）／Runtime（**live2d**，附
+   "One folder per runtime under runtimes/puppet."）／Runtime options（JSON）／Pose 段
+   Motion·Expression·Skin（附 "Names come from the model." + Re-read）／Box。
+8. **Motion 下拉里是 `Idle_0`/`Idle_1`** —— Hiyori `model3.json` 里的真实动作名，
+   证明选项来自活模型的 `describe()`，不是自由文本。
+9. 视频 docker：「Preview playback」→ 播放（`paused:false`，`currentTime` 从 0 推到 10.41 再到 21.03=duration，
+   **17.8MB 文件连续播放，证明 Range/流式生效**）；播完后按钮**自己回到「Preview playback」**
+   （= 复核发现 3 的 `onEnded` 回传修复在真机上生效，改前会卡在 Pause 且重播要点两次）；
+   「Back to first frame」→ `currentTime` 归 0。
+
+**验收过程中抓到并已修的阻断缺陷（1d5b21fb）：**
+配置齐全的模型**一个字都不画**，还谎报「Not drawn — this Surface already draws 8 models」
+（当时该 Surface 只有 2 个 puppet 控件、1 个 surface 实例、0 个 canvas、控制台 0 条）。
+根因不是我猜的两个：**租约按 element id 键控，而租约是"渲染器实例"持有的**——
+同一个元素常被两个实例同时画（画布 + Surface 面板预览），两者塌成一条 claim，
+先卸载的那个把**存活者的租约撤了**，而 claim 是 `[key, wanted]` 的一次性 effect，不会重新申请。
+改为 `useId()` 每实例一租约；顺带把文案改成报**真实在画的数量**而不是上限常量。
+**复验**：预览与画布同时在时 `canvases: 2`；收起侧栏卸掉预览后 **`canvases: 1` 且假消息消失**——
+正是改前会坏的那条路径。
+
+**未验到（诚实清单）：**
+
+1. **插入手势**（武装后在画布上拖出控件）——合成输入驱不动。判据：**既有的
+   Text / Slider / List 在同样的合成输入下同样不产生元素**，所以这是我的夹具问题不是产品问题，
+   留给用户真鼠标确认。工具侧两个教训：①合成拖拽的**起点也要 hit-test**
+   （我前几次起点 `inCanvas:false`）；②`[data-ui-surface-id]` 会命中 **UI 面板里的每个 surface 缩略图**，
+   `querySelector` 取到的是缩略图不是画布。
+2. **⚠ 最贵的一条：不要在 dev watcher 还在跑首轮构建时驱动 app。**
+   日志里每个 renderer 逐个 `rebuilt. broadcasting reload...`，窗口跟着反复重载，
+   我的点击全部落在被重载冲掉的状态上，最后 workspace 窗直接回到 launcher，
+   而 `--target workspace` 静默回落到 launcher 页——**整整一轮验收作废且看起来像产品坏了**。
+   正确姿势：先等日志字节数稳定，再开始。
+3. Dev Mode 里两个控件的表现（WI-2b 的第三条臂只有单测）。
+4. 属性改动的撤销。
+5. 预算真在第 9 个模型上生效。
+
+---
+
 ## 5. 第二阶段：私有节点与通用 Displayable 节点
 
 ### 5.1 勘验改变了这一阶段的含义
