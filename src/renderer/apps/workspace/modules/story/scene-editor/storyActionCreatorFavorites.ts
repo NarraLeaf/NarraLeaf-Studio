@@ -81,6 +81,7 @@ export const LEGACY_FAVORITE_TO_SPEC_ID: Readonly<Record<ActionCommandId | "cond
     soundVolume: "volume",
     soundRate: "rate",
     muteSound: "mute",
+    seekSound: "seek",
 
     setVariable: "set",
     incrementVariable: "inc",

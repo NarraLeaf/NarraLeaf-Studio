@@ -108,8 +108,13 @@ export function PuppetPreview(props: {
         >
             <div ref={hostRef} className="absolute inset-0" />
             {error !== null && (
-                <div className="absolute inset-0 flex items-center justify-center px-3 text-center text-2xs text-fg-subtle">
-                    {t("characters.editor.puppet.previewFailed")}
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 px-3 text-center">
+                    <span className="text-2xs text-fg-subtle">{t("characters.editor.puppet.previewFailed")}</span>
+                    {/* The reason as well as the fact. `openSession` rejects with the *planned*
+                        unavailability - "the runtime X is not installed in this project", "the bundle
+                        names no entry" - and swallowing that left the author with one sentence that
+                        fitted every cause and pointed at none of them. */}
+                    <span className="max-w-full break-words text-2xs text-fg-subtle/70">{error}</span>
                 </div>
             )}
         </div>

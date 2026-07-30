@@ -19,6 +19,8 @@ import type { AutoSaveConfiguration } from "@shared/types/saves";
 import { normalizeAutoSaveConfiguration } from "@shared/types/saves";
 import type { GameVoiceBundle } from "@shared/types/voice";
 import { normalizeVoiceConfiguration, normalizeVoiceDocument } from "@shared/types/voice";
+import type { AudioClipRegion, GameAudioBundle } from "@shared/types/audio";
+import { normalizeAudioClipRegion } from "@shared/types/audio";
 import type { StoryAnimationAsset, StoryAnimationIndex, StoryDocument, StoryLibraryEntry, StoryLibraryIndex } from "@shared/types/story";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
@@ -48,6 +50,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     const storyLibrary = await loadStoryLibrary(context.projectPath);
     const localization = await loadGameLocalization(context.projectPath);
     const voice = await loadGameVoice(context.projectPath);
+    const audio = await loadGameAudio(context.projectPath);
     const autoSave = await loadAutoSaveConfiguration(context.projectPath);
     return {
         bundleId: context.bundleId,
@@ -63,6 +66,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         storyLibrary,
         localization,
         voice,
+        audio,
         autoSave,
         compiled: context.compiled,
         blueprintCompiledScripts: context.blueprintCompiledScripts,
@@ -242,6 +246,35 @@ async function loadAssetNames(projectPath: string): Promise<Record<string, strin
         }
     }
     return names;
+}
+
+/**
+ * The in/out points marked on audio assets, read from the same audio shard `loadAssetNames` walks.
+ *
+ * Only marked clips are carried, so a project whose author never opened the audio preview produces
+ * `undefined` rather than a row per sound effect. A missing or broken shard degrades to "no regions",
+ * which plays every clip whole - exactly the behaviour before regions existed. Exported for tests.
+ */
+export async function loadGameAudio(projectPath: string): Promise<GameAudioBundle | undefined> {
+    const shardPath = path.join(projectPath, "assets", "assets.metadata.audio.json");
+    let record: Record<string, unknown> | undefined;
+    try {
+        record = await readOptionalJsonFile<Record<string, unknown>>(shardPath);
+    } catch {
+        return undefined;
+    }
+    if (!record || typeof record !== "object") {
+        return undefined;
+    }
+    const clips: Record<string, AudioClipRegion> = {};
+    for (const [assetId, raw] of Object.entries(record)) {
+        const extras = raw && typeof raw === "object" ? (raw as { extras?: unknown }).extras : undefined;
+        const region = normalizeAudioClipRegion(extras);
+        if (region) {
+            clips[assetId] = region;
+        }
+    }
+    return Object.keys(clips).length > 0 ? { clips } : undefined;
 }
 
 export function resolveStoryDocumentPathForIndexEntry(projectPath: string, entry: Pick<StoryLibraryEntry, "id">): string | null {

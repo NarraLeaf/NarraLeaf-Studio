@@ -55,6 +55,20 @@ export function isVcsPlatformSupported(
     return VCS_SUPPORTED_PLATFORMS.some((p) => p.platform === platform && p.arch === arch);
 }
 
+/**
+ * The branch a repository created by Studio starts on.
+ *
+ * The backend's choice, not Studio's - nothing here asks for a branch name at init - which is why
+ * it is pinned by an integration test against a real repository
+ * (`repository.integration.test.ts`) rather than merely written down. It exists because the version
+ * surfaces name the branch ONLY when it is not this one: an author who never left it should pay no
+ * pixels for a fact that is always true, and an author who used their own `lore` CLI to branch must
+ * not be shown a version number that silently belongs to somewhere else. Should upstream rename it,
+ * the failure is a red test rather than every install suddenly growing a branch name in its status
+ * bar.
+ */
+export const VCS_DEFAULT_BRANCH = "main";
+
 export interface VcsRepositoryInfo {
     /** Repository root on disk. */
     root: string;
@@ -62,7 +76,21 @@ export interface VcsRepositoryInfo {
     repositoryId: string;
     /** Newest revision on the current branch, if any. */
     head?: RevisionId;
-    revisionCount: number;
+    /**
+     * {@link head}'s revision number - monotonic per repository, and what `#12` is made of.
+     *
+     * Zero in a repository with no revisions, which is the same state {@link head} reports by being
+     * absent.
+     */
+    headNumber: number;
+    /**
+     * Branch the working tree is on, e.g. `main`.
+     *
+     * Empty string when the backend did not report one, matching {@link VcsStatus.branch}. A
+     * surface deciding whether to SHOW it compares against {@link VCS_DEFAULT_BRANCH}, so "" and
+     * the default are treated alike: neither is worth saying.
+     */
+    branch: string;
 }
 
 /**
@@ -124,8 +152,9 @@ export type VcsCheckpointReason =
     /**
      * A restore is about to overwrite the working tree.
      *
-     * No caller yet - restore is a later milestone. Declared so that milestone inherits
-     * the policy instead of reinventing it, and deliberately not backed by a stub.
+     * The only one taken BEFORE the act rather than around it, because it is the only act
+     * that writes over files the author has not seen recorded anywhere. It is also the
+     * reason a restore is safe to offer at all, which is why the confirmation says so.
      */
     | "restore";
 
@@ -148,6 +177,69 @@ export interface VcsCommitResult {
     fileCount: number;
 }
 
+/**
+ * What the author gets to decide when they put the working tree back to a past revision.
+ *
+ * There is deliberately no "which files" here. A partial restore is a different feature with a
+ * different failure mode (a tree that is half one version and half another, with nothing on screen
+ * saying which half), and it is a later milestone.
+ */
+export interface VcsRestoreOptions {
+    /**
+     * How the surface that asked names the source revision - `#12`, as the rail spells it.
+     *
+     * Folded into the recorded message, which is why it must NOT be a translated string: a commit
+     * message is permanent repository content that travels to collaborators and outlives the
+     * interface language it was written under. A revision number is not language; a sentence is.
+     * Absent, the main process names the revision by its short hash instead.
+     */
+    label?: string;
+    identity?: string;
+}
+
+/**
+ * What a restore did.
+ *
+ * The shape says the thing the feature is built around: restoring **adds** a revision and never
+ * removes one. Nothing between the target revision and the head disappears - the working tree is
+ * written to match an older version and that state is then recorded as the newest one.
+ */
+export interface VcsRestoreResult {
+    /** The revision the working tree was put back to. */
+    from: RevisionId;
+    /**
+     * The checkpoint taken before a single byte was written, or null when there was nothing to
+     * protect.
+     *
+     * Null is the ordinary case for a clean tree, and it is not a failure: with nothing uncommitted,
+     * the head already IS the pre-restore state, so there is nothing a checkpoint could add.
+     */
+    checkpoint: VcsCommitResult | null;
+    /**
+     * The revision the restore recorded, or null when the working tree already matched the target.
+     *
+     * Also not a failure: restoring to what is already on disk changes nothing, and an empty
+     * revision would be a lie about the author's history (see `NothingToCommitError`).
+     */
+    revision: VcsCommitResult | null;
+    /**
+     * Why {@link revision} is null, when the reason is a failure rather than an unchanged tree.
+     *
+     * The two are not interchangeable and a surface must tell them apart: with `revision: null` and
+     * no failure, nothing happened because nothing needed to. With a failure, **the author's files
+     * have already been replaced** and only the record of it is missing - which is a sentence they
+     * have to read, because "the restore failed" is what they would otherwise assume, and the fix
+     * (record a version) is one they can do themselves.
+     *
+     * Reported here rather than thrown for the same reason: past the write step there is no honest
+     * way to answer "it did not happen".
+     */
+    recordFailure: string | null;
+    filesWritten: number;
+    /** Files that existed only because they were added after {@link from}. */
+    filesRemoved: number;
+}
+
 export interface VcsHistoryEntry {
     revision: RevisionId;
     /** Monotonic per repository; usable as a cheap topological rank. */
@@ -166,6 +258,36 @@ export interface VcsHistoryEntry {
      * on a long-lived project a few hundred round trips.
      */
     kind?: VcsRevisionKind;
+    /**
+     * What the revision says it is, as its author wrote it.
+     *
+     * Read from the same per-revision metadata call as {@link kind} and gated by the
+     * same flag, so it costs nothing extra once kinds are asked for.
+     *
+     * Optional because it genuinely can be missing: nothing in the backend obliges a
+     * revision to carry a message, and one written by another client carries whatever
+     * that client wrote. Absent must render as absent - an empty string here would show
+     * as a commit with a blank title rather than as one that did not say.
+     */
+    message?: string;
+    /**
+     * When the revision was made, in **epoch milliseconds** (UTC).
+     *
+     * Milliseconds is measured, not assumed: the backend records this key as its
+     * numeric metadata type and the value read back off a fresh commit falls inside the
+     * wall-clock window around it in ms. Reading it as seconds dates every revision to
+     * January 1970; reading a seconds value as ms lands it in the year 56000. Either
+     * looks like a UI defect forever.
+     */
+    timestamp?: number;
+    /**
+     * Who the backend recorded as the committer.
+     *
+     * A free-form identity string, not an account: it is whatever the committing client
+     * was configured with, so it can be a name, an email, or Studio's own fallback for
+     * a project whose author name is unset.
+     */
+    author?: string;
 }
 
 export interface VcsBlobRequest {

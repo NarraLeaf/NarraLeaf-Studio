@@ -16,6 +16,7 @@ import { ATOMIC_WRITE_TEMP_PATTERN } from "@shared/utils/fs";
 import { buildDependencyPlatformKey } from "../build/preflight";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
+import { getWorkspaceFreeze, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
 import { type GameRuntimeArtifactCompileResult } from "./compiler/gameRuntimeArtifactCompiler";
 import { compileGameRuntimeArtifactInWorker } from "./compiler/compileGameRuntimeArtifactInWorker";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
@@ -91,7 +92,30 @@ export class PreviewManager {
         return [...this.sessions.values()].find(session => session.status !== "idle")?.status ?? "idle";
     }
 
+    /**
+     * Start (or restart) the preview runtime for a project.
+     *
+     * Refuses while the workspace is frozen. `RunControl` already disables Preview there, but a
+     * launch is IPC straight into this method - a keybinding, a plugin, a stale renderer or a second
+     * window can still ask, and this is the only place that can say no (plan 2026-07-28-002 §4.3).
+     * Dev Mode stays allowed, which is the decision in §1, and nothing here touches it.
+     *
+     * The guard sits on this entry rather than inside `launchNow` so it also covers the one launch
+     * nobody clicks: {@link scheduleRelaunch}, the file-watcher's debounced relaunch. Refusing there
+     * leaves the already-running preview alone rather than tearing it down - the previous session is
+     * only stopped once `launchNow` starts.
+     *
+     * Rejects rather than answering "idle": a caller that is not the UI has to be told why, and the
+     * console line below is what the author reads (a failed launch IPC reaches the renderer as a
+     * status change with the message dropped).
+     */
     public launch(projectPath: string, entry: GameRuntimeLaunchEntry): Promise<PreviewStatus> {
+        const frozen = getWorkspaceFreeze(projectPath);
+        if (frozen) {
+            const message = workspaceFrozenMessage(frozen, "preview");
+            emitWorkspaceConsoleLog(this.app, projectPath, { level: "error", source: "Preview", message });
+            return Promise.reject(new Error(message));
+        }
         return this.enqueue(projectPath, () => this.launchNow(projectPath, entry));
     }
 

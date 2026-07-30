@@ -71,3 +71,59 @@ describe("catalog parity", () => {
         ).toEqual([]);
     });
 });
+
+/**
+ * A row button's accessible name and its tooltip must be the SAME sentence, differing only by the
+ * keybinding the tooltip appends.
+ *
+ * This is the invariant that was broken: the names were the bare verbs "Insert" and "Delete", left
+ * over from when the buttons had visible text, while the tooltips had grown into full sentences. A
+ * screen-reader user heard "Insert, button" on every row and was told nothing about what it inserts.
+ *
+ * Stated as "strip the keybinding from the tooltip and you get the name back", NOT as "the tooltip
+ * starts with the name" — the weaker version passes with the bug reinstated, because "Insert" is a
+ * prefix of "Insert a blank row after this one". (Verified by reinstating it.) The strip is written
+ * against the placeholder and whatever brackets surround it, so it holds for zh's full-width 「（）」
+ * as well, and a word count would not work there at all: 「在此行后插入空行」 contains no spaces.
+ */
+const ROW_BUTTON_NAME_AND_TOOLTIP: { name: string; tooltip: string }[] = [
+    { name: "story.rows.insert", tooltip: "story.rows.insertTitle" },
+    { name: "story.rows.delete", tooltip: "story.rows.deleteTitle" },
+];
+
+/** The tooltip without its keybinding: the placeholder plus any brackets and spaces hugging it. */
+function withoutKeybinding(tooltip: string): string {
+    return tooltip.replace(/[\s([（【]*\{keys\}[\s)\]）】]*/u, "").trim();
+}
+
+describe("row button accessible names", () => {
+    for (const [locale, catalog] of [["en", en], ["zh", zh]] as const) {
+        it(`keeps ${locale}'s row-button names and tooltips one keybinding apart`, () => {
+            const flat = flattenCatalog(catalog);
+            for (const { name, tooltip } of ROW_BUTTON_NAME_AND_TOOLTIP) {
+                const nameText = flat.get(name);
+                const tooltipText = flat.get(tooltip);
+                expect(nameText, `${locale} is missing ${name}`).toBeTruthy();
+                expect(tooltipText, `${locale} is missing ${tooltip}`).toBeTruthy();
+                expect(tooltipText, `${locale}: ${tooltip} must carry the {keys} placeholder`).toContain("{keys}");
+                expect(
+                    withoutKeybinding(tooltipText!),
+                    `${locale}: "${name}" must be "${tooltip}" minus the keybinding. The accessible name and
+` +
+                        `the tooltip are the same sentence, so rewording one without the other makes a control
+` +
+                        `announce something different from what it shows — and a name shorter than its tooltip
+` +
+                        `is how these ended up as bare verbs with no object.
+` +
+                        `  ${name}    = ${JSON.stringify(nameText)}
+` +
+                        `  ${tooltip} = ${JSON.stringify(tooltipText)}
+`,
+                ).toBe(nameText!.trim());
+                // The name says what the control does, not which keys reach it.
+                expect(nameText, `${locale}: ${name} must not carry the keybinding`).not.toContain("{keys}");
+            }
+        });
+    }
+});

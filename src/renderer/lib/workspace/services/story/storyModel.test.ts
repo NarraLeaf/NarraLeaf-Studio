@@ -166,6 +166,21 @@ describe("storyModel", () => {
         ]);
     });
 
+    it("keeps a camera motion filed under the camera", () => {
+        // The fallback for an unknown kind is `image`, so a motion target kind that is not on the
+        // normalizer's list is not rejected - it is silently reassigned, and the author's camera shot
+        // shows up in every sprite's motion picker instead. Hence a test naming the kind directly.
+        const normalized = normalizeStoryAnimationAsset({
+            schemaVersion: 1,
+            id: STORY_ID_2,
+            name: "Camera shake",
+            targetKind: "camera",
+            sequences: [],
+        } as any, "2026-07-29T00:00:00.000Z");
+
+        expect(normalized.targetKind).toBe("camera");
+    });
+
     it("normalizes story animation assets without leaking unsupported sequence fields", () => {
         const now = "2026-06-08T00:00:00.000Z";
         const normalized = normalizeStoryAnimationAsset({

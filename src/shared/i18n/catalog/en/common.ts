@@ -23,6 +23,8 @@ export const common = {
     create: "Create",
     new: "New",
     confirm: "Confirm",
+    retry: "Try again",
+    continue: "Continue",
     apply: "Apply",
     clear: "Clear",
     yes: "Yes",

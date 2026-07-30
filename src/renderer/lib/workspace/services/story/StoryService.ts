@@ -3,6 +3,7 @@ import { RendererError } from "@shared/utils/error";
 import {
     StoryAnimationAsset,
     StoryAnimationAssetId,
+    StoryAnimationConfig,
     StoryAnimationIndex,
     StoryAnimationIndexEntry,
     StoryAnimationSequence,
@@ -464,6 +465,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         targetKind?: StoryAnimationIndexEntry["targetKind"];
         timeline?: StoryAnimationTimeline;
         sequences?: StoryAnimationSequence[];
+        config?: StoryAnimationConfig;
     }): Promise<StoryAnimationAsset> {
         const now = new Date().toISOString();
         const animationId = this.generateUniqueAnimationId();
@@ -474,6 +476,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
             targetKind,
             timeline: input.timeline,
             sequences: input.sequences,
+            config: input.config,
             now,
         });
         const entry = createStoryAnimationIndexEntry({
@@ -941,11 +944,18 @@ export class StoryService extends Service<StoryService> implements IStoryService
             ? this.cleanOptionalString(patch.defaultBackgroundAssetId ?? "")
             : current.defaultBackgroundAssetId;
         const currentBackgroundAssetId = current.defaultBackgroundAssetId ?? undefined;
+        // The whole record is replaced, never merged: a partial merge would make "clear the volume"
+        // unexpressible, and the caller already holds the record it is editing.
+        const nextBgm = patch.bgm !== undefined
+            ? (patch.bgm && this.cleanOptionalString(patch.bgm.assetId) ? patch.bgm : undefined)
+            : current.bgm;
 
         const hasNameChange = patch.name !== undefined && nextName !== current.name;
         const hasDescriptionChange = patch.description !== undefined && nextDescription !== (current.description ?? "");
         const hasBackgroundChange = patch.defaultBackgroundAssetId !== undefined && nextBackgroundAssetId !== currentBackgroundAssetId;
-        if (!hasNameChange && !hasDescriptionChange && !hasBackgroundChange) {
+        const hasBgmChange = patch.bgm !== undefined
+            && JSON.stringify(nextBgm ?? null) !== JSON.stringify(current.bgm ?? null);
+        if (!hasNameChange && !hasDescriptionChange && !hasBackgroundChange && !hasBgmChange) {
             return false;
         }
 
@@ -966,6 +976,13 @@ export class StoryService extends Service<StoryService> implements IStoryService
                     scene.defaultBackgroundAssetId = nextBackgroundAssetId;
                 } else {
                     delete scene.defaultBackgroundAssetId;
+                }
+            }
+            if (hasBgmChange) {
+                if (nextBgm) {
+                    scene.bgm = nextBgm;
+                } else {
+                    delete scene.bgm;
                 }
             }
             scene.meta = { ...scene.meta, updatedAt: new Date().toISOString() };

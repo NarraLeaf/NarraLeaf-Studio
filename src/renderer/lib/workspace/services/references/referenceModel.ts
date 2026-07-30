@@ -146,6 +146,18 @@ export function extractStoryAssetReferences(document: StoryDocument, storyName: 
             });
         }
 
+        if (isLibraryAssetId(scene.bgm?.assetId)) {
+            references.push({
+                id: `story:${document.id}:${scene.id}:__scene__:bgm`,
+                assetId: scene.bgm!.assetId.trim(),
+                kind: "story",
+                label: sceneName,
+                detail,
+                field: "scene.bgm.assetId",
+                target: { kind: "storyScene", storyId: document.id, sceneId: scene.id, storyName, sceneName },
+            });
+        }
+
         // Depth first, so the "used by" list under an asset reads down the scene the way the author
         // wrote it. The record's key order would be UUID order once it has been rewritten once.
         for (const block of listSceneBlocksInDocumentOrder(scene)) {
