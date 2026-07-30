@@ -241,7 +241,7 @@ export function useAssetsContextMenu({
             },
         });
 
-        return freezeContextMenuRows(items, freeze.frozen, FREEZE_READ_ONLY_ASSET_MENU_IDS);
+        return freezeContextMenuRows(items, freeze.frozen, FREEZE_READ_ONLY_ASSET_MENU_IDS, freeze.reason);
     }, [clipboard, closeContextMenu, contextMenuTarget, freeze, handleCopy, handleCut, handleDelete, handleImportToGroup, handlePaste, handleRename, handleReplaceContent, handleCreateGroup, isMultiSelectMode, selectedItems, t, tn]);
 
     return {

@@ -21,6 +21,7 @@ import { FontAssetField } from "./FontAssetField";
 import type { FontAssetFieldDefinition, ImageFillFieldDefinition } from "../types";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { needsStructuralReadOnly } from "./fieldReadOnlyStrategy";
 
 interface FieldRendererProps<TData> {
     field: FieldDefinition<TData>;
@@ -87,6 +88,36 @@ function FieldRendererInner<TData>({ field: definition, data, onSaving }: FieldR
         return null;
     }
 
+    const rendered = renderFieldBody(field, data, onSaving);
+    if (!freeze.frozen || !needsStructuralReadOnly(field.type)) {
+        return rendered;
+    }
+    /**
+     * The clamp for the field types that cannot honour `readOnly` themselves - see
+     * `fieldReadOnlyStrategy` for the measurement that made this necessary.
+     *
+     * A `disabled` `<fieldset>` because the disabling is then the BROWSER's, not a convention every
+     * `render` callback has to remember: per HTML, every form control whose nearest ancestor fieldset is
+     * disabled is itself disabled, so a bespoke inline-row `<input>` reports `disabled: true` without
+     * knowing this code exists. `display: contents` keeps it out of the layout entirely, so the flex
+     * rows the inline-row fields build are untouched (the disabled rule is tree-based, not layout-based)
+     * - as an inline style rather than a utility class, because a wrapper whose whole job is to be
+     * invisible must not depend on a class having been emitted into the stylesheet.
+     * Rendered only while frozen, so the writable path is byte-for-byte what it was.
+     */
+    return (
+        <fieldset disabled aria-readonly style={{ display: "contents" }}>
+            {rendered}
+        </fieldset>
+    );
+}
+
+/** The switch itself, split out so the read-only clamp above has something to wrap. */
+function renderFieldBody<TData>(
+    field: FieldDefinition<TData>,
+    data: TData,
+    onSaving: (saving: boolean) => void,
+): React.ReactNode {
     switch (field.type) {
         case "text":
         case "textarea":
