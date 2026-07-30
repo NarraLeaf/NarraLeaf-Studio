@@ -429,6 +429,62 @@ export function hiddenCheckpointCount(
     return entries.length - collapseCheckpoints(entries, options).length;
 }
 
+/** One read of the history, described by what it asked for and what came back. */
+export interface HistoryPageRead {
+    /**
+     * How many revisions the read asked the service for. 0 means "all of them"
+     * (`VersionControlService.getHistory`), which is by definition the whole history.
+     */
+    limit: number;
+    /**
+     * How many entries came back - the RAW graph entries, counted before
+     * {@link flattenFirstParent} and {@link collapseCheckpoints} have touched them.
+     */
+    received: number;
+}
+
+/**
+ * Whether reading further back could find anything, and therefore whether the rail offers to.
+ *
+ * The judgement is "did this read fill its limit", and it has to be made on the RAW entry count
+ * rather than on the rows the author can see. Both steps between the two throw entries away:
+ * {@link flattenFirstParent} drops every revision reachable only through a second parent, and
+ * {@link collapseCheckpoints} hides the checkpoints - so a project whose history is mostly the
+ * 15-minute timer's work reads a full page of fifty and draws three rows. Counting rows would tell
+ * that author they had reached the beginning of their project with hundreds of revisions unread.
+ *
+ * `>=` rather than `===` because a limit is a ceiling, not a promise: nothing in the backend's
+ * contract stops a graph read from answering with more than was asked for, and being wrong in that
+ * direction would hide the affordance outright.
+ *
+ * A false positive is possible - a history that is exactly a whole number of pages long offers one
+ * more read that finds nothing - and it is the right way round. The next press answers a short page,
+ * the offer goes away, and nothing was lost but one read; the opposite mistake is unreachable
+ * history with no way to say so.
+ */
+export function hasMoreHistory(read: HistoryPageRead): boolean {
+    if (read.limit <= 0) {
+        return false;
+    }
+    return read.received >= read.limit;
+}
+
+/**
+ * The limit the next page asks for.
+ *
+ * Paging here is "read again with a bigger limit" rather than a cursor, because the backend has no
+ * cursor to offer - `readRevisionGraph(globals, limit)` is the whole of its history surface. The
+ * cost of re-reading what is already in hand is paid off in the main process, where revision
+ * metadata is cached per session (`VcsManager`); without that, the fifth page would cost 250
+ * per-revision calls to gain fifty rows.
+ *
+ * Grown from the limit that was REQUESTED and not from what came back, so a read that answered
+ * short - which is every read at the end of a history - cannot shrink the window on the next press.
+ */
+export function nextHistoryLimit(limit: number, step: number): number {
+    return Math.max(limit, 0) + step;
+}
+
 /**
  * How many changed files the rail draws, at most.
  *

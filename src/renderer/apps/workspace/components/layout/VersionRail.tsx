@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+    ChevronDown,
     ChevronsLeft,
     Clock,
     Copy,
@@ -224,10 +225,14 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
 
                 {state.kind === "not-a-repository" && <EnableVersionControl surface={surface} />}
 
-                {history !== null && history.length > 0 && (
+                {/* Rendered for a page with NO rows in it as long as the collapse is what emptied it:
+                    a project whose history is all automatic checkpoints has fifty revisions and zero
+                    rows, and the list is the only place carrying the "show N checkpoints" control
+                    that would bring them back - and now the way further back as well. */}
+                {history !== null && (history.length > 0 || surface.hiddenCheckpoints > 0) && (
                     <HistoryList surface={surface} rows={history} />
                 )}
-                {history !== null && history.length === 0 && !busy && (
+                {history !== null && history.length === 0 && surface.hiddenCheckpoints === 0 && !busy && (
                     <p className="px-3 py-2 text-2xs text-fg-subtle">
                         {t("workspace.shell.versionControl.noHistory")}
                     </p>
@@ -631,7 +636,8 @@ function EnableVersionControl({ surface }: { surface: VersionSurface }) {
  * A merge is marked instead of expanded, so the list never quietly hides a second ancestry.
  *
  * Scrolling this list is how the author reaches other versions; the plan's "scrolling down moves
- * through the linear history" is this, bounded to one page. Paging past the page is the next pass.
+ * through the linear history" is this. It ends where the read ended, and the control below the last
+ * row is what reaches further back.
  */
 function HistoryList({ surface, rows }: { surface: VersionSurface; rows: FlatHistoryEntry[] }) {
     const { t } = useTranslation();
@@ -691,6 +697,23 @@ function HistoryList({ surface, rows }: { surface: VersionSurface; rows: FlatHis
                     </button>
                 );
             })}
+
+            {/* The end of the list, and only there: reaching further back is a thing the author asks
+                for, never something a scroll position or a timer decides. Present only while the
+                last read filled its limit (`hasMoreHistory`, which counts RAW entries rather than
+                these rows). No spinner of its own - the busy line the panel already renders sits
+                directly beneath it, and two of them for one read is one too many. */}
+            {surface.canLoadMoreHistory && (
+                <button
+                    type="button"
+                    onClick={surface.loadMoreHistory}
+                    disabled={surface.busy !== null}
+                    className="flex w-full items-center justify-center gap-1.5 px-3 py-1.5 text-2xs text-fg-subtle transition-colors cursor-default hover:bg-fill hover:text-fg disabled:opacity-50"
+                >
+                    <ChevronDown className="h-3 w-3" />
+                    {t("workspace.shell.versionControl.loadMoreHistory")}
+                </button>
+            )}
         </div>
     );
 }
