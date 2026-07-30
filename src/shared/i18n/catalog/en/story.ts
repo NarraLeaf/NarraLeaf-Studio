@@ -200,7 +200,7 @@ export const story = {
         displayName: "Display Name",
         seekTime: "Seconds",
         // Camera
-        cameraOperation: "Pan / Zoom / Rotate / Darken / Reset",
+        cameraOperation: "Pan / Zoom / Rotate / Darken / Motion / Reset",
         cameraAmount: "Amount or Position",
         // Modifiers
         duration: "Seconds",
@@ -598,6 +598,7 @@ export const story = {
             zoom: "Zoom",
             rotate: "Rotate",
             darken: "Darken stage",
+            motion: "Motion",
             reset: "Reset camera",
         },
         condition: "Condition",
