@@ -24,10 +24,19 @@ export function isInlineTextEditableElement(element: UIElement | null | undefine
  * stale draft when the override cleared, overwriting whatever the canvas had just saved. Only the
  * editor tab passes its services on the adapter, so requiring them here keeps exactly one editor per
  * element.
+ *
+ * **A read-only surface answers null too**, which is the one place a frozen workspace reaches the
+ * text and button widgets. Their double-click is attached inside their own markup rather than by the
+ * canvas, so `isSurfaceGestureEnabled("inlineTextEdit", ...)` - which the interaction layer and
+ * `useSurfaceDoubleClick` both consult - never saw it: measured on a frozen workspace, a
+ * double-click on a text element still opened its editor, still accepted typing, and threw the
+ * result away on thaw. Refusing the services here switches off the whole path at once (the
+ * double-click handler returns early without them, and no textarea can mount), and it makes a frozen
+ * canvas behave exactly like the previews that have always resolved to null.
  */
 export function resolveInlineTextEditHost(hostAdapter: UIHostAdapter): InlineTextEditHost | null {
-    const { editorStateService, editorDocumentService, blueprintRuntime } = hostAdapter;
-    if (blueprintRuntime || !editorStateService || !editorDocumentService) {
+    const { editorStateService, editorDocumentService, blueprintRuntime, editorReadOnly } = hostAdapter;
+    if (blueprintRuntime || editorReadOnly?.active || !editorStateService || !editorDocumentService) {
         return null;
     }
     return { stateService: editorStateService, documentService: editorDocumentService };

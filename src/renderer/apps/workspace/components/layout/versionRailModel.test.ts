@@ -15,6 +15,7 @@ import {
     focusedRevision,
     hasMoreHistory,
     hiddenCheckpointCount,
+    historyRowHeadline,
     nextHistoryLimit,
     isCommitFormPresent,
     isVersionSurfaceVisible,
@@ -721,6 +722,37 @@ describe("labels", () => {
 
     it("leads with the revision number, which is the part that means anything", () => {
         expect(revisionLabel(4)).toBe("#4");
+    });
+});
+
+/**
+ * What a history row leads with.
+ *
+ * The list used to draw an icon, `#12` and a short hash and nothing else, which made every row of a
+ * day's work look the same. The message was already on the entry; this is the decision to use it,
+ * and the decision about what to say when there is none.
+ */
+describe("historyRowHeadline", () => {
+    it("leads with the version's message", () => {
+        expect(historyRowHeadline({ revision: "a91f3c8d2e4b6", message: "Chapter 2 opening" }))
+            .toEqual({ text: "Chapter 2 opening", isMessage: true });
+    });
+
+    it("names itself with its hash when the revision carries no message", () => {
+        // The repository's own first commit, written by `initRepository`, carries none of the three
+        // metadata fields - so this is the ordinary case rather than a defensive branch.
+        expect(historyRowHeadline({ revision: "a91f3c8d2e4b6" }))
+            .toEqual({ text: "a91f3c8", isMessage: false });
+    });
+
+    it("treats a whitespace-only message as none, rather than drawing a blank row", () => {
+        expect(historyRowHeadline({ revision: "a91f3c8d2e4b6", message: "   \n " }))
+            .toEqual({ text: "a91f3c8", isMessage: false });
+    });
+
+    it("keeps the whole message: the row truncates in CSS, and the title attribute needs all of it", () => {
+        const long = "Rewrote the confession scene so it lands before the train leaves";
+        expect(historyRowHeadline({ revision: "abc1234567", message: long }).text).toBe(long);
     });
 });
 
