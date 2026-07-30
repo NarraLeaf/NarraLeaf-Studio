@@ -44,6 +44,7 @@ import {
     normalizeBlueprintImageAssetValue,
     type BlueprintImageAsset,
 } from "@shared/types/blueprint/valueTypes";
+import { normalizeAudioClipRegion } from "@shared/types/audio";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
@@ -194,13 +195,17 @@ function AudioAssetPickerRow({
     } catch {
         context = null;
     }
-    const assetName = useMemo(() => {
+    const asset = useMemo(() => {
         if (!assetId || !context) {
             return null;
         }
-        const assetsService = context.services.get<AssetsService>(Services.Assets);
-        return assetsService.getAssets()[AssetType.Audio]?.[assetId]?.name ?? null;
+        return context.services.get<AssetsService>(Services.Assets).getAssets()[AssetType.Audio]?.[assetId] ?? null;
     }, [assetId, context]);
+    const assetName = asset?.name ?? null;
+    // Whether the author marked in/out points on this clip decides whether Loop loops the body or
+    // the whole file - and it is decided somewhere else entirely (the asset manager's audio preview),
+    // so the node has to say which it is.
+    const marked = normalizeAudioClipRegion(asset?.extras) !== null;
 
     return (
         <div
@@ -224,6 +229,11 @@ function AudioAssetPickerRow({
                         ? assetName ?? t("blueprint.image.missing")
                         : t("blueprint.image.select")}
                 </span>
+                {marked && (
+                    <span className="shrink-0 rounded bg-fill-subtle px-1 text-2xs text-fg-subtle">
+                        {t("blueprint.audio.marked")}
+                    </span>
+                )}
                 {assetId && !disabled && (
                     <span
                         role="button"

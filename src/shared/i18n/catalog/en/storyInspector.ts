@@ -302,6 +302,7 @@ export const storyInspector = {
         setVolume: "Set volume",
         setRate: "Set rate",
         muteSound: "Mute / unmute",
+        seekSound: "Seek",
     },
 
     screenEffectOption: {
@@ -357,6 +358,7 @@ export const storyInspector = {
         bgmAsset: "BGM asset",
         soundAsset: "Sound asset",
         fade: "Fade (s)",
+        seekTime: "Seek to (s)",
         volume: "Volume",
         rate: "Rate",
         loop: "Loop",
