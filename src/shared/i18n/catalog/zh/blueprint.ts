@@ -57,6 +57,8 @@ export const blueprint = {
         resource: {
             imageMissing: "图片控件“{name}”没有图片资源",
             imageMissingHint: "在检查器中指定一个图片资源",
+            videoMissing: "视频控件“{name}”没有视频文件",
+            videoMissingHint: "在检查器中指定一个视频资源",
             containerImageMissing: "容器“{name}”使用了图片填充但缺少资源",
             containerImageMissingHint: "选择一个图片资源或切换填充类型",
             buttonImageMissing: "按钮“{name}”使用了图片背景但缺少资源",

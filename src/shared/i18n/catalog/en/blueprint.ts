@@ -56,6 +56,8 @@ export const blueprint = {
         resource: {
             imageMissing: "Image widget “{name}” has no image asset",
             imageMissingHint: "Assign an image asset in the inspector.",
+            videoMissing: "Video widget “{name}” has no clip",
+            videoMissingHint: "Assign a video asset in the inspector.",
             containerImageMissing: "Container “{name}” uses image fill without an asset",
             containerImageMissingHint: "Pick an image asset or switch fill type.",
             buttonImageMissing: "Button “{name}” uses image background without an asset",
