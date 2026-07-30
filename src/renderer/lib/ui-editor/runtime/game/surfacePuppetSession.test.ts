@@ -223,13 +223,16 @@ describe("SurfacePuppetMount", () => {
     });
 
     it("removes its own surface when an abandoned attempt then fails to open", async () => {
-        let rejectFirst: ((reason: unknown) => void) | null = null;
+        // A container rather than a plain `let`: TypeScript does not track an assignment made inside a
+        // closure it cannot prove ran, so `let rejectFirst = null` stays narrowed to `null` and the
+        // call below is a compile error ("type 'never' has no call signatures") rather than a test.
+        const first: { reject: ((reason: unknown) => void) | null } = { reject: null };
         const second = fakeSession();
         let calls = 0;
         const { mount, host, surfaces } = harness(() => {
             calls += 1;
             return calls === 1
-                ? new Promise<PuppetModelSession>((_resolve, reject) => { rejectFirst = reject; })
+                ? new Promise<PuppetModelSession>((_resolve, reject) => { first.reject = reject; })
                 : Promise.resolve(second);
         });
 
@@ -240,7 +243,7 @@ describe("SurfacePuppetMount", () => {
 
         // ...and only now does the abandoned attempt fail: no such runtime directory, a module that
         // will not load.
-        rejectFirst?.(new Error("module not found"));
+        first.reject?.(new Error("module not found"));
         await settle();
 
         // A stale attempt owns its own node — `teardown()` deliberately leaves it alone while the
