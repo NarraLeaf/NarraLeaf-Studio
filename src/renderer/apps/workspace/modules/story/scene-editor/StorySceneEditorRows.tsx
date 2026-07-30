@@ -204,7 +204,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
         ? {
             // Measured from the ROW, so the line-number gutter counts too — unlike the nesting guides,
             // which live inside the content column and start after it.
-            left: `calc(var(--nl-story-gutter) + (var(--nl-story-avatar,28px) / 2) + ${row.depth * RAIL_STEP - 1}px)`,
+            left: `calc(var(--nl-story-gutter) + ${ROW_INDENT_STEP} * ${row.depth} + (var(--nl-story-avatar,28px) / 2) - 1px)`,
             // A head hands the connector off from under its own plate; a continuation carries it edge
             // to edge, so consecutive lines join into one unbroken drop.
             top: dialogueMember ? 0 : ROW_CONTENT_PAD_PX + STORY_DENSITY_METRICS[props.density].avatar,
@@ -358,7 +358,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                 {/* `items-start` with every chrome cell holding the single-line box open: on a wrapped
                     line the plate and the nametag stay level with the FIRST line — which is the line
                     they name — instead of drifting to the middle of the paragraph. */}
-                <div className="flex min-h-[var(--nl-story-row-box)] min-w-0 items-start gap-2" style={{ paddingLeft: row.depth * RAIL_STEP }}>
+                <div className="flex min-h-[var(--nl-story-row-box)] min-w-0 items-start gap-2" style={{ paddingLeft: rowIndent(row.depth) }}>
                     {/* The row's content in three fixed cells: plate, nametag, words. Nesting indents
                         the whole group — the plate is the leading edge of a row's content, and an
                         outline that indents only the words hides its own structure behind any line
@@ -462,7 +462,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                     </div>
                 </div>
                 {/* The footer and the container's tail "+" take the same indent the row's content does. */}
-                <div style={{ paddingLeft: row.depth * RAIL_STEP }}>
+                <div style={{ paddingLeft: rowIndent(row.depth) }}>
                     {containerInfo ? (
                         <ContainerFooter
                             block={block}
@@ -965,14 +965,11 @@ function RowPlayAction(props: { block: StoryBlock; active: boolean; onPlay: () =
 
 // --- Control-flow container rendering: accordion headers + visual indent rails. ---
 
-/** Indent step (px) per nesting level. Each level draws a vertical guide rail. */
-const RAIL_STEP = 20;
-
 /**
  * The `gap-2` between a row's columns, in px.
  *
- * The group connector and the nesting guides are positioned on the ROW, which knows nothing of the
- * flex gaps inside it, so they have to add the gap back to find where column 3 begins.
+ * The group connector and the nesting guides are positioned outside that flex, so they have to add
+ * the gaps back to find where a level's content begins.
  */
 const ROW_GAP_PX = 8;
 
@@ -983,6 +980,24 @@ const ROW_GAP_PX = 8;
  * head has to add it back to find the bottom edge of its own plate.
  */
 const ROW_CONTENT_PAD_PX = 4;
+
+/**
+ * One nesting level's indent: a child starts its plate exactly where its parent's WORDS start.
+ *
+ * It used to be a flat 20px, which put a child's plate to the left of the text of the row containing
+ * it — the block read as a list of rows that happened to be nudged, not as one thing inside another.
+ * Stepping by the full content offset instead means every level lines up on a column the eye already
+ * knows: at depth 1 the plate sits on depth 0's text edge, at depth 2 on depth 1's, and so on.
+ *
+ * A calc rather than a number because two of its three terms are per-scene lengths (the plate box
+ * follows the density, the name column follows the cast).
+ */
+const ROW_INDENT_STEP = `(var(--nl-story-avatar,28px) + var(--nl-story-name,56px) + ${2 * ROW_GAP_PX}px)`;
+
+/** The indent for content `levels` deep, as a CSS length. */
+function rowIndent(levels: number): string {
+    return `calc(${ROW_INDENT_STEP} * ${levels})`;
+}
 
 
 /** Vertical guide rails, one per ancestor nesting level, so nesting reads at a glance. */
@@ -1000,7 +1015,9 @@ function RailGuides({ depth, highlight }: { depth: number; highlight: boolean })
                         "pointer-events-none absolute inset-y-0 w-px",
                         highlight && index === depth - 1 ? "bg-primary/40" : "bg-edge",
                     ].join(" ")}
-                    style={{ left: index * RAIL_STEP + 9 }}
+                    // Down the centre of the ancestor's plate at that level, so the guide reads as a
+                    // line dropped from the row that owns the block rather than as a stripe beside it.
+                    style={{ left: `calc(${ROW_INDENT_STEP} * ${index} + (var(--nl-story-avatar,28px) / 2))` }}
                 />
             ))}
         </>
@@ -1230,7 +1247,7 @@ function ContainerFooter(props: {
     const empty = props.block.childrenIds.length === 0;
     if (props.info.role === "condition") {
         return (
-            <div className="mt-1 flex items-center gap-3 text-2xs text-fg-subtle" style={{ paddingLeft: RAIL_STEP }}>
+            <div className="mt-1 flex items-center gap-3 text-2xs text-fg-subtle" style={{ paddingLeft: rowIndent(1) }}>
                 <button
                     type="button"
                     className="rounded-md px-1.5 py-0.5 hover:bg-fill hover:text-primary"
@@ -1262,7 +1279,7 @@ function ContainerFooter(props: {
         <button
             type="button"
             className="mt-1 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-2xs italic text-fg-subtle hover:bg-fill hover:text-fg-muted"
-            style={{ marginLeft: RAIL_STEP }}
+            style={{ marginLeft: rowIndent(1) }}
             onClick={event => {
                 event.stopPropagation();
                 props.onAddInside();
@@ -1585,7 +1602,7 @@ export function InsertRow(props: {
                     rails + depth indent, then the badge and name columns, so the line being typed
                     starts on exactly the body edge the committed row will keep. */}
                 <RailGuides depth={props.depth ?? 0} highlight={false} />
-                <div style={{ paddingLeft: (props.depth ?? 0) * RAIL_STEP }}>
+                <div style={{ paddingLeft: rowIndent(props.depth ?? 0) }}>
                 <div className="flex min-h-[var(--nl-story-row-box)] items-center gap-2">
                 <span className="w-[var(--nl-story-avatar,28px)] shrink-0" aria-hidden />
                 <span className="w-[var(--nl-story-name,56px)] shrink-0" aria-hidden />
