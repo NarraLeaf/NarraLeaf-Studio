@@ -55,6 +55,20 @@ export function isVcsPlatformSupported(
     return VCS_SUPPORTED_PLATFORMS.some((p) => p.platform === platform && p.arch === arch);
 }
 
+/**
+ * The branch a repository created by Studio starts on.
+ *
+ * The backend's choice, not Studio's - nothing here asks for a branch name at init - which is why
+ * it is pinned by an integration test against a real repository
+ * (`repository.integration.test.ts`) rather than merely written down. It exists because the version
+ * surfaces name the branch ONLY when it is not this one: an author who never left it should pay no
+ * pixels for a fact that is always true, and an author who used their own `lore` CLI to branch must
+ * not be shown a version number that silently belongs to somewhere else. Should upstream rename it,
+ * the failure is a red test rather than every install suddenly growing a branch name in its status
+ * bar.
+ */
+export const VCS_DEFAULT_BRANCH = "main";
+
 export interface VcsRepositoryInfo {
     /** Repository root on disk. */
     root: string;
@@ -62,7 +76,21 @@ export interface VcsRepositoryInfo {
     repositoryId: string;
     /** Newest revision on the current branch, if any. */
     head?: RevisionId;
-    revisionCount: number;
+    /**
+     * {@link head}'s revision number - monotonic per repository, and what `#12` is made of.
+     *
+     * Zero in a repository with no revisions, which is the same state {@link head} reports by being
+     * absent.
+     */
+    headNumber: number;
+    /**
+     * Branch the working tree is on, e.g. `main`.
+     *
+     * Empty string when the backend did not report one, matching {@link VcsStatus.branch}. A
+     * surface deciding whether to SHOW it compares against {@link VCS_DEFAULT_BRANCH}, so "" and
+     * the default are treated alike: neither is worth saying.
+     */
+    branch: string;
 }
 
 /**

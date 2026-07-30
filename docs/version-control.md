@@ -587,8 +587,8 @@ window[RendererInterfaceKey].vcs
 |---|---|
 | `getAvailability()` | `{available}` 或 `{available:false, reason, detail}` — **先问这个** |
 | `isRepository(projectPath)` | `{isRepository}`；后端不可用时为 `false`，不抛 |
-| `getInfo(projectPath)` | `{root, repositoryId, head?, revisionCount}` |
-| `initRepository(projectPath, options?)` | `{root, repositoryId, head?, revisionCount}` — **唯一的写**，见下 |
+| `getInfo(projectPath)` | `{root, repositoryId, head?, headNumber, branch}` — **纯读**，走 `repositoryStatus(scan:false, revisionOnly:true)`，不触发 §4.17 |
+| `initRepository(projectPath, options?)` | `{root, repositoryId, head?, headNumber, branch}` — **唯一的写**，见下 |
 | `getStatus(projectPath)` | `VcsStatus`；**会扫描**，只能按需调，理由见 §4.17 |
 | `getHistory(projectPath, limit?)` | `{entries: [{revision, number, parents}]}` |
 | `readBlob(projectPath, revision, path)` | `{contentBase64}` |
