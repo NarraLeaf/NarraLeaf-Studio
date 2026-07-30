@@ -1,10 +1,10 @@
 import { useMemo } from "react";
-import { ChevronRight, Gamepad2, Image as ImageIcon, Info, Puzzle, SlidersHorizontal, type LucideIcon } from "lucide-react";
+import { Boxes, ChevronRight, Gamepad2, Image as ImageIcon, Info, Puzzle, SlidersHorizontal, type LucideIcon } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { InteractiveCard } from "@/lib/components/elements";
 import type { ProjectConfig } from "@/lib/workspace/project/project";
 
-export type ProjectSectionId = "details" | "game" | "assets" | "settings" | "dependencies";
+export type ProjectSectionId = "details" | "game" | "assets" | "settings" | "dependencies" | "runtimes";
 
 export type ProjectNavItem = {
     id: ProjectSectionId;
@@ -18,12 +18,16 @@ const PROJECT_NAV_ICONS: Record<ProjectSectionId, LucideIcon> = {
     game: Gamepad2,
     assets: ImageIcon,
     dependencies: Puzzle,
+    runtimes: Boxes,
     settings: SlidersHorizontal,
 };
 
 // Game sits next to Details on purpose: both describe the game itself, while
-// Assets / Dependencies / Settings describe how it is built and shipped.
-const PROJECT_NAV_ORDER: ProjectSectionId[] = ["details", "game", "assets", "dependencies", "settings"];
+// Assets / Dependencies / Runtimes / Settings describe how it is built and
+// shipped. Runtimes follows Dependencies because it answers the same shape of
+// question - what does this project need that is not in it yet - for the
+// author-supplied 2D model runtimes rather than for plugins.
+const PROJECT_NAV_ORDER: ProjectSectionId[] = ["details", "game", "assets", "dependencies", "runtimes", "settings"];
 
 /**
  * The project navigation rows, with localized title/description. Shared by the
