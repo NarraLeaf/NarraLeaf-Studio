@@ -354,11 +354,11 @@ export interface RendererPreloadedInterface {
          */
         checkpoint(projectPath: string, reason: VcsCheckpointReason): Promise<RequestStatus<{ revision: VcsCommitResult | null }>>;
         /**
-         * `includeKinds` costs one call per revision; leave it off unless kinds are shown.
-         * The same call carries `message`, `timestamp` and `author`, so asking for kinds
-         * gets those too.
+         * `includeDetails` costs one call per revision; leave it off unless the details are
+         * shown. One call carries `kind`, `message`, `timestamp` and `author` together -
+         * which is why the flag is named for all four rather than for the kind alone.
          */
-        getHistory(projectPath: string, limit?: number, includeKinds?: boolean): Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>>;
+        getHistory(projectPath: string, limit?: number, includeDetails?: boolean): Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>>;
         /** File contents at a revision, base64-encoded. */
         readBlob(projectPath: string, revision: RevisionId, path: string): Promise<RequestStatus<{ contentBase64: string }>>;
         /**

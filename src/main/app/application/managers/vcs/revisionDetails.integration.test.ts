@@ -129,7 +129,7 @@ describe.skipIf(!supported)("what a revision says about itself", () => {
     }, 60_000);
 
     it("carries all three onto the history entry, on the call the kind already pays for", async () => {
-        const entries = await manager.getHistory(root, 0, { includeKinds: true });
+        const entries = await manager.getHistory(root, 0, { includeDetails: true });
         const entry = entries.find((candidate) => candidate.revision === labelled);
 
         expect(entry).toBeDefined();
