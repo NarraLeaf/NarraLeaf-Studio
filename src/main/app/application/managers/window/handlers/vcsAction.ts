@@ -6,6 +6,7 @@ import type {
     VcsCommitResult,
     VcsHistoryEntry,
     VcsRepositoryInfo,
+    VcsRestoreResult,
     VcsStatus,
     VcsThreeWayResult,
 } from "@shared/types/vcs";
@@ -19,11 +20,16 @@ import { IPCHandler } from "./IPCHandler";
  * VcsManager - Studio is one-project-one-window, so a project-less VCS call
  * would be ambiguous with two projects open.
  *
- * The writes here are the ones that only ever produce a revision:
- * {@link VcsInitRepositoryHandler}, {@link VcsCommitHandler} and
- * {@link VcsCheckpointHandler}. None of them can arrive at a conflict - they add to the
- * author's own branch and never move the working tree - so none of them needs a resolve
- * UI to exist first. Merge and restore, which do move it, remain deliberately absent.
+ * Most of the writes here only ever produce a revision: {@link VcsInitRepositoryHandler},
+ * {@link VcsCommitHandler} and {@link VcsCheckpointHandler}. None of them can arrive at a
+ * conflict - they add to the author's own branch and never move the working tree - so none of
+ * them needed a resolve UI to exist first.
+ *
+ * {@link VcsRestoreRevisionHandler} is the exception and the only one in this file that
+ * overwrites the author's files. It still needs no resolve UI, for a reason worth stating: it
+ * does not MERGE anything. It writes one revision's content over the working tree and records
+ * that as a new revision, so there are never two sides to reconcile. Merge, which does have
+ * two, remains deliberately absent.
  */
 
 /**
@@ -126,6 +132,36 @@ export class VcsCheckpointHandler extends IPCHandler<IPCEventType.vcsCheckpoint>
         return this.tryUse(async () => ({
             revision: await window.app.getVcsManager().checkpoint(projectPath, reason),
         }));
+    }
+}
+
+/**
+ * Put the working tree back to one revision, and record that as a new revision.
+ *
+ * The one handler here that writes over the author's files, so what it promises is worth
+ * restating at the boundary: a checkpoint is committed before a single byte is written and a
+ * failure to take one aborts the whole operation, and no revision between the target and the
+ * head is touched - `#12` restored onto a project at `#61` produces `#62`.
+ *
+ * Slow: two commit pipelines plus a full rewrite of the versioned tree. The renderer must leave
+ * the revision view and re-read every document once this resolves, because the bytes under its
+ * editors are no longer the ones it read.
+ *
+ * A failure answer therefore means the working tree was NOT touched - every step that can fail runs
+ * before the first byte is written. The one exception is the closing commit, which cannot be
+ * reported that way once the files have changed, so it comes back as a SUCCESS carrying
+ * `recordFailure`; a caller that only reads `success` would tell the author nothing happened while
+ * their project sits on a restored, unrecorded tree.
+ */
+export class VcsRestoreRevisionHandler extends IPCHandler<IPCEventType.vcsRestoreRevision> {
+    readonly name = IPCEventType.vcsRestoreRevision;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath, revision, options }: IPCEvents[IPCEventType.vcsRestoreRevision]["data"],
+    ): Promise<RequestStatus<VcsRestoreResult>> {
+        return this.tryUse(() => window.app.getVcsManager().restoreRevision(projectPath, revision, options ?? {}));
     }
 }
 

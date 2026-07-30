@@ -388,6 +388,39 @@ export const workspace = {
             // author cannot get out of is the worst thing this feature can do to them.
             returnToCurrent: "Return to the current version",
             returning: "Returning to the current version…",
+            // The one action in this whole surface that changes the author's files, and the three
+            // lines below are the only thing standing between them and that happening.
+            //
+            // The action names itself rather than saying "restore": the confirm dialog puts this
+            // string on the button, and a button reading "OK" beside a sentence about overwriting
+            // files is how someone confirms the wrong thing.
+            restore: "Restore this version",
+            // Names the version so the dialog cannot be mistaken for one about a different one -
+            // the author reached it from a list of them. `{version}` is `#12`, or a short hash for
+            // a revision entered from somewhere that carried no label.
+            restoreConfirm: "Restore version {version}?",
+            // Two sentences, and neither is optional. The first is what the author is agreeing to;
+            // the second is why agreeing is safe, and leaving it out would present a recoverable
+            // operation as an irreversible one - after which nobody uses it. "Recorded first" is
+            // literal: the checkpoint is committed before a single byte is written, and a
+            // checkpoint that cannot be taken cancels the whole thing.
+            restoreConfirmDetail:
+                "Your project files will be replaced with the ones from this version. "
+                + "Everything you have now is recorded as a checkpoint first, and no version is deleted.",
+            // Long: a checkpoint, a rewrite of every versioned file, a second version, and then the
+            // same full re-read as returning to the current version.
+            restoring: "Restoring this version…",
+            // The one restore failure that happens with the author's files ALREADY replaced: the
+            // rewrite finished and only the commit recording it did not. It leads with what is true
+            // of their project rather than with the error, because the assumption they would
+            // otherwise make - "it failed, so nothing happened" - is the opposite of the truth, and
+            // they would carry on working on a project that quietly went back a week. `{action}` is
+            // the Record-a-version button, named from its own string so the sentence cannot come to
+            // point at a control that no longer says that.
+            restoreNotRecordedTitle: "Your files were restored, but the version was not recorded",
+            restoreNotRecordedDetail:
+                "Your project files are now the ones from version {version}. Recording that as a new "
+                + "version failed ({error}). Nothing is lost - press \"{action}\" to record it yourself.",
             // A project with no repository. Named for what is missing, not for the mechanism.
             //
             // Short because two of its three homes are narrow: the status-bar cell and the top-bar

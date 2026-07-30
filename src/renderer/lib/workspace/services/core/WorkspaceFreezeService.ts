@@ -59,6 +59,15 @@ export class WorkspaceFreezeService extends Service<WorkspaceFreezeService> impl
     private unobserve: (() => void) | null = null;
     /** Held for as long as a past revision is on screen; see {@link showRevision}. */
     private releaseSource: (() => void) | null = null;
+    /**
+     * How many callers are keeping the workspace in the view it is in; see {@link holdRelease}.
+     *
+     * Counted rather than a flag, the same shape as `holdProjectWritesForReload`: two holders are
+     * possible the moment a second thing can change the disk, and with a flag the first release
+     * would lift the second holder's hold - which is the failure the hold exists to prevent,
+     * arriving through the mechanism meant to prevent it.
+     */
+    private releaseHolds = 0;
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         // Freezing flushes what is owed first, so the saver registry has to be up; thawing re-reads
@@ -77,6 +86,9 @@ export class WorkspaceFreezeService extends Service<WorkspaceFreezeService> impl
         // Same argument for the read side: a source installed for the project that just closed would
         // answer this one's reads out of a repository it has nothing to do with.
         this.dropSource();
+        // And the same for a hold: one left over from an operation on the project that just closed
+        // would leave this one unable to leave a revision view, for a rewrite that is long over.
+        this.releaseHolds = 0;
         this.unobserve = observeProjectWriteFreeze((freeze) => {
             this.events.emit("changed", freeze?.reason ?? null);
             reportFreezeToHost(freeze?.reason ?? null);
@@ -94,6 +106,7 @@ export class WorkspaceFreezeService extends Service<WorkspaceFreezeService> impl
         this.unobserve = null;
         thawProjectWrites();
         this.dropSource();
+        this.releaseHolds = 0;
         this.events.clear();
     }
 
@@ -144,6 +157,48 @@ export class WorkspaceFreezeService extends Service<WorkspaceFreezeService> impl
     }
 
     /**
+     * Keep the workspace in the view it is in until the returned function is called, because
+     * something is rewriting the files underneath it right now.
+     *
+     * Deliberately says nothing about version control, and must stay that way (see the class comment
+     * on why this service does not know version control exists). What it expresses is general: while
+     * a process outside the editors is part-way through changing project data on disk, LEAVING the
+     * current view means re-reading a half-written tree - and {@link thaw} is exactly a re-read. The
+     * editors would then hold a project that is part one version and part another, and the next save
+     * would put that hybrid on disk. Nothing on screen would say so, which is what makes it worth a
+     * gate rather than a disabled button.
+     *
+     * A gate here rather than in the controls, for the reason `writeFreeze` gives for the write
+     * boundary: the workspace has ~24 modules, four dock regions, a command palette and global
+     * keybindings, and one of them forgetting is data loss. The controls still hide themselves - that
+     * is affordance, so nobody presses a dead button - but the correctness does not depend on any of
+     * them having remembered.
+     *
+     * Returns the release rather than exposing an `end`, so a hold cannot outlive its caller's
+     * `finally`. Counted (see {@link releaseHolds}), and each release is idempotent: a caller that
+     * releases twice must not lift somebody else's hold.
+     */
+    public holdRelease(): () => void {
+        this.releaseHolds += 1;
+        let released = false;
+        return () => {
+            if (released) {
+                return;
+            }
+            released = true;
+            // Never below zero: teardown clears the count outright, and a caller's `finally` can
+            // still run after that - a negative count would leave the NEXT project unable to leave a
+            // view, with nothing anywhere to say why.
+            this.releaseHolds = Math.max(0, this.releaseHolds - 1);
+        };
+    }
+
+    /** Whether anything is holding the workspace in its current view. Read by `when` predicates. */
+    public isReleaseHeld(): boolean {
+        return this.releaseHolds > 0;
+    }
+
+    /**
      * Let project data be written again, and re-read it from disk.
      *
      * The reload is not a nicety. A refused write is a no-op, so the service that tried it keeps the
@@ -164,6 +219,16 @@ export class WorkspaceFreezeService extends Service<WorkspaceFreezeService> impl
         if (!this.isFrozen()) {
             // Nothing was refused, so nothing is holding a value the disk has not got. Re-reading
             // anyway would drop the undo stacks and remount every editor tab for no reason.
+            return;
+        }
+        if (this.isReleaseHeld()) {
+            // Refused, not queued: whoever is rewriting the disk leaves the view itself when it is
+            // done (that is the contract of {@link holdRelease}'s only caller so far), so a deferred
+            // thaw would be a second re-read of a tree that is already being re-read. Nothing is said
+            // to the author here either - by the time they could read it, the view they asked to
+            // leave has been left. The console line is for us: reaching it means a control offered an
+            // affordance it should have hidden.
+            console.warn("[WorkspaceFreeze] refused to leave the view while the project files are being rewritten");
             return;
         }
         const reload = this.getContext().services.get<WorkspaceReloadService>(Services.WorkspaceReload);
