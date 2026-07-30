@@ -1,7 +1,7 @@
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
-import { BlueprintPersistenceProjectRef, RequestStatus } from "./ipcEvents";
+import { BlueprintPersistenceProjectRef, RequestStatus, WorkspaceFreezeKind } from "./ipcEvents";
 import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "./menu";
 import { FsRequestResult, PlatformInfo } from "./os";
@@ -206,6 +206,15 @@ export interface RendererPreloadedInterface {
          * a window showing the "not a project" screen must not have consumed the window it came from.
          */
         reportLoadResult(ok: boolean): void;
+        /**
+         * Tell main whether this workspace's project data is frozen; null means it is writable.
+         *
+         * Main refuses the production build and Preview while it is - it starts both itself, so the
+         * disabled controls in the top bar are affordance, not enforcement. Reported on every change
+         * AND once at startup: the renderer's latch is module-level and not persisted, so a window
+         * that reloads mid-freeze has to clear what main still believes.
+         */
+        reportWriteFreeze(reason: WorkspaceFreezeKind | null): void;
         /** Main asking this workspace to reveal a surface on the Settings window's behalf. */
         onOpenViewRequest(handler: (view: WorkspaceViewRequest) => void): AppEventToken;
     };
@@ -343,6 +352,18 @@ export interface RendererPreloadedInterface {
         getHistory(projectPath: string, limit?: number, includeKinds?: boolean): Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>>;
         /** File contents at a revision, base64-encoded. */
         readBlob(projectPath: string, revision: RevisionId, path: string): Promise<RequestStatus<{ contentBase64: string }>>;
+        /**
+         * Every document at one revision, base64-encoded, in one round trip.
+         *
+         * `contentBase64: null` means the revision does not contain that path - which is
+         * an answer and not a failure: a document added after the revision has to put its
+         * editor in the same "missing, use defaults" state as at project open. Omit
+         * `paths` to get whatever the revision holds that looks like a document.
+         *
+         * Batched because the first read of a revision on a project with a remote goes to
+         * the network (docs/version-control.md §6). Await it and show progress.
+         */
+        readRevisionDocuments(projectPath: string, revision: RevisionId, paths?: string[]): Promise<RequestStatus<{ documents: { path: string; contentBase64: string | null }[] }>>;
         getChangedPaths(projectPath: string, from: RevisionId, to: RevisionId): Promise<RequestStatus<{ paths: string[] }>>;
         /** base/mine/theirs for a merge. A missing `base` is an add/add, not an empty file. */
         getThreeWay(projectPath: string, mine: RevisionId, theirs: RevisionId, path: string): Promise<RequestStatus<VcsThreeWayResult>>;

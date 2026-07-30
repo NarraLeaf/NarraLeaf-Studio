@@ -12,7 +12,6 @@ import type { DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtim
 import { useBlueprintRuntimeCore, type BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 import { SurfaceLifecycleOrchestrator } from "@/lib/ui-editor/runtime/app/lifecycle/surfaceLifecycleOrchestrator";
 import type { GameUiSlotHostOptions } from "@/lib/ui-editor/runtime/app/StageSlotSurfaceShell";
-import { SILENT_UI_SOUND } from "@/lib/ui-editor/runtime/app/uiSoundPlayback";
 import type { ChoiceSlotRuntime } from "@/lib/ui-editor/runtime/app/ChoiceSlotSurface";
 import {
     createGameUiSlotComponents,
@@ -193,11 +192,6 @@ export function useStoryPreviewGameUi(input: {
             sessionId: gameInput.sessionId,
             core: activeCore,
             bundle,
-            // The story preview is a still frame with no navigation of its own, so nothing here plays a
-            // UI sound. Silence rather than `notAvailable`: the family's documented degrade is a null
-            // handle, and a preview that threw would make a Play Sound node fail a graph it would run
-            // fine in the real app.
-            uiSound: SILENT_UI_SOUND,
             rendererRegistry,
             lifecycleRef,
             makeStateAccessors: runtimeScopeId => {

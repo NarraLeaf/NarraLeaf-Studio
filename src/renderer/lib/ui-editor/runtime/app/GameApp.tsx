@@ -7,7 +7,7 @@ import {
     type ReactNode,
 } from "react";
 import { AnimatePresence, MotionConfig, useReducedMotion } from "motion/react";
-import { type LiveGame, type SavedGame } from "narraleaf-react";
+import { Sound, SoundType, type LiveGame, type SavedGame } from "narraleaf-react";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
 import {
     LOCALE_STORAGE_KEY,
@@ -98,6 +98,20 @@ import {
     fastForwardToNextChoice,
     restoreLiveGameToHistory,
 } from "./gameUiSlots";
+import { audioClipRegionToSoundConfig } from "@shared/types/audio";
+import { createSoundTransport } from "./soundTransport";
+
+/**
+ * Blueprint channel name -> the engine's mixer channel. The string values match,
+ * but the engine types the field as its own enum, and going through this map
+ * means a renamed enum member breaks the build here rather than silently
+ * routing every clip to the default channel.
+ */
+const BLUEPRINT_CHANNEL_TO_SOUND_TYPE = {
+    bgm: SoundType.Bgm,
+    sound: SoundType.Sound,
+    voice: SoundType.Voice,
+} as const;
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
@@ -120,7 +134,6 @@ import type {
     GameAppSaveRecord,
     GameAppStoryRuntimeBridge,
 } from "./GameAppHost";
-import { createUiSoundPlayback } from "./uiSoundPlayback";
 import { useAutoSave } from "./useAutoSave";
 
 // Outer safety net: if the environment never comes up at all, start the surface system anyway
@@ -590,6 +603,16 @@ export function GameApp(props: GameAppProps): ReactNode {
         return textReadTrackerRef.current?.isCurrentTextRead() === true;
     }, []);
 
+    /**
+     * Has this specific line ever been read. Backs the voice EXTRA lock, since
+     * the read set and the voice table share one key space (the line's textId).
+     * No tracker means no game yet, which reads as "not read" rather than
+     * throwing - an EXTRA screen opened from the title menu still lays out.
+     */
+    const hasReadTextInGame = useCallback((textId: string): boolean => {
+        return textReadTrackerRef.current?.hasRead(textId) === true;
+    }, []);
+
     const clearTextReadInGame = useCallback(async (): Promise<void> => {
         const tracker = textReadTrackerRef.current;
         if (tracker) {
@@ -619,17 +642,6 @@ export function GameApp(props: GameAppProps): ReactNode {
     const setNlrDialogVirtualClickTarget = useCallback((target: HTMLElement | null): void => {
         nlrDialogVirtualClickTargetRef.current = target;
     }, []);
-
-    // One registry for the whole app rather than one per surface: a handle captured while a music page
-    // was open has to still stop the track from the settings page the player navigated to.
-    const uiSound = useMemo(() => createUiSoundPlayback({
-        getLiveGame: () => nlrLiveGameRef.current,
-        resolveAssetUrl: host.resolveStoryAssetUrl,
-        getClipRegion: assetId => bundle.audio?.clips?.[assetId],
-        log: host.log,
-    }), [bundle, host.log, host.resolveStoryAssetUrl]);
-
-    useEffect(() => () => uiSound.dispose(), [uiSound]);
 
     const requireActiveLiveGame = useCallback((operation: string): LiveGame => {
         if (!nlrSession?.id || nlrLiveGameSessionIdRef.current !== nlrSession.id || !nlrLiveGameRef.current) {
@@ -668,6 +680,33 @@ export function GameApp(props: GameAppProps): ReactNode {
         currentDialogNametagRef,
         dialogVirtualClickTargetRef: nlrDialogVirtualClickTargetRef,
     }), [requireActiveLiveGame]);
+
+    /**
+     * Backs the blueprint `sound` family. Built once per host and ref-backed, so
+     * its identity is stable across relaunches; it reads the live game through
+     * the ref and degrades to a warned no-op when there is none.
+     *
+     * `Sound.sound` vs the per-channel constructors: the channel is passed as
+     * `type` so the engine routes it, which is what makes the player's volume
+     * settings apply. `Sound.bgm()` is deliberately not used - the engine blocks
+     * `play()` on a bgm-typed element, and the token path here is the other one.
+     */
+    const soundTransport = useMemo(() => createSoundTransport({
+        getLiveGame: () => nlrLiveGameRef.current,
+        resolveAssetUrl: (assetId, assetType) => host.resolveStoryAssetUrl(assetId, assetType),
+        // The in/out points the author marked on the asset apply here exactly as they do in a story
+        // row, so a music page loops a track's body rather than the whole file.
+        createSound: ({ src, channel, loop, volume, assetId }) => new Sound({
+            src,
+            type: BLUEPRINT_CHANNEL_TO_SOUND_TYPE[channel],
+            loop,
+            volume,
+            ...audioClipRegionToSoundConfig(bundle.audio?.clips?.[assetId]),
+        }),
+        log: (level, message) => host.log(level, message),
+    }), [bundle, host]);
+
+    useEffect(() => () => soundTransport.dispose(), [soundTransport]);
 
     const fastForwardToNextChoiceInGame = useCallback(async (): Promise<void> => {
         const liveGame = requireActiveLiveGame("Skip To Next Choice");
@@ -1043,7 +1082,6 @@ export function GameApp(props: GameAppProps): ReactNode {
             characters: bundle.storyLibrary?.characters,
             animations: bundle.storyLibrary?.animations,
             resolveAssetUrl: host.resolveStoryAssetUrl,
-            audioClips: bundle.audio?.clips,
             blueprintDocument: bundle.ui.localBlueprints,
             persistentVariables: bundle.ui.persistentVariables,
             persistence: core
@@ -1108,7 +1146,6 @@ export function GameApp(props: GameAppProps): ReactNode {
             sessionId,
             core,
             bundle,
-            uiSound,
             rendererRegistry,
             lifecycleRef,
             makeStateAccessors,
@@ -1390,6 +1427,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             onGetChoiceCount: getChoiceCountInGame,
             onIsNvlMode: isNvlModeInGame,
             onIsCurrentTextRead: isCurrentTextReadInGame,
+            onIsTextRead: hasReadTextInGame,
             onClearTextRead: clearTextReadInGame,
             onSelectChoice: selectChoiceInGame,
             onNext: nextInGame,
@@ -1400,9 +1438,13 @@ export function GameApp(props: GameAppProps): ReactNode {
             onSetSentenceSpeed: setSentenceSpeedInGame,
             onGetGamePreference: getGamePreferenceInGame,
             onSetGamePreference: setGamePreferenceInGame,
-            onPlaySound: uiSound.play,
-            onSoundTransport: uiSound.transport,
-            onIsSoundPlaying: uiSound.isPlaying,
+            onPlaySound: soundTransport.play,
+            onStopSound: soundTransport.stop,
+            onPauseSound: soundTransport.pause,
+            onResumeSound: soundTransport.resume,
+            onSetSoundVolume: soundTransport.setVolume,
+            onSeekSound: soundTransport.seek,
+            onIsSoundPlaying: soundTransport.isPlaying,
             onWidgetPatch: (elementId, patch) => {
                 applyWidgetRuntimePatch({
                     setWidgetPatchesByScope,
@@ -1634,6 +1676,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onGetChoiceCount: getChoiceCountInGame,
                     onIsNvlMode: isNvlModeInGame,
                     onIsCurrentTextRead: isCurrentTextReadInGame,
+                    onIsTextRead: hasReadTextInGame,
                     onClearTextRead: clearTextReadInGame,
                     onSelectChoice: selectChoiceInGame,
                     onNext: nextInGame,
@@ -1644,9 +1687,13 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onSetSentenceSpeed: setSentenceSpeedInGame,
                     onGetGamePreference: getGamePreferenceInGame,
                     onSetGamePreference: setGamePreferenceInGame,
-                    onPlaySound: uiSound.play,
-                    onSoundTransport: uiSound.transport,
-                    onIsSoundPlaying: uiSound.isPlaying,
+                    onPlaySound: soundTransport.play,
+                    onStopSound: soundTransport.stop,
+                    onPauseSound: soundTransport.pause,
+                    onResumeSound: soundTransport.resume,
+                    onSetSoundVolume: soundTransport.setVolume,
+                    onSeekSound: soundTransport.seek,
+                    onIsSoundPlaying: soundTransport.isPlaying,
                     onWidgetPatch: (elementId, patch) => {
                         applyWidgetRuntimePatch({
                             setWidgetPatchesByScope,

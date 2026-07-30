@@ -17,8 +17,8 @@ import {
     createDevModeBlueprintHostApi,
     type BlueprintGamePreferenceKey,
     type BlueprintGamePreferenceValue,
-    type BlueprintSoundPlayRequest,
-    type BlueprintSoundTransportRequest,
+    type BlueprintSoundPlayInput,
+    type CreateBlueprintHostApiRuntimeOptions,
     type DevModeWidgetRuntimePatch,
 } from "./BlueprintHostApiBridge";
 import {
@@ -171,9 +171,11 @@ function createHostApi(options?: {
     onSetGamePreference?: (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => Promise<void> | void;
     onCloseLayer?: () => Promise<void> | void;
     widgetRuntimeStore?: WidgetRuntimeStateStore;
-    onPlaySound?: (request: BlueprintSoundPlayRequest) => Promise<string | null> | string | null;
-    onSoundTransport?: (request: BlueprintSoundTransportRequest) => Promise<void> | void;
-    onIsSoundPlaying?: (handleId: string | null) => boolean;
+    onPlaySound?: CreateBlueprintHostApiRuntimeOptions["onPlaySound"];
+    onStopSound?: CreateBlueprintHostApiRuntimeOptions["onStopSound"];
+    onSetSoundVolume?: CreateBlueprintHostApiRuntimeOptions["onSetSoundVolume"];
+    onSeekSound?: CreateBlueprintHostApiRuntimeOptions["onSeekSound"];
+    onIsSoundPlaying?: CreateBlueprintHostApiRuntimeOptions["onIsSoundPlaying"];
 }) {
     return createDevModeBlueprintHostApi({
         document: options?.document ?? createDocument(),
@@ -204,7 +206,9 @@ function createHostApi(options?: {
         onGetGamePreference: options?.onGetGamePreference,
         onSetGamePreference: options?.onSetGamePreference,
         onPlaySound: options?.onPlaySound,
-        onSoundTransport: options?.onSoundTransport,
+        onStopSound: options?.onStopSound,
+        onSetSoundVolume: options?.onSetSoundVolume,
+        onSeekSound: options?.onSeekSound,
         onIsSoundPlaying: options?.onIsSoundPlaying,
         emit: () => undefined,
         onOpenSurface: options?.onOpenSurface ?? (() => undefined),
@@ -1420,85 +1424,59 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
 });
 
 /**
- * The sound family. Two rules carry the whole design and are easy to regress: an unrecognised
- * channel must still play something, and a host with no audio must not fail the graph.
+ * The sound family's transport half. `setVolume` doubles as the fade node, so its clamping and its
+ * duration are the two things a bad slider binding would break.
  */
-describe("createDevModeBlueprintHostApi sound", () => {
-    it("normalizes the request and hands back a handle", async () => {
-        const requests: BlueprintSoundPlayRequest[] = [];
+describe("createDevModeBlueprintHostApi sound transport", () => {
+    it("clamps the volume and passes the fade through", async () => {
+        const calls: unknown[] = [];
         const hostApi = createHostApi({
-            onPlaySound: request => {
-                requests.push(request);
-                return "sound_1";
-            },
+            onSetSoundVolume: (handle, volume, fadeMs) => void calls.push({ id: handle.id, volume, fadeMs }),
         });
 
-        const handle = await hostApi.sound.play({ assetId: "  a1  ", channel: "bgm", loop: true, volume: 2 });
+        await hostApi.sound.setVolume({ kind: "soundHandle", id: "s1" }, 2, 800);
+        await hostApi.sound.setVolume({ kind: "soundHandle", id: "s1" }, -1);
 
-        expect(handle).toEqual({ kind: "soundHandle", id: "sound_1" });
-        // Volume clamps rather than throws: 2 from a slider bound to the wrong range means "as loud
-        // as it goes", and a dead button is a worse answer than a loud one.
-        expect(requests[0]).toEqual({ assetId: "a1", channel: "bgm", loop: true, volume: 1, fadeMs: 0 });
+        // 2 from a slider bound to the wrong range means "as loud as it goes"; a dead control is the
+        // worse answer, so this clamps rather than throws.
+        expect(calls).toEqual([
+            { id: "s1", volume: 1, fadeMs: 800 },
+            { id: "s1", volume: 0, fadeMs: 0 },
+        ]);
     });
 
-    it("falls back to the effects channel for an unknown channel", async () => {
-        const requests: BlueprintSoundPlayRequest[] = [];
-        const hostApi = createHostApi({
-            onPlaySound: request => {
-                requests.push(request);
-                return "sound_1";
-            },
-        });
+    it("floors a negative seek at the start of the clip", async () => {
+        const calls: unknown[] = [];
+        const hostApi = createHostApi({ onSeekSound: (handle, timeMs) => void calls.push({ id: handle.id, timeMs }) });
 
-        await hostApi.sound.play({ assetId: "a1", channel: "rear-left" as never });
+        await hostApi.sound.seek({ kind: "soundHandle", id: "s1" }, -5);
+        await hostApi.sound.seek({ kind: "soundHandle", id: "s1" }, 30_000);
 
-        expect(requests[0]?.channel).toBe("sound");
+        expect(calls).toEqual([{ id: "s1", timeMs: 0 }, { id: "s1", timeMs: 30_000 }]);
     });
 
-    it("returns a null handle when the host has no audio", async () => {
+    it("stays silent rather than throwing when the host backs no audio", async () => {
         const hostApi = createHostApi({});
 
-        // The editor's surface preview. A Play Sound node has to run there, silently, or the author
-        // cannot test the rest of the graph.
-        await expect(hostApi.sound.play({ assetId: "a1", channel: "sound" })).resolves.toBeNull();
+        // The editor's surface preview. A graph built there has to run end to end.
+        await expect(hostApi.sound.play({ assetId: "a1", channel: "bgm", loop: true, volume: 1 }))
+            .resolves.toBeNull();
+        await expect(hostApi.sound.setVolume({ kind: "soundHandle", id: "s1" }, 0.5)).resolves.toBeUndefined();
+        await expect(hostApi.sound.seek({ kind: "soundHandle", id: "s1" }, 1000)).resolves.toBeUndefined();
     });
 
-    it("refuses a play with no asset", async () => {
-        const hostApi = createHostApi({ onPlaySound: () => "sound_1" });
-
-        await expect(hostApi.sound.play({ assetId: "   ", channel: "sound" })).rejects.toThrow(/audio asset/);
-    });
-
-    it("passes a null handle through to stop, but not to the other transports", async () => {
-        const requests: BlueprintSoundTransportRequest[] = [];
-        const hostApi = createHostApi({ onSoundTransport: request => void requests.push(request) });
-
-        await hostApi.sound.stop(null, 500);
-        await hostApi.sound.pause(null);
-        await hostApi.sound.resume(null);
-        await hostApi.sound.seek(null, 1000);
-
-        // Only Stop Sound reads "no handle" as "everything"; for the rest it is a graph that never
-        // captured one, where doing nothing beats guessing which track was meant.
-        expect(requests).toEqual([{ operation: "stop", handleId: null, fadeMs: 500 }]);
-    });
-
-    it("addresses a handle by its id", async () => {
-        const requests: BlueprintSoundTransportRequest[] = [];
+    it("hands the play request through untouched", async () => {
+        const seen: BlueprintSoundPlayInput[] = [];
         const hostApi = createHostApi({
-            onSoundTransport: request => void requests.push(request),
-            onIsSoundPlaying: handleId => handleId === "sound_7",
+            onPlaySound: input => {
+                seen.push(input);
+                return { kind: "soundHandle", id: "s7" };
+            },
         });
 
-        await hostApi.sound.setVolume({ kind: "soundHandle", id: "sound_7" }, 0.25, 800);
-        await hostApi.sound.seek({ kind: "soundHandle", id: "sound_7" }, 30_000);
+        const handle = await hostApi.sound.play({ assetId: "a1", channel: "bgm", loop: true, volume: 0.4 });
 
-        expect(requests).toEqual([
-            { operation: "setVolume", handleId: "sound_7", fadeMs: 800, volume: 0.25 },
-            { operation: "seek", handleId: "sound_7", timeMs: 30_000 },
-        ]);
-        expect(hostApi.sound.isPlaying({ kind: "soundHandle", id: "sound_7" })).toBe(true);
-        expect(hostApi.sound.isPlaying({ kind: "soundHandle", id: "sound_8" })).toBe(false);
-        expect(hostApi.sound.isPlaying(null)).toBe(false);
+        expect(handle).toEqual({ kind: "soundHandle", id: "s7" });
+        expect(seen[0]).toEqual({ assetId: "a1", channel: "bgm", loop: true, volume: 0.4 });
     });
 });

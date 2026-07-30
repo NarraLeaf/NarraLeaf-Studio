@@ -28,6 +28,7 @@ import type {
 } from "@shared/types/vcs";
 import type { WorkspaceFreezeReason } from "../../app/writeFreeze";
 import type { WorkspaceReloadCause, WorkspaceReloadResult } from "./core/WorkspaceReloadService";
+import type { DocumentSource } from "@shared/documents/documentSource";
 import { Asset, AssetsMap, AssetSource } from "./assets/types";
 import { ServiceRegistry } from "./serviceRegistry";
 import { AssetData, AssetType } from "./assets/assetTypes";
@@ -867,6 +868,8 @@ interface IPuppetDescriptionService extends IService {
     describeCharacter(characterId: string, options?: { refresh?: boolean }): Promise<PuppetDescriptionResult>;
     /** What is already in memory, for render paths that cannot await. Null means "ask, then re-render". */
     peek(request: PuppetDescriptionRequest): PuppetDescription | null;
+    /** The same look addressed by character - what the story editor holds. Null for a non-puppet, or for an answer not in yet. */
+    peekCharacter(characterId: string): PuppetDescription | null;
     invalidate(request?: PuppetDescriptionRequest): Promise<void>;
     onDescriptionChanged(handler: () => void): () => void;
 }
@@ -970,6 +973,14 @@ interface IVersionControlService extends IService {
     /** `includeKinds` costs one backend call per revision; leave it off unless kinds are shown. */
     getHistory(limit?: number, options?: { includeKinds?: boolean }): Promise<VcsHistoryEntry[]>;
     readBlob(revision: RevisionId, path: string): Promise<Uint8Array>;
+    /** Every document at one revision in one round trip; `null` = absent at that revision. */
+    readRevisionDocuments(revision: RevisionId, paths?: readonly string[]): Promise<Map<string, string | null>>;
+    /** Show a past revision in the real editors. Freezes first; awaitable because it may go to the network. */
+    showRevision(revision: RevisionId, label?: string): Promise<void>;
+    /** Leave a revision view: the working tree is read back in and writes are allowed again. */
+    showWorkingTree(): void;
+    /** The revision the editors are showing, or null for the working tree. */
+    getShownRevision(): RevisionId | null;
     getChangedPaths(from: RevisionId, to: RevisionId): Promise<string[]>;
     initRepository(options?: VcsInitOptions): Promise<VcsRepositoryInfo>;
     /** Flushes pending saves, stages, commits, and waits for durability. Throws on failure. */
@@ -993,6 +1004,13 @@ interface IVersionControlService extends IService {
 interface IWorkspaceFreezeService extends IService {
     /** Flushes what is owed, then stops project-data writes. */
     freeze(reason: WorkspaceFreezeReason): Promise<void>;
+    /**
+     * Freeze, then re-read every document out of a past revision. `thaw` comes back.
+     *
+     * Slow, and awaitable for that reason: the first read of a revision on a project with a remote
+     * goes to the network. Takes no checkpoint - browsing history has zero side effects.
+     */
+    showRevision(source: DocumentSource, label?: string): Promise<WorkspaceReloadResult>;
     thaw(): void;
     isFrozen(): boolean;
     /** Why the workspace is frozen, or null when it is not. */
@@ -1007,7 +1025,8 @@ interface IWorkspaceFreezeService extends IService {
  * the single place that names everything taking part.
  */
 interface IWorkspaceReloadService extends IService {
-    reload(cause: WorkspaceReloadCause): Promise<WorkspaceReloadResult>;
+    /** `source` defaults to the working tree, which is what every caller means unless it says so. */
+    reload(cause: WorkspaceReloadCause, source?: DocumentSource): Promise<WorkspaceReloadResult>;
     /** Bumped once per reload; the editor area keys its tabs on it so each re-resolves its subject. */
     getGeneration(): number;
     onReloaded(handler: (result: WorkspaceReloadResult) => void): () => void;

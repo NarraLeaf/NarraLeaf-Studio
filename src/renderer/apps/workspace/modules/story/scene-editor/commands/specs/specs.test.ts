@@ -29,6 +29,17 @@ const CONTEXT: StoryCommandContext = {
     ],
     appearanceByCharacterId: { c1: [{ id: "t1", name: "smile" }, { id: "t2", name: "angry" }], c2: [] },
     puppetCharacterIds: ["c2"],
+    // Doll's model has described itself. A name off these lists still resolves and still builds - the
+    // list is what the editor OFFERS, never a gate, because the same project opened on a machine with
+    // no runtime installed has no list at all and must stay writable.
+    puppetByCharacterId: {
+        c2: {
+            motions: ["run", "walk", "idle"],
+            expressions: ["smile", "angry"],
+            skins: ["winter", "summer"],
+            params: [{ id: "ParamAngleX", min: -30, max: 30, default: 0 }],
+        },
+    },
     stageObjects: { image: ["hero"], text: ["title"], layer: ["overlay"], video: ["clip"], audio: ["music"], vfx: ["petals"] },
 };
 
@@ -217,14 +228,38 @@ describe("puppet state channels", () => {
     it("refuses a character Studio draws itself, on the slot that is actually wrong", () => {
         expect(issuesOf("/motion Alice run")).toEqual(["notPuppetCharacter"]);
         expect(issuesOf("/skin Alice winter")).toEqual(["notPuppetCharacter"]);
+        expect(issuesOf("/param Alice ParamAngleX 12")).toEqual(["notPuppetCharacter"]);
     });
 
-    it("gives the escape-hatch end no token at all", () => {
+    it("writes a parameter row as a map, because one gesture is several parameters", () => {
+        // The engine's `setParam` merges, so N entries from one row are exactly the row's intent - and
+        // a head turn is three parameters, which one-pair-per-row would have made three rows of.
+        expect(build("/param Doll ParamAngleX 12")).toMatchObject({
+            kind: "action",
+            payload: { action: "character", operation: "setParams", characterId: "c2", params: { ParamAngleX: 12 } },
+        });
+        // Negative and fractional values reach the payload intact: a rig parameter is continuous, and
+        // its range is the model's (`-30…30` here), not a 0-1 convention.
+        expect(build("/param Doll ParamAngleX -7.5")).toMatchObject({ payload: { params: { ParamAngleX: -7.5 } } });
+        // No transform, no transition, no stage name: like its three siblings, it addresses the inside.
+        expect(build("/param Doll ParamAngleX 12").payload).not.toHaveProperty("transform");
+    });
+
+    it("requires the id and the value, because a parameter has no meaningful clear", () => {
+        // `/motion Doll` is a legal line - it clears the channel. A parameter's absent key means "keep
+        // the model's own default", so a row naming an id with no value would ask for nothing at all.
+        expect(getCommandSpec("param")?.params.id.core).toBe(true);
+        expect(getCommandSpec("param")?.params.value.core).toBe(true);
+    });
+
+    it("still gives the unlistable end no token at all", () => {
         // `PuppetDescription` enumerates motions, expressions, skins and params - never slots, never
-        // commands - so a line for those would be free text pretending to be a command. Params are an
-        // id plus a continuous number: the inspector's, the way /vfx left blend mode to it.
+        // commands. `param` earned its token when `describe()` landed and gave it a shape (an id from a
+        // list, a number inside the model's own range). A slot has no bounds and a command's name plus
+        // payload belong to the backend, so both would still be free text pretending to be a command.
+        // They unblock the same way params did: a list to pick from.
         const tokens = listCommandSpecs().flatMap(spec => [spec.token, ...(spec.aliases ?? [])]);
-        for (const forbidden of ["param", "slot", "cmd", "command", "puppet"]) {
+        for (const forbidden of ["slot", "cmd", "command", "puppet"]) {
             expect(tokens, forbidden).not.toContain(forbidden);
         }
     });

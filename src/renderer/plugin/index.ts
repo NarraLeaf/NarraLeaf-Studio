@@ -152,6 +152,36 @@ export type PluginApp = {
     privileged: BoundPrivilegedFacade;
 };
 
+/** One story in the project, as a plugin panel sees it. */
+export type PluginStoryEntry = {
+    id: string;
+    name: string;
+};
+
+/** One scene of a story, in the author's own document order. */
+export type PluginSceneEntry = {
+    id: string;
+    name: string;
+    storyId: string;
+};
+
+/**
+ * One voice line the project has recorded, for a plugin that curates spoken
+ * content (a voice EXTRA list). Keyed by `unitId`, which is the story line's
+ * `textId` - the same key the translation table and the engine's voiceId use, so
+ * a plugin storing the unit id needs no asset id of its own.
+ */
+export type PluginVoiceUnitEntry = {
+    unitId: string;
+    /** Voice language this take belongs to. */
+    locale: string;
+    /** The line as it currently reads, for the author to recognise it. */
+    text: string;
+    /** Speaker name when the line has one. */
+    character: string | null;
+    durationSec: number | null;
+};
+
 export type PluginStorageService = {
     readJson<T extends Record<string, any>>(namespace: string): Promise<T | null>;
     writeJson<T extends Record<string, any>>(namespace: string, data: T): Promise<void>;
@@ -283,6 +313,17 @@ export type PluginServices = {
         has(type: string): boolean;
     };
     story: {
+        /**
+         * Read-only project catalogue, for a plugin panel that has to let the
+         * author point at a story location - a recollection entry naming the
+         * scene it replays, an achievement naming where it unlocks.
+         *
+         * Read-only on purpose: creating and editing stories stays with Studio.
+         * `listScenes` needs the story document, so it awaits a load; the
+         * story list itself is already in memory.
+         */
+        listStories(): PluginStoryEntry[];
+        listScenes(storyId: string): Promise<PluginSceneEntry[]>;
         actions: {
             /**
              * Register a scene-editor palette action (shown under the Plugin
@@ -294,6 +335,14 @@ export type PluginServices = {
             register(registration: StoryPluginActionRegistration): PluginCleanup;
             registerMany(registrations: StoryPluginActionRegistration[]): PluginCleanup;
         };
+    };
+    /**
+     * Read-only view of the project's recorded voice, for a plugin that curates
+     * spoken content. Absent tables (a project with no voice set up) read as an
+     * empty list rather than throwing.
+     */
+    voice: {
+        listUnits(localeCode?: string): Promise<PluginVoiceUnitEntry[]>;
     };
     blueprintNodes: {
         /** Session-persistent: returns `void` (node defs cannot be removed once registered). */

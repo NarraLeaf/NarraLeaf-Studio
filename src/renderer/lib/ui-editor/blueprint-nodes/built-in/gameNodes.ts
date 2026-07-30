@@ -13,6 +13,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_CLEAR_TEXT_READ,
     BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE,
     BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ,
+    BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ_BY_ID,
     BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED,
@@ -90,6 +91,24 @@ const saveScreenshotIn: BlueprintNodePinDef = {
     optional: true,
     allowInlineLiteral: true,
 };
+/**
+ * Optional runtime overrides for Start Game's target.
+ *
+ * Without these the scene can only be chosen from a dropdown at author time,
+ * which makes a data-driven launcher impossible: a recollection list knows which
+ * scene to replay only when the player clicks a row. The picker stays for the
+ * hand-authored case ("New Game" starts chapter one), and a wired pin wins over
+ * it - the same precedence the gallery's own artwork pins use.
+ *
+ * `startBlockId` narrows the launch to one row; the host's start-story request
+ * already carries it (row-precise "play from here").
+ */
+const startStoryTargetPins: BlueprintNodePinDef[] = [
+    { id: "storyId", kind: "input", semantic: "data", valueType: "string", label: "Story Id", optional: true },
+    { id: "sceneId", kind: "input", semantic: "data", valueType: "string", label: "Scene Id", optional: true },
+    { id: "startBlockId", kind: "input", semantic: "data", valueType: "string", label: "From Row", optional: true },
+];
+
 const sentenceCpsIn: BlueprintNodePinDef = {
     id: "cps",
     kind: "input",
@@ -287,6 +306,23 @@ function createPreferenceDataPin(meta: GamePreferenceNodeMeta, kind: "input" | "
         pin.allowInlineLiteral = true;
     }
     return pin;
+}
+
+/** Wired pin wins over the inspector picker; see startStoryTargetPins. */
+function resolveStartStoryTarget(
+    ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0],
+    key: "storyId" | "sceneId" | "startBlockId",
+): string {
+    const wired = resolveDataPinValue(ctx.graph, ctx.node.id, key, ctx.params, ctx.blueprintLocals, 0, {
+        hostAdapter: ctx.hostAdapter,
+        eventPayload: ctx.eventPayload,
+        listItemScope: ctx.listItemScope,
+        instanceKey: ctx.instanceKey,
+        executionOwner: ctx.executionOwner,
+    });
+    const fromPin = typeof wired === "string" ? wired.trim() : "";
+    // `startBlockId` has no picker, so params never supplies it.
+    return fromPin || (key === "startBlockId" ? "" : String(ctx.params[key] ?? "").trim());
 }
 
 function resolveSaveId(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0]): string {
@@ -759,6 +795,51 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         },
     },
     {
+        type: BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ_BY_ID,
+        displayName: "Has Read Text",
+        category: "Game",
+        keywords: ["game", "text", "read", "heard", "seen", "voice", "line", "extra", "unlock", "id", "nlr"],
+        graphKinds: ["event", "function", "macro"],
+        // Pure, so a voice EXTRA list item can bind its locked look directly
+        // instead of running a graph per row.
+        isPure: true,
+        isLatent: false,
+        pins: [
+            {
+                id: "textId",
+                kind: "input",
+                semantic: "data",
+                valueType: "string",
+                label: "Text Id",
+                allowInlineLiteral: true,
+            },
+            {
+                id: "isRead",
+                kind: "output",
+                semantic: "data",
+                valueType: "boolean",
+                label: "Has Read",
+            },
+        ],
+        execute(ctx) {
+            const wired = resolveDataPinValue(ctx.graph, ctx.node.id, "textId", ctx.params, ctx.blueprintLocals, 0, {
+                hostAdapter: ctx.hostAdapter,
+                eventPayload: ctx.eventPayload,
+                listItemScope: ctx.listItemScope,
+                instanceKey: ctx.instanceKey,
+                executionOwner: ctx.executionOwner,
+            });
+            const textId = String(wired ?? "").trim();
+            return {
+                outputValues: {
+                    // An empty id is "not read" rather than an error: a row whose
+                    // voice unit was never picked simply stays locked.
+                    isRead: textId ? requireHostApi(ctx).game.isTextRead(textId) : false,
+                },
+            };
+        },
+    },
+    {
         type: BLUEPRINT_NODE_TYPE_GAME_CLEAR_TEXT_READ,
         displayName: "Clear Text Read",
         category: "Game",
@@ -809,11 +890,13 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_GAME_START_STORY,
         displayName: "Start Game",
         category: "Game",
+        // See startStoryTargetPins: the optional pins are what let a data-driven
+        // screen (a recollection list) choose the scene at runtime.
         keywords: ["game", "start", "story", "scene", "nlr", "preview"],
         graphKinds: [...GRAPH_KINDS],
         isPure: false,
         isLatent: true,
-        pins: [execIn],
+        pins: [execIn, ...startStoryTargetPins],
         inspectorParams: [
             {
                 key: "storyId",
@@ -833,15 +916,20 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             },
         ],
         async execute(ctx) {
-            const storyId = String(ctx.params.storyId ?? "").trim();
-            const sceneId = String(ctx.params.sceneId ?? "").trim();
+            const storyId = resolveStartStoryTarget(ctx, "storyId");
+            const sceneId = resolveStartStoryTarget(ctx, "sceneId");
+            const startBlockId = resolveStartStoryTarget(ctx, "startBlockId");
             if (!storyId) {
-                throw new BlueprintGraphExecutionError("Pick a Story", ctx.node.id);
+                throw new BlueprintGraphExecutionError("Pick a Story, or wire a Story Id", ctx.node.id);
             }
             if (!sceneId) {
-                throw new BlueprintGraphExecutionError("Pick a Scene", ctx.node.id);
+                throw new BlueprintGraphExecutionError("Pick a Scene, or wire a Scene Id", ctx.node.id);
             }
-            await requireHostApi(ctx).game.startStory({ storyId, sceneId });
+            await requireHostApi(ctx).game.startStory({
+                storyId,
+                sceneId,
+                ...(startBlockId ? { startBlockId } : {}),
+            });
             return { nextPort: undefined };
         },
     },

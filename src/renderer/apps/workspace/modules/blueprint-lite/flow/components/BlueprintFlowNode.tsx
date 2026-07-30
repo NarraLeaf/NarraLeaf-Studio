@@ -172,23 +172,21 @@ function useImageAssetDisplayName(assetId: string | null): string | null {
 }
 
 /**
- * The audio picker on a node card.
- *
- * Deliberately a plain row rather than the image picker's thumbnail card: a sound has nothing to show,
- * and the one fact worth surfacing is whether the author marked in/out points on it — that is the
- * difference between a track that loops its body and one that loops the whole file, and it is decided
- * somewhere else entirely (the asset manager's audio preview).
- *
- * Stores a bare asset id string, matching the `assetId` pin the same node accepts when wired.
+ * Audio has no thumbnail, so its picker is a name row rather than the image
+ * card below. Stores a bare asset-id string: unlike images there is no existing
+ * envelope wire format for audio to match.
  */
-function AudioAssetPickerCard({
+function AudioAssetPickerRow({
     value,
     onChange,
+    disabled = false,
 }: {
     value: unknown;
-    onChange?: (value: string | null) => void;
+    onChange?: (assetId: string | null) => void;
+    disabled?: boolean;
 }) {
     const { t } = useTranslation();
+    const assetId = typeof value === "string" && value.trim() ? value.trim() : null;
     const [selectorOpen, setSelectorOpen] = useState(false);
     const anchorRef = useRef<HTMLButtonElement | null>(null);
     let context: ReturnType<typeof useWorkspace>["context"] | null = null;
@@ -197,19 +195,17 @@ function AudioAssetPickerCard({
     } catch {
         context = null;
     }
-    const assetId = typeof value === "string"
-        ? value.trim() || null
-        : typeof (value as { assetId?: unknown } | null)?.assetId === "string"
-            ? String((value as { assetId: string }).assetId).trim() || null
-            : null;
     const asset = useMemo(() => {
         if (!assetId || !context) {
             return null;
         }
         return context.services.get<AssetsService>(Services.Assets).getAssets()[AssetType.Audio]?.[assetId] ?? null;
     }, [assetId, context]);
-    const region = normalizeAudioClipRegion(asset?.extras);
-    const label = asset?.name ?? (assetId ? t("blueprint.audio.missing") : t("blueprint.audio.select"));
+    const assetName = asset?.name ?? null;
+    // Whether the author marked in/out points on this clip decides whether Loop loops the body or
+    // the whole file - and it is decided somewhere else entirely (the asset manager's audio preview),
+    // so the node has to say which it is.
+    const marked = normalizeAudioClipRegion(asset?.extras) !== null;
 
     return (
         <div
@@ -217,51 +213,52 @@ function AudioAssetPickerCard({
             onMouseDown={stopFlowNodePointerBubble}
             onPointerDown={stopFlowNodePointerBubble}
         >
-            <div className="flex min-w-0 gap-1">
-                <button
-                    ref={anchorRef}
-                    type="button"
-                    className="flex h-6 min-w-0 flex-1 items-center gap-1 rounded-md border border-edge bg-surface px-1.5 text-left hover:border-primary/35 hover:bg-fill-subtle"
-                    title={assetId ? `${label} (${assetId})` : t("blueprint.audio.select")}
-                    onClick={e => {
-                        e.stopPropagation();
-                        setSelectorOpen(true);
-                    }}
-                >
-                    <Music className="h-3 w-3 shrink-0 text-fg-subtle" aria-hidden />
-                    <span className={`truncate text-2xs ${asset ? "text-fg" : "text-fg-subtle italic"}`}>{label}</span>
-                    {region ? (
-                        <span className="ml-auto shrink-0 rounded bg-fill-subtle px-1 text-2xs text-fg-subtle">
-                            {t("blueprint.audio.marked")}
-                        </span>
-                    ) : null}
-                </button>
-                {assetId ? (
-                    <button
-                        type="button"
-                        className="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-edge bg-surface text-fg-subtle hover:border-danger/40 hover:text-danger"
-                        title={t("blueprint.audio.clear")}
-                        aria-label={t("blueprint.audio.clear")}
-                        onClick={e => {
-                            e.stopPropagation();
+            <button
+                ref={anchorRef}
+                type="button"
+                disabled={disabled}
+                title={assetName ?? undefined}
+                className={`flex w-full min-w-0 items-center gap-1.5 rounded-md border border-edge bg-surface px-2 py-1 text-left text-2xs ${
+                    disabled ? "cursor-default opacity-80" : "hover:border-primary/35 hover:bg-fill-subtle"
+                }`}
+                onClick={() => setSelectorOpen(true)}
+            >
+                <Music size={11} className="shrink-0 text-fg-subtle" />
+                <span className={`min-w-0 flex-1 truncate ${assetId ? "text-fg" : "text-fg-subtle"}`}>
+                    {assetId
+                        ? assetName ?? t("blueprint.image.missing")
+                        : t("blueprint.image.select")}
+                </span>
+                {marked && (
+                    <span className="shrink-0 rounded bg-fill-subtle px-1 text-2xs text-fg-subtle">
+                        {t("blueprint.audio.marked")}
+                    </span>
+                )}
+                {assetId && !disabled && (
+                    <span
+                        role="button"
+                        tabIndex={-1}
+                        aria-label={t("common.clear")}
+                        className="shrink-0 text-fg-subtle hover:text-danger"
+                        onClick={event => {
+                            event.stopPropagation();
                             onChange?.(null);
                         }}
                     >
-                        <X className="h-3 w-3" aria-hidden />
-                    </button>
-                ) : null}
-            </div>
+                        <X size={10} />
+                    </span>
+                )}
+            </button>
             <AssetSelector
                 visible={selectorOpen}
                 assetType={AssetType.Audio}
-                selectedIds={assetId ? [assetId] : []}
-                anchorRef={anchorRef}
-                title={t("blueprint.audio.selectTitle")}
                 multiple={false}
+                anchorRef={anchorRef}
+                selectedIds={assetId ? [assetId] : []}
                 onClose={() => setSelectorOpen(false)}
                 onConfirm={assets => {
-                    setSelectorOpen(false);
                     onChange?.(assets[0]?.id ?? null);
+                    setSelectorOpen(false);
                 }}
             />
         </div>
@@ -1363,7 +1360,7 @@ function InspectorParamOnCard({
             ) : spec.kind === "imageAsset" ? (
                 <ImageAssetPickerCard value={raw} onChange={v => onPatchNodeParam(nodeId, spec.key, v)} />
             ) : spec.kind === "audioAsset" ? (
-                <AudioAssetPickerCard value={raw} onChange={v => onPatchNodeParam(nodeId, spec.key, v)} />
+                <AudioAssetPickerRow value={raw} onChange={v => onPatchNodeParam(nodeId, spec.key, v)} />
             ) : spec.kind === "keyboardBinding" ? (
                 <KeyboardBindingCardControl value={raw} onChange={v => onPatchNodeParam(nodeId, spec.key, v)} />
             ) : spec.kind === "buttonCursor" ? (
