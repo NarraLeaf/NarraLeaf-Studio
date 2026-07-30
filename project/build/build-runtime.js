@@ -62,6 +62,10 @@ function runtimeAliasPlugin() {
             shim('useEditorFontFamily.ts'),
         ],
         [
+            '@/lib/workspace/hooks/useSurfacePuppetSession',
+            shim('useSurfacePuppetSession.ts'),
+        ],
+        [
             '@/apps/workspace/modules/properties/framework/utils/colorUtils',
             shim('colorUtils.ts'),
         ],
