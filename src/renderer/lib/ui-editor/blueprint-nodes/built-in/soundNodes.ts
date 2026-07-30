@@ -20,6 +20,8 @@ import {
     BLUEPRINT_NODE_TYPE_SOUND_PAUSE,
     BLUEPRINT_NODE_TYPE_SOUND_PLAY,
     BLUEPRINT_NODE_TYPE_SOUND_RESUME,
+    BLUEPRINT_NODE_TYPE_SOUND_SEEK,
+    BLUEPRINT_NODE_TYPE_SOUND_SET_VOLUME,
     BLUEPRINT_NODE_TYPE_SOUND_STOP,
 } from "@shared/types/blueprint/graph";
 import {
@@ -104,6 +106,16 @@ const fadeIn: BlueprintNodePinDef = {
     valueType: "integer",
     label: "Fade (ms)",
     optional: true,
+    allowInlineLiteral: true,
+};
+
+/** Where to move the play head, measured from the start of the file rather than from the in point. */
+const timeIn: BlueprintNodePinDef = {
+    id: "timeMs",
+    kind: "input",
+    semantic: "data",
+    valueType: "integer",
+    label: "Time (ms)",
     allowInlineLiteral: true,
 };
 
@@ -247,6 +259,44 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
         pins: [execIn, handleIn, execNext],
         async execute(ctx) {
             await requireHostApi(ctx).sound.resume(requireHandle(ctx, "Resume Sound"));
+            return { nextPort: "next" };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_SOUND_SET_VOLUME,
+        displayName: "Set Sound Volume",
+        category: "Sound",
+        keywords: ["sound", "audio", "volume", "fade", "duck", "music", "bgm", "level", "quieter"],
+        graphKinds: [...SOUND_GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        // Volume and fade in one node, so this is also the fade: "duck the music over a second" and
+        // "set it to 0.3" are the same request with a different duration, and a separate Fade Sound
+        // would just be this node with one pin pre-filled.
+        pins: [execIn, handleIn, volumeIn, fadeIn, execNext],
+        async execute(ctx) {
+            await requireHostApi(ctx).sound.setVolume(
+                requireHandle(ctx, "Set Sound Volume"),
+                readOptionalNumber(readPin(ctx, "volume")) ?? 1,
+                readOptionalNumber(readPin(ctx, "fadeMs")) ?? 0,
+            );
+            return { nextPort: "next" };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_SOUND_SEEK,
+        displayName: "Seek Sound",
+        category: "Sound",
+        keywords: ["sound", "audio", "seek", "position", "jump", "skip", "scrub", "music", "bgm"],
+        graphKinds: [...SOUND_GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [execIn, handleIn, timeIn, execNext],
+        async execute(ctx) {
+            await requireHostApi(ctx).sound.seek(
+                requireHandle(ctx, "Seek Sound"),
+                readOptionalNumber(readPin(ctx, "timeMs")) ?? 0,
+            );
             return { nextPort: "next" };
         },
     },

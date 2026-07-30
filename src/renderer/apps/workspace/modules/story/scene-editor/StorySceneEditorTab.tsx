@@ -940,11 +940,21 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         // snapshot (and so `editor.scene`/`editor.document` identity) every keystroke, so gating on the
         // selected block's payload keeps the panel from re-rendering on unrelated typing. The panel also
         // draws the speaker dropdown from `characters`, the jump-target dropdown from the scene list, and
-        // — with no row selected — the scene's own name/description/background, so all four are in the
-        // signature. `characters` re-identifies only on a character edit, and the two string signatures
-        // read ids/names only, so they stay stable under row typing while catching real edits.
+        // — with no row selected — the scene's own name/description/background/music, so all four are in
+        // the signature. `characters` re-identifies only on a character edit, and the two string
+        // signatures read ids/names only, so they stay stable under row typing while catching real edits.
+        //
+        // EVERY scene field the rail renders has to appear in `sceneMeta`, and the music record is why
+        // that is load-bearing rather than an optimisation: its control patches one field at a time on
+        // top of the record it was rendered with, so a scene field missing here does not merely render
+        // stale - the next edit to a sibling field writes the stale value back and drops the first edit.
         const sceneList = Object.values(storyDocument.scenes).map(entry => `${entry.id}:${entry.name}`).join("|");
-        const sceneMeta = JSON.stringify([scene.name, scene.description ?? "", scene.defaultBackgroundAssetId ?? ""]);
+        const sceneMeta = JSON.stringify([
+            scene.name,
+            scene.description ?? "",
+            scene.defaultBackgroundAssetId ?? "",
+            scene.bgm ?? null,
+        ]);
         // A block's payload is a fresh object on every edit to it (updateBlockPayload reassigns) and is
         // untouched by edits to other rows, so its reference is a cheap version token.
         const sig = { blockId, payload: block?.payload ?? null, characters: editor.characters, sceneList, sceneMeta };

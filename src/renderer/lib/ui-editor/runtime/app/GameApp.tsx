@@ -98,6 +98,7 @@ import {
     fastForwardToNextChoice,
     restoreLiveGameToHistory,
 } from "./gameUiSlots";
+import { audioClipRegionToSoundConfig } from "@shared/types/audio";
 import { createSoundTransport } from "./soundTransport";
 
 /**
@@ -693,14 +694,17 @@ export function GameApp(props: GameAppProps): ReactNode {
     const soundTransport = useMemo(() => createSoundTransport({
         getLiveGame: () => nlrLiveGameRef.current,
         resolveAssetUrl: (assetId, assetType) => host.resolveStoryAssetUrl(assetId, assetType),
-        createSound: ({ src, channel, loop, volume }) => new Sound({
+        // The in/out points the author marked on the asset apply here exactly as they do in a story
+        // row, so a music page loops a track's body rather than the whole file.
+        createSound: ({ src, channel, loop, volume, assetId }) => new Sound({
             src,
             type: BLUEPRINT_CHANNEL_TO_SOUND_TYPE[channel],
             loop,
             volume,
+            ...audioClipRegionToSoundConfig(bundle.audio?.clips?.[assetId]),
         }),
         log: (level, message) => host.log(level, message),
-    }), [host]);
+    }), [bundle, host]);
 
     useEffect(() => () => soundTransport.dispose(), [soundTransport]);
 
@@ -1438,6 +1442,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             onStopSound: soundTransport.stop,
             onPauseSound: soundTransport.pause,
             onResumeSound: soundTransport.resume,
+            onSetSoundVolume: soundTransport.setVolume,
+            onSeekSound: soundTransport.seek,
             onIsSoundPlaying: soundTransport.isPlaying,
             onWidgetPatch: (elementId, patch) => {
                 applyWidgetRuntimePatch({
@@ -1685,6 +1691,8 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onStopSound: soundTransport.stop,
                     onPauseSound: soundTransport.pause,
                     onResumeSound: soundTransport.resume,
+                    onSetSoundVolume: soundTransport.setVolume,
+                    onSeekSound: soundTransport.seek,
                     onIsSoundPlaying: soundTransport.isPlaying,
                     onWidgetPatch: (elementId, patch) => {
                         applyWidgetRuntimePatch({

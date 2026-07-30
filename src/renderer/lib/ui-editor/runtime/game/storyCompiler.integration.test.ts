@@ -2564,3 +2564,177 @@ describe("puppet characters", () => {
         expect([...compiled.avatarAssetIdByUrl]).toContainEqual(["nlr://asset-avatar", "asset-avatar"]);
     });
 });
+
+/**
+ * Audio: the scene's own track, and the in/out points an author marked on the asset.
+ *
+ * The markers only reach playback through the `audioClips` table, so "the marker did nothing" is the
+ * failure these guard - and it is the failure that shipped before this table existed.
+ */
+describe("story audio", () => {
+    function bgmRow(id: string, assetId: string, extra: Record<string, unknown> = {}): Record<string, StoryBlock> {
+        return {
+            [id]: {
+                id,
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "audio", operation: "setBgm", assetId, ...extra } as StoryActionPayload,
+            },
+        };
+    }
+
+    it("plays the scene's configured music from its own init, with the marked loop region", async () => {
+        const document = baseDocument({ say: narrationBlock("say", "text-say", "Quiet.") }, ["say"]);
+        document.scenes["scene-1"].bgm = { assetId: "asset-theme", volume: 0.5, fadeMs: 1500 };
+        const calls: string[] = [];
+
+        const compiled = await compileStudioStoryToNlr({
+            document,
+            sceneId: "scene-1",
+            audioClips: { "asset-theme": { inMs: 4200, outMs: 92500 } },
+            resolveAssetUrl: async (assetId, assetType) => {
+                calls.push(`${assetType}:${assetId}`);
+                return `nlr://${assetId}`;
+            },
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(calls).toEqual(["audio:asset-theme"]);
+        // Scene *config*, not a leading statement: the engine plays it during the scene's init, so it
+        // is already going when the first row runs and it survives a load into mid-scene.
+        const music = (compiled.scene as any).state.backgroundMusic;
+        expect(music.config.src).toBe("nlr://asset-theme");
+        expect(music.config.seek).toBe(4.2);
+        expect(music.config.endTime).toBe(92.5);
+        // Loop defaults on, which is also what makes the region a loop region rather than a hard stop.
+        expect(music.config.loop).toBe(true);
+        expect(music.state.volume).toBe(0.5);
+        expect((compiled.scene as any).config.backgroundMusicFade).toBe(1500);
+    });
+
+    it("leaves a scene with no configured music alone", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ say: narrationBlock("say", "text-say", "Quiet.") }, ["say"]),
+            sceneId: "scene-1",
+        });
+
+        // Absent means "keep whatever is playing", which is how a story that switches music with
+        // /bgm rows has always behaved.
+        expect((compiled.scene as any).state.backgroundMusic).toBeNull();
+    });
+
+    it("folds the marked region into a /bgm row", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(bgmRow("music", "asset-theme", { fadeMs: 800 }), ["music"]),
+            sceneId: "scene-1",
+            audioClips: { "asset-theme": { inMs: 1000, outMs: 60000 } },
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        const sound = compiled.sceneElements?.["scene-1"].sounds.get("bgm");
+        expect((sound as any)?.config.seek).toBe(1);
+        expect((sound as any)?.config.endTime).toBe(60);
+    });
+
+    it("plays an unmarked clip whole", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(bgmRow("music", "asset-theme"), ["music"]),
+            sceneId: "scene-1",
+            audioClips: { "asset-other": { inMs: 1000, outMs: 60000 } },
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        const sound = compiled.sceneElements?.["scene-1"].sounds.get("bgm");
+        expect((sound as any)?.config.seek).toBe(0);
+        // Present-but-undefined would read as "there is an out point here" to the engine's region check.
+        expect((sound as any)?.config.endTime).toBeUndefined();
+    });
+
+    it("trims a sound effect with the same markers", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                se: {
+                    id: "se",
+                    kind: "action",
+                    parentId: null,
+                    childrenIds: [],
+                    payload: { action: "audio", operation: "playSound", objectName: "impact", assetId: "asset-hit" },
+                },
+            }, ["se"]),
+            sceneId: "scene-1",
+            audioClips: { "asset-hit": { inMs: 120, outMs: 500 } },
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        // One region per asset, applied wherever the asset is played - asking the author to mark it
+        // again per row would be a second source of truth.
+        const sound = compiled.sceneElements?.["scene-1"].sounds.get("impact");
+        expect((sound as any)?.config.seek).toBe(0.12);
+        expect((sound as any)?.config.endTime).toBe(0.5);
+    });
+
+    it("lets the sound-control family address a scene's own music", async () => {
+        const document = baseDocument({
+            quieter: {
+                id: "quieter",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "audio", operation: "setVolume", objectName: "bgm", volume: 0.3, fadeMs: 500 },
+            },
+        }, ["quieter"]);
+        document.scenes["scene-1"].bgm = { assetId: "asset-theme" };
+
+        const compiled = await compileStudioStoryToNlr({
+            document,
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        // The reserved name has to be pre-registered, or `/vol 0.5` answers "no background music is
+        // set" on the one scene that definitely has some - the whole point of configuring it.
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiled.sceneElements?.["scene-1"].sounds.get("bgm")).toBe(
+            (compiled.scene as any).state.backgroundMusic,
+        );
+    });
+
+    it("still warns when a control row addresses music no scene or row set", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                quieter: {
+                    id: "quieter",
+                    kind: "action",
+                    parentId: null,
+                    childrenIds: [],
+                    payload: { action: "audio", operation: "setVolume", objectName: "bgm", volume: 0.3 },
+                },
+            }, ["quieter"]),
+            sceneId: "scene-1",
+        });
+
+        expect(compiled.diagnostics.some(entry => /No background music is set/.test(entry.message))).toBe(true);
+    });
+
+    it("compiles /seek on a sound as a play-head move in seconds", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                ...bgmRow("music", "asset-theme"),
+                jump: {
+                    id: "jump",
+                    kind: "action",
+                    parentId: null,
+                    childrenIds: [],
+                    payload: { action: "audio", operation: "seekSound", objectName: "bgm", timeMs: 30000 },
+                },
+            }, ["music", "jump"]),
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiled.actionIdBindings.map(binding => binding.blockId)).toEqual(["music", "jump"]);
+    });
+});

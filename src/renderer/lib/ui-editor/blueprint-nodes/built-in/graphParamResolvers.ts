@@ -102,7 +102,6 @@ import {
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
     BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN,
     BLUEPRINT_NODE_TYPE_SOUND_IS_PLAYING,
-    BLUEPRINT_NODE_TYPE_SOUND_PLAY,
     BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_FN_HEAD,
     BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD,
@@ -219,6 +218,7 @@ import {
     BLUEPRINT_NODE_TYPE_STRING_TRIM_START,
     BLUEPRINT_NODE_TYPE_SAVED_GET,
     BLUEPRINT_NODE_TYPE_SCENE_GET,
+    BLUEPRINT_NODE_TYPE_SOUND_PLAY,
     BLUEPRINT_NODE_TYPE_SLIDER_GET_NORMALIZED_VALUE,
     BLUEPRINT_NODE_TYPE_SLIDER_GET_RANGE,
     BLUEPRINT_NODE_TYPE_SLIDER_GET_VALUE,
@@ -2405,6 +2405,11 @@ function resolveSelfOutput(
             portId === "hasAutoSave" ||
             portId === "timestamp")
     ) {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
+    // Play Sound hands its handle to the transport nodes that follow, so the handle has to survive
+    // the hop through the node output store the same way an animation token does.
+    if (selfNode.type === BLUEPRINT_NODE_TYPE_SOUND_PLAY && portId === "handle") {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }
     // Animate Property hands the token it minted to a later Stop Animation, so the
