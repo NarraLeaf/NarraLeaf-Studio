@@ -43,7 +43,7 @@ function artwork(overrides: Partial<GalleryArtwork> = {}): GalleryArtwork {
 
 function storeOf(overrides: Partial<GalleryStoreData> = {}): GalleryStoreData {
     return normalizeGalleryStore({
-        version: 3,
+        version: 4,
         groups: [],
         items: [],
         settings: { lockedImageAssetId: null, lockedNameMask: DEFAULT_LOCKED_NAME_MASK },
@@ -231,7 +231,7 @@ describe("normalizeGalleryStore", () => {
     it("defaults a v1/v2 store to no groups, no placeholder and the standard mask", () => {
         const store = normalizeGalleryStore({ version: 2, items: [LEGACY_ITEM] });
 
-        expect(store.version).toBe(3);
+        expect(store.version).toBe(4);
         expect(store.groups).toEqual([]);
         expect(store.settings).toEqual({
             lockedImageAssetId: null,
@@ -438,5 +438,150 @@ describe("computeGalleryStats", () => {
 
     it("reports 0% rather than dividing by zero on an empty gallery", () => {
         expect(computeGalleryStats(storeOf(), new Set()).percent).toBe(0);
+    });
+});
+
+describe("v4 kinds", () => {
+    const track = artwork({
+        id: "album",
+        name: "OST",
+        kind: "music",
+        variants: [
+            {
+                id: "album.v.1",
+                name: "Opening Theme",
+                imageAssetId: null,
+                audioAssetId: "asset-mp3",
+                audioAssetName: "opening.mp3",
+                durationSec: 154.5,
+            },
+        ],
+    });
+    const recollection = artwork({
+        id: "recall",
+        name: "The Confession",
+        kind: "scene",
+        variants: [{ id: "recall.v.1", name: "Cover", imageAssetId: "asset-shot" }],
+        scene: { storyId: "story-1", sceneId: "scene-7", startBlockId: "block-3" },
+    });
+    const line = artwork({
+        id: "vo",
+        name: "Nattou",
+        kind: "voice",
+        variants: [{
+            id: "vo.v.1",
+            name: "Greeting",
+            imageAssetId: null,
+            voiceUnitId: "text-uuid-1",
+            lineText: "Good morning!",
+        }],
+    });
+
+    it("keeps a v3 store readable without a migration step", () => {
+        // Every v3 entry already carries kind:"cg" and the new fields are
+        // optional, so v3 output is already valid v4.
+        const store = normalizeGalleryStore({ version: 3, items: [artwork({ id: "a" })] });
+
+        expect(store.version).toBe(4);
+        expect(store.items[0]!.kind).toBe("cg");
+    });
+
+    it("reads an unknown kind as cg rather than dropping the entry", () => {
+        // A project from a newer Studio must still show its entries.
+        const store = normalizeGalleryStore({ items: [{ ...artwork({ id: "x" }), kind: "hologram" }] });
+
+        expect(store.items).toHaveLength(1);
+        expect(store.items[0]!.kind).toBe("cg");
+    });
+
+    it("omits kind-specific fields rather than nulling them", () => {
+        // A CG variant must not carry four empty audio keys through every save.
+        const store = normalizeGalleryStore({ items: [artwork({
+            id: "a",
+            variants: [{ id: "a.v", name: "One", imageAssetId: "img" }],
+        })] });
+        const variant = store.items[0]!.variants[0]!;
+
+        expect("audioAssetId" in variant).toBe(false);
+        expect("voiceUnitId" in variant).toBe(false);
+        expect("durationSec" in variant).toBe(false);
+    });
+
+    it("drops a scene payload naming neither story nor scene", () => {
+        const store = normalizeGalleryStore({ items: [{
+            ...recollection,
+            scene: { storyId: "", sceneId: "" },
+        }] });
+
+        expect(store.items[0]!.scene).toBeUndefined();
+    });
+
+    it("only keeps a scene payload on a scene entry", () => {
+        // A CG carrying stale scene coordinates would project them onto rows.
+        const store = normalizeGalleryStore({ items: [{
+            ...artwork({ id: "cg" }),
+            scene: { storyId: "s", sceneId: "sc" },
+        }] });
+
+        expect(store.items[0]!.scene).toBeUndefined();
+    });
+
+    it("carries audio, voice and scene fields onto unlocked rows", () => {
+        const store = storeOf({ items: [track, recollection, line] });
+        const rows = projectGalleryEntries(store, new Set(["album.v.1", "recall.v.1", "vo.v.1"]));
+
+        expect(rows[0]).toMatchObject({ kind: "music", audioAssetId: "asset-mp3", durationSec: 154.5 });
+        expect(rows[1]).toMatchObject({
+            kind: "scene",
+            storyId: "story-1",
+            sceneId: "scene-7",
+            startBlockId: "block-3",
+        });
+        expect(rows[2]).toMatchObject({ kind: "voice", voiceUnitId: "text-uuid-1" });
+    });
+
+    it("withholds the clip, the unit id and the scene coordinates while locked", () => {
+        // A scene id names the chapter the player has not reached, so it is a
+        // spoiler exactly like the art is.
+        const store = storeOf({ items: [track, recollection, line] });
+        const rows = projectGalleryEntries(store, new Set());
+
+        expect(rows[0]!.audioAssetId).toBe("");
+        expect(rows[0]!.durationSec).toBe(0);
+        expect(rows[1]!.storyId).toBe("");
+        expect(rows[1]!.sceneId).toBe("");
+        expect(rows[1]!.startBlockId).toBe("");
+        expect(rows[2]!.voiceUnitId).toBe("");
+    });
+
+    it("carries the line text onto an unlocked voice member and withholds it when locked", () => {
+        const store = storeOf({ items: [line] });
+
+        expect(projectGalleryVariants(store, line, new Set(["vo.v.1"]))[0])
+            .toMatchObject({ lineText: "Good morning!", voiceUnitId: "text-uuid-1" });
+        expect(projectGalleryVariants(store, line, new Set())[0]!.lineText).toBe("");
+    });
+
+    it("filters entries and progress by kind", () => {
+        const store = storeOf({ items: [track, recollection, line, artwork({
+            id: "cg",
+            variants: [{ id: "cg.v", name: "A", imageAssetId: "i" }],
+        })] });
+
+        expect(projectGalleryEntries(store, new Set(), { kind: "music" }).map(r => r.id)).toEqual(["album"]);
+        expect(projectGalleryEntries(store, new Set(), { kind: "cg" }).map(r => r.id)).toEqual(["cg"]);
+        expect(computeGalleryStats(store, new Set(["album.v.1"]), { kind: "music" }))
+            .toMatchObject({ total: 1, unlocked: 1, percent: 100 });
+        expect(computeGalleryStats(store, new Set(["album.v.1"]), { kind: "voice" }))
+            .toMatchObject({ total: 1, unlocked: 0, percent: 0 });
+    });
+
+    it("rejects a non-positive duration", () => {
+        const store = normalizeGalleryStore({ items: [{
+            ...track,
+            variants: [{ ...track.variants[0], durationSec: -5 }],
+        }] });
+
+        expect("durationSec" in store.items[0]!.variants[0]!).toBe(false);
     });
 });
