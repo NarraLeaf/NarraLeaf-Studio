@@ -383,7 +383,7 @@ describe.skipIf(!supported)("interrupted setup", () => {
  *    decide the branch is not worth naming. Were upstream to rename it, the surfaces would start
  *    showing a branch name to every author on every install, and nothing else in the codebase would
  *    object.
- *  - **that the read is pure.** It is on the identity path the status cell and the top-bar widget
+ *  - **that the read is pure.** It is on the identity path the status cell and the switcher menu
  *    take on every project open and after every revision. A scanning status is not a pure read
  *    (§4.17); if this one ever became one, the symptom would be phantom deletions in an author's
  *    change list rather than anything resembling a failure here.

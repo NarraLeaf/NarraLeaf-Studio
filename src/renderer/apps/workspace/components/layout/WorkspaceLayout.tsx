@@ -47,7 +47,6 @@ import {
 } from "./dockLayoutModel";
 import { DEFAULT_COLLAPSED_PANEL_IDS } from "./sidebarPanelGroup";
 import { VersionRail } from "./VersionRail";
-import { VersionControlWidget } from "./VersionControlWidget";
 import { resolveVersionRailPresence, versionRailWidth } from "./versionRailModel";
 import { useVersionSurface } from "../../hooks/useVersionSurface";
 
@@ -135,7 +134,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     // solver has to be told about it — an unaccounted column squeezes the editor below its floor and
     // the overflow loops (see DockEnv.versionRailWidth).
     const [versionRailExpanded, setVersionRailExpanded] = useState(false);
-    // One reader shared by the rail and the title-bar widget, so the two can never disagree about
+    // One reader shared by the rail and the switcher menu, so the two can never disagree about
     // which version this window is a view of.
     const versionSurface = useVersionSurface();
 
@@ -382,7 +381,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
 
     // Whether the version rail is a column at all, and which one. `absent` is the ordinary answer -
     // the strip exists only while project data is frozen, because what it expresses is control over
-    // that temporary state; the panel is openable at any time from the status cell or the widget.
+    // that temporary state; the panel is openable at any time from the status cell or the switcher menu.
     const railPresence = resolveVersionRailPresence({
         state: versionSurface.state,
         expanded: versionRailExpanded,
@@ -724,10 +723,11 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 center={titleBarSearchVisible ? <TitleBarSearchBox /> : undefined}
                 actionBar={
                     <div className="flex items-center gap-0.5">
-                        <ProjectSwitcher />
-                        {/* Right of the switcher: the window says which project, then which version of
-                            it. Renders nothing at all on a host with no version control. */}
-                        <VersionControlWidget surface={versionSurface} />
+                        {/* The window's identity, and the version control menu inside it — one reader
+                            for both, handed down. The rail below gets the SAME object: a second
+                            `useVersionSurface()` would be a second answer to "which version is this",
+                            and that has already been on screen once (rail `#3`, status cell `#2`). */}
+                        <ProjectSwitcher versionSurface={versionSurface} />
                         <ActionBar hideAllGroups={isMac} />
                     </div>
                 }
