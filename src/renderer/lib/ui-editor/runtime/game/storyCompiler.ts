@@ -506,6 +506,11 @@ type CompileInput = {
 const EMPTY_IMAGE_SRC = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'></svg>";
 const SCENE_INITIAL_BACKGROUND_BLOCK_ID = "__scene_initial_background";
 const SCENE_BACKGROUND_MUSIC_BLOCK_ID = "__scene_background_music";
+/**
+ * The reserved registry name the sound-control family addresses when no target is given
+ * (`/vol 0.5` is the music channel). Mirrors `BGM_OBJECT_NAME` in the editor.
+ */
+const BGM_SOUND_NAME = "bgm";
 const EMPTY_STORY_ID = "__nlr_empty_story__";
 const EMPTY_SCENE_ID = "__nlr_empty_scene__";
 const UNKNOWN_CHARACTER_ID = "__unknown_character__";
@@ -558,6 +563,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     const voiceIdMap = input.voice
         ? await buildSceneVoiceMap({ voice: input.voice, resolveAssetUrl, assetUrlCache, diagnostics })
         : undefined;
+    const sceneBackgroundMusic = new Map<string, Sound>();
     const allScenes = await createNlrScenes({
         document: input.document,
         resolveAssetUrl,
@@ -565,6 +571,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         diagnostics,
         voiceIdMap,
         audioClips: input.audioClips,
+        backgroundMusic: sceneBackgroundMusic,
     });
 
     // Single Storable-backed namespace seeded with every saved variable's default.
@@ -589,6 +596,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     // Document order, so the Problems panel reads down the story instead of down a UUID sort.
     for (const scene of listScenesInDocumentOrder(input.document)) {
         const nlrScene = allScenes[scene.id];
+        const sceneMusic = sceneBackgroundMusic.get(scene.id);
         const sceneFnCatalog = collectSceneStoryActionFns({
             document: input.document,
             blueprintDocument: input.blueprintDocument,
@@ -620,7 +628,9 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             layers: new Map(),
             videos: new Map(),
             vfx: new Map(),
-            sounds: new Map(),
+            // Seeded with the scene's configured track under the name the sound-control family
+            // defaults to, so `/vol 0.5` on a scene with music means what it looks like.
+            sounds: sceneMusic ? new Map([[BGM_SOUND_NAME, sceneMusic]]) : new Map(),
             audioClips: input.audioClips,
             animations,
             resolveAssetUrl,
@@ -789,7 +799,7 @@ async function buildLaunchEntryScene(params: {
         layers: new Map(),
         videos: new Map(),
         vfx: new Map(),
-        sounds: new Map(),
+        sounds: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.sound]]) : new Map(),
         audioClips: input.audioClips,
         animations: params.animations,
         resolveAssetUrl,
@@ -1246,6 +1256,14 @@ async function createNlrScenes(input: {
     voiceIdMap?: Record<string, string>;
     /** Asset id → marked in/out points, so a scene's own track loops where the author marked it. */
     audioClips?: Record<string, AudioClipRegion>;
+    /**
+     * Filled with each scene's configured track, keyed by Studio scene id.
+     *
+     * The caller seeds it into that scene's sound registry under the reserved name `bgm`, which is
+     * what makes `/vol 0.5` and `/seek bgm 30` address the scene's own music. Without it the control
+     * family would answer "no background music is set" on precisely the scene that has some.
+     */
+    backgroundMusic?: Map<string, Sound>;
 }): Promise<Record<string, Scene>> {
     const scenes: Record<string, Scene> = {};
     const voices = input.voiceIdMap && Object.keys(input.voiceIdMap).length > 0 ? input.voiceIdMap : undefined;
@@ -1294,6 +1312,7 @@ async function createNlrScenes(input: {
         if (music) {
             config.backgroundMusic = music.sound;
             config.backgroundMusicFade = music.fadeMs;
+            input.backgroundMusic?.set(scene.id, music.sound);
         }
         scenes[scene.id] = new Scene(
             runtimeName,
@@ -2269,7 +2288,7 @@ async function compileAudioAction(
 ): Promise<NlrStatement[]> {
     if (payload.operation === "setBgm") {
         if (!payload.assetId) {
-            ctx.sounds.delete("bgm");
+            ctx.sounds.delete(BGM_SOUND_NAME);
             return [recordStatement(ctx, ctx.nlrScene.setBackgroundMusic(null, payload.fadeMs), block)];
         }
         const url = await resolveAsset(ctx, payload.assetId, "audio", block.id);
@@ -2284,7 +2303,7 @@ async function compileAudioAction(
         });
         // The reserved name the sound-control family defaults to: `/vol 0.5` addresses the music
         // channel by registering the BGM handle under "bgm" (see BGM_OBJECT_NAME in the editor).
-        ctx.sounds.set("bgm", sound);
+        ctx.sounds.set(BGM_SOUND_NAME, sound);
         return [recordStatement(ctx, ctx.nlrScene.setBackgroundMusic(sound, payload.fadeMs), block)];
     }
 

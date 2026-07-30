@@ -115,6 +115,21 @@ describe("extractStoryAssetReferences", () => {
 
         expect(extractStoryAssetReferences(document, "Main Story")[0].target).toMatchObject({ kind: "storyScene" });
     });
+
+    it("counts a scene's own music as a use of that audio asset", () => {
+        const document = storyDoc({});
+        document.scenes["scene-1"].bgm = { assetId: "scene-theme" };
+
+        // Without this, deleting the track a scene opens with would report it as unused - and the
+        // scene would go silent with no warning at all.
+        const references = extractStoryAssetReferences(document, "Main Story");
+        expect(references).toHaveLength(1);
+        expect(references[0]).toMatchObject({
+            assetId: "scene-theme",
+            field: "scene.bgm.assetId",
+            target: { kind: "storyScene" },
+        });
+    });
 });
 
 describe("extractStoryAnimationAssetReferences", () => {
