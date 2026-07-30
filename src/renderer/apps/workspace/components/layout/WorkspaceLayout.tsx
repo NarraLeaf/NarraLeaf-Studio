@@ -45,6 +45,10 @@ import {
     type DockEnv,
 } from "./dockLayoutModel";
 import { DEFAULT_COLLAPSED_PANEL_IDS } from "./sidebarPanelGroup";
+import { VersionRail } from "./VersionRail";
+import { VersionControlWidget } from "./VersionControlWidget";
+import { isVersionSurfaceVisible, versionRailWidth } from "./versionRailModel";
+import { useVersionSurface } from "../../hooks/useVersionSurface";
 
 interface WorkspaceLayoutProps {
     title: string;
@@ -71,6 +75,11 @@ const SETTINGS_KEYS = {
     BOTTOM_PANEL_HEIGHT: "ui.bottomPanel.height",
     BOTTOM_PANEL_ACTIVE_PANEL: "ui.bottomPanel.activePanel",
     BOTTOM_PANEL_ORDER: "ui.bottomPanel.order",
+    // The version rail's own state. Persisted like every other dock preference, and NOT with the
+    // freeze: a rail expanded because the author was reading history should still be expanded next
+    // launch, while the freeze itself is never persisted (a project that refuses to save with no
+    // visible cause - see WorkspaceFreezeService).
+    VERSION_RAIL_EXPANDED: "ui.versionRail.expanded",
 };
 
 const ORDER_SETTINGS_KEY_BY_POSITION: Record<PanelPosition, string> = {
@@ -120,6 +129,14 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     // Panels folded into the left rail's collapse group (mirror of UIStore, persisted here)
     const [collapsedLeftPanels, setCollapsedLeftPanels] = useState<string[] | null>(null);
 
+    // The version rail: the leftmost column, and the one fixed column whose width changes. Owned here
+    // rather than by the rail itself because the dock solver has to be told about it — an unaccounted
+    // column squeezes the editor below its floor and the overflow loops (see DockEnv.versionRailWidth).
+    const [versionRailExpanded, setVersionRailExpanded] = useState(false);
+    // One reader shared by the rail and the title-bar widget, so the two can never disagree about
+    // which version this window is a view of.
+    const versionSurface = useVersionSurface();
+
     // Intended region sizes (the user's last drag target). Effective rendered sizes are derived
     // from these via resolveDock() below — these are never mutated on window resize.
     const [leftSidebarWidth, setLeftSidebarWidth] = useState(DOCK_REGIONS.left.default);
@@ -167,6 +184,10 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     // Visibility mirrors, read by the resize handlers when computing cross-axis drag bounds.
     const leftSidebarVisibleRef = useRef(false);
     const rightSidebarVisibleRef = useRef(false);
+    // The version rail's live width, for the same reason: a drag started while the rail is expanded
+    // has to be bounded by the space the rail is actually taking, or the sidebar can be dragged over
+    // the editor's floor.
+    const versionRailWidthRef = useRef(0);
 
     // Settings service
     const settingsService = context?.services.get<GlobalSettingsService>(Services.GlobalSettings);
@@ -201,6 +222,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     [SETTINGS_KEYS.BOTTOM_PANEL_HEIGHT]: bottomPanelHeight,
                     [SETTINGS_KEYS.BOTTOM_PANEL_ACTIVE_PANEL]: activeBottomPanelId,
                     [SETTINGS_KEYS.BOTTOM_PANEL_ORDER]: panelOrders[PanelPosition.Bottom] ?? null,
+                    [SETTINGS_KEYS.VERSION_RAIL_EXPANDED]: versionRailExpanded,
                 };
 
                 await settingsService.setBatch(settings);
@@ -221,6 +243,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         activeBottomPanelId,
         panelOrders,
         collapsedLeftPanels,
+        versionRailExpanded,
     ]);
 
     useEffect(() => {
@@ -280,6 +303,11 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     setBottomPanelHeight(bottomHeight);
                     bottomPanelHeightRef.current = bottomHeight;
                 }
+                // Defaults to collapsed: the 48px strip is the resting state, and 320px of rail on a
+                // first launch would take a third of the left half from an author who has not asked
+                // for version control yet.
+                const railExpanded = await settingsService.get<boolean>(SETTINGS_KEYS.VERSION_RAIL_EXPANDED);
+                setVersionRailExpanded(railExpanded === true);
                 if (leftPanel !== undefined) setActiveLeftPanelId(leftPanel);
                 if (rightPanel !== undefined) setActiveRightPanelId(rightPanel);
                 if (bottomPanel !== undefined) setActiveBottomPanelId(bottomPanel);
@@ -351,12 +379,18 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         debouncedSaveSettings,
     ]);
 
+    // What the version rail is taking out of the horizontal chain: 0 when version control is
+    // unavailable (the column does not exist at all), 48 collapsed, 320 expanded.
+    const railWidth = versionRailWidth(isVersionSurfaceVisible(versionSurface.state), versionRailExpanded);
+    versionRailWidthRef.current = railWidth;
+
     // Live environment for the sizing solver, rebuilt from the current viewport + visibility.
     const dockEnv: DockEnv = {
         windowWidth: viewport.width,
         windowHeight: viewport.height,
         leftVisible: leftSidebarVisible,
         rightVisible: rightSidebarVisible,
+        versionRailWidth: railWidth,
     };
 
     // Effective (rendered) sizes derived from the intended sizes. Sidebars are protected from
@@ -374,6 +408,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             windowHeight: window.innerHeight,
             leftVisible: leftSidebarVisibleRef.current,
             rightVisible: rightSidebarVisibleRef.current,
+            versionRailWidth: versionRailWidthRef.current,
         }),
         []
     );
@@ -682,6 +717,9 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 actionBar={
                     <div className="flex items-center gap-0.5">
                         <ProjectSwitcher />
+                        {/* Right of the switcher: the window says which project, then which version of
+                            it. Renders nothing at all on a host with no version control. */}
+                        <VersionControlWidget surface={versionSurface} />
                         <ActionBar hideAllGroups={isMac} />
                     </div>
                 }
@@ -699,6 +737,15 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
 
             {/* Main Content */}
             <div className="flex-1 flex overflow-hidden">
+                {/* Version rail — the far left of the window, LEFT of the sidebar selector, because in
+                    a past version the author still needs the sidebar, the assets and the scene tree.
+                    Its width is in the dock account above (dockEnv.versionRailWidth), never outside it. */}
+                <VersionRail
+                    surface={versionSurface}
+                    expanded={versionRailExpanded}
+                    onExpandedChange={setVersionRailExpanded}
+                />
+
                 {/* Left Sidebar Selector */}
                 <LeftSidebarSelector
                     visible={leftSidebarVisible}

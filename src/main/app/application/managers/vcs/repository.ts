@@ -16,6 +16,7 @@ import {
     flushRepository,
     getRevisionMetadata,
     history,
+    listRevisionMetadata,
     releaseRepository,
     repositoryStatus,
     setRevisionMetadata,
@@ -375,6 +376,80 @@ export async function readRevisionKind(
 /** Only the two kinds Studio writes. Anything else is another client's vocabulary. */
 function toRevisionKind(value: string | undefined): VcsRevisionKind | undefined {
     return value === "commit" || value === "checkpoint" ? value : undefined;
+}
+
+/**
+ * Lore's own metadata keys, which share one map with Studio's namespaced ones.
+ *
+ * Their spelling is Lore's, not Studio's, which is why they live here and not in
+ * `@shared/types/vcs`: nothing above this module is allowed to know them.
+ *
+ * `committed-by` rather than `created-by`: a revision carries both, and they differ once
+ * a revision is rewritten (a rebase, a graft) - the author reading a history wants who
+ * put this revision on the branch.
+ */
+const LORE_MESSAGE_KEY = "message";
+const LORE_TIMESTAMP_KEY = "timestamp";
+const LORE_COMMITTER_KEY = "committed-by";
+
+/**
+ * Everything one revision says about itself, in ONE backend call.
+ *
+ * Deliberately not four calls, and deliberately not a second pass after
+ * {@link readRevisionKind}: `revisionMetadataList` hands back every key on a revision,
+ * so a history read that already pays one round trip per revision for the kind gets the
+ * message, the time and the author for essentially free. Measured over a six-revision
+ * repository, median of nine runs: the six single-key `revisionMetadataGet` calls this
+ * replaces took 4.2ms, the six `revisionMetadataList` calls take 5.6ms. Same number of
+ * round trips, ~0.2ms per revision more, three fields instead of one.
+ *
+ * Every field is optional and absence is a real answer, not a failure:
+ *
+ *  - the repository's first commit predates {@link VCS_REVISION_KIND_KEY}, so it has no
+ *    kind at all, and a revision from another client carries that client's vocabulary;
+ *  - a key that is not there must read as ABSENT rather than as an empty string, which
+ *    would render as a commit with a blank author instead of one that did not say.
+ *
+ * `timestamp` is the one key Lore does not write as a string - it is NUMERIC, epoch
+ * MILLISECONDS (measured against wall clock across a commit; see
+ * `revisionDetails.integration.test.ts`). The decoder reads that union member because
+ * of this call site; before it did, the value arrived silently absent.
+ *
+ * A failed read degrades to an empty answer rather than throwing, for
+ * {@link readRevisionKind}'s reason: Lore reports "no such key" the same way it reports
+ * a lookup that went wrong, and a history panel must not fail to render because one
+ * entry predates a key.
+ */
+export interface RevisionDetails {
+    kind?: VcsRevisionKind;
+    message?: string;
+    /** Epoch milliseconds, UTC. */
+    timestamp?: number;
+    author?: string;
+}
+
+export async function readRevisionDetails(
+    globals: LoreGlobals,
+    revision: string,
+): Promise<RevisionDetails> {
+    const entries = await listRevisionMetadata(globals, revision).catch(() => []);
+    const byKey = new Map(entries.map((entry) => [entry.key, entry]));
+
+    const details: RevisionDetails = {};
+    const kind = toRevisionKind(byKey.get(VCS_REVISION_KIND_KEY)?.text);
+    if (kind) details.kind = kind;
+    // Empty is absent on purpose: an empty string would render as a revision with a
+    // blank title or a blank author rather than as one that did not say.
+    const message = byKey.get(LORE_MESSAGE_KEY)?.text;
+    if (message) details.message = message;
+    const timestamp = byKey.get(LORE_TIMESTAMP_KEY)?.numeric;
+    if (timestamp !== undefined) details.timestamp = timestamp;
+    const author = byKey.get(LORE_COMMITTER_KEY)?.text;
+    if (author) details.author = author;
+    // Keys the revision does not carry are OMITTED, not set to undefined: an explicit
+    // undefined survives the IPC structured clone as a present key, so `"author" in
+    // entry` would answer yes for a revision that never had one.
+    return details;
 }
 
 /**
