@@ -3,13 +3,14 @@ import type {
     StoryBlockId,
     StoryDisplayableTargetKind,
     StoryDocument,
+    StoryMotionTargetKind,
     StoryScene,
     StorySceneId,
 } from "@shared/types/story";
 import { displayableSourceIdentity, resolveDisplayableTargetRef } from "@shared/types/story";
 
 export type StoryMotionPreviewTarget = {
-    kind: StoryDisplayableTargetKind;
+    kind: StoryMotionTargetKind;
     label: string;
     assetId?: string;
     text?: string;
@@ -39,7 +40,7 @@ export function resolveStoryMotionPreviewTarget(input: {
     document: StoryDocument | null | undefined;
     sceneId: StorySceneId | undefined;
     blockId: StoryBlockId | undefined;
-    fallbackKind: StoryDisplayableTargetKind;
+    fallbackKind: StoryMotionTargetKind;
     fallbackLabel: string;
     previewAssetId?: string;
 }): StoryMotionPreviewTarget {
@@ -50,7 +51,7 @@ function resolveTargetWithoutPreview(input: {
     document: StoryDocument | null | undefined;
     sceneId: StorySceneId | undefined;
     blockId: StoryBlockId | undefined;
-    fallbackKind: StoryDisplayableTargetKind;
+    fallbackKind: StoryMotionTargetKind;
     fallbackLabel: string;
 }): StoryMotionPreviewTarget {
     const fallback: StoryMotionPreviewTarget = {
@@ -144,6 +145,14 @@ function previewTargetFromBlock(block: StoryBlock): StoryMotionPreviewTarget | n
             label: "NVL",
         };
     }
+    if (payload.action === "camera") {
+        // A camera motion moves the whole frame, so the preview's subject is the stage itself rather
+        // than any object standing on it — `StoryMotionStagePreview` draws that as a viewport.
+        return {
+            kind: "camera",
+            label: "Camera",
+        };
+    }
     return null;
 }
 
@@ -190,10 +199,11 @@ function sameStageName(left: string, right: string): boolean {
     return left.trim().toLowerCase() === right.trim().toLowerCase();
 }
 
-function labelForKind(kind: StoryDisplayableTargetKind): string {
+function labelForKind(kind: StoryMotionTargetKind): string {
     if (kind === "character") return "Character";
     if (kind === "text") return "Text";
     if (kind === "layer") return "Layer";
+    if (kind === "camera") return "Camera";
     return "Image";
 }
 
