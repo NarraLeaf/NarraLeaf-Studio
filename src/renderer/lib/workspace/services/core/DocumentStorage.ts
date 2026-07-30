@@ -1,5 +1,7 @@
 import type { DocumentStorage } from "@shared/documents/documentIo";
+import { createWorkingTreeDocumentSource, type DocumentSource } from "@shared/documents/documentSource";
 import { normalizeDocumentPath } from "@shared/documents/documentPath";
+import { getProjectDocumentSource } from "@/lib/app/documentSource";
 import { FsRejectErrorCode } from "@shared/types/os";
 import { RendererError } from "@shared/utils/error";
 import { join } from "@shared/utils/path";
@@ -52,6 +54,17 @@ export class RendererDocumentStorage implements DocumentStorage {
     }
 
     public async copy(fromPath: string, toPath: string): Promise<void> {
+        // Quarantine is this port's only caller (see `documentIo`), and while the workspace
+        // is showing a revision the unreadable bytes are the REVISION's, not the file on
+        // disk. Copying then would set aside a working copy that is perfectly fine, under a
+        // name that says it is broken - and `loadDocument` already has the right landing for
+        // a copy it could not make: corrupt, not quarantined, service not loaded.
+        const source = getProjectDocumentSource();
+        if (source && source.origin.kind !== "working-tree") {
+            throw new RendererError(
+                `Not quarantining ${fromPath}: the unreadable document belongs to the revision being shown, not to the working tree.`,
+            );
+        }
         await this.ensureParentDirectory(toPath);
         const result = await this.fs.copyFile(this.absolute(fromPath), this.absolute(toPath));
         if (!result.ok) {
@@ -94,4 +107,15 @@ export function createProjectDocumentStorage(ctx: WorkspaceContext): DocumentSto
         ctx.services.get<FileSystemService>(Services.FileSystem),
         ctx.project.getConfig().projectPath,
     );
+}
+
+/**
+ * The working tree as a {@link DocumentSource} - what "reload" means when nobody says
+ * otherwise.
+ *
+ * Deliberately built on the storage adapter above rather than on a second path resolver:
+ * whatever a project-relative path means for a write, it means the same for a read.
+ */
+export function createProjectWorkingTreeSource(ctx: WorkspaceContext): DocumentSource {
+    return createWorkingTreeDocumentSource(createProjectDocumentStorage(ctx));
 }
