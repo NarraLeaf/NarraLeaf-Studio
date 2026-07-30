@@ -62,7 +62,7 @@ type VersionControlServiceEvents = {
     /**
      * A revision now exists that did not before, so HEAD has moved.
      *
-     * Every surface that names a version reads the head for itself - the rail, the top-bar widget
+     * Every surface that names a version reads the head for itself - the rail, the switcher menu
      * and the status-bar cell are three separate readers by design - and none of them can see a
      * commit made through another one. Without this they disagree on screen: the rail says `#3`
      * while the cell still says `#2`, which is the contradiction that makes an author stop

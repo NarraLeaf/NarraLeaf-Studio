@@ -1,8 +1,8 @@
 /**
  * Module-level bridge to the mounted version rail, so surfaces outside its tree can open it.
  *
- * The status-bar cell and the top-bar widget both promise "click to open the rail", and neither is a
- * child of it - the rail is a column in the dock row, the widget is in the title bar, the cell is in
+ * The status-bar cell and the switcher menu both promise "click to open the rail", and neither is a
+ * child of it - the rail is a column in the dock row, the menu is in the title bar, the cell is in
  * the status strip. Same pattern and same reasoning as {@link openKeybindingCheatSheet} and
  * `commandPaletteController`: one window-local function pointer, deliberately not a service, dead once
  * the layout unmounts.

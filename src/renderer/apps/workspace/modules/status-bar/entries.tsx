@@ -361,7 +361,7 @@ export function NotificationsEntry() {
 /**
  * The version cell: which version this window is a view of, click opens the rail.
  *
- * What it says comes from `versionFace`, shared with the top-bar widget and the rail's focused
+ * What it says comes from `versionFace`, shared with the switcher menu and the rail's focused
  * block - the three of them naming one version three ways is a contradiction an author reads as a
  * broken feature, and it has happened here before. Merges and ahead/behind markers are still
  * undecided (plan 2026-07-28-002 §6); when they land, they land in that function.
