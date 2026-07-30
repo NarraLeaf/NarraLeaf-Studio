@@ -202,6 +202,47 @@ describe("runtime surface asset preload", () => {
         ]);
     });
 
+    it("collects both a video widget's clip and its poster", () => {
+        // The walk matches literal property names, not a suffix, so `posterAssetId` had to be added
+        // explicitly. Without it the poster loads mid-scene instead of arriving with the Surface -
+        // the still meant to cover the first frame pops in after the author already saw an empty box.
+        const pack = makePack();
+        const document = pack.bundle.ui.uidoc;
+        document.elements["credits-root"]!.childrenIds.push("credits-clip");
+        document.elements["credits-clip"] = {
+            id: "credits-clip",
+            type: "nl.video",
+            parentId: "credits-root",
+            childrenIds: [],
+            layout: { x: 0, y: 0, width: 480, height: 270, opacity: 1, visible: true },
+            props: { assetId: "outro-clip", posterAssetId: "outro-poster" },
+        } as unknown as (typeof document.elements)[string];
+        pack.assets.items["outro-clip"] = {
+            id: "outro-clip",
+            type: "video",
+            name: "outro",
+            source: "local",
+            relativePath: "assets/outro.mp4",
+            ext: ".mp4",
+        } as (typeof pack.assets.items)[string];
+        pack.assets.items["outro-poster"] = {
+            id: "outro-poster",
+            type: "image",
+            name: "outro poster",
+            source: "local",
+            relativePath: "assets/outro.png",
+            ext: ".png",
+        } as (typeof pack.assets.items)[string];
+
+        const credits = document.surfaces.find(surface => surface.id === "credits")!;
+
+        expect(collectRuntimeSurfaceAssetIds(pack, credits).sort()).toEqual([
+            "credits-bg",
+            "outro-clip",
+            "outro-poster",
+        ]);
+    });
+
     it("prioritizes first screen assets before the rest of the pack", () => {
         const pack = makePack();
         const home = pack.bundle.ui.uidoc.surfaces.find(surface => surface.id === "home")!;

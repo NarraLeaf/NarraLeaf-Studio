@@ -13,6 +13,7 @@ import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFra
 import { loadRuntimePlugins } from "@/lib/ui-editor/runtime/plugins/loadRuntimePlugins";
 import { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
 import { RuntimeSidecarBackend } from "./runtimeSidecarBackend";
+import { listPackPuppetBackendSources, resolvePackModelBundleUrl } from "@/lib/ui-editor/runtime/game/puppetPackRuntimes";
 import {
     preloadRuntimePackAssets,
     type RuntimeSurfacePreloadResult,
@@ -356,8 +357,10 @@ export function GameRuntimeApp() {
             if (!bridge) {
                 return assetId;
             }
-            const bundleEntry = pack?.assets.items[assetId]?.bundleEntry;
-            return bridge.assetUrl(bundleEntry ? `${assetId}/${bundleEntry}` : assetId);
+            // Shared with the puppet widget's seam so the two cannot disagree about where a bundle's
+            // root is. An id the pack does not list is still handed to `assetUrl` - the shell's own
+            // 404 says more than a silent empty string would.
+            return resolvePackModelBundleUrl(bridge, pack, assetId) ?? bridge.assetUrl(assetId);
         },
         [bridge, pack],
     );
@@ -419,35 +422,16 @@ export function GameRuntimeApp() {
     /**
      * The puppet backends published with this game.
      *
-     * The same shape Dev Mode hands over, resolved against the pack instead of
-     * the project: `pluginEntryUrl` maps an app-dir-relative path onto whichever
-     * scheme this shell serves (`nlgame://runtime/…` on desktop, a relative URL
-     * on the web), and that is all a backend module needs. `resolveFile` stays
-     * confined to the backend's own directory, exactly as the editor's does - a
-     * module names its own siblings and nothing else.
+     * Shared with the Surface `nl.puppet` widget's mounting seam (see
+     * `puppetPackRuntimes.ts`) rather than derived here: both need the same
+     * module URL and the same confined `resolveFile`, and a stage that loads a
+     * backend one way while a widget loads it another is a difference nobody
+     * would notice until one of them stopped drawing.
      */
-    const listPuppetBackendModules = useCallback(async () => {
-        const runtimes = pack?.puppetRuntimes ?? [];
-        if (runtimes.length === 0) {
-            return [];
-        }
-        const toUrl = (relativePath: string) =>
-            bridge?.pluginEntryUrl(relativePath) ?? `nlgame://runtime/${relativePath}`;
-        return runtimes.map(runtime => {
-            const directory = runtime.entryRelativePath.slice(0, runtime.entryRelativePath.lastIndexOf("/"));
-            return {
-                id: runtime.name,
-                url: toUrl(runtime.entryRelativePath),
-                resolveFile: (relativePath: string) => {
-                    const normalized = relativePath.replace(/\\/g, "/").replace(/^\.\//, "");
-                    if (normalized.startsWith("/") || normalized.split("/").includes("..")) {
-                        return Promise.reject(new Error(`Path escapes the backend directory: ${relativePath}`));
-                    }
-                    return Promise.resolve(toUrl(`${directory}/${normalized}`));
-                },
-            };
-        });
-    }, [bridge, pack]);
+    const listPuppetBackendModules = useCallback(
+        async () => listPackPuppetBackendSources(bridge, pack),
+        [bridge, pack],
+    );
 
     const host = useMemo<GameAppHost | null>(() => {
         if (!pack) {
