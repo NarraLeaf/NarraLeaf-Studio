@@ -325,8 +325,15 @@ export const story = {
         placeholderNote: "Note…",
         placeholderText: "Text…",
         dragRow: "Drag row",
-        insert: "Insert",
-        delete: "Delete",
+        // Two strings per row button, and the difference is load-bearing: `insert`/`delete` are the
+        // ACCESSIBLE NAMES and `insertTitle`/`deleteTitle` the tooltips, which add the keybinding. They
+        // read the same because a screen reader and a pointer deserve the same sentence — these used to
+        // be the bare words "Insert" and "Delete", left over from when the buttons had visible text, so
+        // the only thing announced was a verb with no object. The shortcut stays out of the name (it
+        // belongs to the tooltip and the cheat sheet, not to what the control IS), and the bracket
+        // convention lives in the catalogue because zh wants full-width ones.
+        insert: "Insert a blank row after this one",
+        delete: "Delete this row",
         insertTitle: "Insert a blank row after this one ({keys})",
         deleteTitle: "Delete this row ({keys})",
         playFromRow: "Play from this row",
@@ -344,7 +351,8 @@ export const story = {
         voiceOutdated: "Voice outdated, open voice table",
         voiceManage: "Open voice table",
         voicePlay: "Play voice take",
-        voiceStop: "Stop",
+        // "Stop" alone was the accessible name of a mid-row icon button; it now says what stops.
+        voiceStop: "Stop voice take",
     },
     sceneEditor: {
         defaultSceneName: "Untitled Scene",
