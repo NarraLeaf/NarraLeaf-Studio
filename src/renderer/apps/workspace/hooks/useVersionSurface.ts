@@ -9,10 +9,13 @@ import {
     findRevisionRow,
     flattenFirstParent,
     focusedRevision,
+    hasMoreHistory,
     hiddenCheckpointCount,
+    nextHistoryLimit,
     resolveVersionSurfaceState,
     revisionLabel,
     type FlatHistoryEntry,
+    type HistoryPageRead,
     type VersionSurfaceState,
 } from "../components/layout/versionRailModel";
 import { useWorkspace } from "../context";
@@ -48,7 +51,13 @@ export type VersionBusyKind =
     /** Coming back to the working tree, which re-reads every document. */
     | "return";
 
-/** How many revisions the rail reads at once. Paging is the next pass; see {@link VersionSurface}. */
+/**
+ * How much further back each read of the history reaches.
+ *
+ * A STEP rather than a page size, because there are no pages: the backend has no cursor verb, so
+ * {@link VersionSurface.loadMoreHistory} re-reads the whole history with a larger limit
+ * (`nextHistoryLimit`). The first read asks for this many; the second asks for twice it.
+ */
 export const VERSION_HISTORY_PAGE = 50;
 
 export interface VersionSurface {
@@ -85,12 +94,28 @@ export interface VersionSurface {
     focused: FlatHistoryEntry | null;
     /** Rows the collapse is hiding, so the list can offer to show them. */
     hiddenCheckpoints: number;
+    /**
+     * The last read filled its limit, so reading further back may find more.
+     *
+     * Answered from the RAW entry count rather than from {@link history}'s length - see
+     * `hasMoreHistory` for why the two are nowhere near each other on a project full of
+     * checkpoints. False until something has been read.
+     */
+    canLoadMoreHistory: boolean;
     showCheckpoints: boolean;
     setShowCheckpoints: (show: boolean) => void;
     /** The last scan's snapshot. Null until {@link refreshChanges} - never scanned on our own. */
     status: VcsStatus | null;
-    /** Read the history page. Cheap to call again: `VersionControlService` caches revisions. */
+    /** Read the history. Cheap to call again: `VersionControlService` caches revisions. */
     loadHistory: () => void;
+    /**
+     * Reach further back, by {@link VERSION_HISTORY_PAGE} revisions.
+     *
+     * Only ever because the author pressed something. Nothing here reaches the end of a list, or a
+     * scroll position, or a timer - the rail loads what was asked for and stops, which is the same
+     * rule every other read on this surface follows.
+     */
+    loadMoreHistory: () => void;
     /** The ONLY scan. An explicit act: opening the rail, or a refresh the author asked for. */
     refreshChanges: () => void;
     /**
@@ -119,6 +144,10 @@ export function useVersionSurface(): VersionSurface {
     const [shown, setShown] = useState<{ revision: RevisionId; label?: string } | null>(null);
     const [frozen, setFrozen] = useState<WorkspaceFreezeReason["kind"] | null>(null);
     const [rawHistory, setRawHistory] = useState<FlatHistoryEntry[] | null>(null);
+    // What the last read asked for and what it got back, kept together because neither half answers
+    // "is there more" alone. `received` is the RAW entry count: `rawHistory` has already lost it to
+    // the first-parent walk, and the rendered list loses more of it to the checkpoint collapse.
+    const [page, setPage] = useState<HistoryPageRead>({ limit: VERSION_HISTORY_PAGE, received: 0 });
     const [showCheckpoints, setShowCheckpoints] = useState(false);
     const [status, setStatus] = useState<VcsStatus | null>(null);
     const [busy, setBusy] = useState<VersionBusyKind | null>(null);
@@ -181,8 +210,11 @@ export function useVersionSurface(): VersionSurface {
             return;
         }
         // A stale project's answers must not survive into the next one: this hook is remounted per
-        // window, but a project switch reuses the workspace context object.
+        // window, but a project switch reuses the workspace context object. The limit is reset with
+        // them - carrying one project's paging into the next would open the panel on a read the
+        // author never asked for, at whatever depth they had reached somewhere else.
         setRawHistory(null);
+        setPage({ limit: VERSION_HISTORY_PAGE, received: 0 });
         setStatus(null);
         void readIdentity();
     }, [services, readIdentity]);
@@ -231,25 +263,28 @@ export function useVersionSurface(): VersionSurface {
     }, [services, readIdentity]);
 
     /**
-     * The page read itself, without the spinner around it, so a commit can re-read the history
+     * The read itself, without the spinner around it, so a commit can re-read the history
      * inside its OWN busy state - `busy` names one operation, and a nested read that cleared it
      * would take the spinner down while the commit was still running.
+     *
+     * The limit is an argument rather than read from state, because paging has to read at the NEW
+     * limit in the same tick it decides to grow: a callback that closed over the state would ask
+     * for the depth it already had.
      */
-    const readHistory = useCallback(async () => {
+    const readHistory = useCallback(async (limit: number) => {
         if (!services) {
             return;
         }
         try {
             // Details are what makes collapsing possible (the kind) and what the focused block
             // shows (message / time / author), and they cost one backend call PER revision -
-            // there is no batch verb - which is why the page is bounded rather than asking for
-            // all of them.
-            const entries = await services.versionControl.getHistory(
-                VERSION_HISTORY_PAGE,
-                { includeDetails: true },
-            );
+            // there is no batch verb - which is why the read is bounded rather than asking for
+            // all of them. Re-reading at a larger limit does not re-pay for the revisions already
+            // read: the main process caches metadata per revision, which is immutable.
+            const entries = await services.versionControl.getHistory(limit, { includeDetails: true });
             if (!alive.current) return;
             setRawHistory(flattenFirstParent(entries));
+            setPage({ limit, received: entries.length });
         } catch (thrown) {
             if (!alive.current) return;
             setError(messageOf(thrown));
@@ -262,10 +297,27 @@ export function useVersionSurface(): VersionSurface {
         }
         setBusy("history");
         setError(null);
-        void readHistory().finally(() => {
+        // At whatever depth the author has already paged to, so reopening the panel shows them the
+        // history they had rather than snapping back to the first fifty. The service caches by
+        // limit, so this second read of the same depth costs nothing.
+        void readHistory(page.limit).finally(() => {
             if (alive.current) setBusy(null);
         });
-    }, [services, readHistory]);
+    }, [services, readHistory, page.limit]);
+
+    const loadMoreHistory = useCallback(() => {
+        // Refused rather than queued while anything is running: this re-reads the whole history, so
+        // a second one started on top of the first would be two overlapping reads of the same
+        // revisions, and the later to answer would win regardless of which asked for more.
+        if (!services || busy !== null) {
+            return;
+        }
+        setBusy("history");
+        setError(null);
+        void readHistory(nextHistoryLimit(page.limit, VERSION_HISTORY_PAGE)).finally(() => {
+            if (alive.current) setBusy(null);
+        });
+    }, [services, busy, readHistory, page.limit]);
 
     const refreshChanges = useCallback(() => {
         if (!services) {
@@ -301,7 +353,7 @@ export function useVersionSurface(): VersionSurface {
                 // its cache but which is still in `rawHistory` one entry short of the truth.
                 await readIdentity();
                 if (!alive.current) return true;
-                await readHistory();
+                await readHistory(page.limit);
                 if (!alive.current) return true;
                 // And the scan, which is allowed here for the one reason the service's class comment
                 // gives: it follows an operation this surface itself performed. It is also the
@@ -314,7 +366,7 @@ export function useVersionSurface(): VersionSurface {
         } finally {
             if (alive.current) setBusy(null);
         }
-    }, [services, readIdentity, readHistory, refreshChanges]);
+    }, [services, readIdentity, readHistory, refreshChanges, page.limit]);
 
     const showRevision = useCallback((revision: RevisionId, label?: string) => {
         if (!services) {
@@ -365,6 +417,7 @@ export function useVersionSurface(): VersionSurface {
                 if (!alive.current) return;
                 // Everything read before this described a project with no repository.
                 setRawHistory(null);
+                setPage({ limit: VERSION_HISTORY_PAGE, received: 0 });
                 await readIdentity();
             } catch (thrown) {
                 if (!alive.current) return;
@@ -407,6 +460,9 @@ export function useVersionSurface(): VersionSurface {
         () => findRevisionRow(rawHistory, focusedRevision(state)),
         [rawHistory, state],
     );
+    // `rawHistory` gates it only to keep the offer from appearing before anything has been read;
+    // what decides is the raw count, never the row count (`hasMoreHistory`).
+    const canLoadMoreHistory = rawHistory !== null && hasMoreHistory(page);
 
     return {
         state,
@@ -416,10 +472,12 @@ export function useVersionSurface(): VersionSurface {
         history,
         focused,
         hiddenCheckpoints,
+        canLoadMoreHistory,
         showCheckpoints,
         setShowCheckpoints,
         status,
         loadHistory,
+        loadMoreHistory,
         refreshChanges,
         commit,
         showRevision,

@@ -42,6 +42,9 @@ import { materializeRevisionSnapshot, type RevisionSnapshotResult } from "./revi
  * local fragment cache the diff path depends on.
  */
 
+/** What one revision says about itself, as the backend answers it. */
+type RevisionDetails = Awaited<ReturnType<VcsBackend["readRevisionDetails"]>>;
+
 interface VcsSession {
     /** Repository root on disk. For now this is the project directory itself. */
     root: string;
@@ -49,6 +52,23 @@ interface VcsSession {
     /** Repository (partition) id, hex. Learned on first use. */
     repositoryId: LoreHex;
     globals: LoreGlobals;
+    /**
+     * What each revision already said about itself, remembered for the life of the session.
+     *
+     * Revisions are IMMUTABLE, so this cannot go stale - and it is what makes the rail's paging
+     * affordable. There is no cursor verb in the backend (`readRevisionGraph(globals, limit)` is
+     * the whole history surface), so "show older versions" re-reads with a larger limit: the fifth
+     * press asks for 250 revisions to gain 50 new ones. Details cost ONE CALL PER REVISION taken in
+     * turn (see {@link VcsManager.getHistory}), so without this that press pays 250 of them.
+     *
+     * **Details only, never the graph.** A new commit changes the graph and cannot change what an
+     * existing revision already recorded, which is exactly the line between what may be cached here
+     * and what may not.
+     *
+     * Bounded by how far the author actually paged, and dropped with the session in
+     * {@link VcsManager.closeProject}.
+     */
+    details: Map<LoreHex, RevisionDetails>;
 }
 
 /**
@@ -225,7 +245,7 @@ export class VcsManager extends Manager {
             throw error;
         }
 
-        const session: VcsSession = { root, store, repositoryId, globals };
+        const session: VcsSession = { root, store, repositoryId, globals, details: new Map() };
         this.sessions.set(key, session);
         this.app.logger.info("[Vcs] Opened session", root, repositoryId);
         return { session, backend };
@@ -463,9 +483,11 @@ export class VcsManager extends Manager {
             for (const node of ordered) {
                 // Sequential on purpose. Re-entering Lore concurrently on one store is
                 // not a contract this binding makes, and the whole point of a single
-                // reused store handle is that calls take turns on it.
+                // reused store handle is that calls take turns on it. Which is also why
+                // the cache below matters: sequential per-revision calls are the cost the
+                // rail's paging would otherwise re-pay on every press.
                 const details = options.includeDetails
-                    ? await backend.readRevisionDetails(session.globals, node.revision)
+                    ? await this.revisionDetails(session, backend, node.revision)
                     : {};
                 entries.push({
                     revision: node.revision,
@@ -479,6 +501,26 @@ export class VcsManager extends Manager {
             }
             return entries;
         });
+    }
+
+    /**
+     * One revision's metadata, from the session cache once anything has read it.
+     *
+     * The reason the cache exists is on {@link VcsSession.details}. What is worth saying here is
+     * what it does NOT do: it does not merge, and it does not refresh. A revision's metadata is
+     * written once when the revision is made, so the first answer is the only answer - if a future
+     * verb ever lets a revision be re-labelled, this is the line that has to be revisited.
+     */
+    private async revisionDetails(
+        session: VcsSession,
+        backend: VcsBackend,
+        revision: LoreHex,
+    ): Promise<RevisionDetails> {
+        const cached = session.details.get(revision);
+        if (cached) return cached;
+        const details = await backend.readRevisionDetails(session.globals, revision);
+        session.details.set(revision, details);
+        return details;
     }
 
     /**
