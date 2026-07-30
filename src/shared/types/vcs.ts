@@ -229,7 +229,7 @@ export interface VcsRestoreResult {
      * no failure, nothing happened because nothing needed to. With a failure, **the author's files
      * have already been replaced** and only the record of it is missing - which is a sentence they
      * have to read, because "the restore failed" is what they would otherwise assume, and the fix
-     * (record a version) is one they can do themselves.
+     * (submit a version) is one they can do themselves.
      *
      * Reported here rather than thrown for the same reason: past the write step there is no honest
      * way to answer "it did not happen".
