@@ -397,7 +397,7 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
         ];
     }, [localeMenu, handleExportScript, handleImportAudio, handleRemoveLocale, t]);
     const frozenLocaleMenuItems = useMemo(
-        () => freezeContextMenuRows(localeMenuItems, freeze.frozen, FREEZE_READ_ONLY_VOICE_MENU_IDS),
+        () => freezeContextMenuRows(localeMenuItems, freeze.frozen, FREEZE_READ_ONLY_VOICE_MENU_IDS, freeze.reason),
         [freeze, localeMenuItems],
     );
 

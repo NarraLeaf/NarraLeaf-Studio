@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
 import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
@@ -42,6 +43,9 @@ const USAGE_KEYS: Record<DependencyKind, PluralKey> = {
  */
 export function ProjectDependenciesSection(_props: ProjectSectionProps) {
     const { t } = useTranslation();
+    // The on-open resolve is a preview and writes no manifest, so the table stays live while frozen;
+    // Rescan is the one that persists.
+    const freeze = useFreezeGuard();
     const { context } = useWorkspace();
     const service = useMemo(
         () => context?.services.get<ProjectDependencyService>(Services.ProjectDependency) ?? null,
@@ -91,7 +95,7 @@ export function ProjectDependenciesSection(_props: ProjectSectionProps) {
                 <button
                     type="button"
                     onClick={() => void rescan()}
-                    disabled={busy}
+                    {...freeze.writes(busy)}
                     className="flex shrink-0 items-center gap-1.5 rounded-md border border-edge bg-fill-subtle px-2 py-1 text-2xs font-medium text-fg-muted transition hover:bg-fill disabled:opacity-50"
                 >
                     <RefreshCw className={`h-3.5 w-3.5 ${busy ? "animate-spin" : ""}`} />

@@ -101,7 +101,7 @@ UI 只读只负责 affordance（别给假的可点按钮）。**正确性由写�
 | **U1b-顶栏** | 顶栏 affordance | U1a | ✅ 落地：注册项渲染但禁用，File/Help 豁免；命令面板套同一张表（否则灰按钮仍能被搜到运行） |
 | **U1c** | 解冻重载 | U1a | ✅ 落地：`WorkspaceReloadService`，参与者静态表；reload 期间另一道静默 hold；丢弃欠账而非补写；清撤销栈 |
 | **V2** | 提交与检查点 | V1, U1c | ✅ 落地：管线 flush→stage→**标记**→commit→flush；检查点由 `observeWrites` 驱动（**绝不扫描**）；`versionControl.checkpointIntervalMinutes`（默认 15，0=关） |
-| **U1b-编辑区** | 编辑区只读 | U1a | 进行中：创建流程、直接操作手势、属性与文本、删除与导入 |
+| **U1b-编辑区** | 编辑区只读 | U1a | ✅ 落地：创建流程、直接操作手势、行内文本、属性字段；机制在 `components/ui/freezeGuard.ts` + `lib/ui-editor/interaction/readOnlyInteraction.ts` |
 | **U2** | 入口 | U1 | 顶栏版本控件 + 状态栏位；「启用版本控制」进项目设置与新建向导 |
 | **U3** | 版本轨道 | U2, V2 | 轨道面板、线性历史、变更清单、提交 |
 | **U4** | 冻结下的 Dev Mode | U1c | 把聚焦版本物化到工作集之外的快照目录，指向它编译 |
@@ -113,6 +113,32 @@ UI 只读只负责 affordance（别给假的可点按钮）。**正确性由写�
 - **`repositoryFlush` 会等满 store 的 keep-alive 窗口**，与要落盘多少东西无关。默认 10 秒意味着**每次提交
   10 秒**；`storeKeepAliveSeconds: 1` 把它压到 1 秒，代价是 blob 读突发之间的 store 复用窗口变短（远大于
   突发内的间隔，可接受）。只给 flush 那一次传 `storeKeepAlive:false` **无效**——等待属于之前那些读。
+
+### 4.2.1 U1b 的三个机制，和它们各自的理由
+
+- **手势用白名单，不用逐个关**。`toReadOnlyMoveableProps` 从两个允许的键重建一个新的 props 对象，
+  所以 Moveable 升级新增一种 ability 不会漏出来。覆盖层同时 `pointer-events-none`——这也是点击与
+  悬停能穿透到元素、让**选中继续工作**的原因。
+- **只拦提交不够，要拦 DOM 的可编辑性**。场景行的普通点击根本不走 `startTextEdit`：行把按下交给
+  浏览器（让原生选区变成插入符），窗口级 `mouseup` 直接设置文本模式；而 `RichTextInput` 无条件
+  `contentEditable`，键入由浏览器完成，Studio 全程不被问。**实测过一次「只拦了提交」的修复在真 app
+  上完全无效**：作者打完一句话、看着它出现在行上，然后被丢掉。
+- **属性框架用 `<fieldset disabled>` 兜底**。`inlineRow` / `custom` 这类字段的内容是调用方给的
+  JSX，没有地方接 `readOnly`，于是标志被静默丢掉——这就是 Position 锁住而紧挨着的 Rotation、
+  Appearance 还能输入的原因。改为把结构性字段的输出包进禁用的 `fieldset`（`display:contents`
+  用内联样式而不是 Tailwind 类，免得依赖某个工具类被生成过），禁用交给浏览器，一个自制控件不需要
+  知道这段代码存在就是惰性的。顺带覆盖了同样漏掉的另外四种字段类型。
+
+> **验收这块时的一个测量陷阱**：`<fieldset disabled>` 里的 input，`el.disabled` 是 **false**——
+> 那个属性反射的是元素自身的属性，不继承祖先。要问的是 `el.matches(":disabled")`。用错探针会报出
+> 一个不存在的缺陷（本轮发生过）。
+
+### 4.2.2 U1b 仍未覆盖的（写边界保证安全，缺的只是「别提供做不到的动作」）
+
+- 场景行的其余控件：位置选择器、条件编辑器、循环次数、加分支/加内层、背景快捷参数
+- `StoryFindBar` 的替换；`StorySceneActionInspector` 的自制编辑器（转场、VFX、镜头、角色动作）
+- 构建对话框（其主进程那一半属 U4）
+- 基于 `div` 的自制按钮不受 `fieldset` 约束（那条只作用于表单控件）
 
 ### 4.3 已知缺口
 
