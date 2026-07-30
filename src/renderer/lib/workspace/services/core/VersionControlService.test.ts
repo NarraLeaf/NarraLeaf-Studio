@@ -3,7 +3,7 @@ import type { RequestStatus } from "@shared/types/ipcEvents";
 import type { VcsAvailability, VcsCommitResult, VcsStatus } from "@shared/types/vcs";
 import { freezeProjectWrites, getProjectWriteFreeze, thawProjectWrites } from "@/lib/app/writeFreeze";
 import { CheckpointScheduler, VersionControlService, type CheckpointSchedulerDeps } from "./VersionControlService";
-import type { WorkspaceContext } from "../services";
+import { Services, type WorkspaceContext } from "../services";
 
 /**
  * The service against a faked bridge - no native library, no repository on disk.
@@ -26,6 +26,7 @@ const vcs = vi.hoisted(() => ({
     getHistory: vi.fn(),
     readBlob: vi.fn(),
     getChangedPaths: vi.fn(),
+    restoreRevision: vi.fn(),
 }));
 
 vi.mock("@/lib/app/bridge", () => ({
@@ -740,5 +741,127 @@ describe("VersionControlService checkpoint wiring", () => {
             thawProjectWrites();
             await service.teardown(service.getContext());
         }
+    });
+});
+
+/**
+ * The one operation here that changes the author's files, and the ordering that keeps it safe.
+ *
+ * The two services it drives are faked and every call is recorded IN ORDER, because the claims are
+ * all about order: the hold has to be in place before the main process writes a byte, and it has to
+ * be gone before this service leaves the view itself. Asking afterwards whether it was ever held
+ * proves neither.
+ */
+function createRestoreHarness(options: { frozen: boolean }) {
+    const trace: string[] = [];
+    let holds = 0;
+    let frozen = options.frozen;
+    const freeze = {
+        holdRelease: () => {
+            holds += 1;
+            trace.push("hold");
+            let released = false;
+            return () => {
+                if (released) return;
+                released = true;
+                holds -= 1;
+                trace.push("release");
+            };
+        },
+        isReleaseHeld: () => holds > 0,
+        isFrozen: () => frozen,
+        // Marked rather than merely recorded: the real service REFUSES while held, so a trace with
+        // this in it is a restore that would have left itself stuck in the history view.
+        thaw: () => {
+            trace.push(holds > 0 ? "thaw-WHILE-HELD" : "thaw");
+            frozen = false;
+        },
+    };
+    const reload = {
+        reload: async (cause: string) => {
+            trace.push(holds > 0 ? `reload-WHILE-HELD:${cause}` : `reload:${cause}`);
+        },
+    };
+    const context = {
+        project: { getConfig: () => ({ projectPath: PROJECT }) },
+        services: {
+            get: (id: string) => {
+                if (id === Services.WorkspaceFreeze) return freeze;
+                if (id === Services.WorkspaceReload) return reload;
+                // Settings included: `init` looks it up inside a try/catch and falls back.
+                throw new Error(`Unexpected service lookup in test: ${id}`);
+            },
+        },
+    } as unknown as WorkspaceContext;
+    return { trace, context, isHeld: () => holds > 0 };
+}
+
+async function createServiceWith(context: WorkspaceContext): Promise<VersionControlService> {
+    vcs.getAvailability.mockResolvedValue({ success: true, data: { available: true } });
+    const service = new VersionControlService();
+    await service.initialize(context, async () => undefined);
+    return service;
+}
+
+function restoreResult() {
+    return {
+        from: "aa",
+        checkpoint: commitResult({ revision: "bb", kind: "checkpoint" }),
+        revision: commitResult(),
+        recordFailure: null,
+        filesWritten: 3,
+        filesRemoved: 1,
+    };
+}
+
+describe("VersionControlService restore", () => {
+    /**
+     * The hole this closes: while main rewrites the working tree file by file, the command palette
+     * could reach `showWorkingTree` and re-read a half-written tree into the editors - after which
+     * the next save wrote that hybrid back over the restored files. Nothing told the author.
+     *
+     * The rail's two buttons were already disabled for it; the palette was not, and neither is the
+     * project switcher's menu, which reads its own `useVersionSurface` and cannot know a restore is
+     * running at all. Which is why the gate is a hold on the service rather than a third disabled
+     * control.
+     */
+    it("holds the workspace in its view for the whole rewrite, and lets go before leaving it", async () => {
+        const harness = createRestoreHarness({ frozen: true });
+        const service = await createServiceWith(harness.context);
+        vcs.restoreRevision.mockImplementation(async () => {
+            harness.trace.push(harness.isHeld() ? "rewrite-held" : "rewrite-UNHELD");
+            return { success: true, data: restoreResult() };
+        });
+
+        await service.restoreRevision("aa", { label: "#1" });
+
+        // The release BEFORE the thaw is the half that is easy to get backwards, and getting it
+        // backwards leaves the author in a history view whose way out is refused - by the restore's
+        // own hold - on a working tree that is already the old version.
+        expect(harness.trace).toEqual(["hold", "rewrite-held", "release", "thaw"]);
+        expect(harness.isHeld()).toBe(false);
+    });
+
+    it("re-reads instead of thawing at HEAD, with the hold already released", async () => {
+        const harness = createRestoreHarness({ frozen: false });
+        const service = await createServiceWith(harness.context);
+        vcs.restoreRevision.mockResolvedValue({ success: true, data: restoreResult() });
+
+        await service.restoreRevision("aa");
+
+        expect(harness.trace).toEqual(["hold", "release", "reload:restore"]);
+    });
+
+    it("releases the hold when the restore fails, so the workspace is not stuck in its view", async () => {
+        const harness = createRestoreHarness({ frozen: true });
+        const service = await createServiceWith(harness.context);
+        vcs.restoreRevision.mockResolvedValue({ success: false, error: "the backend exploded" });
+
+        await expect(service.restoreRevision("aa")).rejects.toThrow("the backend exploded");
+
+        // No thaw: nothing was written, so the view the author was in is still the truth. But the
+        // hold is gone, or leaving it by hand would be refused for the rest of the session.
+        expect(harness.trace).toEqual(["hold", "release"]);
+        expect(harness.isHeld()).toBe(false);
     });
 });

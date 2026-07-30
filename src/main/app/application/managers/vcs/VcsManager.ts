@@ -7,6 +7,8 @@ import type {
     VcsCommitResult,
     VcsHistoryEntry,
     VcsRepositoryInfo,
+    VcsRestoreOptions,
+    VcsRestoreResult,
     VcsRevisionKind,
     VcsStatus,
     VcsThreeWayResult,
@@ -21,6 +23,8 @@ import type { InitRepositoryOptions } from "./repository";
 // Value import, and safe to be one: this module only touches `fs` and the working-set predicate,
 // and imports the reader for types alone.
 import { materializeRevisionSnapshot, type RevisionSnapshotResult } from "./revisionSnapshot";
+// Same argument: policy plus `fs`, with the reader imported for types alone.
+import { applyRevisionRestore, planRevisionRestore, readWorkingSetPaths } from "./revisionRestore";
 
 /**
  * Owns Lore state for open projects.
@@ -92,10 +96,7 @@ export type PendingSaveFlush = (projectPath: string) => Promise<void>;
  * history where the same automatic checkpoint reads differently depending on who was
  * looking when it happened is worse than one that reads in English throughout.
  *
- * `restore` has no caller yet - restore does not exist (plan §4.4). The reason exists so
- * that milestone has one thing to call rather than a checkpoint policy to reinvent, and
- * is deliberately not wired to a stub: a fake restore that resolves without moving the
- * working tree would be worse than an absent one.
+ * Same argument for the restore message built in {@link VcsManager.restoreRevision}.
  */
 const CHECKPOINT_MESSAGES: Readonly<Record<VcsCheckpointReason, string>> = {
     interval: "Checkpoint",
@@ -105,6 +106,9 @@ const CHECKPOINT_MESSAGES: Readonly<Record<VcsCheckpointReason, string>> = {
 };
 
 const DEFAULT_COMMIT_MESSAGE = "Commit";
+
+/** How much of a revision id names it in a commit message when the caller had no label. */
+const RESTORE_MESSAGE_HASH_LENGTH = 12;
 
 /**
  * Size ceiling on one document read out of a revision, when the caller did not name the
@@ -429,6 +433,146 @@ export class VcsManager extends Manager {
                 { ...session.globals, identity: this.resolveIdentity(options.identity) },
                 { message, kind },
             );
+        });
+    }
+
+    /**
+     * Put the working tree back to what one revision held, and record that as a new revision.
+     *
+     * **Restoring adds to history; it never rewinds it.** Restoring to `#12` writes `#12`'s content
+     * over the working tree and commits the result as `#62`. Nothing between them disappears. That is
+     * the only model the backend can honestly offer - it has no verb that moves a branch tip
+     * backwards - and it is also the only one where a restore the author regrets is itself
+     * recoverable.
+     *
+     * The order below is the whole of it, and every step is where it is because moving it loses
+     * something:
+     *
+     *  1. **Enumerate the revision.** A pure read, and the step that establishes the revision exists
+     *     at all - on a project with a remote it is also where the network wait happens
+     *     (docs/version-control.md §6). Before the checkpoint on purpose: a restore that turns out to
+     *     be impossible must not have already left a revision in the author's history for it.
+     *  2. **Enumerate the working set**, which decides what may be DELETED. Only paths `isVersioned`
+     *     accepts are ever enumerated, so `.nlstudio/`, `editor/cache`, `dist` and `.lore/` are
+     *     outside this operation in both directions.
+     *  3. **Checkpoint.** The one place in the feature where a checkpoint is taken BEFORE the act,
+     *     because this is the one act that overwrites files the author may never have recorded.
+     *     A failure here ABORTS the restore - "note the error and carry on" would mean overwriting
+     *     their work with nothing to get it back from. "Nothing to record" is not a failure: a clean
+     *     tree's pre-restore state IS the head, so there is nothing a checkpoint could add.
+     *  4. **Write, then delete.** Deletions last, so an interruption leaves a tree with too much in
+     *     it rather than one with holes. See `revisionRestore.ts` for why nothing recurses.
+     *  5. **Commit.** The one step whose failure is REPORTED rather than thrown
+     *     ({@link VcsRestoreResult.recordFailure}), because it is the only one that fails with the
+     *     author's files already changed: the restored tree is on disk and uncommitted, which is a
+     *     state they can see and record themselves - and step 3's checkpoint is still the way back.
+     *     Thrown, it would read to every caller as "nothing happened", and the renderer would keep
+     *     showing documents that are no longer what is on disk. An unchanged tree answers
+     *     `revision: null` with no failure: restoring to what is already on disk changed nothing, and
+     *     an empty revision is a lie about their history.
+     *
+     * All of it inside ONE serialization block, which is why the steps talk to `backend` directly
+     * instead of calling this class's own `checkpoint` and `commit` - those serialize too, and would
+     * wait on the block they are already inside.
+     */
+    public async restoreRevision(
+        projectPath: string,
+        revision: string,
+        options: VcsRestoreOptions = {},
+    ): Promise<VcsRestoreResult> {
+        return this.serialize(projectPath, async () => {
+            // First and inside the lock, exactly as for a commit: an auto-save still owed would
+            // otherwise land on top of the restored bytes moments after they were written.
+            if (this.flushPendingSaves) {
+                await this.flushPendingSaves(projectPath).catch((error) => {
+                    this.app.logger.warn("[Vcs] Could not flush pending saves before restoring", error);
+                });
+            }
+
+            const { session, backend } = await this.sessionFor(projectPath);
+            const globals = { ...session.globals, identity: this.resolveIdentity(options.identity) };
+
+            const entries = await backend.listFilesAt(
+                globals,
+                session.store,
+                session.repositoryId,
+                revision,
+            );
+            const plan = planRevisionRestore({
+                revision: entries,
+                working: await readWorkingSetPaths(session.root),
+            });
+
+            const checkpoint = await backend
+                .commitWorkingTree(globals, {
+                    message: CHECKPOINT_MESSAGES.restore,
+                    kind: "checkpoint",
+                })
+                .catch((error) => {
+                    // The ONLY tolerated failure, and it is not one: with nothing uncommitted there is
+                    // nothing for a checkpoint to hold. Anything else stops the restore before a byte
+                    // is written.
+                    if (isNothingToCommit(error)) return null;
+                    throw error;
+                });
+            this.app.logger.info(
+                "[Vcs] Restoring", session.root, revision,
+                `${plan.write.length} write(s), ${plan.remove.length} removal(s)`,
+                checkpoint ? `checkpoint ${checkpoint.revision}` : "clean tree, no checkpoint",
+            );
+
+            const applied = await applyRevisionRestore({
+                projectPath: session.root,
+                plan,
+                source: {
+                    read: (entry) => backend.readEntryBytes(
+                        globals,
+                        session.store,
+                        session.repositoryId,
+                        entry,
+                    ),
+                },
+            });
+
+            let recordFailure: string | null = null;
+            const recorded = await backend
+                .commitWorkingTree(globals, {
+                    // Composed here rather than sent from the renderer, for the reason on
+                    // CHECKPOINT_MESSAGES: this sentence is permanent repository content, and a
+                    // history whose entries read in whichever language happened to be selected that
+                    // day is worse than one that reads in English throughout. The label is a
+                    // revision number, which is not language.
+                    message: `Restore version ${
+                        options.label?.trim() || revision.slice(0, RESTORE_MESSAGE_HASH_LENGTH)
+                    }`,
+                    kind: "commit",
+                })
+                .catch((error) => {
+                    if (isNothingToCommit(error)) return null;
+                    // **Reported, not thrown**, and this is the one step where those differ. Past
+                    // `applyRevisionRestore` the author's files ARE the old version; a throw here
+                    // reaches the renderer as "the restore failed", after which it keeps the
+                    // documents it had - which are now a version that is no longer on disk, one save
+                    // away from being written back over the restored tree. So the operation SUCCEEDS
+                    // with the failure in hand: the caller re-reads the working tree either way and
+                    // says what did not happen. Every earlier step still throws, because before this
+                    // line nothing of theirs has changed.
+                    recordFailure = error instanceof Error ? error.message : String(error);
+                    this.app.logger.error(
+                        "[Vcs] Restored the working tree but could not record it as a version",
+                        session.root, recordFailure,
+                    );
+                    return null;
+                });
+
+            return {
+                from: revision,
+                checkpoint,
+                revision: recorded,
+                recordFailure,
+                filesWritten: applied.filesWritten,
+                filesRemoved: applied.filesRemoved,
+            };
         });
     }
 

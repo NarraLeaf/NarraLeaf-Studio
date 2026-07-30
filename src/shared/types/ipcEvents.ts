@@ -52,6 +52,8 @@ import type {
     VcsHistoryEntry,
     VcsInitOptions,
     VcsRepositoryInfo,
+    VcsRestoreOptions,
+    VcsRestoreResult,
     VcsStatus,
     VcsThreeWayResult,
 } from "./vcs";
@@ -218,6 +220,7 @@ export enum IPCEventType {
     vcsInitRepository = "vcs.initRepository",
     vcsCommit = "vcs.commit",
     vcsCheckpoint = "vcs.checkpoint",
+    vcsRestoreRevision = "vcs.restoreRevision",
     vcsGetStatus = "vcs.getStatus",
     vcsGetHistory = "vcs.getHistory",
     vcsReadBlob = "vcs.readBlob",
@@ -560,6 +563,25 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { projectPath: string; reason: VcsCheckpointReason },
         response: { revision: VcsCommitResult | null };
+    };
+    /**
+     * Put the working tree back to one revision and record the result as a new one.
+     *
+     * The only call in this map that OVERWRITES the author's files, so two properties are part of the
+     * contract rather than implementation detail: a checkpoint is taken before anything is written
+     * (and a failure to take it aborts the whole thing), and nothing between the target revision and
+     * the head is removed - restoring adds a revision, it never rewinds.
+     *
+     * Long, for the same reasons a commit is, twice over: it settles the renderer's save debt, reads
+     * the revision (over the network on a project with a remote), commits a checkpoint, rewrites the
+     * working tree, and commits again. The caller must leave the revision view and re-read every
+     * document afterwards - the bytes under the editors have changed.
+     */
+    [IPCEventType.vcsRestoreRevision]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; revision: RevisionId; options?: VcsRestoreOptions },
+        response: VcsRestoreResult;
     };
     /**
      * What changed in the working tree. NOT a pure read - the scan behind it records

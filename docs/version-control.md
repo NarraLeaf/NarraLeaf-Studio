@@ -590,15 +590,25 @@ window[RendererInterfaceKey].vcs
 | `getInfo(projectPath)` | `{root, repositoryId, head?, headNumber, branch}` — **纯读**，走 `repositoryStatus(scan:false, revisionOnly:true)`，不触发 §4.17 |
 | `initRepository(projectPath, options?)` | `{root, repositoryId, head?, headNumber, branch}` — **唯一的写**，见下 |
 | `getStatus(projectPath)` | `VcsStatus`；**会扫描**，只能按需调，理由见 §4.17 |
+| `restoreRevision(projectPath, revision, options?)` | `{from, checkpoint, revision, filesWritten, filesRemoved}` — **唯一会覆写作者文件的调用**，见下 |
 | `getHistory(projectPath, limit?)` | `{entries: [{revision, number, parents}]}` |
 | `readBlob(projectPath, revision, path)` | `{contentBase64}` |
 | `getChangedPaths(projectPath, from, to)` | `{paths}` |
 | `getThreeWay(projectPath, mine, theirs, path)` | `{baseRevision?, base?, mine, theirs}`（均 base64） |
 | `getMergeBase(projectPath, a, b)` | `{base?}` |
 
-**写侧只放 `initRepository`**：它等不了 resolve UI——项目就是靠它才有仓库，其余每个动词在它跑之前都只会回答
-"不是仓库"。真正需要冲突故事的写（stage / commit / merge / restore）仍然故意缺席：渲染进程能在没有冲突处理
-的情况下提交，等于把作者提交进一个谁也出不来的状态。
+**写侧现在有四个**：`initRepository`（V1）、`commit` / `checkpoint`（V2）、`restoreRevision`（V4）。前三个都只会
+**新增一个修订**，够不到冲突，所以不需要 resolve UI 先存在。`restoreRevision` 也不需要，理由不同且值得写下来：
+它**不合并**——把某个修订的内容写到工作树上，再把结果记成一个新修订，从头到尾只有一边。真正有两边的写
+（merge）仍然故意缺席。
+
+`restoreRevision` 的三条硬约束（细节见 [revisionRestore.ts](../src/main/app/application/managers/vcs/revisionRestore.ts)）：
+
+- **动手前先打检查点**，打不出来就**整个中止**（"没东西可记录"不算打不出来：干净树的恢复前状态就是 HEAD）；
+- **只增不退**：在 `#61` 上恢复 `#12` 得到 `#62`，`#13..#61` 一条都不消失；
+- **只碰工作集**：写和删两边都以 `isVersioned` 为判据，`.nlstudio/` / `editor/cache` / `dist` / `.lore/` 在两个
+  方向上都不在这个操作的范围里。删除是逐个文件 `rm(recursive:false)`，清空目录用 `rmdir`（非空即拒绝），
+  **模块里没有、也不许有任何 `recursive:true`**。修订路径是不可信输入，越界（`..` / 绝对路径）**拒绝而不是跳过**。
 
 **为什么 keying 是硬要求**：Studio 是 one-project-one-window，单例 runtime 会让第二个打开的项目和第一个抢同一个 store handle——而 Lore 的仓库锁是独占的（§4.12），后果不是数据竞争而是死等。DevMode 踩过这个坑。
 
