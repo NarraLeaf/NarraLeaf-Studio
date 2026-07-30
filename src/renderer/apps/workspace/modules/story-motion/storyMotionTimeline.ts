@@ -19,23 +19,15 @@ import type {
     StoryAnimationTimeline,
     StoryAnimationTrack,
     StoryAnimationTrackProperty,
-    StoryDisplayableTargetKind,
 } from "@shared/types/story";
 import { parseStoryEasing } from "@shared/utils/storyEasing";
+import { STORY_MOTION_DEFAULT_PRESET_ID, createStoryMotionPresetTimeline } from "./storyMotionPresets";
 
 export const STORY_MOTION_FPS = 60;
 export const STORY_MOTION_DEFAULT_DURATION_MS = 420;
 export const STORY_MOTION_MAX_DURATION_MS = 300_000;
 export const STORY_MOTION_DEFAULT_EASING = "easeOut";
 
-export const STORY_MOTION_TEMPLATES = [
-    "Fade in + slide",
-    "Center pop",
-    "Look around",
-    "Flash",
-] as const;
-
-export type StoryMotionTemplateName = typeof STORY_MOTION_TEMPLATES[number];
 export type StoryMotionValueKind = "position" | "number" | "text";
 
 export type StoryMotionPropertyMeta = {
@@ -164,6 +156,60 @@ export function getStoryMotionDurationMs(timeline: StoryAnimationTimeline | unde
     return clampStoryMotionTimeMs(Math.max(...keyframeTimes));
 }
 
+/** How many evenly spaced samples {@link storyMotionSignatureTimeMs} considers besides the keyframes. */
+const SIGNATURE_SAMPLE_COUNT = 16;
+
+/**
+ * The most characteristic frame of a motion — the time whose pose is furthest from neutral, weighted
+ * by how visible it is.
+ *
+ * Exists because a gallery of motions parked at t=0 is a grid of identical squares: almost every move
+ * starts from rest, so frame 0 says nothing about which one it is. Parked here instead, "push in"
+ * shows a tight frame, "pan sweep" a shifted one and "dutch tilt" a tilted one, and the difference is
+ * visible before the pointer arrives.
+ *
+ * Two things the naive version got wrong, both found by the tests below:
+ *  - **Keyframe times alone are not enough.** An entrance's extreme frame is its *first* one, where it
+ *    is fully transparent — so `fadeInSlide` parked on an empty square. Intermediate samples give it a
+ *    half-faded sprite mid-slide, which is what the move looks like.
+ *  - **Deviation must be scaled by opacity.** Otherwise "furthest from neutral" is reliably the
+ *    invisible frame, since opacity 0 is itself a large deviation.
+ *
+ * The channel weights are deliberately crude, tuned only so no single channel drowns the others (a
+ * 120px offset and a 0.33 zoom change should read as comparable).
+ */
+export function storyMotionSignatureTimeMs(timeline: StoryAnimationTimeline | undefined): number {
+    const keyframeTimes = (timeline?.tracks ?? []).flatMap(track => track.keyframes.map(keyframe => keyframe.timeMs));
+    if (keyframeTimes.length === 0) {
+        return 0;
+    }
+    const durationMs = Math.max(...keyframeTimes);
+    const sampled = Array.from(
+        { length: SIGNATURE_SAMPLE_COUNT + 1 },
+        (_, index) => Math.round((durationMs * index) / SIGNATURE_SAMPLE_COUNT),
+    );
+    const times = [...new Set([...keyframeTimes, ...sampled])].sort((left, right) => left - right);
+
+    let best = times[0];
+    let bestScore = -1;
+    for (const timeMs of times) {
+        const state = sampleStoryMotionPreview(timeline, timeMs);
+        const deviation = Math.abs(state.zoom - 1) * 3
+            + Math.abs(state.scaleX - 1) * 3
+            + Math.abs(state.scaleY - 1) * 3
+            + Math.abs(state.rotation) / 20
+            + Math.abs(state.position.xoffset) / 120
+            + Math.abs(state.position.yoffset) / 120
+            + Math.abs(state.opacity - 1);
+        const score = deviation * Math.min(1, Math.max(0, state.opacity));
+        if (score > bestScore) {
+            bestScore = score;
+            best = timeMs;
+        }
+    }
+    return best;
+}
+
 export function clampStoryMotionTimeMs(timeMs: number): number {
     return Math.max(0, Math.min(STORY_MOTION_MAX_DURATION_MS, Math.round(timeMs)));
 }
@@ -189,58 +235,17 @@ export function formatStoryMotionTime(ms: number, fps = STORY_MOTION_FPS): strin
 }
 
 export function getStoryMotionTimeline(asset: StoryAnimationAsset | null | undefined): StoryAnimationTimeline {
-    return asset?.timeline ?? createStoryMotionTemplateTimeline("Fade in + slide");
+    return asset?.timeline ?? createStoryMotionPresetTimeline(STORY_MOTION_DEFAULT_PRESET_ID);
 }
 
-export function createStoryMotionTemplateTimeline(template: StoryMotionTemplateName = "Fade in + slide"): StoryAnimationTimeline {
-    switch (template) {
-        case "Center pop":
-            return timeline(360, [
-                track("zoom", [
-                    keyframe("zoom", 0, 0.82, "easeOut"),
-                    keyframe("zoom", 220, 1.08, "easeOut"),
-                    keyframe("zoom", 360, 1, "easeOut"),
-                ]),
-                track("opacity", [
-                    keyframe("opacity", 0, 0, "easeOut"),
-                    keyframe("opacity", 180, 1, "easeOut"),
-                ]),
-            ]);
-        case "Look around":
-            return timeline(540, [
-                track("rotation", [
-                    keyframe("rotation", 0, -3, "easeInOut"),
-                    keyframe("rotation", 220, 3, "easeInOut"),
-                    keyframe("rotation", 540, 0, "easeOut"),
-                ]),
-            ]);
-        case "Flash":
-            return timeline(280, [
-                track("opacity", [
-                    keyframe("opacity", 0, 0, "linear"),
-                    keyframe("opacity", 80, 1, "linear"),
-                    keyframe("opacity", 150, 0.2, "linear"),
-                    keyframe("opacity", 280, 1, "easeOut"),
-                ]),
-            ]);
-        case "Fade in + slide":
-        default:
-            return timeline(420, [
-                track("position", [
-                    keyframe("position", 0, { xalign: 0.5, yalign: 0.55, xoffset: -120, yoffset: 0 }, "easeOut"),
-                    keyframe("position", 420, { xalign: 0.5, yalign: 0.55, xoffset: 0, yoffset: 0 }, "easeOut"),
-                ]),
-                track("opacity", [
-                    keyframe("opacity", 0, 0, "easeOut"),
-                    keyframe("opacity", 420, 1, "easeOut"),
-                ]),
-            ]);
-    }
-}
-
-export function createStoryMotionName(targetKind: StoryDisplayableTargetKind | undefined, template?: StoryMotionTemplateName): string {
-    const target = targetKind ? targetKind[0].toUpperCase() + targetKind.slice(1) : "Displayable";
-    return template ? `${target} ${template}` : `${target} Motion`;
+/**
+ * The name a freshly created motion asset carries. Both halves arrive **already localized** — the
+ * name is authored content the author reads and renames, so "立绘 震动" is the right default in a
+ * Chinese project and "Character Shake" in an English one. (The previous version derived the prefix
+ * from the raw `targetKind` literal, which was English in every locale.)
+ */
+export function createStoryMotionName(targetKindLabel: string, motionLabel: string): string {
+    return `${targetKindLabel} ${motionLabel}`.trim();
 }
 
 export function sampleStoryMotionPreview(timeline: StoryAnimationTimeline | undefined, timeMs: number): StoryMotionPreviewState {
@@ -407,35 +412,6 @@ function defaultValueForProperty(property: StoryAnimationTrackProperty): StoryAn
     if (property === "rotation") return DEFAULT_PREVIEW_STATE.rotation;
     if (getStoryMotionPropertyMeta(property).valueKind === "text") return "";
     return DEFAULT_PREVIEW_STATE.opacity;
-}
-
-function timeline(durationMs: number, tracks: StoryAnimationTrack[]): StoryAnimationTimeline {
-    return {
-        durationMs,
-        tracks,
-    };
-}
-
-function track(property: StoryAnimationTrackProperty, keyframes: StoryAnimationKeyframe[]): StoryAnimationTrack {
-    return {
-        id: `track-${property}`,
-        property,
-        keyframes,
-    };
-}
-
-function keyframe(
-    property: StoryAnimationTrackProperty,
-    timeMs: number,
-    value: StoryAnimationKeyframeValue,
-    easing: string,
-): StoryAnimationKeyframe {
-    return {
-        id: `kf-${property}-${timeMs}`,
-        timeMs,
-        value,
-        easing,
-    };
 }
 
 function lerp(from: number, to: number, progress: number): number {

@@ -41,28 +41,24 @@ import {
 } from "./storyMotionTypes";
 import {
     STORY_MOTION_FPS,
-    STORY_MOTION_TEMPLATES,
     createStoryMotionName,
-    createStoryMotionTemplateTimeline,
+    getStoryMotionTimeline,
     formatStoryMotionTime,
     getStoryMotionDurationMs,
     sampleStoryMotionPreview,
     type StoryMotionPreviewState,
-    type StoryMotionTemplateName,
 } from "./storyMotionTimeline";
+import {
+    STORY_MOTION_PRESET_CATEGORIES,
+    getStoryMotionPreset,
+    storyMotionPresetsForTargetKind,
+} from "./storyMotionPresets";
 import { StoryMotionStagePreview } from "./StoryMotionStagePreview";
 import { resolveStoryMotionPreviewTarget, type StoryMotionPreviewTarget } from "./storyMotionPreviewTarget";
 
 const ICON_BUTTON_CLASS = controlButtonClass();
 const PREVIEW_LOOP_GAP_MS = 2000;
 const PREVIEW_FRAME_MS = 1000 / STORY_MOTION_FPS;
-
-const STORY_MOTION_TEMPLATE_KEYS = {
-    "Fade in + slide": "fadeInSlide",
-    "Center pop": "centerPop",
-    "Look around": "lookAround",
-    "Flash": "flash",
-} as const satisfies Record<StoryMotionTemplateName, string>;
 
 export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPanelPayload | undefined>) {
     const { t } = useTranslation();
@@ -201,18 +197,32 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
             || asset.targetKind.toLowerCase().includes(needle));
     }, [assets, query]);
 
-    const createMotion = useCallback(async (templateName?: typeof STORY_MOTION_TEMPLATES[number]) => {
+    const createMotion = useCallback(async (presetId?: string) => {
         if (!storyService) {
             return;
         }
         const targetKind = descriptor?.targetKind ?? "image";
+        const preset = presetId ? getStoryMotionPreset(presetId) : undefined;
         const asset = await storyService.createAnimationAsset({
-            name: createStoryMotionName(targetKind, templateName),
+            name: createStoryMotionName(
+                t(`motion.targetKind.${targetKind}`),
+                preset ? t(`motion.preset.${preset.id}`) : t("motion.blankMotionName"),
+            ),
             targetKind,
-            timeline: createStoryMotionTemplateTimeline(templateName),
+            timeline: preset?.build(),
+            config: preset?.config,
         });
         setSelectedId(asset.id);
-    }, [descriptor?.targetKind, storyService]);
+    }, [descriptor?.targetKind, storyService, t]);
+
+    const presetsForTarget = useMemo(
+        () => storyMotionPresetsForTargetKind(descriptor?.targetKind ?? "image"),
+        [descriptor?.targetKind],
+    );
+    const storyMotionPresetCategories = useMemo(
+        () => STORY_MOTION_PRESET_CATEGORIES.filter(category => presetsForTarget.some(preset => preset.category === category)),
+        [presetsForTarget],
+    );
 
     const openCreateMenu = useCallback((event: MouseEvent<HTMLButtonElement>) => {
         event.stopPropagation();
@@ -228,15 +238,25 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                 void createMotion();
             },
         },
-        ...STORY_MOTION_TEMPLATES.map(templateName => ({
-            id: `preset-${templateName}`,
-            label: t(`motion.templates.${STORY_MOTION_TEMPLATE_KEYS[templateName]}`),
+        { id: "preset-separator", separator: true },
+        // One submenu per category rather than a flat list: the library is far past the length where a
+        // single menu is readable, and the categories are how an author already thinks about the move
+        // they want ("something for an entrance").
+        ...storyMotionPresetCategories.map(category => ({
+            id: `preset-category-${category}`,
+            label: t(`motion.presetCategory.${category}`),
             icon: <Spline className="h-4 w-4" />,
-            onClick: () => {
-                void createMotion(templateName);
-            },
+            submenu: presetsForTarget
+                .filter(preset => preset.category === category)
+                .map(preset => ({
+                    id: `preset-${preset.id}`,
+                    label: t(`motion.preset.${preset.id}`),
+                    onClick: () => {
+                        void createMotion(preset.id);
+                    },
+                })),
         })),
-    ], [createMotion, t]);
+    ], [createMotion, presetsForTarget, storyMotionPresetCategories, t]);
 
     const duplicateMotion = useCallback(async () => {
         if (!storyService || !selectedAsset) {
@@ -342,7 +362,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
     }, [actionContext, openEditorTab, selectedAsset]);
 
     const previewTimeline = useMemo(() => {
-        return selectedAsset?.timeline ?? createStoryMotionTemplateTimeline("Fade in + slide");
+        return getStoryMotionTimeline(selectedAsset);
     }, [selectedAsset?.timeline]);
     const previewDurationMs = useMemo(() => getStoryMotionDurationMs(previewTimeline), [previewTimeline]);
     useEffect(() => {
