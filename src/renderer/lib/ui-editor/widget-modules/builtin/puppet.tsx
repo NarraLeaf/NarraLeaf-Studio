@@ -23,7 +23,12 @@ export const PuppetWidgetModule: UIWidgetModule = {
 
     createDefaultElement: () => ({
         type: UI_PUPPET_ELEMENT_TYPE,
-        name: translate("widgets.defaults.puppet.name"),
+        /**
+         * The short name here, not the palette's.
+         * "Spine2D / Live2D Model" is what an author has to *find*, so the palette says it; it is not
+         * what four of them should be called in the outline, where every other widget is one word.
+         */
+        name: translate("widgets.puppet.title"),
         layout: {
             x: 0,
             y: 0,
