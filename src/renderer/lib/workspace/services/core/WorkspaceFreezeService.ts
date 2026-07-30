@@ -22,6 +22,22 @@ type WorkspaceFreezeEvents = {
 };
 
 /**
+ * Tell main what the workspace is showing.
+ *
+ * The revision travels with the kind because main does not refuse everything while frozen: Dev Mode
+ * **runs the focused revision** (plan 2026-07-28-002 §1), and it cannot find one from the kind alone.
+ * Main refuses the launch if a `"revision"` freeze arrives without an id, so a caller that drops this
+ * argument loses the feature rather than silently running the working tree under a past version's name.
+ */
+function reportFreezeToHost(reason: WorkspaceFreezeReason | null): void {
+    if (reason?.kind === "revision") {
+        getInterface().workspace.reportWriteFreeze(reason.kind, reason.revision);
+        return;
+    }
+    getInterface().workspace.reportWriteFreeze(reason?.kind ?? null);
+}
+
+/**
  * Whether this project's data may be written, and why not when it may not.
  *
  * A service of its own rather than a field on `VersionControlService`: freeze is a workspace write
@@ -63,14 +79,14 @@ export class WorkspaceFreezeService extends Service<WorkspaceFreezeService> impl
         this.dropSource();
         this.unobserve = observeProjectWriteFreeze((freeze) => {
             this.events.emit("changed", freeze?.reason ?? null);
-            getInterface().workspace.reportWriteFreeze(freeze?.reason.kind ?? null);
+            reportFreezeToHost(freeze?.reason ?? null);
         });
         // Main starts the production build and the Preview runtime itself, so it has to be told;
         // greying the two controls is affordance, not enforcement. Reported here as well as on every
         // change because the latch above is module-level and never persisted: a window that reloads
         // mid-freeze comes back writable, and without this main would keep refusing both for the rest
         // of the session with nothing anywhere to explain why.
-        getInterface().workspace.reportWriteFreeze(getProjectWriteFreeze()?.reason.kind ?? null);
+        reportFreezeToHost(getProjectWriteFreeze()?.reason ?? null);
     }
 
     public override dispose(_ctx: WorkspaceContext): void {

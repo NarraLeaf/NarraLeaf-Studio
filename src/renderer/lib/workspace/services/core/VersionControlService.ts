@@ -357,6 +357,12 @@ export class VersionControlService extends Service<VersionControlService> implem
      * backend has no batch metadata verb, so it costs one call PER REVISION - and it is
      * part of the cache key rather than a filter on one cached list, because a page read
      * without kinds cannot answer a later question about them.
+     *
+     * The message, timestamp and author arrive on the SAME read and are deliberately NOT
+     * a third state of that key: the main process reads them out of the one metadata call
+     * the kind already pays for, so there is no such thing as a page that has kinds and
+     * lacks them. Splitting the key per field would double the cached pages and re-pay
+     * that per-revision cost for data already in hand.
      */
     public async getHistory(limit = 0, options: { includeKinds?: boolean } = {}): Promise<VcsHistoryEntry[]> {
         const includeKinds = options.includeKinds === true;

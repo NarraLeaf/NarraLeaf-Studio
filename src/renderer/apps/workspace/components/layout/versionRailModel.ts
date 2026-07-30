@@ -1,0 +1,265 @@
+import type { RevisionId, VcsAvailability, VcsHistoryEntry, VcsUnavailableReason } from "@shared/types/vcs";
+import type { TranslationKey } from "@shared/i18n";
+import { RAIL_SELECTOR_WIDTH } from "./dockLayoutModel";
+
+/**
+ * Every decision the version rail makes that is not a pixel: which of the six surface states the
+ * author is in, what a linear history looks like when the real thing is a DAG, and which revisions a
+ * collapsed list shows.
+ *
+ * Pure, and separate from the components, for the reason `dockLayoutModel` is: these are the parts
+ * that can be wrong in a way a screenshot does not reveal. There are no component-render tests in
+ * this codebase, so anything that decides behaviour has to be reachable without mounting a rail.
+ */
+
+/**
+ * Collapsed width. The same 48px as the sidebar selector rail, and that is a product decision rather
+ * than a coincidence: the collapsed rail IS the persistent "you are looking at a historical version"
+ * indicator, and it reads as part of the window's left edge only if it lines up with the rail beside
+ * it (plan 2026-07-28-002 §1). Derived from {@link RAIL_SELECTOR_WIDTH} so the two cannot drift.
+ */
+export const VERSION_RAIL_COLLAPSED_WIDTH = RAIL_SELECTOR_WIDTH;
+
+/** Expanded width, from the plan's layout diagram (§3). */
+export const VERSION_RAIL_EXPANDED_WIDTH = 320;
+
+/**
+ * The width the dock solver has to be told about.
+ *
+ * `visible: false` answers 0 rather than the collapsed width, because an unavailable backend means
+ * the column does not exist at all - see {@link resolveVersionSurfaceState}, which is what decides
+ * that. Feeding this straight into `DockEnv.versionRailWidth` is the whole contract.
+ */
+export function versionRailWidth(visible: boolean, expanded: boolean): number {
+    if (!visible) {
+        return 0;
+    }
+    return expanded ? VERSION_RAIL_EXPANDED_WIDTH : VERSION_RAIL_COLLAPSED_WIDTH;
+}
+
+/**
+ * What the author is looking at, and therefore what every version-control surface renders.
+ *
+ * One resolver for the rail, the top-bar widget and the status-bar cell, because three surfaces that
+ * each decided for themselves would eventually disagree - and "the top bar says this project has no
+ * repository while the rail shows its history" is the kind of contradiction that makes an author
+ * distrust the whole feature.
+ */
+export type VersionSurfaceState =
+    /** Nothing has answered yet. Availability is one IPC round trip, and it dlopens ~29MB. */
+    | { kind: "probing" }
+    /**
+     * This host cannot do version control. Every surface must render NOTHING in this state - not a
+     * disabled button, not an explanation. See {@link isVersionSurfaceVisible}.
+     */
+    | { kind: "unavailable"; reason: VcsUnavailableReason; detail?: string }
+    /** The backend works but this project has no repository. The surface offers to make one. */
+    | { kind: "not-a-repository" }
+    /** A repository with no revisions in it yet. */
+    | { kind: "empty" }
+    /** The working tree, which is the ordinary state. `number` is null until info has been read. */
+    | { kind: "current"; head: RevisionId; number: number | null }
+    /** A past revision is on screen and project data is frozen. `label` is usually `#4`. */
+    | { kind: "revision"; revision: RevisionId; label?: string };
+
+export interface VersionSurfaceInputs {
+    /** Null until `getAvailability` has answered. */
+    availability: VcsAvailability | null;
+    /** Null until `isRepository` has answered. */
+    isRepository: boolean | null;
+    /** Head of the current branch, null in a repository with no revisions. */
+    head: RevisionId | null;
+    /** Head's revision number, null when info has not been read (or there is no head). */
+    headNumber: number | null;
+    /** The revision the editors are showing, from `VersionControlService.getShownRevision`. */
+    shownRevision: RevisionId | null;
+    /** How to name the shown revision; the freeze reason's own label. */
+    shownLabel?: string;
+}
+
+/**
+ * Which of the six states the surfaces are in.
+ *
+ * The ordering is the argument. A shown revision beats "empty" and beats a missing head, because
+ * while a revision is on screen the workspace is frozen on it and saying anything else would leave
+ * the author frozen with no visible cause. And availability is asked before everything, because
+ * "this directory is not a repository" and "this machine has no backend" need opposite things said
+ * (docs/version-control.md; `VcsUnavailableReason`) and only one of them is worth offering a fix for.
+ */
+export function resolveVersionSurfaceState(inputs: VersionSurfaceInputs): VersionSurfaceState {
+    const { availability } = inputs;
+    if (!availability) {
+        return { kind: "probing" };
+    }
+    if (!availability.available) {
+        return { kind: "unavailable", reason: availability.reason, detail: availability.detail };
+    }
+    if (inputs.shownRevision) {
+        return { kind: "revision", revision: inputs.shownRevision, label: inputs.shownLabel };
+    }
+    if (inputs.isRepository === null) {
+        return { kind: "probing" };
+    }
+    if (!inputs.isRepository) {
+        return { kind: "not-a-repository" };
+    }
+    if (!inputs.head) {
+        return { kind: "empty" };
+    }
+    return { kind: "current", head: inputs.head, number: inputs.headNumber };
+}
+
+/**
+ * Whether the version-control surfaces exist at all.
+ *
+ * False for exactly one state, and the rule is stronger than "disabled": version control is an
+ * OPTIONAL capability (no native build for macOS Intel or Windows ARM64), so on those machines it is
+ * not a feature that is off, it is a feature that was never shipped. A greyed rail with a tooltip
+ * would tell an author their installation is broken when nothing is.
+ *
+ * This is the opposite of the freeze convention next door (`freezeActionPolicy`: disabled, never
+ * hidden), and deliberately: a freeze is a state the author put themselves in and can leave, so there
+ * has to be something to hover. An unsupported platform is neither.
+ *
+ * True while PROBING, so the column does not pop into the layout a beat after every project open. The
+ * cost is a frame of rail on a machine that turns out not to support it, and that is bounded: the
+ * unsupported-platform answer short-circuits on an OS/arch comparison before anything is dlopened
+ * (`loadVcsBackend`), so it is one IPC round trip rather than a 29MB library load.
+ */
+export function isVersionSurfaceVisible(state: VersionSurfaceState): boolean {
+    return state.kind !== "unavailable";
+}
+
+/**
+ * What to tell the author when the backend is missing.
+ *
+ * Three reasons, two messages, because there are two different things wrong and the author can only
+ * act on one of them: an unsupported OS/arch is their MACHINE and nothing they do to Studio will
+ * change it, while a missing or unloadable native library is their INSTALLATION - a reinstall is the
+ * fix. Collapsing them into one string would send half the users to reinstall for nothing.
+ */
+export function unavailableReasonKey(reason: VcsUnavailableReason): TranslationKey {
+    return (reason === "unsupported-platform"
+        ? "workspace.shell.versionControl.unavailable.platform"
+        : "workspace.shell.versionControl.unavailable.installation") as TranslationKey;
+}
+
+/** One row of the rail's linear history. */
+export interface FlatHistoryEntry {
+    revision: RevisionId;
+    number: number;
+    /** Only present when the caller asked for kinds. Absent is normal - see {@link isCheckpoint}. */
+    kind?: VcsHistoryEntry["kind"];
+    /**
+     * This revision has more than one parent, so the line the rail draws through it hides a second
+     * ancestry. Marked rather than expanded: the rail is a linear list by decision, and an
+     * unmarked merge would be a linear list that quietly lies.
+     */
+    merge: boolean;
+}
+
+/**
+ * The first-parent walk: the linear history the rail shows, out of the DAG the service returns.
+ *
+ * `VcsHistoryEntry.parents` is an array and stays one - the flattening lives HERE, in the view
+ * model, and never in the service, because collaboration (V5) makes side branches real and a data
+ * layer that had assumed a chain would have to be rebuilt rather than extended (plan §5.6).
+ *
+ * Starts at the newest entry and follows `parents[0]`. Revisions reachable only through a second
+ * parent are dropped: they belong to the branch that was merged IN, and showing them inline would
+ * interleave two timelines into one list with no way to tell which row came from where. The merge
+ * revision itself carries {@link FlatHistoryEntry.merge}, which is the marker that says so.
+ *
+ * Stops when the next first parent is not in `entries` - a page read with `limit` ends mid-history,
+ * and walking off the end is the ordinary case rather than an error.
+ */
+export function flattenFirstParent(entries: readonly VcsHistoryEntry[]): FlatHistoryEntry[] {
+    if (entries.length === 0) {
+        return [];
+    }
+    const byRevision = new Map(entries.map(entry => [entry.revision, entry]));
+    // The newest entry: `getHistory` answers newest-first, but the walk asks for the highest revision
+    // number rather than trusting position, so a caller that sorted differently still gets a tip.
+    let cursor: VcsHistoryEntry | undefined = entries.reduce(
+        (best, entry) => (entry.number > best.number ? entry : best),
+        entries[0],
+    );
+    const out: FlatHistoryEntry[] = [];
+    const seen = new Set<RevisionId>();
+    while (cursor && !seen.has(cursor.revision)) {
+        seen.add(cursor.revision);
+        out.push({
+            revision: cursor.revision,
+            number: cursor.number,
+            kind: cursor.kind,
+            merge: cursor.parents.length > 1,
+        });
+        const parent: RevisionId | undefined = cursor.parents[0];
+        cursor = parent ? byRevision.get(parent) : undefined;
+    }
+    return out;
+}
+
+/**
+ * Whether a revision is one Studio recorded on its own initiative.
+ *
+ * **Absent is not a checkpoint.** The repository's first commit is written by `initRepository`, which
+ * predates kinds, and anything committed by the author's own `lore` CLI records none either - so
+ * "no kind" has to mean "show it", never "default to one of the two" (`VCS_REVISION_KIND_KEY`).
+ * Getting this backwards hides the author's oldest revision, which is the one they would look for
+ * first when something went wrong.
+ */
+export function isCheckpoint(entry: Pick<FlatHistoryEntry, "kind">): boolean {
+    return entry.kind === "checkpoint";
+}
+
+export interface CollapseCheckpointsOptions {
+    /** Default false: a checkpoint is not a commit, and an interval timer makes many of them. */
+    showCheckpoints?: boolean;
+    /**
+     * Revisions that stay in the list whatever their kind - the one on screen, above all.
+     *
+     * Without it, an author viewing a checkpoint who collapses the list watches the row they are
+     * standing on disappear, leaving a rail that says they are nowhere.
+     */
+    keep?: ReadonlySet<RevisionId>;
+}
+
+/**
+ * The rows the rail lists: the linear history with checkpoints folded away unless asked for.
+ *
+ * Collapsed by default because the two kinds answer different questions. A commit is a thing the
+ * author decided to record; a checkpoint is the 15-minute timer catching their work, and on a
+ * writing day there are dozens. A list where those are interleaved is a list nobody reads.
+ */
+export function collapseCheckpoints(
+    entries: readonly FlatHistoryEntry[],
+    options: CollapseCheckpointsOptions = {},
+): FlatHistoryEntry[] {
+    if (options.showCheckpoints) {
+        return [...entries];
+    }
+    return entries.filter(entry => !isCheckpoint(entry) || options.keep?.has(entry.revision));
+}
+
+/** How many rows the collapse is hiding, for the "show N checkpoints" affordance. */
+export function hiddenCheckpointCount(
+    entries: readonly FlatHistoryEntry[],
+    options: CollapseCheckpointsOptions = {},
+): number {
+    return entries.length - collapseCheckpoints(entries, options).length;
+}
+
+/**
+ * A revision id short enough to read. Hex at the transport layer, so the head is enough to tell two
+ * apart by eye; the number is what the UI leads with, because `#4` means something to a person and
+ * `a91f3c8` does not.
+ */
+export function shortRevision(revision: RevisionId, length = 7): string {
+    return revision.slice(0, length);
+}
+
+/** How the rail and every other surface names one revision: `#4`. */
+export function revisionLabel(number: number): string {
+    return `#${number}`;
+}
