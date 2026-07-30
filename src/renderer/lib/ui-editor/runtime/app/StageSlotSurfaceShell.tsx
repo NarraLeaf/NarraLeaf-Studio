@@ -18,7 +18,6 @@ import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRen
 import { GameSurfaceRenderer } from "@/lib/ui-editor/runtime/surface/GameSurfaceRenderer";
 import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
-import type { UiSoundPlayback } from "./uiSoundPlayback";
 import {
     createDevModeBlueprintHostApi,
     type BlueprintGameHistoryEntry,
@@ -93,8 +92,6 @@ export type GameUiSlotHostOptions = {
     setSentenceSpeedInGame: (cps: number) => Promise<void>;
     getGamePreferenceInGame: (key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue;
     setGamePreferenceInGame: (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => Promise<void>;
-    /** The app-wide sound registry, shared with the navigation surfaces so one handle works on both. */
-    uiSound: UiSoundPlayback;
     setWidgetPatchesByScope: Dispatch<SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>>;
     widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
     widgetRuntimeStore: WidgetRuntimeStateStore;
@@ -207,9 +204,6 @@ export function useStageSlotSurfaceRuntime(input: {
             onSetSentenceSpeed: options.setSentenceSpeedInGame,
             onGetGamePreference: options.getGamePreferenceInGame,
             onSetGamePreference: options.setGamePreferenceInGame,
-            onPlaySound: options.uiSound.play,
-            onSoundTransport: options.uiSound.transport,
-            onIsSoundPlaying: options.uiSound.isPlaying,
             onWidgetPatch: (elementId, patch) => {
                 applyWidgetRuntimePatch({
                     setWidgetPatchesByScope,

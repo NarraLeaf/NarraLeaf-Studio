@@ -195,8 +195,6 @@ import {
     BLUEPRINT_NODE_TYPE_LITERAL_NUMBER,
     BLUEPRINT_NODE_TYPE_LITERAL_RECT,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
-    BLUEPRINT_NODE_TYPE_SOUND_PLAY,
-    BLUEPRINT_NODE_TYPE_SOUND_STOP,
     BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEMS,
     BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS,
@@ -233,6 +231,9 @@ import {
     BLUEPRINT_NODE_TYPE_SLIDER_GET_VALUE,
     BLUEPRINT_NODE_TYPE_SLIDER_SET_RANGE,
     BLUEPRINT_NODE_TYPE_SLIDER_SET_VALUE,
+    BLUEPRINT_NODE_TYPE_SOUND_PLAY,
+    BLUEPRINT_NODE_TYPE_SOUND_SEEK,
+    BLUEPRINT_NODE_TYPE_SOUND_SET_VOLUME,
     BLUEPRINT_NODE_TYPE_STRING_LENGTH,
     BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT,
     BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT_COLOR,
@@ -283,7 +284,7 @@ import type { BlueprintHostApiRuntime } from "../../blueprint-runtime/BlueprintH
 import { BLUEPRINT_NODE_PARAM_DISPLAYABLE_ANIMATION_FROM_EXPLICIT } from "../types";
 import { resolveEffectiveBlueprintCatalogEntry, resolveEffectiveBlueprintNodePins } from "../effectivePins";
 
-/** No host in these tests plays audio; the family degrades to silence, which is its documented shape. */
+/** No host in these tests backs audio; the family's documented degrade is silence, not an error. */
 const SILENT_SOUND_HOST: BlueprintHostApiRuntime["sound"] = {
     play: async () => null,
     stop: async () => undefined,
@@ -357,6 +358,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     getChoiceCount: () => 0,
                     isNvlMode: () => false,
                     isCurrentTextRead: () => false,
+                    isTextRead: () => false,
                     clearTextRead: async () => undefined,
                     choose: async () => undefined,
                     next: async () => undefined,
@@ -480,6 +482,7 @@ function createPageNavigationHostAdapter(
                     getChoiceCount: () => 0,
                     isNvlMode: () => false,
                     isCurrentTextRead: () => false,
+                    isTextRead: () => false,
                     clearTextRead: async () => undefined,
                     choose: async () => undefined,
                     next: async () => undefined,
@@ -603,6 +606,7 @@ function createGameSaveHostAdapter(options: {
                     getChoiceCount: () => options.choiceCount ?? 0,
                     isNvlMode: () => options.nvlMode ?? false,
                     isCurrentTextRead: () => options.textRead ?? false,
+                    isTextRead: () => false,
                     clearTextRead: async () => {
                         options.clearTextReadCalls?.push(true);
                     },
@@ -2509,9 +2513,17 @@ describe("built-in blueprint nodes", () => {
         expect(gameReadyHead?.role).toBe("eventHead");
         expect(gameReadyHead?.scope).toEqual({ ownerKinds: ["globalMain"] });
         expect(gameReadyHead?.pins.map(pin => pin.id)).toEqual(["then"]);
-        expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_START_STORY)?.pins.map(pin => pin.id)).toEqual([
+        // The three optional target pins are what let a data-driven screen (a
+        // recollection list) pick the scene at runtime; the pickers stay for the
+        // hand-authored "New Game" case.
+        const startStory = gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_START_STORY);
+        expect(startStory?.pins.map(pin => pin.id)).toEqual([
             "in",
+            "storyId",
+            "sceneId",
+            "startBlockId",
         ]);
+        expect(startStory?.pins.filter(pin => pin.id !== "in").every(pin => pin.optional)).toBe(true);
         expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG)?.pins.map(pin => pin.id)).toEqual([
             "nametag",
         ]);
@@ -7172,38 +7184,34 @@ describe("fn blueprint nodes", () => {
 });
 
 /**
- * A host that records what the sound family was asked for, and hands back a fixed handle.
- *
- * Built on the persistence adapter so it inherits every other family's stub; only `sound` is real.
- */
-function createSoundHostAdapter(log: { play: unknown[]; transport: unknown[] }): UIHostAdapter {
-    const adapter = createPersistenceHostAdapter({});
-    const hostApi = adapter.blueprintRuntime!.hostApi!;
-    hostApi.sound = {
-        play: async request => {
-            log.play.push(request);
-            return { kind: "soundHandle", id: "sound_1" };
-        },
-        stop: async (handle, fadeMs) => void log.transport.push({ op: "stop", handle, fadeMs }),
-        pause: async handle => void log.transport.push({ op: "pause", handle }),
-        resume: async handle => void log.transport.push({ op: "resume", handle }),
-        setVolume: async (handle, volume) => void log.transport.push({ op: "setVolume", handle, volume }),
-        seek: async (handle, timeMs) => void log.transport.push({ op: "seek", handle, timeMs }),
-        isPlaying: () => true,
-    };
-    return adapter;
-}
-
-/**
- * The sound family end to end through the graph executor.
+ * The sound family through the graph executor.
  *
  * The interesting part is the handle: `Play Sound` publishes it as an output of a *latent* node, so
- * it only reaches a downstream Stop Sound if the node type is registered in `graphParamResolvers`.
- * Forgetting that registration is silent - the pin reads `undefined` and the stop addresses nothing.
+ * it only reaches a downstream transport node if the node type is registered in
+ * `graphParamResolvers`. Forgetting that registration is silent - the pin reads `undefined` and the
+ * transport addresses nothing.
  */
-describe("sound nodes", () => {
-    it("carries the handle from Play Sound to a later transport node", async () => {
-        const log = { play: [] as unknown[], transport: [] as unknown[] };
+describe("sound node transport", () => {
+    function soundHostAdapter(log: { play: unknown[]; ops: unknown[] }): UIHostAdapter {
+        const adapter = createPersistenceHostAdapter({});
+        const hostApi = adapter.blueprintRuntime!.hostApi!;
+        hostApi.sound = {
+            play: async input => {
+                log.play.push(input);
+                return { kind: "soundHandle", id: "sound:0" };
+            },
+            stop: async (handle, fadeMs) => void log.ops.push({ op: "stop", handle, fadeMs }),
+            pause: async handle => void log.ops.push({ op: "pause", handle }),
+            resume: async handle => void log.ops.push({ op: "resume", handle }),
+            setVolume: async (handle, volume, fadeMs) => void log.ops.push({ op: "setVolume", handle, volume, fadeMs }),
+            seek: async (handle, timeMs) => void log.ops.push({ op: "seek", handle, timeMs }),
+            isPlaying: () => true,
+        };
+        return adapter;
+    }
+
+    it("carries the handle from Play Sound into Set Sound Volume and Seek Sound", async () => {
+        const log = { play: [] as unknown[], ops: [] as unknown[] };
         await executeGraph({
             graph: {
                 id: "sound",
@@ -7212,72 +7220,32 @@ describe("sound nodes", () => {
                     play: {
                         id: "play",
                         type: BLUEPRINT_NODE_TYPE_SOUND_PLAY,
-                        params: { asset: "asset-theme", channel: "bgm", loop: true },
+                        params: { soundAssetId: "asset-theme", soundChannel: "bgm" },
                     },
-                    stop: { id: "stop", type: BLUEPRINT_NODE_TYPE_SOUND_STOP, params: { fadeMs: 400 } },
+                    duck: {
+                        id: "duck",
+                        type: BLUEPRINT_NODE_TYPE_SOUND_SET_VOLUME,
+                        params: { volume: 0.25, fadeMs: 800 },
+                    },
+                    jump: { id: "jump", type: BLUEPRINT_NODE_TYPE_SOUND_SEEK, params: { timeMs: 30000 } },
                 },
                 edges: [
-                    { from: { nodeId: "play", port: "next" }, to: { nodeId: "stop", port: "in" } },
-                    { from: { nodeId: "play", port: "handle" }, to: { nodeId: "stop", port: "handle" } },
+                    { from: { nodeId: "play", port: "next" }, to: { nodeId: "duck", port: "in" } },
+                    { from: { nodeId: "play", port: "handle" }, to: { nodeId: "duck", port: "handle" } },
+                    { from: { nodeId: "duck", port: "next" }, to: { nodeId: "jump", port: "in" } },
+                    { from: { nodeId: "play", port: "handle" }, to: { nodeId: "jump", port: "handle" } },
                 ],
             },
             entry: { start: { nodeId: "play", port: "in" } },
-            hostAdapter: createSoundHostAdapter(log),
+            hostAdapter: soundHostAdapter(log),
             blueprintLocals: {},
         });
 
-        expect(log.play).toEqual([{ assetId: "asset-theme", channel: "bgm", loop: true, volume: 1, fadeMs: undefined }]);
-        expect(log.transport).toEqual([{
-            op: "stop",
-            handle: { kind: "soundHandle", id: "sound_1" },
-            fadeMs: 400,
-        }]);
-    });
-
-    it("prefers a wired asset id over the inspector's picker", async () => {
-        const log = { play: [] as unknown[], transport: [] as unknown[] };
-        await executeGraph({
-            graph: {
-                id: "sound",
-                entries: { main: { start: { nodeId: "play", port: "in" } } },
-                nodes: {
-                    id: { id: "id", type: BLUEPRINT_NODE_TYPE_LITERAL_STRING, params: { value: "asset-from-row" } },
-                    play: {
-                        id: "play",
-                        type: BLUEPRINT_NODE_TYPE_SOUND_PLAY,
-                        params: { asset: "asset-picked", channel: "sound" },
-                    },
-                },
-                edges: [
-                    { from: { nodeId: "id", port: "value" }, to: { nodeId: "play", port: "assetId" } },
-                ],
-            },
-            entry: { start: { nodeId: "play", port: "in" } },
-            hostAdapter: createSoundHostAdapter(log),
-            blueprintLocals: {},
-        });
-
-        // A music page's row supplies the id at runtime; the picker is only the fixed case. Wiring
-        // wins, the same rule the gallery nodes follow.
-        expect((log.play[0] as { assetId: string }).assetId).toBe("asset-from-row");
-    });
-
-    it("refuses a Play Sound with no clip at all", async () => {
-        const log = { play: [] as unknown[], transport: [] as unknown[] };
-        await expect(executeGraph({
-            graph: {
-                id: "sound",
-                entries: { main: { start: { nodeId: "play", port: "in" } } },
-                nodes: { play: { id: "play", type: BLUEPRINT_NODE_TYPE_SOUND_PLAY, params: {} } },
-                edges: [],
-            },
-            entry: { start: { nodeId: "play", port: "in" } },
-            hostAdapter: createSoundHostAdapter(log),
-            blueprintLocals: {},
-        })).rejects.toThrow(/audio asset/);
-
-        // A node with neither a picked clip nor a wired id has nothing to play, and saying so in the
-        // Blueprint console beats silently doing nothing.
-        expect(log.play).toEqual([]);
+        expect(log.play).toEqual([{ assetId: "asset-theme", channel: "bgm", loop: false, volume: 1 }]);
+        const handle = { kind: "soundHandle", id: "sound:0" };
+        expect(log.ops).toEqual([
+            { op: "setVolume", handle, volume: 0.25, fadeMs: 800 },
+            { op: "seek", handle, timeMs: 30000 },
+        ]);
     });
 });

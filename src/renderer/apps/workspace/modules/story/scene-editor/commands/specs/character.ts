@@ -4,6 +4,7 @@ import type { StoryCommandResolutionIssue, StoryCommandTargetValue, StoryCommand
 import {
     asDurationMs,
     asEnum,
+    asNumber,
     asPuppetName,
     asTarget,
     asText,
@@ -22,7 +23,7 @@ import { mergedTransitionOptions, supportedTransitionWords, transformPresetFor, 
 
 /**
  * The generic verbs and the character commands: `/show`, `/hide`, `/move`, `/face`, `/motion`,
- * `/skin`, `/say`.
+ * `/skin`, `/param`, `/say`.
  *
  * `/show` and `/hide` are the bible's B3 in action: one verb, any subject. The target resolves to a
  * character or a stage object and the build dispatches on what it found - the author never memorizes
@@ -48,12 +49,17 @@ import { mergedTransitionOptions, supportedTransitionWords, transformPresetFor, 
  *    keep the two apart. Both verbs are named after the idea, not the type: the taxonomy forbids
  *    "object type × verb", and `/motion` reads on any character that ever grows motions.
  *
- * What is deliberately NOT here: `setParam`, `setSlot` and `command`. `PuppetDescription` - the only
- * thing that can ever enumerate a model's vocabulary - lists motions, expressions, skins and params,
- * and lists neither slots nor commands. A line for those would be free text pretending to be a
- * command, and a param is an id plus a continuous number tuned by eye against the stage: the
- * inspector's job, the way `/vfx` left blend mode to it, and one that wants `describe()`'s
- * min/max/default before it is worth a persisted shape.
+ *  - **the free numeric parameters got one too**, later, and only once they could be listed. See
+ *    `/param` below: the round that added the three channels refused it *pending* `describe()`'s
+ *    min/max/default, and that condition has since been met.
+ *
+ * What is still deliberately NOT here: `setSlot` and `command`. `PuppetDescription` - the only thing
+ * that can ever enumerate a model's vocabulary - lists motions, expressions, skins and params, and
+ * lists neither slots nor commands. A line for those would be free text pretending to be a command:
+ * a slot is an unbounded string nobody can check, and a command name plus its payload shape belong to
+ * the backend, which is why the engine documents them as forwarded verbatim. Both unblock the same
+ * way params did - `describe()` (or a manifest beside the author's runtime) growing a list - and
+ * `specs.test.ts` pins the refusal so it is reversed on purpose rather than by drift.
  */
 
 const SHOW_HIDE_ACCEPTS = ["character", "image", "text", "video", "layer", "vfx"] as const;
@@ -383,6 +389,51 @@ export const skin = defineStoryCommand({
 });
 
 /**
+ * `/param` - one numeric knob of a puppet's model.
+ *
+ * This one was refused in the round that added the three channels above, on a stated condition: a
+ * parameter is "an id plus a continuous number tuned by eye against the stage", and it wanted
+ * `describe()`'s min / max / default "before it is worth a persisted shape". That condition has since
+ * been met - `PuppetDescriptionService` mounts the author's runtime and asks - so the id is a list to
+ * pick from and the number has a range. What remains refused is `setSlot` and `command`: a slot has
+ * no bounds and a command name is the backend's private vocabulary, and `PuppetDescription` reports
+ * neither, so a row for those would still be free text pretending to be a command.
+ *
+ * All three of `character`, `id` and `value` are core. Unlike a motion, a parameter has no meaningful
+ * "clear": the engine reads an absent key as "keep the model's default", so a row naming an id with no
+ * value would ask for nothing at all. The multi-parameter gesture is the inspector's - the row's
+ * payload is a map, and the line fills its first entry.
+ */
+export const param = defineStoryCommand({
+    id: "param",
+    token: "param",
+    category: "character",
+    examples: ["/param Doll ParamAngleX 12"],
+    params: {
+        character: { hint: "character", type: { kind: "character" }, positional: true, core: true },
+        id: { hint: "puppetParam", type: { kind: "puppetParam", dependsOn: "character" }, positional: true, core: true },
+        value: { hint: "puppetParamValue", type: { kind: "number" }, positional: true, core: true },
+    },
+    build(args, ctx): StoryBlock {
+        const id = args.id?.kind === "puppetParam" ? args.id.id : undefined;
+        const value = asNumber(args.value);
+        return {
+            id: ctx.generateId(),
+            parentId: null,
+            childrenIds: [],
+            kind: "action",
+            payload: {
+                action: "character",
+                operation: "setParams",
+                ...(args.character?.kind === "character" ? { characterId: args.character.characterId } : {}),
+                ...(id !== undefined && value !== undefined ? { params: { [id]: value } } : {}),
+            },
+        };
+    },
+    validate: validatePuppetCharacter,
+});
+
+/**
  * `/rename` - the speaker label, not the portrait.
  *
  * It exists for one narrative move: the "？？？" speaker who becomes a name. That is why the new name
@@ -453,4 +504,4 @@ export const say = defineStoryCommand({
     },
 });
 
-export const CHARACTER_COMMANDS = [show, hide, move, face, motion, skin, rename, say];
+export const CHARACTER_COMMANDS = [show, hide, move, face, motion, skin, param, rename, say];

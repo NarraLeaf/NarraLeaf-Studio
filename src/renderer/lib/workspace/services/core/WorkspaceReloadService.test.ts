@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
+import type { DocumentSource } from "@shared/documents/documentSource";
 import { join } from "@shared/utils/path";
 import { isProjectWriteReloadHeld, thawProjectWrites } from "@/lib/app/writeFreeze";
+import { clearProjectDocumentSource, getProjectDocumentSource } from "@/lib/app/documentSource";
 import { Services, type WorkspaceContext } from "../services";
 import { DebouncedSaver } from "../autosave/DebouncedSaver";
 import { SaveStatusService } from "../autosave/SaveStatusService";
@@ -50,6 +52,7 @@ type Harness = {
     /** Runs inside the story participant's re-read, so a test can act mid-reload. */
     duringStoryReload: { current: (() => Promise<void>) | null };
     stubs: {
+        projectReload: ReturnType<typeof vi.fn>;
         assetsReload: ReturnType<typeof vi.fn>;
         charactersReload: ReturnType<typeof vi.fn>;
         storyReload: ReturnType<typeof vi.fn>;
@@ -75,6 +78,7 @@ async function createHarness(seed?: string): Promise<Harness> {
     const ok = <T,>(data: T): FsRequestResult<T> => ({ ok: true, data });
 
     const stubs = {
+        projectReload: vi.fn(async () => ({})),
         assetsReload: vi.fn(async () => undefined),
         charactersReload: vi.fn(async () => undefined),
         storyReload: vi.fn(async () => {
@@ -117,7 +121,7 @@ async function createHarness(seed?: string): Promise<Harness> {
             },
             observeWrites: () => () => undefined,
         },
-        [Services.Project]: { reloadProjectConfig: async () => ({}) },
+        [Services.Project]: { reloadProjectConfig: stubs.projectReload },
         [Services.Uuid]: { generate: () => `var-${++nextId}` },
         [Services.Assets]: { reloadFromDisk: stubs.assetsReload },
         [Services.Character]: { reloadFromDisk: stubs.charactersReload },
@@ -179,8 +183,26 @@ beforeEach(() => {
 
 afterEach(() => {
     thawProjectWrites();
+    clearProjectDocumentSource();
     vi.unstubAllGlobals();
 });
+
+/** A revision source that records what it was asked for. */
+function fakeRevisionSource(revision: string, documents: Record<string, string> = {}) {
+    const reads: string[] = [];
+    const prewarms: (readonly string[] | undefined)[] = [];
+    const source: DocumentSource = {
+        origin: { kind: "revision", revision },
+        read: async path => {
+            reads.push(path);
+            return documents[path] ?? null;
+        },
+        prewarm: async paths => {
+            prewarms.push(paths);
+        },
+    };
+    return { source, reads, prewarms };
+}
 
 describe("WorkspaceReloadService", () => {
     /**
@@ -368,6 +390,139 @@ describe("WorkspaceReloadService", () => {
         expect(a).toBe(b);
         expect(harness.stubs.storyReload).toHaveBeenCalledTimes(1);
         expect(harness.reload.getGeneration()).toBe(1);
+    });
+
+    /**
+     * "Every participant reads from the source", proved where it is actually decided.
+     *
+     * The participants read through `BaseFileSystemService`, and the source is installed there for the
+     * whole pass - so what has to hold is that the latch is up while EVERY ONE of the nine runs. A
+     * participant that ran before it was installed, or after it was released, would be the one reading
+     * today's bytes into a view labelled as a past revision.
+     */
+    it("has the revision installed while every participant runs", async () => {
+        const harness = await createHarness("{}");
+        const revision = fakeRevisionSource("rev-1");
+        const seen: (string | null)[] = [];
+        const note = () => seen.push(getProjectDocumentSource()?.origin.kind ?? null);
+        for (const stub of [
+            harness.stubs.projectReload,
+            harness.stubs.assetsReload,
+            harness.stubs.charactersReload,
+            harness.stubs.storyReload,
+            harness.stubs.uiDocumentLoad,
+            harness.stubs.uiGraphLoad,
+            harness.stubs.localizationReload,
+            harness.stubs.voiceReload,
+        ]) {
+            stub.mockImplementation(async () => {
+                note();
+            });
+        }
+        vi.spyOn(harness.variables, "load").mockImplementation(async () => {
+            note();
+            return harness.variables.getRegistry();
+        });
+
+        const result = await harness.reload.reload("revision", revision.source);
+
+        // Nine, in the participant table's order, every one of them with the revision installed.
+        expect(seen).toEqual(Array.from({ length: 9 }, () => "revision"));
+        expect(result.origin).toEqual({ kind: "revision", revision: "rev-1" });
+        // And put away afterwards, so a working-tree reload cannot inherit it.
+        expect(getProjectDocumentSource()).toBeNull();
+    });
+
+    /**
+     * The first read of a revision on a project with a remote goes to the network (docs §6). Batched
+     * before the pass rather than per document service, and awaited - nine services asking one path at
+     * a time would pay that latency nine times over with the workspace sitting empty.
+     */
+    it("prewarms the source before the first participant reads", async () => {
+        const harness = await createHarness("{}");
+        const revision = fakeRevisionSource("rev-1");
+        const order: string[] = [];
+        revision.source.prewarm = async () => {
+            order.push("prewarm");
+        };
+        harness.stubs.projectReload.mockImplementation(async () => {
+            order.push("project");
+            return {};
+        });
+
+        await harness.reload.reload("revision", revision.source);
+
+        expect(order).toEqual(["prewarm", "project"]);
+    });
+
+    /**
+     * Today's callers keep meaning the working tree, and the working tree is read off the disk - not
+     * through a source. That is not tidiness: the working tree's own implementation of "read this path"
+     * IS the filesystem service that consults the latch, so installing it would recurse until the stack
+     * ran out.
+     */
+    it("installs nothing when nobody names a source, and reports the working tree", async () => {
+        const harness = await createHarness("{}");
+        let insideThePass: DocumentSource | null = null;
+        harness.duringStoryReload.current = async () => {
+            insideThePass = getProjectDocumentSource();
+        };
+
+        const result = await harness.reload.reload("thaw");
+
+        expect(insideThePass).toBeNull();
+        expect(result.origin).toEqual({ kind: "working-tree" });
+    });
+
+    /**
+     * Coalescing two passes that read DIFFERENT versions would hand the second caller the first one's
+     * answer. The pair that makes it fatal is "leave the revision while entering it is still reading":
+     * the thaw would be given the pass filling memory with the revision, and would unfreeze on top of
+     * it - a writable workspace holding a past version.
+     */
+    it("queues a pass for another version instead of coalescing it", async () => {
+        const harness = await createHarness("{}");
+        const revision = fakeRevisionSource("rev-1");
+        const gate: { release: (() => void) | null } = { release: null };
+        harness.duringStoryReload.current = () => new Promise<void>(resolve => {
+            gate.release = resolve;
+        });
+
+        const entering = harness.reload.reload("revision", revision.source);
+        for (let attempt = 0; attempt < 100 && !gate.release; attempt += 1) {
+            await new Promise(resolve => setTimeout(resolve, 1));
+        }
+        expect(gate.release).not.toBeNull();
+        harness.duringStoryReload.current = null;
+        const leaving = harness.reload.reload("thaw");
+        gate.release?.();
+        const [first, second] = await Promise.all([entering, leaving]);
+
+        expect(first).not.toBe(second);
+        expect(first.origin).toEqual({ kind: "revision", revision: "rev-1" });
+        expect(second.origin).toEqual({ kind: "working-tree" });
+        expect(harness.stubs.storyReload).toHaveBeenCalledTimes(2);
+        expect(harness.reload.getGeneration()).toBe(2);
+    });
+
+    it("still coalesces two passes that read the same version", async () => {
+        const harness = await createHarness("{}");
+        const revision = fakeRevisionSource("rev-1");
+        const gate: { release: (() => void) | null } = { release: null };
+        harness.duringStoryReload.current = () => new Promise<void>(resolve => {
+            gate.release = resolve;
+        });
+
+        const first = harness.reload.reload("revision", revision.source);
+        for (let attempt = 0; attempt < 100 && !gate.release; attempt += 1) {
+            await new Promise(resolve => setTimeout(resolve, 1));
+        }
+        // A source rebuilt for the same revision means the same thing, so identity is not the test.
+        const second = harness.reload.reload("revision", fakeRevisionSource("rev-1").source);
+        gate.release?.();
+
+        expect(await first).toBe(await second);
+        expect(harness.stubs.storyReload).toHaveBeenCalledTimes(1);
     });
 
     it("announces itself once per pass, after writes are writable again", async () => {

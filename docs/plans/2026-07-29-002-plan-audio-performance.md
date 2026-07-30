@@ -159,3 +159,26 @@ createBufferSource` 与 `AudioBufferSourceNode.prototype.start`，事后直接�
 `narraleaf-react` **0.21.0**（出点/loop region、`Sound.seek`、rate 缺陷、场景 BGM 卡死）
 与 **0.21.1**（存档遇到本故事没有的 sound 时不再整档加载失败）已发 npm 并推上
 `dev_nomen`；Studio 依赖已提到 `^0.21.1`。该仓不用 tag。
+
+## 11. 与 develop 上并行实现的 sound 族的合并（2026-07-29）
+
+收尾时发现 develop 已经并入了另一条会话做的 `sound` 能力族
+（`36a62145` Merge feat/gallery-extra-suite）。设计几乎完全撞车——同样的 handle 信封、
+同样的"接线优先于选择器"、同样"走引擎 mixer 而不是 `<audio>`"的理由——但它是 **5 个节点**，
+且 gallery EXTRA 的运行时已经依赖它的确切形状（`BLUEPRINT_SOUND_PARAM_ASSET`、
+`normalizeBlueprintSoundChannel`、`soundTransport.ts`）。
+
+**取舍：以它为基底，把我这边多出来的东西叠上去**，不覆盖别人的工作：
+
+- 保留它的模块、命名、`BlueprintSoundPlayInput`、`soundTransport.ts`；
+- 补 `Set Sound Volume`（音量+淡变一个节点，所以它同时就是 fade 节点）与 `Seek Sound`，
+  连带 `sound.setVolume` / `sound.seek` 两个能力（contract 28 → 29）；
+- **补入点/出点**：`createSound` 的注入点加 `assetId`，GameApp 折进 bundle 的区间表，
+  于是音乐页和剧情行循环同一段 body；
+- **修一个静默缺陷**：它的 `stop` 传 `{fade}`，而 `StopOptions` 的键是 `fadeDuration`
+  —— 淡出一直是空操作。已改。
+- 音频选择器加"in/out"角标：区间是在别处（资源管理器）决定的，节点得说出它有没有。
+
+`graph.ts` / `index.ts` / `graphParamResolvers.ts` 三处 git **无冲突地合出了重复声明**
+（两边加了同名常量/同名 import 行，位置不同）——**这类撞车不会报冲突，只会 typecheck 报
+duplicate identifier，合并后必须跑一遍五工程 tsc**。

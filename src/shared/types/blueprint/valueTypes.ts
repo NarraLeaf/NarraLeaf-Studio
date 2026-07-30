@@ -47,12 +47,10 @@ export type BlueprintAnimationToken = {
 };
 
 /**
- * A sound the host is currently playing, as a graph value.
- *
- * The same envelope pattern as {@link BlueprintTimerToken} and {@link BlueprintAnimationToken}: the
- * host holds the real playback token and the graph carries an opaque id. A `SoundHandle` therefore
- * addresses one *playback*, not a clip - playing the same asset twice hands back two handles, which
- * is what lets a music screen cross-fade between two tracks of the same album.
+ * A handle on one playing clip, returned by Play Sound and accepted by the
+ * transport nodes. Opaque: the id addresses a SoundToken the host holds, so the
+ * graph can pass playback around without the engine's object crossing into
+ * blueprint data.
  */
 export type BlueprintSoundHandle = {
     kind: "soundHandle";
@@ -110,10 +108,6 @@ export function isBlueprintAnimationTokenValueType(valueType: string | undefined
     return valueType === BLUEPRINT_VALUE_TYPE_ANIMATION_TOKEN;
 }
 
-export function isBlueprintSoundHandleValueType(valueType: string | undefined): boolean {
-    return valueType === BLUEPRINT_VALUE_TYPE_SOUND_HANDLE;
-}
-
 export function toBlueprintImageAsset(assetId: string | null | undefined): BlueprintImageAsset | null {
     const safe = typeof assetId === "string" ? assetId.trim() : "";
     return safe ? { kind: "imageAsset", assetId: safe } : null;
@@ -156,20 +150,8 @@ export function normalizeBlueprintTimerToken(value: unknown): BlueprintTimerToke
     return toBlueprintTimerToken(typeof record.id === "string" ? record.id : null);
 }
 
-export function toBlueprintAnimationToken(id: string | null | undefined): BlueprintAnimationToken | null {
-    const safe = typeof id === "string" ? id.trim() : "";
-    return safe ? { kind: "animation", id: safe } : null;
-}
-
-export function normalizeBlueprintAnimationToken(value: unknown): BlueprintAnimationToken | null {
-    if (typeof value === "string") {
-        return toBlueprintAnimationToken(value);
-    }
-    const record = readRecord(value);
-    if (!record || record.kind !== "animation") {
-        return null;
-    }
-    return toBlueprintAnimationToken(typeof record.id === "string" ? record.id : null);
+export function isBlueprintSoundHandleValueType(valueType: string | undefined): boolean {
+    return valueType === BLUEPRINT_VALUE_TYPE_SOUND_HANDLE;
 }
 
 export function toBlueprintSoundHandle(id: string | null | undefined): BlueprintSoundHandle | null {
@@ -186,6 +168,22 @@ export function normalizeBlueprintSoundHandle(value: unknown): BlueprintSoundHan
         return null;
     }
     return toBlueprintSoundHandle(typeof record.id === "string" ? record.id : null);
+}
+
+export function toBlueprintAnimationToken(id: string | null | undefined): BlueprintAnimationToken | null {
+    const safe = typeof id === "string" ? id.trim() : "";
+    return safe ? { kind: "animation", id: safe } : null;
+}
+
+export function normalizeBlueprintAnimationToken(value: unknown): BlueprintAnimationToken | null {
+    if (typeof value === "string") {
+        return toBlueprintAnimationToken(value);
+    }
+    const record = readRecord(value);
+    if (!record || record.kind !== "animation") {
+        return null;
+    }
+    return toBlueprintAnimationToken(typeof record.id === "string" ? record.id : null);
 }
 
 const DEFAULT_VECTOR2D: BlueprintVector2D = { x: 0, y: 0 };

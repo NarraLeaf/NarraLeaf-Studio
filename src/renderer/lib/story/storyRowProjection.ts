@@ -511,6 +511,18 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
             if (payload.operation === "setMotion" || payload.operation === "setSkin" || (payload.operation === "expression" && payload.puppetName !== undefined)) {
                 return `${operation} ${name} → ${payload.puppetName?.trim() || translate("story.describe.puppetNone")}`;
             }
+            // A parameter row's content is a map. The first entry reads in full and the rest are
+            // counted: a head turn is three parameters, and printing all three would push the
+            // character's own name out of a one-line row.
+            if (payload.operation === "setParams") {
+                const entries = Object.entries(payload.params ?? {});
+                const [first] = entries;
+                if (!first) {
+                    return `${operation} ${name} → ${translate("story.describe.puppetNone")}`;
+                }
+                const more = entries.length > 1 ? ` +${entries.length - 1}` : "";
+                return `${operation} ${name} → ${first[0]} ${first[1]}${more}`;
+            }
             return `${operation} ${name}`;
         }
         if (payload.action === "audio") {

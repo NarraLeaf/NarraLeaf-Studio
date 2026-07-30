@@ -2,7 +2,7 @@ import { STORY_EXPR_FUNCTIONS } from "@shared/types/story";
 import { freeTargetKind, matchEnumOption, paramTypes, type StoryCommandParam, type StoryCommandParamType } from "./storyCommandGrammar";
 import { listCommandDefs } from "./commands/registry";
 import type { StoryCommandCursor } from "./storyCommandCursor";
-import { BGM_OBJECT_NAME, type StoryCommandContext, type StoryCommandNamedRef, type StoryCommandStageObjectKind, type StoryCommandValue } from "./storyCommandValues";
+import { BGM_OBJECT_NAME, puppetChannelNames, type StoryCommandContext, type StoryCommandNamedRef, type StoryCommandStageObjectKind, type StoryCommandValue } from "./storyCommandValues";
 
 /**
  * What to offer at the caret.
@@ -50,6 +50,13 @@ function refCandidates(entries: readonly StoryCommandNamedRef[], query: string):
     const prefix = entries.filter(entry => startsWithFold(entry.name, query));
     const rest = query ? entries.filter(entry => !startsWithFold(entry.name, query) && containsFold(entry.name, query)) : [];
     return [...prefix, ...rest].map(entry => ({ value: entry.name, label: entry.name }));
+}
+
+/** Plain names, prefix matches first - the same ordering {@link refCandidates} gives ids-with-names. */
+function nameCandidates(names: readonly string[], query: string): StoryCommandCandidate[] {
+    const prefix = names.filter(name => startsWithFold(name, query));
+    const rest = query ? names.filter(name => !startsWithFold(name, query) && containsFold(name, query)) : [];
+    return [...prefix, ...rest].map(name => ({ value: name, label: name }));
 }
 
 function assetsOfType(context: StoryCommandContext, assetType: "image" | "audio" | "video"): readonly StoryCommandNamedRef[] {
@@ -177,13 +184,31 @@ function candidatesForType(
                 .filter(ref => !query || containsFold(ref.name, query))
                 .map(ref => ({ value: ref.name, label: ref.name }));
         }
-        case "puppetName":
-            // Nothing to offer yet, and nothing here can invent it: a puppet's motions, expressions
-            // and skins live in the model file, and the only thing that can enumerate them is the
-            // live backend answering `PuppetInstance.describe`. When that reaches the editor it feeds
-            // this arm, keyed by `type.channel` and the owner character - the spec, the payload and
-            // the stored row all stay exactly as they are.
-            return [];
+        case "puppetName": {
+            // A puppet's motions, expressions and skins live in the model file, and the only thing
+            // that can enumerate them is the live backend answering `PuppetInstance.describe`. The
+            // editor asks it (`PuppetDescriptionService`) and the answer arrives on the context, so
+            // this arm has a real list to offer - keyed by `type.channel` and the owner character.
+            //
+            // Nothing is appended for a query that matches none of them. A bare name is a legal temp
+            // *speaker*, which is why that arm offers the author's own text back, but a motion the
+            // model does not list is overwhelmingly a typo - and offering it as a candidate would
+            // dress the typo up as a choice. It still commits (Enter submits an empty menu), and the
+            // row then carries the `unknownPuppetName` mark, which is where a wrong name belongs.
+            const names = puppetChannelNames(context, ownerCharacterId(resolved[type.dependsOn]) ?? undefined, type.channel);
+            return nameCandidates(names, query);
+        }
+        case "puppetParam": {
+            // The ids the model reported, each showing the range it accepts - which is the whole reason
+            // a parameter is worth a command surface at all. A bare id with no bounds would be one more
+            // string to remember; `ParamAngleX  -30…30` is a control the author can aim.
+            const owner = ownerCharacterId(resolved[type.dependsOn]);
+            const params = (owner ? context.puppetByCharacterId[owner]?.params : undefined) ?? [];
+            return nameCandidates(params.map(param => param.id), query).map(candidate => {
+                const spec = params.find(param => param.id === candidate.value);
+                return spec ? { ...candidate, detail: `${spec.min}…${spec.max}` } : candidate;
+            });
+        }
         case "scene":
             return refCandidates(context.scenes, query);
         case "label":
@@ -258,7 +283,11 @@ function candidatesForParam(
  * is worth telling the author about, a half-typed number is not. Callers use it to decide whether an
  * empty list deserves an empty *state* or no menu at all.
  */
-export function hasCandidateSource(param: StoryCommandParam): boolean {
+export function hasCandidateSource(
+    param: StoryCommandParam,
+    context?: StoryCommandContext,
+    resolved: Readonly<Record<string, StoryCommandValue>> = {},
+): boolean {
     return paramTypes(param).some(type => {
         switch (type.kind) {
             case "asset":
@@ -278,9 +307,19 @@ export function hasCandidateSource(param: StoryCommandParam): boolean {
             // A constant enumerates true/false, so "no matches" is meaningful once something is typed.
             case "constant":
                 return true;
-            // Until `describe()` feeds the arm above there is genuinely nothing to match, so an empty
-            // menu is "no menu", not "no results" - the author is typing a name only the model knows.
+            // The only param whose answer is not a property of the grammar. A model that has been
+            // asked and answered has a list, so "no matches" means what it says; a model nobody could
+            // ask has none, and the honest response is no menu at all - the author is typing a name
+            // only the model knows, and telling them it "does not match" would be Studio blaming them
+            // for a runtime it never loaded. Answering `true` unconditionally is what made the arm
+            // look broken in projects that carry no runtime.
             case "puppetName":
+                return context !== undefined
+                    && puppetChannelNames(context, ownerCharacterId(resolved[type.dependsOn]) ?? undefined, type.channel).length > 0;
+            case "puppetParam": {
+                const owner = context && ownerCharacterId(resolved[type.dependsOn]);
+                return Boolean(owner && (context?.puppetByCharacterId[owner]?.params.length ?? 0) > 0);
+            }
             case "number":
             case "color":
             case "literal":

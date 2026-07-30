@@ -10,27 +10,33 @@
  * is looking at.
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ImageOff, Lock } from "lucide-react";
 import { AssetType, ui, type PluginApp } from "narraleaf-studio/plugin";
 
 const urlCache = new Map<string, Promise<string>>();
 let disposeApp: PluginApp | null = null;
 
-function assetUrl(app: PluginApp, assetId: string): Promise<string> {
+/**
+ * The asset type must be passed in: `get()` is keyed by type, so looking an audio
+ * asset up as an image silently returns undefined. That cost an hour once - the
+ * audition button did nothing and the rejection was swallowed by its own catch.
+ */
+function assetUrl(app: PluginApp, assetId: string, type: AssetType = AssetType.Image): Promise<string> {
     disposeApp = app;
-    const cached = urlCache.get(assetId);
+    const cacheKey = `${type}:${assetId}`;
+    const cached = urlCache.get(cacheKey);
     if (cached) {
         return cached;
     }
-    const asset = app.services.assets.get(AssetType.Image, assetId);
+    const asset = app.services.assets.get(type, assetId);
     const pending = asset
         ? app.services.assets.createObjectUrl(asset)
-        : Promise.reject(new Error(`missing image asset: ${assetId}`));
-    urlCache.set(assetId, pending);
+        : Promise.reject(new Error(`missing ${type} asset: ${assetId}`));
+    urlCache.set(cacheKey, pending);
     // A failed fetch must not poison the cache forever - the asset may simply
     // not have been imported yet.
-    pending.catch(() => urlCache.delete(assetId));
+    pending.catch(() => urlCache.delete(cacheKey));
     return pending;
 }
 
@@ -70,6 +76,67 @@ export function useAssetUrl(app: PluginApp, assetId: string | null | undefined):
     }, [app, assetId]);
 
     return url;
+}
+
+/**
+ * Editor-side audition for one clip at a time.
+ *
+ * Deliberately not routed through the game: the author is checking which take
+ * they picked, and requiring a running game to hear a file would make the choice
+ * unverifiable in the editor. One shared element, so starting a second row stops
+ * the first - a track list where two clips overlap is unusable.
+ */
+export function useAudioAudition(app: PluginApp) {
+    const [playingKey, setPlayingKey] = useState<string | null>(null);
+    const elementRef = useRef<HTMLAudioElement | null>(null);
+
+    const stop = useCallback(() => {
+        elementRef.current?.pause();
+        elementRef.current = null;
+        setPlayingKey(null);
+    }, []);
+
+    // Stop when the panel goes away, or the clip keeps playing over the editor.
+    useEffect(() => stop, [stop]);
+
+    const toggle = useCallback(async (key: string, assetId: string | null | undefined) => {
+        if (playingKey === key) {
+            stop();
+            return;
+        }
+        stop();
+        if (!assetId) {
+            return;
+        }
+        try {
+            const url = await assetUrl(app, assetId, AssetType.Audio);
+            const element = new Audio(url);
+            element.onended = () => setPlayingKey(current => (current === key ? null : current));
+            elementRef.current = element;
+            setPlayingKey(key);
+            await element.play();
+        } catch (error) {
+            stop();
+            // Say why rather than doing nothing: a silent button is
+            // indistinguishable from a broken one, and the likely causes
+            // (missing asset, a codec this shell cannot decode) are both worth
+            // knowing.
+            app.services.ui.notifications.error(
+                `Could not play the clip: ${error instanceof Error ? error.message : String(error)}`,
+            );
+        }
+    }, [app, playingKey, stop]);
+
+    return { playingKey, toggle, stop };
+}
+
+/** `1:54`, or an em dash when the length is unknown. */
+export function formatDuration(seconds: number | null | undefined): string {
+    if (!seconds || !Number.isFinite(seconds) || seconds <= 0) {
+        return "—";
+    }
+    const whole = Math.round(seconds);
+    return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
 }
 
 export type GalleryThumbProps = {

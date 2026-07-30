@@ -10,7 +10,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Images, Maximize2, Plus } from "lucide-react";
 import { ui, type PluginApp } from "narraleaf-studio/plugin";
-import { resolveCoverVariant } from "./catalog";
+import { resolveCoverVariant, type GalleryEntryKind } from "./catalog";
+
+const PANEL_KIND_LABEL: Record<GalleryEntryKind, string> = {
+    cg: "CG",
+    scene: "Recollection",
+    music: "Music",
+    voice: "Voice",
+};
 import { GalleryThumb } from "./components";
 import type { GalleryStore } from "./store";
 
@@ -47,7 +54,7 @@ export function GalleryPanel({
         <ui.Panel.Root>
             <ui.Panel.Header
                 title="Gallery"
-                description={`${data.items.length} artwork${data.items.length === 1 ? "" : "s"}`}
+                description={`${data.items.length} ${data.items.length === 1 ? "entry" : "entries"}`}
                 actions={(
                     <ui.IconButton
                         size="sm"
@@ -73,9 +80,9 @@ export function GalleryPanel({
                 {items.length === 0 ? (
                     <ui.Panel.EmptyState
                         icon={<Images size={22} />}
-                        title={data.items.length === 0 ? "No artworks" : "No matches"}
+                        title={data.items.length === 0 ? "Nothing yet" : "No matches"}
                         description={data.items.length === 0
-                            ? "Open the editor to import your CGs."
+                            ? "Open the editor to add CGs, recollections, music or voice."
                             : "Try another search."}
                         actions={data.items.length === 0 ? (
                             <ui.Button size="sm" variant="secondary" onClick={onOpenEditor}>
@@ -103,11 +110,13 @@ export function GalleryPanel({
                                     />
                                     <span className="min-w-0 flex-1">
                                         <span className="block truncate text-2xs">{artwork.name}</span>
+                                        {/* Kind first: this list spans all four
+                                            columns, and a track and a CG are
+                                            otherwise indistinguishable here. */}
                                         <span className="block truncate text-2xs text-fg-subtle">
-                                            {groupName ? `${groupName} · ` : ""}
-                                            {artwork.variants.length === 1
-                                                ? "1 image"
-                                                : `${artwork.variants.length} images`}
+                                            {PANEL_KIND_LABEL[artwork.kind]}
+                                            {groupName ? ` · ${groupName}` : ""}
+                                            {artwork.variants.length > 1 ? ` · ${artwork.variants.length} items` : ""}
                                         </span>
                                     </span>
                                 </button>
