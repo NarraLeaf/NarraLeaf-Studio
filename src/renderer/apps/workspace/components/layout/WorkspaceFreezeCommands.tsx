@@ -65,7 +65,7 @@ export function WorkspaceFreezeCommands() {
                 // Manual freezes only. A revision view is left by the entry below, which also has to
                 // put the source away - and an author who unfroze a historical view with this one
                 // would be looking at a past revision in a writable workspace.
-                when: () => freezeService.getReason()?.kind === "manual",
+                when: () => freezeService.getReason()?.kind === "manual" && !freezeService.isReleaseHeld(),
                 run: () => {
                     freezeService.thaw();
                     notify(
@@ -133,7 +133,14 @@ export function WorkspaceFreezeCommands() {
                 id: "vcs:show-working-tree",
                 titleKey: "workspace.shell.revisionView.leave",
                 categoryKey: "workspace.shell.commandPalette.categoryVersionControl",
-                when: () => freezeService.getReason()?.kind === "revision",
+                // Absent, not disabled, while something is rewriting the project files: a restore
+                // leaves the view itself when it finishes, so during one this entry is REDUNDANT
+                // rather than refused, and an entry that offers to do what is about to happen anyway
+                // is worse than no entry. The gate that makes this safe is not here, though - it is
+                // `holdRelease` inside the service, because a `when` is the kind of thing the next
+                // surface forgets (see WorkspaceFreezeService.holdRelease, and writeFreeze for the
+                // same argument about the write boundary).
+                when: () => freezeService.getReason()?.kind === "revision" && !freezeService.isReleaseHeld(),
                 run: () => {
                     versionControl.showWorkingTree();
                     notify(

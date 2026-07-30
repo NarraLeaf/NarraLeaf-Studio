@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { translate } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import { VersionControlService } from "@/lib/workspace/services/core/VersionControlService";
 import { WorkspaceFreezeService } from "@/lib/workspace/services/core/WorkspaceFreezeService";
+import { UIService } from "@/lib/workspace/services/core/UIService";
+import { NotificationType } from "@/lib/workspace/services/ui/types";
 import type { RevisionId, VcsAvailability, VcsStatus } from "@shared/types/vcs";
 import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
 import {
@@ -14,6 +17,7 @@ import {
     nextHistoryLimit,
     resolveVersionSurfaceState,
     revisionLabel,
+    shortRevision,
     type FlatHistoryEntry,
     type HistoryPageRead,
     type VersionSurfaceState,
@@ -49,7 +53,13 @@ export type VersionBusyKind =
      */
     | "commit"
     /** Coming back to the working tree, which re-reads every document. */
-    | "return";
+    | "return"
+    /**
+     * Putting the working tree back to a past version: a checkpoint, a full rewrite of the versioned
+     * tree, a second commit, and then the same re-read a return does. The longest thing this surface
+     * can start, and the only one that changes the author's files.
+     */
+    | "restore";
 
 /**
  * How much further back each read of the history reaches.
@@ -136,6 +146,19 @@ export interface VersionSurface {
     commit: (message: string) => Promise<boolean>;
     /** Show a past revision in the real editors, freezing project data. Slow; sets `busy`. */
     showRevision: (revision: RevisionId, label?: string) => void;
+    /**
+     * Put the working tree back to a past version, after asking.
+     *
+     * The confirmation is not the caller's to skip: this is the only thing on this surface that
+     * overwrites the author's files, so the question - and the sentence explaining that a checkpoint
+     * is recorded first - lives here rather than in whichever button happens to call it.
+     *
+     * Answers whether it ran, so a caller can tell "they said no" from "it failed"; failures also
+     * arrive through {@link error}. A restore whose files landed but whose new version could not be
+     * recorded answers TRUE and says so in a sticky notice: the files did change, and a caller that
+     * read it as a failure would invite the author to do the one thing they must not do twice.
+     */
+    restoreRevision: (revision: RevisionId, label?: string) => Promise<boolean>;
     /** The escape hatch. A no-op when the workspace was not frozen, so any control may call it. */
     returnToCurrent: () => void;
     /** Put this project under version control. The author's explicit act, never ours. */
@@ -177,6 +200,7 @@ export function useVersionSurface(): VersionSurface {
         return {
             versionControl: context.services.get<VersionControlService>(Services.VersionControl),
             freeze: context.services.get<WorkspaceFreezeService>(Services.WorkspaceFreeze),
+            ui: context.services.get<UIService>(Services.UI),
         };
     }, [context]);
 
@@ -398,6 +422,85 @@ export function useVersionSurface(): VersionSurface {
         })();
     }, [services]);
 
+    /**
+     * Overwrite the working tree with a past version, once the author has said yes.
+     *
+     * **The confirmation is inside the operation, not beside it.** This is the one thing on the
+     * surface that changes files on disk, and a caller that could reach the write without the
+     * question would be one press away from replacing an afternoon's work.
+     *
+     * The dialog is the destructive shape - Cancel is the primary button and the action is a
+     * danger-coloured secondary the author has to aim at - because it does overwrite what they have
+     * now. What keeps that from being alarmism is the detail line: it says a checkpoint is recorded
+     * first, which is the fact that makes this safe to press. Leaving that out would dress a
+     * recoverable operation up as an irreversible one, and an author who believes it is
+     * irreversible simply never uses it.
+     *
+     * No re-read afterwards, deliberately: the service leaves the version view before it resolves,
+     * and that path already drops every in-memory document and reads the working tree again. The
+     * only things re-read here are this hook's own answers, all three of which the new revision
+     * invalidated - the same set a commit invalidates, for the same reason.
+     */
+    const restoreRevision = useCallback(async (revision: RevisionId, label?: string): Promise<boolean> => {
+        if (!services || busy !== null) {
+            return false;
+        }
+        const name = label ?? shortRevision(revision);
+        const confirmed = await services.ui.showDestructiveConfirm(
+            translate("workspace.shell.versionControl.restoreConfirm", { version: name }),
+            translate("workspace.shell.versionControl.restoreConfirmDetail"),
+            translate("workspace.shell.versionControl.restore"),
+        );
+        if (!confirmed || !alive.current) {
+            return false;
+        }
+
+        setBusy("restore");
+        setError(null);
+        try {
+            const restored = await services.versionControl.restoreRevision(revision, { label });
+            if (!alive.current) return true;
+            if (restored.recordFailure) {
+                // The half of a restore that fails with the author's files ALREADY replaced. Said out
+                // loud, because the assumption they would otherwise make - "it failed, so nothing
+                // happened" - is the opposite of the truth, and they would go on working on a project
+                // that quietly went back a week.
+                //
+                // A sticky notice rather than {@link error}: the restore leaves the revision view on
+                // its way out, and the rail's own effect re-reads the history on that state change -
+                // which clears `error` before anyone could read it. This is not a message to lose a
+                // race with.
+                services.ui.notifications.showSticky({
+                    type: NotificationType.Error,
+                    message: translate("workspace.shell.versionControl.restoreNotRecordedTitle"),
+                    detail: translate("workspace.shell.versionControl.restoreNotRecordedDetail", {
+                        version: name,
+                        error: restored.recordFailure,
+                        // The button's own label, read from the catalogue rather than repeated, so
+                        // the sentence cannot end up naming a control that no longer says that.
+                        action: translate("workspace.shell.versionControl.commit"),
+                    }),
+                });
+            }
+            // Past this line the revision EXISTS and the disk has already changed, which is why the
+            // re-reads below have a catch of their own: reporting one of them as a failed restore
+            // would tell the author to do again the one thing they must not do twice by accident.
+            try {
+                await readIdentity();
+                if (!alive.current) return true;
+                await readHistory(page.limit);
+            } catch (thrown) {
+                if (alive.current) setError(messageOf(thrown));
+            }
+            return true;
+        } catch (thrown) {
+            if (alive.current) setError(messageOf(thrown));
+            return false;
+        } finally {
+            if (alive.current) setBusy(null);
+        }
+    }, [services, busy, readIdentity, readHistory, page.limit]);
+
     const returnToCurrent = useCallback(() => {
         if (!services) {
             return;
@@ -494,6 +597,7 @@ export function useVersionSurface(): VersionSurface {
         refreshChanges,
         commit,
         showRevision,
+        restoreRevision,
         returnToCurrent,
         enableVersionControl,
     };

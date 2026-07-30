@@ -222,10 +222,17 @@ function VersionSection({ surface, onAct }: { surface: VersionSurface; onAct: ()
             </div>
 
             {onRevision && (
+                /* Disabled for one operation only. A restore is rewriting the files this view would
+                   be re-read from, and it leaves the view itself once it is done - the freeze
+                   service refuses the release either way (`holdRelease`), so this is affordance
+                   rather than correctness: without it the row is a menu item that does nothing.
+                   This surface is the one the rail uses, handed down by `WorkspaceLayout`, so its
+                   `busy` is the same answer the rail's own copy of this button reads. */
                 <SwitcherAction
                     icon={<RotateCcw className="w-4 h-4" />}
                     label={t("workspace.shell.versionControl.returnToCurrent")}
                     onClick={run(surface.returnToCurrent)}
+                    disabled={busy === "restore"}
                 />
             )}
 
@@ -275,12 +282,16 @@ function RecentProjectRow({ project, onSelect }: { project: RecentlyOpenedProjec
     );
 }
 
-function SwitcherAction({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {
+function SwitcherAction(
+    { icon, label, onClick, disabled }:
+    { icon: React.ReactNode; label: string; onClick: () => void; disabled?: boolean },
+) {
     return (
         <button
             type="button"
             onClick={onClick}
-            className="w-full px-3 py-2 flex items-center gap-2 text-left text-sm cursor-default text-fg-muted hover:bg-fill hover:text-fg transition-colors"
+            disabled={disabled}
+            className="w-full px-3 py-2 flex items-center gap-2 text-left text-sm cursor-default text-fg-muted hover:bg-fill hover:text-fg transition-colors disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-fg-muted"
             role="menuitem"
         >
             <span className="w-4 h-4 shrink-0 text-fg-subtle">{icon}</span>

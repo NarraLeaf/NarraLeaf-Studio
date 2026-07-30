@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+    ArchiveRestore,
     ChevronDown,
     ChevronsLeft,
     Clock,
@@ -140,12 +141,18 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
                     {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <History className="h-4 w-4" />}
                 </button>
 
+                {/* Disabled for exactly one operation, and no other. Leaving DURING a restore would
+                    re-read a working tree the main process is still halfway through rewriting, and
+                    the editors would then hold a project that is part one version and part another.
+                    Every other busy state is a read, and an escape hatch that greys out whenever
+                    anything is loading is not an escape hatch. */}
                 <button
                     type="button"
                     onClick={surface.returnToCurrent}
+                    disabled={busy === "restore"}
                     title={escapeLabel}
                     aria-label={escapeLabel}
-                    className="flex h-10 w-10 items-center justify-center rounded-md text-primary transition-colors cursor-default hover:bg-fill"
+                    className="flex h-10 w-10 items-center justify-center rounded-md text-primary transition-colors cursor-default hover:bg-fill disabled:opacity-50"
                 >
                     <RotateCcw className="h-4 w-4" />
                 </button>
@@ -322,14 +329,41 @@ function FocusedVersion({ surface }: { surface: VersionSurface }) {
             )}
 
             {onRevision && (
-                <button
-                    type="button"
-                    onClick={surface.returnToCurrent}
-                    className="mt-2 flex h-7 w-full items-center justify-center gap-1.5 rounded-md bg-primary px-2 text-2xs text-on-primary transition-opacity cursor-default hover:opacity-90"
-                >
-                    <RotateCcw className="h-3 w-3" />
-                    {t("workspace.shell.versionControl.returnToCurrent")}
-                </button>
+                <div className="mt-2 flex items-center gap-1.5">
+                    {/* Only a restore locks the way out; see the strip's copy of this button. */}
+                    <button
+                        type="button"
+                        onClick={surface.returnToCurrent}
+                        disabled={surface.busy === "restore"}
+                        className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md bg-primary px-2 text-2xs text-on-primary transition-opacity cursor-default hover:opacity-90 disabled:opacity-50"
+                    >
+                        <RotateCcw className="h-3 w-3" />
+                        {t("workspace.shell.versionControl.returnToCurrent")}
+                    </button>
+
+                    {/* The secondary of the pair, and it stays that way. Reading an old version is
+                        what the author came here to do; putting the project back to it is the rarer
+                        act and the only one on this panel that touches their files, so it does not
+                        get to look like the way out. Icon-only for the same reason the 320px column
+                        keeps everything else short - and because the confirmation it opens carries
+                        the whole explanation, which no button this size could.
+
+                        Disabled rather than absent while something runs: it is present in this state
+                        unconditionally, so hiding it mid-operation would make the panel appear to
+                        lose a control. */}
+                    <button
+                        type="button"
+                        onClick={() => void surface.restoreRevision(state.revision, state.label)}
+                        disabled={surface.busy !== null}
+                        title={t("workspace.shell.versionControl.restore")}
+                        aria-label={t("workspace.shell.versionControl.restore")}
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-primary/40 text-primary transition-colors cursor-default hover:bg-fill disabled:opacity-50"
+                    >
+                        {surface.busy === "restore"
+                            ? <Loader2 className="h-3 w-3 animate-spin" />
+                            : <ArchiveRestore className="h-3 w-3" />}
+                    </button>
+                </div>
             )}
         </div>
     );
@@ -740,5 +774,7 @@ function busyKey(busy: NonNullable<VersionSurface["busy"]>) {
             return "workspace.shell.versionControl.committing" as const;
         case "return":
             return "workspace.shell.versionControl.returning" as const;
+        case "restore":
+            return "workspace.shell.versionControl.restoring" as const;
     }
 }

@@ -201,6 +201,107 @@ describe("WorkspaceFreezeService", () => {
         expect(reload).not.toHaveBeenCalled();
     });
 
+    /**
+     * The gap a disabled button could not close.
+     *
+     * A restore rewrites the working tree from the MAIN process, file by file, and the renderer's
+     * write latch never sees it. So any other way out of the revision view - the command palette, the
+     * project switcher's menu (which reads a DIFFERENT `useVersionSurface` and cannot know a restore
+     * is running), a keybinding somebody adds next month - would re-read a tree that is half one
+     * version and half another, and the next save would put that hybrid on disk. Held at the service,
+     * so correctness does not depend on any control having remembered.
+     */
+    it("refuses to leave the view while a release is held, and does not do it silently", async () => {
+        const service = await createService();
+        const revision = createRevisionSource("rev-1", { [STORY_INDEX]: "from-the-revision" });
+        await service.showRevision(revision.source);
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+        const release = service.holdRelease();
+        service.thaw();
+
+        expect(service.isReleaseHeld()).toBe(true);
+        expect(service.isFrozen()).toBe(true);
+        // The read side too: a thaw that dropped the source but kept the latch would leave the
+        // editors reading a half-written working tree, which is the same loss one step earlier.
+        expect(getProjectDocumentSource()).toBe(revision.source);
+        // Only the one `showRevision` started. A refused thaw must not have re-read anything.
+        expect(reload).toHaveBeenCalledTimes(1);
+        // Reaching this line means a control offered a way out it should have hidden - which is worth
+        // finding, and is why the refusal is not a bare `return`.
+        expect(warn).toHaveBeenCalledTimes(1);
+
+        release();
+        warn.mockRestore();
+    });
+
+    it("thaws normally once the hold is released", async () => {
+        const service = await createService();
+        await service.showRevision(createRevisionSource("rev-1", {}).source);
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+        const release = service.holdRelease();
+        service.thaw();
+        expect(service.isFrozen()).toBe(true);
+
+        release();
+        service.thaw();
+
+        expect(service.isReleaseHeld()).toBe(false);
+        expect(service.isFrozen()).toBe(false);
+        expect(getProjectDocumentSource()).toBeNull();
+        expect(reload).toHaveBeenLastCalledWith("thaw");
+        warn.mockRestore();
+    });
+
+    /**
+     * Counted rather than a flag, and this is the case that decides it: with one boolean, the first
+     * holder to finish would lift the second one's hold, and the workspace would re-read a tree the
+     * second holder is still writing. The count is the same shape `holdProjectWritesForReload` uses,
+     * deliberately - two mechanisms for "hold this off" with different nesting rules is how one of
+     * them gets used wrongly.
+     */
+    it("stays held until the last of several holders releases", async () => {
+        const service = await createService();
+        await service.showRevision(createRevisionSource("rev-1", {}).source);
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+        const first = service.holdRelease();
+        const second = service.holdRelease();
+
+        first();
+        service.thaw();
+
+        expect(service.isReleaseHeld()).toBe(true);
+        expect(service.isFrozen()).toBe(true);
+
+        second();
+        service.thaw();
+
+        expect(service.isReleaseHeld()).toBe(false);
+        expect(service.isFrozen()).toBe(false);
+        warn.mockRestore();
+    });
+
+    /**
+     * A release belongs to its holder. Without the idempotence, a caller whose `finally` runs twice -
+     * or one that releases and is then torn down - would decrement somebody else's hold, and the
+     * remaining holder would find the workspace leaving the view underneath it.
+     */
+    it("ignores a holder that releases twice, so another holder's hold survives", async () => {
+        const service = await createService();
+        await service.showRevision(createRevisionSource("rev-1", {}).source);
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+        const first = service.holdRelease();
+        service.holdRelease();
+
+        first();
+        first();
+
+        expect(service.isReleaseHeld()).toBe(true);
+        service.thaw();
+        expect(service.isFrozen()).toBe(true);
+        warn.mockRestore();
+    });
+
     it("flushes what is owed before freezing, so a pending save is not silently dropped", async () => {
         const service = await createService();
 
