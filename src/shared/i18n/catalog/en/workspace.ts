@@ -374,7 +374,12 @@ export const workspace = {
         versionControl: {
             title: "Version",
             open: "Open the version rail",
+            // Two labels for one button, because it does two things: while the workspace is frozen the
+            // panel collapses to the 48px strip (which must stay - it is the way out), and at HEAD there
+            // is no strip, so closing it leaves nothing behind. "Collapse" there would promise a column
+            // the author would then not find.
             collapse: "Collapse the version rail",
+            close: "Close the version rail",
             // Hover text on the collapsed rail, the widget and the status cell while a past revision is
             // on screen. `{version}` is the revision's own label, e.g. `#4`.
             viewingVersion: "You are looking at version {version}",

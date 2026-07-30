@@ -3,9 +3,12 @@ import { Services } from "@/lib/workspace/services/services";
 import { VersionControlService } from "@/lib/workspace/services/core/VersionControlService";
 import { WorkspaceFreezeService } from "@/lib/workspace/services/core/WorkspaceFreezeService";
 import type { RevisionId, VcsAvailability, VcsStatus } from "@shared/types/vcs";
+import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
 import {
     collapseCheckpoints,
+    findRevisionRow,
     flattenFirstParent,
+    focusedRevision,
     hiddenCheckpointCount,
     resolveVersionSurfaceState,
     revisionLabel,
@@ -46,6 +49,16 @@ export const VERSION_HISTORY_PAGE = 50;
 export interface VersionSurface {
     /** Which of the six states every surface renders. */
     state: VersionSurfaceState;
+    /**
+     * Why project data is frozen, or null when it is writable.
+     *
+     * Separate from {@link state} because the two answer different questions and one of them is not
+     * derivable from the other: a MANUAL freeze (the palette command) leaves the state on `current`,
+     * yet it is exactly as much a temporary state the author has to be able to leave as a revision
+     * preview is. This is what decides whether the rail is a persistent strip
+     * (`resolveVersionRailPresence`) and what its escape hatch is called.
+     */
+    frozen: WorkspaceFreezeReason["kind"] | null;
     /** A long operation is running; show progress rather than pretending it was instant. */
     busy: VersionBusyKind | null;
     /** The last operation's failure, already stringified for display. Cleared by the next attempt. */
@@ -56,6 +69,15 @@ export interface VersionSurface {
      * nothing".
      */
     history: FlatHistoryEntry[] | null;
+    /**
+     * The row for the revision on screen - the previewed one, else the head - out of the page that
+     * has been read, and the only place the message / time / author come from.
+     *
+     * Null until {@link loadHistory} has answered, and null for a revision beyond the page: both are
+     * "not read", and the alternative would be a per-revision backend call from a render. The
+     * identity (number, short hash) does not come from here, so the block still names its revision.
+     */
+    focused: FlatHistoryEntry | null;
     /** Rows the collapse is hiding, so the list can offer to show them. */
     hiddenCheckpoints: number;
     showCheckpoints: boolean;
@@ -81,6 +103,7 @@ export function useVersionSurface(): VersionSurface {
     const [head, setHead] = useState<RevisionId | null>(null);
     const [headNumber, setHeadNumber] = useState<number | null>(null);
     const [shown, setShown] = useState<{ revision: RevisionId; label?: string } | null>(null);
+    const [frozen, setFrozen] = useState<WorkspaceFreezeReason["kind"] | null>(null);
     const [rawHistory, setRawHistory] = useState<FlatHistoryEntry[] | null>(null);
     const [showCheckpoints, setShowCheckpoints] = useState(false);
     const [status, setStatus] = useState<VcsStatus | null>(null);
@@ -152,15 +175,18 @@ export function useVersionSurface(): VersionSurface {
 
     // The shown revision comes from the freeze latch rather than from our own bookkeeping, because the
     // command palette can enter and leave a revision view too - and a rail that only knew about its
-    // own clicks would show the working tree while the editors showed 1.4.
+    // own clicks would show the working tree while the editors showed 1.4. The reason's KIND is read
+    // alongside it, because a manual freeze has no revision and still has to raise the strip.
     useEffect(() => {
         if (!services) {
             setShown(null);
+            setFrozen(null);
             return;
         }
         const read = () => {
             const reason = services.freeze.getReason();
             setShown(reason?.kind === "revision" ? { revision: reason.revision, label: reason.label } : null);
+            setFrozen(reason?.kind ?? null);
         };
         read();
         return services.freeze.onChanged(read);
@@ -181,12 +207,13 @@ export function useVersionSurface(): VersionSurface {
         setError(null);
         void (async () => {
             try {
-                // Kinds are what makes collapsing possible, and they cost one backend call PER
-                // revision - there is no batch verb - which is why the page is bounded rather than
-                // asking for all of them.
+                // Details are what makes collapsing possible (the kind) and what the focused block
+                // shows (message / time / author), and they cost one backend call PER revision -
+                // there is no batch verb - which is why the page is bounded rather than asking for
+                // all of them.
                 const entries = await services.versionControl.getHistory(
                     VERSION_HISTORY_PAGE,
-                    { includeKinds: true },
+                    { includeDetails: true },
                 );
                 if (!alive.current) return;
                 setRawHistory(flattenFirstParent(entries));
@@ -293,12 +320,20 @@ export function useVersionSurface(): VersionSurface {
         () => (rawHistory ? hiddenCheckpointCount(rawHistory, { showCheckpoints, keep }) : 0),
         [rawHistory, showCheckpoints, keep],
     );
+    // Looked up in the UNCOLLAPSED page: an author previewing a checkpoint with checkpoints hidden
+    // would otherwise have their own revision's metadata filtered out from under them.
+    const focused = useMemo(
+        () => findRevisionRow(rawHistory, focusedRevision(state)),
+        [rawHistory, state],
+    );
 
     return {
         state,
+        frozen,
         busy,
         error,
         history,
+        focused,
         hiddenCheckpoints,
         showCheckpoints,
         setShowCheckpoints,

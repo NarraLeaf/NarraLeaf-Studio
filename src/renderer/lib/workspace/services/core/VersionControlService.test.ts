@@ -607,8 +607,8 @@ describe("VersionControlService commit", () => {
 describe("VersionControlService history kinds", () => {
     it("asks for kinds only when told to, and caches the two answers apart", async () => {
         const service = await createService();
-        vcs.getHistory.mockImplementation((_project: string, _limit: number, includeKinds?: boolean) =>
-            ok({ entries: [{ revision: "aa", number: 1, parents: [], kind: includeKinds ? "commit" : undefined }] }));
+        vcs.getHistory.mockImplementation((_project: string, _limit: number, includeDetails?: boolean) =>
+            ok({ entries: [{ revision: "aa", number: 1, parents: [], kind: includeDetails ? "commit" : undefined }] }));
 
         const plain = await service.getHistory(10);
         expect(plain[0].kind).toBeUndefined();
@@ -616,12 +616,12 @@ describe("VersionControlService history kinds", () => {
 
         // A different question, not a filter on the same answer: the plain page never read
         // the kinds, so it cannot be used to answer this one.
-        const kinds = await service.getHistory(10, { includeKinds: true });
+        const kinds = await service.getHistory(10, { includeDetails: true });
         expect(kinds[0].kind).toBe("commit");
         expect(vcs.getHistory).toHaveBeenLastCalledWith(PROJECT, 10, true);
         expect(vcs.getHistory).toHaveBeenCalledTimes(2);
 
-        await service.getHistory(10, { includeKinds: true });
+        await service.getHistory(10, { includeDetails: true });
         expect(vcs.getHistory).toHaveBeenCalledTimes(2);
     });
 });
