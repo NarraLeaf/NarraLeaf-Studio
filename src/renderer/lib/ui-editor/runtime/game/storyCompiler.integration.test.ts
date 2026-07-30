@@ -2629,6 +2629,49 @@ describe("story audio", () => {
         expect((sound as any)?.config.endTime).toBe(0.5);
     });
 
+    it("lets the sound-control family address a scene's own music", async () => {
+        const document = baseDocument({
+            quieter: {
+                id: "quieter",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "audio", operation: "setVolume", objectName: "bgm", volume: 0.3, fadeMs: 500 },
+            },
+        }, ["quieter"]);
+        document.scenes["scene-1"].bgm = { assetId: "asset-theme" };
+
+        const compiled = await compileStudioStoryToNlr({
+            document,
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        // The reserved name has to be pre-registered, or `/vol 0.5` answers "no background music is
+        // set" on the one scene that definitely has some - the whole point of configuring it.
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiled.sceneElements?.["scene-1"].sounds.get("bgm")).toBe(
+            (compiled.scene as any).state.backgroundMusic,
+        );
+    });
+
+    it("still warns when a control row addresses music no scene or row set", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                quieter: {
+                    id: "quieter",
+                    kind: "action",
+                    parentId: null,
+                    childrenIds: [],
+                    payload: { action: "audio", operation: "setVolume", objectName: "bgm", volume: 0.3 },
+                },
+            }, ["quieter"]),
+            sceneId: "scene-1",
+        });
+
+        expect(compiled.diagnostics.some(entry => /No background music is set/.test(entry.message))).toBe(true);
+    });
+
     it("compiles /seek on a sound as a play-head move in seconds", async () => {
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument({

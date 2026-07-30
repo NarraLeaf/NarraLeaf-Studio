@@ -1,7 +1,7 @@
 ---
 title: "plan: 音频表演 —— 场景 BGM、入点/出点、循环/Fade/Seek，以及 Surface 级 sound 能力族"
 type: plan
-status: in-progress
+status: done
 date: 2026-07-29
 branch: feat/story-audio-performance
 worktree: D:/Temp/nls-audio
@@ -110,11 +110,52 @@ CHANGELOG 必写（memory `engine-changelog-rule`）。新公开 API → minor �
   4. 标题页 Surface 上一个按钮 `Play Sound (bgm, loop)` → 出声、BGM 音量滑条实时生效、
      `Stop Sound` 停得住。
 
-## 7. 已知取舍
+## 7. 真机验收结果（orchestrator 亲眼，2026-07-29）
+
+工程：`D:/Temp/nls-audio-proj`（NLDemo 副本 + 一段刻意分三段的 10s WAV：
+0–2s 440Hz / 2–6s 880Hz / 6–10s 220Hz），标记入点 2s、出点 6s。
+
+**探针手法**（值得复用）：音频没法"看"，所以在 Dev Mode 窗口里包 `AudioContext.
+createBufferSource` 与 `AudioBufferSourceNode.prototype.start`，事后直接读节点上的
+`loop/loopStart/loopEnd`。**注意 `SoundToken` 构造函数里就 `start()` 了，`a.loop=g`
+是构造之后才赋的**——所以在 `start()` 时刻抓的快照永远是 `loop:false`，必须事后读节点，
+否则会误判成"出点没生效"（我第一轮就误判了一次）。
+
+通过：
+1. 资源管理器标入/出点 → `extras.audioLoop {inMs:1997, outMs:6003}` 落盘；
+2. 右栏「场景音乐」选中 theme.wav，提示读出 **"Loops 2.0s – 6.0s"**；音量/循环/淡入三项持久化；
+3. 真游戏进场景：BGM 自动起播，**`offset:1.997`（入点）**，节点上
+   **`loop:true, loopStart:1.997, loopEnd:6.003`**（buffer 10s），AudioContext `running`
+   且时钟推进 → 入点/出点真正到了音频硬件。
+
+**没能亲眼跑到的**（诚实记录）：
+- `/vol` `/seek` `/stop` 的运行时效果：NLDemo 这个工程的对话框在本次构建里报
+  `Unsupported type: nl.dialog.nametag`，点击/键盘都推不动剧情，够不到那几行。
+  编译层与引擎层各有单测覆盖。
+- Surface 蓝图 sound 族在调色板里的样子：右键没能唤出节点面板（时间盒到此），
+  覆盖靠 `builtinBlueprintNodes.test.ts` 的 Play Sound → Stop Sound 全链路图执行 + 注册扫描。
+
+## 8. 真机跑出来的两个缺陷（都已修）
+
+- **右栏不因音乐改动而重发布**：`StorySceneEditorTab` 的 `sceneMeta` 签名只含
+  name/description/background，不含 `bgm`。后果不只是显示过期——音乐控件按字段增量
+  patch（`{...bgm, ...next}`），所以**改音量会把刚设的淡入写回旧值抹掉**。
+  签名补上 `scene.bgm`，并在注释里写死"每个进右栏的场景字段都必须进这个签名"。
+- **`/vol` `/seek bgm` 够不到场景配的 BGM**：控制族默认目标是保留名 `bgm`，而它只由
+  `/bgm` 行注册。场景配了音乐的场景反而收到"没有背景音乐"告警。现在编译期把场景的
+  `Sound` 预登记进该场景的 registry。
+
+## 9. 已知取舍
 
 - 出点循环只在解码路径（`AudioBufferSourceNode`）成立；`HTMLAudioElement` 流式播放只有
   朴素 `loop`。引擎 `AudioManager` 总是先 `sound.load()` 解码再播，所以现状恒走解码路径——
   但如果哪天引擎开了 streaming，区间会静默退化成整曲循环。记录在案。
-- 存档恢复（`soundFromData`）用 `startTime: data.position` 起播，此时 `loopStart` 会等于
-  恢复位置而不是入点。第一轮循环后回到的点会偏。**接受**：代价是重开一次曲子，
-  收益要引擎给 loopStart/startTime 解耦，不值当在本轮做。
+- 存档恢复的 loop 锚点问题**已在引擎侧解决**：`soundFromData` 对带区间的循环曲从入点起播
+  再 `token.seek(position)`（该 seek 会重建 source 并保留 loopStart/loopEnd）。
+- 页面退出不自动停声（M1 观察期）；`Stop Sound` 省略 handle = 全停。
+
+## 10. 引擎发布
+
+`narraleaf-react` **0.21.0**（出点/loop region、`Sound.seek`、rate 缺陷、场景 BGM 卡死）
+与 **0.21.1**（存档遇到本故事没有的 sound 时不再整档加载失败）已发 npm 并推上
+`dev_nomen`；Studio 依赖已提到 `^0.21.1`。该仓不用 tag。
