@@ -1,6 +1,9 @@
 import type { TranslationKey } from "@shared/i18n";
+import type { DocumentSource } from "@shared/documents/documentSource";
 import { translate } from "@/lib/i18n";
 import { holdProjectWritesForReload } from "@/lib/app/writeFreeze";
+import { pushProjectDocumentSource } from "@/lib/app/documentSource";
+import { createProjectWorkingTreeSource } from "./DocumentStorage";
 import { Service } from "../Service";
 import { Services, type IWorkspaceReloadService, type WorkspaceContext } from "../services";
 import { SaveStatusService, STORAGE_CONSOLE_CHANNEL } from "../autosave/SaveStatusService";
@@ -30,11 +33,19 @@ import { EventEmitter } from "../ui/EventEmitter";
  * §4.4 books as a V4 acceptance item, which is the same mechanism seen from the other end). They are
  * distinguished only for the console line: the work is identical, and it has to be, because the
  * failure being prevented is identical too.
+ *
+ * `revision` is the fourth and the one that is NOT about the working tree: the author has asked to
+ * see a past version, so the editors re-read from that revision and the disk is not touched at all.
+ * Told apart from `restore` on purpose - restore puts a past version ON the disk and then re-reads
+ * the working tree, which is why it takes a checkpoint first and why browsing history does not
+ * (plan §1: browsing has zero side effects).
  */
-export type WorkspaceReloadCause = "thaw" | "restore" | "external";
+export type WorkspaceReloadCause = "thaw" | "restore" | "external" | "revision";
 
 export type WorkspaceReloadResult = {
     cause: WorkspaceReloadCause;
+    /** Which version of the project the participants read. */
+    origin: DocumentSource["origin"];
     /** Participant ids that re-read successfully. */
     reloaded: string[];
     /** Participants that did not, each keeping whatever it already held. */
@@ -163,6 +174,8 @@ type WorkspaceReloadEvents = {
 export class WorkspaceReloadService extends Service<WorkspaceReloadService> implements IWorkspaceReloadService {
     private readonly events = new EventEmitter<WorkspaceReloadEvents>();
     private inFlight: Promise<WorkspaceReloadResult> | null = null;
+    /** Which version the in-flight pass is reading. What decides coalesce vs queue; see {@link reload}. */
+    private inFlightOrigin: DocumentSource["origin"] | null = null;
     private generation = 0;
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
@@ -172,22 +185,53 @@ export class WorkspaceReloadService extends Service<WorkspaceReloadService> impl
 
     public override dispose(_ctx: WorkspaceContext): void {
         this.inFlight = null;
+        this.inFlightOrigin = null;
         this.events.clear();
     }
 
     /**
-     * Drop every in-memory document and read the working tree again.
+     * Drop every in-memory document and read it again from `source`.
      *
-     * Coalesced rather than queued: two causes arriving together (a thaw, and the restore that caused
-     * it) must not read the disk twice or interleave two passes over the same services, and the
-     * second caller wants the same answer the first is already getting.
+     * `source` defaults to the working tree, which is what every caller before the version view
+     * meant. A revision source is installed at the read boundary for the whole pass, so the
+     * participants below need no knowledge of it: `@/lib/app/documentSource` explains why the seam is
+     * there rather than in nine services, and the short version is that documents also load lazily
+     * afterwards, long past anything a reload could have threaded a parameter through.
+     *
+     * Two causes arriving together for the SAME version are coalesced: a thaw and the restore that
+     * caused it must not read the disk twice or interleave two passes over the same services, and the
+     * second caller wants the answer the first is already waiting for.
+     *
+     * Two causes for DIFFERENT versions are queued instead, and that distinction is load-bearing. The
+     * pair that forces it is "leave the revision while entering it is still reading": coalesced, the
+     * thaw would be handed the pass that is filling memory with the revision, and would then unfreeze
+     * on top of it - a writable workspace holding a past version, which is precisely the loss the
+     * freeze exists to prevent. Queued, the thaw's own pass runs afterwards and reads the working tree.
      */
-    public reload(cause: WorkspaceReloadCause): Promise<WorkspaceReloadResult> {
+    public reload(cause: WorkspaceReloadCause, source?: DocumentSource): Promise<WorkspaceReloadResult> {
+        const ctx = this.getContext();
+        const resolved = source ?? createProjectWorkingTreeSource(ctx);
         if (this.inFlight) {
-            return this.inFlight;
+            if (sameOrigin(this.inFlightOrigin, resolved.origin)) {
+                return this.inFlight;
+            }
+            // Settled either way: a failed pass must not stop the next version being shown, and every
+            // rejection is already reported by whoever asked for that pass.
+            const queued = this.inFlight.then(
+                () => this.start(cause, resolved),
+                () => this.start(cause, resolved),
+            );
+            this.inFlight = queued;
+            this.inFlightOrigin = resolved.origin;
+            return queued;
         }
-        const task = this.run(cause);
+        return this.start(cause, resolved);
+    }
+
+    private start(cause: WorkspaceReloadCause, source: DocumentSource): Promise<WorkspaceReloadResult> {
+        const task = this.run(cause, source);
         this.inFlight = task;
+        this.inFlightOrigin = source.origin;
         // Cleared on the settled view of the same work, so a rejected reload cannot leave the service
         // permanently claiming one is in flight - nor surface as an unhandled rejection here.
         void task.then(
@@ -221,16 +265,27 @@ export class WorkspaceReloadService extends Service<WorkspaceReloadService> impl
     private clearInFlight(task: Promise<WorkspaceReloadResult>): void {
         if (this.inFlight === task) {
             this.inFlight = null;
+            this.inFlightOrigin = null;
         }
     }
 
-    private async run(cause: WorkspaceReloadCause): Promise<WorkspaceReloadResult> {
+    private async run(cause: WorkspaceReloadCause, requested?: DocumentSource): Promise<WorkspaceReloadResult> {
         const ctx = this.getContext();
-        const release = holdProjectWritesForReload(ctx.project.getConfig().projectPath);
+        const projectPath = ctx.project.getConfig().projectPath;
+        const source = requested ?? createProjectWorkingTreeSource(ctx);
+        const release = holdProjectWritesForReload(projectPath);
+        // Re-entrant with the hold a version view already keeps, so entering a revision installs the
+        // source once and this pass borrows it rather than replacing it.
+        const releaseSource = pushProjectDocumentSource(projectPath, source);
         const reloaded: string[] = [];
         const failures: WorkspaceReloadResult["failures"] = [];
 
         try {
+            // Before anything is read, and awaited: on a project with a remote this is where the
+            // network wait happens, and a participant reading one path at a time afterwards would pay
+            // it nine times over (docs/version-control.md §6). The working tree's prewarm does
+            // nothing, so this costs a resolved promise in the ordinary case.
+            await source.prewarm();
             await ctx.services.get<SaveStatusService>(Services.SaveStatus).prepareForReload();
             this.dropUndoHistories(ctx);
 
@@ -247,13 +302,17 @@ export class WorkspaceReloadService extends Service<WorkspaceReloadService> impl
                 }
             }
         } finally {
+            // The source is released before the hold: a tab that remounts and reads must see whatever
+            // the caller holding the view has installed, not this pass's borrowed copy - and for a
+            // working-tree reload there is nothing installed either way.
+            releaseSource();
             // Before the event and the generation bump: a tab that remounts and saves immediately must
             // find the workspace writable, or the reload would have invented a new refused write.
             release();
         }
 
         this.generation += 1;
-        const result: WorkspaceReloadResult = { cause, reloaded, failures };
+        const result: WorkspaceReloadResult = { cause, origin: source.origin, reloaded, failures };
         this.logStorage(failures.length > 0 ? "error" : "success", translate("workspace.shell.reload.console", {
             cause,
             count: String(reloaded.length),
@@ -325,4 +384,18 @@ export class WorkspaceReloadService extends Service<WorkspaceReloadService> impl
             return null;
         }
     }
+}
+
+/**
+ * Whether two passes would read the same version of the project.
+ *
+ * A structural comparison rather than object identity: the version view and the reload it starts pass
+ * the same instance, but a caller that rebuilt an equivalent source for the same revision means the
+ * same thing and must not be queued behind it.
+ */
+function sameOrigin(a: DocumentSource["origin"] | null, b: DocumentSource["origin"]): boolean {
+    if (!a || a.kind !== b.kind) {
+        return false;
+    }
+    return a.kind !== "revision" || b.kind !== "revision" || a.revision === b.revision;
 }
