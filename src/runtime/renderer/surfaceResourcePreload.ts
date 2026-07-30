@@ -33,8 +33,15 @@ function addAssetId(ctx: CollectContext, value: unknown): void {
     ctx.assetIds.add(assetId);
 }
 
+/**
+ * Literal property names that hold a library asset id. `posterAssetId` is here because the walk is
+ * keyed on exact names, not a suffix: `nl.video`'s poster would otherwise be skipped and the still
+ * shown before playback would pop in mid-scene rather than arriving with the Surface.
+ */
+const ASSET_ID_PROPERTY_NAMES = new Set(["assetId", "fontAssetId", "posterAssetId"]);
+
 function collectAssetIdsFromValue(ctx: CollectContext, value: unknown, keyHint?: string): void {
-    if (keyHint === "assetId" || keyHint === "fontAssetId") {
+    if (keyHint !== undefined && ASSET_ID_PROPERTY_NAMES.has(keyHint)) {
         addAssetId(ctx, value);
     }
     if (!value || typeof value !== "object") {
