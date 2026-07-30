@@ -42,6 +42,7 @@ import {
     resolveAspectRatio,
     type SurfacePoint,
 } from "./insertAspectRatio";
+import { isSurfaceGestureEnabled, UI_EDITOR_WRITABLE, type UIEditorReadOnly } from "./readOnlyInteraction";
 
 const WHEEL_ZOOM_SPEED = 0.003;
 const PINCH_ZOOM_SPEED = 0.006;
@@ -84,6 +85,8 @@ type UseSurfaceInteractionEventsParams = {
     /** When both return allow snapping, insert drag corners snap to guides. */
     insertSnapEnabled?: () => boolean;
     insertSnapSuspended?: () => boolean;
+    /** While active, the insert draw gesture never starts. Selection, drill, pan and zoom are untouched. */
+    readOnly?: UIEditorReadOnly;
 };
 
 export type InsertPreview = {
@@ -110,9 +113,11 @@ export function useSurfaceInteractionEvents({
     uiService,
     insertSnapEnabled,
     insertSnapSuspended,
+    readOnly = UI_EDITOR_WRITABLE,
 }: UseSurfaceInteractionEventsParams) {
     /** Pointer events often keep `detail` at 0; use timing + target to emulate double-activation for container drill. */
     const containerDrillLastPointerRef = useRef<{ elementId: string; t: number } | null>(null);
+    const insertDrawEnabled = isSurfaceGestureEnabled("insertDraw", readOnly);
 
     useEffect(() => {
         if (!surfaceElement) {
@@ -280,7 +285,9 @@ export function useSurfaceInteractionEvents({
                 return;
             }
 
-            if (tool.kind === "insert" && event.button === 0 && isInsideSurface) {
+            // Read-only: the gesture never starts, so there is no drag to abandon later. The insert
+            // tool cannot be armed from the docker bar either, so this is belt to that brace.
+            if (tool.kind === "insert" && insertDrawEnabled && event.button === 0 && isInsideSurface) {
                 event.preventDefault();
                 event.stopPropagation();
                 const surfacePoint = clientToSurfaceCoords(event.clientX, event.clientY);
@@ -431,6 +438,7 @@ export function useSurfaceInteractionEvents({
         setInsertPreview,
         insertSnapEnabled,
         insertSnapSuspended,
+        insertDrawEnabled,
     ]);
 
     useEffect(() => {

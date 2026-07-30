@@ -13,6 +13,8 @@ import type {
 import { describeDeclaration, listSceneIdsInDocumentOrder } from "@shared/types/story";
 import { translate } from "@/lib/i18n";
 import { useWorkspace } from "../../../context";
+import { useWorkspaceFrozen } from "@/apps/workspace/hooks/useWorkspaceFrozen";
+import { isRowTextEditable } from "./storySceneReadOnly";
 import { Services } from "@/lib/workspace/services/services";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
@@ -94,6 +96,12 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     // the escape hatch for a Simplified-Chinese IME, which types "、" for the "/" key. Defaults on for
     // a Simplified-Chinese device; the user can override it in Settings (Editor).
     const slashAtAlias = useSlashAtAlias();
+    /**
+     * Whether this window's project data is frozen. Read here as well as in the tab because two of the
+     * controller's entry points are simultaneously the way to READ a row and the way to start editing
+     * it, and only the controller can tell those branches apart - see the two uses below.
+     */
+    const frozen = useWorkspaceFrozen();
 
     const storyId = payload?.storyId;
     const sceneId = payload?.sceneId;
@@ -215,6 +223,25 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * show up in this editor's candidates without a reload.
      */
     const [blueprintRevision, setBlueprintRevision] = useState(0);
+
+    /**
+     * A freeze that lands while a row is open for editing closes the editor, discarding the draft.
+     *
+     * The author freezes the workspace by an act of their own (browsing a version), so this is a real
+     * path rather than a corner: without it the caret stays in the `contenteditable` and keeps taking
+     * keystrokes that nothing will keep. It sets `idle` directly instead of calling `commitTextEdit`,
+     * because committing is precisely what must not happen - the write boundary would refuse the save,
+     * but the in-memory scene would still carry the edit until the thaw's re-read threw it away.
+     * `slotDiscardedRef` marks an open insert slot as abandoned so its own teardown does not commit it.
+     */
+    useEffect(() => {
+        if (!frozen) {
+            return;
+        }
+        slotDiscardedRef.current = true;
+        insertDraftRef.current = "";
+        setEditorMode(current => (current.kind === "text" || current.kind === "insert" ? { kind: "idle" } : current));
+    }, [frozen]);
 
     // Persist the focused row + selection so they survive the tab unmounting when the author switches
     // away and a Studio restart (paired with the seed above and the scroll persistence in the tab).
@@ -446,11 +473,18 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!block || !isTextEditableBlock(block)) {
             return;
         }
+        // Frozen: the row stays selected (the mousedown already did that) and the native text selection
+        // stays where the author dragged it, so the line is still readable and copyable - it just does
+        // not become a caret. This gesture never goes through `StoryRowActions.startTextEdit`, so the
+        // no-op there did not cover it; see `isRowTextEditable`.
+        if (!isRowTextEditable(frozen)) {
+            return;
+        }
         const range = getSelectionUnitRange(pending.textEl);
         const segment = getTextSegment(block);
         const caret: StoryCaretTarget = range ? { start: range.start, end: range.end } : "end";
         setEditorMode({ kind: "text", blockId: pending.blockId, value: segment?.value ?? "", rich: segment?.rich, caret });
-    }, [scene]);
+    }, [frozen, scene]);
 
     const runDragSelectAutoScroll = useCallback(() => {
         const container = scrollContainerRef.current;
@@ -1155,7 +1189,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // than a property inspector — a card of fields for a row that has no fields yet is a dead end,
         // and it was the first thing anyone hit after mistyping a command.
         if (block.kind === "invalid") {
-            startLineEdit(block);
+            // Frozen: nothing to fall back to (an invalid row HAS no inspector), so the row stays put
+            // rather than opening a line editor whose text would be discarded on thaw.
+            if (!frozen) {
+                startLineEdit(block);
+            }
             return;
         }
         if (hasInspector(block)) {
@@ -1171,10 +1209,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         // Any other card-less container (a condition branch, incl. else) adds a line in its body.
-        if (canAcceptChildren(block)) {
+        if (canAcceptChildren(block) && !frozen) {
             startInsertInside(blockId);
         }
-    }, [scene, startInsertInside]);
+    }, [frozen, scene, startInsertInside]);
 
     /** Escape's inspector rung: close the property editor, keeping the row selected. */
     const closeInspector = useCallback(() => {
@@ -1185,21 +1223,28 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     // open their inspector (or their card-less operation); with nothing selected it falls back to a slot.
     const enterEditOrInspectorForActive = useCallback(() => {
         if (!scene || !activeBlockId) {
-            startInsertAfter(null, true);
+            if (!frozen) {
+                startInsertAfter(null, true);
+            }
             return;
         }
         const block = scene.blocks[activeBlockId];
         if (!block) {
-            startInsertAfter(null, true);
+            if (!frozen) {
+                startInsertAfter(null, true);
+            }
             return;
         }
-        if (isTextEditableBlock(block)) {
+        // Frozen: fall through to the inspector rather than doing nothing. Enter on a dialogue row is
+        // how an author looks at what the row says, and the inspector is the read-only face of it -
+        // opening a caret they cannot keep is the one outcome to avoid.
+        if (isTextEditableBlock(block) && !frozen) {
             const segment = getTextSegment(block);
             setEditorMode({ kind: "text", blockId: activeBlockId, value: segment?.value ?? "", rich: segment?.rich, caret: "end" });
             return;
         }
         activateBlockForInspectorOrOp(activeBlockId);
-    }, [activeBlockId, activateBlockForInspectorOrOp, scene, startInsertAfter]);
+    }, [activeBlockId, activateBlockForInspectorOrOp, frozen, scene, startInsertAfter]);
 
     const commitNarrationFromInsert = useCallback((focusNext: boolean) => {
         if (editorMode.kind !== "insert" || slotDiscardedRef.current) {

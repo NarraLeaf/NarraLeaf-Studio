@@ -10,6 +10,7 @@
 
 import { useCallback, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import {
     AUTO_SAVE_INTERVAL_SECONDS_MAX,
     AUTO_SAVE_INTERVAL_SECONDS_MIN,
@@ -24,6 +25,8 @@ import type { ProjectSectionProps } from "./types";
 
 export function ProjectGameSection({ projectService, uiService, config, onConfigChange }: ProjectSectionProps) {
     const { t } = useTranslation();
+    // SettingRow reads the freeze itself; the two number fields sit in bare shells and need their own.
+    const freeze = useFreezeGuard();
     const [autoSave, setAutoSave] = useState<AutoSaveConfiguration>(
         () => normalizeAutoSaveConfiguration(config.app?.autoSave),
     );
@@ -63,13 +66,14 @@ export function ProjectGameSection({ projectService, uiService, config, onConfig
             <SettingShell
                 title={t("project.game.autoSaveIntervalTitle")}
                 description={t("project.game.autoSaveIntervalDescription")}
+                titleAttr={freeze.writes().title}
             >
                 <NumberField
                     value={autoSave.intervalSeconds}
                     min={AUTO_SAVE_INTERVAL_SECONDS_MIN}
                     max={AUTO_SAVE_INTERVAL_SECONDS_MAX}
                     unit={t("project.game.autoSaveIntervalUnit")}
-                    disabled={!autoSave.enabled || saving === "intervalSeconds"}
+                    disabled={freeze.writes(!autoSave.enabled || saving === "intervalSeconds").disabled}
                     ariaLabel={t("project.game.autoSaveIntervalTitle")}
                     onCommit={value => void commit("intervalSeconds", { intervalSeconds: value })}
                 />
@@ -77,12 +81,13 @@ export function ProjectGameSection({ projectService, uiService, config, onConfig
             <SettingShell
                 title={t("project.game.autoSaveSlotsTitle")}
                 description={t("project.game.autoSaveSlotsDescription")}
+                titleAttr={freeze.writes().title}
             >
                 <NumberField
                     value={autoSave.slots}
                     min={AUTO_SAVE_SLOTS_MIN}
                     max={AUTO_SAVE_SLOTS_MAX}
-                    disabled={saving === "slots"}
+                    disabled={freeze.writes(saving === "slots").disabled}
                     ariaLabel={t("project.game.autoSaveSlotsTitle")}
                     onCommit={value => void commit("slots", { slots: value })}
                 />
