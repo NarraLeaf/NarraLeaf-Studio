@@ -6,6 +6,7 @@ import { Select } from "@/lib/components/elements/Select";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { formatStorySecondsValue, storyMsToSeconds, storySecondsToMs } from "@shared/utils/storyTime";
 import { InlineMenuTriggerButton } from "@/lib/ui-editor/widget-modules/shared/chrome/InlineMenuTriggerButton";
+import { InspectOnlyButton } from "@/lib/components/elements/InspectOnlyButton";
 import { Check, Settings2, Trash2 } from "lucide-react";
 import type {
     AppearanceFieldTransition,
@@ -21,6 +22,7 @@ import {
     getAppearanceGroupTransition,
     getDefaultAppearanceTransition,
 } from "../appearanceMotion";
+import { useAppearanceReadOnly } from "../appearanceReadOnly";
 
 type ModuleMotionMenuButtonProps = {
     enabled: boolean;
@@ -52,7 +54,9 @@ function toTransitionMs(seconds: number): number {
 /** Borderless icon-only trigger; active = field has a transition configured. */
 function motionIconTriggerClass(active: boolean): string {
     return [
-        "grid h-7 w-7 shrink-0 place-items-center rounded-md border-0 bg-transparent p-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+        // `cursor-default`: this is a `<span role="button">` so it escapes the read-only clamp, and a
+        // span would otherwise show the I-beam a `<button>` never does.
+        "grid h-7 w-7 shrink-0 cursor-default place-items-center rounded-md border-0 bg-transparent p-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
         active ? "text-primary hover:text-primary" : "text-fg-subtle hover:text-fg",
     ].join(" ");
 }
@@ -107,11 +111,27 @@ export function ModuleMotionMenuButton({
             menu={menu}
             ariaLabel={t("widgetAppearance.motion.openMenuAria")}
             icon={<Settings2 className="w-4 h-4" strokeWidth={1.75} />}
-            className={hasConfiguredFields ? "text-primary hover:text-primary" : ""}
+            className={`cursor-default ${hasConfiguredFields ? "text-primary hover:text-primary" : ""}`.trim()}
+            // Both rows only decide whether this module SHOWS its animation column; neither touches
+            // the document. Marked inspect-only so a frozen workspace can still turn the column on
+            // and read what is configured - the clamp around the field would otherwise have made the
+            // element's animation settings unreachable rather than read-only.
+            inspectOnly
         />
     );
 }
 
+/**
+ * The per-property animation control: an icon beside a value, and the popover that says how that
+ * value moves when it changes.
+ *
+ * **Two different read-only stories in one component, because the popover leaves the DOM.** The
+ * trigger sits inside the inspector field, where a frozen workspace's `<fieldset disabled>` reaches
+ * it - so it is an {@link InspectOnlyButton}, since opening a popover to read a duration is reading.
+ * The popover itself is portalled into `document.body` and is therefore outside that fieldset
+ * entirely, so it brings its own: without it a frozen project would have offered a fully writable
+ * animation editor one click from a panel where everything else was greyed out.
+ */
 export function AppearanceFieldMotionButton({
     variant,
     setFieldTransition,
@@ -119,7 +139,8 @@ export function AppearanceFieldMotionButton({
     draftResetKey,
 }: AppearanceFieldMotionButtonProps) {
     const { t } = useTranslation();
-    const buttonRef = useRef<HTMLButtonElement | null>(null);
+    const readOnly = useAppearanceReadOnly();
+    const buttonRef = useRef<HTMLSpanElement | null>(null);
     const panelRef = useRef<HTMLDivElement | null>(null);
     const [open, setOpen] = useState(false);
     const [position, setPosition] = useState({ left: 0, top: 0 });
@@ -217,6 +238,12 @@ export function AppearanceFieldMotionButton({
                   style={{ left: position.left, top: position.top, maxWidth: "calc(100vw - 16px)" }}
                   onMouseDown={event => event.stopPropagation()}
               >
+                  {/* The portal's own clamp, and the same instrument the inspector framework uses:
+                      `display: contents` keeps it out of the layout entirely, and every control
+                      below reports `disabled` without having to know this exists - including the
+                      ones inside `Select` and `NumericDraftEnhancedInput`, which are the reason this
+                      is a wrapper rather than a prop on each. */}
+                  <fieldset disabled={readOnly} aria-readonly={readOnly || undefined} style={{ display: "contents" }}>
                   <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                           <div className="text-xs font-medium text-fg">{label}</div>
@@ -443,6 +470,7 @@ export function AppearanceFieldMotionButton({
                           )}
                       </div>
                   )}
+                  </fieldset>
               </div>,
               document.body
           )
@@ -450,16 +478,16 @@ export function AppearanceFieldMotionButton({
 
     return (
         <>
-            <button
+            <InspectOnlyButton
                 ref={buttonRef}
-                type="button"
                 onClick={() => setOpen(prev => !prev)}
                 aria-label={t("widgetAppearance.motion.configureFieldAria", { field: label })}
+                aria-expanded={open}
                 title={t("widgetAppearance.motion.fieldMotionTitle", { field: label })}
                 className={motionIconTriggerClass(Boolean(transition))}
             >
                 <Settings2 className="w-4 h-4" strokeWidth={1.75} />
-            </button>
+            </InspectOnlyButton>
             {popover}
         </>
     );
