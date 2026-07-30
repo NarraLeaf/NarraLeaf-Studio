@@ -124,6 +124,8 @@ export type BlueprintInspectorParamKind =
     | "savedVariableRef"
     | "select"
     | "imageAsset"
+    /** Bare asset-id string (audio has no ImageAsset-style envelope). */
+    | "audioAsset"
     | "buttonCursor";
 
 export type BlueprintInspectorParamSelectOption = {
