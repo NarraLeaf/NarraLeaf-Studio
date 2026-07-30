@@ -21,7 +21,7 @@ import {
 import { useWorkspace } from "../context";
 
 /**
- * The one data surface behind the version rail, the top-bar widget and the status-bar cell.
+ * The one data surface behind the version rail, the switcher menu and the status-bar cell.
  *
  * Shared rather than three readers, because all three answer the same question ("which version is
  * this?") and three independent probes would each dlopen the backend, each cache their own answer, and
@@ -32,7 +32,7 @@ import { useWorkspace } from "../context";
  * directory records it into the repository's staged state, so a poll would report deletions the author
  * never made (docs/version-control.md §4.17, and the class comment on `VersionControlService`). The
  * identity reads below (`getAvailability`, `isRepository`, `getInfo`) do not scan, which is why the
- * widget shows a version and never a change count.
+ * menu shows a version and never a change count.
  */
 
 /** What a long operation currently in flight is, for the label beside the spinner. */
@@ -258,7 +258,7 @@ export function useVersionSurface(): VersionSurface {
     }, [services]);
 
     // A revision recorded ANYWHERE moves the head, and there is more than one of this hook alive:
-    // the rail and the top-bar widget share one, the status-bar cell makes its own. Without this,
+    // the rail and the switcher menu share one, the status-bar cell makes its own. Without this,
     // committing from the rail leaves the cell naming the version before it - measured on a real
     // app, rail `#3` beside cell `#2` - and an automatic checkpoint leaves every surface stale with
     // nobody having pressed anything to notice.
@@ -359,7 +359,7 @@ export function useVersionSurface(): VersionSurface {
             // their message again, and the backend would answer that nothing has changed.
             try {
                 // A commit invalidates all three of this hook's answers and none of them refreshes
-                // itself. The identity first: HEAD has moved, and the rail, the top-bar widget and
+                // itself. The identity first: HEAD has moved, and the rail, the switcher menu and
                 // the status cell all read it from here - without this they would keep naming `#12`
                 // while the repository is on `#13`. Then the page, which the service dropped from
                 // its cache but which is still in `rawHistory` one entry short of the truth.

@@ -353,7 +353,7 @@ export const workspace = {
             noneDetail: "这个项目只有一个版本，没有更早的内容可看。",
             failedTitle: "无法显示该版本",
         },
-        // 版本控制的三个界面：最左侧的版本轨道、项目切换器右边的顶栏控件、状态栏那一位。三者一律只说
+        // 版本控制的三个界面：最左侧的版本轨道、项目切换器菜单里的版本那一段、状态栏那一位。三者一律只说
         // 「哪个版本」，绝不显示变更数——数变更要扫描，而扫描不是纯读（docs/version-control.md §4.17）。
         versionControl: {
             title: "版本",
@@ -363,7 +363,7 @@ export const workspace = {
             // 找不到的东西。
             collapse: "折叠版本轨道",
             close: "关闭版本轨道",
-            // 正在看历史版本时，折叠轨道、顶栏控件与状态栏那一位的悬停文案。`{version}` 是该版本自己的
+            // 正在看历史版本时，折叠轨道、切换器菜单与状态栏那一位的悬停文案。`{version}` 是该版本自己的
             // 标签，例如 `#4`。
             viewingVersion: "你正在查看版本 {version}",
             currentVersion: "当前版本",

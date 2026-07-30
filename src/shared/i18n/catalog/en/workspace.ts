@@ -368,8 +368,8 @@ export const workspace = {
             noneDetail: "This project has only one revision, so there is nothing earlier to show.",
             failedTitle: "Could not show that revision",
         },
-        // The version control surfaces: the rail down the far left, the title-bar widget right of the
-        // project switcher, and the status-bar cell. All three name a VERSION and never a change
+        // The version control surfaces: the rail down the far left, the version section inside the
+        // project switcher's menu, and the status-bar cell. All three name a VERSION and never a change
         // count - counting needs a scan, and a scan is not a pure read (docs/version-control.md §4.17).
         versionControl: {
             title: "Version",
