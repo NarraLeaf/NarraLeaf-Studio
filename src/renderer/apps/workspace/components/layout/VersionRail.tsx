@@ -1,7 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
     ChevronsLeft,
     Clock,
+    Copy,
+    FileMinus,
+    FilePen,
+    FilePlus,
+    FileSymlink,
     GitBranch,
     GitCommitHorizontal,
     GitMerge,
@@ -9,7 +14,10 @@ import {
     Loader2,
     Plus,
     RotateCcw,
+    TriangleAlert,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import type { VcsChangeKind, VcsFileChange } from "@shared/types/vcs";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import { TextArea } from "@/lib/components/elements/Input";
@@ -17,11 +25,13 @@ import type { VersionSurface } from "../../hooks/useVersionSurface";
 import {
     VERSION_RAIL_COLLAPSED_WIDTH,
     VERSION_RAIL_EXPANDED_WIDTH,
+    buildChangeList,
     canCommit,
     isCommitFormPresent,
     isVersionSurfaceVisible,
     revisionLabel,
     shortRevision,
+    splitChangePath,
     type FlatHistoryEntry,
     type VersionRailPresence,
 } from "./versionRailModel";
@@ -191,13 +201,26 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
             <div className="flex-1 min-h-0 overflow-y-auto">
                 <FocusedVersion surface={surface} />
 
-                {/* The change list's seam. The count and the refresh live here now; the per-file list is
-                    the next pass and lands inside this section, under the summary row. */}
-                {state.kind !== "not-a-repository" && state.kind !== "probing" && (
+                {/* Above the change list, which is the opposite of a review-then-act reading order and
+                    is deliberate: this is a 320px column with ONE scroller, and the list can be fifty
+                    rows. Putting the action after them means the only button this panel exists for
+                    starts below the fold on any real working tree. The sidebar this most resembles -
+                    VS Code's source control view, also a narrow column - makes the same call. */}
+                <CommitForm surface={surface} />
+
+                {/* Absent on a past revision, and that is a change from what this used to do. The list
+                    describes the WORKING TREE while the screen shows a revision, which are not the same
+                    thing; the scan is skipped in that state anyway (the effect above), so what it drew
+                    there was whatever the last scan happened to leave behind - observed on a real app,
+                    reporting a count from before the preview was entered. Keeping the refresh button
+                    would also hand the author a way to trigger a scan while browsing history, and "zero
+                    side effects while browsing" is the decision this feature is built around (plan §1).
+
+                    Keyed on `state.kind`, NOT on `frozen`: a manual freeze leaves the state on
+                    `current`, and there the working tree is real, unchanging and worth showing. */}
+                {state.kind !== "not-a-repository" && state.kind !== "probing" && state.kind !== "revision" && (
                     <ChangesSection surface={surface} />
                 )}
-
-                <CommitForm surface={surface} />
 
                 {state.kind === "not-a-repository" && <EnableVersionControl surface={surface} />}
 
@@ -340,19 +363,28 @@ function formatRevisionTime(timestamp: number, locale: string): string | null {
 }
 
 /**
- * The working tree's changes, as a summary the author asked for.
+ * The working tree's changes: a summary the author asked for, and the files behind it.
  *
  * A count only ever appears after an explicit refresh - opening the rail is one, the button is another
  * - because the scan behind it is not a pure read: it records newly discovered directories into staged
  * state, so anything periodic would show the author deletions they never made (docs §4.17). `null`
  * therefore means "nobody has looked", which is a different thing from "clean" and is rendered as such.
+ *
+ * **One number, and it counts files.** `VcsStatus.counts` is the backend's own summary and it counts
+ * DIRECTORIES too - one new folder holding one file is two - so the two disagree by design
+ * (`VersionControlService.getChangedFiles`). A panel showing both would be a panel arguing with itself
+ * about how much the author changed, so it shows the one the rows below it can be counted against.
+ *
+ * The list is bounded twice over: by `VERSION_CHANGE_LIST_LIMIT`, which says out loud how many rows it
+ * left out, and by a height of its own. The height is the less obvious of the two, and it is not about
+ * performance - it is that the history lives further down the SAME scroller. Fifty rows is a
+ * screenful, so without a ceiling here the way to another version would be below the fold whenever the
+ * author had been working, which is exactly when they are most likely to want it.
  */
 function ChangesSection({ surface }: { surface: VersionSurface }) {
     const { t } = useTranslation();
     const { status } = surface;
-    // Directories are counted as changes in their own right by the backend, so the list an author
-    // reads drops them - `getChangedFiles`' documented shape, re-derived here from the snapshot.
-    const files = status?.files.filter(file => !file.directory) ?? null;
+    const view = useMemo(() => (status ? buildChangeList(status.files) : null), [status]);
 
     return (
         <div data-vcs-seam="change-list" className="border-b border-edge px-3 py-2">
@@ -371,15 +403,120 @@ function ChangesSection({ surface }: { surface: VersionSurface }) {
                 </button>
             </div>
             <p className="mt-1 text-2xs text-fg-muted">
-                {files === null
+                {view === null
                     ? t("workspace.shell.versionControl.changesUnknown")
-                    : files.length === 0
+                    : view.total === 0
                         ? t("workspace.shell.versionControl.noChanges")
-                        : t("workspace.shell.versionControl.changesCount", { count: String(files.length) })}
+                        : t("workspace.shell.versionControl.changesCount", { count: String(view.total) })}
             </p>
+
+            {view !== null && view.rows.length > 0 && (
+                <div className="-mx-1 mt-1 max-h-64 overflow-y-auto">
+                    {view.rows.map(file => (
+                        <ChangeRow key={file.path} file={file} />
+                    ))}
+                    {view.hidden > 0 && (
+                        <p className="px-1 pt-1 text-2xs text-fg-subtle">
+                            {t("workspace.shell.versionControl.changesMore", { count: String(view.hidden) })}
+                        </p>
+                    )}
+                </div>
+            )}
         </div>
     );
 }
+
+/**
+ * One changed file.
+ *
+ * **Not a button, deliberately.** What an author wants from a row like this is to see what changed
+ * inside the file, and that is a later milestone; a row that highlighted and opened onto nothing is
+ * precisely the promise this panel has so far been careful not to make.
+ *
+ * The path is split so the FILE NAME survives a narrow column and the directory is what gets cut - and
+ * cut at its head, not its tail, because the distinguishing end of a path here is the last thing on it
+ * (`editor/story/chapter-01.json` against `editor/story/chapter-02.json` differ in the one character an
+ * ordinary trailing ellipsis would eat). Overflowing to the left is what `direction: rtl` on the
+ * directory box buys; the inner span puts the characters back in reading order, which an
+ * all-neutral directory name (`2026/07`) would otherwise get wrong. Inline rather than as utilities:
+ * narraleaf-react injects a Tailwind v4 sheet over this app and betting on generated utilities here
+ * has burned us before.
+ */
+function ChangeRow({ file }: { file: VcsFileChange }) {
+    const { t } = useTranslation();
+    const { directory, name } = splitChangePath(file.path);
+    const Icon = CHANGE_ICONS[file.kind];
+    // Not cast to `TranslationKey`: the template resolves to a union of the five literal keys, so a
+    // renamed or missing one is a type error here rather than a string that renders as itself.
+    const kindLabel = t(`workspace.shell.versionControl.changeKind.${file.kind}`);
+    // The whole repository-relative path, plus where a move or copy came from - the row itself has no
+    // room for an origin, and dropping it would make a move indistinguishable from an add.
+    const title = file.fromPath
+        ? `${file.path}\n${t("workspace.shell.versionControl.changeFromPath", { path: file.fromPath })}`
+        : file.path;
+
+    return (
+        <div
+            title={title}
+            className="flex items-center gap-1.5 overflow-hidden rounded px-1 py-0.5 hover:bg-fill"
+        >
+            {/* `role="img"` beside the label: an <svg> carrying only aria-label is announced by nothing,
+                and the kind is the one thing about this row that is not in the text. */}
+            <Icon
+                role="img"
+                className={cn("h-3 w-3 shrink-0", CHANGE_TINTS[file.kind])}
+                aria-label={kindLabel}
+            />
+            {/* Shrinks first and by a wide margin, so the file name only starts to give way once the
+                directory has nothing left to give. */}
+            {directory !== null && (
+                <span
+                    className="overflow-hidden whitespace-nowrap text-2xs text-fg-subtle"
+                    style={{ direction: "rtl", textOverflow: "ellipsis", flexShrink: 999, minWidth: 0 }}
+                >
+                    <span style={{ direction: "ltr", unicodeBidi: "embed" }}>{directory}/</span>
+                </span>
+            )}
+            <span className="min-w-0 truncate text-2xs text-fg-muted">{name}</span>
+            {file.conflictUnresolved && (
+                <TriangleAlert
+                    role="img"
+                    className="ml-auto h-3 w-3 shrink-0 text-danger"
+                    aria-label={t("workspace.shell.versionControl.changeConflict")}
+                />
+            )}
+        </div>
+    );
+}
+
+/**
+ * The marker each kind wears.
+ *
+ * Five, matching `VcsChangeKind` - which is Studio's vocabulary and not the backend's: an edited file
+ * comes back as KEEP and is translated to `modified` in `repository.ts` (docs §4.18), so nothing here
+ * ever sees a raw action.
+ */
+const CHANGE_ICONS: Record<VcsChangeKind, LucideIcon> = {
+    added: FilePlus,
+    modified: FilePen,
+    deleted: FileMinus,
+    moved: FileSymlink,
+    copied: Copy,
+};
+
+/**
+ * Colour for the two kinds that lose something.
+ *
+ * Only added and deleted are tinted. The other three are ordinary edits and a list where every row is
+ * coloured says nothing at all; a deletion is the row an author most needs to catch before recording.
+ */
+const CHANGE_TINTS: Record<VcsChangeKind, string> = {
+    added: "text-success",
+    modified: "text-fg-subtle",
+    deleted: "text-danger",
+    moved: "text-fg-subtle",
+    copied: "text-fg-subtle",
+};
 
 /**
  * How the author records a version - and until this existed, there was no way to do it anywhere in
