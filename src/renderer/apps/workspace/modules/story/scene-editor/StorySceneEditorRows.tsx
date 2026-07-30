@@ -187,22 +187,31 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
      */
     const namesSpeaker = isDialogue && !dialogueMember && !containerInfo;
     /**
-     * The group connector: a hairline hanging from the head's plate down through its continuations.
+     * The group connector: one line hanging from the head's plate, down past every continuation, and
+     * turning right into the last line of the run.
      *
-     * Positioned on the ROW, so it can span the full height of a wrapped line and meet the next row's
-     * segment with no seam; centred under the plate, which is the thing it is attributing to. Column 3
-     * is where nesting lives, so the offset is name column + gap + this row's indent.
+     * It is drawn per row but must not LOOK drawn per row. Two rules follow from that, and both were
+     * got wrong first time round: every segment butts square against the next (a radius on each one
+     * pinched the line at every row boundary — a seam per row, which is exactly what a single line
+     * must not have), and only the very last segment is rounded, because it is the only end there is.
+     *
+     * That last segment is an elbow rather than a stub: a line that simply stops is ambiguous about
+     * whether the run ended or the list did, while one that turns toward the words it is attributing
+     * says "this is the last of them" and points at the thing it means.
      */
-    const groupRail = isDialogue && (dialogueMember || row.groupContinues)
+    const railContinues = Boolean(row.groupContinues);
+    const groupRail = isDialogue && (dialogueMember || railContinues)
         ? {
             // Measured from the ROW, so the line-number gutter counts too — unlike the nesting guides,
             // which live inside the content column and start after it.
             left: `calc(var(--nl-story-gutter) + ${ROW_INDENT_STEP} * ${row.depth} + (var(--nl-story-avatar,28px) / 2) - 1px)`,
-            // A head hands the connector off from under its own plate; a continuation carries it edge
-            // to edge, so consecutive lines join into one unbroken drop.
+            // A head hands the connector off from under its own plate; a continuation carries it in
+            // from its own top edge, so consecutive rows join into one unbroken drop.
             top: dialogueMember ? 0 : ROW_CONTENT_PAD_PX + STORY_DENSITY_METRICS[props.density].avatar,
         }
         : null;
+    /** The run's last line: the segment that ends, and therefore the only one that turns and rounds. */
+    const railEnds = groupRail !== null && dialogueMember && !railContinues;
     /**
      * Whether the pointer is on this row, kept local so a hover re-renders one row and nothing else.
      *
@@ -294,14 +303,32 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                 />
             ) : null}
             {groupRail ? (
-                <span
-                    aria-hidden
-                    className={[
-                        "pointer-events-none absolute bottom-0 w-0.5 rounded-full",
-                        selected || active ? "bg-primary" : "bg-fg-subtle",
-                    ].join(" ")}
-                    style={groupRail}
-                />
+                railEnds ? (
+                    // The elbow: a left border down to the text's centre line, a bottom border turning
+                    // right, and the corner between them rounded. Borders rather than a background,
+                    // because a corner is what needs the radius and only a border can carry one.
+                    <span
+                        aria-hidden
+                        className={[
+                            "pointer-events-none absolute rounded-bl-md border-b-2 border-l-2",
+                            selected || active ? "border-primary" : "border-fg-subtle",
+                        ].join(" ")}
+                        style={{
+                            ...groupRail,
+                            height: ROW_CONTENT_PAD_PX + STORY_DENSITY_METRICS[props.density].rowBox / 2,
+                            width: RAIL_ELBOW_PX,
+                        }}
+                    />
+                ) : (
+                    <span
+                        aria-hidden
+                        className={[
+                            "pointer-events-none absolute bottom-0 w-0.5",
+                            selected || active ? "bg-primary" : "bg-fg-subtle",
+                        ].join(" ")}
+                        style={groupRail}
+                    />
+                )
             ) : null}
             {/* Line number and drag grip share one box: they are both "this row, as a thing to point
                 at", they are never both wanted, and giving each its own column cost 20px of every row
@@ -988,6 +1015,14 @@ const ROW_GAP_PX = 8;
  * head has to add it back to find the bottom edge of its own plate.
  */
 const ROW_CONTENT_PAD_PX = 4;
+
+/**
+ * How far the group connector's last segment turns right, in px.
+ *
+ * Short on purpose: it is a full stop, not an arrow. There are ~22px between the plate's centre line
+ * and the name column at any density, so the hook has room to read without ever reaching the words.
+ */
+const RAIL_ELBOW_PX = 10;
 
 /**
  * One nesting level's indent: the plate box plus the gap after it, so a child's plate lands where its

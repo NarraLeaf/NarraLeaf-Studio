@@ -126,6 +126,24 @@ describe("annotateDialogueGroups", () => {
         expect(rolesOf([dialogue("a", { characterId: "c1" }), dialogue("b", { characterId: "c2" })])).toEqual(["head", "head"]);
     });
 
+    /**
+     * The connector is drawn per row but must read as one line, so every row of a run needs to know
+     * whether another member follows it: the last one is the only segment that ends, and therefore the
+     * only one that rounds and turns. Marking heads alone (the original rule) left the last member
+     * indistinguishable from the middle ones, so the line ran off the bottom of the run.
+     */
+    const continuesOf = (blocks: StoryBlock[]) =>
+        annotateDialogueGroups(buildVisibleRows(scene(blocks, blocks.map(b => b.id)), new Set())).map(row => row.groupContinues ?? false);
+
+    it("marks every row of a run except its last as continuing", () => {
+        expect(continuesOf([dialogue("a", { characterId: "c1" }), dialogue("b", { characterId: "c1" }), dialogue("c", { characterId: "c1" })]))
+            .toEqual([true, true, false]);
+    });
+
+    it("leaves a run of one, and the row after a run, with nothing to continue", () => {
+        expect(continuesOf([dialogue("a", { characterId: "c1" }), narration("n")])).toEqual([false, false]);
+    });
+
     it("folds a same-character expression into the run without breaking it", () => {
         expect(rolesOf([
             dialogue("a", { characterId: "c1" }),
