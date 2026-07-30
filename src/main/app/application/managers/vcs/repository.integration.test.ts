@@ -2,7 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { isVcsPlatformSupported } from "@shared/types/vcs";
+import { isVcsPlatformSupported, VCS_DEFAULT_BRANCH } from "@shared/types/vcs";
 import { ATOMIC_WRITE_TEMP_SUFFIX } from "@shared/utils/fs";
 import type { LoreGlobals } from "./lore/call";
 import {
@@ -21,6 +21,7 @@ import {
     getStatus,
     IncompleteRepositoryError,
     initRepository,
+    readBranchIdentity,
     RepositoryExistsError,
     type InitRepositoryResult,
 } from "./repository";
@@ -366,4 +367,85 @@ describe.skipIf(!supported)("interrupted setup", () => {
         // to know, and every other message here would have them guessing.
         expect((failure as Error).message).toContain(path.join(directory, ".lore"));
     }, 120_000);
+});
+
+/**
+ * What the status bar asks, against a real repository.
+ *
+ * Its own project directory rather than the shared one above, because the last test in "repository
+ * status" deliberately leaves staged state behind - and the whole claim being made here is about
+ * what a read does and does not record.
+ *
+ * Two things are pinned, and both of them fail SILENTLY if they ever stop being true:
+ *
+ *  - **which branch a new repository lands on.** Nothing in Studio asks for one, so it is the
+ *    backend's decision, and `VCS_DEFAULT_BRANCH` is what every version surface compares against to
+ *    decide the branch is not worth naming. Were upstream to rename it, the surfaces would start
+ *    showing a branch name to every author on every install, and nothing else in the codebase would
+ *    object.
+ *  - **that the read is pure.** It is on the identity path the status cell and the top-bar widget
+ *    take on every project open and after every revision. A scanning status is not a pure read
+ *    (§4.17); if this one ever became one, the symptom would be phantom deletions in an author's
+ *    change list rather than anything resembling a failure here.
+ */
+describe.skipIf(!supported)("branch identity", () => {
+    let directory: string;
+    let local: LoreGlobals;
+    let head: InitRepositoryResult;
+
+    beforeAll(async () => {
+        directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "nl-branch-")));
+        local = { repositoryPath: directory, offline: true, cache: true };
+        fs.writeFileSync(path.join(directory, CONFIG), JSON.stringify({ name: "branch" }));
+        head = await initRepository(local, { message: "Enable version control" });
+    }, 180_000);
+
+    afterAll(async () => {
+        await flushRepository(local).catch(() => undefined);
+        await releaseRepository(local).catch(() => undefined);
+        for (let attempt = 0; attempt < 20; attempt++) {
+            try {
+                fs.rmSync(directory, { recursive: true, force: true });
+                break;
+            } catch {
+                await new Promise((resolve) => setTimeout(resolve, 100));
+            }
+        }
+    });
+
+    it("puts a new repository on the branch the surfaces treat as the default", async () => {
+        expect((await readBranchIdentity(local)).branch).toBe(VCS_DEFAULT_BRANCH);
+    }, 60_000);
+
+    it("answers the head and its number, which is what `#1` is made of", async () => {
+        const identity = await readBranchIdentity(local);
+        expect(identity.head).toBe(head.revision);
+        expect(identity.headNumber).toBe(1);
+    }, 60_000);
+
+    it("still answers with the working tree dirty, without reporting what changed", async () => {
+        // The surfaces ask this constantly and never want a change list; the point of
+        // `revisionOnly` is that the per-file events - the expensive half - are never produced.
+        fs.writeFileSync(path.join(directory, CONFIG), JSON.stringify({ name: "edited" }));
+        const identity = await readBranchIdentity(local);
+        expect(identity.branch).toBe(VCS_DEFAULT_BRANCH);
+        expect(identity.head).toBe(head.revision);
+    }, 60_000);
+
+    /** Last: it ends with a scan, which leaves state no later test could tell apart from a bug. */
+    it("does not scan, so a directory it saw is not remembered as a deletion", async () => {
+        // The controlled comparison from §4.17, with this read standing where the scan stood. With
+        // a scanning status here, the removed directory comes back as a deletion for the rest of
+        // the session; the author would be shown - and could commit - a deletion of something that
+        // was never in their history.
+        fs.mkdirSync(path.join(directory, "editor/localization"), { recursive: true });
+        fs.writeFileSync(path.join(directory, "editor/localization/en.json"), "{}");
+        await readBranchIdentity(local);
+        fs.rmSync(path.join(directory, "editor/localization"), { recursive: true, force: true });
+
+        const after = await getStatus(local);
+        const paths = after.files.map((file) => file.path.replace(/\\/g, "/"));
+        expect(paths).not.toContain("editor/localization");
+        expect(paths).not.toContain("editor/localization/en.json");
+    }, 60_000);
 });

@@ -346,7 +346,8 @@ describe("VersionControlService init", () => {
             root: PROJECT,
             repositoryId: "ff",
             head: "aa",
-            revisionCount: 1,
+            headNumber: 1,
+            branch: "main",
         }));
 
         await service.refreshStatus();
@@ -618,7 +619,8 @@ describe("VersionControlService revision announcements", () => {
             root: PROJECT,
             repositoryId: "ff",
             head: "aa",
-            revisionCount: 1,
+            headNumber: 1,
+            branch: "main",
         }));
 
         const seen: string[] = [];

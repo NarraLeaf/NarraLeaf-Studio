@@ -304,7 +304,17 @@ export class VcsManager extends Manager {
                     repositoryId: created.repositoryId,
                     head: created.revision,
                     // Exactly the commit just made; nothing else can have happened yet.
-                    revisionCount: 1,
+                    headNumber: 1,
+                    // Asked rather than assumed - the default branch is the backend's decision, not
+                    // ours - but NOT allowed to fail the enable. The repository at this point is
+                    // created, committed and flushed; refusing to report success because a cosmetic
+                    // read came back empty would send the author to try again and be told they are
+                    // already versioned. "" is the same "not reported" every other producer of this
+                    // field uses, and the renderer re-reads the identity through `getInfo` the
+                    // moment this resolves anyway.
+                    branch: await backend.readBranchIdentity(globals)
+                        .then((identity) => identity.branch)
+                        .catch(() => ""),
                 };
             } finally {
                 // No session was opened here, so nothing else in this class will ever
@@ -438,16 +448,28 @@ export class VcsManager extends Manager {
         });
     }
 
+    /**
+     * Where this project stands: its identity, its head, and the branch that head is on.
+     *
+     * **A pure read, and it has to stay one.** This is what the status-bar cell and the top-bar
+     * widget ask on every project open and after every revision, so anything here that scanned
+     * would turn an ambient readout into a writer of staged state (docs §4.17). `readBranchIdentity`
+     * is `scan: false, revisionOnly: true` for exactly that reason.
+     *
+     * It used to walk the ENTIRE revision graph, unbounded, to produce a `revisionCount` that no
+     * caller in the repository ever read. Deleting the field is what makes asking for the branch
+     * cheap enough to ask often.
+     */
     public async getInfo(projectPath: string): Promise<VcsRepositoryInfo> {
         return this.serialize(projectPath, async () => {
             const { session, backend } = await this.sessionFor(projectPath);
-            const graph = await backend.readRevisionGraph(session.globals);
-            const ordered = [...graph.values()].sort((a, b) => b.number - a.number);
+            const identity = await backend.readBranchIdentity(session.globals);
             return {
                 root: session.root,
                 repositoryId: session.repositoryId,
-                head: ordered[0]?.revision,
-                revisionCount: ordered.length,
+                head: identity.head,
+                headNumber: identity.headNumber,
+                branch: identity.branch,
             };
         });
     }

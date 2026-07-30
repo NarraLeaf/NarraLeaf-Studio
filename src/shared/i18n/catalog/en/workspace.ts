@@ -389,13 +389,26 @@ export const workspace = {
             returnToCurrent: "Return to the current version",
             returning: "Returning to the current version…",
             // A project with no repository. Named for what is missing, not for the mechanism.
-            notVersioned: "No version history",
+            //
+            // Short because two of its three homes are narrow: the status-bar cell and the top-bar
+            // widget both truncate, and the previous wording ("No version history") arrived on a
+            // real app as "No version hist…", which says nothing at all. Its third home is the
+            // rail, where the Enable button and `enableHint` sit directly beneath it and carry the
+            // explanation - so the title only has to name the state, not describe it.
+            //
+            // Deliberately NOT interchangeable with `noHistory` below: this one says version
+            // control is off for this project, that one says it is on and has recorded nothing.
+            notVersioned: "Not versioned",
             enable: "Enable version control",
             // One line, because enabling writes into the author's project folder and takes an
             // exclusive lock on it - so it says what it will do before they press it.
             enableHint: "Records a version history inside this project's folder.",
             enabling: "Setting up version control…",
-            noHistory: "No versions yet",
+            // A repository that exists and holds nothing - which is NOT `notVersioned` above, and
+            // the wording keeps them apart on purpose: "not versioned" is a project the feature was
+            // never turned on for, "empty history" is one where it is on and has recorded nothing.
+            // Short for the same reason: the narrow surfaces truncate.
+            noHistory: "Empty history",
             history: "History",
             loadingHistory: "Reading the version history…",
             // The end of the list, when the read stopped at its limit rather than at the beginning
