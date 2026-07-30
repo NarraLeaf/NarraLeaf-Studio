@@ -78,6 +78,8 @@ export const characters = {
             licenceTitle: "安装之前",
             licenceAgree: "我已阅读以上条款",
             vendorLink: "打开 {product} 下载页",
+            docsLink: "阅读 {product} 指南",
+            customDocsLink: "阅读如何编写运行时",
             neverDownloads: "Studio 绝不代你下载。请自行从厂商处获取——那里也是你接受其许可协议的地方。",
             live2dTerms: "Live2D Cubism 的授权方是 Live2D Inc.，不是 NarraLeaf。你在下载时接受 Cubism SDK 许可协议，并且在你构建的游戏中，分发方是你自己。商业发行若超过 Live2D 的年营收阈值，需另行向 Live2D 申请发布授权。",
             spineTerms: "Spine Runtimes 的授权方是 Esoteric Software。每个使用 Spine 的人都需要自己的 Spine Editor 授权，且 Spine Runtimes License 必须随你发行的游戏一并提供。NarraLeaf 未持有 Spine 授权，因此 Studio 不含任何 Spine 代码，也无法代你构建适配器。",

@@ -65,6 +65,11 @@ export type KnownPuppetRuntime = {
     productName: string;
     /** Where the author gets it. Opened in their browser; Studio never fetches it. */
     vendorUrl: string;
+    /**
+     * NarraLeaf's own guide for this runtime, as a site-root path. Not a full URL, because the locale
+     * goes in the middle of it — see {@link puppetRuntimeDocsUrl}.
+     */
+    docsPath: string;
     /** How Studio can install this one. Empty is not a legal value; see {@link PuppetRuntimeInstallMethod}. */
     methods: readonly PuppetRuntimeInstallMethod[];
 };
@@ -75,6 +80,7 @@ const KNOWN_PUPPET_RUNTIMES: Readonly<Record<KnownPuppetRuntimeId, KnownPuppetRu
         backend: "live2d",
         productName: "Live2D Cubism",
         vendorUrl: "https://www.live2d.com/en/sdk/download/web/",
+        docsPath: "/docs/studio/model-runtimes/live2d",
         // Only `sdk-zip`: see PuppetRuntimeInstallMethod. `prebuilt` is not offered because there is
         // nowhere legitimate to obtain a prebuilt Cubism adapter from.
         methods: ["sdk-zip"],
@@ -84,6 +90,7 @@ const KNOWN_PUPPET_RUNTIMES: Readonly<Record<KnownPuppetRuntimeId, KnownPuppetRu
         backend: "spine",
         productName: "Spine",
         vendorUrl: "https://esotericsoftware.com/spine-purchase",
+        docsPath: "/docs/studio/model-runtimes/spine",
         // `prebuilt` only. Integrating a Spine runtime requires the *integrator* to hold a Spine
         // Editor licence (Editor License Agreement 2.1(b); a trial does not count), and NarraLeaf
         // holds none — so Studio carries no Spine glue to build from, and the author brings their
@@ -102,6 +109,35 @@ export function listKnownPuppetRuntimes(): readonly KnownPuppetRuntime[] {
 
 export function isKnownPuppetRuntimeId(value: unknown): value is KnownPuppetRuntimeId {
     return typeof value === "string" && KNOWN_PUPPET_RUNTIME_IDS.includes(value as KnownPuppetRuntimeId);
+}
+
+const DOCS_ORIGIN = "https://www.narraleaf.com";
+
+/**
+ * The locales narraleaf.com publishes docs in.
+ *
+ * Deliberately its own short list rather than Studio's `SUPPORTED_LOCALES`: a plugin can register a
+ * locale in Studio (see `shared/i18n/locales.ts`), and the docs site has never heard of it. Anything
+ * not here reads the English page, which is a working link rather than a 404.
+ */
+const DOCS_LOCALES = new Set(["en", "zh"]);
+
+/**
+ * Where to read about installing this runtime.
+ *
+ * The docs site hides the default locale, so English lives at `/docs/…` and every other language at
+ * `/<locale>/docs/…` — that asymmetry is the site's routing (`hideLocale: "default-locale"`), not a
+ * convention worth reinventing here.
+ */
+export function puppetRuntimeDocsUrl(runtime: KnownPuppetRuntime, locale: string): string {
+    const prefix = locale !== "en" && DOCS_LOCALES.has(locale) ? `/${locale}` : "";
+    return `${DOCS_ORIGIN}${prefix}${runtime.docsPath}`;
+}
+
+/** The section itself, for a runtime Studio does not name — the "write your own" guide. */
+export function customPuppetRuntimeDocsUrl(locale: string): string {
+    const prefix = locale !== "en" && DOCS_LOCALES.has(locale) ? `/${locale}` : "";
+    return `${DOCS_ORIGIN}${prefix}/docs/studio/model-runtimes/custom`;
 }
 
 /**

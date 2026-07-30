@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
     KNOWN_PUPPET_RUNTIME_IDS,
+    customPuppetRuntimeDocsUrl,
     isKnownPuppetRuntimeId,
     knownPuppetRuntime,
     knownPuppetRuntimeFor,
     listKnownPuppetRuntimes,
+    puppetRuntimeDocsUrl,
 } from "./puppetRuntimes";
 
 describe("known puppet runtimes", () => {
@@ -37,7 +39,41 @@ describe("known puppet runtimes", () => {
             expect(runtime.methods.length).toBeGreaterThan(0);
             expect(runtime.productName.trim()).not.toBe("");
             expect(runtime.vendorUrl).toMatch(/^https:\/\//);
+            // A site-root path, not a URL: the locale goes in the middle of it.
+            expect(runtime.docsPath).toMatch(/^\/docs\/studio\/model-runtimes\//);
         }
+    });
+
+    /**
+     * The docs site hides its default locale, so English is `/docs/…` and everything else is
+     * `/<locale>/docs/…`. Getting that backwards produces a 404 rather than an error, and a dead link
+     * in the one dialog whose whole job is to send the author somewhere useful.
+     */
+    describe("documentation links", () => {
+        it("puts a non-default locale in front of the path and the default one nowhere", () => {
+            const live2d = knownPuppetRuntime("live2d");
+            expect(puppetRuntimeDocsUrl(live2d, "en"))
+                .toBe("https://www.narraleaf.com/docs/studio/model-runtimes/live2d");
+            expect(puppetRuntimeDocsUrl(live2d, "zh"))
+                .toBe("https://www.narraleaf.com/zh/docs/studio/model-runtimes/live2d");
+            expect(customPuppetRuntimeDocsUrl("zh"))
+                .toBe("https://www.narraleaf.com/zh/docs/studio/model-runtimes/custom");
+        });
+
+        it("falls back to English for a locale the docs site does not publish", () => {
+            // Studio's locale list is open - a plugin can register one (see shared/i18n/locales.ts) -
+            // and prefixing an unpublished locale would link to nothing.
+            for (const locale of ["ja", "de", "zh-TW", "", "en-GB"]) {
+                expect(puppetRuntimeDocsUrl(knownPuppetRuntime("spine"), locale))
+                    .toBe("https://www.narraleaf.com/docs/studio/model-runtimes/spine");
+            }
+        });
+
+        it("gives every named runtime its own page", () => {
+            const urls = listKnownPuppetRuntimes().map(runtime => puppetRuntimeDocsUrl(runtime, "en"));
+            expect(urls).toEqual([...new Set(urls)]);
+            expect(urls).not.toContain(customPuppetRuntimeDocsUrl("en"));
+        });
     });
 
     /**
