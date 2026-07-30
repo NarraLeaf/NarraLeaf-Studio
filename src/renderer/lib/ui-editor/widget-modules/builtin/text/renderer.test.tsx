@@ -281,4 +281,29 @@ describe("TextRenderer inline text edit", () => {
         expect(preview.container.querySelector("textarea")).toBeNull();
         expect(preview.container.textContent).toContain("before");
     });
+
+    /**
+     * The frozen workspace.
+     *
+     * This widget attaches its own `onDoubleClick`, which is why the canvas gesture table never
+     * reached it: measured on a frozen project, a double-click on a text element opened its editor,
+     * accepted typing, and threw the result away on thaw. The seam is `resolveInlineTextEditHost`,
+     * so a read-only canvas now behaves exactly like the preview above.
+     */
+    it("opens no editor on a read-only canvas, however the edit is asked for", () => {
+        const document = createDocument("before");
+        const services = createServices(document);
+        const canvas = renderText(document, {
+            ...canvasHostAdapter(services),
+            editorReadOnly: { active: true },
+        });
+
+        act(() => {
+            beginInlineTextEdit(services.stateService as never, SURFACE.id, "text");
+        });
+
+        expect(canvas.container.querySelector("textarea")).toBeNull();
+        expect(canvas.container.textContent).toContain("before");
+        expect(document.elements.text.props?.text).toBe("before");
+    });
 });
