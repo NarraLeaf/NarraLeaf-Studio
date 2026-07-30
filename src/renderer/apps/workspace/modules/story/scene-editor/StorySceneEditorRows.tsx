@@ -54,7 +54,7 @@ import { RichTextView } from "./RichTextView";
 import { StoryVoiceIndicator } from "./StoryVoiceIndicator";
 import { PausePopover } from "./PausePopover";
 import { segmentToRuns } from "./richText";
-import { useStoryEditorTextStyle } from "./storyEditorTextStyle";
+import { STORY_DENSITY_METRICS, useStoryEditorTextStyle } from "./storyEditorTextStyle";
 import type { StoryEditorDensity } from "./storyEditorSessionStore";
 import type { CharacterAppearanceRef, EditorMode, StoryCaretTarget, StoryStagePlacement, VisibleStoryRow } from "./storySceneEditorTypes";
 import {
@@ -71,7 +71,6 @@ import {
 } from "./storySceneBlockUtils";
 import { ConditionPopover } from "./ConditionPopover";
 import { BlockOverview, getQuickParams, QuickParamsInline, type QuickParam } from "./storyQuickParams";
-import { lensTrackRendersBar, type StoryLensRowTrack } from "./storyStagingLens";
 import { actionTrigger, ACTION_TRIGGER, insertChooserType, toCanonicalCommandLine } from "./commandTrigger";
 import { useStoryRowActions } from "./storyRowActions";
 import { diagnoseRow, type StoryRowDiagnosticCode } from "./storyRowDiagnostics";
@@ -158,24 +157,16 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
     const block = row.block;
     const container = isContainerBlock(block);
     const containerInfo = container ? getContainerHeaderInfo(block) : null;
-    // Staging lens (M7). `lensTrack` marks a direct child of a lensed container — it renders as a
-    // bar-timeline track. `lensMode` marks a parallel/race container header itself (all/allAsync/any),
-    // which carries the mode badge (WI-3) and the list⇄lens toggle.
+    // `lensTrack` marks a direct child of a parallel/race container. It no longer changes how the row
+    // renders (the bar timeline is gone); all it still carries is which child is last, so the
+    // container's tail "+" knows where to sit. `lensMode` is the engine mode badge on the header.
     const lensTrack = row.lensTrack;
-    // Only a staging track swaps its content column for a bar. A prose child (narration / dialogue /
-    // note — reachable through the lens's own tail "+") stays on the ordinary row path, because that is
-    // where the in-place text editor, the voice indicator and the row actions live: swapping the whole
-    // column would leave a row that click / double-click / Enter put into text-edit mode with no editor
-    // to type into (interaction model §"Editing in place"; WI-2 "Enter/Escape 照常").
-    const lensBarTrack = lensTrack && lensTrackRendersBar(lensTrack) ? lensTrack : null;
     const lensMode: "all" | "allAsync" | "any" | null = block.kind === "control" && block.payload.control === "race"
         ? "any"
         : block.kind === "control" && block.payload.control === "parallel"
             ? (block.payload.mode === "allAsync" ? "allAsync" : "all")
             : null;
-    // A lensed container is inherently expanded (its children are the tracks), so its collapse chevron
-    // would be a no-op — hide it while the lens is on.
-    const canFold = block.childrenIds.length > 0 && canAcceptChildren(block) && !(lensMode && props.lensActive);
+    const canFold = block.childrenIds.length > 0 && canAcceptChildren(block);
     const textSegment = getTextSegment(block);
     // Plain narration and studio notes hide their badge icon (but keep its slot, for alignment).
     const hideBadge = (block.kind === "nodeAction" && block.payload.action === "narration") || block.kind === "note";
@@ -197,17 +188,28 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
     // chrome.
     const categoryColor = !isDialogue && !hideBadge && row.groupRole !== "member" ? getBlockBadgeInfo(block).iconColor : null;
     /**
-     * The name column belongs to speakers and to nobody else, so EVERY dialogue row fills it —
-     * including the continuations of a run, which used to leave it empty.
-     *
-     * Leaving it empty is what forced a separator: with no name and no mark, a continuation rendered
-     * exactly like a line of narration, and a rule drawn between the columns was the only thing left
-     * to say otherwise. A repeated name says it without drawing anything, and it says *who* rather
-     * than merely "not narration". The repetition is the point of a column — it reads as one word
-     * held down the page, and the run still reads as a run because a continuation's name is
-     * de-emphasised while its head's is not.
+     * A run of dialogue is named once, at its head. The continuations are joined to it by a connector
+     * dropped from under the head's plate — the run reads as one block with one attribution, which a
+     * repeated name cannot do however quietly it is printed.
      */
-    const namesSpeaker = isDialogue && !containerInfo;
+    const namesSpeaker = isDialogue && !dialogueMember && !containerInfo;
+    /**
+     * The group connector: a hairline hanging from the head's plate down through its continuations.
+     *
+     * Positioned on the ROW, so it can span the full height of a wrapped line and meet the next row's
+     * segment with no seam; centred under the plate, which is the thing it is attributing to. Column 3
+     * is where nesting lives, so the offset is name column + gap + this row's indent.
+     */
+    const groupRail = isDialogue && (dialogueMember || row.groupContinues)
+        ? {
+            // Measured from the ROW, so the line-number gutter counts too — unlike the nesting guides,
+            // which live inside the content column and start after it.
+            left: `calc(var(--nl-story-gutter) + var(--nl-story-name,56px) + (var(--nl-story-avatar,28px) / 2) + ${ROW_GAP_PX + row.depth * RAIL_STEP - 1}px)`,
+            // A head hands the connector off from under its own plate; a continuation carries it edge
+            // to edge, so consecutive lines join into one unbroken drop.
+            top: dialogueMember ? 0 : ROW_CONTENT_PAD_PX + STORY_DENSITY_METRICS[props.density].avatar,
+        }
+        : null;
     /**
      * Whether the pointer is on this row, kept local so a hover re-renders one row and nothing else.
      *
@@ -298,6 +300,16 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                     style={{ backgroundColor: categoryColor, opacity: 0.85 }}
                 />
             ) : null}
+            {groupRail ? (
+                <span
+                    aria-hidden
+                    className={[
+                        "pointer-events-none absolute bottom-0 w-0.5 rounded-full",
+                        selected || active ? "bg-primary" : "bg-fg-subtle",
+                    ].join(" ")}
+                    style={groupRail}
+                />
+            ) : null}
             {/* Line number and drag grip share one box: they are both "this row, as a thing to point
                 at", they are never both wanted, and giving each its own column cost 20px of every row
                 to show one of them at a time. The number yields on hover (and to a focused grip, so
@@ -342,28 +354,9 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
             </div>
             <div className="relative min-w-0 py-1">
                 <RailGuides depth={row.depth} highlight={selected || active} />
-                <div style={{ paddingLeft: row.depth * RAIL_STEP }}>
-                {lensBarTrack ? (
-                    <LensTrackContent
-                        row={row}
-                        scene={scene}
-                        document={document}
-                        characters={characters}
-                        commandContext={props.commandContext}
-                        tempSpeakers={props.tempSpeakers}
-                        onSetSpeaker={on.onSetSpeaker}
-                        onCreateCharacter={on.onCreateCharacter}
-                        onSetDialogueCharacter={on.onSetDialogueCharacter}
-                        onUpdatePayload={on.onUpdatePayload}
-                        onAddInside={on.onAddInside}
-                        onInsertAfter={on.onInsertAfter}
-                        onDeleteRow={on.onDeleteRow}
-                        active={active}
-                    />
-                ) : (
                 <>
                 {/* `items-start` with every chrome cell holding the single-line box open: on a wrapped
-                    line the badge and the nametag stay level with the FIRST line — which is the line
+                    line the plate and the nametag stay level with the FIRST line — which is the line
                     they name — instead of drifting to the middle of the paragraph. */}
                 <div className="flex min-h-[var(--nl-story-row-box)] min-w-0 items-start gap-2">
                     {/* COLUMN 2 — the nametag, and nothing else, ever. Everything a row can carry that
@@ -384,11 +377,16 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                                 onCreateCharacter={on.onCreateCharacter}
                                 suppressColor={selected}
                                 column
-                                continuation={dialogueMember}
                             />
                         ) : null}
                     </span>
-                    {/* COLUMN 3 opens with one plate box, the same size and shape on every row that has
+                    {/* COLUMN 3 — everything else, and the ONLY column nesting moves.
+                        The indent used to sit above both columns, so a nested row carried its nametag
+                        right along with its words: at depth 1 the name column stood 20px further in
+                        than at depth 0, which means it was not a column at all. Column 2 is now fixed
+                        for the whole document and depth is a property of the content. */}
+                    <div className="flex min-w-0 flex-1 items-start gap-2" style={{ paddingLeft: row.depth * RAIL_STEP }}>
+                    {/* Column 3 opens with one plate box, the same size and shape on every row that has
                         one, so the words after it land on a single x whatever the row is. */}
                     <span className="flex min-h-[var(--nl-story-row-box)] w-[var(--nl-story-avatar,28px)] shrink-0 items-center" aria-hidden={dialogueMember || hideBadge}>
                         {expressionMember ? (
@@ -451,7 +449,6 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                     <div className="ml-auto flex shrink-0 items-center gap-1">
                         {containerInfo ? (
                             <>
-                                {lensMode ? <LensToggle active={props.lensActive} onToggle={on.onToggleLens} /> : null}
                                 <ContainerHeaderAdd info={containerInfo} onAdd={() => on.onAddInside(block.id)} />
                             </>
                         ) : (
@@ -470,23 +467,24 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                             <RowPlayAction block={block} active={active} onPlay={() => on.onPlayFromRow(block.id)} />
                         ) : null}
                     </div>
+                    </div>
                 </div>
-                {containerInfo ? (
-                    <ContainerFooter
-                        block={block}
-                        info={containerInfo}
-                        onAddInside={() => on.onAddInside(block.id)}
-                        onAddBranch={branch => on.onAddBranch(block.id, branch)}
-                    />
-                ) : null}
-                {/* A prose track on the ordinary path still carries the lens's tail "+" when it is the
-                    container's last child — the affordance belongs to the lens, not to the bar. */}
-                {lensTrack?.segment.isLast && block.parentId ? (
-                    <LensTailAdd onAdd={() => on.onAddInside(block.parentId as StoryBlockId)} />
-                ) : null}
+                {/* The footer and the container's tail "+" belong to column 3 too, so they take the
+                    same offset the row's content does: past the name column, then the depth indent. */}
+                <div style={{ paddingLeft: `calc(var(--nl-story-name,56px) + ${ROW_GAP_PX + row.depth * RAIL_STEP}px)` }}>
+                    {containerInfo ? (
+                        <ContainerFooter
+                            block={block}
+                            info={containerInfo}
+                            onAddInside={() => on.onAddInside(block.id)}
+                            onAddBranch={branch => on.onAddBranch(block.id, branch)}
+                        />
+                    ) : null}
+                    {lensTrack?.segment.isLast && block.parentId ? (
+                        <LensTailAdd onAdd={() => on.onAddInside(block.parentId as StoryBlockId)} />
+                    ) : null}
+                </div>
                 </>
-                )}
-                </div>
             </div>
         </div>
     );
@@ -979,6 +977,22 @@ function RowPlayAction(props: { block: StoryBlock; active: boolean; onPlay: () =
 /** Indent step (px) per nesting level. Each level draws a vertical guide rail. */
 const RAIL_STEP = 20;
 
+/**
+ * The `gap-2` between a row's columns, in px.
+ *
+ * The group connector and the nesting guides are positioned on the ROW, which knows nothing of the
+ * flex gaps inside it, so they have to add the gap back to find where column 3 begins.
+ */
+const ROW_GAP_PX = 8;
+
+/**
+ * The content column's own top padding (`py-1`), in px.
+ *
+ * The group connector is positioned on the ROW, which knows nothing of the column's padding, so a
+ * head has to add it back to find the bottom edge of its own plate.
+ */
+const ROW_CONTENT_PAD_PX = 4;
+
 
 /** Vertical guide rails, one per ancestor nesting level, so nesting reads at a glance. */
 function RailGuides({ depth, highlight }: { depth: number; highlight: boolean }) {
@@ -995,7 +1009,9 @@ function RailGuides({ depth, highlight }: { depth: number; highlight: boolean })
                         "pointer-events-none absolute inset-y-0 w-px",
                         highlight && index === depth - 1 ? "bg-primary/40" : "bg-edge",
                     ].join(" ")}
-                    style={{ left: index * RAIL_STEP + 9 }}
+                    // Nesting lives in column 3, so its guides start where column 3 does — past the
+                    // fixed name column and the gap after it.
+                    style={{ left: `calc(var(--nl-story-name,56px) + ${ROW_GAP_PX + index * RAIL_STEP + 9}px)` }}
                 />
             ))}
         </>
@@ -1270,36 +1286,14 @@ function ContainerFooter(props: {
 }
 
 // ---------------------------------------------------------------------------
-// Staging lens (M7): the bar-timeline rendering of a parallel/race container.
+// Parallel / race containers.
+//
+// The staging lens (M7) used to render their children as a bar timeline down the right of the row.
+// It is gone: a coloured bar with no ruler, no scale and no labels beside it reads as decoration, and
+// it was the last thing in the list that did not obey the row's columns. Their children are ordinary
+// rows again. The lens's remaining machinery (`lensTrack`, `resolveEffectiveLensContainers`) still
+// marks them so the container's tail "+" keeps working.
 // ---------------------------------------------------------------------------
-
-/** Hatch fill for a track's leading dead time (a wait) — reads as "not an animation", theme-aware. */
-const LENS_DELAY_HATCH = "repeating-linear-gradient(45deg, rgb(var(--nl-fg-subtle) / 0.28) 0, rgb(var(--nl-fg-subtle) / 0.28) 2px, transparent 2px, transparent 5px)";
-/** Share of the content column the time lane occupies; fixed so every track's bars align left-to-right. */
-const LENS_LANE_FLEX = "0 0 44%";
-
-/** The list⇄lens toggle on a parallel/race container header. Pinned while on so the way back is visible. */
-function LensToggle(props: { active: boolean; onToggle: () => void }) {
-    const { t } = useTranslation();
-    const Icon = props.active ? List : GanttChart;
-    return (
-        <button
-            type="button"
-            tabIndex={-1}
-            title={props.active ? t("story.lens.toList") : t("story.lens.toLens")}
-            className={[
-                "shrink-0 rounded-md p-1 transition-colors hover:bg-fill hover:text-primary",
-                props.active ? "text-primary" : "text-fg-subtle opacity-0 group-hover:opacity-100",
-            ].join(" ")}
-            onClick={event => {
-                event.stopPropagation();
-                props.onToggle();
-            }}
-        >
-            <Icon className="h-3.5 w-3.5" />
-        </button>
-    );
-}
 
 /** The engine-mode badge on a parallel/race header (WI-3): `all` / `allAsync` / `any`, in control colour. */
 function ContainerModeBadge({ mode }: { mode: "all" | "allAsync" | "any" }) {
@@ -1311,108 +1305,6 @@ function ContainerModeBadge({ mode }: { mode: "all" | "allAsync" | "any" }) {
         >
             {mode}
         </span>
-    );
-}
-
-/**
- * One track's bar. A known duration draws a proportional bar (in the block's category colour), a
- * leading wait draws a hatched dead-time region, and an undeterminable duration draws an equal-width
- * dashed stub. For a race, a thin marker sits at the earliest known finish — and every bar still runs
- * its full length past it, because the engine does NOT abort a race's losers (2026-07-23 裁决).
- */
-function LensBar({ track, color }: { track: StoryLensRowTrack; color: string }) {
-    const { segment, scaleMs, mode, winnerFinishMs } = track;
-    const pct = (ms: number) => `${Math.min(100, Math.max(0, (ms / scaleMs) * 100))}%`;
-    return (
-        <div className="relative h-3.5 self-center rounded-md bg-fill-subtle/70" style={{ flex: LENS_LANE_FLEX }} aria-hidden>
-            {segment.unknown || segment.disabled ? (
-                // A disabled track is compiled out — it does not set the scale, so a proportional bar
-                // would clamp to a misleading full width. Both it and an undeterminable duration show the
-                // same equal-width dashed stub: "no footprint on this timeline".
-                <div className="absolute inset-y-0 left-0 w-[30%] rounded-md border border-dashed border-fg-subtle/50" />
-            ) : (
-                <>
-                    {segment.delayMs > 0 ? (
-                        <div className="absolute inset-y-0 rounded-l" style={{ left: 0, width: pct(segment.delayMs), backgroundImage: LENS_DELAY_HATCH }} />
-                    ) : null}
-                    {segment.durationMs > 0 ? (
-                        <div className="absolute inset-y-0 min-w-[3px] rounded-md" style={{ left: pct(segment.delayMs), width: pct(segment.durationMs), backgroundColor: color, opacity: 0.6 }} />
-                    ) : null}
-                </>
-            )}
-            {mode === "race" && winnerFinishMs !== null ? (
-                <div className="absolute inset-y-0 w-px bg-primary/70" style={{ left: pct(winnerFinishMs) }}>
-                    <span className="absolute -top-1 h-1.5 w-1.5 rounded-full bg-primary" style={{ left: 0, marginLeft: -2.5 }} />
-                </div>
-            ) : null}
-        </div>
-    );
-}
-
-/**
- * A lensed container's direct child, rendered as a bar-timeline track: the block's badge and overview
- * on the left (its `d=` token stays in-place editable), the duration bar on the right, and the row's
- * own insert/delete actions past it. It is still a full row — selection, drag, inspector, context menu
- * and playhead all live on the row around this — so only the read chrome changes. A nested container
- * shows as one compact subgroup track; the last track carries the tail "+" that inserts a new child
- * into the container (reusing the InsertRow path). Only `RowPlayAction` yields its hover slot to the
- * bar (a declared M7 concession — "play from here" stays reachable from the context menu); prose
- * children never reach here at all, they keep the ordinary row (see `LensTrackKind["text"]`), which is
- * also the only row kind `StoryVoiceIndicator` can ever render on.
- */
-function LensTrackContent(props: {
-    row: VisibleStoryRow;
-    scene: StoryScene;
-    document: StoryDocument;
-    characters: Character[];
-    commandContext: StoryCommandContext;
-    tempSpeakers: TempSpeakerRef[];
-    onSetSpeaker: (speaker: { characterId: string } | { speakerName: string } | null) => void;
-    onCreateCharacter: (name: string) => void;
-    onSetDialogueCharacter: (characterId: string | undefined) => void;
-    onUpdatePayload: (payload: StoryBlock["payload"]) => void;
-    onAddInside: (parentId: StoryBlockId) => void;
-    onInsertAfter: () => void;
-    onDeleteRow: () => void;
-    active: boolean;
-}) {
-    const { row, scene, document, characters } = props;
-    const block = row.block;
-    const track = row.lensTrack!;
-    const containerInfo = isContainerBlock(block) ? getContainerHeaderInfo(block) : null;
-    const barColor = getBlockBadgeInfo(block).iconColor;
-    return (
-        <>
-            <div className="flex min-h-[var(--nl-story-row-box)] min-w-0 items-center gap-2">
-                {/* A track holds the name column open without ever filling it — the lens is a different
-                    VIEW of the same actions, not a different kind of row, and a scene that reads down
-                    one edge everywhere except inside a parallel block reads as a bug. */}
-                <span className="w-[var(--nl-story-name,56px)] shrink-0 pr-2" aria-hidden />
-                <BlockBadge block={block} characters={characters} appearance={row.appearance} />
-                <div className="flex min-w-0 flex-1 items-center gap-2">
-                    {containerInfo ? (
-                        <span className="shrink-0 truncate text-sm italic text-fg-muted">{containerInfo.pill}</span>
-                    ) : null}
-                    {containerInfo ? (
-                        <span className="shrink-0 text-2xs tabular-nums text-fg-subtle">{block.childrenIds.length > 0 ? `· ${block.childrenIds.length}` : ""}</span>
-                    ) : (
-                        <BlockPreview
-                            block={block}
-                            scene={scene}
-                            commandContext={props.commandContext}
-                            document={document}
-                            characters={characters}
-                            onUpdatePayload={props.onUpdatePayload}
-                        />
-                    )}
-                </div>
-                <LensBar track={track} color={barColor} />
-                <RowActions onInsertAfter={props.onInsertAfter} onDelete={props.onDeleteRow} active={props.active} />
-            </div>
-            {track.segment.isLast && block.parentId ? (
-                <LensTailAdd onAdd={() => props.onAddInside(block.parentId as StoryBlockId)} />
-            ) : null}
-        </>
     );
 }
 
@@ -2319,12 +2211,6 @@ function CharacterSelectTrigger(props: {
      * words rather than float a few pixels off them.
      */
     column?: boolean;
-    /**
-     * This row continues a run by the same speaker. The name still prints — an empty column is what
-     * made a continuation indistinguishable from narration — but de-emphasised, so a run reads as one
-     * block under one head instead of as N equally loud attributions.
-     */
-    continuation?: boolean;
 }) {
     const { t } = useTranslation();
     // A frozen row keeps its nametag readable and stops offering the picker, which is also the way a
@@ -2419,10 +2305,6 @@ function CharacterSelectTrigger(props: {
                         // to truncate. Sizing the content box instead puts the padding outside it.
                         props.column ? "box-content -mx-1 w-fit justify-end font-medium" : "h-full min-h-[28px] text-sm",
                         unassigned ? "italic text-fg-subtle hover:text-primary" : props.speakerName ? "text-fg-muted" : characterColor ? "" : "text-primary",
-                        // Opacity, not a second colour: a continuation must stay the same name in the
-                        // same hue as its head, only quieter. Restored on hover, because it is still
-                        // the control that reassigns this line's speaker.
-                        props.continuation ? "opacity-50 hover:opacity-100" : "",
                         props.className ?? "",
                     ].join(" ")}
                     style={(() => {
