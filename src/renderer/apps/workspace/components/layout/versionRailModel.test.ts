@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { VcsFileChange, VcsHistoryEntry } from "@shared/types/vcs";
+import { VCS_DEFAULT_BRANCH } from "@shared/types/vcs";
 import { RAIL_SELECTOR_WIDTH } from "./dockLayoutModel";
 import {
+    VERSION_BRANCH_MAX_CHARS,
     VERSION_CHANGE_LIST_LIMIT,
     VERSION_RAIL_COLLAPSED_WIDTH,
     VERSION_RAIL_EXPANDED_WIDTH,
@@ -23,6 +25,7 @@ import {
     sortFileChanges,
     splitChangePath,
     unavailableReasonKey,
+    versionFace,
     versionRailWidth,
     type VersionRailPresence,
     type VersionSurfaceInputs,
@@ -718,5 +721,103 @@ describe("labels", () => {
 
     it("leads with the revision number, which is the part that means anything", () => {
         expect(revisionLabel(4)).toBe("#4");
+    });
+});
+
+/**
+ * The one line the status-bar cell, the top-bar widget and the rail's focused block all show.
+ *
+ * Exhaustive over the six surface states crossed with the branch cases, because this is precisely
+ * the kind of judgement a screenshot cannot audit: on the default branch the answer is supposed to
+ * be INDISTINGUISHABLE from what shipped before, and "indistinguishable" is not something anyone
+ * verifies by looking. The whole point of the feature - a branch name appearing where it matters and
+ * nowhere else - is one boolean away from being either useless or noise on every install.
+ *
+ * `t` is the identity function, so a prose answer asserts as its own key.
+ */
+describe("versionFace", () => {
+    const t = ((key: string) => key) as unknown as Parameters<typeof versionFace>[1];
+
+    const states: Record<string, VersionSurfaceState> = {
+        probing: { kind: "probing" },
+        unavailable: { kind: "unavailable", reason: "unsupported-platform" },
+        "not-a-repository": { kind: "not-a-repository" },
+        empty: { kind: "empty" },
+        current: { kind: "current", head: "aaaa1111cccc", number: 12 },
+        revision: { kind: "revision", revision: "bbbb2222dddd", label: "#3" },
+    };
+
+    // [state, branch] -> text. Every state against: the default branch, no branch reported at all,
+    // and a branch the author made. None omitted.
+    const table: [keyof typeof states, string | null, string][] = [
+        ["probing", VCS_DEFAULT_BRANCH, "—"],
+        ["probing", null, "—"],
+        ["probing", "audio", "—"],
+        ["unavailable", VCS_DEFAULT_BRANCH, "—"],
+        ["unavailable", null, "—"],
+        ["unavailable", "audio", "—"],
+        // The two prose states name a repository, not a branch. A branch prefix on "no versions
+        // yet" would read as if the emptiness were local to that branch.
+        ["not-a-repository", VCS_DEFAULT_BRANCH, "workspace.shell.versionControl.notVersioned"],
+        ["not-a-repository", null, "workspace.shell.versionControl.notVersioned"],
+        ["not-a-repository", "audio", "workspace.shell.versionControl.notVersioned"],
+        ["empty", VCS_DEFAULT_BRANCH, "workspace.shell.versionControl.noHistory"],
+        ["empty", null, "workspace.shell.versionControl.noHistory"],
+        ["empty", "audio", "workspace.shell.versionControl.noHistory"],
+        // The default branch and a backend that did not say are treated alike: neither is worth
+        // any width, and this row is what stops the ordinary install from paying for the feature.
+        ["current", VCS_DEFAULT_BRANCH, "#12"],
+        ["current", null, "#12"],
+        ["current", "", "#12"],
+        ["current", "audio", "audio · #12"],
+        ["revision", VCS_DEFAULT_BRANCH, "#3"],
+        ["revision", null, "#3"],
+        ["revision", "audio", "audio · #3"],
+    ];
+
+    it.each(table)("%s on branch %s reads as %s", (kind, branch, expected) => {
+        expect(versionFace({ state: states[kind], branch }, t).text).toBe(expected);
+    });
+
+    it("shows the short hash when nothing knows the number, and the rail omits it instead", () => {
+        const state: VersionSurfaceState = { kind: "current", head: "aaaa1111cccc", number: null };
+        // The two narrow surfaces have nothing else to print, so something that identifies the
+        // revision beats nothing.
+        expect(versionFace({ state, branch: "audio" }, t).text).toBe("audio · aaaa111");
+        // The rail prints the hash on its own line right beside this one; printing it twice would
+        // be the only surface where the shared rule made things worse.
+        expect(versionFace({ state, branch: "audio", unnumbered: "omit" }, t).text).toBe("");
+        // And with nothing to name, the branch goes too - a bare branch name is not a version.
+        expect(versionFace({ state, branch: "audio", unnumbered: "omit" }, t).full).toBe("");
+    });
+
+    it("falls back to the focused history row when the state carries no number", () => {
+        const state: VersionSurfaceState = { kind: "revision", revision: "bbbb2222dddd" };
+        expect(versionFace({ state, rowNumber: 7 }, t).text).toBe("#7");
+        expect(versionFace({ state, rowNumber: 7, unnumbered: "omit" }, t).text).toBe("#7");
+    });
+
+    it("cuts the branch and never the version number, and keeps the whole line for the tooltip", () => {
+        const state = states.current;
+        const long = "feature/rewrite-the-prologue";
+        const face = versionFace({ state, branch: long }, t);
+        // The cut lands on the branch: `#12` is the part that says WHICH version, and a status bar
+        // that truncated from the end would drop exactly that.
+        expect(face.text).toBe(`${long.slice(0, VERSION_BRANCH_MAX_CHARS - 1)}… · #12`);
+        expect(face.text).toContain("#12");
+        expect(face.full).toBe(`${long} · #12`);
+        expect(face.text).not.toBe(face.full);
+    });
+
+    it("reports nothing was cut, so a surface knows when no tooltip is owed", () => {
+        const face = versionFace({ state: states.current, branch: "audio" }, t);
+        expect(face.full).toBe(face.text);
+    });
+
+    it("ignores surrounding whitespace rather than rendering an empty branch", () => {
+        expect(versionFace({ state: states.current, branch: "   " }, t).text).toBe("#12");
+        expect(versionFace({ state: states.current, branch: " audio " }, t).text).toBe("audio · #12");
+        // Including on the default branch, which a backend could report padded.
+        expect(versionFace({ state: states.current, branch: ` ${VCS_DEFAULT_BRANCH} ` }, t).text).toBe("#12");
     });
 });

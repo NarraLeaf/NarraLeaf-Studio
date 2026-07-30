@@ -456,6 +456,32 @@ export async function readRevisionDetails(
 }
 
 /**
+ * Where the repository stands, WITHOUT walking the working tree: which branch, which head, and
+ * which number that head carries.
+ *
+ * The same `scan: false, revisionOnly: true` read `hasSomethingToCommit` uses, and it is that
+ * combination that makes this callable from a status bar at all. A scanning status is not a pure
+ * read - discovering a new directory records it into staged state, so a surface that asked on its
+ * own would eventually report deletions the author never made (§4.17) - and `revisionOnly` drops
+ * the per-file events, which are the only expensive part of the answer.
+ *
+ * The branch is the whole reason this exists: it is the one thing the revision graph does not
+ * carry, so reading it used to mean either scanning or walking every revision in the project.
+ */
+export async function readBranchIdentity(globals: LoreGlobals): Promise<{
+    branch: string;
+    head?: string;
+    headNumber: number;
+}> {
+    const { revision } = await repositoryStatus(globals, { scan: false, revisionOnly: true });
+    return {
+        branch: revision?.branchName ?? "",
+        head: revision?.revision,
+        headNumber: revision?.revisionNumber ?? 0,
+    };
+}
+
+/**
  * Where the working tree stands relative to the last commit.
  *
  * `scan` walks the tree; without it the answer describes only what is already staged,
