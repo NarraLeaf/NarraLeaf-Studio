@@ -96,11 +96,11 @@ describe("speaker-name column", () => {
 
 describe("line-number gutter", () => {
     it("holds one width while line numbers fit in two digits", () => {
-        // 30, down from 36: the numbers dropped a type size and tightened to the fold chevron (U1
-        // WI-2), and the width they gave up went to the words.
-        expect(storyGutterWidth(0)).toBe(30);
-        expect(storyGutterWidth(1)).toBe(30);
-        expect(storyGutterWidth(99)).toBe(30);
+        // 38: the 30 the digits and chevron need, plus the 8px of trailing gap that keeps the last
+        // digit off the column beside it. Still 12 less than the 30 + 20px handle column it replaced.
+        expect(storyGutterWidth(0)).toBe(38);
+        expect(storyGutterWidth(1)).toBe(38);
+        expect(storyGutterWidth(99)).toBe(38);
     });
 
     it("widens once a digit is added, so four digits cannot collide with the fold chevron", () => {
