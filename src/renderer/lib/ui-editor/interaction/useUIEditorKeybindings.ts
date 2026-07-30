@@ -25,6 +25,7 @@ import {
 import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
 import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
+import { UI_EDITOR_WRITABLE, type UIEditorReadOnly } from "./readOnlyInteraction";
 
 function isTypingInField(): boolean {
     return isEditableKeyboardTarget(document.activeElement);
@@ -51,6 +52,15 @@ export type UseUIEditorKeybindingsParams = {
     stateService: UIEditorStateService | null;
     uiService: UIService | null;
     requestRenamePrimary: () => void;
+    /**
+     * While active, the keybindings that edit do nothing.
+     *
+     * A keybinding has nothing to grey out, so this is the `run` shape of the freeze guard: every
+     * binding stays registered - so the shortcut catalogue is unchanged and Escape / Ctrl+C / Ctrl+A
+     * still work - and the handlers that would write return early. Unregistering them instead would
+     * hand Ctrl+Z back to whatever binding sits behind it, which is another editor's undo.
+     */
+    readOnly?: UIEditorReadOnly;
 };
 
 export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): void {
@@ -66,12 +76,22 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
         stateService,
         uiService,
         requestRenamePrimary,
+        readOnly = UI_EDITOR_WRITABLE,
     } = params;
+    const readOnlyActive = readOnly.active;
 
     const keybindings = useMemo<KeybindingDefinition[]>(() => {
         if (!surfaceId) {
             return [];
         }
+
+        /** Wraps a handler that edits the document. Copy and Select All are deliberately not wrapped. */
+        const whenWritable = (handler: () => void) => () => {
+            if (readOnlyActive) {
+                return;
+            }
+            handler();
+        };
 
         const bindMod = (mod: "ctrl" | "meta", defs: Array<{ suffix: string; key: string; handler: () => void }>) =>
             defs.map(d => ({
@@ -142,23 +162,23 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
         };
 
         const modPairs = bindMod("ctrl", [
-            { suffix: "undo", key: "z", handler: undo },
-            { suffix: "redo", key: "shift+z", handler: redo },
+            { suffix: "undo", key: "z", handler: whenWritable(undo) },
+            { suffix: "redo", key: "shift+z", handler: whenWritable(redo) },
             { suffix: "copy", key: "c", handler: copy },
-            { suffix: "cut", key: "x", handler: cut },
-            { suffix: "paste", key: "v", handler: paste },
-            { suffix: "dup", key: "d", handler: duplicate },
-            { suffix: "group", key: "g", handler: group },
+            { suffix: "cut", key: "x", handler: whenWritable(cut) },
+            { suffix: "paste", key: "v", handler: whenWritable(paste) },
+            { suffix: "dup", key: "d", handler: whenWritable(duplicate) },
+            { suffix: "group", key: "g", handler: whenWritable(group) },
             { suffix: "selall", key: "a", handler: selectAll },
         ]).concat(
             bindMod("meta", [
-                { suffix: "undo", key: "z", handler: undo },
-                { suffix: "redo", key: "shift+z", handler: redo },
+                { suffix: "undo", key: "z", handler: whenWritable(undo) },
+                { suffix: "redo", key: "shift+z", handler: whenWritable(redo) },
                 { suffix: "copy", key: "c", handler: copy },
-                { suffix: "cut", key: "x", handler: cut },
-                { suffix: "paste", key: "v", handler: paste },
-                { suffix: "dup", key: "d", handler: duplicate },
-                { suffix: "group", key: "g", handler: group },
+                { suffix: "cut", key: "x", handler: whenWritable(cut) },
+                { suffix: "paste", key: "v", handler: whenWritable(paste) },
+                { suffix: "dup", key: "d", handler: whenWritable(duplicate) },
+                { suffix: "group", key: "g", handler: whenWritable(group) },
                 { suffix: "selall", key: "a", handler: selectAll },
             ]),
         );
@@ -168,19 +188,19 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
             {
                 id: "delete",
                 key: "delete",
-                handler: del,
+                handler: whenWritable(del),
             },
             {
                 id: "backspace",
                 key: "backspace",
-                handler: del,
+                handler: whenWritable(del),
             },
             {
                 id: "f2",
                 key: "f2",
-                handler: () => {
+                handler: whenWritable(() => {
                     requestRenamePrimary();
-                },
+                }),
             },
         ];
     }, [
@@ -191,6 +211,7 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
         stateService,
         uiService,
         requestRenamePrimary,
+        readOnlyActive,
     ]);
 
     const escapeHandler = useCallback(() => {

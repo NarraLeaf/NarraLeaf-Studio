@@ -9,6 +9,19 @@ import { mapCharacterStoreEntriesToSummaries } from "@shared/utils/characterSumm
 import type { CharacterAvatarTarget } from "@shared/utils/characterAvatar";
 import { bakeCharacterAvatars, type AvatarBakeIO } from "./avatarBake";
 import { createAvatarRenderer } from "./avatarRenderer";
+import { useWorkspaceFrozen } from "@/apps/workspace/hooks/useWorkspaceFrozen";
+import { isDeferredWriteAllowed } from "@/apps/workspace/components/ui/freezeGuard";
+
+/**
+ * Whether the panel-open bake may run.
+ *
+ * A write with no author gesture behind it, so there is nothing to grey out - see
+ * {@link isDeferredWriteAllowed} for why a freeze defers this instead of refusing it, and what the
+ * author saw before it did.
+ */
+export function shouldBakeCharacterAvatars(enabled: boolean, frozen: boolean): boolean {
+    return enabled && isDeferredWriteAllowed(frozen);
+}
 
 /**
  * Keep every character's baked dialog avatars in step with its sprites.
@@ -24,10 +37,16 @@ import { createAvatarRenderer } from "./avatarRenderer";
  */
 export function useCharacterAvatarBake(enabled: boolean): { rebake: () => Promise<void> } {
     const { context, isInitialized } = useWorkspace();
+    const frozen = useWorkspaceFrozen();
     const runningRef = useRef(false);
 
     const rebake = useCallback(async (): Promise<void> => {
         if (!context || !isInitialized || runningRef.current) {
+            return;
+        }
+        // Also guarded here, not only at the effect: `rebake` is returned to callers, and a write with
+        // no gesture behind it must not depend on every future caller remembering the freeze.
+        if (frozen) {
             return;
         }
         runningRef.current = true;
@@ -89,14 +108,14 @@ export function useCharacterAvatarBake(enabled: boolean): { rebake: () => Promis
         } finally {
             runningRef.current = false;
         }
-    }, [context, isInitialized]);
+    }, [context, frozen, isInitialized]);
 
     useEffect(() => {
-        if (!enabled) {
+        if (!shouldBakeCharacterAvatars(enabled, frozen)) {
             return;
         }
         void rebake();
-    }, [enabled, rebake]);
+    }, [enabled, frozen, rebake]);
 
     return { rebake };
 }

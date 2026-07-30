@@ -513,7 +513,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         // Every row here creates, renames, moves or deletes a character or a group - all writes - except
         // the one that re-reads the list. Menus still open and still list what exists, so a frozen
         // project can be browsed; the rows are simply inert.
-        setMenuItems(freezeContextMenuRows(items, freeze.frozen, FREEZE_READ_ONLY_CHARACTER_MENU_IDS));
+        setMenuItems(freezeContextMenuRows(items, freeze.frozen, FREEZE_READ_ONLY_CHARACTER_MENU_IDS, freeze.reason));
         setMenuState({ visible: true, position: { x: rect.right, y: rect.bottom } });
     }, [buildContextMenu, freeze]);
 

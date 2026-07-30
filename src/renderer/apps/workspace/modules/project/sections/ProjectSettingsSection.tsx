@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { Select, type SelectOption } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { SettingRow, SettingShell } from "./settingRows";
 import {
     MOBILE_ORIENTATIONS,
@@ -16,6 +17,9 @@ import type { ProjectSectionProps } from "./types";
 
 export function ProjectSettingsSection({ projectService, uiService, config, onConfigChange }: ProjectSectionProps) {
     const { t } = useTranslation();
+    // `SettingRow` reads the freeze itself; the orientation dropdown sits in a bare `SettingShell`, so
+    // it needs its own.
+    const freeze = useFreezeGuard();
     const [network, setNetwork] = useState<NetworkConfiguration>(() => normalizeNetworkConfiguration(config.app?.network));
     const [security, setSecurity] = useState<SecurityConfiguration>(() => normalizeSecurityConfiguration(config.app?.security));
     const [mobile, setMobile] = useState<MobileConfiguration>(() => normalizeMobileConfiguration(config.app?.mobile));
@@ -109,11 +113,12 @@ export function ProjectSettingsSection({ projectService, uiService, config, onCo
             <SettingShell
                 title={t("project.settings.orientationTitle")}
                 description={t("project.settings.orientationDescription")}
+                titleAttr={freeze.writes(savingOrientation).title}
             >
                 <Select
                     options={orientationOptions}
                     value={mobile.orientation}
-                    disabled={savingOrientation}
+                    disabled={freeze.writes(savingOrientation).disabled}
                     onChange={value => void setOrientation(value as MobileOrientation)}
                     size="sm"
                     portalMenu

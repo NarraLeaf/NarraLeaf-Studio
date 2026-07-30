@@ -34,6 +34,16 @@ import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSel
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 import { useTranslation } from "@/lib/i18n";
+import {
+    isSurfaceGestureEnabled,
+    UI_EDITOR_WRITABLE,
+    type UIEditorReadOnly,
+} from "@/lib/ui-editor/interaction/readOnlyInteraction";
+// The freeze guard's menu walker, reused rather than re-implemented: these rows are assembled by
+// `buildOutlineContextMenu` and extended by widget modules at runtime, so there is nothing to spread
+// `menuRow()` onto. Same import direction as `useUIEditorKeybindings`, which reaches for the
+// workspace's keybinding hooks.
+import { freezeContextMenuRows } from "@/apps/workspace/components/ui/freezeGuard";
 
 export type UILayersPanelProps = {
     surfaceId: string;
@@ -43,7 +53,25 @@ export type UILayersPanelProps = {
     localBlueprint: LocalBlueprintService;
     inputDialog: InputDialog | null;
     allowAddSelectionToComponentLibrary?: boolean;
+    /** Reorder, rename, visibility and every editing menu row go inert. Selection stays. */
+    readOnly?: UIEditorReadOnly;
 };
+
+/**
+ * The outline menu rows a read-only surface keeps: the ones that only read.
+ *
+ * Copy fills the clipboard, `copy-element-id` writes to it too, Select All / Expand All / Collapse All
+ * move selection and editor state. Everything else - insert, paste, cut, duplicate, rename, delete,
+ * visibility, group, add-to-library, and whatever a widget module contributes under `sep-widget` -
+ * edits the document, so it is not named here and is therefore disabled.
+ */
+const READ_ONLY_OUTLINE_MENU_IDS: ReadonlySet<string> = new Set([
+    "copy",
+    "copy-element-id",
+    "select-all",
+    "expand-all",
+    "collapse-all",
+]);
 
 function collisionHasOutlineGapData(collision: Collision): boolean {
     return isOutlineGapDropData(collision.data?.droppableContainer.data.current);
@@ -134,6 +162,7 @@ export function UILayersPanel({
     localBlueprint,
     inputDialog,
     allowAddSelectionToComponentLibrary = true,
+    readOnly = UI_EDITOR_WRITABLE,
 }: UILayersPanelProps) {
     const { t } = useTranslation();
     const [docVersion, setDocVersion] = useState(0);
@@ -248,17 +277,23 @@ export function UILayersPanel({
     const onToggleVisible = useCallback(
         (element: UIElement, event: MouseEvent) => {
             event.stopPropagation();
+            if (!isSurfaceGestureEnabled("outlineVisibility", readOnly)) {
+                return;
+            }
             if (element.type === OUTLINE_ROOT_WIDGET_TYPE || isComponentEditorRootElement(element)) {
                 return;
             }
             const isHidden = element.layout.visible === false;
             documentService.updateElementLayout(element.id, { visible: isHidden ? true : false });
         },
-        [documentService]
+        [documentService, readOnly]
     );
 
     const onStartRename = useCallback(
         (element: UIElement) => {
+            if (!isSurfaceGestureEnabled("outlineRename", readOnly)) {
+                return;
+            }
             if (!inputDialog || element.type === OUTLINE_ROOT_WIDGET_TYPE || isComponentEditorRootElement(element)) {
                 return;
             }
@@ -270,7 +305,7 @@ export function UILayersPanel({
                     }
                 });
         },
-        [documentService, inputDialog, t]
+        [documentService, inputDialog, readOnly, t]
     );
 
     const collectBranchIdsWithChildren = useCallback(
@@ -292,6 +327,13 @@ export function UILayersPanel({
         [document.elements]
     );
 
+    const setReadOnlyAwareMenuItems = useCallback(
+        (items: ContextMenuDef) => {
+            setMenuItems(freezeContextMenuRows(items, readOnly.active, READ_ONLY_OUTLINE_MENU_IDS, readOnly.reason));
+        },
+        [readOnly.active, readOnly.reason],
+    );
+
     const { openRowContextMenu, openBlankContextMenu } = useLayerOutlineContextMenus({
         surfaceId,
         documentService,
@@ -304,7 +346,7 @@ export function UILayersPanel({
         collectBranchIdsWithChildren,
         showMenu,
         hideMenu,
-        setMenuItems,
+        setMenuItems: setReadOnlyAwareMenuItems,
         allowAddSelectionToComponentLibrary,
     });
 
@@ -362,7 +404,7 @@ export function UILayersPanel({
             initialDragPointRef.current = null;
             setActiveDragPoint(null);
             setActiveDragId(null);
-            if (!surface) {
+            if (!surface || !isSurfaceGestureEnabled("outlineReorder", readOnly)) {
                 return;
             }
             const { active, over } = event;
@@ -394,7 +436,7 @@ export function UILayersPanel({
             }
 
         },
-        [document, documentService, selectedIds, surface, surfaceId]
+        [document, documentService, readOnly, selectedIds, surface, surfaceId]
     );
 
     const rowBase = useMemo(
@@ -409,6 +451,7 @@ export function UILayersPanel({
             onRowContextMenu: openRowContextMenu,
             onToggleVisible,
             onStartRename,
+            readOnly,
         }),
         [
             document,
@@ -421,6 +464,7 @@ export function UILayersPanel({
             openRowContextMenu,
             onToggleVisible,
             onStartRename,
+            readOnly,
         ]
     );
 

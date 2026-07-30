@@ -7,6 +7,7 @@ import type { UIEditorStateService } from "@services/ui-editor/UIEditorStateServ
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
+import type { UIEditorReadOnly } from "@/lib/ui-editor/interaction/readOnlyInteraction";
 
 export type SurfaceOutlinePanelProps = {
     surfaceId: string;
@@ -16,6 +17,8 @@ export type SurfaceOutlinePanelProps = {
     localBlueprint: LocalBlueprintService | null;
     inputDialog: InputDialog | null;
     allowAddSelectionToComponentLibrary?: boolean;
+    /** Passed through to the layer tree; collapsing the panel is editor state and stays live. */
+    readOnly?: UIEditorReadOnly;
 };
 
 export function SurfaceOutlinePanel({
@@ -26,6 +29,7 @@ export function SurfaceOutlinePanel({
     localBlueprint,
     inputDialog,
     allowAddSelectionToComponentLibrary = true,
+    readOnly,
 }: SurfaceOutlinePanelProps) {
     const { t } = useTranslation();
     const [isCollapsed, setCollapsedState] = useState(() => stateService?.getOutlinePanelCollapsed() ?? false);
@@ -85,6 +89,7 @@ export function SurfaceOutlinePanel({
                                 localBlueprint={localBlueprint!}
                                 inputDialog={inputDialog}
                                 allowAddSelectionToComponentLibrary={allowAddSelectionToComponentLibrary}
+                                readOnly={readOnly}
                             />
                         ) : (
                             <div className="p-4 text-xs text-fg-subtle">{t("uiEditor.editor.loadingServices")}</div>

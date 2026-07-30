@@ -112,8 +112,19 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
     onEventClick?: (info: EventClickInfo) => void;
     resolveInterpolationLabel?: ResolveInterpolationLabel;
     onActiveMarksChange?: (marks: ActiveMarks) => void;
+    /**
+     * Render the runs without making the element editable.
+     *
+     * The only property that actually stops typing: gating the commit path is not enough, because a
+     * `contentEditable` element lets the browser place the caret and apply keystrokes without asking
+     * Studio anything. Measured on a frozen workspace before this existed - a row took a whole typed
+     * sentence, showed it, and threw it away on thaw. Chips, marks and colours still render; the
+     * imperative `focus()` and the mount-time caret placement become no-ops.
+     */
+    readOnly?: boolean;
 }>(function RichTextInput(props, ref) {
     const { t } = useTranslation();
+    const readOnly = props.readOnly === true;
     const editorRef = useRef<HTMLDivElement | null>(null);
     const savedRange = useRef<{ start: number; end: number } | null>(null);
     const historyRef = useRef<RichTextHistory>(new RichTextHistory());
@@ -150,6 +161,10 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         }
         const runs = normalizeRuns(props.initialRuns);
         renderRunsToElement(el, runs, renderOptionsRef.current);
+        if (readOnly) {
+            // No focus and no caret: the point is that the author cannot start typing into it.
+            return;
+        }
         el.focus();
         // An explicit range means the author already selected this text in the read-only row and we
         // are carrying their selection across the swap into the editor; a goal column means they
@@ -536,7 +551,10 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
     useImperativeHandle(ref, () => ({
         focus: () => {
             const el = editorRef.current;
-            if (!el) {
+            // Read-only: refuse focus outright. The parent still calls this from the toolbar and popover
+            // paths, and focusing a non-editable div would put a visible focus ring on something that
+            // takes no input.
+            if (!el || readOnly) {
                 return;
             }
             el.focus();
@@ -560,17 +578,18 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         updateEventAt: (unit, event) => spliceUnits(unit, 1, [{ event }], true),
         removeEventAt: (unit) => spliceUnits(unit, 1, [], false),
         getRuns: () => (editorRef.current ? domToRuns(editorRef.current) : null),
-    }), [applyMark, insertPause, insertInterpolation, insertEvent, spliceUnits]);
+    }), [applyMark, insertPause, insertInterpolation, insertEvent, readOnly, spliceUnits]);
 
     return (
         <div
             ref={editorRef}
             className={props.className}
             style={{ ...props.style, caretColor: caretColor ?? undefined }}
-            contentEditable
+            contentEditable={!readOnly}
             suppressContentEditableWarning
             role="textbox"
             aria-multiline="false"
+            aria-readonly={readOnly || undefined}
             data-placeholder={props.placeholder ?? ""}
             onClick={event => {
                 event.stopPropagation();
