@@ -40,6 +40,11 @@ export type VersionBusyKind =
     | "revision"
     /** Creating the repository. Writes `.lore/` and stages the whole project. */
     | "init"
+    /**
+     * Recording a revision. Never instant: the pipeline settles this window's save debt, stages the
+     * whole project and then waits out the backend's store keep-alive window (~1s, docs §4.22).
+     */
+    | "commit"
     /** Coming back to the working tree, which re-reads every document. */
     | "return";
 
@@ -88,6 +93,15 @@ export interface VersionSurface {
     loadHistory: () => void;
     /** The ONLY scan. An explicit act: opening the rail, or a refresh the author asked for. */
     refreshChanges: () => void;
+    /**
+     * Record the working tree as a new revision, then re-read everything the new revision made
+     * wrong. Slow; sets `busy`.
+     *
+     * Answers whether it happened, because the caller owns the message box and a draft may only be
+     * discarded once it is recorded somewhere - a failed commit that cleared the author's words
+     * would lose the only copy of them. Failures are reported through {@link error} as well.
+     */
+    commit: (message: string) => Promise<boolean>;
     /** Show a past revision in the real editors, freezing project data. Slow; sets `busy`. */
     showRevision: (revision: RevisionId, label?: string) => void;
     /** The escape hatch. A no-op when the workspace was not frozen, so any control may call it. */
@@ -199,32 +213,59 @@ export function useVersionSurface(): VersionSurface {
         return services.versionControl.onStatusChanged(setStatus);
     }, [services]);
 
+    // A revision recorded ANYWHERE moves the head, and there is more than one of this hook alive:
+    // the rail and the top-bar widget share one, the status-bar cell makes its own. Without this,
+    // committing from the rail leaves the cell naming the version before it - measured on a real
+    // app, rail `#3` beside cell `#2` - and an automatic checkpoint leaves every surface stale with
+    // nobody having pressed anything to notice.
+    //
+    // Not a poll: it fires once per revision, which is a discrete act, and the re-read below does
+    // not scan.
+    useEffect(() => {
+        if (!services) {
+            return;
+        }
+        return services.versionControl.onRevisionRecorded(() => {
+            void readIdentity();
+        });
+    }, [services, readIdentity]);
+
+    /**
+     * The page read itself, without the spinner around it, so a commit can re-read the history
+     * inside its OWN busy state - `busy` names one operation, and a nested read that cleared it
+     * would take the spinner down while the commit was still running.
+     */
+    const readHistory = useCallback(async () => {
+        if (!services) {
+            return;
+        }
+        try {
+            // Details are what makes collapsing possible (the kind) and what the focused block
+            // shows (message / time / author), and they cost one backend call PER revision -
+            // there is no batch verb - which is why the page is bounded rather than asking for
+            // all of them.
+            const entries = await services.versionControl.getHistory(
+                VERSION_HISTORY_PAGE,
+                { includeDetails: true },
+            );
+            if (!alive.current) return;
+            setRawHistory(flattenFirstParent(entries));
+        } catch (thrown) {
+            if (!alive.current) return;
+            setError(messageOf(thrown));
+        }
+    }, [services]);
+
     const loadHistory = useCallback(() => {
         if (!services) {
             return;
         }
         setBusy("history");
         setError(null);
-        void (async () => {
-            try {
-                // Details are what makes collapsing possible (the kind) and what the focused block
-                // shows (message / time / author), and they cost one backend call PER revision -
-                // there is no batch verb - which is why the page is bounded rather than asking for
-                // all of them.
-                const entries = await services.versionControl.getHistory(
-                    VERSION_HISTORY_PAGE,
-                    { includeDetails: true },
-                );
-                if (!alive.current) return;
-                setRawHistory(flattenFirstParent(entries));
-            } catch (thrown) {
-                if (!alive.current) return;
-                setError(messageOf(thrown));
-            } finally {
-                if (alive.current) setBusy(null);
-            }
-        })();
-    }, [services]);
+        void readHistory().finally(() => {
+            if (alive.current) setBusy(null);
+        });
+    }, [services, readHistory]);
 
     const refreshChanges = useCallback(() => {
         if (!services) {
@@ -234,6 +275,46 @@ export function useVersionSurface(): VersionSurface {
             if (alive.current) setError(messageOf(thrown));
         });
     }, [services]);
+
+    const commit = useCallback(async (message: string): Promise<boolean> => {
+        if (!services) {
+            return false;
+        }
+        setBusy("commit");
+        setError(null);
+        try {
+            try {
+                await services.versionControl.commit({ message });
+            } catch (thrown) {
+                if (alive.current) setError(messageOf(thrown));
+                return false;
+            }
+            if (!alive.current) return true;
+            // Past that line the revision EXISTS, which is why the re-reads below have a catch of
+            // their own: reporting one of them as a failed commit would send the author to write
+            // their message again, and the backend would answer that nothing has changed.
+            try {
+                // A commit invalidates all three of this hook's answers and none of them refreshes
+                // itself. The identity first: HEAD has moved, and the rail, the top-bar widget and
+                // the status cell all read it from here - without this they would keep naming `#12`
+                // while the repository is on `#13`. Then the page, which the service dropped from
+                // its cache but which is still in `rawHistory` one entry short of the truth.
+                await readIdentity();
+                if (!alive.current) return true;
+                await readHistory();
+                if (!alive.current) return true;
+                // And the scan, which is allowed here for the one reason the service's class comment
+                // gives: it follows an operation this surface itself performed. It is also the
+                // confirmation the author is owed - that the commit really did take everything.
+                refreshChanges();
+            } catch (thrown) {
+                if (alive.current) setError(messageOf(thrown));
+            }
+            return true;
+        } finally {
+            if (alive.current) setBusy(null);
+        }
+    }, [services, readIdentity, readHistory, refreshChanges]);
 
     const showRevision = useCallback((revision: RevisionId, label?: string) => {
         if (!services) {
@@ -340,6 +421,7 @@ export function useVersionSurface(): VersionSurface {
         status,
         loadHistory,
         refreshChanges,
+        commit,
         showRevision,
         returnToCurrent,
         enableVersionControl,

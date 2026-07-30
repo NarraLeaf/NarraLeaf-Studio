@@ -245,7 +245,10 @@ export async function initRepository(
  */
 export class NothingToCommitError extends Error {
     constructor(readonly root: string) {
-        super(`Nothing has changed in ${root} since the last revision`);
+        // The message reaches an AUTHOR - it is rendered verbatim in the version rail, 320px wide -
+        // so it does not name the repository. They know which project they are in; the path only
+        // wrapped the sentence onto a second line. Anything logging this still has `root`.
+        super("Nothing has changed since the last version");
         this.name = "NothingToCommitError";
     }
 }
