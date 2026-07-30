@@ -1,4 +1,10 @@
-import type { RevisionId, VcsAvailability, VcsHistoryEntry, VcsUnavailableReason } from "@shared/types/vcs";
+import type {
+    RevisionId,
+    VcsAvailability,
+    VcsFileChange,
+    VcsHistoryEntry,
+    VcsUnavailableReason,
+} from "@shared/types/vcs";
 import type { TranslationKey } from "@shared/i18n";
 import { RAIL_SELECTOR_WIDTH } from "./dockLayoutModel";
 
@@ -421,6 +427,127 @@ export function hiddenCheckpointCount(
     options: CollapseCheckpointsOptions = {},
 ): number {
     return entries.length - collapseCheckpoints(entries, options).length;
+}
+
+/**
+ * How many changed files the rail draws, at most.
+ *
+ * There has to be a bound: a first commit, a bulk asset import or a restore can put thousands of
+ * entries in one scan, and a 320px column has no business rendering thousands of rows into the same
+ * scroll container the commit form and the history live in.
+ *
+ * 50 rather than a rounder number, because it is `VERSION_HISTORY_PAGE`: the panel's two lists
+ * are bounded alike so neither can bury the other, and 50 rows is already more than a panel-height of
+ * scrolling. Past that, the per-file list has stopped being how anyone understands the change - the
+ * count above it is - and reading the rest is what the diff milestone is for.
+ *
+ * What is NOT allowed is cutting silently; {@link ChangeListView.hidden} exists so the list can say
+ * how many it left out. A list that showed the first 50 of 3000 with no remark would be read as "that
+ * is all of it", and the author would commit believing they had seen what they were recording.
+ */
+export const VERSION_CHANGE_LIST_LIMIT = 50;
+
+/** A changed path, cut where the rail cuts it. */
+export interface ChangePathParts {
+    /**
+     * Everything above the file, with no trailing separator - `null` for a file at the repository
+     * root, which is a real case (`nl.config.json`) and not a degenerate one.
+     */
+    directory: string | null;
+    /** The last segment. Empty only for an empty or separator-only input. */
+    name: string;
+}
+
+/**
+ * Split a changed path into the part that identifies the file and the part that merely locates it.
+ *
+ * The rail renders these differently and truncates only the directory, because in this project the
+ * distinguishing end of a path is its TAIL: `editor/story/chapter-01.json` and
+ * `editor/story/chapter-02.json` share everything a head-first ellipsis would keep.
+ *
+ * Both separators are accepted. `repositoryStatus` answers repository-relative paths (docs §4.16) and
+ * the backend is not uniform about which slash Windows produces - §4.20 records it handing back
+ * forward slashes where `path.join` would have produced backslashes - so treating either as the
+ * separator is cheaper than being wrong about one of them in the one place a path is read by eye.
+ */
+export function splitChangePath(path: string): ChangePathParts {
+    const normalized = path.replace(/[\\/]+/g, "/").replace(/\/+$/, "");
+    const cut = normalized.lastIndexOf("/");
+    if (cut < 0) {
+        return { directory: null, name: normalized };
+    }
+    return { directory: normalized.slice(0, cut), name: normalized.slice(cut + 1) };
+}
+
+/**
+ * The order the rail lists changes in.
+ *
+ * Unresolved conflicts first, and they are the only kind singled out: `conflictUnresolved` is the one
+ * flag that BLOCKS a commit (`VcsFileChange`), so it is the only row whose position is functional
+ * rather than aesthetic. Anything else at the top of a capped list would be a preference; a conflict
+ * scrolled out of sight is a Commit button that refuses with no visible cause.
+ *
+ * Everything else by path, ascending, because an author recognises their own project as a tree - one
+ * chapter's files land together, and a folder they did not expect to have touched is visible as a
+ * block. Grouping by KIND instead would scatter that folder across five groups to communicate
+ * something each row already carries in its own marker.
+ *
+ * Compared with `<` on the lower-cased path rather than with `localeCompare`, so the order is a
+ * property of the repository and not of the app's language: switching Studio to Chinese must not
+ * reshuffle the list. The raw path breaks ties, which makes the order total - two paths differing
+ * only in case would otherwise come out in whatever order the scan happened to produce.
+ */
+export function sortFileChanges(files: readonly VcsFileChange[]): VcsFileChange[] {
+    return [...files].sort((a, b) => {
+        if (a.conflictUnresolved !== b.conflictUnresolved) {
+            return a.conflictUnresolved ? -1 : 1;
+        }
+        const left = a.path.toLowerCase();
+        const right = b.path.toLowerCase();
+        if (left !== right) {
+            return left < right ? -1 : 1;
+        }
+        if (a.path !== b.path) {
+            return a.path < b.path ? -1 : 1;
+        }
+        return 0;
+    });
+}
+
+export interface ChangeListView {
+    /** The rows to draw: sorted, directories dropped, capped. */
+    rows: VcsFileChange[];
+    /** Sorted rows the cap left out. Zero when the list is complete; never hidden from the author. */
+    hidden: number;
+    /**
+     * Files in the scan, directories excluded - the one number this surface shows.
+     *
+     * Deliberately NOT `VcsStatus.counts`. Those are the backend's own totals and they COUNT
+     * DIRECTORIES (one new folder with one file in it is two), so the two disagree on purpose
+     * (`VersionControlService.getChangedFiles`). Showing both would make the panel argue with itself
+     * about a project's size, so it shows this one and nothing re-derives the other.
+     */
+    total: number;
+}
+
+/**
+ * The change list the rail draws, out of one scan's file list.
+ *
+ * Directories are dropped here rather than by the caller because the cap has to be applied to the
+ * rows an author actually sees: leaving them in would let a deep new folder spend the whole budget on
+ * entries that name nothing the author wrote (`VcsFileChange.directory`).
+ *
+ * Sorting happens BEFORE the cap, which is the whole reason the two live in one function. Capping a
+ * scan-ordered list and sorting the survivors would be a list that can hide the conflict that is
+ * blocking the commit.
+ */
+export function buildChangeList(
+    files: readonly VcsFileChange[],
+    limit: number = VERSION_CHANGE_LIST_LIMIT,
+): ChangeListView {
+    const sorted = sortFileChanges(files.filter(file => !file.directory));
+    const rows = sorted.slice(0, Math.max(0, limit));
+    return { rows, hidden: sorted.length - rows.length, total: sorted.length };
 }
 
 /**
