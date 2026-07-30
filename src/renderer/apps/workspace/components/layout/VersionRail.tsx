@@ -29,6 +29,7 @@ import {
     VERSION_RAIL_EXPANDED_WIDTH,
     buildChangeList,
     canCommit,
+    historyRowHeadline,
     isCommitFormPresent,
     isVersionSurfaceVisible,
     revisionLabel,
@@ -287,7 +288,13 @@ function FocusedVersion({ surface }: { surface: VersionSurface }) {
             data-vcs-seam="revision-metadata"
             className={cn("border-b px-3 py-3", onRevision ? "border-primary/40 bg-primary/10" : "border-edge")}
         >
-            <p className={cn("truncate text-sm font-medium", onRevision ? "text-primary" : "text-fg")}>
+            <p
+                // One truncated line, so the whole of it has to be reachable somehow; a version
+                // message is often a sentence and this is the surface that names the version the
+                // author is looking at.
+                title={focused?.message?.trim() || undefined}
+                className={cn("truncate text-sm font-medium", onRevision ? "text-primary" : "text-fg")}
+            >
                 {focused?.message?.trim()
                     // No message: the revision names itself, which is what this line said before the
                     // metadata was readable at all. "Current version" would be a lie in the two states
@@ -665,15 +672,26 @@ function EnableVersionControl({ surface }: { surface: VersionSurface }) {
  * Scrolling this list is how the author reaches other versions; the plan's "scrolling down moves
  * through the linear history" is this. It ends where the read ended, and the control below the last
  * row is what reaches further back.
+ *
+ * **A row leads with what the version SAYS.** It used to show an icon, `#12` and a short hash, which
+ * is the one list in Studio an author cannot use: every row of a day's work looks the same, so the
+ * only way to find the version they meant was to open each one in turn. The message has been on
+ * `FlatHistoryEntry` since the page started asking for details - the list simply never drew it. The
+ * identity moves to a second line where it is still what tells two revisions apart by eye and still
+ * matches the switcher menu and the status cell.
+ *
+ * The header is sticky because the collapse control lives in it: a project with fifty checkpoints
+ * pushes "Hide checkpoints" off the top of the same scroller the rows are in, and that control is
+ * the way to make the list short again.
  */
 function HistoryList({ surface, rows }: { surface: VersionSurface; rows: FlatHistoryEntry[] }) {
-    const { t } = useTranslation();
+    const { t, locale } = useTranslation();
     const { state } = surface;
     const focused = state.kind === "revision" ? state.revision : state.kind === "current" ? state.head : null;
 
     return (
-        <div>
-            <div className="flex items-center justify-between gap-2 px-3 pb-1 pt-2">
+        <div data-vcs-seam="history-list">
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-edge/60 bg-surface-sunken px-3 pb-1 pt-2">
                 <span className="text-2xs uppercase tracking-wide text-fg-subtle">
                     {t("workspace.shell.versionControl.history")}
                 </span>
@@ -693,31 +711,52 @@ function HistoryList({ surface, rows }: { surface: VersionSurface; rows: FlatHis
             </div>
             {rows.map(row => {
                 const isFocused = row.revision === focused;
+                const headline = historyRowHeadline(row);
+                const time = row.timestamp !== undefined ? formatRevisionTime(row.timestamp, locale) : null;
                 return (
                     <button
                         key={row.revision}
                         type="button"
                         onClick={() => surface.showRevision(row.revision, revisionLabel(row.number))}
                         disabled={isFocused || surface.busy !== null}
-                        title={isFocused ? undefined : t("workspace.shell.versionControl.showVersion")}
+                        // The whole message plus the hash, because the row shows one truncated line of
+                        // the first and none of the second. Without it a version whose message is
+                        // longer than the column is a version the author cannot read at all.
+                        title={[
+                            headline.isMessage ? headline.text : null,
+                            shortRevision(row.revision),
+                            isFocused ? null : t("workspace.shell.versionControl.showVersion"),
+                        ].filter(Boolean).join("\n")}
                         className={cn(
-                            "flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors cursor-default",
-                            isFocused ? "bg-fill-strong text-fg" : "text-fg-muted hover:bg-fill hover:text-fg",
+                            "flex w-full items-start gap-2 px-3 py-1.5 text-left transition-colors cursor-default",
+                            isFocused
+                                ? "bg-fill-strong text-fg"
+                                : "text-fg-muted hover:bg-fill hover:text-fg",
                         )}
                     >
-                        <span className="w-3 shrink-0">
+                        <span className={cn("mt-0.5 w-3 shrink-0", isFocused ? "text-primary" : "text-fg-subtle")}>
                             {row.merge
                                 ? <GitMerge className="h-3 w-3" />
                                 : row.kind === "checkpoint"
                                     ? <Clock className="h-3 w-3" />
                                     : <GitCommitHorizontal className="h-3 w-3" />}
                         </span>
-                        <span className="w-10 shrink-0 text-2xs tabular-nums">{revisionLabel(row.number)}</span>
-                        <span className="flex-1 truncate font-mono text-2xs text-fg-subtle">
-                            {shortRevision(row.revision)}
+                        <span className="min-w-0 flex-1">
+                            {/* No message is the repository's own first commit, and another client may
+                                write none either. It names itself with its hash rather than borrowing
+                                a sentence it does not have. */}
+                            <span className={cn(
+                                "block truncate text-xs",
+                                headline.isMessage ? "" : "font-mono text-fg-subtle",
+                            )}>
+                                {headline.text}
+                            </span>
+                            <span className="mt-0.5 block truncate text-2xs text-fg-subtle">
+                                {[revisionLabel(row.number), time].filter(Boolean).join(" · ")}
+                            </span>
                         </span>
                         {row.merge && (
-                            <span className="shrink-0 text-2xs text-fg-subtle">
+                            <span className="mt-0.5 shrink-0 rounded border border-edge px-1 text-2xs text-fg-subtle">
                                 {t("workspace.shell.versionControl.merge")}
                             </span>
                         )}

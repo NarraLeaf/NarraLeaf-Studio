@@ -39,8 +39,10 @@ function ButtonAppearanceField(props: CustomFieldProps<UIInspectorData>) {
     const { documentService } = props.data;
     const element = props.data.element;
 
+    // Deferred while read-only - see `ContainerAppearanceField` for why this key-filling pass must
+    // not run inside a frozen project.
     useLayoutEffect(() => {
-        if (!isUsableAppearanceModel(appearance)) {
+        if (props.readOnly || !isUsableAppearanceModel(appearance)) {
             return;
         }
         const f = getButtonProps(element);
@@ -50,7 +52,7 @@ function ButtonAppearanceField(props: CustomFieldProps<UIInspectorData>) {
                 appearance: next,
             });
         }
-    }, [appearance, documentService, element]);
+    }, [appearance, documentService, element, props.readOnly]);
 
     return (
         <AppearanceAuthoringPanel
@@ -64,6 +66,7 @@ function ButtonAppearanceField(props: CustomFieldProps<UIInspectorData>) {
             }}
             inspectorData={props.data}
             draftResetKey={element.id}
+            readOnly={props.readOnly}
         />
     );
 }
