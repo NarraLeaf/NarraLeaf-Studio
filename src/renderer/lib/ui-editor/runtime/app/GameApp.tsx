@@ -120,6 +120,7 @@ import type {
     GameAppSaveRecord,
     GameAppStoryRuntimeBridge,
 } from "./GameAppHost";
+import { createUiSoundPlayback } from "./uiSoundPlayback";
 import { useAutoSave } from "./useAutoSave";
 
 // Outer safety net: if the environment never comes up at all, start the surface system anyway
@@ -619,6 +620,17 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrDialogVirtualClickTargetRef.current = target;
     }, []);
 
+    // One registry for the whole app rather than one per surface: a handle captured while a music page
+    // was open has to still stop the track from the settings page the player navigated to.
+    const uiSound = useMemo(() => createUiSoundPlayback({
+        getLiveGame: () => nlrLiveGameRef.current,
+        resolveAssetUrl: host.resolveStoryAssetUrl,
+        getClipRegion: assetId => bundle.audio?.clips?.[assetId],
+        log: host.log,
+    }), [bundle, host.log, host.resolveStoryAssetUrl]);
+
+    useEffect(() => () => uiSound.dispose(), [uiSound]);
+
     const requireActiveLiveGame = useCallback((operation: string): LiveGame => {
         if (!nlrSession?.id || nlrLiveGameSessionIdRef.current !== nlrSession.id || !nlrLiveGameRef.current) {
             throw new Error(`${operation}: game runtime is not available`);
@@ -1096,6 +1108,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             sessionId,
             core,
             bundle,
+            uiSound,
             rendererRegistry,
             lifecycleRef,
             makeStateAccessors,
@@ -1387,6 +1400,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             onSetSentenceSpeed: setSentenceSpeedInGame,
             onGetGamePreference: getGamePreferenceInGame,
             onSetGamePreference: setGamePreferenceInGame,
+            onPlaySound: uiSound.play,
+            onSoundTransport: uiSound.transport,
+            onIsSoundPlaying: uiSound.isPlaying,
             onWidgetPatch: (elementId, patch) => {
                 applyWidgetRuntimePatch({
                     setWidgetPatchesByScope,
@@ -1628,6 +1644,9 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onSetSentenceSpeed: setSentenceSpeedInGame,
                     onGetGamePreference: getGamePreferenceInGame,
                     onSetGamePreference: setGamePreferenceInGame,
+                    onPlaySound: uiSound.play,
+                    onSoundTransport: uiSound.transport,
+                    onIsSoundPlaying: uiSound.isPlaying,
                     onWidgetPatch: (elementId, patch) => {
                         applyWidgetRuntimePatch({
                             setWidgetPatchesByScope,

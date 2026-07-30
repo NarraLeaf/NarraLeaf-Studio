@@ -836,6 +836,16 @@ export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_DELAY = "blueprint.game.setSkipDe
 export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_INTERVAL = "blueprint.game.getSkipInterval" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_INTERVAL = "blueprint.game.setSkipInterval" as const;
 
+// Sound nodes. `Play Sound` is latent and publishes its handle through `execute()`'s
+// `outputValues`, so it is also listed in `resolveSelfOutput` in `graphParamResolvers.ts`.
+export const BLUEPRINT_NODE_TYPE_SOUND_PLAY = "blueprint.sound.play" as const;
+export const BLUEPRINT_NODE_TYPE_SOUND_STOP = "blueprint.sound.stop" as const;
+export const BLUEPRINT_NODE_TYPE_SOUND_PAUSE = "blueprint.sound.pause" as const;
+export const BLUEPRINT_NODE_TYPE_SOUND_RESUME = "blueprint.sound.resume" as const;
+export const BLUEPRINT_NODE_TYPE_SOUND_SET_VOLUME = "blueprint.sound.setVolume" as const;
+export const BLUEPRINT_NODE_TYPE_SOUND_SEEK = "blueprint.sound.seek" as const;
+export const BLUEPRINT_NODE_TYPE_SOUND_IS_PLAYING = "blueprint.sound.isPlaying" as const;
+
 // Localization nodes. Every getter here is latent and publishes its result through
 // `execute()`'s `outputValues`, so each one also has to be listed on the read side,
 // in `resolveSelfOutput` in `graphParamResolvers.ts`.
