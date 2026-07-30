@@ -403,12 +403,14 @@ export function describeBlockSubject(
     resolveAssetName: (assetId: string) => string | null,
     scene?: StoryScene,
     scenes?: Record<StorySceneId, StoryScene>,
+    resolveMotionName?: (animationId: string) => string | null,
 ): string {
     return describeStoryBlock(block, {
         character: characterRowLookup(characters),
         assetName: resolveAssetName,
         scene,
         scenes,
+        motionName: resolveMotionName,
     });
 }
 
