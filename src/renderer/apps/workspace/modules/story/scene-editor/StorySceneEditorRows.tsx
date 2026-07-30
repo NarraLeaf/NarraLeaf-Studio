@@ -204,7 +204,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
         ? {
             // Measured from the ROW, so the line-number gutter counts too — unlike the nesting guides,
             // which live inside the content column and start after it.
-            left: `calc(var(--nl-story-gutter) + var(--nl-story-name,56px) + (var(--nl-story-avatar,28px) / 2) + ${ROW_GAP_PX + row.depth * RAIL_STEP - 1}px)`,
+            left: `calc(var(--nl-story-gutter) + (var(--nl-story-avatar,28px) / 2) + ${row.depth * RAIL_STEP - 1}px)`,
             // A head hands the connector off from under its own plate; a continuation carries it edge
             // to edge, so consecutive lines join into one unbroken drop.
             top: dialogueMember ? 0 : ROW_CONTENT_PAD_PX + STORY_DENSITY_METRICS[props.density].avatar,
@@ -358,15 +358,23 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                 {/* `items-start` with every chrome cell holding the single-line box open: on a wrapped
                     line the plate and the nametag stay level with the FIRST line — which is the line
                     they name — instead of drifting to the middle of the paragraph. */}
-                <div className="flex min-h-[var(--nl-story-row-box)] min-w-0 items-start gap-2">
-                    {/* COLUMN 2 — the nametag, and nothing else, ever. Everything a row can carry that
-                        is not a speaker's name belongs to column 3, which is what makes a container
-                        header land on the same edge as the rows inside it.
-
-                        Right-aligned, so however long or short the name is it ends where column 3
-                        begins; `pr-*` is the whole separation between the two — the rule that used to
-                        stand there was chrome doing a gap's job. */}
-                    <span className="relative flex min-h-[var(--nl-story-row-box)] w-[var(--nl-story-name,56px)] shrink-0 items-center justify-end pr-2" style={textStyle}>
+                <div className="flex min-h-[var(--nl-story-row-box)] min-w-0 items-start gap-2" style={{ paddingLeft: row.depth * RAIL_STEP }}>
+                    {/* The row's content in three fixed cells: plate, nametag, words. Nesting indents
+                        the whole group — the plate is the leading edge of a row's content, and an
+                        outline that indents only the words hides its own structure behind any line
+                        long enough to reach the same x anyway. */}
+                    <span className="flex min-h-[var(--nl-story-row-box)] w-[var(--nl-story-avatar,28px)] shrink-0 items-center" aria-hidden={dialogueMember || hideBadge}>
+                        {expressionMember ? (
+                            <GroupExpressionBead block={block} characters={characters} />
+                        ) : dialogueMember || hideBadge ? null : (
+                            <BlockBadge block={block} characters={characters} appearance={row.appearance} />
+                        )}
+                    </span>
+                    {/* The nametag cell: fixed width, left-aligned, and never anything but a name. It
+                        is the column's WIDTH that holds the words to one x, not the name's own length —
+                        which is what lets the names read as a left-aligned band and the text beside
+                        them still start on a single edge. */}
+                    <span className="relative flex min-h-[var(--nl-story-row-box)] w-[var(--nl-story-name,56px)] shrink-0 items-center" style={textStyle}>
                         {namesSpeaker ? (
                             <CharacterSelectTrigger
                                 characters={characters}
@@ -379,21 +387,6 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                                 column
                             />
                         ) : null}
-                    </span>
-                    {/* COLUMN 3 — everything else, and the ONLY column nesting moves.
-                        The indent used to sit above both columns, so a nested row carried its nametag
-                        right along with its words: at depth 1 the name column stood 20px further in
-                        than at depth 0, which means it was not a column at all. Column 2 is now fixed
-                        for the whole document and depth is a property of the content. */}
-                    <div className="flex min-w-0 flex-1 items-start gap-2" style={{ paddingLeft: row.depth * RAIL_STEP }}>
-                    {/* Column 3 opens with one plate box, the same size and shape on every row that has
-                        one, so the words after it land on a single x whatever the row is. */}
-                    <span className="flex min-h-[var(--nl-story-row-box)] w-[var(--nl-story-avatar,28px)] shrink-0 items-center" aria-hidden={dialogueMember || hideBadge}>
-                        {expressionMember ? (
-                            <GroupExpressionBead block={block} characters={characters} />
-                        ) : dialogueMember || hideBadge ? null : (
-                            <BlockBadge block={block} characters={characters} appearance={row.appearance} />
-                        )}
                     </span>
                     {containerInfo ? (
                         <>
@@ -467,11 +460,9 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                             <RowPlayAction block={block} active={active} onPlay={() => on.onPlayFromRow(block.id)} />
                         ) : null}
                     </div>
-                    </div>
                 </div>
-                {/* The footer and the container's tail "+" belong to column 3 too, so they take the
-                    same offset the row's content does: past the name column, then the depth indent. */}
-                <div style={{ paddingLeft: `calc(var(--nl-story-name,56px) + ${ROW_GAP_PX + row.depth * RAIL_STEP}px)` }}>
+                {/* The footer and the container's tail "+" take the same indent the row's content does. */}
+                <div style={{ paddingLeft: row.depth * RAIL_STEP }}>
                     {containerInfo ? (
                         <ContainerFooter
                             block={block}
@@ -1009,9 +1000,7 @@ function RailGuides({ depth, highlight }: { depth: number; highlight: boolean })
                         "pointer-events-none absolute inset-y-0 w-px",
                         highlight && index === depth - 1 ? "bg-primary/40" : "bg-edge",
                     ].join(" ")}
-                    // Nesting lives in column 3, so its guides start where column 3 does — past the
-                    // fixed name column and the gap after it.
-                    style={{ left: `calc(var(--nl-story-name,56px) + ${ROW_GAP_PX + index * RAIL_STEP + 9}px)` }}
+                    style={{ left: index * RAIL_STEP + 9 }}
                 />
             ))}
         </>
@@ -1598,8 +1587,8 @@ export function InsertRow(props: {
                 <RailGuides depth={props.depth ?? 0} highlight={false} />
                 <div style={{ paddingLeft: (props.depth ?? 0) * RAIL_STEP }}>
                 <div className="flex min-h-[var(--nl-story-row-box)] items-center gap-2">
-                <span className="w-[var(--nl-story-name,56px)] shrink-0 pr-2" aria-hidden />
                 <span className="w-[var(--nl-story-avatar,28px)] shrink-0" aria-hidden />
+                <span className="w-[var(--nl-story-name,56px)] shrink-0" aria-hidden />
                 {/* The ghost hint sits in a wrapper around the textarea rather than the row's own
                     anchor, so it is positioned against the field's box and inherits its exact metrics.
                     `min-w-0 flex-1` moves off the textarea onto the wrapper; the textarea then fills it. */}
@@ -2205,10 +2194,10 @@ function CharacterSelectTrigger(props: {
     /** When the row is selected, drop the accent so the selection highlight owns the nametag colour. */
     suppressColor?: boolean;
     /**
-     * The nametag sits in the row's name column: right-aligned, at the body type size, and with its
-     * trailing padding pulled back out by a negative margin — the hover chip keeps its 4px, but the
-     * last *glyph* lands exactly on the column's edge, which is what makes the name hang against the
-     * words rather than float a few pixels off them.
+     * The nametag sits in the row's name column: left-aligned, at the body type size, and with its
+     * leading padding pulled back out by a negative margin — the hover chip keeps its 4px, but the
+     * first *glyph* lands exactly on the column's edge, so the names read as one left-aligned band
+     * however long or short they are.
      */
     column?: boolean;
 }) {
@@ -2294,16 +2283,16 @@ function CharacterSelectTrigger(props: {
                     type="button"
                     className={[
                         "flex max-w-full items-center truncate rounded-md px-1 py-0.5 text-left hover:bg-fill focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60",
-                        // `-mx-1` pulls the hover chip's padding back out of the layout on BOTH sides, so
-                        // the chip contributes exactly its glyphs to the column and the name's last one
-                        // lands on the column edge. `w-fit` keeps the button off `justify-end`'s stretch.
-                        // Medium weight, because in a column of its own the name is a scanning target:
-                        // running the eye down the cast is the most common thing done to a script.
+                        // `-ml-1` pulls the hover chip's leading padding back out of the layout, so the
+                        // chip contributes exactly its glyphs and the name's FIRST one lands on the
+                        // column edge. Medium weight, because in a column of its own the name is a
+                        // scanning target: running the eye down the cast is the most common thing done
+                        // to a script.
                         // `box-content` is load-bearing next to `w-fit`: under the default border-box,
                         // `width: fit-content` resolves to the GLYPHS' width and the chip's `px-1` then
                         // eats 8px out of it, so the name the column was measured from is the first one
                         // to truncate. Sizing the content box instead puts the padding outside it.
-                        props.column ? "box-content -mx-1 w-fit justify-end font-medium" : "h-full min-h-[28px] text-sm",
+                        props.column ? "box-content -ml-1 w-fit font-medium" : "h-full min-h-[28px] text-sm",
                         unassigned ? "italic text-fg-subtle hover:text-primary" : props.speakerName ? "text-fg-muted" : characterColor ? "" : "text-primary",
                         props.className ?? "",
                     ].join(" ")}
@@ -2333,12 +2322,12 @@ function CharacterSelectTrigger(props: {
                 ref={inputRef}
                 value={draft}
                 // In the column the field needs more room than the column has (a name being typed is
-                // often longer than any name in the cast yet), so it grows LEFTWARDS from the column's
-                // edge, over the badge and the gutter. Anchoring it on the right is what keeps the
-                // caret where the name was: the glyphs do not jump when the picker opens.
+                // often longer than any name in the cast yet), so it grows RIGHTWARDS over the words.
+                // Anchored on the left, where the name's glyphs already start, so they do not jump
+                // when the picker opens.
                 className={[
                     "h-full min-h-[28px] rounded-md border border-primary/50 bg-surface-sunken px-1 py-0.5 text-sm text-fg outline-none",
-                    props.column ? "absolute right-0 top-1/2 z-10 w-[160px] -translate-y-1/2 text-right" : "w-[128px]",
+                    props.column ? "absolute left-0 top-1/2 z-10 w-[160px] -translate-y-1/2" : "w-[128px]",
                     props.className ?? "",
                 ].join(" ")}
                 style={props.style}
