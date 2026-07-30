@@ -190,6 +190,54 @@ export function isVersionSurfaceVisible(state: VersionSurfaceState): boolean {
     return state.kind !== "unavailable";
 }
 
+export interface CommitFormInputs {
+    /** Which of the six surface states this window is in. */
+    state: VersionSurfaceState;
+    /**
+     * Project data is frozen right now, for ANY reason - a revision preview or the palette's manual
+     * freeze. Read from the freeze latch rather than from {@link state}, for the reason
+     * {@link VersionRailPresenceInputs.frozen} gives: a manual freeze leaves the state on `current`.
+     */
+    frozen: boolean;
+    /** A long operation is in flight. */
+    busy: boolean;
+}
+
+/**
+ * Whether the commit form exists at all.
+ *
+ * Frozen means it is not rendered rather than rendered inert, which is the same rule
+ * {@link isVersionSurfaceVisible} follows for an unsupported host and the one `freezeGuard` states:
+ * never offer an action the workspace cannot perform. An inert Commit button on a frozen workspace
+ * is precisely that, and it is why this seam was left empty until now.
+ *
+ * `not-a-repository` is excluded for a different reason - there is already an offer there (Enable),
+ * and two calls to action in one panel is one too many.
+ *
+ * **Deliberately does not consider whether anything has changed.** `VersionSurface.status` is null
+ * until someone looks, and looking is a scan that writes staged state (docs §4.17) - so gating the
+ * form on a change count would mean scanning to decide whether to draw a button. The backend answers
+ * "nothing has changed since the last version" as an error, and for someone who pressed Commit that
+ * IS the answer.
+ */
+export function isCommitFormPresent(inputs: Pick<CommitFormInputs, "state" | "frozen">): boolean {
+    if (inputs.frozen) {
+        return false;
+    }
+    return inputs.state.kind === "current" || inputs.state.kind === "empty";
+}
+
+/**
+ * Whether pressing Commit right now would do anything.
+ *
+ * Presence plus "nothing else is running": a commit settles this window's save debt, stages the whole
+ * project and waits for the backend's stores to reach disk (docs §4.22), so a second one started on
+ * top of the first would be a second full pipeline over the same tree.
+ */
+export function canCommit(inputs: CommitFormInputs): boolean {
+    return isCommitFormPresent(inputs) && !inputs.busy;
+}
+
 /**
  * What to tell the author when the backend is missing.
  *

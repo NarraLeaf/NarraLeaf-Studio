@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
     ChevronsLeft,
     Clock,
@@ -12,10 +12,13 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
+import { TextArea } from "@/lib/components/elements/Input";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
 import {
     VERSION_RAIL_COLLAPSED_WIDTH,
     VERSION_RAIL_EXPANDED_WIDTH,
+    canCommit,
+    isCommitFormPresent,
     isVersionSurfaceVisible,
     revisionLabel,
     shortRevision,
@@ -194,10 +197,7 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
                     <ChangesSection surface={surface} />
                 )}
 
-                {/* The commit form's seam. Deliberately empty rather than a disabled button: an inert
-                    Commit control would be an action the workspace cannot perform, which is the one
-                    thing `freezeGuard`'s rule says never to offer. The form goes here. */}
-                <div data-vcs-seam="commit-form" />
+                <CommitForm surface={surface} />
 
                 {state.kind === "not-a-repository" && <EnableVersionControl surface={surface} />}
 
@@ -382,6 +382,85 @@ function ChangesSection({ surface }: { surface: VersionSurface }) {
 }
 
 /**
+ * How the author records a version - and until this existed, there was no way to do it anywhere in
+ * Studio.
+ *
+ * **Absent rather than disabled** whenever it cannot be pressed for a reason that is not "something
+ * is already running": the rule is in `isCommitFormPresent`, and the reason it is a rule rather than
+ * a condition here is that a frozen workspace showing an inert Commit button is the exact thing
+ * `freezeGuard` says never to offer.
+ *
+ * **The button does not read the change count.** `surface.status` is null until someone scans, and
+ * scanning to decide whether to enable a button would be the implicit scan docs §4.17 forbids. An
+ * empty tree comes back from the backend as an error and lands on the error line below, which for
+ * someone who pressed Commit is the answer to what they asked.
+ *
+ * **An empty message is allowed** - `VcsCommitOptions.message` documents empty as "the default for
+ * the kind", and a revision with no message already renders as itself in `FocusedVersion`. So there
+ * is no validation and nothing to dismiss; the placeholder carries the whole explanation.
+ *
+ * The draft survives a failed commit and is cleared only by one that succeeded, because it is the
+ * only copy of what the author wrote. It does not survive closing the panel - the form unmounts with
+ * it - which is a deliberate boundary rather than an oversight: a draft that outlived the panel would
+ * also outlive a project switch, and reappear over someone else's project.
+ */
+function CommitForm({ surface }: { surface: VersionSurface }) {
+    const { t } = useTranslation();
+    const [message, setMessage] = useState("");
+    const frozen = surface.frozen !== null;
+    const present = isCommitFormPresent({ state: surface.state, frozen });
+    const enabled = canCommit({ state: surface.state, frozen, busy: surface.busy !== null });
+
+    const submit = () => {
+        if (!enabled) {
+            return;
+        }
+        void surface.commit(message).then(recorded => {
+            if (recorded) setMessage("");
+        });
+    };
+
+    if (!present) {
+        return null;
+    }
+
+    return (
+        <div data-vcs-seam="commit-form" className="border-b border-edge px-3 py-2">
+            <TextArea
+                size="sm"
+                rows={2}
+                value={message}
+                onChange={event => setMessage(event.target.value)}
+                // The keyboard way out of a multi-line box, where plain Enter belongs to the text.
+                onKeyDown={event => {
+                    if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+                        event.preventDefault();
+                        submit();
+                    }
+                }}
+                // Only while the message is being consumed. A history read (which goes to the
+                // network on a project with a remote) must not take the box away mid-sentence.
+                disabled={surface.busy === "commit"}
+                placeholder={t("workspace.shell.versionControl.commitPlaceholder")}
+                aria-label={t("workspace.shell.versionControl.commitMessage")}
+                className="text-2xs"
+            />
+            <button
+                type="button"
+                onClick={submit}
+                disabled={!enabled}
+                className="mt-2 flex h-7 w-full items-center justify-center gap-1.5 rounded-md bg-primary px-2 text-2xs text-on-primary transition-opacity cursor-default hover:opacity-90 disabled:opacity-50"
+            >
+                {surface.busy === "commit"
+                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                    : <GitCommitHorizontal className="h-3 w-3" />}
+                {t("workspace.shell.versionControl.commit")}
+            </button>
+        </div>
+    );
+}
+
+/**
  * The offer for a project that is not a repository yet.
  *
  * A button and one line, because enabling is irreversible in the way that matters: it writes `.lore/`
@@ -504,6 +583,8 @@ function busyKey(busy: NonNullable<VersionSurface["busy"]>) {
             return "workspace.shell.versionControl.loadingRevision" as const;
         case "init":
             return "workspace.shell.versionControl.enabling" as const;
+        case "commit":
+            return "workspace.shell.versionControl.committing" as const;
         case "return":
             return "workspace.shell.versionControl.returning" as const;
     }

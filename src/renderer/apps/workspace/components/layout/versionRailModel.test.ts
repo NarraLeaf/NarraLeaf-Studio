@@ -4,11 +4,13 @@ import { RAIL_SELECTOR_WIDTH } from "./dockLayoutModel";
 import {
     VERSION_RAIL_COLLAPSED_WIDTH,
     VERSION_RAIL_EXPANDED_WIDTH,
+    canCommit,
     collapseCheckpoints,
     findRevisionRow,
     flattenFirstParent,
     focusedRevision,
     hiddenCheckpointCount,
+    isCommitFormPresent,
     isVersionSurfaceVisible,
     resolveVersionRailPresence,
     resolveVersionSurfaceState,
@@ -121,6 +123,91 @@ describe("resolveVersionRailPresence", () => {
         for (const stateKey of ["probing", "not-a-repository", "empty", "current", "revision"] as const) {
             expect(resolveVersionRailPresence({ state: states[stateKey], expanded: false, frozen: true }))
                 .toBe("strip");
+        }
+    });
+});
+
+/**
+ * The commit rule, enumerated.
+ *
+ * Every surface state crossed with "project data is frozen" and "something is already running",
+ * because this is the decision a screenshot cannot check: a form that is merely absent looks exactly
+ * like a form that was never written, and the two states that MUST NOT offer it - a frozen workspace
+ * and a project with no repository - are the two an author reaches by accident.
+ *
+ * The lines worth reading twice: `current` + frozen is **no form** (a manual freeze leaves the state
+ * on `current`, and an inert Commit button on a workspace that refuses to save is the one thing
+ * `freezeGuard` forbids), and `empty` + writable **does** offer one - a repository with no revisions
+ * in it is exactly where a first commit belongs.
+ */
+describe("commit availability", () => {
+    const states: Record<string, VersionSurfaceState> = {
+        probing: { kind: "probing" },
+        unavailable: { kind: "unavailable", reason: "unsupported-platform" },
+        "not-a-repository": { kind: "not-a-repository" },
+        empty: { kind: "empty" },
+        current: { kind: "current", head: "aaaa1111", number: 4 },
+        revision: { kind: "revision", revision: "bbbb2222", label: "#3" },
+    };
+
+    // [state, frozen, busy] -> [form present, button pressable]. All 24 combinations, none omitted.
+    const table: [keyof typeof states, boolean, boolean, boolean, boolean][] = [
+        ["probing", false, false, false, false],
+        ["probing", false, true, false, false],
+        ["probing", true, false, false, false],
+        ["probing", true, true, false, false],
+        ["unavailable", false, false, false, false],
+        ["unavailable", false, true, false, false],
+        ["unavailable", true, false, false, false],
+        ["unavailable", true, true, false, false],
+        // Enable is the offer here, and one panel does not get two calls to action.
+        ["not-a-repository", false, false, false, false],
+        ["not-a-repository", false, true, false, false],
+        ["not-a-repository", true, false, false, false],
+        ["not-a-repository", true, true, false, false],
+        ["empty", false, false, true, true],
+        ["empty", false, true, true, false],
+        ["empty", true, false, false, false],
+        ["empty", true, true, false, false],
+        ["current", false, false, true, true],
+        ["current", false, true, true, false],
+        ["current", true, false, false, false],
+        ["current", true, true, false, false],
+        // A revision preview is read-only by construction; the way out is the button above it.
+        ["revision", false, false, false, false],
+        ["revision", false, true, false, false],
+        ["revision", true, false, false, false],
+        ["revision", true, true, false, false],
+    ];
+
+    it.each(table)(
+        "%s / frozen %s / busy %s -> present %s, pressable %s",
+        (stateKey, frozen, busy, present, pressable) => {
+            const state = states[stateKey];
+            expect(isCommitFormPresent({ state, frozen })).toBe(present);
+            expect(canCommit({ state, frozen, busy })).toBe(pressable);
+        },
+    );
+
+    it("never offers a commit while project data is frozen, whatever the state says", () => {
+        // The `freezeGuard` rule, asserted separately from the table because it is the reason this
+        // seam stayed empty until now: never offer an action the workspace cannot perform. A manual
+        // freeze is the case the table alone reads as an accident - it leaves the state on `current`,
+        // which is otherwise the one state where committing is the whole point.
+        for (const stateKey of Object.keys(states)) {
+            expect(isCommitFormPresent({ state: states[stateKey], frozen: true })).toBe(false);
+            expect(canCommit({ state: states[stateKey], frozen: true, busy: false })).toBe(false);
+        }
+    });
+
+    it("never lets the button outlive the form", () => {
+        // Pressable implies present, over the whole table: the only thing that may separate the two
+        // is `busy`. A state that answered otherwise would be a Commit the author could trigger by
+        // keyboard on a panel showing no form.
+        for (const [stateKey, frozen, busy, , pressable] of table) {
+            if (!pressable) continue;
+            expect(isCommitFormPresent({ state: states[stateKey], frozen })).toBe(true);
+            expect(busy).toBe(false);
         }
     });
 });
