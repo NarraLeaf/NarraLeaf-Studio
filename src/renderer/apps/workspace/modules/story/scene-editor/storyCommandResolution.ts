@@ -243,6 +243,17 @@ function resolveAgainstType(
             const name = value.trim();
             return name === "" ? null : { value: { kind: "puppetName", channel: type.channel, name } };
         }
+        case "puppetParam": {
+            // Same rule as `puppetName` one arm above, for the same reason: the ids belong to the model,
+            // so an unknown one is not a resolution failure. What can fail is the character, and the
+            // spec's `validate` reports that on the character's own slot.
+            const characterId = ownerCharacterId(resolved[type.dependsOn]);
+            if (!characterId || !context.puppetCharacterIds.includes(characterId)) {
+                return null;
+            }
+            const id = value.trim();
+            return id === "" ? null : { value: { kind: "puppetParam", id } };
+        }
         case "scene": {
             const found = findByName(context.scenes, value);
             if (found === "ambiguous") {

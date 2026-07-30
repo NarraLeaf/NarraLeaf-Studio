@@ -267,3 +267,65 @@ describe.skipIf(!supported)("durability", () => {
         await expect(readRevisionKind(globals, result.revision)).resolves.toBe("commit");
     }, 180_000);
 });
+
+describe.skipIf(!supported)("showing a past revision", () => {
+    /**
+     * The acceptance oracle for "the workspace can show a past revision", at the layer the renderer
+     * calls: commit, edit, commit again, and read the earlier revision back. The editor must be handed
+     * the OLD text while the file on disk still holds the NEW one.
+     *
+     * Driven through {@link VcsManager} rather than the reader, because the manager is what adds the
+     * two things the renderer depends on: the outside-the-repository guard, and a batch that answers
+     * every document in one pass over the tree.
+     */
+    it("reads the old text out of a revision while the working tree holds the new one", async () => {
+        write(STORY, JSON.stringify({ version: 9, scenes: ["as-it-was"] }));
+        const before = await manager.commit(root, { message: "Before the edit" });
+
+        write(STORY, JSON.stringify({ version: 9, scenes: ["as-it-is-now"] }));
+        const after = await manager.commit(root, { message: "After the edit" });
+
+        const old = await manager.readRevisionDocuments(root, before.revision, { paths: [STORY] });
+        expect(JSON.parse(String(old.get(STORY)))).toEqual({ version: 9, scenes: ["as-it-was"] });
+        // Byte-exact, not merely equivalent: the editors parse these bytes, and a re-encoded document
+        // would round-trip through the author's working tree the moment they left the revision.
+        expect(old.get(STORY)).toEqual(Buffer.from(JSON.stringify({ version: 9, scenes: ["as-it-was"] })));
+
+        // The disk was not consulted and was not touched.
+        expect(JSON.parse(fs.readFileSync(path.join(root, STORY), "utf-8")))
+            .toEqual({ version: 9, scenes: ["as-it-is-now"] });
+        const current = await manager.readRevisionDocuments(root, after.revision, { paths: [STORY] });
+        expect(JSON.parse(String(current.get(STORY)))).toEqual({ version: 9, scenes: ["as-it-is-now"] });
+    }, 240_000);
+
+    it("answers null for a document that did not exist at that revision", async () => {
+        const before = await manager.getHistory(root, 2);
+        const added = "editor/story/stories/added-later/storydoc.json";
+        write(added, JSON.stringify({ version: 9, scenes: [] }));
+        const withIt = await manager.commit(root, { message: "A story added later" });
+
+        // Absent is an answer: the story editor has to land in the same "no such story" state it
+        // renders at project open, not report a broken project.
+        const earlier = await manager.readRevisionDocuments(root, before[0].revision, { paths: [added] });
+        expect(earlier.get(added)).toBeNull();
+
+        const now = await manager.readRevisionDocuments(root, withIt.revision, { paths: [added] });
+        expect(now.get(added)).not.toBeNull();
+    }, 240_000);
+
+    it("answers every document at a revision in one pass, and leaves the assets out of it", async () => {
+        write("assets/content/ab/cd/sprite.png", "PNG-BYTES-NOT-A-DOCUMENT");
+        const revision = await manager.commit(root, { message: "With an asset" });
+
+        const documents = await manager.readRevisionDocuments(root, revision.revision);
+
+        // Nobody named a path, and the project's documents came back anyway - which is what makes
+        // prewarming a revision one round trip instead of one per document service.
+        expect([...documents.keys()]).toContain(CONFIG);
+        expect([...documents.keys()]).toContain(STORY);
+        // Selected by name, so the author's art does not cross IPC base64-encoded to answer
+        // "what did this scene say?".
+        expect([...documents.keys()]).not.toContain("assets/content/ab/cd/sprite.png");
+        expect([...documents.values()].every((bytes) => bytes !== null)).toBe(true);
+    }, 240_000);
+});

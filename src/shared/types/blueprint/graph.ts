@@ -803,6 +803,12 @@ export const BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT = "blueprint.game.getChoi
 export const BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE = "blueprint.game.isNvlMode" as const;
 /** True while a dialog line is on screen and its message is read (seen before, or display finished). */
 export const BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ = "blueprint.game.isTextRead" as const;
+/**
+ * Has *this* line ever been read, by text id. The sibling above asks about the
+ * line currently on screen; this one answers for any line, which is what a voice
+ * EXTRA screen needs - the read set is keyed by the same id the voice table uses.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ_BY_ID = "blueprint.game.isTextReadById" as const;
 /** Wipe the persisted text-read record (all stories); works with or without a running game. */
 export const BLUEPRINT_NODE_TYPE_GAME_CLEAR_TEXT_READ = "blueprint.game.clearTextRead" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_CHOOSE = "blueprint.game.choose" as const;
@@ -812,6 +818,19 @@ export const BLUEPRINT_NODE_TYPE_GAME_SHOW_DIALOG = "blueprint.game.showDialog" 
 export const BLUEPRINT_NODE_TYPE_GAME_HIDE_DIALOG = "blueprint.game.hideDialog" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_TOGGLE_DIALOG_DISPLAY = "blueprint.game.toggleDialogDisplay" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED = "blueprint.game.setSentenceSpeed" as const;
+
+/**
+ * Sound transport for authored UI. Not story audio - a story line's `/bgm` is a
+ * story action; these are for what a *screen* plays: a music-appreciation page,
+ * a voice EXTRA list, a button click.
+ */
+export const BLUEPRINT_NODE_TYPE_SOUND_PLAY = "blueprint.sound.play" as const;
+export const BLUEPRINT_NODE_TYPE_SOUND_STOP = "blueprint.sound.stop" as const;
+export const BLUEPRINT_NODE_TYPE_SOUND_PAUSE = "blueprint.sound.pause" as const;
+export const BLUEPRINT_NODE_TYPE_SOUND_RESUME = "blueprint.sound.resume" as const;
+export const BLUEPRINT_NODE_TYPE_SOUND_SET_VOLUME = "blueprint.sound.setVolume" as const;
+export const BLUEPRINT_NODE_TYPE_SOUND_SEEK = "blueprint.sound.seek" as const;
+export const BLUEPRINT_NODE_TYPE_SOUND_IS_PLAYING = "blueprint.sound.isPlaying" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD = "blueprint.game.getAutoForward" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SET_AUTO_FORWARD = "blueprint.game.setAutoForward" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED = "blueprint.game.getSkip" as const;
@@ -835,16 +854,6 @@ export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY = "blueprint.game.getSkipDe
 export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_DELAY = "blueprint.game.setSkipDelay" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_INTERVAL = "blueprint.game.getSkipInterval" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_INTERVAL = "blueprint.game.setSkipInterval" as const;
-
-// Sound nodes. `Play Sound` is latent and publishes its handle through `execute()`'s
-// `outputValues`, so it is also listed in `resolveSelfOutput` in `graphParamResolvers.ts`.
-export const BLUEPRINT_NODE_TYPE_SOUND_PLAY = "blueprint.sound.play" as const;
-export const BLUEPRINT_NODE_TYPE_SOUND_STOP = "blueprint.sound.stop" as const;
-export const BLUEPRINT_NODE_TYPE_SOUND_PAUSE = "blueprint.sound.pause" as const;
-export const BLUEPRINT_NODE_TYPE_SOUND_RESUME = "blueprint.sound.resume" as const;
-export const BLUEPRINT_NODE_TYPE_SOUND_SET_VOLUME = "blueprint.sound.setVolume" as const;
-export const BLUEPRINT_NODE_TYPE_SOUND_SEEK = "blueprint.sound.seek" as const;
-export const BLUEPRINT_NODE_TYPE_SOUND_IS_PLAYING = "blueprint.sound.isPlaying" as const;
 
 // Localization nodes. Every getter here is latent and publishes its result through
 // `execute()`'s `outputValues`, so each one also has to be listed on the read side,

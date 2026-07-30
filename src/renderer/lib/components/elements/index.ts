@@ -38,7 +38,8 @@ export {
     ModalHeader,
     ModalBody,
     ModalFooter,
-    dialogFooterButtonClass
+    dialogFooterButtonClass,
+    useEscapeToClose
 } from "./Modal";
 export type { ModalProps } from "./Modal";
 

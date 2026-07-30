@@ -72,6 +72,8 @@ function describeType(type: StoryCommandParamType, t: ManualTranslate): string {
             return t("story.manual.type.characterForm");
         case "puppetName":
             return t(`story.manual.type.puppet.${type.channel}` as TranslationKey);
+        case "puppetParam":
+            return t("story.manual.type.puppet.param");
         case "scene":
             return t("story.manual.type.scene");
         case "label":

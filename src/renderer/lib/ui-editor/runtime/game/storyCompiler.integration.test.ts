@@ -2488,6 +2488,52 @@ describe("puppet characters", () => {
         expect(one("motion", "puppet:setMotion")?.callee).toBe(compiled.sceneElements?.["scene-1"]?.puppets.get("char-doll"));
     });
 
+    /**
+     * A parameter row is a map, and `Puppet.setParam` merges - so the row becomes one call per entry.
+     * That is what makes "turn the head" (three parameters) one row instead of three.
+     */
+    it("compiles a parameter row into one setParam per entry", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                ...characterBlock("enter"),
+                params: {
+                    id: "params",
+                    kind: "action",
+                    parentId: null,
+                    childrenIds: [],
+                    payload: {
+                        action: "character",
+                        operation: "setParams",
+                        characterId: "char-doll",
+                        // A blank id and a non-finite value are both dropped rather than forwarded: the
+                        // engine would take them as real requests against ids no model has.
+                        params: { ParamAngleX: 12, ParamAngleY: -7.5, "": 1, ParamBad: Number.NaN },
+                    },
+                },
+                empty: {
+                    id: "empty",
+                    kind: "action",
+                    parentId: null,
+                    childrenIds: [],
+                    payload: { action: "character", operation: "setParams", characterId: "char-doll", params: {} },
+                },
+            }, ["row", "params", "empty"]),
+            sceneId: "scene-1",
+            characters: [PUPPET],
+            resolveAssetUrl: async assetId => `nlr://bundle/${assetId}/model.json`,
+        });
+
+        const setParams = compiled.actionIdBindings
+            .filter(binding => binding.blockId === "params")
+            .flatMap(binding => collectActionTree(binding.action, compiled.story))
+            .filter(action => action?.type === "puppet:setParam");
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(setParams.map(action => action?.contentNode?.getContent?.())).toEqual([["ParamAngleX", 12], ["ParamAngleY", -7.5]]);
+        // A row asking for nothing compiles to nothing, rather than to a statement the timeline draws.
+        expect(compiled.actionIdBindings.filter(binding => binding.blockId === "empty")).toEqual([]);
+    });
+
     it("refuses a state channel on a character Studio draws itself", async () => {
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument({

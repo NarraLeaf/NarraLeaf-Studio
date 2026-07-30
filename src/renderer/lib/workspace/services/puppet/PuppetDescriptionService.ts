@@ -198,6 +198,29 @@ export class PuppetDescriptionService
         return null;
     }
 
+    /**
+     * The same synchronous look, addressed by character.
+     *
+     * What the story editor reads: it holds characters, and rebuilding a request out of an appearance
+     * at every call site would put the same four-field mapping in a third place. A character that is
+     * not a puppet, or one whose model has not been asked yet, answers null - which is the caller's
+     * cue to call {@link describeCharacter} and re-render on {@link onDescriptionChanged}.
+     */
+    public peekCharacter(characterId: string): PuppetDescription | null {
+        const characters = this.getContext().services.get<CharacterService>(Services.Character);
+        const puppet = characters.getCharacter(characterId)?.profile.appearance.getPuppet();
+        if (!puppet?.assetId || !puppet.backend) {
+            return null;
+        }
+        return this.peek({
+            assetId: puppet.assetId,
+            backend: puppet.backend,
+            entry: puppet.entry,
+            options: puppet.options,
+            size: puppet.size,
+        });
+    }
+
     /** Forget a description, in memory and on disk. Without a request, forgets everything in memory. */
     public async invalidate(request?: PuppetDescriptionRequest): Promise<void> {
         this.memory.clear();
