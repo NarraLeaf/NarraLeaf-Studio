@@ -1,4 +1,4 @@
-import { normalizeProjectPath } from "@shared/utils/recentProject";
+import path from "path";
 import type {
     VcsAvailability,
     VcsBlobRequest,
@@ -142,6 +142,42 @@ function isNothingToCommit(error: unknown): boolean {
     return error instanceof Error && error.name === "NothingToCommitError";
 }
 
+/**
+ * The one spelling of a project path this manager keys on.
+ *
+ * **Two spellings of one directory used to be two projects here**, and the consequence was not a
+ * duplicated cache - it was a process deadlocking against itself. The session map and the operation
+ * queue were keyed on the caller's string with only trailing separators removed, so
+ * `D:/projects/demo` and `D:\projects\demo` produced two entries; the second opened a SECOND store
+ * on the same repository, and Lore's repository lock is exclusive and BLOCKING (§4.12). The second
+ * open never returns, nothing reports an error, the process sits at zero CPU, and every later call
+ * on that project queues behind it forever. Measured in a running Studio: the panel stayed on
+ * "Submitting this version" while an unqueued call answered in 0ms.
+ *
+ * The two spellings are not hypothetical. Window-close paths take the path from the window's props
+ * while the renderer sends the one out of the project config, and nothing has ever required those
+ * to agree on a separator.
+ *
+ * `path.resolve` unifies separators and makes the path absolute, which the backend requires anyway
+ * (§4.4 - relative paths resolve against the process working directory, which is never the
+ * project). Case is folded on Windows only, where the filesystem is case-insensitive and
+ * `D:\Demo` and `D:\demo` are one directory holding one lock.
+ */
+function projectKey(projectPath: string): string {
+    const resolved = path.resolve(projectPath);
+    return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
+/**
+ * How long a store may take to open before the log says something.
+ *
+ * Not a timeout: waiting is the CORRECT behaviour when another process holds the repository, and
+ * the wait ends the moment that process lets go (measured at 16 seconds in one case, §4.12).
+ * Failing instead would turn a recoverable wait into a refusal. But a wait with nothing said is how
+ * this presents to an author - a spinner that never stops - so the wait announces itself.
+ */
+const SLOW_STORE_OPEN_MS = 5_000;
+
 export class VcsManager extends Manager {
     private readonly sessions = new Map<string, VcsSession>();
     /** Serializes work per project so two callers cannot interleave on one store. */
@@ -167,7 +203,7 @@ export class VcsManager extends Manager {
      * Mirrors the operations-map pattern the other per-project managers use.
      */
     private async serialize<T>(projectPath: string, task: () => Promise<T>): Promise<T> {
-        const key = normalizeProjectPath(projectPath);
+        const key = projectKey(projectPath);
         const previous = this.operations.get(key) ?? Promise.resolve();
         const tracked = previous.catch(() => undefined).then(task);
         // Keep the chain alive on failure; an error must not wedge the project.
@@ -179,6 +215,32 @@ export class VcsManager extends Manager {
             }
         });
         return tracked;
+    }
+
+    /**
+     * Open a store, and say so in the log if it is taking long enough to be a lock wait.
+     *
+     * See {@link SLOW_STORE_OPEN_MS} for why this warns rather than gives up. The message names the
+     * only thing that can cause it - something else holding the repository - because an author whose
+     * `lore` CLI is open in a terminal has an action available and no other way to learn of it.
+     */
+    private async openStoreAnnouncingDelay(
+        backend: VcsBackend,
+        globals: LoreGlobals,
+        root: string,
+    ): Promise<StoreHandle> {
+        const slow = setTimeout(() => {
+            this.app.logger.warn(
+                "[Vcs] Still waiting to open", root,
+                "- another process is holding this repository. Lore's lock is exclusive and blocks"
+                + " rather than failing, so this call resumes as soon as that process lets go.",
+            );
+        }, SLOW_STORE_OPEN_MS);
+        try {
+            return await backend.openStore(globals, root);
+        } finally {
+            clearTimeout(slow);
+        }
     }
 
     private globalsFor(root: string): LoreGlobals {
@@ -217,13 +279,15 @@ export class VcsManager extends Manager {
 
     private async sessionFor(projectPath: string): Promise<{ session: VcsSession; backend: VcsBackend }> {
         const backend = await requireVcsBackend();
-        const key = normalizeProjectPath(projectPath);
+        const key = projectKey(projectPath);
         const existing = this.sessions.get(key);
         if (existing) return { session: existing, backend };
 
-        const root = key;
+        // The resolved path rather than the key: the key is case-folded for lookup and this is what
+        // is handed to the backend and used to build absolute paths off.
+        const root = path.resolve(projectPath);
         const globals = this.globalsFor(root);
-        const store = await backend.openStore(globals, root);
+        const store = await this.openStoreAnnouncingDelay(backend, globals, root);
 
         let repositoryId: LoreHex;
         try {
@@ -287,7 +351,7 @@ export class VcsManager extends Manager {
     ): Promise<VcsRepositoryInfo> {
         return this.serialize(projectPath, async () => {
             const backend = await requireVcsBackend();
-            const root = normalizeProjectPath(projectPath);
+            const root = path.resolve(projectPath);
             const globals = this.globalsFor(root);
             // Decided before the attempt, because the cleanup below must not run when
             // the answer is "it was already one": that path can have a LIVE SESSION on
@@ -883,7 +947,7 @@ export class VcsManager extends Manager {
      * this call must open a fresh session rather than join one that is on its way out.
      */
     public async closeProject(projectPath: string): Promise<void> {
-        const key = normalizeProjectPath(projectPath);
+        const key = projectKey(projectPath);
         const session = this.sessions.get(key);
         if (!session) return;
         this.sessions.delete(key);
