@@ -57,13 +57,14 @@ export type FreezeGuard = {
      */
     writes(ownDisabled?: boolean, ownTitle?: string): FrozenControlProps;
     /**
-     * The `disabled` field for a menu row that writes project data.
+     * The render fields for a menu row that writes project data.
      *
-     * `disabled` alone, with no reason: `ContextMenuItemDef` has no tooltip, and appending an
-     * explanation to every greyed label would turn a menu into a paragraph. The row still renders,
-     * so the author can see the action exists - which is the same bargain the top bar's menus make.
+     * The row still renders, so the author can see the action exists - the same bargain the top bar's
+     * menus make - and `tooltip` says why it is off. That field only exists because this pass added it
+     * to `ContextMenuItemDef`; before it, a greyed row carried no reason at all, and the explanation
+     * could not go in the label without turning a disabled menu into a paragraph.
      */
-    menuRow(ownDisabled?: boolean): { disabled: boolean };
+    menuRow(ownDisabled?: boolean): { disabled: boolean; tooltip: string | undefined };
     /**
      * A drag/pointer handler, or `undefined` while frozen - so the gesture is never half-attached.
      *
@@ -101,7 +102,9 @@ export function makeFreezeGuard(frozen: boolean, reason: string): FreezeGuard {
             };
         },
         menuRow(ownDisabled = false) {
-            return { disabled: ownDisabled || frozen };
+            // Same rule as `writes`: a row that was already disabled owns its reason, so the freeze
+            // does not claim to be it.
+            return { disabled: ownDisabled || frozen, tooltip: !ownDisabled && frozen ? reason : undefined };
         },
         gesture(handler) {
             return frozen ? undefined : handler;
@@ -110,6 +113,23 @@ export function makeFreezeGuard(frozen: boolean, reason: string): FreezeGuard {
             return (...args) => (frozen ? undefined : handler(...args));
         },
     };
+}
+
+/**
+ * Whether a write that **no author gesture asked for** may run right now.
+ *
+ * The third shape, alongside {@link FreezeGuard.writes} and {@link FreezeGuard.gesture}, and the one
+ * this module's rule cannot reach: an idempotent bake that runs when a panel opens has no control to
+ * grey out and no gesture to leave unattached. Measured before this existed - opening the character
+ * panel on a frozen workspace raised "Nothing is being saved right now" about a write the author never
+ * asked for, which is the freeze complaining about its own bookkeeping.
+ *
+ * A freeze **defers** these rather than refusing them, and the callers make `frozen` an input of the
+ * effect that triggers them, so the work happens as soon as the workspace is writable again. That is
+ * only sound because every such write is fingerprint-driven: whatever was out of date still is.
+ */
+export function isDeferredWriteAllowed(frozen: boolean): boolean {
+    return !frozen;
 }
 
 /**
@@ -131,6 +151,8 @@ export function freezeContextMenuRows(
     items: ContextMenuDef,
     frozen: boolean,
     readOnlyIds: ReadonlySet<string>,
+    /** Hover text for the rows this switches off. The caller passes {@link FreezeGuard.reason}. */
+    reason?: string,
 ): ContextMenuDef {
     if (!frozen) {
         return items;
@@ -140,12 +162,17 @@ export function freezeContextMenuRows(
             return item;
         }
         if ("submenu" in item && item.submenu) {
-            return { ...item, submenu: freezeContextMenuRows(item.submenu, true, readOnlyIds) as typeof item.submenu };
+            return {
+                ...item,
+                submenu: freezeContextMenuRows(item.submenu, true, readOnlyIds, reason) as typeof item.submenu,
+            };
         }
         if (readOnlyIds.has(item.id)) {
             return item;
         }
-        return { ...item, disabled: true };
+        // The row's own tooltip wins if it has one: it describes the action, which is still what the
+        // author is looking at.
+        return { ...item, disabled: true, tooltip: item.tooltip ?? reason };
     });
 }
 

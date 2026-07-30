@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
-import { freezeContextMenuRows, makeFreezeGuard } from "./freezeGuard";
+import { freezeContextMenuRows, isDeferredWriteAllowed, makeFreezeGuard } from "./freezeGuard";
 
 /**
  * The frozen editors' read-only affordance, asserted on the decision rather than on rendered React.
@@ -13,6 +13,16 @@ import { freezeContextMenuRows, makeFreezeGuard } from "./freezeGuard";
  */
 
 const REASON = "Not available while the project is frozen — unfreeze it to use this again.";
+
+describe("isDeferredWriteAllowed", () => {
+    it("lets an unprompted bake run on a writable workspace", () => {
+        expect(isDeferredWriteAllowed(false)).toBe(true);
+    });
+
+    it("defers it while frozen, so opening a panel writes nothing", () => {
+        expect(isDeferredWriteAllowed(true)).toBe(false);
+    });
+});
 
 describe("makeFreezeGuard - writes()", () => {
     it("leaves a control alone while the workspace is writable", () => {
@@ -52,13 +62,14 @@ describe("makeFreezeGuard - writes()", () => {
 });
 
 describe("makeFreezeGuard - menuRow()", () => {
-    it("carries no reason, because a context-menu row has nowhere to put one", () => {
-        expect(makeFreezeGuard(true, REASON).menuRow()).toEqual({ disabled: true });
-        expect(makeFreezeGuard(false, REASON).menuRow()).toEqual({ disabled: false });
+    it("puts the reason on the row, now that `ContextMenuItemDef` has somewhere to put one", () => {
+        expect(makeFreezeGuard(true, REASON).menuRow()).toEqual({ disabled: true, tooltip: REASON });
+        expect(makeFreezeGuard(false, REASON).menuRow()).toEqual({ disabled: false, tooltip: undefined });
     });
 
-    it("keeps a row that was already disabled disabled", () => {
-        expect(makeFreezeGuard(false, REASON).menuRow(true)).toEqual({ disabled: true });
+    it("keeps a row that was already disabled disabled, and does not blame the freeze for it", () => {
+        expect(makeFreezeGuard(false, REASON).menuRow(true)).toEqual({ disabled: true, tooltip: undefined });
+        expect(makeFreezeGuard(true, REASON).menuRow(true)).toEqual({ disabled: true, tooltip: undefined });
     });
 });
 
@@ -124,6 +135,28 @@ describe("freezeContextMenuRows", () => {
         const items = canvasMenu();
         freezeContextMenuRows(items, true, READ_ONLY);
         expect((items[0] as { disabled?: boolean }).disabled).toBeUndefined();
+    });
+
+    it("puts the reason on the rows it switches off, and only on those", () => {
+        const frozen = freezeContextMenuRows(canvasMenu(), true, READ_ONLY, REASON);
+        const tooltipById = new Map(
+            frozen
+                .filter(item => !("separator" in item && item.separator))
+                .map(item => [item.id, (item as { tooltip?: string }).tooltip]),
+        );
+        expect(tooltipById.get("paste")).toBe(REASON);
+        expect(tooltipById.get("delete")).toBe(REASON);
+        expect(tooltipById.get("copy")).toBeUndefined();
+        // A submenu parent stays live, so it gets no reason - its leaves do.
+        expect(tooltipById.get("insert")).toBeUndefined();
+        const insert = frozen.find(item => item.id === "insert") as { submenu: ContextMenuDef };
+        expect((insert.submenu[0] as { tooltip?: string }).tooltip).toBe(REASON);
+    });
+
+    it("keeps a row's own tooltip, which describes the action the author is looking at", () => {
+        const items: ContextMenuDef = [{ id: "delete", label: "Delete", tooltip: "Removes the element", onClick: () => {} }];
+        const frozen = freezeContextMenuRows(items, true, READ_ONLY, REASON);
+        expect((frozen[0] as { tooltip?: string }).tooltip).toBe("Removes the element");
     });
 });
 
