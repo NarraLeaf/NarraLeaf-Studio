@@ -444,6 +444,11 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.uiTemplateFetchBundle, { templateId }),
     },
 
+    puppetRuntimes: {
+        installSdk: (runtimeId: string, projectPath: string, archivePath: string) =>
+            ipcClient.invoke(IPCEventType.puppetRuntimeInstallSdk, { runtimeId, projectPath, archivePath }),
+    },
+
     privileged: privilegedBootstrapBridge,
 };
 

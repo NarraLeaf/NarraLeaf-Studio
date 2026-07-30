@@ -30,6 +30,7 @@ import type {
     WorkspacePluginDescriptor,
 } from "./plugins";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
+import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult } from "./uiTemplateRegistry";
 import type {
     PrivilegedActor,
@@ -421,6 +422,26 @@ export interface RendererPreloadedInterface {
     uiTemplates: {
         registryFetch(): Promise<RequestStatus<UITemplateFetchResult>>;
         fetchBundle(templateId: string): Promise<RequestStatus<UITemplateBundle>>;
+    };
+
+    /**
+     * Author-supplied 2D model runtimes. Studio-internal and deliberately *not* on the plugin facade:
+     * this writes a megabyte of generated code into the project, and a plugin has no business asking
+     * for that.
+     */
+    puppetRuntimes: {
+        /**
+         * Compile a named runtime from the SDK archive at `archivePath` into the project.
+         *
+         * Only for runtimes whose registry entry offers `sdk-zip`; the host refuses the rest. There is
+         * no matching verb for a prebuilt adapter — that is a directory copy plus a trial load, both of
+         * which the renderer can already do (see `installPrebuiltPuppetRuntime`).
+         */
+        installSdk(
+            runtimeId: string,
+            projectPath: string,
+            archivePath: string,
+        ): Promise<RequestStatus<PuppetRuntimeInstallResult>>;
     };
 
     privileged: RendererPrivilegedBootstrapInterface;

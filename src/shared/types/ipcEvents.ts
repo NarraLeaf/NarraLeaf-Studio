@@ -20,6 +20,7 @@ import type {
     WorkspacePluginDescriptor,
 } from "./plugins";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
+import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult } from "./uiTemplateRegistry";
 import type { LocaleContribution } from "@shared/i18n";
 import type {
@@ -196,6 +197,8 @@ export enum IPCEventType {
 
     uiTemplateRegistryFetch = "uiTemplate.registryFetch",
     uiTemplateFetchBundle = "uiTemplate.fetchBundle",
+
+    puppetRuntimeInstallSdk = "puppetRuntime.installSdk",
 
     privilegedFsCall = "privileged.fs.call",
     privilegedPermissionRequest = "privileged.permission.request",
@@ -1573,6 +1576,26 @@ export type IPCPluginManagerEvents = {
             pluginId: string;
         },
         response: PluginInstallResult;
+    };
+    /**
+     * Build a named puppet runtime out of an SDK archive the author supplied, into their project.
+     *
+     * In the host because it needs a bundler; see `managers/puppet/live2dRuntimeBuild.ts` for why the
+     * adapter cannot simply be shipped. The renderer names the *runtime*, never the destination — the
+     * host derives that from the project path, which it authorizes against the window's own file-system
+     * grant, so a renderer cannot aim a megabyte of generated code anywhere it likes.
+     */
+    [IPCEventType.puppetRuntimeInstallSdk]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            /** A `KnownPuppetRuntimeId`; validated against the registry rather than trusted. */
+            runtimeId: string;
+            projectPath: string;
+            /** The archive the author picked in a file dialog. Read, never written. */
+            archivePath: string;
+        },
+        response: PuppetRuntimeInstallResult;
     };
 };
 

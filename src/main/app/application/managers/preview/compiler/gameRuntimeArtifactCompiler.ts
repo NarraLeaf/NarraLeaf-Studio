@@ -41,6 +41,7 @@ import {
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 import { getMimeType } from "@shared/utils/fs";
 import { detectModelBundleEntry, normalizeBundlePath, sortBundlePaths } from "@shared/utils/modelBundle";
+import { PUPPET_RUNTIMES_PROJECT_DIR, PUPPET_RUNTIME_ENTRY_FILE } from "@shared/utils/puppetRuntimes";
 import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
 import { sanitizeProjectFileName } from "@shared/utils/nlproj";
 import { WEB_APPLE_TOUCH_FILENAME, WEB_FAVICON_FILENAME, writeWebShellFiles } from "./webShell";
@@ -68,10 +69,12 @@ const OPTIONAL_RUNTIME_FILES = ["main.js.map", "preload.js.map", "renderer.js.ma
 const RUNTIME_BUILD_MANIFEST_FILENAME = "build-manifest.json";
 /** Where sidecar payload lands inside the app dir; mirrored by buildAsarUnpackPatterns. */
 const SIDECAR_DIR_NAME = "sidecars";
-/** Author-installed puppet backends: read from here in the project, written here in the pack. */
-const PUPPET_RUNTIMES_PROJECT_DIR = ["runtimes", "puppet"] as const;
+/**
+ * Author-installed puppet backends: read from the project's own directory, written under this name in
+ * the pack. The project-side layout is shared with the editor and the installer, so it is imported
+ * rather than repeated — three copies of it was how the editor could list a backend the pack skipped.
+ */
 const PUPPET_RUNTIMES_PACK_DIR = "puppet";
-const PUPPET_RUNTIME_ENTRY_FILE = "index.js";
 /**
  * Marks an `include` entry as an artifact of a declared build dependency rather
  * than a file inside the plugin package. Kept in step with the manifest

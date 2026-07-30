@@ -18,14 +18,13 @@
 import { createHash } from "crypto";
 import fs from "fs/promises";
 import path from "path";
+import { PUPPET_RUNTIME_ENTRY_FILE } from "@shared/utils/puppetRuntimes";
 import { inspectLive2DSdkArchive, readArchiveEntry, type Live2DSdkArchive } from "./live2dSdkArchive";
 
 export type PuppetRuntimeBuildLog = (level: "info" | "warning" | "error", message: string) => void;
 
 const CACHE_DIR_NAME = "cache";
 const CACHE_BUCKET_NAME = "puppet-runtimes";
-/** The file a backend directory is loaded through, host-side and pack-side alike. */
-export const PUPPET_RUNTIME_ENTRY_FILE = "index.js";
 const LICENSE_DIR_NAME = "licenses";
 
 export type Live2DRuntimeBuildRequest = {
