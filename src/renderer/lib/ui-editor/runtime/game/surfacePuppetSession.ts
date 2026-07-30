@@ -275,13 +275,18 @@ export class SurfacePuppetMount {
             }
             this.publish({ status: "ready", error: null, reason: null });
         }).catch((error: unknown) => {
-            if (attempt.cancelled) {
-                return;
-            }
-            // `apply()` or `ready()` can be what threw, and in that case the backend is up and owns a
-            // WebGL context. Dropping the surface without disposing it would leak that context for the
-            // lifetime of the window - and the browser's ~16-context ceiling is exactly the budget the
-            // widget has to live inside.
+            // Cleanup comes before the cancelled check, not after it. `apply()` or `ready()` can be
+            // what threw, and in that case the backend is up and owns a WebGL context. Dropping the
+            // surface without disposing it would leak that context for the lifetime of the window -
+            // and the browser's ~16-context ceiling is exactly the budget the widget has to live
+            // inside.
+            //
+            // A cancelled attempt has to run this too. It is the arm that rejects *without* ever
+            // having a session - the author renamed the backend, or changed the model, while
+            // `open()` was in flight and then `open()` failed - and returning early left its surface
+            // attached to the box forever, one more orphan per edit, each of them a node the next
+            // attempt stacks on top of. `teardown()` cannot do it instead: it skips the removal
+            // precisely because an attempt that is still mid-mount owns the node.
             const mounted = attempt.session;
             attempt.session = null;
             try {
@@ -290,6 +295,9 @@ export class SurfacePuppetMount {
                 // Already being abandoned; the surface goes either way.
             }
             surface.remove();
+            if (attempt.cancelled) {
+                return;
+            }
             if (error instanceof SurfacePuppetUnavailableError) {
                 this.publishUnavailable(error.reason);
                 return;
@@ -353,15 +361,20 @@ export class SurfacePuppetMount {
             return;
         }
         attempt.cancelled = true;
+        const mounted = attempt.session;
+        // Claimed before disposing, so the attempt's own arms cannot dispose it a second time when
+        // they notice they were cancelled.
+        attempt.session = null;
         try {
-            attempt.session?.dispose();
+            mounted?.dispose();
         } catch (error) {
             this.options.onWarn?.(messageOf(error));
         }
-        // Only when the session is already up: an in-flight attempt still owns this node, and pulling
+        // Only when the session was already up: an in-flight attempt still owns this node, and pulling
         // it out from under a backend that is mid-mount is how a half-built WebGL canvas ends up
-        // detached and leaked. That attempt removes it itself once it notices it was cancelled.
-        if (attempt.session) {
+        // detached and leaked. That attempt removes it itself once it notices it was cancelled -
+        // which both of its arms now do, including the rejecting one.
+        if (mounted) {
             attempt.surface.remove();
         }
     }
