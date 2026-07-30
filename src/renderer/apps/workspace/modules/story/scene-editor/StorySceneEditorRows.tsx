@@ -990,17 +990,23 @@ const ROW_GAP_PX = 8;
 const ROW_CONTENT_PAD_PX = 4;
 
 /**
- * One nesting level's indent: a child starts its plate exactly where its parent's WORDS start.
+ * One nesting level's indent: the plate box plus the gap after it, so a child's plate lands where its
+ * parent's NAME column starts.
  *
- * It used to be a flat 20px, which put a child's plate to the left of the text of the row containing
- * it — the block read as a list of rows that happened to be nudged, not as one thing inside another.
- * Stepping by the full content offset instead means every level lines up on a column the eye already
- * knows: at depth 1 the plate sits on depth 0's text edge, at depth 2 on depth 1's, and so on.
+ * Two other steps were tried. A flat 20px put a child's plate to the LEFT of the text of the row
+ * containing it, so a block read as rows that had been nudged rather than as one thing inside another.
+ * The full content offset (plate + name + both gaps) put the child's plate on its parent's text edge —
+ * which sounds right and reads badly: an action row already carries a speaker column it can never
+ * fill, so at depth 1 that void stacked on top of the indent and a nested action's words began ~250px
+ * in, with the pair of empty bands compounding at every further level.
  *
- * A calc rather than a number because two of its three terms are per-scene lengths (the plate box
- * follows the density, the name column follows the cast).
+ * This step is a third of that. It cannot line a child's plate up with a column the eye already knows
+ * — nothing sits at the parent's name edge on a row with no speaker — but it keeps a block's rows near
+ * the reading column the rest of the document uses, which is what a script is mostly made of.
+ *
+ * A calc rather than a number because the plate box follows the reading density.
  */
-const ROW_INDENT_STEP = `(var(--nl-story-avatar,28px) + var(--nl-story-name,56px) + ${2 * ROW_GAP_PX}px)`;
+const ROW_INDENT_STEP = `(var(--nl-story-avatar,28px) + ${ROW_GAP_PX}px)`;
 
 /** The indent for content `levels` deep, as a CSS length. */
 function rowIndent(levels: number): string {
