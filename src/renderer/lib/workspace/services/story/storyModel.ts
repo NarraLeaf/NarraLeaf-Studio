@@ -7,6 +7,7 @@ import {
     STORY_LIBRARY_INDEX_SCHEMA_VERSION,
     StoryAnimationAsset,
     StoryAnimationAssetId,
+    StoryAnimationConfig,
     StoryAnimationIndex,
     StoryAnimationIndexEntry,
     StoryAnimationKeyframe,
@@ -109,6 +110,8 @@ export function createStoryAnimationAsset(input: {
     targetKind: StoryAnimationAsset["targetKind"];
     timeline?: StoryAnimationTimeline;
     sequences?: StoryAnimationSequence[];
+    /** Seeded by the preset library — a looping idle motion is its repeat count, not just its keyframes. */
+    config?: StoryAnimationConfig;
     now: string;
 }): StoryAnimationAsset {
     assertValidStoryEntityId(input.id, "Story animation id");
@@ -120,7 +123,7 @@ export function createStoryAnimationAsset(input: {
         targetKind: input.targetKind,
         timeline: normalizeAnimationTimeline(input.timeline, sequences, input.id),
         sequences,
-        config: {},
+        config: input.config ?? {},
         meta: {
             createdAt: input.now,
             updatedAt: input.now,
@@ -1074,8 +1077,15 @@ function normalizeOptionalPositiveNumber(value: unknown): number | undefined {
     return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
+/**
+ * Unknown kinds fall back to `image`, which is also what a Studio older than the camera-motion
+ * change does when it reads a `camera` asset — so this list is the one place a new motion target
+ * kind has to be registered, and forgetting it silently reassigns the asset rather than failing.
+ */
 function normalizeAnimationTargetKind(value: unknown): StoryAnimationIndexEntry["targetKind"] {
-    return value === "image" || value === "text" || value === "layer" || value === "character" ? value : "image";
+    return value === "image" || value === "text" || value === "layer" || value === "character" || value === "camera"
+        ? value
+        : "image";
 }
 
 const DEFAULT_ANIMATION_DURATION_MS = 300;

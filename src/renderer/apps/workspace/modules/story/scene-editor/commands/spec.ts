@@ -86,8 +86,15 @@ export type StoryCommandSpec<P extends StoryCommandParamsShape = StoryCommandPar
      * `/image forest.png` land an image called `forest`. Returns only the keys it adds.
      */
     deriveArgs?: (args: ResolvedArgsOf<P>, context: StoryCommandContext) => Partial<Record<keyof P & string, StoryCommandValue>>;
-    /** Open the property inspector right after commit - for commands whose surface is inspector-first (`/fx`). */
-    inspectorAfterCommit?: boolean;
+    /**
+     * Open the property inspector right after commit - for commands whose surface is inspector-first
+     * (`/fx`).
+     *
+     * A predicate is for a command where only SOME lines are inspector-first: `/camera motion` has to
+     * pick a Story Motion, which is a binding no line can carry, while `/camera zoom 2` is complete as
+     * typed and must not have the caret yanked out of the row.
+     */
+    inspectorAfterCommit?: boolean | ((block: StoryBlock) => boolean);
     /**
      * Container scaffolding the controller runs after insert: `condition` creates the if-branch
      * (carrying this line's `test` expression), `choice` creates the first option.
@@ -214,6 +221,19 @@ export function placementParam(): StoryCommandParamSpec {
  * `accepts` is load-bearing twice over: resolution dispatches on it, and the sidebar files the command
  * under every subject it names (§4.2). Widening it therefore adds menu entries as well as legal lines.
  */
+/**
+ * Whether a just-committed block should route the author into the property inspector. The one place
+ * that reads {@link StoryCommandSpec.inspectorAfterCommit}, so its boolean and predicate forms cannot
+ * drift apart at the two call sites the controller has.
+ */
+export function opensInspectorAfterCommit(
+    spec: { inspectorAfterCommit?: boolean | ((block: StoryBlock) => boolean) } | null | undefined,
+    block: StoryBlock,
+): boolean {
+    const rule = spec?.inspectorAfterCommit;
+    return typeof rule === "function" ? rule(block) : rule === true;
+}
+
 export function targetParam(
     accepts: readonly StoryCommandTargetKind[],
     options?: { core?: boolean; skippable?: boolean; fallbackKind?: StoryCommandStageObjectKind },
