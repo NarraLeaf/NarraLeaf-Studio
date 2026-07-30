@@ -24,7 +24,7 @@ date: 2026-07-29
 |---|---|
 | 控件扩展点（`UIWidgetModule`：类型/图标/默认元素/检查器/docker/私有蓝图节点） | 已有，`widget-modules/types.ts:201` |
 | 「折叠在 docker 中」 | 已有，`insertPalette.ts:5` 的 `placement: "primary" \| "overflow"`，`nl.slider`/`nl.list`/`nl.frame` 已在用 |
-| 资产 URL 双宿主接缝 | 已有，`useAssetObjectUrl` 有 workspace 实现 + runtime shim（`src/runtime/renderer/shims/useAssetObjectUrl.ts:13`），`resolveGameRuntimeAssetUrl` 按 id 取、与资产类型无关 |
+| 资产 URL 双宿主接缝 | **只有一半**：runtime 侧确实与类型无关（`serveAsset` mime 来自 pack manifest，且**已实现 HTTP Range / 206 + 8MB 以上磁盘流式**，正好是 `<video>` 拖动进度条要的）；**workspace 侧原本硬编码 image 池**（`useAssetObjectUrl.ts:188`），任何非 image 的 id 都静默解析成「找不到」。WI-1 已加 pool 参数 |
 | `AssetType.Video` | 已有，`assetTypes.ts:4` |
 | `AssetType.Model`（保留目录树的多文件资产） | 已有，`assetTypes.ts:19`；导入走目录选择器 `useAssetActions.ts:357` |
 | 模型包入口嗅探（spine-binary / spine-json / live2d-cubism4/2） | 已有，`src/shared/utils/modelBundle.ts` |
@@ -101,9 +101,17 @@ Spine 允许但要求集成方持 Editor 授权。整套姿态见 `docs/plans/20
 10. `blueprint-nodes/built-in/<name>Nodes.ts` + `built-in/index.ts` 的 `allBuiltinBlueprintNodes`（第二阶段）。
 11. `blueprint-runtime/BlueprintHostApiBridge.ts` —— 运行时读写活控件状态（第二阶段）。
 
-**不用管（按命名约定自动生效）**：`surfaceResourcePreload.ts` 与 `referenceModel.ts` 是按字面属性名
-`assetId` / `fontAssetId` / `imageFill` 做的递归遍历——**只要属性就叫 `assetId`，预加载与「被谁引用」索引自动覆盖**。
-这条决定了两个控件的资产属性名必须叫 `assetId`，不要发明 `videoAssetId` / `modelAssetId`。
+**资产属性名必须叫 `assetId`**，不要发明 `videoAssetId` / `modelAssetId`。
+
+> **⚠ 修正（WI-1 实测，原文写错了）**：原文说这两处遍历「按命名约定自动生效、不用管」——**不成立**。
+> `surfaceResourcePreload.ts:37` 只认 `assetId` / `fontAssetId`；而 `referenceModel.ts` 的遍历
+> **根本不通用地认 `assetId`**，它只处理 `imageFill`、`fontAssetId`、以及一条 `nl.image` 专属的
+> 遗留裸 id 分支。后果是一个新控件的裸 `assetId` 会**被出货游戏预加载、却在「这个资产被谁用了」里隐身**
+> ——删资产时的引用守卫看不见它。
+> WI-1 已把两处改为共用同一份字面名集合（`assetId` / `fontAssetId` / `posterAssetId`），
+> 而不是加一条 per-widget 分支（否则 WI-3 还得为 `nl.puppet` 再加一次）。
+> `nl.image` 的遗留分支保留其休眠规则并被通用臂跳过，否则两条引用会在 `ui:<id>:assetId` 上撞车（已有测试钉住）。
+> **→ WI-3 现在免费继承这条，不需要再动这两个文件。**
 
 **`UI_DOCUMENT_SCHEMA_VERSION`（今天 11）不需要动** —— 只加新类型不需要迁移，
 只有改既有元素的数据形状才要 bump + 写 `migrateFromV11Document`。
@@ -134,8 +142,15 @@ Spine 允许但要求集成方持 Editor 授权。整套姿态见 `docs/plans/20
 - `preload: "none" | "metadata" | "auto"`
 
 **渲染**：外层复用 `RectangleChromeRenderer`（它接 `children`，第 587 行渲染），
-`<video>` 作为 children 放进 chrome 盒子里 → 圆角、描边、填充、透明度、appearance 变体**全部免费继承**，
+`<video>` 作为 children 放进 chrome 盒子里 → 圆角、描边、填充、透明度免费继承，
 两个新控件在视觉语言上和其余 Surface 控件一致。这是本卡的核心复用点，不要另起一套盒子。
+
+> **⚠ 修正（WI-1 实测）**：原文写「appearance **变体**也全部免费继承」——**不成立**。
+> 免费的只有 chrome 的圆角/描边/填充/透明度。appearance **变体**（hover/pressed 等条件外观）
+> 还需要一个 per-kind 的 resolver（照 `resolveImageRectangleLike`）、一个 `createInitial*Appearance`、
+> 以及 `AppearanceAuthoringPanel` 的一个新 kind。**WI-1 没做，两个控件都不支持变体。**
+> → 这直接回答了 §5.1 的悬念：`APPEARANCE_VARIANT_WIDGET_TYPES` **不加** `nl.video` / `nl.puppet`。
+> 裁决：可接受——视频与模型控件很少需要 hover 差分，真要时再单开一卡。
 
 **画布行为（裁决 3）**：`preload="metadata"`，不 autoplay，停在首帧/poster；
 docker 条上给播放/暂停 + 回到首帧的开关，只影响画布预览，**不写进文档**（是 editor state，不是文档数据）。
@@ -145,7 +160,11 @@ docker 条上给播放/暂停 + 回到首帧的开关，只影响画布预览，
 **检查器**：`createPropertyEditorSchema` 声明式字段。资产选择器筛到 `AssetType.Video`
 （照 `AssetSelector` 既有用法；注意 memory 记着「AssetSelector 多选从来没工作过」，只用单选）。
 
-**docker 条**：资产选择 + fit 下拉 + 预览播放开关。
+**docker 条**：fit 下拉 + 预览播放开关。
+
+> **⚠ 修正（WI-1 实测）**：原文写 docker 条上放「资产选择」——**做不到**。
+> `DockerBarItem` 只有 `button | select | number | separator` 四种，没有弹层 kind，
+> `DockerBarContext` 也不带 assets service。**资产选择放检查器里，与 `nl.image` 一致。**
 
 ### WI-2 `nl.puppet` 的双宿主挂载接缝
 
@@ -159,8 +178,18 @@ docker 条上给播放/暂停 + 回到首帧的开关，只影响画布预览，
   再用 `loadPuppetBackends` + `puppetModelSession` 自己挂。
   `GameRuntimeApp.tsx:354-363` 已经为模型包接了 `bridge.assetUrl`。
 
-**执行者必须先确认再实现**：runtime shim 是怎么被换进去的（构建期 alias？）——
-照 `useAssetObjectUrl` 那对文件反查构建配置，把机制写进报告，不要猜。
+**shim 替换机制（WI-2 已勘定，不必再查）**：是 **esbuild `onResolve` 插件 + 一份手维护的精确 specifier 映射**，
+不是 tsconfig 约定、也不可泛化——`project/build/build-runtime.js:47` 的 `exactAliases`，
+配合 `:107` 的 `allowedPrefixes`（只放行 `@/lib/ui-editor/`）。**不在放行名单里的 `@/apps`、`@/lib` 一律构建失败。**
+`src/runtime/tsconfig.json:12-16` 又把 `@/*` 映回 `../renderer/*`，于是——
+
+> **⚠ 一个此前无人守的坑**：tsc 把 workspace 模块与它的 shim 当作**两个互不相干的模块**检查，
+> 所以**两份实现的签名漂移能编译得干干净净**，只在出货游戏里表现为控件坏掉。
+> WI-2 已在 shim 侧加了双向签名守卫。**WI-3 若再增任何一份签名，照同样方式守住。**
+
+这条约束的直接后果：`puppetModelSession.ts` **必须搬家**（`lib/workspace/services/puppet/` → `lib/ui-editor/runtime/game/`），
+因为 runtime 的导入守卫直接拒收 `@/lib/workspace/*`。已搬，两个既有消费者
+（`PuppetPreview.tsx:20`、`PuppetDescriptionService.ts:60`）已跟随。
 
 ### WI-3 `nl.puppet` 控件
 
@@ -291,8 +320,14 @@ npx tsc --project src/shared/tsconfig.json --noEmit
 构建用 `node project/build/build-{runtime,main,apps,builtin-plugins}.js --dev`。
 
 顺序：WI-0（守卫，先红）→ WI-1（视频，顺带把 §3 那六个共享文件的改法立成模板）
-→ WI-2（puppet 接缝，与 WI-1 并行，文件不重叠）→ WI-3（模型控件，接在 WI-1/WI-2 之后）
+→ WI-2（puppet 接缝，与 WI-1 并行）→ WI-2b（Dev Mode 臂）→ WI-3（模型控件，接在 WI-1/WI-2 之后）
 → 第一阶段验收 → 第二阶段（§5.3 设计先拍板）。
+
+> **⚠ 修正**：原文说 WI-1 与 WI-2「文件不重叠」——**重叠了一个**：`project/build/build-runtime.js`。
+> WI-1 撞上后退了出来、改走「裸字符串 pool 参数」，因为 WI-2 当时在该文件里的 alias 指着一个
+> **尚未提交的 shim**，提交它会落一个坏构建。这正是本仓记录过的失败模式
+> （**提交内容依赖别人未提交的符号：在作者机器上构建正常，对其他所有人都是坏的**）。
+> 教训沿用：判定「文件不重叠」时要连构建脚本一起算，别只看 src。
 
 **WI-1 与 WI-3 不并行**：它们都要改 `builtin/index.ts`、`runtime/builtin/index.ts`、
 `insertPalette.ts`、两份 i18n 目录、`widgetLogic.ts`、`resourceDiagnostics.ts` ——
@@ -302,10 +337,23 @@ npx tsc --project src/shared/tsconfig.json --noEmit
 
 ## 7. 待办与已知风险
 
-1. `posterAssetId` 是否被 `referenceModel.ts` / `surfaceResourcePreload.ts` 的通用遍历认出——
-   它们特判了字面 `assetId` / `fontAssetId` / `imageFill`；`posterAssetId` 可能落空。WI-1 要实测。
-2. runtime shim 的替换机制（构建期 alias？）没有勘验到底，WI-2 要写进报告。
-3. `resolveGameRuntimeAssetUrl` 服务 `video` 资产要**实测**，不能因为 `video` 在
-   `ASSET_TYPES` 里就假定通。
-4. WebGL 上下文预算（§4 WI-3）——上限值定多少要实测，不要拍脑袋。
-5. 第二阶段 §5.3 的设计未定，是本卡最大的不确定性。
+**已结（WI-1 / WI-2 实测）：**
+
+1. ~~`posterAssetId` 是否被通用遍历认出~~ —— **两处都落空了，连裸 `assetId` 都落空**，已根治为共用字面名集合（见 §3 修正）。
+2. ~~runtime shim 的替换机制~~ —— esbuild `onResolve` 精确 alias 映射，见 §4 WI-2 修正。
+3. ~~`resolveGameRuntimeAssetUrl` 服务 `video`~~ —— 端到端验通：
+   `shims/useAssetObjectUrl.ts:31` → `gameRuntimeBridge.ts:14` → `preload.ts:147`（`nlgame://asset/<id>?v=`）
+   → `main.ts:506` → `serveAsset:539`。类型无关，且**已有 Range/206 与大文件流式**。
+
+**未结：**
+
+4. **appearance 变体**：两个新控件都不支持（见 §4 WI-1 修正）。已裁决可接受，真要时另开卡。
+5. **WebGL 上下文预算**（§4 WI-3）——上限值要实测，不要拍脑袋。
+6. **Dev Mode 的第三条解析臂**（WI-2b 进行中）：Dev Mode 没有 workspace **services**，
+   但**有** `projectPath` 与递归读授权——`DevModeContent.tsx` 自己那份 `listPuppetBackendModules`
+   就是舞台 puppet 今天能在 Dev Mode 跑起来的原因。所以这不是「做不到」，是要按
+   `gameRuntimeBridge` 的模块级 bridge 惯例补一条臂。
+7. **第二阶段 §5.3 的设计未定**，是本卡最大的不确定性。用户拍板后才动手。
+8. `playbackRate` 必须夹在 **0.0625–16**，超出 Chromium 直接抛 `NotSupportedError`（WI-1 实测）。
+9. **顺手发现的死代码**：`rectangleLikeInspector.tsx:42` 的 `createRectangleInspector` **零调用方**。
+   不在本卡范围，另行清理。
