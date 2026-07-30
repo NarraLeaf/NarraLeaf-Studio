@@ -60,6 +60,17 @@ export type StoryCommandParamType =
      * spec, the payload or the stored row changing shape.
      */
     | { kind: "puppetName"; channel: StoryPuppetChannel; dependsOn: string }
+    /**
+     * One numeric parameter of a puppet-kind character's model, by id: `/param Doll ParamAngleX 12`.
+     *
+     * The fourth thing `PuppetInstance.describe()` reports, and the only free channel with a *shape* -
+     * an id plus bounds plus a default. That shape is why this has a type of its own rather than being
+     * free text: the ids can be listed, and a value can be checked against the range the model gave.
+     *
+     * Still free-valued, for the same reason `puppetName` is: a model nobody could ask reports no ids,
+     * and a project written where the runtime is installed must stay editable where it is not.
+     */
+    | { kind: "puppetParam"; dependsOn: string }
     | { kind: "scene" }
     /**
      * A `label` row declared in the CURRENT scene - what `/goto` addresses. Scene-scoped by
@@ -225,7 +236,7 @@ export function freeTargetKind(type: Extract<StoryCommandParamType, { kind: "tar
 
 /** Whether a param's candidates can only be listed once another param has resolved, and which one. */
 export function dependsOnParam(type: StoryCommandParamType): string | null {
-    if (type.kind === "characterForm" || type.kind === "content" || type.kind === "puppetName") {
+    if (type.kind === "characterForm" || type.kind === "content" || type.kind === "puppetName" || type.kind === "puppetParam") {
         return type.dependsOn;
     }
     return null;
@@ -260,6 +271,8 @@ export function allowsFreeValue(type: StoryCommandParamType): boolean {
         // What CAN fail is the character: `/motion Alice run` is reported on the character slot by the
         // spec's `validate`, which is where a cross-param fact belongs.
         case "puppetName":
+        // A param id is the model's too, and a model nobody could ask lists none of them.
+        case "puppetParam":
         case "text":
             return true;
         // A free-typed name can only stand where the kind is knowable without the stage answering -

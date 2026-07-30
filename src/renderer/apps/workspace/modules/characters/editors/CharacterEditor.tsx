@@ -40,6 +40,8 @@ import { LayerStackPreview, type PreviewLayer } from "./components/LayerStackPre
 import { CombinationGrid } from "./components/CombinationGrid";
 import { PsdImportWizard } from "./components/PsdImportWizard";
 import { PuppetEditor } from "./components/PuppetEditor";
+import { characterKindLabel } from "../characterKindLabel";
+import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
 import { combinationKey, enumerateCombinations } from "@/lib/workspace/services/character/characterCombinations";
 import { characterAvatarAxisIds, characterAvatarKey } from "@shared/utils/characterAvatar";
 
@@ -64,12 +66,6 @@ const ICON_BTN_ON = "p-1 rounded-md text-primary hover:bg-fill transition-colors
 const CARD = "rounded-md border bg-fill-subtle p-2 space-y-1.5";
 const FOCUSED = "border-primary/60";
 
-/** Written out rather than interpolated so the keys stay statically checkable against the catalogue. */
-const KIND_LABELS = {
-    preset: "characters.editor.kind.preset",
-    layered: "characters.editor.kind.layered",
-    puppet: "characters.editor.kind.puppet",
-} as const;
 
 function Section(props: { title: string; onAdd: () => void; children: React.ReactNode }) {
     // The one "+" every appearance section shares - poses, axes, layers, snapshots - so guarding it here
@@ -135,6 +131,10 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
     const anchorMemo = useMemo(() => ({ current: anchorRef.current }), [slot]);
 
     const kind = appearance?.getKind() ?? "preset";
+    // The three puppet kinds share this whole surface: none of them has a layer stack to preview, and
+    // all of them get the same inspector. What differs between them is which runtime is expected,
+    // which only `PuppetEditor` cares about.
+    const isPuppet = isPuppetAppearanceKind(kind);
     const poses = useMemo(() => appearance?.getPoses() ?? [], [appearance, version]);
     const axes = useMemo(() => appearance?.getAxes() ?? [], [appearance, version]);
     const layers = useMemo(() => appearance?.getLayers() ?? [], [appearance, version]);
@@ -335,7 +335,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                     {character.profile.getProfile().name || t("characters.editor.header.fallbackName")}
                 </span>
                 <span className="text-xs text-fg-subtle">
-                    {t(KIND_LABELS[kind])}
+                    {characterKindLabel(kind, t)}
                 </span>
             </div>
 
@@ -343,9 +343,9 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                 so the pane that would hold it is not there, rather than there and empty. */}
             <div className={[
                 "flex-1 overflow-hidden",
-                kind === "puppet" ? "" : "grid grid-cols-[minmax(0,1fr)_360px]",
+                isPuppet ? "" : "grid grid-cols-[minmax(0,1fr)_360px]",
             ].join(" ")}>
-                {kind !== "puppet" && (
+                {!isPuppet && (
                 <div className="flex min-h-0 flex-col">
                     {grid ? (
                         <CombinationGrid
@@ -424,9 +424,9 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
 
                 <div className={[
                     "overflow-y-auto p-3 space-y-4",
-                    kind === "puppet" ? "mx-auto w-full max-w-lg" : "border-l border-edge",
+                    isPuppet ? "mx-auto w-full max-w-lg" : "border-l border-edge",
                 ].join(" ")}>
-                    {kind === "puppet" ? (
+                    {isPuppet ? (
                         <PuppetEditor appearance={appearance} />
                     ) : kind === "preset" ? (
                         <Section

@@ -18,13 +18,23 @@ import {
     createVariantId,
     normalizeGalleryStore,
     type GalleryArtwork,
+    type GalleryEntryKind,
     type GalleryGroup,
+    type GalleryScenePayload,
     type GallerySettings,
     type GalleryStoreData,
     type GalleryVariant,
 } from "./catalog";
 
 export type GalleryStore = ReturnType<typeof createGalleryStore>;
+
+/** What a newly created entry of each kind is called before the author renames it. */
+const DEFAULT_ENTRY_NAME: Record<GalleryEntryKind, string> = {
+    cg: "Artwork",
+    scene: "Recollection",
+    music: "Album",
+    voice: "Voice Set",
+};
 
 const EMPTY_STORE: GalleryStoreData = {
     version: GALLERY_STORE_VERSION,
@@ -74,12 +84,17 @@ export function createGalleryStore(app: PluginApp) {
             : artwork
     )));
 
-    const newArtwork = (name: string, groupId: string | null, variants: GalleryVariant[]): GalleryArtwork => {
+    const newArtwork = (
+        name: string,
+        groupId: string | null,
+        variants: GalleryVariant[],
+        kind: GalleryEntryKind = "cg",
+    ): GalleryArtwork => {
         const now = Date.now();
         return {
             id: createArtworkId(),
             name,
-            kind: "cg",
+            kind,
             description: "",
             groupId,
             variants,
@@ -96,6 +111,15 @@ export function createGalleryStore(app: PluginApp) {
         name: asset.name || fallbackName,
         imageAssetId: asset.id,
         imageAssetName: asset.name,
+    });
+
+    /** A track or a loose voice clip: audio-backed, named after the file. */
+    const variantFromAudio = (artworkId: string, asset: Asset, fallbackName: string): GalleryVariant => ({
+        id: createVariantId(artworkId),
+        name: stripExtension(asset.name) || fallbackName,
+        imageAssetId: null,
+        audioAssetId: asset.id,
+        audioAssetName: asset.name,
     });
 
     return {
@@ -142,8 +166,14 @@ export function createGalleryStore(app: PluginApp) {
         // ----------------------------------------------------------------
         // Artworks
         // ----------------------------------------------------------------
-        async addArtwork(groupId: string | null = null): Promise<string> {
-            const artwork = newArtwork(`Artwork ${data.items.length + 1}`, groupId, []);
+        /**
+         * An empty entry of the given kind. Recollections and voice sets start
+         * this way (there is nothing to import - the author picks a scene or
+         * lines next); CG and music normally arrive through the import paths.
+         */
+        async addArtwork(kind: GalleryEntryKind = "cg", groupId: string | null = null): Promise<string> {
+            const count = data.items.filter(item => item.kind === kind).length;
+            const artwork = newArtwork(`${DEFAULT_ENTRY_NAME[kind]} ${count + 1}`, groupId, [], kind);
             await commitItems([...data.items, artwork]);
             return artwork.id;
         },
@@ -187,6 +217,79 @@ export function createGalleryStore(app: PluginApp) {
                         `Variant ${artwork.variants.length + index + 1}`,
                     )),
                 ],
+            }));
+        },
+        /** Tracks of an album, or loose clips of a voice set. */
+        async addAudioVariants(artworkId: string, assets: Asset[]) {
+            await patchArtwork(artworkId, artwork => ({
+                ...artwork,
+                variants: [
+                    ...artwork.variants,
+                    ...assets.map((asset, index) => variantFromAudio(
+                        artwork.id,
+                        asset,
+                        `Track ${artwork.variants.length + index + 1}`,
+                    )),
+                ],
+            }));
+        },
+        /**
+         * Voice lines, from picked voice units. The clip is not stored: the unit
+         * id resolves to it through the shipped voice table at runtime, so a
+         * re-recorded take needs no gallery edit.
+         */
+        async addVoiceVariants(
+            artworkId: string,
+            units: { unitId: string; text: string; durationSec: number | null }[],
+        ) {
+            await patchArtwork(artworkId, artwork => {
+                const existing = new Set(
+                    artwork.variants.map(variant => variant.voiceUnitId).filter(Boolean),
+                );
+                const fresh = units.filter(unit => !existing.has(unit.unitId));
+                return {
+                    ...artwork,
+                    variants: [
+                        ...artwork.variants,
+                        ...fresh.map(unit => ({
+                            id: createVariantId(artwork.id),
+                            // The line itself is the name: a voice row is
+                            // recognised by what is said, not by a label.
+                            name: unit.text.slice(0, 60) || unit.unitId,
+                            imageAssetId: null,
+                            voiceUnitId: unit.unitId,
+                            lineText: unit.text,
+                            ...(unit.durationSec ? { durationSec: unit.durationSec } : {}),
+                        })),
+                    ],
+                };
+            });
+        },
+        /** One album per picked file is rarely wanted; one album, many tracks is. */
+        async importTracks(assets: Asset[], groupId: string | null = null): Promise<string> {
+            const artwork = newArtwork(
+                `Album ${data.items.filter(item => item.kind === "music").length + 1}`,
+                groupId,
+                [],
+                "music",
+            );
+            artwork.variants = assets.map((asset, index) => variantFromAudio(
+                artwork.id,
+                asset,
+                `Track ${index + 1}`,
+            ));
+            // A single track reads better as its own entry than as a one-track
+            // album, so it takes the file's name.
+            if (assets.length === 1) {
+                artwork.name = artwork.variants[0]?.name ?? artwork.name;
+            }
+            await commitItems([...data.items, artwork]);
+            return artwork.id;
+        },
+        async setScene(artworkId: string, scene: GalleryScenePayload | null) {
+            await patchArtwork(artworkId, artwork => ({
+                ...artwork,
+                ...(scene ? { scene } : { scene: null }),
             }));
         },
         async patchVariant(artworkId: string, variantId: string, patch: Partial<GalleryVariant>) {

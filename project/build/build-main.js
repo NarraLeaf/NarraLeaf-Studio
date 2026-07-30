@@ -26,6 +26,12 @@ const { rootDir, isDev } = require('./utils');
         // bundling breaks. lorelib itself is loaded through a computed require of the
         // @lore-vcs/sdk-<platform> package, which esbuild cannot follow and therefore
         // leaves alone - see vcs/lore/library.ts.
+        //   esbuild is external for the same reason as koffi -- it spawns its own
+        // platform binary from @esbuild/<platform>, resolved by path -- and it is a
+        // *runtime* dependency, not just this script's: the Live2D puppet runtime
+        // installer bundles the author's Cubism SDK on their machine, because the
+        // Cubism Framework ships as TypeScript and nobody may publish a prebuilt
+        // adapter. See managers/puppet/live2dRuntimeBuild.ts.
         external: ['electron', 'esbuild', '@narraleaf/encryption', 'koffi'],
         sourcemap: isDev(),
         minify: !isDev(),

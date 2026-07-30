@@ -3,6 +3,7 @@ import type { StoryBlock } from "@shared/types/story";
 import { parseCommandLine } from "../../storyCommandParser";
 import { resolveCommandLine, type StoryCommandContext } from "../../storyCommandResolution";
 import { getCommandSpec, listCommandSpecs } from "../registry";
+import { opensInspectorAfterCommit } from "../spec";
 import { declarationFromArgs } from "./variables";
 
 /**
@@ -29,6 +30,17 @@ const CONTEXT: StoryCommandContext = {
     ],
     appearanceByCharacterId: { c1: [{ id: "t1", name: "smile" }, { id: "t2", name: "angry" }], c2: [] },
     puppetCharacterIds: ["c2"],
+    // Doll's model has described itself. A name off these lists still resolves and still builds - the
+    // list is what the editor OFFERS, never a gate, because the same project opened on a machine with
+    // no runtime installed has no list at all and must stay writable.
+    puppetByCharacterId: {
+        c2: {
+            motions: ["run", "walk", "idle"],
+            expressions: ["smile", "angry"],
+            skins: ["winter", "summer"],
+            params: [{ id: "ParamAngleX", min: -30, max: 30, default: 0 }],
+        },
+    },
     stageObjects: { image: ["hero"], text: ["title"], layer: ["overlay"], video: ["clip"], audio: ["music"], vfx: ["petals"] },
 };
 
@@ -217,14 +229,38 @@ describe("puppet state channels", () => {
     it("refuses a character Studio draws itself, on the slot that is actually wrong", () => {
         expect(issuesOf("/motion Alice run")).toEqual(["notPuppetCharacter"]);
         expect(issuesOf("/skin Alice winter")).toEqual(["notPuppetCharacter"]);
+        expect(issuesOf("/param Alice ParamAngleX 12")).toEqual(["notPuppetCharacter"]);
     });
 
-    it("gives the escape-hatch end no token at all", () => {
+    it("writes a parameter row as a map, because one gesture is several parameters", () => {
+        // The engine's `setParam` merges, so N entries from one row are exactly the row's intent - and
+        // a head turn is three parameters, which one-pair-per-row would have made three rows of.
+        expect(build("/param Doll ParamAngleX 12")).toMatchObject({
+            kind: "action",
+            payload: { action: "character", operation: "setParams", characterId: "c2", params: { ParamAngleX: 12 } },
+        });
+        // Negative and fractional values reach the payload intact: a rig parameter is continuous, and
+        // its range is the model's (`-30…30` here), not a 0-1 convention.
+        expect(build("/param Doll ParamAngleX -7.5")).toMatchObject({ payload: { params: { ParamAngleX: -7.5 } } });
+        // No transform, no transition, no stage name: like its three siblings, it addresses the inside.
+        expect(build("/param Doll ParamAngleX 12").payload).not.toHaveProperty("transform");
+    });
+
+    it("requires the id and the value, because a parameter has no meaningful clear", () => {
+        // `/motion Doll` is a legal line - it clears the channel. A parameter's absent key means "keep
+        // the model's own default", so a row naming an id with no value would ask for nothing at all.
+        expect(getCommandSpec("param")?.params.id.core).toBe(true);
+        expect(getCommandSpec("param")?.params.value.core).toBe(true);
+    });
+
+    it("still gives the unlistable end no token at all", () => {
         // `PuppetDescription` enumerates motions, expressions, skins and params - never slots, never
-        // commands - so a line for those would be free text pretending to be a command. Params are an
-        // id plus a continuous number: the inspector's, the way /vfx left blend mode to it.
+        // commands. `param` earned its token when `describe()` landed and gave it a shape (an id from a
+        // list, a number inside the model's own range). A slot has no bounds and a command's name plus
+        // payload belong to the backend, so both would still be free text pretending to be a command.
+        // They unblock the same way params did: a list to pick from.
         const tokens = listCommandSpecs().flatMap(spec => [spec.token, ...(spec.aliases ?? [])]);
-        for (const forbidden of ["param", "slot", "cmd", "command", "puppet"]) {
+        for (const forbidden of ["slot", "cmd", "command", "puppet"]) {
             expect(tokens, forbidden).not.toContain(forbidden);
         }
     });
@@ -298,9 +334,23 @@ describe("sound (bible B4: target defaults to bgm)", () => {
             kind: "action",
             payload: { action: "video", operation: "seek", objectName: "clip", timeMs: 3000 },
         });
-        // Not omissible, unlike the sound family: an implied BGM has no seek to perform.
+        // Still not omissible, even now that a sound can answer it: "/seek 3" reads as three seconds
+        // into *what*, and unlike /vol the subject is not overwhelmingly the music channel.
         expect(getCommandSpec("seek")?.params.target.core).toBe(true);
         expect(getCommandSpec("seek")?.params.target.skippable).toBeUndefined();
+    });
+
+    it("/seek dispatches to audio when the target is a sound", () => {
+        // Same dispatch-on-target shape as /stop and /pause: one token, two payloads.
+        expect(build("/seek music 30")).toMatchObject({
+            kind: "action",
+            payload: { action: "audio", operation: "seekSound", objectName: "music", timeMs: 30000 },
+        });
+        // A name that resolves to nothing on stage falls back to audio, so /seek bgm reaches the
+        // reserved music channel without the author having created a named sound first.
+        expect(build("/seek bgm 12")).toMatchObject({
+            payload: { action: "audio", operation: "seekSound", objectName: "bgm", timeMs: 12000 },
+        });
     });
 });
 
@@ -456,6 +506,24 @@ describe("logic and effects", () => {
         expect(build("/camera pan")).toMatchObject({ payload: { operation: "pan", position: { xalign: 0.5 } } });
         // The operation is the required core (B9): a bare `/camera` has nothing to commit.
         expect(getCommandSpec("camera")?.params.op.core).toBe(true);
+    });
+
+    it("/camera motion commits an unbound Story Motion ref and routes only that line to the inspector", () => {
+        // The knob for `motion` is a motion ASSET, which no command line can name - so the line lands
+        // the ref in animation mode and the inspector does the picking. The other five operations are
+        // complete as typed, and yanking the caret out of those rows would stop the author mid-flow;
+        // hence a predicate rather than the spec-wide boolean `/fx` and `/vfx` use.
+        const shot = build("/camera motion");
+        expect(shot).toMatchObject({
+            kind: "action",
+            payload: { action: "camera", operation: "motion", motion: { mode: "animation" } },
+        });
+        const spec = getCommandSpec("camera");
+        expect(opensInspectorAfterCommit(spec, shot)).toBe(true);
+        expect(opensInspectorAfterCommit(spec, build("/camera zoom 1.5"))).toBe(false);
+        expect(opensInspectorAfterCommit(spec, build("/camera reset"))).toBe(false);
+        // `/camera shot` is the alias, and it resolves to the canonical operation (bible B6).
+        expect(build("/cam shot")).toMatchObject({ payload: { action: "camera", operation: "motion" } });
     });
 
     it("/vfx places a looping overlay and names it off the clip", () => {

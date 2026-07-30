@@ -20,6 +20,8 @@ export const common = {
     create: "创建",
     new: "新建",
     confirm: "确认",
+    retry: "重试",
+    continue: "继续",
     apply: "应用",
     clear: "清除",
     yes: "是",

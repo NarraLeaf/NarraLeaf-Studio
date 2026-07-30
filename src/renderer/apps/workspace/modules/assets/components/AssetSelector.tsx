@@ -16,6 +16,7 @@ import {
     ChevronRight,
     FolderOpen,
 } from "lucide-react";
+import { useEscapeToClose } from "@/lib/components/elements/Modal";
 import { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
@@ -130,6 +131,11 @@ export function AssetSelector({
         url: string;
         position: { top: number; left: number };
     } | null>(null);
+
+    // Escape closes it, the way the backdrop and the X already do. This is a dialog that positions
+    // against its trigger rather than centring, so it is not a `Modal` and had none of a `Modal`'s
+    // keyboard behaviour - leaving the mouse as the only way out of every asset picker in Studio.
+    useEscapeToClose(visible, onClose);
 
     /**
      * Seed the selection from the caller's ids when the dialog opens, or when

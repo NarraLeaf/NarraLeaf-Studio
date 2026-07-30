@@ -26,13 +26,15 @@ const CAMERA_OPERATIONS = [
     { value: "pan" },
     { value: "rotate", aliases: ["tilt"] },
     { value: "darken", aliases: ["dim"] },
+    { value: "motion", aliases: ["shot"] },
     { value: "reset" },
 ] as const;
 
 type CameraOperation = Extract<StoryActionPayload, { action: "camera" }>["operation"];
 
 function isCameraOperation(value: string | undefined): value is CameraOperation {
-    return value === "zoom" || value === "pan" || value === "rotate" || value === "darken" || value === "reset";
+    return value === "zoom" || value === "pan" || value === "rotate" || value === "darken"
+        || value === "motion" || value === "reset";
 }
 
 /**
@@ -54,6 +56,12 @@ function cameraOperand(operation: CameraOperation, amount: number | undefined, p
             return { rotation: amount ?? NEUTRAL_ROTATION };
         case "darken":
             return { darkness: amount ?? DEFAULT_DARKNESS };
+        case "motion":
+            // The knob here is a Story Motion asset, which is a binding rather than a word - so the
+            // line names the operation and the inspector does the picking (`inspectorAfterCommit`).
+            // The ref is written in `animation` mode straight away so the editor opens on the motion
+            // field instead of on a preset picker the camera has no use for.
+            return { motion: { mode: "animation" } };
         case "reset":
             return {};
     }
@@ -66,7 +74,7 @@ export const camera = defineStoryCommand({
     // Its own top-level category (§3.3): the pose outlives the scene, so `scene` would have claimed a
     // lifetime the camera does not have, and no other subject is a camera.
     category: "camera",
-    examples: ["/camera zoom 2", "/camera pan left", "/camera reset"],
+    examples: ["/camera zoom 2", "/camera pan left", "/camera motion", "/camera reset"],
     quickParams: ["d"],
     params: {
         op: {
@@ -93,6 +101,12 @@ export const camera = defineStoryCommand({
         };
         return { id: ctx.generateId(), parentId: null, childrenIds: [], kind: "action", payload };
     },
+    // Only `motion` is inspector-first: it commits an unbound Story Motion ref, and the asset it needs
+    // is not something a command line can name. The other five operations are complete as typed, and
+    // routing them to the inspector would stop the author mid-flow.
+    inspectorAfterCommit: block => block.kind === "action"
+        && block.payload.action === "camera"
+        && block.payload.operation === "motion",
 });
 
 export const CAMERA_COMMANDS = [camera];

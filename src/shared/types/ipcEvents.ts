@@ -20,6 +20,7 @@ import type {
     WorkspacePluginDescriptor,
 } from "./plugins";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
+import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult } from "./uiTemplateRegistry";
 import type { LocaleContribution } from "@shared/i18n";
 import type {
@@ -51,6 +52,8 @@ import type {
     VcsHistoryEntry,
     VcsInitOptions,
     VcsRepositoryInfo,
+    VcsRestoreOptions,
+    VcsRestoreResult,
     VcsStatus,
     VcsThreeWayResult,
 } from "./vcs";
@@ -130,6 +133,7 @@ export enum IPCEventType {
     workspaceFlushPendingSaves = "workspace.flushPendingSaves",
     workspaceResolveAssetUrl = "workspace.resolveAssetUrl",
     workspaceResolveImageAssetUrl = "workspace.resolveImageAssetUrl",
+    workspaceReportWriteFreeze = "workspace.reportWriteFreeze",
     workspaceBlueprintNavigateFromPreview = "workspace.blueprint.navigateFromPreview",
     workspaceBlueprintDebugEvent = "workspace.blueprint.debugEvent",
     workspaceDevModeConsoleLog = "workspace.devMode.consoleLog",
@@ -197,6 +201,8 @@ export enum IPCEventType {
     uiTemplateRegistryFetch = "uiTemplate.registryFetch",
     uiTemplateFetchBundle = "uiTemplate.fetchBundle",
 
+    puppetRuntimeInstallSdk = "puppetRuntime.installSdk",
+
     privilegedFsCall = "privileged.fs.call",
     privilegedPermissionRequest = "privileged.permission.request",
     privilegedPermissionRevokePlugin = "privileged.permission.revokePlugin",
@@ -214,9 +220,11 @@ export enum IPCEventType {
     vcsInitRepository = "vcs.initRepository",
     vcsCommit = "vcs.commit",
     vcsCheckpoint = "vcs.checkpoint",
+    vcsRestoreRevision = "vcs.restoreRevision",
     vcsGetStatus = "vcs.getStatus",
     vcsGetHistory = "vcs.getHistory",
     vcsReadBlob = "vcs.readBlob",
+    vcsReadRevisionDocuments = "vcs.readRevisionDocuments",
     vcsGetChangedPaths = "vcs.getChangedPaths",
     vcsGetThreeWay = "vcs.getThreeWay",
     vcsGetMergeBase = "vcs.getMergeBase",
@@ -237,6 +245,17 @@ export type BlueprintPersistenceProjectRef = {
     projectIdentifier?: string;
     projectPath: string;
 };
+
+/**
+ * Why a workspace is frozen, as it travels to main - the `kind` of the renderer's
+ * `WorkspaceFreezeReason` and nothing else.
+ *
+ * Only the kind crosses, because main only needs it to pick the sentence it tells the author
+ * ("leave the revision" vs "unfreeze"). The revision id and label are the renderer's business.
+ * A third kind added to the reason will fail to compile at the reporting call site, which is the
+ * right place to be asked what to say about it.
+ */
+export type WorkspaceFreezeKind = "revision" | "manual";
 
 export type IPCEvents = {
     [IPCEventType.getPlatform]: {
@@ -546,6 +565,25 @@ export type IPCVcsEvents = {
         response: { revision: VcsCommitResult | null };
     };
     /**
+     * Put the working tree back to one revision and record the result as a new one.
+     *
+     * The only call in this map that OVERWRITES the author's files, so two properties are part of the
+     * contract rather than implementation detail: a checkpoint is taken before anything is written
+     * (and a failure to take it aborts the whole thing), and nothing between the target revision and
+     * the head is removed - restoring adds a revision, it never rewinds.
+     *
+     * Long, for the same reasons a commit is, twice over: it settles the renderer's save debt, reads
+     * the revision (over the network on a project with a remote), commits a checkpoint, rewrites the
+     * working tree, and commits again. The caller must leave the revision view and re-read every
+     * document afterwards - the bytes under the editors have changed.
+     */
+    [IPCEventType.vcsRestoreRevision]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; revision: RevisionId; options?: VcsRestoreOptions },
+        response: VcsRestoreResult;
+    };
+    /**
      * What changed in the working tree. NOT a pure read - the scan behind it records
      * newly discovered directories into staged state, so a caller that polls this on
      * a timer manufactures deletions the author never made (docs §4.17). Call it when
@@ -558,14 +596,18 @@ export type IPCVcsEvents = {
         response: VcsStatus;
     };
     /**
-     * Revisions, newest first. `includeKinds` costs one backend call per revision -
+     * Revisions, newest first. `includeDetails` costs one backend call per revision -
      * there is no batch metadata verb - so it is opt-in, and entries come back without
      * a `kind` when it is off.
+     *
+     * That one call returns the whole metadata map, so the flag also fills in `message`,
+     * `timestamp` and `author` at no extra cost. All four stay optional: a revision is
+     * not obliged to carry any of them.
      */
     [IPCEventType.vcsGetHistory]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
-        data: { projectPath: string; limit?: number; includeKinds?: boolean },
+        data: { projectPath: string; limit?: number; includeDetails?: boolean },
         response: { entries: VcsHistoryEntry[] };
     };
     [IPCEventType.vcsReadBlob]: {
@@ -573,6 +615,21 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: VcsBlobRequest,
         response: { contentBase64: string };
+    };
+    /**
+     * Every document at one revision, in one round trip.
+     *
+     * Batched rather than one call per path because the first read of a revision on a
+     * project with a remote goes to the network (docs/version-control.md §6). Omitting
+     * `paths` asks for whatever the revision holds that looks like a document; naming
+     * them asks for exactly those, and `contentBase64: null` means the revision does not
+     * contain that path - which is an answer, not a failure.
+     */
+    [IPCEventType.vcsReadRevisionDocuments]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; revision: RevisionId; paths?: string[] },
+        response: { documents: { path: string; contentBase64: string | null }[] };
     };
     [IPCEventType.vcsGetChangedPaths]: {
         type: IPCMessageType.request,
@@ -1003,6 +1060,36 @@ export type IPCWorkspaceEvents = {
             assetId: string;
         };
         response: RequestStatus<{ url: string }>;
+    };
+    /**
+     * The workspace telling main whether its project data is frozen right now.
+     *
+     * Main refuses the production build and the Preview runtime while it is - both are started in
+     * main and reached by IPC, so a disabled button in the top bar does not stop them. Dev Mode is
+     * allowed and runs the revision instead (plan 2026-07-28-002 §1), which is why `revision`
+     * travels with the kind.
+     *
+     * A message rather than a request: the renderer has nothing to do with the answer, and the
+     * freeze changes on a human's timescale.
+     */
+    [IPCEventType.workspaceReportWriteFreeze]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: {
+            /** Null when this project's data may be written again. */
+            reason: WorkspaceFreezeKind | null;
+            /**
+             * Which revision the workspace is showing, when `reason` is `"revision"`.
+             *
+             * Optional in the type and load-bearing in practice: Dev Mode compiles the revision the
+             * author is looking at, so main needs the id and not only the fact of a freeze. A
+             * `"revision"` freeze that arrives without one makes main REFUSE the launch rather than
+             * fall back to the working tree - running the current game while the author is reading
+             * version #1 is the failure U4 exists to prevent.
+             */
+            revision?: RevisionId;
+        };
+        response: never;
     };
     [IPCEventType.workspaceBlueprintNavigateFromPreview]: {
         type: IPCMessageType.message,
@@ -1573,6 +1660,26 @@ export type IPCPluginManagerEvents = {
             pluginId: string;
         },
         response: PluginInstallResult;
+    };
+    /**
+     * Build a named puppet runtime out of an SDK archive the author supplied, into their project.
+     *
+     * In the host because it needs a bundler; see `managers/puppet/live2dRuntimeBuild.ts` for why the
+     * adapter cannot simply be shipped. The renderer names the *runtime*, never the destination — the
+     * host derives that from the project path, which it authorizes against the window's own file-system
+     * grant, so a renderer cannot aim a megabyte of generated code anywhere it likes.
+     */
+    [IPCEventType.puppetRuntimeInstallSdk]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            /** A `KnownPuppetRuntimeId`; validated against the registry rather than trusted. */
+            runtimeId: string;
+            projectPath: string;
+            /** The archive the author picked in a file dialog. Read, never written. */
+            archivePath: string;
+        },
+        response: PuppetRuntimeInstallResult;
     };
 };
 
