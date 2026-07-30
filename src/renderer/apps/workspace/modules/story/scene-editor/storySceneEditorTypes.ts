@@ -1,5 +1,4 @@
 import type { StoryBlock, StoryBlockId, StoryCharacterTagSelection, StoryRichRun } from "@shared/types/story";
-import type { StoryLensRowTrack } from "./storyStagingLens";
 
 export type StoryBlockTarget = {
     parentId: StoryBlockId | null;
@@ -62,13 +61,6 @@ export type VisibleStoryRow = {
      * Rendered muted at reduced opacity; the runtime behaves as if it were not there.
      */
     disabled?: boolean;
-    /**
-     * Staging lens (M7): present on the direct-child rows of a parallel/race container whose lens is on.
-     * The row still renders as a full row (selection, drag, inspector, context menu, `d=` quick-edit),
-     * but its content column shows the child's bar-timeline track instead of the plain summary + hover
-     * actions. Absent on every other row, including the container header itself.
-     */
-    lensTrack?: StoryLensRowTrack;
 };
 
 export type InsertSlot = {

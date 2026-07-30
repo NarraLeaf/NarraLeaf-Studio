@@ -58,7 +58,6 @@ export type StoryRowActions = {
     addInside: (parentId: StoryBlockId) => void;
     addBranch: (conditionId: StoryBlockId, branch: "if" | "elseIf" | "else") => void;
     playFromRow: (blockId: StoryBlockId) => void;
-    toggleLens: (blockId: StoryBlockId) => void;
 };
 
 /**
@@ -92,7 +91,6 @@ const NOOP_ACTIONS: StoryRowActions = {
     addInside: () => {},
     addBranch: () => {},
     playFromRow: () => {},
-    toggleLens: () => {},
 };
 
 export const StoryRowActionsContext = createContext<StoryRowActions>(NOOP_ACTIONS);

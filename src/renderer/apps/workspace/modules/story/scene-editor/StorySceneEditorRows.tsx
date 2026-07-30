@@ -102,8 +102,6 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
     editInitialCaret?: StoryCaretTarget;
     textInputRef: RefObject<RichTextInputHandle | null>;
     tempSpeakers: TempSpeakerRef[];
-    /** This row is a parallel/race container currently showing its staging lens (M7). */
-    lensActive: boolean;
     /**
      * Reading density (U1). The row itself reads nothing from it any more — every length it needs
      * arrives as a CSS variable on the editor root — but it stays a prop so a density switch still
@@ -151,16 +149,11 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
         onAddInside: actions.addInside,
         onAddBranch: actions.addBranch,
         onPlayFromRow: actions.playFromRow,
-        onToggleLens: () => actions.toggleLens(blockId),
     };
 
     const block = row.block;
     const container = isContainerBlock(block);
     const containerInfo = container ? getContainerHeaderInfo(block) : null;
-    // `lensTrack` marks a direct child of a parallel/race container. It no longer changes how the row
-    // renders (the bar timeline is gone); all it still carries is which child is last, so the
-    // container's tail "+" knows where to sit. `lensMode` is the engine mode badge on the header.
-    const lensTrack = row.lensTrack;
     const lensMode: "all" | "allAsync" | "any" | null = block.kind === "control" && block.payload.control === "race"
         ? "any"
         : block.kind === "control" && block.payload.control === "parallel"
@@ -393,7 +386,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                             {/* A container header is a directive like any other: plate, then words. The
                                 pill it used to wear was a fourth icon shape AND it started further left
                                 than its own children's text, so a block never lined up with itself. */}
-                            <span className="min-w-0 shrink-0 truncate text-sm italic text-fg-muted" style={textStyle}>{containerInfo.pill}</span>
+                            <span className="flex min-h-[var(--nl-story-row-box)] shrink-0 items-center truncate text-sm italic text-fg-muted" style={textStyle}>{containerInfo.pill}</span>
                             {lensMode ? <ContainerModeBadge mode={lensMode} /> : null}
                         </>
                     ) : null}
@@ -439,26 +432,44 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                             onUpdatePayload={on.onUpdatePayload}
                         />
                     ) : null}
-                    <div className="ml-auto flex shrink-0 items-center gap-1">
+                    {/* The hover cluster is MOUNTED on every row and merely hidden, not conditionally
+                        rendered.
+
+                        Mounting it on hover took 80–108px of width away from the words, which re-wrapped
+                        any line long enough to be near the edge — and because the text box centres its
+                        content, the first line then jumped UPWARD as the paragraph grew a second line.
+                        Text that moves under the pointer is the worst thing an editing surface can do,
+                        and it happened on exactly the rows an author works on longest.
+
+                        The nodes it costs are bounded now in a way they were not when this was written:
+                        the list is windowed, so "every row" is one screenful. */}
+                    {/* The lint mark and the voice indicator are NOT part of the hover cluster: they are
+                        there to be noticed while reading, so they keep their own always-visible slot. */}
+                    {containerInfo ? null : (
+                        <div className="ml-auto flex shrink-0 items-center gap-1">
+                            {diagnostic ? <RowDiagnosticMark code={diagnostic.code} /> : null}
+                            <StoryVoiceIndicator block={block} />
+                        </div>
+                    )}
+                    <div
+                        aria-hidden={!showRowActions}
+                        className={[
+                            "flex shrink-0 items-center gap-1 transition-opacity",
+                            containerInfo ? "ml-auto" : "",
+                            showRowActions ? "opacity-100" : "pointer-events-none opacity-0",
+                        ].join(" ")}
+                    >
                         {containerInfo ? (
-                            <>
-                                <ContainerHeaderAdd info={containerInfo} onAdd={() => on.onAddInside(block.id)} />
-                            </>
+                            <ContainerHeaderAdd info={containerInfo} onAdd={() => on.onAddInside(block.id)} />
                         ) : (
                             <>
-                                {dialogueHead && showRowActions ? (
+                                {dialogueHead ? (
                                     <GroupHeadPositionControl position={row.appearance?.position} active={active} onSetPosition={on.onSetPosition} />
                                 ) : null}
-                                {diagnostic ? <RowDiagnosticMark code={diagnostic.code} /> : null}
-                                <StoryVoiceIndicator block={block} />
-                                {showRowActions ? (
-                                    <RowActions onInsertAfter={on.onInsertAfter} onDelete={on.onDeleteRow} active={active} />
-                                ) : null}
+                                <RowActions onInsertAfter={on.onInsertAfter} onDelete={on.onDeleteRow} active={active} />
                             </>
                         )}
-                        {showRowActions ? (
-                            <RowPlayAction block={block} active={active} onPlay={() => on.onPlayFromRow(block.id)} />
-                        ) : null}
+                        <RowPlayAction block={block} active={active} onPlay={() => on.onPlayFromRow(block.id)} />
                     </div>
                 </div>
                 {/* The footer and the container's tail "+" take the same indent the row's content does. */}
@@ -470,9 +481,6 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                             onAddInside={() => on.onAddInside(block.id)}
                             onAddBranch={branch => on.onAddBranch(block.id, branch)}
                         />
-                    ) : null}
-                    {lensTrack?.segment.isLast && block.parentId ? (
-                        <LensTailAdd onAdd={() => on.onAddInside(block.parentId as StoryBlockId)} />
                     ) : null}
                 </div>
                 </>
@@ -1314,32 +1322,6 @@ function ContainerModeBadge({ mode }: { mode: "all" | "allAsync" | "any" }) {
     );
 }
 
-/** The tail "+" under a lens's last track — reuses the container's inside-insert (InsertRow) path. */
-function LensTailAdd(props: { onAdd: () => void }) {
-    const { t } = useTranslation();
-    return (
-        <div className="mt-1 flex opacity-0 transition-opacity group-hover:opacity-100">
-            <button
-                type="button"
-                tabIndex={-1}
-                title={t("story.container.addAction")}
-                className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-2xs text-fg-subtle hover:bg-fill hover:text-primary"
-                onClick={event => {
-                    event.stopPropagation();
-                    props.onAdd();
-                }}
-            >
-                <Plus className="h-3 w-3" />
-                {t("story.container.addAction")}
-            </button>
-        </div>
-    );
-}
-
-/**
- * The icon for a candidate, chosen from what the param is asking for. A speaker with nobody behind it
- * gets the outline icon the picker uses, so picking one is never mistaken for picking a character.
- */
 function candidateIcon(cursor: StoryCommandCursor, candidate: StoryCommandCandidate): { icon: typeof Hash; className?: string } | null {
     if (cursor.kind !== "positional" && cursor.kind !== "paramValue") {
         return null;
@@ -2576,7 +2558,7 @@ function DraftRowPreview(props: { source: string; commandContext: StoryCommandCo
         ? t(reason.key, reason.paramHintKey ? { ...reason.params, slot: t(reason.paramHintKey) } : reason.params)
         : t("story.rows.invalidHint");
     return (
-        <span className="flex min-w-0 flex-1 items-baseline gap-2">
+        <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center gap-2">
             <span className="min-w-0 truncate font-mono text-sm text-warning">{props.source}</span>
             <span className="shrink-0 truncate text-2xs text-warning/80">{reasonText}</span>
         </span>
@@ -2741,7 +2723,7 @@ function BackgroundBlockPreview({ payload, quickParams, onUpdatePayload }: {
     const label = asset?.name ?? (payload.assetId ? t("story.background.missingImage") : payload.color || t("story.background.unassigned"));
 
     return (
-        <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm italic text-fg-muted" style={textStyle}>
+        <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center gap-1.5 text-sm italic text-fg-muted" style={textStyle}>
             <span className="min-w-0 truncate" style={{ maxWidth: BACKGROUND_LABEL_MAX_WIDTH }}>
                 {t("story.rows.setBackground")}{" "}
                 {/* The picked asset is the row's subject, so it is set apart — but by WEIGHT and by
@@ -2801,11 +2783,11 @@ function DisplayableTransformPreview(props: {
 
     // No resolvable image (e.g. a text/layer target or an unresolved name) — keep the plain description.
     if (!assetId) {
-        return <span className="min-w-0 flex-1 truncate text-sm italic text-fg-muted" style={textStyle}>{props.fallback}</span>;
+        return <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center truncate text-sm italic text-fg-muted" style={textStyle}>{props.fallback}</span>;
     }
 
     return (
-        <span className="flex min-w-0 flex-1 items-center gap-2 text-sm italic text-fg-muted" style={textStyle}>
+        <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center gap-2 text-sm italic text-fg-muted" style={textStyle}>
             <span className="h-5 w-8 shrink-0 overflow-hidden rounded-md border border-edge bg-surface">
                 {url ? (
                     <img
