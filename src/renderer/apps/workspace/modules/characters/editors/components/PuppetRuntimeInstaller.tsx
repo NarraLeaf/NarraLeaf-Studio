@@ -11,12 +11,14 @@ import {
     pickSdkArchive,
 } from "@/lib/workspace/services/puppet/installPuppetRuntime";
 import {
+    customPuppetRuntimeDocsUrl,
     knownPuppetRuntimeFor,
+    puppetRuntimeDocsUrl,
     type KnownPuppetRuntime,
     type KnownPuppetRuntimeId,
 } from "@shared/utils/puppetRuntimes";
 import type { TranslationKey } from "@shared/i18n";
-import { AlertTriangle, CheckCircle2, ExternalLink, Loader2 } from "lucide-react";
+import { AlertTriangle, BookOpen, CheckCircle2, ExternalLink, Loader2 } from "lucide-react";
 import React, { useCallback, useMemo, useState } from "react";
 
 /**
@@ -64,7 +66,8 @@ export function PuppetRuntimeInstaller(props: {
     /** Called after a successful install, with the backend name that ended up on disk. */
     onInstalled: (backend: string) => void;
 }) {
-    const { t } = useTranslation();
+    // `locale` decides which translation of the guide the links open; see puppetRuntimeDocsUrl.
+    const { t, locale } = useTranslation();
     const { context } = useWorkspace();
     const runtime: KnownPuppetRuntime | null = props.target.kind === "known"
         ? knownPuppetRuntimeFor(props.target.id)
@@ -183,13 +186,26 @@ export function PuppetRuntimeInstaller(props: {
                     <p className="text-2xs leading-relaxed text-fg-subtle">
                         {t("characters.editor.runtime.neverDownloads")}
                     </p>
-                    <button
-                        className="flex items-center gap-1.5 text-xs text-primary hover:underline"
-                        onClick={() => void getInterface().app.openExternal(runtime.vendorUrl)}
-                    >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                        {t("characters.editor.runtime.vendorLink", { product: runtime.productName })}
-                    </button>
+                    {/* Two links, and the order is the point: the vendor's page first, because that is
+                        where the author has to go and where they accept the licence, and NarraLeaf's
+                        guide second for the part that is ours to explain — what Studio does with what
+                        they bring back. */}
+                    <div className="space-y-1.5">
+                        <button
+                            className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+                            onClick={() => void getInterface().app.openExternal(runtime.vendorUrl)}
+                        >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            {t("characters.editor.runtime.vendorLink", { product: runtime.productName })}
+                        </button>
+                        <button
+                            className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+                            onClick={() => void getInterface().app.openExternal(puppetRuntimeDocsUrl(runtime, locale))}
+                        >
+                            <BookOpen className="h-3.5 w-3.5" />
+                            {t("characters.editor.runtime.docsLink", { product: runtime.productName })}
+                        </button>
+                    </div>
                     <label className="flex items-center gap-2 pt-1 text-xs text-fg">
                         <input type="checkbox" checked={agreed} onChange={event => setAgreed(event.target.checked)} />
                         {t("characters.editor.runtime.licenceAgree")}
@@ -215,7 +231,19 @@ export function PuppetRuntimeInstaller(props: {
                     </div>
                 )}
                 {!runtime && (
-                    <p className="px-1 text-2xs text-fg-subtle">{t("characters.editor.runtime.customNameHint")}</p>
+                    <>
+                        <p className="px-1 text-2xs text-fg-subtle">{t("characters.editor.runtime.customNameHint")}</p>
+                        {/* A custom runtime has no vendor page and no terms of ours to show, so the
+                            module contract is the only thing this step can usefully point at - and it
+                            is exactly what someone here is short of. */}
+                        <button
+                            className="flex items-center gap-1.5 px-1 text-xs text-primary hover:underline"
+                            onClick={() => void getInterface().app.openExternal(customPuppetRuntimeDocsUrl(locale))}
+                        >
+                            <BookOpen className="h-3.5 w-3.5" />
+                            {t("characters.editor.runtime.customDocsLink")}
+                        </button>
+                    </>
                 )}
                 {canBuildFromSdk && runtime && (
                     <>

@@ -85,6 +85,8 @@ export const characters = {
             licenceTitle: "Before you install",
             licenceAgree: "I have read the terms above",
             vendorLink: "Open the {product} download page",
+            docsLink: "Read the {product} guide",
+            customDocsLink: "Read how to write a runtime",
             neverDownloads: "Studio never downloads it for you. You get it from the vendor, which is also where you accept their licence.",
             live2dTerms: "Live2D Cubism is licensed by Live2D Inc., not by NarraLeaf. You accept the Cubism SDK licence when you download it, and you are the one distributing it in the game you build. Commercial releases above Live2D's annual revenue threshold need a separate publication licence from Live2D.",
             spineTerms: "Spine Runtimes are licensed by Esoteric Software. Every person who works with Spine needs their own Spine Editor licence, and the Spine Runtimes License must travel with the game you ship. NarraLeaf holds no Spine licence, so Studio ships no Spine code and cannot build the adapter for you.",
