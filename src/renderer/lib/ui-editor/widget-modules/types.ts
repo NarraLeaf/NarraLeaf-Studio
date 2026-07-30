@@ -107,6 +107,8 @@ export type DockerBarSelect = {
     tooltip?: string;
     value: string | number;
     options: { value: string | number; label: string }[];
+    /** Added for the read-only surface: without it a frozen workspace still offered the dropdown. */
+    disabled?: boolean;
     onChange: (value: string | number) => void;
 };
 

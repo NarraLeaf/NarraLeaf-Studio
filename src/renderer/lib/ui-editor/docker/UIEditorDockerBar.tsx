@@ -23,6 +23,11 @@ import { Select } from "@/lib/components/elements/Select";
 import { Component, MoreHorizontal, Search, X } from "lucide-react";
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 import { useTranslation } from "@/lib/i18n";
+import {
+    toReadOnlyDockerBarItems,
+    UI_EDITOR_WRITABLE,
+    type UIEditorReadOnly,
+} from "@/lib/ui-editor/interaction/readOnlyInteraction";
 
 // Props
 type UIEditorDockerBarProps = {
@@ -31,6 +36,12 @@ type UIEditorDockerBarProps = {
     documentService: UIDocumentService;
     runtimeBridge?: UIRuntimeBridgeService | null;
     enableComponents?: boolean;
+    /**
+     * Greys the whole bar out. Arming the insert tool has to go with it: the canvas refuses the draw
+     * gesture while read-only, and a palette that still armed a tool would leave the author dragging
+     * on a canvas that never creates anything.
+     */
+    readOnly?: UIEditorReadOnly;
 };
 
 // Palette Mode (no selection)
@@ -41,6 +52,7 @@ function PaletteDockerBar({
     componentsActive,
     onSelectType,
     onOpenComponents,
+    readOnly,
 }: {
     primaryEntries: InsertPaletteEntry[];
     overflowEntries: InsertPaletteEntry[];
@@ -48,6 +60,7 @@ function PaletteDockerBar({
     componentsActive: boolean;
     onSelectType: (type: string) => void;
     onOpenComponents?: () => void;
+    readOnly: UIEditorReadOnly;
 }) {
     const { t } = useTranslation();
     const overflowButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -165,12 +178,13 @@ function PaletteDockerBar({
                     <button
                         key={mod.type}
                         type="button"
-                        className={`flex h-8 w-full items-center gap-2 px-3 text-left text-xs transition-colors ${
+                        className={`flex h-8 w-full items-center gap-2 px-3 text-left text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                             isActive
                                 ? "bg-primary/20 text-fg"
                                 : "text-fg-muted hover:bg-fill hover:text-fg"
                         }`}
-                        title={t("widgetChrome.docker.insert", { name: mod.displayName })}
+                        title={readOnly.active ? readOnly.reason : t("widgetChrome.docker.insert", { name: mod.displayName })}
+                        disabled={readOnly.active}
                         onClick={() => selectType(mod.type)}
                         onPointerDown={stopPointerPropagation}
                         onMouseDown={stopPointerPropagation}
@@ -216,15 +230,22 @@ function PaletteDockerBar({
                     <button
                         key={mod.type}
                         type="button"
-                        className={`flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium transition-colors ${
+                        className={`flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                             isActive
                                 ? "bg-primary/20 text-fg border border-primary/40"
                                 : "text-fg-muted hover:bg-fill hover:text-fg border border-transparent"
                         }`}
+                        disabled={readOnly.active}
                         onClick={() => selectType(mod.type)}
                         onPointerDown={stopPointerPropagation}
                         onMouseDown={stopPointerPropagation}
-                        title={isActive ? t("widgetChrome.docker.drawing", { name: mod.displayName }) : t("widgetChrome.docker.insert", { name: mod.displayName })}
+                        title={
+                            readOnly.active
+                                ? readOnly.reason
+                                : isActive
+                                  ? t("widgetChrome.docker.drawing", { name: mod.displayName })
+                                  : t("widgetChrome.docker.insert", { name: mod.displayName })
+                        }
                     >
                         <Icon className="w-3.5 h-3.5" />
                         {/* <span>{mod.displayName}</span> */}
@@ -307,6 +328,7 @@ function DockerItemRenderer({ item }: { item: DockerBarItem }) {
                         <Select
                             options={item.options}
                             value={item.value}
+                            disabled={item.disabled}
                             onChange={(raw) => {
                                 const numVal = Number(raw);
                                 item.onChange(Number.isNaN(numVal) ? raw : numVal);
@@ -604,6 +626,7 @@ function ComponentsLibraryModal({
     activeComponentId,
     onSelectComponent,
     onClose,
+    readOnly,
 }: {
     documentService: UIDocumentService;
     runtimeBridge?: UIRuntimeBridgeService | null;
@@ -611,6 +634,7 @@ function ComponentsLibraryModal({
     activeComponentId: string | null;
     onSelectComponent: (componentId: string) => void;
     onClose: () => void;
+    readOnly: UIEditorReadOnly;
 }) {
     const { t } = useTranslation();
     const panelRef = useRef<HTMLDivElement | null>(null);
@@ -732,11 +756,15 @@ function ComponentsLibraryModal({
                                             <button
                                                 key={component.id}
                                                 type="button"
-                                                className={`rounded-md border p-2 text-left transition ${
+                                                className={`rounded-md border p-2 text-left transition disabled:cursor-not-allowed disabled:opacity-45 ${
                                                     active
                                                         ? "border-primary/70 bg-primary/15"
                                                         : "border-edge bg-fill-subtle hover:border-edge-strong hover:bg-fill"
                                                 }`}
+                                                // The library stays browsable while read-only - looking at
+                                                // components is reading - but a tile only arms the insert tool.
+                                                disabled={readOnly.active}
+                                                title={readOnly.active ? readOnly.reason : undefined}
                                                 onClick={() => {
                                                     onSelectComponent(component.id);
                                                     onClose();
@@ -774,6 +802,7 @@ export function UIEditorDockerBar({
     documentService,
     runtimeBridge,
     enableComponents = true,
+    readOnly = UI_EDITOR_WRITABLE,
 }: UIEditorDockerBarProps) {
     const { t } = useTranslation();
     const surface = useMemo(() => {
@@ -939,10 +968,10 @@ export function UIEditorDockerBar({
             <div className="pointer-events-auto absolute bottom-3 left-1/2 -translate-x-1/2">
                 <DockerBarAnimatedWidthShell>
                     {showMultiSelectDocker ? (
-                        <MultiSelectDockerBar items={multiSelectItems} />
+                        <MultiSelectDockerBar items={toReadOnlyDockerBarItems(multiSelectItems, readOnly)} />
                     ) : showElementDocker ? (
                         <ElementDockerBar
-                            items={dockerItems}
+                            items={toReadOnlyDockerBarItems(dockerItems, readOnly)}
                             moduleName={selectedModule?.displayName ?? t("widgetChrome.docker.element")}
                         />
                     ) : (
@@ -953,6 +982,7 @@ export function UIEditorDockerBar({
                             componentsActive={componentsLibraryOpen || Boolean(activeComponentId)}
                             onSelectType={handleSelectType}
                             onOpenComponents={enableComponents ? () => setComponentsLibraryOpen(true) : undefined}
+                            readOnly={readOnly}
                         />
                     )}
                 </DockerBarAnimatedWidthShell>
@@ -964,6 +994,7 @@ export function UIEditorDockerBar({
                 activeComponentId={activeComponentId}
                 onSelectComponent={handleSelectComponent}
                 onClose={() => setComponentsLibraryOpen(false)}
+                readOnly={readOnly}
             />
         </div>
     );
