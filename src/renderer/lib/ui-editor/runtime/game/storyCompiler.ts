@@ -1928,8 +1928,9 @@ async function compileCharacterStageAction(
 
     // Runtime state on a character Studio draws itself: there is no backend to ask, and the row was
     // authored against the wrong character rather than being a no-op worth swallowing.
-    if (payload.operation === "setMotion" || payload.operation === "setSkin") {
-        diagnostic(ctx, "warning", block.id, `${payload.characterId || name} is not drawn by a runtime, so it has no ${payload.operation === "setMotion" ? "motion" : "skin"} to set.`);
+    if (payload.operation === "setMotion" || payload.operation === "setSkin" || payload.operation === "setParams") {
+        const channel = payload.operation === "setMotion" ? "motion" : payload.operation === "setSkin" ? "skin" : "parameters";
+        diagnostic(ctx, "warning", block.id, `${payload.characterId || name} is not drawn by a runtime, so it has no ${channel} to set.`);
         return statements;
     }
 
@@ -2010,11 +2011,15 @@ async function compileCharacterStageAction(
  * move - and they are compiled through the same `compileDisplayableOperation` an Image row uses,
  * which is the point: a puppet character participates in a scene the way any other character does.
  *
- * The other three - `expression`, `setMotion`, `setSkin` - address the INSIDE of the box, which no
- * other character kind has. They are not a source swap: the row carries a name the backend owns
- * (`puppetName`), handed over verbatim, and the engine remembers it as persistent state that a saved
- * game restores. A row that names nothing clears that channel, which is the engine's own `null`:
- * "the absence of a request", not "leave whatever is there".
+ * The other four - `expression`, `setMotion`, `setSkin`, `setParams` - address the INSIDE of the box,
+ * which no other character kind has. They are not a source swap: the row carries a name the backend
+ * owns (`puppetName`), handed over verbatim, and the engine remembers it as persistent state that a
+ * saved game restores. A row that names nothing clears that channel, which is the engine's own
+ * `null`: "the absence of a request", not "leave whatever is there".
+ *
+ * `setParams` is the one that is not a single name. Its payload is a map and the engine's `setParam`
+ * merges, so it compiles to one statement per entry - and a parameter has no `null`: an absent key
+ * means "keep the model's own default", which is why nothing here clears one.
  */
 async function compileCharacterPuppetAction(
     ctx: SceneCompileContext,
@@ -2040,6 +2045,15 @@ async function compileCharacterPuppetAction(
     }
     if (payload.operation === "setSkin") {
         return [recordStatement(ctx, puppet.setSkin(requested), block)];
+    }
+    if (payload.operation === "setParams") {
+        // One statement per entry. `Puppet.setParam` merges - it sets one id and leaves the others
+        // alone - so the row's whole map arrives as a run of calls with no read-modify-write in
+        // between, and the order among them cannot matter. A row asking for nothing compiles to
+        // nothing rather than to a no-op statement the timeline would then have to draw.
+        return Object.entries(payload.params ?? {})
+            .filter(([id, value]) => id.trim() !== "" && Number.isFinite(value))
+            .map(([id, value]) => recordStatement(ctx, puppet.setParam(id.trim(), value), block));
     }
 
     const operation = payload.operation === "exit" ? "hide" : payload.operation === "move" ? "transform" : "show";
