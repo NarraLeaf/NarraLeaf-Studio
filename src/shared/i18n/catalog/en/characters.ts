@@ -29,7 +29,9 @@ export const characters = {
         deleteGroupDetail: "Characters in this group will be unassigned.",
     },
     editor: {
-        kind: { preset: "Preset sprites", layered: "Layered sprite", puppet: "External runtime" },
+        // No `live2d` / `spine` entries: those read as the product's own name, which is a trademark
+        // and comes from the runtime registry rather than from here.
+        kind: { preset: "Preset sprites", layered: "Layered sprite", puppet: "Custom runtime" },
         puppet: {
             model: "Model",
             noModel: "None",
