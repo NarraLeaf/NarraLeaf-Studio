@@ -89,12 +89,17 @@ function FieldRendererInner<TData>({ field: definition, data, onSaving }: FieldR
     }
 
     const rendered = renderFieldBody(field, data, onSaving);
-    if (!freeze.frozen || !needsStructuralReadOnly(field.type)) {
+    if (!freeze.frozen || !needsStructuralReadOnly(field)) {
         return rendered;
     }
     /**
      * The clamp for the field types that cannot honour `readOnly` themselves - see
-     * `fieldReadOnlyStrategy` for the measurement that made this necessary.
+     * `fieldReadOnlyStrategy` for the measurement that made this necessary, and `selfReadOnly` for
+     * how a custom component that IS read-only-aware steps out of it.
+     *
+     * **It reaches inspection as well as writes, and there is no way to exempt a descendant**: per
+     * HTML the only escape from a disabled fieldset is its first `<legend>`. So a control that must
+     * keep working inside one has to not be a form control - which is what `InspectOnlyButton` is.
      *
      * A `disabled` `<fieldset>` because the disabling is then the BROWSER's, not a convention every
      * `render` callback has to remember: per HTML, every form control whose nearest ancestor fieldset is

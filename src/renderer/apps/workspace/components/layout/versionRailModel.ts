@@ -622,6 +622,29 @@ export function revisionLabel(number: number): string {
 }
 
 /**
+ * What a history row's first line says.
+ *
+ * The message when there is one, which is the whole point of the row: a list of hashes is a list an
+ * author cannot use, and every revision Studio records carries a message (an explicit one, or the
+ * checkpoint's own sentence). `isMessage: false` is the honest remainder - the repository's first
+ * commit is written by `initRepository` and carries none, and nothing obliges another client to
+ * write one - and the caller renders that case as the hash it is, rather than borrowing a sentence
+ * the revision never had.
+ *
+ * A message that is only whitespace counts as none: it is present in the metadata and says nothing,
+ * and a row of blank space reads as a rendering fault.
+ */
+export function historyRowHeadline(
+    row: Pick<FlatHistoryEntry, "message" | "revision">,
+): { text: string; isMessage: boolean } {
+    const message = row.message?.trim();
+    if (message) {
+        return { text: message, isMessage: true };
+    }
+    return { text: shortRevision(row.revision), isMessage: false };
+}
+
+/**
  * What separates the branch from the version number. A middle dot rather than a slash, because a
  * slash is part of branch names (`feature/audio`) and would read as one more path segment.
  */
