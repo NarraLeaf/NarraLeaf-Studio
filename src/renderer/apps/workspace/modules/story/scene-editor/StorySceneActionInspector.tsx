@@ -55,6 +55,7 @@ import { StoryActionBlueprintPreviewCard } from "./StoryActionBlueprintPreviewCa
 import { ConditionEditor } from "./ConditionEditor";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { describeBlockSubject, getBlockBadgeInfo } from "./storySceneBlockUtils";
+import { useStoryMotionNames } from "./useStoryMotionNames";
 import { useStoryVoiceState } from "./useStoryVoiceState";
 import { CharacterAppearancePicker } from "./CharacterAppearancePicker";
 import { DisplayableTargetField } from "./DisplayableTargetField";
@@ -67,12 +68,21 @@ import {
     usePuppetDescription,
 } from "@/apps/workspace/modules/characters/editors/components/usePuppetDescription";
 import { puppetChoiceOptions } from "@/lib/workspace/services/puppet/puppetDescriptionModel";
+import { CameraActionEditor } from "./CameraActionEditor";
+import {
+    Disclosure,
+    FIELD_LABEL_CLASS,
+    FieldGrid,
+    NumberField,
+    SecondsField,
+    SegToggle,
+    SelectField,
+    Section,
+    easingOptions,
+    type TFunc,
+} from "./inspectorFieldKit";
 
-const FIELD_LABEL_CLASS = "block text-xs font-medium text-fg-muted mb-1";
 const TEXTAREA_CLASS = "w-full resize-none rounded-md border border-edge bg-surface-raised px-3 py-2 text-sm text-fg-muted outline-none transition-colors focus:border-primary/50 disabled:cursor-not-allowed disabled:opacity-50";
-const SELECT_CLASS = "[&>button]:h-9 [&>button]:min-h-[34px] [&>button]:py-0";
-
-type TFunc = Translator["t"];
 
 const variableScopeOptions = (t: TFunc): SelectOption[] => [
     { value: "scene", label: t("storyInspector.variableScope.scene") },
@@ -225,21 +235,6 @@ const transformPresetOptions = (t: TFunc): SelectOption[] => [
     { value: "circleReveal", label: t("storyInspector.transformPreset.circleReveal") },
     { value: "circleClose", label: t("storyInspector.transformPreset.circleClose") },
     { value: "wipe", label: t("storyInspector.transformPreset.slideReveal") },
-];
-
-const easingOptions = (t: TFunc): SelectOption[] => [
-    { value: "", label: t("storyInspector.easing.default") },
-    { value: "linear", label: t("storyInspector.easing.linear") },
-    { value: "easeIn", label: t("storyInspector.easing.easeIn") },
-    { value: "easeOut", label: t("storyInspector.easing.easeOut") },
-    { value: "easeInOut", label: t("storyInspector.easing.easeInOut") },
-    { value: "circIn", label: t("storyInspector.easing.circIn") },
-    { value: "circOut", label: t("storyInspector.easing.circOut") },
-    { value: "circInOut", label: t("storyInspector.easing.circInOut") },
-    { value: "backIn", label: t("storyInspector.easing.backIn") },
-    { value: "backOut", label: t("storyInspector.easing.backOut") },
-    { value: "backInOut", label: t("storyInspector.easing.backInOut") },
-    { value: "anticipate", label: t("storyInspector.easing.anticipate") },
 ];
 
 const transitionOptions = (t: TFunc): SelectOption[] => [
@@ -452,12 +447,14 @@ export function ActionInspector(props: {
         }
         return null;
     }, [assetsService]);
+    const resolveMotionName = useStoryMotionNames();
     const subject = describeBlockSubject(
         block,
         props.characters,
         resolveAssetName,
         props.document.scenes[props.sceneId],
         props.document.scenes,
+        resolveMotionName,
     );
 
     return (
@@ -1068,7 +1065,16 @@ function ActionPayloadFields(props: {
         );
     }
     if (payload.action === "camera") {
-        return <CameraActionEditor payload={payload} onChange={props.onChange} />;
+        return (
+            <CameraActionEditor
+                payload={payload}
+                storyId={props.document.id}
+                sceneId={props.sceneId}
+                blockId={props.block.id}
+                storyName={props.document.name}
+                onChange={props.onChange}
+            />
+        );
     }
     if (payload.action === "screenEffect") {
         return (
@@ -1217,100 +1223,6 @@ function VfxActionEditor(props: { payload: VfxActionPayload; onChange: (payload:
             </FieldGrid>
         </Section>
     );
-}
-
-type CameraActionPayload = Extract<StoryActionPayload, { action: "camera" }>;
-
-/** Mirrors the compiler's floor - the inspector must not be able to store a shot the compile then rewrites. */
-const MIN_CAMERA_ZOOM = 0.05;
-
-const cameraOperationOptions = (t: TFunc): SelectOption[] => [
-    { value: "zoom", label: t("storyInspector.cameraOperation.zoom") },
-    { value: "pan", label: t("storyInspector.cameraOperation.pan") },
-    { value: "rotate", label: t("storyInspector.cameraOperation.rotate") },
-    { value: "darken", label: t("storyInspector.cameraOperation.darken") },
-    { value: "reset", label: t("storyInspector.cameraOperation.reset") },
-];
-
-/**
- * The camera's knobs. Three things the *naming* has to carry, because a paragraph of explanation is
- * not the house style (M3 卡 §1):
- *  - the section title says the pose is story-wide, so an author does not expect a scene change to
- *    put the camera back;
- *  - `darken` is labelled as STAGE brightness, which is what tells it apart from `/vignette`'s
- *    in-scene mask layer;
- *  - `reset` sits in the same operation list, one pick away, rather than being a separate command an
- *    author has to know exists.
- *
- * Each operation shows only its own value: a `zoom` row carrying a stale `rotation` field would be
- * offering to edit a number the compile never reads.
- */
-function CameraActionEditor(props: { payload: CameraActionPayload; onChange: (payload: StoryBlock["payload"]) => void }) {
-    const { t } = useTranslation();
-    const payload = props.payload;
-    return (
-        <Section title={t("storyInspector.section.camera")}>
-            <FieldGrid cols={2}>
-                <SelectField
-                    label={t("storyInspector.field.operation")}
-                    options={cameraOperationOptions(t)}
-                    value={payload.operation}
-                    onChange={operation => props.onChange({ ...payload, operation: operation as CameraActionPayload["operation"] })}
-                />
-                {payload.operation === "zoom" ? (
-                    <NumberField
-                        label={t("storyInspector.camera.zoom")}
-                        value={payload.zoom}
-                        onChange={zoom => props.onChange({ ...payload, zoom: zoom === undefined ? undefined : Math.max(MIN_CAMERA_ZOOM, zoom) })}
-                    />
-                ) : null}
-                {payload.operation === "rotate" ? (
-                    <NumberField
-                        label={t("storyInspector.camera.rotation")}
-                        value={payload.rotation}
-                        onChange={rotation => props.onChange({ ...payload, rotation })}
-                    />
-                ) : null}
-                {payload.operation === "darken" ? (
-                    <NumberField
-                        label={t("storyInspector.camera.darkness")}
-                        value={payload.darkness}
-                        onChange={darkness => props.onChange({ ...payload, darkness: darkness === undefined ? undefined : Math.min(1, Math.max(0, darkness)) })}
-                    />
-                ) : null}
-                {payload.operation === "pan" ? (
-                    <>
-                        <NumberField
-                            label={t("storyInspector.camera.xalign")}
-                            value={payload.position?.xalign}
-                            onChange={xalign => props.onChange({ ...payload, position: { ...payload.position, xalign: clampAlign(xalign) } })}
-                        />
-                        <NumberField
-                            label={t("storyInspector.camera.yalign")}
-                            value={payload.position?.yalign}
-                            onChange={yalign => props.onChange({ ...payload, position: { ...payload.position, yalign: clampAlign(yalign) } })}
-                        />
-                    </>
-                ) : null}
-                <SecondsField
-                    label={t("storyInspector.field.duration")}
-                    value={payload.durationMs}
-                    onChange={durationMs => props.onChange({ ...payload, durationMs: durationMs === undefined ? undefined : Math.max(0, durationMs) })}
-                />
-                <SelectField
-                    label={t("storyInspector.field.easing")}
-                    options={easingOptions(t)}
-                    value={payload.easing ?? ""}
-                    onChange={easing => props.onChange({ ...payload, easing: String(easing) || undefined })}
-                />
-            </FieldGrid>
-        </Section>
-    );
-}
-
-/** An align is a 0–1 fraction of the stage; outside that the camera is aimed off the world. */
-function clampAlign(value: number | undefined): number | undefined {
-    return value === undefined ? undefined : Math.min(1, Math.max(0, value));
 }
 
 /** The three channels of `PuppetState` a character row can address, and which list fills each one. */
@@ -2717,22 +2629,6 @@ function TextIdReadout(props: { text: StoryTextSegment }) {
     );
 }
 
-function SelectField(props: { label: string; options: SelectOption[]; value: string | number; onChange: (value: string | number) => void }) {
-    return (
-        <div>
-            <label className={FIELD_LABEL_CLASS}>{props.label}</label>
-            <Select
-                fullWidth
-                portalMenu
-                className={SELECT_CLASS}
-                options={props.options}
-                value={props.value}
-                onChange={props.onChange}
-            />
-        </div>
-    );
-}
-
 function TextField(props: {
     label: string;
     value: string;
@@ -2758,40 +2654,6 @@ function TextField(props: {
                 value={props.value}
                 placeholder={props.placeholder}
                 onChange={props.onChange}
-            />
-        </div>
-    );
-}
-
-function NumberField(props: { label: string; value: number | undefined; onChange: (value: number | undefined) => void }) {
-    return (
-        <div>
-            <label className={FIELD_LABEL_CLASS}>{props.label}</label>
-            <NumericDraftEnhancedInput
-                committedDisplay={props.value === undefined ? "" : String(props.value)}
-                onFiniteNumber={props.onChange}
-                onEmpty={() => props.onChange(undefined)}
-                type="text"
-                inputMode="decimal"
-            />
-        </div>
-    );
-}
-
-/**
- * Edits a millisecond-backed timing field in seconds. `value` and `onChange` both speak the
- * stored milliseconds; only the text the author reads and types is seconds.
- */
-function SecondsField(props: { label: string; value: number | undefined; onChange: (ms: number | undefined) => void }) {
-    return (
-        <div>
-            <label className={FIELD_LABEL_CLASS}>{props.label}</label>
-            <NumericDraftEnhancedInput
-                committedDisplay={formatStorySecondsValue(props.value)}
-                onFiniteNumber={seconds => props.onChange(storySecondsToMs(seconds))}
-                onEmpty={() => props.onChange(undefined)}
-                type="text"
-                inputMode="decimal"
             />
         </div>
     );
@@ -2861,68 +2723,6 @@ function VoiceInspectorSection({ block }: { block: StoryBlock }) {
                 ) : null}
             </div>
         </Section>
-    );
-}
-
-function Section(props: { title?: string; right?: ReactNode; className?: string; children: ReactNode }) {
-    return (
-        <section className={["rounded-lg border border-edge bg-fill-subtle p-2.5", props.className ?? ""].join(" ")}>
-            {props.title || props.right ? (
-                <div className="mb-2 flex items-center justify-between gap-2">
-                    {props.title ? (
-                        <div className="min-w-0 truncate text-2xs font-medium tracking-wide text-fg-muted">{props.title}</div>
-                    ) : <span />}
-                    {props.right ? <div className="shrink-0">{props.right}</div> : null}
-                </div>
-            ) : null}
-            {props.children}
-        </section>
-    );
-}
-
-/** Collapsible disclosure using the project chevron (matches the story panel accordion). */
-function Disclosure(props: { title: string; children: ReactNode }) {
-    return (
-        <details className="group">
-            <summary className="flex cursor-pointer select-none list-none items-center gap-1 text-2xs font-medium tracking-wide text-fg-subtle transition-colors hover:text-fg-muted [&::-webkit-details-marker]:hidden">
-                <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
-                {props.title}
-            </summary>
-            <div className="mt-2">{props.children}</div>
-        </details>
-    );
-}
-
-/**
- * Standard dense field grid used across every action editor. Columns respond to
- * the property card's own width (see `.nl-field-grid` in styles.css), so a narrow
- * editor pane collapses to fewer columns instead of overflowing horizontally.
- */
-function FieldGrid(props: { cols?: 2 | 3 | 4; className?: string; children: ReactNode }) {
-    const cols = props.cols ?? 3;
-    const colClass = cols === 2 ? "nl-field-grid-2" : cols === 4 ? "nl-field-grid-4" : "";
-    return <div className={["nl-field-grid", colClass, props.className ?? ""].join(" ")}>{props.children}</div>;
-}
-
-/** Compact inline segmented toggle (e.g. Preset / Motion). */
-function SegToggle<T extends string>(props: { value: T; options: { value: T; label: string }[]; onChange: (value: T) => void }) {
-    return (
-        <div className="inline-flex overflow-hidden rounded-md border border-edge bg-surface">
-            {props.options.map((option, index) => (
-                <button
-                    key={option.value}
-                    type="button"
-                    className={[
-                        "h-7 px-2.5 text-xs transition-colors",
-                        index > 0 ? "border-l border-edge" : "",
-                        props.value === option.value ? "bg-primary/20 text-primary" : "text-fg-muted hover:bg-fill-subtle hover:text-fg",
-                    ].join(" ")}
-                    onClick={() => props.onChange(option.value)}
-                >
-                    {option.label}
-                </button>
-            ))}
-        </div>
     );
 }
 
