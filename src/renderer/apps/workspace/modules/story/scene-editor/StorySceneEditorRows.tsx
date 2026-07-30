@@ -197,39 +197,17 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
     // chrome.
     const categoryColor = !isDialogue && !hideBadge && row.groupRole !== "member" ? getBlockBadgeInfo(block).iconColor : null;
     /**
-     * The speaker's name for this row's name column: a dialogue head (or a standalone line, which is a
-     * run of one) names itself; a continuation leaves the column empty and lets the speech bar carry
-     * the attribution. Containers keep their own header layout and never take the column.
+     * The name column belongs to speakers and to nobody else, so EVERY dialogue row fills it —
+     * including the continuations of a run, which used to leave it empty.
+     *
+     * Leaving it empty is what forced a separator: with no name and no mark, a continuation rendered
+     * exactly like a line of narration, and a rule drawn between the columns was the only thing left
+     * to say otherwise. A repeated name says it without drawing anything, and it says *who* rather
+     * than merely "not narration". The repetition is the point of a column — it reads as one word
+     * held down the page, and the run still reads as a run because a continuation's name is
+     * de-emphasised while its head's is not.
      */
-    const namesSpeaker = isDialogue && !dialogueMember && !containerInfo;
-    /**
-     * The speech bar: the name column's right edge, on every dialogue row.
-     *
-     * It replaces U1's group rail, which was drawn out under the *portrait* — 150px from the words it
-     * governed — and only existed on continuations. Two consequences, both bad: a continuation and a
-     * narration line rendered identically apart from a mark nowhere near the text, and the mark was a
-     * neutral grey that said "these lines are grouped" without saying by whom.
-     *
-     * Against the body edge it is a quote bar: it says "someone is speaking this" at the exact x the
-     * eye is already on, it spans wrapped lines so a long speech reads as one block, and it is drawn
-     * in the SPEAKER'S colour, so a continuation still answers "who" with no name on it. Narration has
-     * nothing there, which is now the whole difference between the two — one mark, next to the words.
-     *
-     * It sits in the 8px gap between the name column and the body, so it moves no glyph.
-     */
-    const speechBar = isDialogue && !containerInfo
-        ? {
-            left: `calc(var(--nl-story-gutter) + var(--nl-story-avatar,28px) + var(--nl-story-name,56px) + ${row.depth * RAIL_STEP + ROW_GAP_PX + 3}px)`,
-            // A head starts its bar 3px down, so a change of speaker reads as a break in the line while
-            // consecutive lines by one speaker stay welded together.
-            top: dialogueMember ? 0 : 3,
-        }
-        : null;
-    // A dialogue with a real character behind it tints its own bar; a bare-name speaker has no colour
-    // to lend, and falls back to the neutral rail tone U1 measured at 4.1:1.
-    const speechBarColor = isDialogue && block.kind === "nodeAction" && block.payload.action === "dialogue" && block.payload.characterId && !selected && !active
-        ? getCharacterColor(characters, block.payload.characterId)
-        : undefined;
+    const namesSpeaker = isDialogue && !containerInfo;
     /**
      * Whether the pointer is on this row, kept local so a hover re-renders one row and nothing else.
      *
@@ -320,21 +298,11 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                     style={{ backgroundColor: categoryColor, opacity: 0.85 }}
                 />
             ) : null}
-            {speechBar ? (
-                <span
-                    aria-hidden
-                    className={[
-                        "pointer-events-none absolute bottom-0 w-0.5 rounded-full",
-                        selected || active ? "bg-primary" : speechBarColor ? "" : "bg-fg-subtle",
-                    ].join(" ")}
-                    style={speechBarColor ? { ...speechBar, backgroundColor: speechBarColor } : speechBar}
-                />
-            ) : null}
             {/* Line number and drag grip share one box: they are both "this row, as a thing to point
                 at", they are never both wanted, and giving each its own column cost 20px of every row
                 to show one of them at a time. The number yields on hover (and to a focused grip, so
                 the keyboard path is not a hover-only feature). */}
-            <div className="relative flex h-full items-start justify-end pt-1 text-2xs tabular-nums text-fg-subtle/60 transition-colors group-hover:text-fg-subtle">
+            <div className="relative flex h-full items-start justify-end pr-2 pt-1 text-2xs tabular-nums text-fg-subtle/60 transition-colors group-hover:text-fg-subtle">
                 <div className="flex min-h-[var(--nl-story-row-box)] items-center gap-0.5">
                     {canFold ? (
                         <button
@@ -363,7 +331,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                     tabIndex={0}
                     aria-label={t("story.rows.dragRow")}
                     title={freeze.frozen ? freeze.reason : t("story.rows.dragRow")}
-                    className={`absolute right-0 top-1 flex h-[var(--nl-story-row-box)] w-[18px] touch-none select-none items-center justify-center rounded-md text-fg-subtle transition-opacity hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 ${showGrip ? "opacity-100" : "opacity-0"} ${freeze.frozen ? "cursor-not-allowed" : "hover:cursor-grab"}`}
+                    className={`absolute right-2 top-1 flex h-[var(--nl-story-row-box)] w-[18px] touch-none select-none items-center justify-center rounded-md text-fg-subtle transition-opacity hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 ${showGrip ? "opacity-100" : "opacity-0"} ${freeze.frozen ? "cursor-not-allowed" : "hover:cursor-grab"}`}
                     onFocus={() => setGripFocused(true)}
                     onBlur={() => setGripFocused(false)}
                     onMouseDown={event => event.stopPropagation()}
@@ -398,43 +366,46 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                     line the badge and the nametag stay level with the FIRST line — which is the line
                     they name — instead of drifting to the middle of the paragraph. */}
                 <div className="flex min-h-[var(--nl-story-row-box)] min-w-0 items-start gap-2">
+                    {/* COLUMN 2 — the nametag, and nothing else, ever. Everything a row can carry that
+                        is not a speaker's name belongs to column 3, which is what makes a container
+                        header land on the same edge as the rows inside it.
+
+                        Right-aligned, so however long or short the name is it ends where column 3
+                        begins; `pr-*` is the whole separation between the two — the rule that used to
+                        stand there was chrome doing a gap's job. */}
+                    <span className="relative flex min-h-[var(--nl-story-row-box)] w-[var(--nl-story-name,56px)] shrink-0 items-center justify-end pr-2" style={textStyle}>
+                        {namesSpeaker ? (
+                            <CharacterSelectTrigger
+                                characters={characters}
+                                tempSpeakers={props.tempSpeakers}
+                                characterId={block.kind === "nodeAction" && block.payload.action === "dialogue" ? block.payload.characterId : undefined}
+                                speakerName={block.kind === "nodeAction" && block.payload.action === "dialogue" ? block.payload.speakerName : undefined}
+                                onChoose={on.onSetSpeaker}
+                                onCreateCharacter={on.onCreateCharacter}
+                                suppressColor={selected}
+                                column
+                                continuation={dialogueMember}
+                            />
+                        ) : null}
+                    </span>
+                    {/* COLUMN 3 opens with one plate box, the same size and shape on every row that has
+                        one, so the words after it land on a single x whatever the row is. */}
+                    <span className="flex min-h-[var(--nl-story-row-box)] w-[var(--nl-story-avatar,28px)] shrink-0 items-center" aria-hidden={dialogueMember || hideBadge}>
+                        {expressionMember ? (
+                            <GroupExpressionBead block={block} characters={characters} />
+                        ) : dialogueMember || hideBadge ? null : (
+                            <BlockBadge block={block} characters={characters} appearance={row.appearance} />
+                        )}
+                    </span>
                     {containerInfo ? (
                         <>
-                            <ContainerPill info={containerInfo} />
+                            {/* A container header is a directive like any other: plate, then words. The
+                                pill it used to wear was a fourth icon shape AND it started further left
+                                than its own children's text, so a block never lined up with itself. */}
+                            <span className="min-w-0 shrink-0 truncate text-sm italic text-fg-muted" style={textStyle}>{containerInfo.pill}</span>
                             {lensMode ? <ContainerModeBadge mode={lensMode} /> : null}
                         </>
-                    ) : (
-                        <>
-                            {/* One fixed width for every row at a given density, so nothing in it —
-                                portrait, category plate, differential bead, or the empty slot a
-                                continuation leaves — can move the words beside it. */}
-                            <span className="flex min-h-[var(--nl-story-row-box)] w-[var(--nl-story-avatar,28px)] shrink-0 items-center" aria-hidden={dialogueMember || hideBadge}>
-                                {expressionMember ? (
-                                    <GroupExpressionBead block={block} characters={characters} />
-                                ) : dialogueMember || hideBadge ? null : (
-                                    <BlockBadge block={block} characters={characters} appearance={row.appearance} portrait={isDialogue} />
-                                )}
-                            </span>
-                            {/* The name column. Right-aligned: a name hangs against the body edge it
-                                introduces, so however long or short it is, it ends where the words
-                                begin — and a ragged LEFT edge of names costs nothing to read, while a
-                                ragged gap between name and words is exactly what U1 was fixing. */}
-                            <span className="relative flex min-h-[var(--nl-story-row-box)] w-[var(--nl-story-name,56px)] shrink-0 items-center justify-end" style={textStyle}>
-                                {namesSpeaker ? (
-                                    <CharacterSelectTrigger
-                                        characters={characters}
-                                        tempSpeakers={props.tempSpeakers}
-                                        characterId={block.kind === "nodeAction" && block.payload.action === "dialogue" ? block.payload.characterId : undefined}
-                                        speakerName={block.kind === "nodeAction" && block.payload.action === "dialogue" ? block.payload.speakerName : undefined}
-                                        onChoose={on.onSetSpeaker}
-                                        onCreateCharacter={on.onCreateCharacter}
-                                        suppressColor={selected}
-                                        column
-                                    />
-                                ) : null}
-                            </span>
-                        </>
-                    )}
+                    ) : null}
                     {containerInfo?.role === "branch" && containerInfo.hasCondition ? (
                         <ConditionChip
                             block={block}
@@ -1008,13 +979,6 @@ function RowPlayAction(props: { block: StoryBlock; active: boolean; onPlay: () =
 /** Indent step (px) per nesting level. Each level draws a vertical guide rail. */
 const RAIL_STEP = 20;
 
-/**
- * The `gap-2` between a row's columns, in px.
- *
- * The speech bar is positioned on the ROW, which knows nothing of the content column's flex gaps, so
- * it has to add them back to find the seam between the name column and the words.
- */
-const ROW_GAP_PX = 8;
 
 /** Vertical guide rails, one per ancestor nesting level, so nesting reads at a glance. */
 function RailGuides({ depth, highlight }: { depth: number; highlight: boolean }) {
@@ -1091,29 +1055,15 @@ function GroupExpressionMember({ block, characters }: { block: StoryBlock; chara
     );
 }
 
-const CONTAINER_PILL_TONE: Record<StoryContainerHeaderInfo["role"], string> = {
-    condition: "border-binding/40 bg-binding/10 text-binding",
-    branch: "border-binding/40 bg-binding/10 text-binding",
-    group: "border-success/40 bg-success/10 text-success",
-    menu: "border-primary/40 bg-primary/10 text-primary",
-    option: "border-primary/40 bg-primary/10 text-primary",
-    nvl: "border-edge bg-fill-subtle text-fg-muted",
-};
-
-/** The plain-language label pill that titles a control-flow container header. */
-function ContainerPill({ info }: { info: StoryContainerHeaderInfo }) {
-    return (
-        <span
-            className={[
-                "inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-0.5 text-2xs font-medium",
-                CONTAINER_PILL_TONE[info.role],
-            ].join(" ")}
-        >
-            {info.role === "option" ? <span aria-hidden className="text-2xs leading-none">○</span> : null}
-            {info.pill}
-        </span>
-    );
-}
+/**
+ * The container header's label pill is gone: it was a bordered, tinted, small-caps chip — a fourth
+ * icon form on a screen that already had three — and it started at the header's own left edge, which
+ * is one column further left than the text of every row inside the block. A block that does not line
+ * up with itself is the worst offender in a list read top-down.
+ *
+ * A header now renders exactly like the directives it contains: the same plate, carrying the same
+ * category colour it always did (`getBlockBadgeInfo`), then its words in column 3.
+ */
 
 type StoryT = ReturnType<typeof useTranslation>["t"];
 
@@ -1434,16 +1384,15 @@ function LensTrackContent(props: {
     return (
         <>
             <div className="flex min-h-[var(--nl-story-row-box)] min-w-0 items-center gap-2">
-                {containerInfo ? (
-                    <ContainerPill info={containerInfo} />
-                ) : (
-                    <BlockBadge block={block} characters={characters} appearance={row.appearance} />
-                )}
-                {/* A track holds the name column open without ever filling it. The lens is a different
+                {/* A track holds the name column open without ever filling it — the lens is a different
                     VIEW of the same actions, not a different kind of row, and a scene that reads down
-                    one body edge everywhere except inside a parallel block reads as a bug. */}
-                {containerInfo ? null : <span className="w-[var(--nl-story-name,56px)] shrink-0" aria-hidden />}
+                    one edge everywhere except inside a parallel block reads as a bug. */}
+                <span className="w-[var(--nl-story-name,56px)] shrink-0 pr-2" aria-hidden />
+                <BlockBadge block={block} characters={characters} appearance={row.appearance} />
                 <div className="flex min-w-0 flex-1 items-center gap-2">
+                    {containerInfo ? (
+                        <span className="shrink-0 truncate text-sm italic text-fg-muted">{containerInfo.pill}</span>
+                    ) : null}
                     {containerInfo ? (
                         <span className="shrink-0 text-2xs tabular-nums text-fg-subtle">{block.childrenIds.length > 0 ? `· ${block.childrenIds.length}` : ""}</span>
                     ) : (
@@ -1757,8 +1706,8 @@ export function InsertRow(props: {
                 <RailGuides depth={props.depth ?? 0} highlight={false} />
                 <div style={{ paddingLeft: (props.depth ?? 0) * RAIL_STEP }}>
                 <div className="flex min-h-[var(--nl-story-row-box)] items-center gap-2">
+                <span className="w-[var(--nl-story-name,56px)] shrink-0 pr-2" aria-hidden />
                 <span className="w-[var(--nl-story-avatar,28px)] shrink-0" aria-hidden />
-                <span className="w-[var(--nl-story-name,56px)] shrink-0" aria-hidden />
                 {/* The ghost hint sits in a wrapper around the textarea rather than the row's own
                     anchor, so it is positioned against the field's box and inherits its exact metrics.
                     `min-w-0 flex-1` moves off the textarea onto the wrapper; the textarea then fills it. */}
@@ -2370,6 +2319,12 @@ function CharacterSelectTrigger(props: {
      * words rather than float a few pixels off them.
      */
     column?: boolean;
+    /**
+     * This row continues a run by the same speaker. The name still prints — an empty column is what
+     * made a continuation indistinguishable from narration — but de-emphasised, so a run reads as one
+     * block under one head instead of as N equally loud attributions.
+     */
+    continuation?: boolean;
 }) {
     const { t } = useTranslation();
     // A frozen row keeps its nametag readable and stops offering the picker, which is also the way a
@@ -2464,6 +2419,10 @@ function CharacterSelectTrigger(props: {
                         // to truncate. Sizing the content box instead puts the padding outside it.
                         props.column ? "box-content -mx-1 w-fit justify-end font-medium" : "h-full min-h-[28px] text-sm",
                         unassigned ? "italic text-fg-subtle hover:text-primary" : props.speakerName ? "text-fg-muted" : characterColor ? "" : "text-primary",
+                        // Opacity, not a second colour: a continuation must stay the same name in the
+                        // same hue as its head, only quieter. Restored on hover, because it is still
+                        // the control that reassigns this line's speaker.
+                        props.continuation ? "opacity-50 hover:opacity-100" : "",
                         props.className ?? "",
                     ].join(" ")}
                     style={(() => {
@@ -2652,7 +2611,7 @@ function useCharacterBadgeImage(
  * head, a crop selection and a nametag colour are all wasted below about 28px. A category glyph does
  * not grow with it: it is a 14px icon, and a 40px tile around it is chrome.
  */
-function BlockBadge({ block, characters, appearance, portrait }: { block: StoryBlock; characters: Character[]; appearance?: CharacterAppearanceRef; portrait?: boolean }) {
+function BlockBadge({ block, characters, appearance }: { block: StoryBlock; characters: Character[]; appearance?: CharacterAppearanceRef }) {
     const { label, icon: Icon, iconColor } = getBlockBadgeInfo(block);
     // A differential-resolved sprite (framed on the face) when a look applies; otherwise the profile
     // thumbnail (already a square crop, shown as-is); otherwise the category icon.
@@ -2660,14 +2619,12 @@ function BlockBadge({ block, characters, appearance, portrait }: { block: StoryB
 
     return (
         <span
-            className={[
-                "relative inline-flex shrink-0 items-center justify-center overflow-hidden border border-edge bg-fill-subtle",
-                // Circles speak, squares stage. A `/enter Nattou` row shows Nattou's face too — it is
-                // the most useful thing that row can picture — and until now that made an action row
-                // and a dialogue row look the same at a glance, which is the one distinction the list
-                // most needs. Shape carries it instead, so the face stays and the ambiguity does not.
-                portrait ? "h-[var(--nl-story-avatar,28px)] w-[var(--nl-story-avatar,28px)] rounded-full" : "h-7 w-7 rounded-md",
-            ].join(" ")}
+            // ONE plate: one box, one radius, on every row that has one. It used to be a circle for a
+            // speaker and a 28px square for a command, which at `standard` and `comfortable` density
+            // put two sizes AND two shapes on the same screen — and bought nothing, because the name
+            // column already says which rows are speech. A list is easier to read down when its
+            // furniture is identical and only the content differs.
+            className="relative inline-flex h-[var(--nl-story-avatar,28px)] w-[var(--nl-story-avatar,28px)] shrink-0 items-center justify-center overflow-hidden rounded-md border border-edge bg-fill-subtle"
             title={label}
             aria-label={label}
         >
