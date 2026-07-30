@@ -2,7 +2,7 @@ import { RendererInterfaceKey } from "@shared/types/constants";
 import { Namespace } from "@shared/types/ipc";
 import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "@shared/types/menu";
-import type { BlueprintPersistenceProjectRef } from "@shared/types/ipcEvents";
+import type { BlueprintPersistenceProjectRef, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import type { MissingRecentProject } from "@shared/types/state/appStateTypes";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, WorkspaceViewRequest } from "@shared/types/window";
@@ -208,6 +208,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.send(IPCEventType.workspaceMenuSync, { model }),
         reportLoadResult: (ok: boolean) =>
             ipcClient.send(IPCEventType.workspaceReportLoadResult, { ok }),
+        reportWriteFreeze: (reason: WorkspaceFreezeKind | null) =>
+            ipcClient.send(IPCEventType.workspaceReportWriteFreeze, { reason }),
         onOpenViewRequest: (handler: (view: WorkspaceViewRequest) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceOpenView, (data) => handler(data.view)),
     },
@@ -351,6 +353,9 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.vcsGetHistory, { projectPath, limit, includeKinds }) as Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>>,
         readBlob: (projectPath: string, revision: RevisionId, path: string) =>
             ipcClient.invoke(IPCEventType.vcsReadBlob, { projectPath, revision, path }) as Promise<RequestStatus<{ contentBase64: string }>>,
+        /** Every document at one revision in one round trip; `contentBase64: null` = absent there. */
+        readRevisionDocuments: (projectPath: string, revision: RevisionId, paths?: string[]) =>
+            ipcClient.invoke(IPCEventType.vcsReadRevisionDocuments, { projectPath, revision, paths }) as Promise<RequestStatus<{ documents: { path: string; contentBase64: string | null }[] }>>,
         getChangedPaths: (projectPath: string, from: RevisionId, to: RevisionId) =>
             ipcClient.invoke(IPCEventType.vcsGetChangedPaths, { projectPath, from, to }) as Promise<RequestStatus<{ paths: string[] }>>,
         getThreeWay: (projectPath: string, mine: RevisionId, theirs: RevisionId, path: string) =>
