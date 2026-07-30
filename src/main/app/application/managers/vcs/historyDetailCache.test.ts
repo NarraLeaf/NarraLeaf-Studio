@@ -25,6 +25,8 @@ const lore = vi.hoisted(() => {
     const detailReads: string[] = [];
     /** Everything that happened, in order, across reads and teardown. For the ordering test below. */
     const trace: string[] = [];
+    /** Every root a store was opened against. One per project, however the caller spelled it. */
+    const opens: string[] = [];
     let nodes: { revision: string; number: number; parents: string[] }[] = [];
     /**
      * Makes one detail read block until released, so a test can hold a read open and ask what the
@@ -35,7 +37,10 @@ const lore = vi.hoisted(() => {
     let announceArrival: (() => void) | null = null;
 
     const backend = {
-        openStore: async () => ({ handleId: 1 }),
+        openStore: async (_globals: unknown, root: string) => {
+            opens.push(root);
+            return { handleId: opens.length };
+        },
         closeStore: async () => {
             trace.push("closeStore");
         },
@@ -69,6 +74,7 @@ const lore = vi.hoisted(() => {
         backend,
         detailReads,
         trace,
+        opens,
         /**
          * Hold every subsequent detail read open.
          *
@@ -100,6 +106,7 @@ const lore = vi.hoisted(() => {
         reset: (count: number) => {
             detailReads.length = 0;
             trace.length = 0;
+            opens.length = 0;
             gate = null;
             nodes = [];
             for (let number = count; number >= 1; number--) {
@@ -210,6 +217,49 @@ describe("revision detail cache", () => {
  * read is left waiting on a handle that no longer exists, and the panel that asked for it sits on
  * "Reading the version history" with nothing anywhere to explain it.
  */
+/**
+ * One directory is one project however the caller spelled its path.
+ *
+ * This is not a tidiness concern. The session map and the operation queue are what stop two calls
+ * meeting on one store, and Lore's repository lock is exclusive and BLOCKING - so a second key for
+ * the same directory does not produce a duplicate cache, it produces a process waiting on itself
+ * with no error, no CPU and no end. Observed in a running Studio: the panel sat on "Submitting this
+ * version" indefinitely while an unqueued call answered in 0ms.
+ *
+ * The spellings are the ones that really occur: the window-close paths take the project path from
+ * the window's props, the renderer sends the one out of the project config, and nothing has ever
+ * made those agree on a separator.
+ */
+describe("one project, however its path is spelled", () => {
+    const SPELLINGS = process.platform === "win32"
+        ? ["D:\\projects\\prologue", "D:/projects/prologue", "D:\\Projects\\Prologue", "D:\\projects\\prologue\\"]
+        : ["/projects/prologue", "/projects/./prologue", "/projects/prologue/"];
+
+    it("opens exactly one store for all of them", async () => {
+        for (const spelling of SPELLINGS) {
+            await manager.getHistory(spelling, 6, { includeDetails: true });
+        }
+
+        expect(lore.opens).toHaveLength(1);
+        // And one session means one cache: six revisions read once, not once per spelling.
+        expect(lore.detailReads).toHaveLength(6);
+    });
+
+    it("runs them through one queue, so they cannot meet on the same store", async () => {
+        const gate = lore.block();
+        const first = manager.getHistory(SPELLINGS[0], 6, { includeDetails: true });
+        await gate.arrived;
+
+        // A second spelling while the first is still in the backend. On the old keying this opened
+        // its own store and blocked forever on the lock the first one holds.
+        const second = manager.getHistory(SPELLINGS[1], 6, { includeDetails: true });
+        gate.release();
+
+        await expect(Promise.all([first, second])).resolves.toHaveLength(2);
+        expect(lore.opens).toHaveLength(1);
+    });
+});
+
 describe("closing a project", () => {
     it("waits for work already running before it lets the store go", async () => {
         const gate = lore.block();
