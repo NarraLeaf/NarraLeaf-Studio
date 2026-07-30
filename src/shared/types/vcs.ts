@@ -152,8 +152,9 @@ export type VcsCheckpointReason =
     /**
      * A restore is about to overwrite the working tree.
      *
-     * No caller yet - restore is a later milestone. Declared so that milestone inherits
-     * the policy instead of reinventing it, and deliberately not backed by a stub.
+     * The only one taken BEFORE the act rather than around it, because it is the only act
+     * that writes over files the author has not seen recorded anywhere. It is also the
+     * reason a restore is safe to offer at all, which is why the confirmation says so.
      */
     | "restore";
 
@@ -174,6 +175,69 @@ export interface VcsCommitResult {
     kind: VcsRevisionKind;
     /** Files the commit added or changed, as the backend counted them. */
     fileCount: number;
+}
+
+/**
+ * What the author gets to decide when they put the working tree back to a past revision.
+ *
+ * There is deliberately no "which files" here. A partial restore is a different feature with a
+ * different failure mode (a tree that is half one version and half another, with nothing on screen
+ * saying which half), and it is a later milestone.
+ */
+export interface VcsRestoreOptions {
+    /**
+     * How the surface that asked names the source revision - `#12`, as the rail spells it.
+     *
+     * Folded into the recorded message, which is why it must NOT be a translated string: a commit
+     * message is permanent repository content that travels to collaborators and outlives the
+     * interface language it was written under. A revision number is not language; a sentence is.
+     * Absent, the main process names the revision by its short hash instead.
+     */
+    label?: string;
+    identity?: string;
+}
+
+/**
+ * What a restore did.
+ *
+ * The shape says the thing the feature is built around: restoring **adds** a revision and never
+ * removes one. Nothing between the target revision and the head disappears - the working tree is
+ * written to match an older version and that state is then recorded as the newest one.
+ */
+export interface VcsRestoreResult {
+    /** The revision the working tree was put back to. */
+    from: RevisionId;
+    /**
+     * The checkpoint taken before a single byte was written, or null when there was nothing to
+     * protect.
+     *
+     * Null is the ordinary case for a clean tree, and it is not a failure: with nothing uncommitted,
+     * the head already IS the pre-restore state, so there is nothing a checkpoint could add.
+     */
+    checkpoint: VcsCommitResult | null;
+    /**
+     * The revision the restore recorded, or null when the working tree already matched the target.
+     *
+     * Also not a failure: restoring to what is already on disk changes nothing, and an empty
+     * revision would be a lie about the author's history (see `NothingToCommitError`).
+     */
+    revision: VcsCommitResult | null;
+    /**
+     * Why {@link revision} is null, when the reason is a failure rather than an unchanged tree.
+     *
+     * The two are not interchangeable and a surface must tell them apart: with `revision: null` and
+     * no failure, nothing happened because nothing needed to. With a failure, **the author's files
+     * have already been replaced** and only the record of it is missing - which is a sentence they
+     * have to read, because "the restore failed" is what they would otherwise assume, and the fix
+     * (record a version) is one they can do themselves.
+     *
+     * Reported here rather than thrown for the same reason: past the write step there is no honest
+     * way to answer "it did not happen".
+     */
+    recordFailure: string | null;
+    filesWritten: number;
+    /** Files that existed only because they were added after {@link from}. */
+    filesRemoved: number;
 }
 
 export interface VcsHistoryEntry {
