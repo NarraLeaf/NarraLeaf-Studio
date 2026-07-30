@@ -1,10 +1,12 @@
 import { createElement, Fragment } from "react";
 import { UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
 import { UI_VIDEO_ELEMENT_TYPE } from "@shared/types/ui-editor/video";
+import { UI_PUPPET_ELEMENT_TYPE } from "@shared/types/ui-editor/puppet";
 import { ContainerRenderer } from "@/lib/ui-editor/widget-modules/builtin/container/renderer";
 import { TextRenderer } from "@/lib/ui-editor/widget-modules/builtin/text/renderer";
 import { ImageRenderer } from "@/lib/ui-editor/widget-modules/builtin/image/renderer";
 import { VideoRenderer } from "@/lib/ui-editor/widget-modules/builtin/video/renderer";
+import { PuppetRenderer } from "@/lib/ui-editor/widget-modules/builtin/puppet/renderer";
 import { ButtonRenderer } from "@/lib/ui-editor/widget-modules/builtin/button/renderer";
 import { ListRenderer } from "@/lib/ui-editor/widget-modules/builtin/list/renderer";
 import { FrameRenderer } from "@/lib/ui-editor/widget-modules/builtin/frame/renderer";
@@ -40,6 +42,10 @@ export const BuiltinElementRenderers: ElementRendererDefinition[] = [
     {
         type: UI_VIDEO_ELEMENT_TYPE,
         render: props => createElement(VideoRenderer, props),
+    },
+    {
+        type: UI_PUPPET_ELEMENT_TYPE,
+        render: props => createElement(PuppetRenderer, props),
     },
     {
         type: "nl.button",
