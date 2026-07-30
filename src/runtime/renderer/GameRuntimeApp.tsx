@@ -13,7 +13,7 @@ import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFra
 import { loadRuntimePlugins } from "@/lib/ui-editor/runtime/plugins/loadRuntimePlugins";
 import { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
 import { RuntimeSidecarBackend } from "./runtimeSidecarBackend";
-import { listPackPuppetBackendSources, resolvePackModelBundleUrl } from "./puppetPackRuntimes";
+import { listPackPuppetBackendSources, resolvePackModelBundleUrl } from "@/lib/ui-editor/runtime/game/puppetPackRuntimes";
 import {
     preloadRuntimePackAssets,
     type RuntimeSurfacePreloadResult,

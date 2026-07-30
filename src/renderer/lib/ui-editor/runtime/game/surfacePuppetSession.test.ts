@@ -85,7 +85,7 @@ function request(patch: Partial<SurfacePuppetRequest> = {}): SurfacePuppetReques
     return { assetId: "model-alice", backend: "renderer-a", options: {}, ...patch };
 }
 
-function harness(open: SurfacePuppetOpener) {
+function harness(open: SurfacePuppetOpener | null) {
     const host = fakeHost();
     const surfaces: (HTMLDivElement & { removed: boolean })[] = [];
     const snapshots: SurfacePuppetSnapshot[] = [];
@@ -143,6 +143,20 @@ describe("SurfacePuppetMount", () => {
         // The box stays and nothing is drawn: no module load, no WebGL context, no surface at all.
         expect(open).not.toHaveBeenCalled();
         expect(host.children).toHaveLength(0);
+    });
+
+    it("degrades quietly when no host in this window can look a runtime up", () => {
+        // The end of the chain in surfacePuppetHosts.ts: no workspace services, no Dev Mode registry, no
+        // packaged bridge. `missing-backend` rather than `unmounted`, because nothing *can* draw this -
+        // and never `error`, because a window with no lookup has not failed at anything.
+        const { mount, host } = harness(null);
+
+        mount.mount(request(), state(), SIZE);
+
+        expect(mount.snapshot).toEqual({ status: "missing-backend", error: null, reason: "backend-missing" });
+        // Nothing was opened and no surface was made: there is no opener to call.
+        expect(host.children).toHaveLength(0);
+        expect(mount.session).toBeNull();
     });
 
     it("treats a runtime that is not installed as missing-backend, never as an error", async () => {
