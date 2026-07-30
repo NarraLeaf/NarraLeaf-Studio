@@ -551,7 +551,7 @@ const CHANGE_TINTS: Record<VcsChangeKind, string> = {
 };
 
 /**
- * How the author records a version - and until this existed, there was no way to do it anywhere in
+ * How the author submits a version - and until this existed, there was no way to do it anywhere in
  * Studio.
  *
  * **Absent rather than disabled** whenever it cannot be pressed for a reason that is not "something
