@@ -372,11 +372,15 @@ export const workspace = {
             returnToCurrent: "回到当前版本",
             returning: "正在回到当前版本…",
             // 还没有版本库的项目。按「缺什么」命名，而不是按机制命名。
-            notVersioned: "没有版本历史",
+            //
+            // 原文案是「没有版本历史」，与下面的 `noHistory`（仓库存在但还没有版本）几乎撞车。
+            // 这一条说的是「这个工程根本没纳入版本控制」，所以改成与下面按钮 `enable` 对齐的说法。
+            notVersioned: "未启用版本控制",
             enable: "启用版本控制",
             // 只有一行：启用会往作者的项目目录里写东西并对它取独占锁，所以在他按下之前先说清做什么。
             enableHint: "在这个项目的目录里记录版本历史。",
             enabling: "正在设置版本控制…",
+            // 仓库已经存在、里面还没有版本——与上面的 `notVersioned`（压根没启用）是两回事。
             noHistory: "还没有版本",
             history: "历史",
             loadingHistory: "正在读取版本历史…",

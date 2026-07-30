@@ -643,7 +643,8 @@ export class VersionControlService extends Service<VersionControlService> implem
      * A revision was recorded - by a commit, a checkpoint, or the repository being created.
      *
      * Subscribe from anything that displays which version this project is on. Re-reading the head
-     * here is cheap and does not scan: one `isRepository` round trip and a one-entry history read.
+     * here is cheap and does not scan: one `isRepository` round trip and one `getInfo`, which is a
+     * `scan: false, revisionOnly: true` status read in the main process.
      */
     public onRevisionRecorded(handler: () => void): () => void {
         return this.events.on("revisionRecorded", handler);

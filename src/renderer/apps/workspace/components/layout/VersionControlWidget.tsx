@@ -2,9 +2,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { ChevronDown, GitBranch, History, Loader2, Plus, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
-import type { Translator } from "@shared/i18n";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
-import { isVersionSurfaceVisible, revisionLabel, shortRevision } from "./versionRailModel";
+import { isVersionSurfaceVisible, shortRevision, versionFace } from "./versionRailModel";
 import { openVersionRail } from "./versionRailController";
 
 /**
@@ -18,6 +17,9 @@ import { openVersionRail } from "./versionRailController";
  *
  * The menu offers only what can be answered without scanning. Anything more - the change list, the
  * history, the commit form - opens the rail, which is the surface that owns them.
+ *
+ * The line on its face comes from `versionFace`, shared with the status-bar cell and the rail, so
+ * the three cannot name one version three ways.
  *
  * On a host with no version control this renders nothing at all. Not a disabled button: version
  * control is an optional capability with no native build for macOS Intel or Windows ARM64, so on those
@@ -55,6 +57,7 @@ export function VersionControlWidget({ surface }: { surface: VersionSurface }) {
     }
 
     const onRevision = state.kind === "revision";
+    const face = versionFace({ state, branch: surface.branch }, t);
     const run = (action: () => void) => () => {
         setOpen(false);
         action();
@@ -66,13 +69,16 @@ export function VersionControlWidget({ surface }: { surface: VersionSurface }) {
                 type="button"
                 onClick={() => setOpen(value => !value)}
                 title={onRevision
-                    ? t("workspace.shell.versionControl.viewingVersion", { version: faceLabel(state, t) })
-                    : t("workspace.shell.versionControl.title")}
+                    // The UNCUT line: a branch name too long for the face still belongs somewhere.
+                    ? t("workspace.shell.versionControl.viewingVersion", { version: face.full })
+                    : face.full !== face.text ? face.full : t("workspace.shell.versionControl.title")}
                 aria-label={t("workspace.shell.versionControl.title")}
                 aria-haspopup="menu"
                 aria-expanded={open}
                 className={cn(
-                    "flex h-8 max-w-44 items-center gap-1.5 rounded-md px-2 text-sm transition-colors cursor-default",
+                    // A maximum, not a width - `#12` is three characters wide whatever it says - so
+                    // raising it to fit a branch name costs the ordinary case nothing.
+                    "flex h-8 max-w-56 items-center gap-1.5 rounded-md px-2 text-sm transition-colors cursor-default",
                     onRevision
                         ? "bg-primary/15 text-primary hover:bg-primary/25"
                         : open ? "bg-fill text-fg" : "text-fg-muted hover:bg-fill hover:text-fg",
@@ -83,7 +89,7 @@ export function VersionControlWidget({ surface }: { surface: VersionSurface }) {
                         ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         : <GitBranch className="h-4 w-4" />}
                 </span>
-                <span className="truncate tabular-nums">{faceLabel(state, t)}</span>
+                <span className="truncate tabular-nums">{face.text}</span>
                 <ChevronDown className={cn("h-3 w-3 shrink-0 transition-transform", open && "rotate-180")} />
             </button>
 
@@ -129,30 +135,6 @@ export function VersionControlWidget({ surface }: { surface: VersionSurface }) {
             )}
         </div>
     );
-}
-
-/**
- * The one line the widget has room for.
- *
- * `#4` wherever a revision number is known, because that is the only short thing about a revision
- * that means anything to the person reading it; the short hash is the fallback for a revision view
- * entered without a label, and the two prose answers cover the states where there is no version yet.
- */
-function faceLabel(state: VersionSurface["state"], t: Translator["t"]): string {
-    switch (state.kind) {
-        case "revision":
-            return state.label ?? shortRevision(state.revision);
-        case "current":
-            return state.number !== null ? revisionLabel(state.number) : shortRevision(state.head);
-        case "not-a-repository":
-            return t("workspace.shell.versionControl.notVersioned");
-        case "empty":
-            return t("workspace.shell.versionControl.noHistory");
-        default:
-            // Probing. An em dash rather than a word: it is one round trip long, and a label that
-            // said "checking…" would flash on every project open.
-            return "—";
-    }
 }
 
 function WidgetRow({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {
