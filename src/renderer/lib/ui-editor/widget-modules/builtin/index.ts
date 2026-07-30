@@ -2,6 +2,7 @@ import type { UIWidgetModule } from "../types";
 import { RootWidgetModule } from "./root";
 import { TextWidgetModule } from "./text";
 import { ImageWidgetModule } from "./image";
+import { VideoWidgetModule } from "./video";
 import { ContainerWidgetModule } from "./container";
 import { ButtonWidgetModule } from "./button";
 import { ListWidgetModule } from "./list";
@@ -23,6 +24,7 @@ export const BuiltinWidgetModules: UIWidgetModule[] = [
     ContainerWidgetModule,
     TextWidgetModule,
     ImageWidgetModule,
+    VideoWidgetModule,
     ButtonWidgetModule,
     TextInputWidgetModule,
     SliderWidgetModule,

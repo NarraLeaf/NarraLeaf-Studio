@@ -1,7 +1,9 @@
 import type { UIElement } from "@shared/types/ui-editor/document";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
+import { UI_VIDEO_ELEMENT_TYPE } from "@shared/types/ui-editor/video";
 import { getButtonProps } from "@/lib/ui-editor/widget-modules/builtin/button/helpers";
+import { getVideoProps } from "@/lib/ui-editor/widget-modules/builtin/video/helpers";
 import {
     buttonResolvedVisualToRectangleLike,
     resolveImageRectangleLike,
@@ -47,6 +49,20 @@ export function collectResourceDiagnostics(elements: UIElement[]): UISurfaceDiag
                     source: "resource",
                     message: translate("blueprint.diagnostics.resource.imageMissing", { name: el.name ?? el.type }),
                     hint: translate("blueprint.diagnostics.resource.imageMissingHint"),
+                    elementId: el.id,
+                });
+            }
+        }
+        if (el.type === UI_VIDEO_ELEMENT_TYPE) {
+            // A video widget with no clip is an empty chrome box that looks like a styling choice.
+            // The poster is genuinely optional, so its absence is not reported.
+            if (!getVideoProps(el).assetId) {
+                out.push({
+                    id: `res:video:${el.id}`,
+                    severity: "warning",
+                    source: "resource",
+                    message: translate("blueprint.diagnostics.resource.videoMissing", { name: el.name ?? el.type }),
+                    hint: translate("blueprint.diagnostics.resource.videoMissingHint"),
                     elementId: el.id,
                 });
             }
