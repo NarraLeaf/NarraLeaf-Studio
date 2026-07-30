@@ -132,6 +132,16 @@ export type StoryScene = {
     runtimeName: string;
     description?: string;
     defaultBackgroundAssetId?: string;
+    /**
+     * The music this scene opens with. The engine plays it as part of the scene's own init, so it is
+     * already going when the first row runs — which is what "this scene's track" means and what a
+     * leading `/bgm` row can never be (the row plays *after* the scene is on screen).
+     *
+     * Additive: no document written before this carries it, so no schema bump — the same rule
+     * `camera` and `vfx` were added under. Absent means the scene inherits whatever is already
+     * playing, which is how a story that changes music with `/bgm` rows has always behaved.
+     */
+    bgm?: StorySceneBgm;
     rootBlockIds: StoryBlockId[];
     blocks: Record<StoryBlockId, StoryBlock>;
     /**
@@ -154,10 +164,32 @@ export type StorySceneSnapshot = {
     values: Record<string, StoryLiteralValue>;
 };
 
+/**
+ * A scene's opening background music.
+ *
+ * `loop` defaults to true because a scene's music is meant to still be playing when the player
+ * reaches the end of the scene, and because the in/out points an author marks on the asset only
+ * become a loop region when it loops.
+ *
+ * Volume and fade live here rather than being read off the asset: the same track can open a quiet
+ * scene and a loud one, and the fade is a property of *this* transition into *this* scene.
+ */
+export type StorySceneBgm = {
+    assetId: string;
+    /** 0-1. Absent = full volume. */
+    volume?: number;
+    /** Absent = loop. */
+    loop?: boolean;
+    /** Cross-fade into this track, in milliseconds. Absent = cut. */
+    fadeMs?: number;
+};
+
 export type StorySceneUpdate = {
     name?: string;
     description?: string;
     defaultBackgroundAssetId?: string | null;
+    /** `null` clears the scene's music; a partial patch replaces the whole record. */
+    bgm?: StorySceneBgm | null;
 };
 
 /**
@@ -404,7 +436,8 @@ export type StoryActionPayload =
               | "resumeSound"
               | "setVolume"
               | "setRate"
-              | "muteSound";
+              | "muteSound"
+              | "seekSound";
           objectName?: string;
           assetId?: string;
           fadeMs?: number;
@@ -412,6 +445,8 @@ export type StoryActionPayload =
           rate?: number;
           muted?: boolean;
           loop?: boolean;
+          /** `seekSound` — where to move the play head, in milliseconds (seconds on the line). */
+          timeMs?: number;
       }
     | {
           action: "setVariable";

@@ -271,6 +271,7 @@ export const storyInspector = {
         setVolume: "设置音量",
         setRate: "设置倍速",
         muteSound: "静音／取消静音",
+        seekSound: "跳转位置",
     },
     screenEffectOption: {
         blink: "闪烁",
@@ -315,6 +316,7 @@ export const storyInspector = {
         bgmAsset: "背景音乐资源",
         soundAsset: "音效资源",
         fade: "淡入淡出（秒）",
+        seekTime: "跳转到（秒）",
         volume: "音量",
         rate: "倍速",
         loop: "循环",
