@@ -23,13 +23,26 @@ import { VcsManager } from "./VcsManager";
 const lore = vi.hoisted(() => {
     /** Every revision `readRevisionDetails` was asked about, in order and with repeats. */
     const detailReads: string[] = [];
+    /** Everything that happened, in order, across reads and teardown. For the ordering test below. */
+    const trace: string[] = [];
     let nodes: { revision: string; number: number; parents: string[] }[] = [];
+    /**
+     * Makes one detail read block until released, so a test can hold a read open and ask what the
+     * teardown does while it is running. Null - not blocking - for every other test in the file.
+     */
+    let gate: Promise<void> | null = null;
+    /** Fired the first time a read reaches the gate, so a test never guesses at microtask counts. */
+    let announceArrival: (() => void) | null = null;
 
     const backend = {
         openStore: async () => ({ handleId: 1 }),
-        closeStore: async () => undefined,
+        closeStore: async () => {
+            trace.push("closeStore");
+        },
         flushRepository: async () => undefined,
-        releaseRepository: async () => undefined,
+        releaseRepository: async () => {
+            trace.push("releaseRepository");
+        },
         readRepositoryIdentity: async () => ({ repository: "repo0", branch: "main" }),
         /**
          * Newest first, cut to `limit` - and the cut is at the NEWEST end, which is what makes a
@@ -42,7 +55,12 @@ const lore = vi.hoisted(() => {
             return new Map(page.map((node) => [node.revision, node]));
         },
         readRevisionDetails: async (_globals: unknown, revision: string) => {
+            if (gate) {
+                announceArrival?.();
+                await gate;
+            }
             detailReads.push(revision);
+            trace.push(`detail:${revision}`);
             return { kind: "commit", message: `message for ${revision}` };
         },
     };
@@ -50,9 +68,39 @@ const lore = vi.hoisted(() => {
     return {
         backend,
         detailReads,
+        trace,
+        /**
+         * Hold every subsequent detail read open.
+         *
+         * `arrived` resolves once a read is actually sitting in the gate, which is the only honest
+         * way for a test to say "the work is in flight now" - counting microtasks would be guessing
+         * at how many awaits the manager happens to have between the call and the backend today.
+         */
+        block: () => {
+            let release = () => undefined as void;
+            gate = new Promise<void>((resolve) => {
+                release = () => resolve();
+            });
+            const arrived = new Promise<void>((resolve) => {
+                announceArrival = () => {
+                    announceArrival = null;
+                    resolve();
+                };
+            });
+            return {
+                arrived,
+                release: () => {
+                    gate = null;
+                    announceArrival = null;
+                    release();
+                },
+            };
+        },
         /** A linear history `count` revisions long, `r1` oldest. Clears the call log with it. */
         reset: (count: number) => {
             detailReads.length = 0;
+            trace.length = 0;
+            gate = null;
             nodes = [];
             for (let number = count; number >= 1; number--) {
                 nodes.push({
@@ -149,6 +197,52 @@ describe("revision detail cache", () => {
 
         // Re-read rather than answered from a cache that outlived its store handle. The cache is
         // memory attached to an open repository, not a durable index.
+        expect(lore.detailReads).toHaveLength(12);
+    });
+});
+
+/**
+ * Closing a project must not pull the store out from under work already running on it.
+ *
+ * A window reporting itself closed is not a promise that nothing is using the repository: reading a
+ * history is one metadata call per revision taken in turn, so on a real project it is comfortably
+ * long enough to still be running. Closing the store underneath one does not fail it cleanly - the
+ * read is left waiting on a handle that no longer exists, and the panel that asked for it sits on
+ * "Reading the version history" with nothing anywhere to explain it.
+ */
+describe("closing a project", () => {
+    it("waits for work already running before it lets the store go", async () => {
+        const gate = lore.block();
+        const reading = manager.getHistory(PROJECT, 6, { includeDetails: true });
+        // The read is genuinely in the backend now, session opened and all - not merely scheduled.
+        await gate.arrived;
+
+        const closing = manager.closeProject(PROJECT);
+        gate.release();
+        const entries = await reading;
+        await closing;
+
+        // The read finished, and finished COMPLETE - a truncated page is the other way this could
+        // go wrong, and it would look like a project whose history simply is that short.
+        expect(entries.map((entry) => entry.revision)).toEqual(["r6", "r5", "r4", "r3", "r2", "r1"]);
+        // Every detail read is ahead of the teardown in the trace, which is the actual claim.
+        expect(lore.trace.indexOf("closeStore")).toBeGreaterThan(lore.trace.lastIndexOf("detail:r1"));
+        expect(lore.trace.at(-1)).toBe("releaseRepository");
+    });
+
+    it("sends the next caller to a fresh session rather than the one on its way out", async () => {
+        await manager.getHistory(PROJECT, 6, { includeDetails: true });
+
+        const gate = lore.block();
+        const closing = manager.closeProject(PROJECT);
+        // Asked while the close is queued: the session is already out of the map, so this must not
+        // join it and must not be answered out of its cache.
+        const nextRead = manager.getHistory(PROJECT, 6, { includeDetails: true });
+        await gate.arrived;
+        gate.release();
+        await closing;
+        await nextRead;
+
         expect(lore.detailReads).toHaveLength(12);
     });
 });
