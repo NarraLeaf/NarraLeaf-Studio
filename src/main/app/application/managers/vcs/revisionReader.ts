@@ -85,6 +85,22 @@ export async function blobsAt(
     return out;
 }
 
+/**
+ * The bytes of one already-enumerated entry.
+ *
+ * The pair to {@link listFilesAt}: the walk hands back content addresses, so a caller that means to
+ * read many files - materialising a whole revision onto disk - reads them one at a time without a
+ * tree handle and without holding every buffer at once, which is what {@link documentsAt} does.
+ */
+export async function readEntryBytes(
+    globals: LoreGlobals,
+    store: StoreHandle,
+    repository: LoreHex,
+    entry: Pick<RevisionFileEntry, "hash" | "context">,
+): Promise<Buffer> {
+    return readAddress(globals, store, repository, entry);
+}
+
 /** One file as it existed at a revision, with the address its bytes live at. */
 export interface RevisionFileEntry {
     /** Repository-relative, forward slashes. */

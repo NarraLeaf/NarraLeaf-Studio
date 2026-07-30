@@ -27,14 +27,14 @@ export class WorkspaceReportWriteFreezeHandler extends IPCHandler<IPCEventType.w
 
     public handle(
         window: AppWindow,
-        { reason }: IPCEvents[IPCEventType.workspaceReportWriteFreeze]["data"],
+        { reason, revision }: IPCEvents[IPCEventType.workspaceReportWriteFreeze]["data"],
     ): RequestStatus<never> {
         const projectPath = window.getProps()?.projectPath;
         if (typeof projectPath !== "string" || projectPath.length === 0) {
             // Only a workspace window has a project; anything else has nothing to record.
             return this.success(void 0 as never);
         }
-        reportWorkspaceFreeze(projectPath, reason);
+        reportWorkspaceFreeze(projectPath, reason, revision);
         this.forgetWhenClosed(window, projectPath);
         return this.success(void 0 as never);
     }

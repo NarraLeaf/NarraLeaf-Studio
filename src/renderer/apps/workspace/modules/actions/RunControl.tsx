@@ -1,18 +1,22 @@
 import React, { useEffect, useState } from "react";
-import { Check, ChevronDown, MonitorPlay, Play, Square } from "lucide-react";
+import { Check, ChevronDown, Loader2, MonitorPlay, Package, Play, Square } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { useWorkspace } from "../../context";
 import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
-import { useTranslation } from "@/lib/i18n";
+import { translate, useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
 import { Services } from "@/lib/workspace/services/services";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
 import { PreviewService } from "@/lib/workspace/services/core/PreviewService";
+import { BuildService } from "@/lib/workspace/services/core/BuildService";
+import { UIService } from "@/lib/workspace/services/core/UIService";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { flushUIDocAndGraphIfDirty } from "./flushDevModeAssets";
+import { openBuildDialog } from "./BuildDialog";
 import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "./runtimeActionStatus";
 import type { DevModeStatus } from "@shared/types/devMode";
+import type { GameBuildStatus } from "@shared/types/gameBuild";
 import type { PreviewStatus } from "@shared/types/gameRuntime";
 import type { TranslationKey } from "@shared/i18n";
 
@@ -48,12 +52,19 @@ function normalizeRunMode(value: unknown): RunMode {
 /**
  * The Run split-button. One label+icon button that launches the *selected* mode (Dev Mode or
  * Preview) with a dropdown to switch which one that is. While a mode runs the button becomes a Stop
- * control and the dropdown is disabled — you cannot switch modes mid-run, only stop the running one.
- * Which mode is selected persists globally (see `ui.runMode`); Build/Production stays its own icon.
+ * control and the mode rows go inert — you cannot switch modes mid-run, only stop the running one.
+ * Which mode is selected persists globally (see `ui.runMode`).
  *
- * A frozen workspace disables Preview but not Dev Mode. This control is a fixed part of the top bar
- * rather than a registered action, so the exemption table in `components/ui/freezeActionPolicy` does
- * not reach it and the rule is spelled out below instead.
+ * **Production Build lives in that dropdown**, not in its own title-bar icon: the version control
+ * widget needs the room (plan 2026-07-28-002 §3), and run and build belong to one another anyway.
+ * The action itself stays registered (see `buildAction`) because the macOS Dev ▸ Build menu, the
+ * command palette and the freeze policy all resolve through the registry; `ActionBar` skips drawing
+ * it. This control also carries the build's STATUS and its done/failed notifications, which used to
+ * live inside the icon component - an effect in an icon runs once per place the icon is rendered.
+ *
+ * A frozen workspace disables Preview and Production Build but not Dev Mode. This control is a fixed
+ * part of the top bar rather than a registered action, so the exemption table in
+ * `components/ui/freezeActionPolicy` does not reach it and the rules are spelled out below instead.
  */
 export function RunControl() {
     const { t } = useTranslation();
@@ -62,6 +73,7 @@ export function RunControl() {
     const [mode, setMode] = useState<RunMode>("devMode");
     const [devStatus, setDevStatus] = useState<DevModeStatus>("idle");
     const [previewStatus, setPreviewStatus] = useState<PreviewStatus>("idle");
+    const [buildStatus, setBuildStatus] = useState<GameBuildStatus>("idle");
     const [menuOpen, setMenuOpen] = useState(false);
 
     // The selected mode is a global UI habit; follow live changes so a second window stays in sync.
@@ -97,6 +109,31 @@ export function RunControl() {
         return preview.onStatusChanged(setPreviewStatus);
     }, [context]);
 
+    // The build's status, and the toasts that report its end. Moved here from the Build icon because
+    // this control is mounted for the whole session while an icon is mounted once per surface that
+    // draws it - and the icon was drawn in the command palette too, so a build finishing with the
+    // palette open announced itself twice.
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const build = context.services.get<BuildService>(Services.Build);
+        const uiService = context.services.get<UIService>(Services.UI);
+        let previous = build.getStatus();
+        setBuildStatus(previous);
+        return build.onStateChanged(state => {
+            setBuildStatus(state.status);
+            if (state.status !== previous) {
+                if (state.status === "done") {
+                    uiService.showNotification(translate("build.toast.done"), "success");
+                } else if (state.status === "error") {
+                    uiService.showNotification(state.error ?? translate("build.toast.failed"), "error");
+                }
+            }
+            previous = state.status;
+        });
+    }, [context]);
+
     const devActive = isDevModeRuntimeActive(devStatus);
     const previewActive = isPreviewRuntimeActive(previewStatus);
     const activeMode: RunMode | null = devActive ? "devMode" : previewActive ? "preview" : null;
@@ -119,6 +156,14 @@ export function RunControl() {
      */
     const previewBlocked = frozen && !running && shownMode === "preview";
     const frozenTitle = t("workspace.shell.freeze.unavailable");
+    const building = buildStatus === "preparing" || buildStatus === "compiling" || buildStatus === "packaging";
+    /**
+     * Production Build is off while frozen, exactly as it was when it had its own button - the same
+     * answer `resolveFrozenActionDisabled` gives for `buildAction`, which is still what the palette
+     * and the macOS menu consult. A frozen workspace is not claiming to be shippable, and main refuses
+     * the build a second time anyway (greying a renderer control is affordance, not enforcement).
+     */
+    const buildBlocked = frozen;
 
     const runOrStop = () => {
         if (!workspace || !context) {
@@ -182,38 +227,42 @@ export function RunControl() {
                     <span>{t(meta.labelKey)}</span>
                 </button>
 
+                {/* Stays live while a mode runs, unlike before: the menu is no longer only "switch
+                    mode", it is also the only way to reach Production Build, and folding that in must
+                    not take away an entry point that used to be a click away. The mode rows below go
+                    inert instead, which is where the "no switching mid-run" rule actually belongs. */}
                 <button
                     type="button"
                     onClick={() => setMenuOpen(open => !open)}
-                    disabled={running}
-                    title={t("actions.run.switchMode")}
-                    aria-label={t("actions.run.switchMode")}
+                    title={t("actions.run.menu")}
+                    aria-label={t("actions.run.menu")}
                     aria-haspopup="menu"
                     aria-expanded={menuOpen}
                     className={cn(
                         "flex cursor-default items-center justify-center px-1 transition-colors",
-                        running ? "cursor-not-allowed text-on-primary/40" : "text-fg-muted hover:bg-fill hover:text-fg",
+                        running ? "text-white hover:bg-danger/80" : "text-fg-muted hover:bg-fill hover:text-fg",
                     )}
                 >
                     <ChevronDown className={cn("h-3 w-3 transition-transform", menuOpen && "rotate-180")} />
                 </button>
             </div>
 
-            {menuOpen && !running && (
+            {menuOpen && (
                 <>
                     <div className="nl-window-content-layer z-10" onClick={() => setMenuOpen(false)} />
                     <div
                         role="menu"
-                        aria-label={t("actions.run.switchMode")}
-                        className="absolute left-0 top-full z-20 mt-1 min-w-44 rounded-md border border-edge-strong bg-surface-overlay py-1 shadow-lg"
+                        aria-label={t("actions.run.menu")}
+                        className="absolute left-0 top-full z-20 mt-1 min-w-52 rounded-md border border-edge-strong bg-surface-overlay py-1 shadow-lg"
                     >
                         {RUN_MODES.map(option => {
                             const optionMeta = RUN_MODE_META[option];
                             const selected = option === mode;
                             // Selecting a mode whose run button is dead would be a dead end, so the
                             // frozen mode is disabled here too - and stays listed, so the author can
-                            // see that Preview exists and why it is off.
-                            const optionBlocked = frozen && option === "preview";
+                            // see that Preview exists and why it is off. Everything is inert while
+                            // something runs: the mode cannot change under a running process.
+                            const optionBlocked = running || (frozen && option === "preview");
                             return (
                                 <button
                                     key={option}
@@ -222,7 +271,7 @@ export function RunControl() {
                                     aria-checked={selected}
                                     aria-disabled={optionBlocked || undefined}
                                     disabled={optionBlocked}
-                                    title={optionBlocked ? frozenTitle : undefined}
+                                    title={frozen && option === "preview" ? frozenTitle : undefined}
                                     onClick={() => selectMode(option)}
                                     className={cn(
                                         "flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm transition-colors",
@@ -237,6 +286,37 @@ export function RunControl() {
                                 </button>
                             );
                         })}
+
+                        <div className="my-1 mx-2 h-px bg-fill-strong" />
+
+                        {/* Production Build. Not a run mode - it produces a package rather than
+                            launching anything - so it is a plain row below the radio group rather than
+                            a third option, and it stays reachable while a mode runs. */}
+                        <button
+                            type="button"
+                            role="menuitem"
+                            aria-disabled={buildBlocked || undefined}
+                            disabled={buildBlocked}
+                            title={buildBlocked ? frozenTitle : undefined}
+                            onClick={() => {
+                                setMenuOpen(false);
+                                if (workspace) {
+                                    void openBuildDialog(workspace);
+                                }
+                            }}
+                            className={cn(
+                                "flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm transition-colors",
+                                buildBlocked
+                                    ? "cursor-not-allowed text-fg-subtle"
+                                    : "text-fg-muted hover:bg-fill hover:text-fg",
+                            )}
+                        >
+                            <span className={cn("flex h-4 w-4 items-center justify-center", buildStatus === "error" && "text-danger")}>
+                                {building ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Package className="h-4 w-4" />}
+                            </span>
+                            <span className="flex-1 text-left">{t("actions.run.productionBuild")}</span>
+                            <span className="w-3" />
+                        </button>
                     </div>
                 </>
             )}
