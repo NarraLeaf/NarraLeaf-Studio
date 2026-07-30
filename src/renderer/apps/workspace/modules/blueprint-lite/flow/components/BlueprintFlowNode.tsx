@@ -8,7 +8,7 @@ import {
     type ReactNode,
 } from "react";
 import { Handle, Position, useReactFlow, type NodeProps } from "@xyflow/react";
-import { Image as ImageIcon, Keyboard as KeyboardIcon, Link2, Minus, Plus, X } from "lucide-react";
+import { Image as ImageIcon, Keyboard as KeyboardIcon, Link2, Minus, Music, Plus, X } from "lucide-react";
 import type { BlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import {
     BLUEPRINT_NODE_PARAM_DISPLAYABLE_ANIMATION_FROM_EXPLICIT,
@@ -44,6 +44,7 @@ import {
     normalizeBlueprintImageAssetValue,
     type BlueprintImageAsset,
 } from "@shared/types/blueprint/valueTypes";
+import { normalizeAudioClipRegion } from "@shared/types/audio";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
@@ -168,6 +169,103 @@ function useImageAssetDisplayName(assetId: string | null): string | null {
         const assetsService = context.services.get<AssetsService>(Services.Assets);
         return assetsService.getAssets()[AssetType.Image]?.[assetId]?.name ?? null;
     }, [assetId, context]);
+}
+
+/**
+ * The audio picker on a node card.
+ *
+ * Deliberately a plain row rather than the image picker's thumbnail card: a sound has nothing to show,
+ * and the one fact worth surfacing is whether the author marked in/out points on it — that is the
+ * difference between a track that loops its body and one that loops the whole file, and it is decided
+ * somewhere else entirely (the asset manager's audio preview).
+ *
+ * Stores a bare asset id string, matching the `assetId` pin the same node accepts when wired.
+ */
+function AudioAssetPickerCard({
+    value,
+    onChange,
+}: {
+    value: unknown;
+    onChange?: (value: string | null) => void;
+}) {
+    const { t } = useTranslation();
+    const [selectorOpen, setSelectorOpen] = useState(false);
+    const anchorRef = useRef<HTMLButtonElement | null>(null);
+    let context: ReturnType<typeof useWorkspace>["context"] | null = null;
+    try {
+        context = useWorkspace().context;
+    } catch {
+        context = null;
+    }
+    const assetId = typeof value === "string"
+        ? value.trim() || null
+        : typeof (value as { assetId?: unknown } | null)?.assetId === "string"
+            ? String((value as { assetId: string }).assetId).trim() || null
+            : null;
+    const asset = useMemo(() => {
+        if (!assetId || !context) {
+            return null;
+        }
+        return context.services.get<AssetsService>(Services.Assets).getAssets()[AssetType.Audio]?.[assetId] ?? null;
+    }, [assetId, context]);
+    const region = normalizeAudioClipRegion(asset?.extras);
+    const label = asset?.name ?? (assetId ? t("blueprint.audio.missing") : t("blueprint.audio.select"));
+
+    return (
+        <div
+            className="nodrag min-w-0"
+            onMouseDown={stopFlowNodePointerBubble}
+            onPointerDown={stopFlowNodePointerBubble}
+        >
+            <div className="flex min-w-0 gap-1">
+                <button
+                    ref={anchorRef}
+                    type="button"
+                    className="flex h-6 min-w-0 flex-1 items-center gap-1 rounded-md border border-edge bg-surface px-1.5 text-left hover:border-primary/35 hover:bg-fill-subtle"
+                    title={assetId ? `${label} (${assetId})` : t("blueprint.audio.select")}
+                    onClick={e => {
+                        e.stopPropagation();
+                        setSelectorOpen(true);
+                    }}
+                >
+                    <Music className="h-3 w-3 shrink-0 text-fg-subtle" aria-hidden />
+                    <span className={`truncate text-2xs ${asset ? "text-fg" : "text-fg-subtle italic"}`}>{label}</span>
+                    {region ? (
+                        <span className="ml-auto shrink-0 rounded bg-fill-subtle px-1 text-2xs text-fg-subtle">
+                            {t("blueprint.audio.marked")}
+                        </span>
+                    ) : null}
+                </button>
+                {assetId ? (
+                    <button
+                        type="button"
+                        className="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-edge bg-surface text-fg-subtle hover:border-danger/40 hover:text-danger"
+                        title={t("blueprint.audio.clear")}
+                        aria-label={t("blueprint.audio.clear")}
+                        onClick={e => {
+                            e.stopPropagation();
+                            onChange?.(null);
+                        }}
+                    >
+                        <X className="h-3 w-3" aria-hidden />
+                    </button>
+                ) : null}
+            </div>
+            <AssetSelector
+                visible={selectorOpen}
+                assetType={AssetType.Audio}
+                selectedIds={assetId ? [assetId] : []}
+                anchorRef={anchorRef}
+                title={t("blueprint.audio.selectTitle")}
+                multiple={false}
+                onClose={() => setSelectorOpen(false)}
+                onConfirm={assets => {
+                    setSelectorOpen(false);
+                    onChange?.(assets[0]?.id ?? null);
+                }}
+            />
+        </div>
+    );
 }
 
 function ImageAssetPickerCard({
@@ -1264,6 +1362,8 @@ function InspectorParamOnCard({
                 <BlueprintColorValueControl value={raw} onChange={v => onPatchNodeParam(nodeId, spec.key, v)} />
             ) : spec.kind === "imageAsset" ? (
                 <ImageAssetPickerCard value={raw} onChange={v => onPatchNodeParam(nodeId, spec.key, v)} />
+            ) : spec.kind === "audioAsset" ? (
+                <AudioAssetPickerCard value={raw} onChange={v => onPatchNodeParam(nodeId, spec.key, v)} />
             ) : spec.kind === "keyboardBinding" ? (
                 <KeyboardBindingCardControl value={raw} onChange={v => onPatchNodeParam(nodeId, spec.key, v)} />
             ) : spec.kind === "buttonCursor" ? (
