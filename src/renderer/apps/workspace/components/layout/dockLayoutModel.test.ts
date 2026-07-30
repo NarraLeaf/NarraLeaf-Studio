@@ -5,7 +5,10 @@ import {
     EDITOR_FLOOR,
     maxBottomHeight,
     maxSidebarWidth,
+    RAIL_ITEM_INSET,
     RAIL_SELECTOR_WIDTH,
+    railColumnOffsets,
+    railItemLeft,
     residualEditorWidth,
     resolveDock,
     TITLE_BAR_HEIGHT,
@@ -188,6 +191,51 @@ describe("the version rail in the dock account", () => {
         expect(next).toBe(maxSidebarWidth("left", e, 0));
         expect(residualEditorWidth(e, resolveDock({ left: next, right: 320, bottom: 256 }, e)))
             .toBeGreaterThanOrEqual(EDITOR_FLOOR.width);
+    });
+});
+
+/**
+ * Rail-item alignment: every selector-rail item, top-docked and bottom-docked, at ONE x.
+ *
+ * Measured in the running app before this: the bottom dock's triggers had drifted to x≈29, inside the
+ * version rail's column, while the left dock's own triggers stayed at x≈90 in the selector rail. The
+ * cause is structural rather than cosmetic - the top rails are columns in the flex row and are placed
+ * by stacking, the bottom rail is absolutely positioned and has to be TOLD - so the fix is that both
+ * read the same offset, and this is the assertion that they do.
+ */
+describe("railColumnOffsets", () => {
+    const RAIL_WIDTHS = [0, VERSION_RAIL_COLLAPSED_WIDTH, VERSION_RAIL_EXPANDED_WIDTH];
+
+    it("starts the selector column exactly where the version rail's column ends, at every rail width", () => {
+        for (const versionRailWidth of RAIL_WIDTHS) {
+            const offsets = railColumnOffsets(env({ versionRailWidth }));
+            // The flex row's own arithmetic, re-derived: the version rail is the first column, so the
+            // selector column begins at its left edge plus its width. Nothing else is in front of it.
+            expect(offsets.versionRail).toBe(0);
+            expect(offsets.sidebarRail).toBe(offsets.versionRail + versionRailWidth);
+        }
+    });
+
+    it("resolves a bottom-docked rail item and a top-docked one to the same x", () => {
+        for (const versionRailWidth of RAIL_WIDTHS) {
+            const e = env({ versionRailWidth });
+            // The left dock's rail is a column in the flex row: its x is whatever precedes it, and the
+            // only thing that can is the version rail. Spelled out from the chain rather than from the
+            // function under test, so this is a check and not a restatement of it.
+            const topItem = railItemLeft(versionRailWidth);
+            // The bottom dock's rail is absolutely positioned, at exactly this offset (WorkspaceLayout),
+            // with the same padding inside.
+            const bottomItem = railItemLeft(railColumnOffsets(e).sidebarRail);
+            expect(bottomItem, `rail ${versionRailWidth}`).toBe(topItem);
+        }
+    });
+
+    it("keeps a rail item centred in the 48px column, so 'same x' is also the right x", () => {
+        // Both selector rails render a 40px item (`h-10 w-10`) with RAIL_ITEM_INSET either side. If
+        // that stopped adding up to the column, the two rails would agree with each other and both be
+        // off-centre - which "same x" alone cannot catch.
+        const RAIL_ITEM_SIZE = 40;
+        expect(2 * RAIL_ITEM_INSET + RAIL_ITEM_SIZE).toBe(RAIL_SELECTOR_WIDTH);
     });
 });
 

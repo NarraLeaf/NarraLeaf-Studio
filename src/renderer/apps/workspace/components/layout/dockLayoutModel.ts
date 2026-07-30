@@ -58,6 +58,41 @@ export const EDITOR_FLOOR = { width: 480, height: 240 } as const;
 export const TITLE_BAR_HEIGHT = 40;
 export const RAIL_SELECTOR_WIDTH = 48;
 
+/**
+ * Horizontal padding inside a selector rail (`px-1`), so a rail ITEM's x can be derived rather than
+ * eyeballed. Both selector rails centre a 40px item in the 48px column.
+ */
+export const RAIL_ITEM_INSET = 4;
+
+/**
+ * Where each fixed column of the horizontal chain starts, in window px.
+ *
+ * The flex row places the top-docked columns implicitly, by stacking them. The BOTTOM dock's selector
+ * cannot be in that row - it has to sit in the same column as the left selector, just above the
+ * status bar - so it is absolutely positioned and therefore has to be TOLD. It was told `left: 0`,
+ * which was correct until a column appeared to the left of the selector rail: measured in the running
+ * app, the bottom triggers had drifted into the version rail's column while the left dock's own
+ * triggers stayed in the selector rail, one column over.
+ *
+ * So both come from here. One column holds all of the selector rail's items, top-docked and
+ * bottom-docked; the version rail is a column of its own and does not adopt them.
+ */
+export interface RailColumnOffsets {
+    /** The version rail, when it is a column at all. Always the window's left edge. */
+    versionRail: number;
+    /** The selector column: the left dock's rail AND the bottom dock's, at one x. */
+    sidebarRail: number;
+}
+
+export function railColumnOffsets(env: Pick<DockEnv, "versionRailWidth">): RailColumnOffsets {
+    return { versionRail: 0, sidebarRail: env.versionRailWidth };
+}
+
+/** Where a rail item's left edge lands, given the x of the column holding it. */
+export function railItemLeft(columnLeft: number): number {
+    return columnLeft + RAIL_ITEM_INSET;
+}
+
 export const DOCK_REGIONS: Record<DockRegion, RegionSpec> = {
     left: { min: 240, default: 320, axis: "horizontal", overflow: "clamp" },
     right: { min: 240, default: 320, axis: "horizontal", overflow: "clamp" },
