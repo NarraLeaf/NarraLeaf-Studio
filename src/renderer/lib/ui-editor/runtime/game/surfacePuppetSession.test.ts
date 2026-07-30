@@ -222,6 +222,40 @@ describe("SurfacePuppetMount", () => {
         expect(mount.snapshot.status).toBe("ready");
     });
 
+    it("removes its own surface when an abandoned attempt then fails to open", async () => {
+        let rejectFirst: ((reason: unknown) => void) | null = null;
+        const second = fakeSession();
+        let calls = 0;
+        const { mount, host, surfaces } = harness(() => {
+            calls += 1;
+            return calls === 1
+                ? new Promise<PuppetModelSession>((_resolve, reject) => { rejectFirst = reject; })
+                : Promise.resolve(second);
+        });
+
+        mount.mount(request(), state(), SIZE);
+        // The author renames the backend, or picks another model, while the first open() is in flight.
+        mount.mount(request({ backend: "renderer-b" }), state(), SIZE);
+        expect(surfaces).toHaveLength(2);
+
+        // ...and only now does the abandoned attempt fail: no such runtime directory, a module that
+        // will not load.
+        rejectFirst?.(new Error("module not found"));
+        await settle();
+
+        // A stale attempt owns its own node — `teardown()` deliberately leaves it alone while the
+        // session is still null, because pulling a container out from under a mid-mount backend is how
+        // a half-built WebGL canvas leaks. So if the rejecting arm does not remove it, nothing ever
+        // does: one orphan per edit, stacked in the widget box, each holding whatever the backend
+        // built before it threw, against a ~16-context ceiling.
+        expect(surfaces[0]?.removed).toBe(true);
+        expect(host.children).toEqual([surfaces[1]]);
+        // And an abandoned attempt's failure is not the author's problem: the widget shows the model
+        // that won, not an error from the one they navigated away from.
+        expect(mount.snapshot.status).toBe("ready");
+        expect(mount.session).toBe(second);
+    });
+
     it("does not let a late-resolving stale attempt overwrite the current status", async () => {
         const slow = fakeSession({ deferReady: true });
         const quick = fakeSession();
