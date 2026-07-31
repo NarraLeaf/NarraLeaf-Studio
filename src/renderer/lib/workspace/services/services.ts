@@ -64,6 +64,7 @@ import type {
     Blueprint,
 } from "@shared/types/blueprint/document";
 import type { VariableRegistry, VariableRegistryEntry } from "@shared/types/variables/registry";
+import type { AudioTrackChannel, ProjectAudioTrack, ProjectAudioTrackDocument } from "@shared/types/audioTrack";
 import type {
     ReadonlyBlueprintSurfaceSummary,
     ReadonlyBlueprintWidgetSummary,
@@ -172,6 +173,8 @@ enum Services {
     ProjectStats = "projectStats",
     /** Project-level persistent variable registry (blueprint-declared persistent vars); M-VAR */
     VariableRegistry = "variableRegistry",
+    /** Project-level audio tracks: the authoring-time mix presets every audio surface points at */
+    AudioTracks = "audioTracks",
     /** Aggregate "is my work on disk?" state: auto-saver states + the table of files that failed */
     SaveStatus = "saveStatus",
     // Texture = "texture",
@@ -441,6 +444,30 @@ interface IVariableRegistryService extends IService {
     setEntryDescription(id: string, description: string | undefined): void;
     deleteEntry(id: string): void;
     replaceRegistry(registry: VariableRegistry): void;
+}
+
+/**
+ * The project's audio tracks - one row per authoring-time mix preset, resolving to (bus, multiplier,
+ * fade/loop defaults). See `@shared/types/audioTrack` for the model and the resolution formula.
+ */
+interface IAudioTrackService extends IService {
+    load(): Promise<ProjectAudioTrack[]>;
+    save(document: ProjectAudioTrackDocument): Promise<void>;
+    getDocument(): ProjectAudioTrackDocument;
+    listTracks(): ProjectAudioTrack[];
+    getTrack(id: string): ProjectAudioTrack | undefined;
+    resolveTrack(trackId: string | null | undefined, fallbackChannel?: AudioTrackChannel): ProjectAudioTrack;
+    onTracksChanged(handler: (tracks: ProjectAudioTrack[]) => void): () => void;
+    onDirtyChanged(handler: (dirty: boolean) => void): () => void;
+    isDirty(): boolean;
+    getRevision(): number;
+    applyTrackMutation(mutator: (tracks: ProjectAudioTrack[]) => ProjectAudioTrack[]): void;
+    createTrack(input?: Partial<Omit<ProjectAudioTrack, "id" | "builtin">>): ProjectAudioTrack;
+    duplicateTrack(id: string): ProjectAudioTrack | null;
+    updateTrack(id: string, patch: Partial<Omit<ProjectAudioTrack, "id" | "builtin">>): void;
+    /** Refuses the three built-ins; they are the per-bus fallbacks. */
+    deleteTrack(id: string): boolean;
+    moveTrack(id: string, beforeId: string | null): void;
 }
 
 interface ILocalBlueprintService extends IService {
@@ -1072,7 +1099,7 @@ export {
     IWorkspaceReloadService, IVideoService,
     ICharacterService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, IConsoleService, UIEditorStateEvents,
-    IProjectDependencyService, IVoiceService, IVariableRegistryService, IPuppetDescriptionService,
+    IProjectDependencyService, IVoiceService, IVariableRegistryService, IAudioTrackService, IPuppetDescriptionService,
     Services, WorkspaceContext
 };
 

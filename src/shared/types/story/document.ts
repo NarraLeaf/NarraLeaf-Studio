@@ -176,11 +176,20 @@ export type StorySceneSnapshot = {
  */
 export type StorySceneBgm = {
     assetId: string;
-    /** 0-1. Absent = full volume. */
+    /**
+     * The project audio track this music plays on (`ProjectAudioTrack.id`).
+     *
+     * Spelled `audioTrackId` rather than `trackId` because `trackId` already keys a Story Motion
+     * timeline row, and one spelling for two unrelated things would make "how many rows use this
+     * audio track" unanswerable. Absent resolves to the `music` built-in, which is the bus and the
+     * defaults a scene's music has always used.
+     */
+    audioTrackId?: string;
+    /** 0-1 as authored. Multiplied by the track's gain at compile time. Absent = the track's gain alone. */
     volume?: number;
-    /** Absent = loop. */
+    /** Absent = whatever the track's own loop default says (`music` loops). */
     loop?: boolean;
-    /** Cross-fade into this track, in milliseconds. Absent = cut. */
+    /** Cross-fade into this track, in milliseconds. Absent = the track's fade-in. */
     fadeMs?: number;
 };
 
@@ -468,10 +477,32 @@ export type StoryActionPayload =
               | "seekSound";
           objectName?: string;
           assetId?: string;
+          /**
+           * The project audio track this row plays on (`ProjectAudioTrack.id`) — the bus it lands on,
+           * the multiplier applied to {@link volume}, and the fade/loop defaults it inherits.
+           *
+           * Only the rows that CREATE a sound (`setBgm`, `playSound`) carry one: a later `/vol piano`
+           * addresses a handle that already has a track, and letting it name a second would be two
+           * answers to one question (the compiler reports that as a conflict rather than picking).
+           *
+           * Spelled `audioTrackId`, not `trackId`: the latter is Story Motion's key for a timeline row,
+           * and sharing it would make reference counting across documents ambiguous.
+           *
+           * Additive: no document written before this carries it, so no schema bump. Absent — and a
+           * dangling id, since a track can be deleted — resolves to the built-in for the operation's
+           * natural bus, which is exactly what the compiler hard-coded before tracks existed.
+           */
+          audioTrackId?: string;
+          /**
+           * Fade for this row, in milliseconds, applied in whichever direction the operation goes.
+           * Absent = the track's own `fadeInMs` / `fadeOutMs`.
+           */
           fadeMs?: number;
+          /** 0-1 as authored. Multiplied by the track's gain at compile time. */
           volume?: number;
           rate?: number;
           muted?: boolean;
+          /** Absent = the track's own loop default. */
           loop?: boolean;
           /** `seekSound` — where to move the play head, in milliseconds (seconds on the line). */
           timeMs?: number;

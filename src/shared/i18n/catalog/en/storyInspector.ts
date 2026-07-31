@@ -367,6 +367,9 @@ export const storyInspector = {
     },
 
     audio: {
+        track: "Track",
+        // The name of the track an unset reference lands on, so the empty choice is not a blank.
+        trackDefault: "Default ({name})",
         soundName: "Sound name",
         bgmAsset: "BGM asset",
         soundAsset: "Sound asset",

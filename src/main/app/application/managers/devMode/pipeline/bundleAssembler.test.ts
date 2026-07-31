@@ -144,17 +144,18 @@ describe("bundleAssembler auto save", () => {
 });
 
 /**
- * Audio clip regions. The in/out points an author marks in the asset manager only reach the game
- * through this table, so "the marker did nothing" is exactly the failure these guard.
+ * The audio payload. The in/out points an author marks in the asset manager and the project's audio
+ * tracks only reach the game through this table, so "the marker did nothing" is exactly the failure
+ * these guard.
  */
-describe("bundleAssembler audio clip regions", () => {
+describe("bundleAssembler audio payload", () => {
     const tempDirs: string[] = [];
 
     afterEach(async () => {
         await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })));
     });
 
-    async function createProject(shard: unknown): Promise<string> {
+    async function createProject(shard: unknown, tracksDocument?: string): Promise<string> {
         const projectPath = await mkdtemp(path.join(os.tmpdir(), "nls-audio-test-"));
         tempDirs.push(projectPath);
         if (shard !== undefined) {
@@ -164,30 +165,34 @@ describe("bundleAssembler audio clip regions", () => {
                 JSON.stringify(shard),
             );
         }
+        if (tracksDocument !== undefined) {
+            await mkdir(path.join(projectPath, "editor"), { recursive: true });
+            await writeFile(path.join(projectPath, "editor", "audio-tracks.json"), tracksDocument);
+        }
         return projectPath;
     }
 
-    it("returns undefined when no audio asset carries a region", async () => {
+    async function clipsOf(projectPath: string): Promise<Record<string, unknown>> {
+        return (await loadGameAudio(projectPath)).clips;
+    }
+
+    it("carries an empty clip table when no audio asset has a region", async () => {
         const projectPath = await createProject({
             a1: { id: "a1", name: "theme.mp3" },
             a2: { id: "a2", name: "hit.wav", extras: {} },
         });
-        // An empty table would put a key in every bundle and make "regions exist" unanswerable
-        // with one check.
-        expect(await loadGameAudio(projectPath)).toBeUndefined();
+        expect(await clipsOf(projectPath)).toEqual({});
     });
 
     it("carries only the marked clips", async () => {
         const projectPath = await createProject({
-            a1: { id: "a1", extras: { audioLoop: { inMs: 4200, outMs: 92500 } } },
+            a1: { id: "a1", extras: { audioLoop: { inMs: 4200, outMs: 92500, loopStartMs: 12000 } } },
             a2: { id: "a2", extras: { audioLoop: { inMs: 1000 } } },
             a3: { id: "a3", name: "unmarked.wav" },
         });
-        expect(await loadGameAudio(projectPath)).toEqual({
-            clips: {
-                a1: { inMs: 4200, outMs: 92500 },
-                a2: { inMs: 1000 },
-            },
+        expect(await clipsOf(projectPath)).toEqual({
+            a1: { inMs: 4200, outMs: 92500, loopStartMs: 12000 },
+            a2: { inMs: 1000 },
         });
     });
 
@@ -197,24 +202,74 @@ describe("bundleAssembler audio clip regions", () => {
         });
         // Earliest two in time order, so a record written against the old shape opens with what the
         // author marked rather than blank.
-        expect(await loadGameAudio(projectPath)).toEqual({ clips: { a1: { inMs: 200, outMs: 900 } } });
+        expect(await clipsOf(projectPath)).toEqual({ a1: { inMs: 200, outMs: 900 } });
     });
 
     it("drops an out point that is not after the in point", async () => {
         const projectPath = await createProject({
             a1: { id: "a1", extras: { audioLoop: { inMs: 5000, outMs: 5000 } } },
         });
-        expect(await loadGameAudio(projectPath)).toEqual({ clips: { a1: { inMs: 5000 } } });
+        expect(await clipsOf(projectPath)).toEqual({ a1: { inMs: 5000 } });
     });
 
     it("degrades to no regions when the shard is missing or unreadable", async () => {
-        expect(await loadGameAudio(await createProject(undefined))).toBeUndefined();
+        expect(await clipsOf(await createProject(undefined))).toEqual({});
 
         const broken = await mkdtemp(path.join(os.tmpdir(), "nls-audio-test-"));
         tempDirs.push(broken);
         await mkdir(path.join(broken, "assets"), { recursive: true });
         await writeFile(path.join(broken, "assets", "assets.metadata.audio.json"), "{not json");
         // Every clip then plays whole, which is what happened before regions existed.
-        expect(await loadGameAudio(broken)).toBeUndefined();
+        expect(await clipsOf(broken)).toEqual({});
+    });
+
+    it("seeds the built-in tracks when the project has no track document", async () => {
+        // A project that has never opened the Audio surface must behave exactly the way Studio
+        // behaved before tracks existed, not lose every play that references one.
+        const tracks = (await loadGameAudio(await createProject(undefined))).tracks;
+        expect(tracks?.map(track => track.id)).toEqual(["music", "sfx", "voice"]);
+        expect(tracks?.find(track => track.id === "music")).toMatchObject({
+            channel: "bgm",
+            fadeInMs: 800,
+            loop: true,
+        });
+    });
+
+    it("carries the authored tracks, built-ins first then the author's own", async () => {
+        const projectPath = await createProject(undefined, JSON.stringify({
+            schemaVersion: 1,
+            tracks: [
+                {
+                    id: "ambience",
+                    name: "Ambience",
+                    channel: "sound",
+                    gain: 0.6,
+                    fadeInMs: 2000,
+                    fadeOutMs: 2000,
+                    loop: true,
+                },
+                {
+                    id: "music",
+                    name: "Score",
+                    channel: "bgm",
+                    gain: 0.8,
+                    fadeInMs: 400,
+                    fadeOutMs: 400,
+                    loop: true,
+                },
+            ],
+        }));
+        const tracks = (await loadGameAudio(projectPath)).tracks;
+        expect(tracks?.map(track => track.id)).toEqual(["music", "sfx", "voice", "ambience"]);
+        // A renamed / re-tuned built-in keeps the author's values.
+        expect(tracks?.[0]).toMatchObject({ name: "Score", gain: 0.8, fadeInMs: 400 });
+        expect(tracks?.[3]).toMatchObject({ name: "Ambience", channel: "sound", gain: 0.6 });
+    });
+
+    it("falls back to the built-ins rather than throwing on an unreadable track document", async () => {
+        // A hand-corrupted track file must not be the reason a build cannot be produced.
+        const projectPath = await createProject(undefined, "{not json");
+        const tracks = (await loadGameAudio(projectPath)).tracks;
+        expect(tracks?.map(track => track.id)).toEqual(["music", "sfx", "voice"]);
     });
 });

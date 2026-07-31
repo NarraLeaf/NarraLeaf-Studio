@@ -47,11 +47,12 @@ export interface Asset<Type extends AssetType = AssetType, Source extends AssetS
 }
 
 /**
- * The in/out points the author marked on an audio asset - where a BGM's loop begins and ends.
+ * The points the author marked on an audio asset - where a BGM starts, where it ends, and where
+ * each repeat returns to.
  *
- * One pair per asset, not a list of markers: a clip has exactly one region worth naming, and the
+ * One region per asset, not a list of markers: a clip has exactly one region worth naming, and the
  * thing downstream wants to ask is "where does this loop", which a bag of markers cannot answer.
- * Either end may stand alone while the author is still deciding.
+ * Any marker may stand alone while the author is still deciding.
  *
  * The same shape the game bundle carries ({@link AudioClipRegion}) - deliberately one type, because
  * the region an author marks here is the region the engine plays. `@shared/types/audio` owns the

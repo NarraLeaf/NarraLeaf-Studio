@@ -9,6 +9,10 @@ export const project = {
             title: "Game",
             description: "How the finished game behaves for players",
         },
+        audio: {
+            title: "Audio",
+            description: "Tracks, and the player volume each one follows",
+        },
         assets: {
             title: "Assets",
             description: "Application icons for each platform",
@@ -72,6 +76,43 @@ export const project = {
         autoSaveIntervalUnit: "s",
         autoSaveSlotsTitle: "Autosaves kept",
         autoSaveSlotsDescription: "Autosaves rotate through this many slots, oldest overwritten first. They stay out of the player's own save slots and are read with the List Auto Saves node.",
+    },
+    // The Audio sub-page. Deliberately label-free: the controls carry aria names for assistive
+    // technology, and everything visible on a row is a value.
+    audio: {
+        add: "Track",
+        newTrackName: "New Track",
+        nameAria: "Track name",
+        gainAria: "Gain",
+        fadeInAria: "Default fade in, milliseconds",
+        fadeOutAria: "Default fade out, milliseconds",
+        loopAria: "Loop by default",
+        duplicate: "Duplicate",
+        delete: "Delete",
+        deleteConfirm: "Delete \"{name}\"?",
+        // The honest consequence: nothing pointing at this track is rewritten, so those references
+        // resolve to the built-in for its bus from now on.
+        deleteDetail: {
+            one: "{count} reference falls back to {track}.",
+            other: "{count} references fall back to {track}.",
+        },
+        referencesAria: {
+            one: "Used {count} time",
+            other: "Used {count} times",
+        },
+        // The engine's mixer buses, short enough to share a line with two other controls.
+        channel: {
+            bgm: "BGM",
+            sound: "Sound",
+            voice: "Voice",
+        },
+        // The player's own volume sliders - what the status line names, because that is the
+        // question this whole surface exists to answer.
+        slider: {
+            bgm: "BGM Volume",
+            sound: "Sound Volume",
+            voice: "Voice Volume",
+        },
     },
     settings: {
         allowHttpTitle: "Allow HTTP",
