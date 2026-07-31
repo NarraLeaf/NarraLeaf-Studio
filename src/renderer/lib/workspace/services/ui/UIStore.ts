@@ -24,6 +24,11 @@ import {
     EditorTabDefinition,
     ActionSeparator,
 } from "@/apps/workspace/registry/types";
+import type {
+    PluginTextEditorActionDef,
+    PluginTextEditorLanguageDef,
+    PluginTextEditorPreviewDef,
+} from "./textEditorContributions";
 
 /**
  * Hard floor/ceiling for a split ratio - a backstop against a zero-width pane, not a usability
@@ -69,6 +74,10 @@ export interface UIState {
     actionGroups: ActionGroup[];
     editorLayout: EditorLayout;
     selection: SelectionState;
+    /** Plugin contributions to the built-in text editor; see `textEditorContributions`. */
+    textEditorLanguages: PluginTextEditorLanguageDef[];
+    textEditorPreviews: PluginTextEditorPreviewDef[];
+    textEditorActions: PluginTextEditorActionDef[];
 }
 
 /**
@@ -160,6 +169,9 @@ export class UIStore {
                 focus: null,
             },
             selection: { type: null, data: null },
+            textEditorLanguages: [],
+            textEditorPreviews: [],
+            textEditorActions: [],
         };
         this.events = new EventEmitter<UIStateEvents>();
     }
@@ -373,6 +385,65 @@ export class UIStore {
             copy[position] = [...ids];
         }
         return copy;
+    }
+
+    // === Text editor contributions ===
+    //
+    // Three flat, id-keyed lists, deliberately as dumb as the panel list above: re-registering an
+    // id replaces it in place, and every mutation goes out on `stateChanged` so the open text tabs
+    // pick it up through the same hook mechanism every other UI registry uses. Registration order
+    // is preserved - `TextEditorContributionService.languageForExtension` resolves a contested
+    // extension by first-registered, which is only a stable answer if this list never reorders.
+
+    public registerTextEditorLanguage(def: PluginTextEditorLanguageDef): void {
+        this.state.textEditorLanguages = [
+            ...this.state.textEditorLanguages.filter(entry => entry.id !== def.id),
+            def,
+        ];
+        this.events.emit("stateChanged", { textEditorLanguages: [...this.state.textEditorLanguages] });
+    }
+
+    public unregisterTextEditorLanguage(id: string): void {
+        this.state.textEditorLanguages = this.state.textEditorLanguages.filter(entry => entry.id !== id);
+        this.events.emit("stateChanged", { textEditorLanguages: [...this.state.textEditorLanguages] });
+    }
+
+    public getTextEditorLanguages(): PluginTextEditorLanguageDef[] {
+        return [...this.state.textEditorLanguages];
+    }
+
+    public registerTextEditorPreview(def: PluginTextEditorPreviewDef): void {
+        this.state.textEditorPreviews = [
+            ...this.state.textEditorPreviews.filter(entry => entry.id !== def.id),
+            def,
+        ];
+        this.events.emit("stateChanged", { textEditorPreviews: [...this.state.textEditorPreviews] });
+    }
+
+    public unregisterTextEditorPreview(id: string): void {
+        this.state.textEditorPreviews = this.state.textEditorPreviews.filter(entry => entry.id !== id);
+        this.events.emit("stateChanged", { textEditorPreviews: [...this.state.textEditorPreviews] });
+    }
+
+    public getTextEditorPreviews(): PluginTextEditorPreviewDef[] {
+        return [...this.state.textEditorPreviews];
+    }
+
+    public registerTextEditorAction(def: PluginTextEditorActionDef): void {
+        this.state.textEditorActions = [
+            ...this.state.textEditorActions.filter(entry => entry.id !== def.id),
+            def,
+        ];
+        this.events.emit("stateChanged", { textEditorActions: [...this.state.textEditorActions] });
+    }
+
+    public unregisterTextEditorAction(id: string): void {
+        this.state.textEditorActions = this.state.textEditorActions.filter(entry => entry.id !== id);
+        this.events.emit("stateChanged", { textEditorActions: [...this.state.textEditorActions] });
+    }
+
+    public getTextEditorActions(): PluginTextEditorActionDef[] {
+        return [...this.state.textEditorActions];
     }
 
     // === Editor Tabs ===
@@ -1461,6 +1532,9 @@ export class UIStore {
                 focus: null,
             },
             selection: { type: null, data: null },
+            textEditorLanguages: [],
+            textEditorPreviews: [],
+            textEditorActions: [],
         };
         this.editorTabFocusHistory = [];
         this.events.clear();

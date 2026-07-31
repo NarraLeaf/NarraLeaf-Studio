@@ -5,6 +5,7 @@ import { BlueprintPersistenceProjectRef, RequestStatus, WorkspaceFreezeKind } fr
 import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "./menu";
 import { FsRequestResult, PlatformInfo } from "./os";
+import type { FsTextEncoding } from "./textEncoding";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults, WorkspaceViewRequest } from "./window";
 import { GlobalStateValue } from "./state/globalState";
 import { GlobalStateKeys } from "./state/globalState";
@@ -48,9 +49,9 @@ export interface RendererPrivilegedInterface {
         stat(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileStat>>>;
         list(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileEntry[]>>>;
         details(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileDetails>>>;
-        requestRead(actor: PrivilegedActor, path: string, encoding: BufferEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
+        requestRead(actor: PrivilegedActor, path: string, encoding: FsTextEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
         requestReadRaw(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<string>>>;
-        requestWrite(actor: PrivilegedActor, path: string, encoding: BufferEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
+        requestWrite(actor: PrivilegedActor, path: string, encoding: FsTextEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
         requestWriteRaw(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<string>>>;
         ensureRegularFile(actor: PrivilegedActor, path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
         writeFileNoFollow(actor: PrivilegedActor, path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
@@ -121,14 +122,14 @@ export interface RendererPreloadedInterface {
          * it shares the build's own measurement - see {@link Fs.directorySize}.
          */
         directorySize(path: string): Promise<RequestStatus<FsRequestResult<DirectorySizeResult>>>;
-        requestRead(path: string, encoding: BufferEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
+        requestRead(path: string, encoding: FsTextEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
         requestReadRaw(path: string): Promise<RequestStatus<FsRequestResult<string>>>;
         /**
          * Grant read access to a directory tree, served as `app://fs/{hash}/{relative/path}`.
          * Studio-internal (not on the plugin privileged surface) - see the IPC event's note.
          */
         requestReadDir(path: string): Promise<RequestStatus<FsRequestResult<string>>>;
-        requestWrite(path: string, encoding: BufferEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
+        requestWrite(path: string, encoding: FsTextEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
         requestWriteRaw(path: string): Promise<RequestStatus<FsRequestResult<string>>>;
         ensureRegularFile(path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
         writeFileNoFollow(path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;

@@ -1,8 +1,9 @@
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { FsRequestResult } from "@shared/types/os";
+import type { FsTextEncoding } from "@shared/types/textEncoding";
 import { RendererError } from "@shared/utils/error";
 import { ProjectNameConvention } from "../../project/nameConvention";
-import { AssetData, AssetType } from "../assets/assetTypes";
+import { ASSET_CATEGORY_ORDER, ASSET_CATEGORY_TYPES, AssetCategory, AssetData, AssetType, categoryOfAssetType } from "../assets/assetTypes";
 import { AudioService } from "../assets/AudioService";
 import { FileFormatValidator } from "../assets/FileFormatValidator";
 import { FontService } from "../assets/FontService";
@@ -44,7 +45,8 @@ import { dirname } from "@shared/utils/path";
 interface AssetsEvents {
     deleted: Asset<AssetType, AssetSource>;
     updated: Asset<AssetType, AssetSource>;
-    groupsUpdated: { type: AssetType; groupId?: string };
+    /** A category's folder tree changed. Categories, not types: that is what a folder belongs to. */
+    groupsUpdated: { category: AssetCategory; groupId?: string };
 }
 
 const THUMBNAIL_DIMENSION = 160;
@@ -82,8 +84,8 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
      */
     private batchDepth = 0;
     private dirtyTypes = new Set<AssetType>();
-    /** Types whose `assets.order.<type>.json` is behind the shards it orders. */
-    private dirtyOrderTypes = new Set<AssetType>();
+    /** Categories whose `assets.order.<category>.json` is behind the shards it orders. */
+    private dirtyOrderCategories = new Set<AssetCategory>();
     private assetsMetadataInitializing = false;
 
     public getFileFormatValidator(): FileFormatValidator {
@@ -125,8 +127,9 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
 
     public markDirty(type: AssetType): void {
         this.dirtyTypes.add(type);
-        // Adding or removing an asset changes the row order too, and the two live in different files.
-        this.dirtyOrderTypes.add(type);
+        // Adding or removing an asset changes the row order too, and the two live in different files
+        // — and the order file is per category, one level above the metadata shard.
+        this.dirtyOrderCategories.add(categoryOfAssetType(type));
         if (this.batchDepth === 0 && !this.assetsMetadataInitializing) {
             void this.flushPendingWrites();
         }
@@ -136,8 +139,8 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
      * Queue the sibling order file without rewriting the metadata shard — what a group mutation
      * needs, since it has already written its own shard and only the order has moved.
      */
-    public markOrderDirty(type: AssetType): void {
-        this.dirtyOrderTypes.add(type);
+    public markOrderDirty(category: AssetCategory): void {
+        this.dirtyOrderCategories.add(category);
         if (this.batchDepth === 0 && !this.assetsMetadataInitializing) {
             void this.flushPendingWrites();
         }
@@ -175,24 +178,30 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
      * indistinguishable from one that had recorded their order.
      */
     private async flushPendingOrderWrites(): Promise<void> {
-        if (this.dirtyOrderTypes.size === 0 || !this.assetOrderManager || !this.assetsMetadataManager || !this.groupAssetsManager) {
+        if (this.dirtyOrderCategories.size === 0 || !this.assetOrderManager || !this.assetsMetadataManager || !this.groupAssetsManager) {
             return;
         }
 
         const metadataManager = this.assetsMetadataManager;
         const groupManager = this.groupAssetsManager;
         const orderManager = this.assetOrderManager;
-        const types = Array.from(this.dirtyOrderTypes);
-        this.dirtyOrderTypes.clear();
+        const categories = Array.from(this.dirtyOrderCategories);
+        this.dirtyOrderCategories.clear();
 
-        const results = await Promise.all(types.map(async type => ({
-            type,
-            result: await orderManager.write(type, metadataManager.listOrdered(type), groupManager.listOrderedGroups(type)),
+        const results = await Promise.all(categories.map(async category => ({
+            category,
+            // Member types in the order the category lists them, concatenated: one file records the
+            // whole section's rows, which is what the section draws.
+            result: await orderManager.write(
+                category,
+                ASSET_CATEGORY_TYPES[category].flatMap(type => metadataManager.listOrdered(type)),
+                groupManager.listOrderedGroups(category),
+            ),
         })));
-        for (const { type, result } of results) {
+        for (const { category, result } of results) {
             if (!result.ok) {
-                this.dirtyOrderTypes.add(type);
-                console.warn(`[AssetsService] failed to write ${type} asset order: ${result.error.message}`);
+                this.dirtyOrderCategories.add(category);
+                console.warn(`[AssetsService] failed to write ${category} asset order: ${result.error.message}`);
             }
         }
     }
@@ -229,7 +238,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         } catch (error) {
             this.assetsMetadataManager = null;
             this.dirtyTypes.clear();
-            this.dirtyOrderTypes.clear();
+            this.dirtyOrderCategories.clear();
             throw error;
         } finally {
             this.assetsMetadataInitializing = false;
@@ -241,8 +250,8 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         // Both halves are known now, so the order recovered from key order can be committed. This is
         // the migration for a project that predates the order file, and it has to happen on this
         // open: once a shard is rewritten with sorted keys there is nothing left to recover from.
-        for (const type of this.assetOrderManager.listMissingTypes()) {
-            this.dirtyOrderTypes.add(type);
+        for (const category of this.assetOrderManager.listMissingCategories()) {
+            this.dirtyOrderCategories.add(category);
         }
         await this.flushPendingWrites();
 
@@ -269,7 +278,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     public async reloadFromDisk(): Promise<void> {
         const ctx = this.getContext();
         this.dirtyTypes.clear();
-        this.dirtyOrderTypes.clear();
+        this.dirtyOrderCategories.clear();
 
         // Read into fresh managers and swap only once all three have answered: each one assigns its
         // own state after its read returns, so a rejected read leaves the live library untouched
@@ -290,15 +299,15 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         this.assetsMetadataManager = metadata;
         this.groupAssetsManager = groups;
         this.dirtyTypes.clear();
-        this.dirtyOrderTypes.clear();
+        this.dirtyOrderCategories.clear();
         // Thumbnails are keyed by asset id and cached outside the working set, so a restored asset
         // would otherwise be drawn with the picture of the one that replaced it.
         this.thumbnailCache.clear();
 
         // `groupsUpdated` is the "this type's tree changed" signal the asset browser already listens
         // to. There is no per-asset event to send: every row may have moved, appeared or gone.
-        for (const type of Object.values(AssetType)) {
-            this.events.emit("groupsUpdated", { type });
+        for (const category of ASSET_CATEGORY_ORDER) {
+            this.events.emit("groupsUpdated", { category });
         }
     }
 
@@ -544,12 +553,12 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         return await filesystemService.writeFileNoFollow(this.getContext().project.resolve(ProjectNameConvention.AssetsMetadataShard(type)), data, "utf-8");
     }
 
-    public async createGroup<T extends AssetType>(
-        type: T,
+    public async createGroup(
+        category: AssetCategory,
         name: string,
         parentGroupId?: string
     ): Promise<RequestStatus<AssetGroup>> {
-        return this.getGroupAssetsManager().createGroup(type, name, parentGroupId);
+        return this.getGroupAssetsManager().createGroup(category, name, parentGroupId);
     }
 
     /**
@@ -559,37 +568,37 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
      * remove — including the contents of nested groups. Checking per asset inside the cascade would
      * be too late: by the time the third file was refused the first two would already be gone.
      */
-    public async deleteGroup<T extends AssetType>(
-        type: T,
+    public async deleteGroup(
+        category: AssetCategory,
         groupId: string,
         recursive: boolean = false,
         options?: AssetDeleteOptions,
     ): Promise<RequestStatus<void>> {
         const groupManager = this.getGroupAssetsManager();
-        const blocked = await this.findDeleteBlocker(groupManager.collectGroupAssets(type, groupId, recursive), options);
+        const blocked = await this.findDeleteBlocker(groupManager.collectGroupAssets(category, groupId, recursive), options);
         if (blocked) {
             return { success: false, error: blocked };
         }
 
         // Cleared as a set above; the per-asset guard inside the cascade would only re-ask the same
         // question once per file.
-        return groupManager.deleteGroup(type, groupId, recursive, { allowReferenced: true });
+        return groupManager.deleteGroup(category, groupId, recursive, { allowReferenced: true });
     }
 
-    public async renameGroup<T extends AssetType>(
-        type: T,
+    public async renameGroup(
+        category: AssetCategory,
         groupId: string,
         newName: string
     ): Promise<RequestStatus<AssetGroup>> {
-        return this.getGroupAssetsManager().renameGroup(type, groupId, newName);
+        return this.getGroupAssetsManager().renameGroup(category, groupId, newName);
     }
 
-    public async moveGroupToParent<T extends AssetType>(
-        type: T,
+    public async moveGroupToParent(
+        category: AssetCategory,
         groupId: string,
         newParentGroupId?: string
     ): Promise<RequestStatus<AssetGroup>> {
-        return this.getGroupAssetsManager().moveGroupToParent(type, groupId, newParentGroupId);
+        return this.getGroupAssetsManager().moveGroupToParent(category, groupId, newParentGroupId);
     }
 
     public async moveAssetToGroup<T extends AssetType>(
@@ -599,12 +608,12 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         return this.getGroupAssetsManager().moveAssetToGroup(asset, groupId);
     }
 
-    public async duplicateGroup<T extends AssetType>(
-        type: T,
+    public async duplicateGroup(
+        category: AssetCategory,
         groupId: string,
         newParentGroupId?: string
     ): Promise<RequestStatus<AssetGroup>> {
-        return this.getGroupAssetsManager().duplicateGroup(type, groupId, newParentGroupId);
+        return this.getGroupAssetsManager().duplicateGroup(category, groupId, newParentGroupId);
     }
 
     // Metadata management APIs
@@ -763,6 +772,71 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     }
 
     /**
+     * Save an asset's contents as text, in `encoding`.
+     *
+     * The text twin of {@link replaceAssetContent}, and it runs the *same four steps in the same
+     * order* - that ordering is the contract, not an implementation detail, so read the doc block on
+     * `replaceAssetContent` before changing anything here:
+     *
+     *  1. write the encoded bytes (`LocalAssetsManager.writeAssetContentText`);
+     *  2. recompute `hash`, because it is the cache key several readers use to decide whether to
+     *     re-read the file - a save that leaves it alone is a save nothing downstream notices;
+     *  3. drop the cached thumbnail, which is keyed by asset id and would otherwise survive;
+     *  4. write the record, then announce `updated` - last, so nobody re-reads a thumbnail that
+     *     step 3 was about to delete.
+     *
+     * Step 3 is a no-op for the text assets this has today (thumbnails are images only), and is
+     * still here rather than skipped: the caller decides what it is saving, and the day a text-ish
+     * type grows a preview the ordering must already be right.
+     */
+    public async writeAssetTextContent<T extends AssetType>(
+        asset: Asset<T, AssetSource>,
+        text: string,
+        encoding: FsTextEncoding,
+    ): Promise<RequestStatus<Asset<T, AssetSource>>> {
+        if (asset.source !== AssetSource.Local) {
+            return { success: false, error: "Editing the contents of a remote asset is not supported" };
+        }
+
+        const written = await this.getLocalAssetsManager()
+            .writeAssetContentText(asset as Asset<T, AssetSource.Local>, text, encoding);
+        if (!written.success || !written.data) {
+            return { success: false, error: written.error };
+        }
+
+        try {
+            await this.clearThumbnailCache(asset.id);
+        } catch (error) {
+            console.warn(`Failed to clear thumbnail cache for asset: ${asset.id}`, error);
+        }
+
+        const applied = this.getAssetsMetadataManager().applyReplacedContent(asset, written.data);
+        if (!applied.success || !applied.data) {
+            return { success: false, error: applied.error };
+        }
+
+        this.getEvents().emit("updated", applied.data);
+
+        return { success: true, data: applied.data };
+    }
+
+    /**
+     * Create an asset whose contents are bytes Studio produced, with no source file on disk.
+     *
+     * Every other creation path starts from a file the author picked; this is the one that does
+     * not, which is what makes "New Text File" possible at all.
+     * See {@link LocalAssetsManager.createLocalAssetFromBytes}.
+     */
+    public async createLocalAssetFromBytes<T extends AssetType>(
+        type: T,
+        name: string,
+        bytes: Uint8Array,
+        groupId?: string,
+    ): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
+        return this.getLocalAssetsManager().createLocalAssetFromBytes(type, name, bytes, groupId);
+    }
+
+    /**
      * Duplicate an existing asset, returning the new asset metadata.
      */
     public async duplicateAsset<T extends AssetType>(asset: Asset<T, AssetSource>): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
@@ -790,6 +864,28 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         paths: string[]
     ): Promise<ExpandImportPathsResult> {
         return this.getLocalAssetsManager().expandImportPaths(type, paths);
+    }
+
+    /**
+     * The same expansion for a whole sidebar category — the union of its member types' matches.
+     * See {@link LocalAssetsManager.expandCategoryImportPaths}.
+     */
+    public async expandCategoryImportPaths(
+        category: AssetCategory,
+        paths: string[]
+    ): Promise<ExpandImportPathsResult> {
+        return this.getLocalAssetsManager().expandCategoryImportPaths(category, paths);
+    }
+
+    /**
+     * Which concrete {@link AssetType} each file of a category import is, grouped so each bucket can
+     * be handed to one {@link importFromPaths}. See {@link LocalAssetsManager.bucketPathsByAssetType}.
+     */
+    public async bucketPathsByAssetType(
+        category: AssetCategory,
+        paths: string[]
+    ): Promise<{ type: AssetType; paths: string[] }[]> {
+        return this.getLocalAssetsManager().bucketPathsByAssetType(category, paths);
     }
 
     // Magic Tag functionality

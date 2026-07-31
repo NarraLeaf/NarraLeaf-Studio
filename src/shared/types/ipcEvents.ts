@@ -2,6 +2,7 @@ import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/u
 import { AppInfo } from "./app";
 import { IPCMessageType, IPCType } from "./ipc";
 import { FsRequestResult, PlatformInfo } from "./os";
+import type { FsTextEncoding } from "./textEncoding";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults, WorkspaceViewRequest } from "./window";
 import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
 import type { MissingRecentProject } from "./state/appStateTypes";
@@ -690,7 +691,7 @@ export type IPCFsEvents = {
         data: {
             path: string;
             raw: boolean;
-            encoding?: BufferEncoding;
+            encoding?: FsTextEncoding;
         },
         response: FsRequestResult<string>; // a hash that can be used to fetch the file later
     };
@@ -716,7 +717,7 @@ export type IPCFsEvents = {
         data: {
             path: string;
             raw: boolean;
-            encoding?: BufferEncoding;
+            encoding?: FsTextEncoding;
         },
         response: FsRequestResult<string>;
     };
