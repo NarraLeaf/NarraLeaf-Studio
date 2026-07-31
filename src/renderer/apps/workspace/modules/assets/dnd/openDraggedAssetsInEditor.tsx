@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Braces, Film, Image, Music, Type } from "lucide-react";
+import { Braces, FileText, Film, Image, Music, Type } from "lucide-react";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -11,6 +11,9 @@ import { AudioPreviewEditor } from "../editors/AudioPreviewEditor";
 import { VideoPreviewEditor } from "../editors/VideoPreviewEditor";
 import { FontPreviewEditor } from "../editors/FontPreviewEditor";
 import { JsonPreviewEditor } from "../editors/JsonPreviewEditor";
+import { TextEditor } from "../editors/text/TextEditor";
+import { isTextEditableAsset } from "../editors/text/textEditableFiles";
+import { getTextEditorTabId } from "../editors/text/textEditorTabId";
 
 export interface OpenAssetPreviewTabsOptions {
     /** Target editor group; omit for default group. */
@@ -47,7 +50,11 @@ export function openAssetPreviewTabsInEditor(
         a.type === AssetType.Audio ||
         a.type === AssetType.Video ||
         a.type === AssetType.Font ||
-        a.type === AssetType.JSON,
+        a.type === AssetType.JSON ||
+        // Other is admitted by *extension*, not by type: the category holds whatever the author
+        // dropped in it, and opening a `.psd` in a text editor would be worse than the current
+        // behaviour of only selecting it. See `TEXT_EDITABLE_EXTENSIONS`.
+        isTextEditableAsset(a),
     );
     if (previewable.length === 0) {
         return;
@@ -127,6 +134,19 @@ export function openAssetPreviewTabsInEditor(
                 targetGroupId,
                 { activate }
             );
+        } else if (asset.type === AssetType.Other) {
+            uiService.editor.open(
+                {
+                    id: getTextEditorTabId(asset.id),
+                    title: asset.name,
+                    icon: textIcon(),
+                    component: TextEditor,
+                    closable: true,
+                    payload: { asset: asset as Asset<AssetType.Other> },
+                },
+                targetGroupId,
+                { activate }
+            );
         }
     });
 
@@ -165,4 +185,8 @@ function fontIcon(): ReactNode {
 
 function jsonIcon(): ReactNode {
     return <Braces className="w-4 h-4" />;
+}
+
+function textIcon(): ReactNode {
+    return <FileText className="w-4 h-4" />;
 }

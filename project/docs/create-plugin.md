@@ -180,6 +180,76 @@ Promise<void>
 Promise<() => void | Promise<void>>
 ```
 
+## 扩展文本编辑器（`app.services.textEditor`）
+
+Studio 的文本编辑器（Other 分类里 `.txt` / `.md` / `.ini` 等资产的 Monaco 标签页）只提供编辑本身：
+读写、编码切换、防抖自动保存。**Markdown 的语法高亮增强、预览、格式化等一律由插件提供**，Studio 不内建。
+这一层是纯命令式的，跟 `ui.panels` 一样**没有** manifest `contributes` 项。
+
+```ts
+registerLanguage(def: PluginTextEditorLanguageDef): PluginCleanup;
+registerPreview(def: PluginTextEditorPreviewDef): PluginCleanup;
+registerAction(def: PluginTextEditorActionDef): PluginCleanup;
+```
+
+三者的 `id` 都必须以插件 ID 为前缀，否则注册时抛错。`extensions` 带不带前导点都可以，大小写不敏感。
+
+```ts
+import { definePlugin } from "narraleaf-studio/plugin";
+import { renderMarkdown } from "./markdown";
+
+export default definePlugin({
+  setup(app) {
+    const id = app.plugin.id;
+
+    // 语法：懒注册。这里只是登记，真正进 Monaco 是在第一次打开匹配扩展名的文档时——
+    // 所以在 setup 里注册不会把 Monaco 拖进 Studio 启动路径。
+    app.services.textEditor.registerLanguage({
+      id: `${id}.mermaid`,
+      extensions: ["mmd"],
+      monarch: { tokenizer: { root: [[/^graph\b/, "keyword"]] } },
+    });
+
+    // 预览：组件渲染在编辑器右半边，props 是活的缓冲区内容。
+    app.services.textEditor.registerPreview({
+      id: `${id}.markdown`,
+      extensions: ["md", "markdown"],
+      title: "Preview",
+      component: ({ text, active }) => renderMarkdown(text, { animate: active }),
+    });
+
+    // 动作：不写 extensions 就对所有文本文档生效。
+    app.services.textEditor.registerAction({
+      id: `${id}.format`,
+      title: "Format",
+      extensions: ["md"],
+      run: ctx => ctx.setText(formatMarkdown(ctx.getText())),
+    });
+  },
+});
+```
+
+预览组件拿到的 props（`PluginTextEditorPreviewProps`）：
+
+| 字段 | 含义 |
+|---|---|
+| `text` | **编辑器缓冲区的当前内容**，不是磁盘上的字节。落后于最后一次保存的预览没有意义 |
+| `encoding` | 当前编码 id（`"utf8"` / `"gbk"` / …） |
+| `fileName` | 资产显示名，含扩展名 |
+| `assetId` | 资产 id |
+| `active` | 所在标签页是否是激活的。做动画或轮询的预览应该在它为 false 时停下来 |
+
+动作拿到的 `PluginTextEditorActionContext` 是 `{ assetId, fileName, encoding, getText(), setText(text) }`。
+`setText` 写进的是活模型，会走正常的内容变更路径——可撤销，并且和敲键盘一样吃那份防抖自动保存，
+所以动作不需要知道文本资产是怎么落盘的。
+
+### 两条会让你以为"接口没实现"的规则
+
+- **注册表为空时界面上什么都不画。** 预览开关和动作按钮只在**当前文档的扩展名**有匹配的注册项时
+  才出现在编辑器状态条上。没装这类插件的 Studio 不会留下任何禁用控件——所以"预览按钮没出现"
+  通常是 `extensions` 没匹配上，而不是 API 没做。
+- **冻结工作区时**：预览开关是"看"，照常可用；动作能改写文档，是"写"，会被禁用。
+
 ## runtime.js（runtime entry）
 
 runtime 入口在 Dev Mode 窗口、Preview 和打包后的游戏中执行，用于注册蓝图节点的 `execute` 绑定和插件 widget 的游戏渲染器。它没有 Studio services、没有特权能力；`setup` 返回值被忽略（游戏环境没有卸载生命周期）。

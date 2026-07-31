@@ -1,8 +1,12 @@
 import { FsRequestResult } from "@shared/types/os";
+import type { FsTextEncoding } from "@shared/types/textEncoding";
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { Porject, ProjectConfig, ProjectMetadata } from "../project/project";
 import type { ProjectIconSet, ProjectIconSource } from "@shared/types/projectIcons";
-import type { MobileConfiguration, NetworkConfiguration, SecurityConfiguration } from "../project/configuration";
+import type { LintingConfiguration, MobileConfiguration, NetworkConfiguration, SecurityConfiguration } from "../project/configuration";
+import type { LintContext } from "@/lib/lint/context";
+import type { LintReport } from "@/lib/lint/types";
+import type { LintRunOptions } from "@/lib/lint/engine";
 import type {
     LocalizationConfiguration,
     LocalizationDocument,
@@ -147,6 +151,8 @@ enum Services {
     DevMode = "devMode",
     Preview = "preview",
     Build = "build",
+    /** Project-wide lint: context assembly, the rule sweep, and the last report */
+    Lint = "lint",
     Console = "console",
     /** Ref-counted FontFace + blob URLs for UI editor widgets */
     UIEditorFontFace = "uiEditorFontFace",
@@ -203,6 +209,8 @@ interface IProjectService extends IService {
     updateNetworkConfiguration(patch: Partial<NetworkConfiguration>): Promise<ProjectConfig>;
     getSecurityConfiguration(): SecurityConfiguration;
     updateSecurityConfiguration(patch: Partial<SecurityConfiguration>): Promise<ProjectConfig>;
+    getLintingConfiguration(): LintingConfiguration;
+    updateLintingConfiguration(patch: Partial<LintingConfiguration>): Promise<ProjectConfig>;
     updateMobileConfiguration(patch: Partial<MobileConfiguration>): Promise<ProjectConfig>;
     getProjectIconSet(): ProjectIconSet;
     updateProjectIconSet(updater: (set: ProjectIconSet) => ProjectIconSet): Promise<ProjectIconSet>;
@@ -224,9 +232,9 @@ interface IFileSystemService extends IService {
     list(path: string): Promise<FsRequestResult<FileEntry[]>>;
     details(path: string): Promise<FsRequestResult<FileDetails>>;
     directorySize(path: string): Promise<FsRequestResult<DirectorySizeResult>>;
-    read(path: string, encoding: BufferEncoding): Promise<FsRequestResult<string>>;
+    read(path: string, encoding: FsTextEncoding): Promise<FsRequestResult<string>>;
     readRaw(path: string): Promise<FsRequestResult<Uint8Array>>;
-    write(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
+    write(path: string, data: string, encoding: FsTextEncoding): Promise<FsRequestResult<void>>;
     writeRaw(path: string, data: Uint8Array): Promise<FsRequestResult<void>>;
     ensureRegularFile(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
     writeFileNoFollow(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
@@ -926,6 +934,18 @@ interface IBuildService extends IService {
     onStateChanged(handler: (state: GameBuildStateSnapshot) => void): () => void;
 }
 
+/**
+ * Project-wide lint. `run()` is a read-only sweep, so it stays available while the workspace is
+ * frozen (ruling R3) - see LintService.
+ */
+interface ILintService extends IService {
+    buildContext(): Promise<LintContext>;
+    run(options?: LintRunOptions): Promise<LintReport>;
+    isRunning(): boolean;
+    getLastReport(): LintReport | null;
+    onReportChanged(handler: (report: LintReport | null) => void): () => void;
+}
+
 interface IDebugService extends IService { }
 
 // Helper Services
@@ -1064,7 +1084,7 @@ interface IProjectDependencyService extends IService {
 }
 
 export {
-    IAssetService, IAudioService, IBlueprintNodeCatalogService, IBuildService, ICommandService, IDebugService,
+    IAssetService, IAudioService, IBlueprintNodeCatalogService, IBuildService, ICommandService, IDebugService, ILintService,
     IEditorService, IFileSystemService, IFontService, ILocalizationService, ILoggerService,
     IGlobalSettingsService, IPluginService, IPreviewService, IProjectService, IRuntimeService,
     IService, IServiceAssetsService, IPanelStateService, IStorageService, IStoryService,

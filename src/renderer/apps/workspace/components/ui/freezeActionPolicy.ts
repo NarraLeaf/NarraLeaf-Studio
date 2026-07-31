@@ -31,6 +31,30 @@ export function isFreezeExemptActionGroup(groupId: string): boolean {
 }
 
 /**
+ * The commands that keep working while frozen - the same table, for the palette's *registered*
+ * commands rather than for toolbar actions.
+ *
+ * A registered command has no `group` to be read through {@link isFreezeExemptActionGroup}, so its
+ * own entry points ask here instead. The one member is the project lint sweep (ruling R3): it reads
+ * every project document and writes none, and a read-only sweep is precisely what an author wants
+ * while inspecting a frozen revision - refusing it would switch off the tool for the case it is most
+ * useful in.
+ *
+ * Ids Studio owns, listed here in Studio's source, for the reason the group table gives: a plugin
+ * that could name itself exempt would be a way around the side effects the write boundary cannot
+ * catch. Exempting the wrong thing offers a write inside a frozen project; leaving something out
+ * only greys a control.
+ */
+const FREEZE_EXEMPT_COMMAND_IDS: ReadonlySet<string> = new Set([
+    "lint:project",
+]);
+
+/** Whether a registered palette command, and the controls that run it, stay live while frozen. */
+export function isFreezeExemptCommand(commandId: string): boolean {
+    return FREEZE_EXEMPT_COMMAND_IDS.has(commandId);
+}
+
+/**
  * Whether the freeze is what makes `action` unavailable - which is what the hover reason keys off,
  * so the top bar only claims "frozen" when that is actually the cause.
  *
