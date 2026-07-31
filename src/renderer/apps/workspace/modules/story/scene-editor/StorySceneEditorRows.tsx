@@ -202,9 +202,10 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
     const railContinues = Boolean(row.groupContinues);
     const groupRail = isDialogue && (dialogueMember || railContinues)
         ? {
-            // Measured from the ROW, so the line-number gutter counts too — unlike the nesting guides,
-            // which live inside the content column and start after it.
-            left: `calc(var(--nl-story-gutter) + ${ROW_INDENT_STEP} * ${row.depth} + (var(--nl-story-avatar,28px) / 2) - 1px)`,
+            // Measured from the ROW, so the line-number gutter counts too — the nesting connector lives
+            // inside the content column and starts after it. Both land on the same x, which is the
+            // point: a run's line and a block's line are the same line at the same place.
+            left: `calc(var(--nl-story-gutter) + ${ROW_INDENT_STEP} * ${row.depth} + (var(--nl-story-avatar,28px) / 2))`,
             // A head hands the connector off from under its own plate; a continuation carries it in
             // from its own top edge, so consecutive rows join into one unbroken drop.
             top: dialogueMember ? 0 : ROW_CONTENT_PAD_PX + STORY_DENSITY_METRICS[props.density].avatar,
@@ -212,6 +213,9 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
         : null;
     /** The run's last line: the segment that ends, and therefore the only one that turns and rounds. */
     const railEnds = groupRail !== null && dialogueMember && !railContinues;
+    /** Where a connector that ends on this row stops, and where one that opens a block leaves from. */
+    const rowTextCentre = ROW_CONTENT_PAD_PX + STORY_DENSITY_METRICS[props.density].rowBox / 2;
+    const rowPlateBottom = ROW_CONTENT_PAD_PX + STORY_DENSITY_METRICS[props.density].avatar;
     /**
      * Whether the pointer is on this row, kept local so a hover re-renders one row and nothing else.
      *
@@ -303,32 +307,14 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                 />
             ) : null}
             {groupRail ? (
-                railEnds ? (
-                    // The elbow: a left border down to the text's centre line, a bottom border turning
-                    // right, and the corner between them rounded. Borders rather than a background,
-                    // because a corner is what needs the radius and only a border can carry one.
-                    <span
-                        aria-hidden
-                        className={[
-                            "pointer-events-none absolute rounded-bl-md border-b-2 border-l-2",
-                            selected || active ? "border-primary" : "border-fg-subtle",
-                        ].join(" ")}
-                        style={{
-                            ...groupRail,
-                            height: ROW_CONTENT_PAD_PX + STORY_DENSITY_METRICS[props.density].rowBox / 2,
-                            width: RAIL_ELBOW_WIDTH,
-                        }}
-                    />
-                ) : (
-                    <span
-                        aria-hidden
-                        className={[
-                            "pointer-events-none absolute bottom-0 w-0.5",
-                            selected || active ? "bg-primary" : "bg-fg-subtle",
-                        ].join(" ")}
-                        style={groupRail}
-                    />
-                )
+                <ConnectorSegment
+                    left={groupRail.left}
+                    top={groupRail.top}
+                    ends={railEnds}
+                    elbow={railEnds}
+                    stopAt={rowTextCentre}
+                    highlight={selected || active}
+                />
             ) : null}
             {/* Line number and drag grip share one box: they are both "this row, as a thing to point
                 at", they are never both wanted, and giving each its own column cost 20px of every row
@@ -373,7 +359,14 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                 </div>
             </div>
             <div className="relative min-w-0 py-1">
-                <RailGuides depth={row.depth} highlight={selected || active} />
+                <RowNesting
+                    depth={row.depth}
+                    nextDepth={row.nextRowDepth ?? 0}
+                    opensBlock={Boolean(containerInfo) && !collapsed && block.childrenIds.length > 0}
+                    stopAt={rowTextCentre}
+                    plateBottom={rowPlateBottom}
+                    highlight={selected || active}
+                />
                 <>
                 {/* `items-start` with every chrome cell holding the single-line box open: on a wrapped
                     line the plate and the nametag stay level with the FIRST line — which is the line
@@ -1017,15 +1010,62 @@ const ROW_GAP_PX = 8;
 const ROW_CONTENT_PAD_PX = 4;
 
 /**
- * How far the group connector's last segment turns right: from the plate's centre line, where the
- * connector hangs, out to the far edge of the name column.
+ * How far a connector's last segment turns right, in px.
  *
- * That edge is where the words begin, so the tail runs the whole width of the chrome the run's
- * attribution occupies and stops exactly where its last line's text starts — the turn reads as
- * handing the run over to the words rather than as a hook of arbitrary length. The `+1` puts the
- * box's right edge on the column edge despite the 2px left border it carries.
+ * Short on purpose. Running it out to the name column's far edge was tried: it made the turn a
+ * statement, and a line whose job is to say "these rows belong together" should not be making
+ * statements at the end of every run and every block on the screen.
  */
-const RAIL_ELBOW_WIDTH = `calc((var(--nl-story-avatar,28px) / 2) + var(--nl-story-name,56px) + ${ROW_GAP_PX + 1}px)`;
+const CONNECTOR_ELBOW_PX = 10;
+
+/**
+ * The connector's tone.
+ *
+ * One hairline at one weight, for both the things a row can belong to: the same-speaker run above it
+ * and the container around it. They are the same relationship — "this row hangs off that one" — and
+ * drawing them differently made a screen with both on it look like two systems.
+ *
+ * Thin and dim by intent: it is no longer load-bearing. When U1 raised this rail to 2px at full
+ * `fg-subtle` it was the ONLY thing telling a continuation from a line of narration, so it had a
+ * contrast floor to meet. The name column and the plate carry that now, and a connector loud enough
+ * to be the answer is loud enough to be noise once it isn't.
+ */
+const CONNECTOR_FILL = "bg-fg-subtle/50";
+const CONNECTOR_FILL_ACTIVE = "bg-primary/70";
+// Kept apart from the fill on purpose: the elbow is drawn from borders around an EMPTY box, so handing
+// it a background class as well — which one combined token quietly did — fills that box in and turns a
+// hairline corner into a 10px slab.
+const CONNECTOR_EDGE = "border-fg-subtle/50";
+const CONNECTOR_EDGE_ACTIVE = "border-primary/70";
+
+/**
+ * One segment of a connector: a hairline down the row, stopping at the text's centre line when the
+ * branch ends here, and turning right when this is also the deepest level that ends.
+ *
+ * Every segment butts square against its neighbours — a radius on each one pinches the line at every
+ * row boundary, which is the one thing a single line must not do — so only the elbow is rounded,
+ * being the only end there is.
+ */
+function ConnectorSegment(props: { left: string | number; top: number; ends: boolean; elbow: boolean; stopAt: number; highlight: boolean }) {
+    if (props.elbow) {
+        return (
+            <span
+                aria-hidden
+                className={`pointer-events-none absolute rounded-bl-md border-b border-l ${props.highlight ? CONNECTOR_EDGE_ACTIVE : CONNECTOR_EDGE}`}
+                style={{ left: props.left, top: props.top, height: props.stopAt - props.top, width: CONNECTOR_ELBOW_PX }}
+            />
+        );
+    }
+    return (
+        <span
+            aria-hidden
+            className={`pointer-events-none absolute w-px ${props.highlight ? CONNECTOR_FILL_ACTIVE : CONNECTOR_FILL}`}
+            style={props.ends
+                ? { left: props.left, top: props.top, height: props.stopAt - props.top }
+                : { left: props.left, top: props.top, bottom: 0 }}
+        />
+    );
+}
 
 /**
  * One nesting level's indent: the plate box plus the gap after it, so a child's plate lands where its
@@ -1052,26 +1092,56 @@ function rowIndent(levels: number): string {
 }
 
 
-/** Vertical guide rails, one per ancestor nesting level, so nesting reads at a glance. */
-function RailGuides({ depth, highlight }: { depth: number; highlight: boolean }) {
-    if (depth <= 0) {
+/**
+ * The nesting connector: one line per ancestor level, hanging from that ancestor's plate, and turning
+ * right into the last row of the block.
+ *
+ * It used to be a flat `bg-edge` hairline running the full height of every row it passed — no start
+ * (it began at the first child's top edge, nowhere near the header that owns the block) and no end (it
+ * ran off the bottom of the last child into whatever followed). It is now the SAME line, drawn by the
+ * same component, as the one joining a run of dialogue to its speaker: both say "this row hangs off
+ * that one", and drawing them differently made a screen carrying both look like two systems.
+ *
+ * `opensBlock` is the header's own half: an expanded container drops the line out from under its own
+ * plate, exactly as a dialogue head does, so the block starts where the row that names it does.
+ */
+function RowNesting({ depth, nextDepth, opensBlock, stopAt, plateBottom, highlight }: {
+    depth: number;
+    nextDepth: number;
+    opensBlock: boolean;
+    /** Y of the row's text centre line: where a branch that ends here stops. */
+    stopAt: number;
+    /** Y of the bottom of this row's own plate: where a block's line leaves its header. */
+    plateBottom: number;
+    highlight: boolean;
+}) {
+    if (depth <= 0 && !opensBlock) {
         return null;
     }
+    // Down the centre of the ancestor's plate at that level.
+    const at = (level: number) => `calc(${ROW_INDENT_STEP} * ${level} + (var(--nl-story-avatar,28px) / 2))`;
     return (
         <>
-            {Array.from({ length: depth }).map((_, index) => (
-                <span
-                    key={index}
-                    aria-hidden
-                    className={[
-                        "pointer-events-none absolute inset-y-0 w-px",
-                        highlight && index === depth - 1 ? "bg-primary/40" : "bg-edge",
-                    ].join(" ")}
-                    // Down the centre of the ancestor's plate at that level, so the guide reads as a
-                    // line dropped from the row that owns the block rather than as a stripe beside it.
-                    style={{ left: `calc(${ROW_INDENT_STEP} * ${index} + (var(--nl-story-avatar,28px) / 2))` }}
-                />
-            ))}
+            {Array.from({ length: depth }).map((_, level) => {
+                // A preorder list: the branch at this level ends here when nothing deeper follows.
+                const ends = nextDepth <= level;
+                return (
+                    <ConnectorSegment
+                        key={level}
+                        left={at(level)}
+                        top={0}
+                        ends={ends}
+                        // Only the deepest level that ends here turns; the shallower ones that also end
+                        // simply stop, because their own turn happened rows ago, at their last child.
+                        elbow={ends && level === depth - 1}
+                        stopAt={stopAt}
+                        highlight={highlight && level === depth - 1}
+                    />
+                );
+            })}
+            {opensBlock ? (
+                <ConnectorSegment left={at(depth)} top={plateBottom} ends={false} elbow={false} stopAt={stopAt} highlight={highlight} />
+            ) : null}
         </>
     );
 }
@@ -1627,7 +1697,14 @@ export function InsertRow(props: {
                 {/* Mirror a row's content column so the slot lines up with its future siblings: guide
                     rails + depth indent, then the badge and name columns, so the line being typed
                     starts on exactly the body edge the committed row will keep. */}
-                <RailGuides depth={props.depth ?? 0} highlight={false} />
+                <RowNesting
+                    depth={props.depth ?? 0}
+                    nextDepth={props.depth ?? 0}
+                    opensBlock={false}
+                    stopAt={ROW_CONTENT_PAD_PX + 14}
+                    plateBottom={ROW_CONTENT_PAD_PX}
+                    highlight={false}
+                />
                 <div style={{ paddingLeft: rowIndent(props.depth ?? 0) }}>
                 <div className="flex min-h-[var(--nl-story-row-box)] items-center gap-2">
                 <span className="w-[var(--nl-story-avatar,28px)] shrink-0" aria-hidden />
