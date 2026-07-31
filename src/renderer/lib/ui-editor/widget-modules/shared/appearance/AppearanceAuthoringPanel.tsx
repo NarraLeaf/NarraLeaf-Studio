@@ -354,6 +354,12 @@ export function AppearanceAuthoringPanel({
                         value={selectedVariant?.id ?? ""}
                         options={variantOptions}
                         fullWidth
+                        // Which variant this panel SHOWS, and nothing else - the three buttons beside
+                        // it are the ones that add, default and delete. Marked inspect-only so a
+                        // frozen workspace can read what an element looks like when hovered or
+                        // pressed, instead of being stuck on whichever variant happened to be
+                        // selected.
+                        inspectOnly
                         onChange={v => {
                             const id = String(v);
                             setSelectedVariantId(id);
