@@ -49,8 +49,16 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     entry("workspace-editor-quick-switch-previous", "ctrl+shift+tab", "workspace.shell.keybindings.catalog.quickSwitchPrevious", CATEGORY.general),
     entry("editor-split-right", "mod+\\", "workspace.shell.commandPalette.editor.splitRight", CATEGORY.general),
     entry("editor-split-down", "mod+alt+\\", "workspace.shell.commandPalette.editor.splitDown", CATEGORY.general),
+    // Registered per editor group (`editor-group-<id>-…`), hence the catalogIds — without them the
+    // palette showed one untranslated row per group under its catch-all section.
+    entry("editor.close-active-tab", "mod+w", "workspace.shell.commandPalette.editor.closeTab", CATEGORY.general),
+    entry("editor.close-selected-tabs", "mod+w", "workspace.shell.commandPalette.editor.closeSelectedTabs", CATEGORY.general),
 
     // --- Story scene editor (idle mode) ------------------------------------
+    entry("story.find", "mod+f", "story.keybindings.find", CATEGORY.story),
+    entry("story.close-inspector", "escape", "story.keybindings.closeInspector", CATEGORY.story),
+    entry("story.page-down", "pagedown", "story.keybindings.pageDown", CATEGORY.story),
+    entry("story.page-up", "pageup", "story.keybindings.pageUp", CATEGORY.story),
     entry("story.edit-active", "enter", "story.keybindings.editRow", CATEGORY.story),
     entry("story.insert-blank-after-selection", "shift+enter", "story.keybindings.insertRow", CATEGORY.story),
     entry("story.delete", "delete", "story.keybindings.deleteRows", CATEGORY.story),
