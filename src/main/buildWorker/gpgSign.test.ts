@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
-import { detachedSignaturePath, findGpg, signArtifactsWithGpg } from "./gpgSign";
+import { MACOS_GPG_DIRS, detachedSignaturePath, findGpg, signArtifactsWithGpg } from "./gpgSign";
 
 /**
  * Two halves. The discovery is judged against a synthetic tree, so it says the
@@ -89,6 +89,38 @@ describe("findGpg", () => {
         expect(await findGpg({ env: { PATH: at(root, "bin") }, platform: "linux" }))
             .toBe(at(root, "bin/gpg2"));
         expect(await findGpg({ env: { PATH: at(root, "Git/cmd") }, platform: "linux" })).toBeNull();
+    });
+
+    it("finds a macOS install that PATH does not mention", async () => {
+        // launchd hands a double-clicked app a PATH of /usr/bin:/bin:/usr/sbin:/sbin
+        // and nothing else, so every way of installing gpg on a Mac is invisible
+        // to a PATH search. Without this arm the same machine answers differently
+        // depending on whether Studio was started from a terminal.
+        const root = await tempTree(["opt/homebrew/bin/gpg"]);
+        expect(await findGpg({
+            env: { PATH: "/usr/bin:/bin" },
+            platform: "darwin",
+            fallbackDirs: [at(root, "opt/homebrew/bin")],
+        })).toBe(at(root, "opt/homebrew/bin/gpg"));
+    });
+
+    it("still prefers a gpg on PATH over the macOS fallback", async () => {
+        const root = await tempTree(["onpath/gpg", "opt/homebrew/bin/gpg"]);
+        expect(await findGpg({
+            env: { PATH: at(root, "onpath") },
+            platform: "darwin",
+            fallbackDirs: [at(root, "opt/homebrew/bin")],
+        })).toBe(at(root, "onpath/gpg"));
+    });
+
+    it("names the four ways a Mac gets gpg, in install-prevalence order", () => {
+        // Homebrew on Apple Silicon, Homebrew on Intel, MacPorts, GPG Suite.
+        expect(MACOS_GPG_DIRS).toEqual([
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/opt/local/bin",
+            "/usr/local/MacGPG2/bin",
+        ]);
     });
 
     it("finds nothing on a host without gpg", async () => {

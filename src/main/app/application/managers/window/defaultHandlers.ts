@@ -57,6 +57,7 @@ import {
     SigningInspectHandler,
     SigningKeystoreAliasesHandler,
     SigningListHandler,
+    SigningMacIdentitiesHandler,
     SigningRemoveHandler,
 } from "./handlers/signingAction";
 import { PluginPermissionGrantHandler, PluginPermissionPromptLaunchHandler } from "./handlers/pluginPermissionAction";
@@ -182,6 +183,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new SigningRemoveHandler(),
         new SigningInspectHandler(),
         new SigningKeystoreAliasesHandler(),
+        new SigningMacIdentitiesHandler(),
 
         // Blueprint persistent variable storage handlers
         new BlueprintPersistenceGetAllHandler(),
