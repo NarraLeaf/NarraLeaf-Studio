@@ -134,7 +134,6 @@ export const workspace = {
     shell: {
         errorTitle: "工作区初始化失败",
         showStackTrace: "显示堆栈跟踪",
-        errorConsoleHint: "如果问题持续存在，请导出日志并附在反馈里",
         retry: "重试",
         openOtherProject: "打开其他项目",
         errorCopyDetails: "复制详情",
