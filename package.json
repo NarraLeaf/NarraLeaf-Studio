@@ -54,6 +54,7 @@
     "electron-builder": "^26.0.12",
     "electron-store": "^9.0.0",
     "esbuild": "^0.25.11",
+    "iconv-lite": "^0.6.3",
     "koffi": "2.16.2",
     "lucide-react": "^0.546.0",
     "mime-types": "^3.0.1",

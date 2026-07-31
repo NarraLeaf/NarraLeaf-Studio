@@ -39,7 +39,7 @@ import {
     type StoryBlockSelection,
 } from "./storySelection";
 import { stopVoiceAudition } from "./voiceAudition";
-import { STORY_DENSITY_METRICS, StoryEditorTextStyleProvider, storyEditorRootStyle } from "./storyEditorTextStyle";
+import { STORY_DENSITY_METRICS, STORY_NAME_MIN_PX, StoryEditorTextStyleProvider, StoryNameColumnProbe, storyEditorRootStyle } from "./storyEditorTextStyle";
 import { StoryRowActionsContext, type StoryRowActions } from "./storyRowActions";
 import { toReadOnlyStoryKeybindings, toReadOnlyStoryRowActions } from "./storySceneReadOnly";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -765,6 +765,37 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
      */
     const rowListRef = useRef<HTMLDivElement | null>(null);
     const [rowListMargin, setRowListMargin] = useState(0);
+
+    /**
+     * Every name that can appear in this scene's name column, read from `scene.blocks` rather than from
+     * the rows on screen.
+     *
+     * The distinction matters: `visibleRows` drops the children of a collapsed container and holds only
+     * what the projection kept, so measuring it would make the column — and therefore every line of the
+     * document's left edge — twitch when a container is folded or a filter is toggled. The cast is a
+     * property of the scene; so is the column.
+     */
+    const speakerLabels = useMemo(() => {
+        const labels = new Set<string>();
+        for (const block of Object.values(editor.scene?.blocks ?? {})) {
+            if (block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
+                continue;
+            }
+            const label = block.payload.characterId
+                ? getCharacterName(editor.characters, block.payload.characterId)
+                : block.payload.speakerName;
+            if (label) {
+                labels.add(label);
+            }
+        }
+        return [...labels];
+    }, [editor.scene?.blocks, editor.characters]);
+    const [nameWidth, setNameWidth] = useState(STORY_NAME_MIN_PX);
+    // Updater form, and only on a real change: the probe reports after every layout it is part of, and
+    // setting the same number back would re-render the whole scene on each of them.
+    const handleNameMeasure = useCallback((width: number) => {
+        setNameWidth(previous => (previous === width ? previous : width));
+    }, []);
     const estimatedRowHeight = STORY_DENSITY_METRICS[editor.density].rowBox + ROW_VERTICAL_PADDING_PX;
     const rowVirtualizer = useVirtualizer({
         count: editor.visibleRows.length,
@@ -799,10 +830,13 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
      * The per-element ResizeObserver does not save it either: it re-measures whatever is mounted, and
      * a windowed list has a screenful. Dropping the cache outright is the honest answer — every row
      * re-measures as it comes into view, which is what happens on first open anyway.
+     *
+     * The name column is the same failure with a different trigger: widening it narrows the words, so
+     * lines re-wrap and rows change height — again without one id changing.
      */
     useLayoutEffect(() => {
         rowVirtualizer.measure();
-    }, [editor.density, rowVirtualizer]);
+    }, [editor.density, nameWidth, rowVirtualizer]);
 
     /**
      * The row whose wrapper currently holds the insert slot, or null when no slot is inside one.
@@ -1629,7 +1663,6 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             addInside: parentId => latest().editor.addInsideContainer(parentId),
             addBranch: (conditionId, branch) => latest().editor.addConditionBranch(conditionId, branch),
             playFromRow: blockId => latest().playFromRow(blockId),
-            toggleLens: blockId => latest().editor.toggleContainerLens(blockId),
         };
     }, []);
 
@@ -1721,7 +1754,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             ref={editor.rootRef}
             tabIndex={0}
             data-story-density={editor.density}
-            style={storyEditorRootStyle(editor.density, editor.visibleRows.length)}
+            style={storyEditorRootStyle(editor.density, editor.visibleRows.length, nameWidth)}
             className="flex h-full min-h-0 flex-col bg-surface text-fg outline-none"
             onFocus={editor.focusWorkspace}
             onFocusCapture={handleEditorFocusCapture}
@@ -1824,6 +1857,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         something different from what the document says. */}
                     <SortableContext items={sortableRowIds} strategy={verticalListSortingStrategy}>
                     <div ref={rowListRef} style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
+                        <StoryNameColumnProbe labels={speakerLabels} onMeasure={handleNameMeasure} />
                         {rowVirtualizer.getVirtualItems().map(virtualRow => {
                             const row = editor.visibleRows[virtualRow.index];
                             if (!row) {
@@ -1901,7 +1935,6 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     editInitialCaret={editor.editorMode.kind === "text" && editor.editorMode.blockId === row.block.id ? (editor.editorMode.caret ?? "end") : undefined}
                                     textInputRef={editor.textInputRef}
                                     tempSpeakers={editor.tempSpeakers}
-                                    lensActive={editor.lensContainerIds.has(row.block.id)}
                                     density={editor.density}
                                 />
                                 )}
@@ -1961,7 +1994,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         // Down off the last row lands the keyboard cursor here; the ring is how the
                         // author sees that Enter will open a new row (see moveActiveRowSelection).
                         className={[
-                            "mt-1 flex min-h-[32px] w-full items-center gap-2 pl-[calc(var(--nl-story-gutter)+var(--nl-story-handle,20px))] pr-3 text-left text-sm italic",
+                            "mt-1 flex min-h-[32px] w-full items-center gap-2 pl-[var(--nl-story-gutter)] pr-3 text-left text-sm italic",
                             editor.addRowFocused
                                 ? "bg-primary/10 text-fg-muted ring-1 ring-inset ring-primary/50"
                                 : "text-fg-subtle hover:bg-fill-subtle hover:text-fg-muted",
@@ -1970,7 +2003,13 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         onClick={() => editor.startInsertAfter(null, true)}
                         {...freeze.writes()}
                     >
-                        <Plus className="h-4 w-4 text-primary" />
+                        {/* Mirrors a row: the "+" takes the plate box, the name column stays empty, and
+                            the words land on the body edge — so the tail of the list does not step out
+                            of the one column the whole document reads down. */}
+                        <span className="flex w-[var(--nl-story-avatar,28px)] shrink-0 items-center">
+                            <Plus className="h-4 w-4 text-primary" />
+                        </span>
+                        <span className="w-[var(--nl-story-name,56px)] shrink-0" aria-hidden />
                         {t("story.sceneEditor.addRow")}
                     </button>
                 )}

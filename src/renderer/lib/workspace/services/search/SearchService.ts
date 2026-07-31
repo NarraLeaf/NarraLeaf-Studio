@@ -3,14 +3,21 @@ import { Services, WorkspaceContext } from "../services";
 import { StoryService } from "../story/StoryService";
 import { LocalBlueprintService } from "../ui-editor/LocalBlueprintService";
 import { UIGraphService } from "../ui-editor/UIGraphService";
+import { UIDocumentService } from "../ui-editor/UIDocumentService";
 import { BlueprintNodeCatalogService } from "../ui-editor/BlueprintNodeCatalogService";
 import { LocalizationService } from "../localization/LocalizationService";
 import { AssetsService } from "../core/AssetsService";
+import { CharacterService } from "../core/CharacterService";
+import { translate } from "@/lib/i18n";
+import type { TranslationKey } from "@shared/i18n";
+import { parseBlueprintOwnerKey } from "./blueprintOwnerKey";
 import {
     extractAssetEntries,
     extractBlueprintEntries,
+    extractCharacterEntries,
     extractLocalizationKeyEntries,
     extractStoryEntries,
+    extractSurfaceEntries,
     indexEntries,
     querySearchIndex,
     type IndexedSearchEntry,
@@ -28,11 +35,17 @@ const REBUILD_DEBOUNCE_MS = 300;
  * so the index reads them directly and always reflects *unsaved* editing state. A main-process
  * index would only ever see what the debounced savers last flushed to disk.
  *
- * The index is three slices, each rebuilt independently from its own change event:
+ * The index is a set of slices, each rebuilt independently from its own change event:
  *  - story slice (per story): `StoryService.onDocumentChanged` / `onLibraryChanged`
  *  - blueprint slice: `UIGraphService.onGraphsChanged` (the blueprint document lives inside the
  *    graph document, so its mutations surface there)
  *  - named-key slice: `LocalizationService.onKeysChanged`
+ *  - asset slice: the assets service's `updated`/`deleted`/`groupsUpdated` events
+ *  - character slice: `CharacterService.subscribe`
+ *  - surface slice: `UIDocumentService.onDocumentChanged`
+ *
+ * The last three carry *entities*, not content, and they are indexed here rather than left to quick
+ * open because this index backs the one search box the author actually types into.
  *
  * Rebuilds are debounced per slice - change events fire per keystroke during editing, and a slice
  * rebuild is a full re-extraction (cheap at VN scale, but not per-keystroke cheap).
@@ -45,6 +58,8 @@ export class SearchService extends Service<SearchService> {
     private blueprintEntries: IndexedSearchEntry[] = [];
     private keyEntries: IndexedSearchEntry[] = [];
     private assetEntries: IndexedSearchEntry[] = [];
+    private characterEntries: IndexedSearchEntry[] = [];
+    private surfaceEntries: IndexedSearchEntry[] = [];
 
     /**
      * All slices concatenated, rebuilt lazily on first query after a slice changes.
@@ -64,10 +79,12 @@ export class SearchService extends Service<SearchService> {
         await depend([
             ctx.services.get<StoryService>(Services.Story),
             ctx.services.get<UIGraphService>(Services.UIGraph),
+            ctx.services.get<UIDocumentService>(Services.UIDocument),
             ctx.services.get<LocalBlueprintService>(Services.LocalBlueprint),
             ctx.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog),
             ctx.services.get<LocalizationService>(Services.Localization),
             ctx.services.get<AssetsService>(Services.Assets),
+            ctx.services.get<CharacterService>(Services.Character),
         ]);
     }
 
@@ -107,7 +124,13 @@ export class SearchService extends Service<SearchService> {
             for (const slice of this.storyEntries.values()) {
                 entries.push(...slice);
             }
-            entries.push(...this.blueprintEntries, ...this.keyEntries, ...this.assetEntries);
+            entries.push(
+                ...this.blueprintEntries,
+                ...this.keyEntries,
+                ...this.assetEntries,
+                ...this.characterEntries,
+                ...this.surfaceEntries,
+            );
             this.flatCache = entries;
         }
         return this.flatCache;
@@ -134,6 +157,8 @@ export class SearchService extends Service<SearchService> {
         this.blueprintEntries = [];
         this.keyEntries = [];
         this.assetEntries = [];
+        this.characterEntries = [];
+        this.surfaceEntries = [];
         this.flatCache = null;
         this.readyPromise = null;
         this.changeListeners.clear();
@@ -171,6 +196,8 @@ export class SearchService extends Service<SearchService> {
 
         this.rebuildBlueprintSlice();
         this.rebuildAssetSlice();
+        this.rebuildCharacterSlice();
+        this.rebuildSurfaceSlice();
         this.subscribe();
         this.emitChanged();
     }
@@ -218,6 +245,25 @@ export class SearchService extends Service<SearchService> {
             assetEvents.on("updated", scheduleAssetRebuild),
             assetEvents.on("deleted", scheduleAssetRebuild),
             assetEvents.on("groupsUpdated", scheduleAssetRebuild),
+        );
+
+        // Entity slices. Both fire per edit (a rename is a keystroke at a time), hence the debounce
+        // every other slice already goes through.
+        const characterService = ctx.services.get<CharacterService>(Services.Character);
+        const uiDocumentService = ctx.services.get<UIDocumentService>(Services.UIDocument);
+        this.unsubs.push(
+            characterService.subscribe(() =>
+                this.scheduleRebuild("characters", () => {
+                    this.rebuildCharacterSlice();
+                    this.emitChanged();
+                }),
+            ),
+            uiDocumentService.onDocumentChanged(() =>
+                this.scheduleRebuild("surfaces", () => {
+                    this.rebuildSurfaceSlice();
+                    this.emitChanged();
+                }),
+            ),
         );
     }
 
@@ -275,16 +321,120 @@ export class SearchService extends Service<SearchService> {
 
         try {
             const document = blueprintService.getBlueprintDocument();
-            this.blueprintEntries = indexEntries(extractBlueprintEntries(document, type => {
-                try {
-                    return catalog.resolveCatalogEntry(type).displayName;
-                } catch {
-                    return undefined;
-                }
-            }, blueprintService.listPersistentVariables()));
+            this.blueprintEntries = indexEntries(
+                extractBlueprintEntries(document, {
+                    resolveNodeLabel: type => {
+                        try {
+                            return catalog.resolveCatalogEntry(type).displayName;
+                        } catch {
+                            return undefined;
+                        }
+                    },
+                    resolveOwnerLabel: ownerKey => this.resolveBlueprintOwnerLabel(ownerKey),
+                    persistentVariables: blueprintService.listPersistentVariables(),
+                    labels: {
+                        unnamedEvent: translate("blueprint.memberTree.unnamedEvent" as TranslationKey),
+                        unnamedFunction: translate("blueprint.memberTree.unnamedFunction" as TranslationKey),
+                    },
+                }),
+            );
         } catch (error) {
             console.warn("[SearchService] Failed to index blueprints:", error);
             this.blueprintEntries = [];
+        }
+    }
+
+    /**
+     * Name the surface/element a blueprint hangs on, so a node hit can say where it lives.
+     *
+     * Blueprints are named after the thing they belong to ("Image", "Button"), which reads as no
+     * provenance at all once a project has more than one screen - the owner is the part that
+     * actually locates it.
+     */
+    private resolveBlueprintOwnerLabel(ownerKey: string): string | undefined {
+        const owner = parseBlueprintOwnerKey(ownerKey);
+        if (!owner) {
+            return undefined;
+        }
+        if (owner.ownerKind === "globalMain") {
+            return translate("blueprint.owner.global" as TranslationKey);
+        }
+        if (owner.ownerKind === "storyAction") {
+            return translate("blueprint.owner.storyAction" as TranslationKey);
+        }
+        let document;
+        try {
+            document = this.getContext().services.get<UIDocumentService>(Services.UIDocument).getDocument();
+        } catch {
+            return undefined;
+        }
+        const parts: string[] = [];
+        if (owner.surfaceId) {
+            const surface = document.surfaces.find(candidate => candidate.id === owner.surfaceId);
+            if (surface?.name) {
+                parts.push(surface.name);
+            }
+        }
+        if (owner.componentId) {
+            const component = (document.components ?? []).find(candidate => candidate.id === owner.componentId);
+            if (component?.name) {
+                parts.push(component.name);
+            }
+        }
+        if (owner.elementId) {
+            const element = document.elements[owner.elementId];
+            const name = element?.name || element?.type;
+            if (name) {
+                parts.push(name);
+            }
+        }
+        return parts.length > 0 ? parts.join(" › ") : undefined;
+    }
+
+    private rebuildCharacterSlice(): void {
+        const characterService = this.getContext().services.get<CharacterService>(Services.Character);
+        try {
+            const groups = characterService.listGroups();
+            const groupNameById = new Map(groups.map(group => [group.id, group.name]));
+            this.characterEntries = indexEntries(
+                extractCharacterEntries(
+                    characterService.listCharacter().map(character => {
+                        const profile = character.profile.getProfile();
+                        const groupId = character.profile.getGroupId();
+                        return {
+                            id: profile.id,
+                            name: profile.name,
+                            groupName: groupId ? groupNameById.get(groupId) : undefined,
+                            aux: profile.description || undefined,
+                        };
+                    }),
+                ),
+            );
+        } catch (error) {
+            console.warn("[SearchService] Failed to index characters:", error);
+            this.characterEntries = [];
+        }
+    }
+
+    private rebuildSurfaceSlice(): void {
+        const uiDocumentService = this.getContext().services.get<UIDocumentService>(Services.UIDocument);
+        try {
+            this.surfaceEntries = indexEntries(
+                extractSurfaceEntries(
+                    uiDocumentService.getDocument().surfaces.map(surface => ({
+                        id: surface.id,
+                        name: surface.name,
+                        kindLabel: translate(
+                            (surface.kind === "stageSurface"
+                                ? "uiEditor.surfaceKind.gameUi"
+                                : "uiEditor.surfaceKind.page") as TranslationKey,
+                        ),
+                    })),
+                ),
+            );
+        } catch {
+            // The UI document loads lazily; an unbuilt one just means no surfaces to list yet.
+            this.surfaceEntries = [];
         }
     }
 

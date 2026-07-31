@@ -69,5 +69,9 @@ export const dialogs = {
         font: "Font",
         model: "Model",
         other: "Other",
+        // Merged sidebar sections; `image` / `font` / `model` / `other` above double as their
+        // category nouns because those sections hold exactly one type.
+        media: "Media",
+        data: "Data",
     },
 } as const;

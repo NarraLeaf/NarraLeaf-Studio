@@ -26,7 +26,7 @@ export function MissingProjectConfigScreen({ projectPath }: MissingProjectConfig
                         {t("workspace.shell.notAProjectDetail")}
                     </p>
                     {projectPath && (
-                        <p className="mt-3 truncate text-xs text-fg-subtle" title={projectPath}>
+                        <p className="nl-selectable-text mt-3 break-all text-xs text-fg-subtle" title={projectPath}>
                             {projectPath}
                         </p>
                     )}

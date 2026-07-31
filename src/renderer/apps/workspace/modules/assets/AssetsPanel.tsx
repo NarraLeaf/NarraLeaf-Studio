@@ -4,7 +4,7 @@ import { LayoutGrid, LayoutList, RefreshCw, AlertCircle, Copy, Scissors, Clipboa
 import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
 import { PanelComponentProps } from "../types";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { ASSET_CATEGORY_ORDER, AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
 import { ContextMenu } from "@/lib/components/elements/ContextMenu";
 import { useAssetsContextMenu } from "./hooks/useAssetsContextMenu";
@@ -71,19 +71,25 @@ interface AssetsPanelPayload {
 interface AssetsPanelState {
     viewMode?: AssetViewMode;
     iconSize?: number;
+    /**
+     * Which sidebar sections are open. Still named `assetTypeOpenItems` on disk: the ids stored by
+     * a build from before sections were categories are filtered out by
+     * {@link filterKnownAssetCategoryIds}, which is exactly the "persisted UI state may lapse"
+     * the plan allows.
+     */
     assetTypeOpenItems?: string[];
     expandedGroupIds?: string[];
     iconGroupPathIds?: string[];
 }
 
-const DEFAULT_ASSET_TYPE_OPEN_ITEMS = [AssetType.Image];
-const ASSET_TYPE_IDS = new Set<string>(Object.values(AssetType));
+const DEFAULT_ASSET_CATEGORY_OPEN_ITEMS = [AssetCategory.Image];
+const ASSET_CATEGORY_IDS = new Set<string>(ASSET_CATEGORY_ORDER);
 
-function filterKnownAssetTypeIds(ids: string[] | undefined): string[] {
+function filterKnownAssetCategoryIds(ids: string[] | undefined): string[] {
     if (!Array.isArray(ids)) {
-        return DEFAULT_ASSET_TYPE_OPEN_ITEMS;
+        return DEFAULT_ASSET_CATEGORY_OPEN_ITEMS;
     }
-    return ids.filter(id => ASSET_TYPE_IDS.has(id));
+    return ids.filter(id => ASSET_CATEGORY_IDS.has(id));
 }
 
 function sanitizeStringIds(ids: string[] | undefined): string[] {
@@ -93,13 +99,13 @@ function sanitizeStringIds(ids: string[] | undefined): string[] {
     return ids.filter(id => typeof id === "string" && id.length > 0);
 }
 
-function resolveAssetGroupPathIds(pathIds: string[], groups: Record<AssetType, AssetGroup[]>): string[] {
+function resolveAssetGroupPathIds(pathIds: string[], groups: Record<AssetCategory, AssetGroup[]>): string[] {
     const groupById = new Map<string, AssetGroup>();
     Object.values(groups).flat().forEach(group => groupById.set(group.id, group));
 
     const resolved: string[] = [];
     let expectedParentId: string | undefined;
-    let expectedType: AssetType | undefined;
+    let expectedCategory: AssetCategory | undefined;
 
     for (const id of pathIds) {
         const group = groupById.get(id);
@@ -109,10 +115,10 @@ function resolveAssetGroupPathIds(pathIds: string[], groups: Record<AssetType, A
         if ((group.parentGroupId ?? undefined) !== expectedParentId) {
             break;
         }
-        if (expectedType && group.type !== expectedType) {
+        if (expectedCategory && group.category !== expectedCategory) {
             break;
         }
-        expectedType = group.type;
+        expectedCategory = group.category;
         expectedParentId = group.id;
         resolved.push(group.id);
     }
@@ -148,7 +154,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     const showHeader = payload?.showHeader ?? true;
     const [viewMode, setViewMode] = useState<AssetViewMode>(defaultViewMode);
     const [iconSize, setIconSize] = useState<number>(defaultIconSize);
-    const [assetTypeOpenItems, setAssetTypeOpenItems] = useState<string[]>(DEFAULT_ASSET_TYPE_OPEN_ITEMS);
+    const [categoryOpenItems, setCategoryOpenItems] = useState<string[]>(DEFAULT_ASSET_CATEGORY_OPEN_ITEMS);
     const [iconGroupPathIds, setIconGroupPathIds] = useState<string[]>([]);
     const [stateReady, setStateReady] = useState(false);
     const [disableAccordionAnimation, setDisableAccordionAnimation] = useState(true);
@@ -173,7 +179,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         setDisableAccordionAnimation(true);
         setHasPersistedViewMode(false);
         setHasPersistedIconSize(false);
-        setAssetTypeOpenItems(DEFAULT_ASSET_TYPE_OPEN_ITEMS);
+        setCategoryOpenItems(DEFAULT_ASSET_CATEGORY_OPEN_ITEMS);
         setExpandedGroups(new Set());
         setIconGroupPathIds([]);
 
@@ -188,7 +194,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
             setIconSize(saved.iconSize);
             setHasPersistedIconSize(true);
         }
-        setAssetTypeOpenItems(filterKnownAssetTypeIds(saved?.assetTypeOpenItems));
+        setCategoryOpenItems(filterKnownAssetCategoryIds(saved?.assetTypeOpenItems));
         if (Array.isArray(saved?.expandedGroupIds)) {
             setExpandedGroups(new Set(sanitizeStringIds(saved.expandedGroupIds)));
         }
@@ -202,11 +208,11 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         panelStateService.setPanelState<AssetsPanelState>(panelId, {
             viewMode,
             iconSize,
-            assetTypeOpenItems: filterKnownAssetTypeIds(assetTypeOpenItems),
+            assetTypeOpenItems: filterKnownAssetCategoryIds(categoryOpenItems),
             expandedGroupIds: Array.from(expandedGroups),
             iconGroupPathIds,
         });
-    }, [assetTypeOpenItems, context, expandedGroups, iconGroupPathIds, iconSize, panelId, stateReady, viewMode]);
+    }, [categoryOpenItems, context, expandedGroups, iconGroupPathIds, iconSize, panelId, stateReady, viewMode]);
 
     useEffect(() => {
         if (!stateReady) return;
@@ -289,7 +295,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     const { importQueue, importState, dismissImportFailures } = useImportQueue();
 
     const {
-        handleCreateGroup, handleCopy, handleCut, handlePaste, handleRename, handleReplaceContent, handleDelete, handleImport, handleRetryImport, handleImportToGroup, handleImportRemote,
+        handleCreateGroup, handleCreateTextFile, handleCopy, handleCut, handlePaste, handleRename, handleReplaceContent, handleDelete, handleImport, handleRetryImport, handleImportToGroup, handleImportRemote,
         handleCreateMagicTags, handleApplyMagicTags
     } = useAssetActions({
         context, inputDialog, assets, groups, selectedItems, clipboard, contextMenuTarget,
@@ -299,7 +305,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     const handleRetryFailedImports = useCallback(() => {
         const run = importState.run;
         if (!run || importState.failures.length === 0) return;
-        void handleRetryImport(run.type, importState.failures.map(failure => failure.path), run.groupId);
+        void handleRetryImport(run.category, importState.failures.map(failure => failure.path), run.groupId);
     }, [handleRetryImport, importState]);
 
     // Use refs to store latest function references to avoid stale closures in action group
@@ -404,16 +410,16 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         handleDelete: () => handleDeleteRef.current(),
         handleRename,
         handleReplaceContent: () => handleReplaceContent(),
-        handleCreateGroup, handleImportToGroup, handleCreateMagicTags: handleMagicTagsClick
+        handleCreateGroup, handleCreateTextFile, handleImportToGroup, handleCreateMagicTags: handleMagicTagsClick
     });
 
     const handleRootDrop = useCallback(
-        async (event: React.DragEvent, type: AssetType, contextualGroup?: AssetGroup | null) => {
+        async (event: React.DragEvent, category: AssetCategory, contextualGroup?: AssetGroup | null) => {
             const targetGroup = contextualGroup ?? null;
             if (draggedItem) {
-                await handleDropOnItem(event, type, targetGroup);
+                await handleDropOnItem(event, category, targetGroup);
             } else {
-                await handleImport(type, targetGroup?.id, event.dataTransfer.files, event.dataTransfer);
+                await handleImport(category, targetGroup?.id, event.dataTransfer.files, event.dataTransfer);
             }
             setDragOver(false);
             setDropTargetId(null);
@@ -511,8 +517,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     // last left collapsed is not a hit. The stored list is untouched and comes back when the search
     // is cleared.
     const effectiveOpenItems = isNarrowed
-        ? Object.values(AssetType).filter(type => filteredAssets[type].length > 0 || filteredGroups[type].length > 0)
-        : assetTypeOpenItems;
+        ? ASSET_CATEGORY_ORDER.filter(category => filteredAssets[category].length > 0 || filteredGroups[category].length > 0)
+        : categoryOpenItems;
 
     const contextValue = {
         assets, groups, filteredAssets, filteredGroups, matchedGroupIds, selectedItems, focusedItemId,
@@ -675,7 +681,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                             actionLoading={actionLoading}
                             setDropTargetId={setDropTargetId}
                             openItems={effectiveOpenItems}
-                            onOpenChange={(next) => setAssetTypeOpenItems(filterKnownAssetTypeIds(next))}
+                            onOpenChange={(next) => setCategoryOpenItems(filterKnownAssetCategoryIds(next))}
                             disableAnimation={disableAccordionAnimation}
                         />
                     ) : (

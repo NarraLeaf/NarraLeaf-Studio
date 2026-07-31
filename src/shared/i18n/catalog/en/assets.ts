@@ -39,13 +39,22 @@ export const assets = {
         failedTitle: "Failed to replace asset contents",
         remoteUnsupported: "Remote assets have no local file to replace.",
     },
-    /** Asset category labels, keyed by the `AssetType` enum value. */
+    /** Per-type labels, keyed by the `AssetType` enum value. Used where a single type is named. */
     types: {
         image: "Images",
         audio: "Audio",
         video: "Videos",
         json: "JSON Files",
         blueprint: "Blueprints",
+        font: "Fonts",
+        model: "Models",
+        other: "Other",
+    },
+    /** Sidebar section labels, keyed by the `AssetCategory` enum value. */
+    categories: {
+        image: "Images",
+        media: "Media",
+        data: "Data",
         font: "Fonts",
         model: "Models",
         other: "Other",
@@ -67,7 +76,8 @@ export const assets = {
         section: {
             library: "Library",
             packaging: "Packaging",
-            byType: "By type",
+            // The same six sections the sidebar draws, so the two halves of the panel reconcile.
+            byCategory: "By category",
             largest: "Largest",
             unreferenced: "Unreferenced",
         },
@@ -152,6 +162,8 @@ export const assets = {
     menu: {
         newGroup: "New Group",
         newSubGroup: "New Sub-Group",
+        /** Other only: the one asset an author can make rather than import. */
+        newTextFile: "New Text File",
         importAssets: "Import Assets…",
         replaceContent: "Replace File…",
         copyCount: {
@@ -278,5 +290,36 @@ export const assets = {
     jsonPreview: {
         invalid: "This file is not valid JSON, showing raw content.",
         truncated: "File is too large to pretty-print, showing the beginning only.",
+    },
+    // The built-in Monaco text editor. Its status bar is values only - the file name, the encoding,
+    // the line ending and the caret - so the only strings here are the two encoding commands, the
+    // caret read-out and the two failures.
+    textEditor: {
+        loadFailed: "Failed to read this file.",
+        saveFailed: "Failed to save this file.",
+        caret: "Ln {line}, Col {column}",
+        reopenWithEncoding: "Reopen with Encoding",
+        saveWithEncoding: "Save with Encoding",
+        /** Screen-reader name for the status-bar encoding token, whose visible text is the value alone. */
+        encodingLabel: "Encoding: {encoding}",
+        /**
+         * Last resort when a plugin's text-editor action throws something with no message. The
+         * plugin's own error text is preferred whenever it has one - it is the only thing that can
+         * say which action failed and why.
+         */
+        actionFailed: "This action failed.",
+    },
+    /**
+     * Creating a text file. The default name is a name, not a sentence: it lands in the input
+     * already followed by `.txt`, and the author usually replaces the whole thing.
+     */
+    newTextFile: {
+        title: "New Text File",
+        prompt: "Name the file. Type an extension to keep it; without one, .txt is used.",
+        placeholder: "notes.txt",
+        defaultName: "New Text File",
+        empty: "Please enter a file name",
+        illegalChars: "A file name cannot contain \\ / : * ? \" < > |",
+        failedTitle: "Failed to create the file",
     },
 } as const;
