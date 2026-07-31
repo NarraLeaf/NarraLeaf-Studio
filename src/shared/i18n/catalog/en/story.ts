@@ -51,6 +51,22 @@ export const story = {
                 other: "{count} jumps with no valid target",
             },
         },
+        // Option-level branch rows drawn inside an expanded scene node. A "fork" is the question
+        // (a choice, an if-group); a "branch" is one arm answering it.
+        branch: {
+            forkChoice: "Choice",
+            forkCondition: "Condition",
+            // Deliberately not "dead end": an arm whose own nested fork does the jumping falls
+            // through too, and so does one that simply plays a line and rejoins the scene.
+            fallsThrough: "continues",
+            fallsThroughTitle: "No jump of its own — the scene continues past the fork",
+            forkCount: {
+                one: "{count} branch",
+                other: "{count} branches",
+            },
+            expand: "Show branches",
+            collapse: "Hide branches",
+        },
         summary: {
             scenes: {
                 one: "{count} scene",
