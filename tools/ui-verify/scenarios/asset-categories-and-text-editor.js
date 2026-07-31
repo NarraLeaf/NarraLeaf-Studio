@@ -292,14 +292,14 @@ async function phaseCreate() {
         await d.screenshot('other-header-context-menu');
 
         const menu = await A.call(d, function () {
-            const items = Array.from(document.querySelectorAll('[role="menuitem"], [data-context-menu-item]'))
+            const items = Array.from(document.querySelectorAll('[data-context-menu="true"] > div'))
                 .map((e) => (e.textContent || '').replace(/\s+/g, ' ').trim());
             return items;
         });
         run.check('N-1', 'the Other category header has a context menu carrying a new-text-file row',
             menu.some((m) => /New Text File|新建文本文件/i.test(m)), JSON.stringify(menu));
 
-        await A.clickNamed(d, '[role="menuitem"], [data-context-menu-item]', 'New Text File|新建文本文件', { flags: 'i' });
+        await A.clickNamed(d, '[data-context-menu="true"] > div', 'New Text File|新建文本文件', { flags: 'i' });
         await A.sleep(900);
         await d.screenshot('new-text-file-dialog');
 
@@ -358,22 +358,29 @@ async function phaseEdit() {
     const TEXT = '# 计划表\n\n- 第一项 alpha\n- 第二项 beta\n';
 
     await D.onWindow('workspace', A.WINDOWS.workspace, async (d) => {
-        const typed = await A.call(d, function (text) {
-            const models = window.monaco && window.monaco.editor && window.monaco.editor.getModels();
-            if (!models || !models.length) return { guard: 'no monaco model on the page' };
-            models[models.length - 1].setValue(text);
-            return { ok: true };
-        }, TEXT);
-        if (typed.guard) {
-            // Fall back to real keyboard input: setValue through a global is a convenience, not a
-            // requirement, and its absence must not be read as a product failure.
-            await A.call(d, function () {
-                const el = document.querySelector('.monaco-editor textarea');
-                if (el) el.focus();
-            });
-            await d.type(TEXT);
-        }
+        // Monaco is bundled, not global, so there is no `window.monaco.editor.getModels()` to call
+        // and text has to arrive the way a person's does. `el.focus()` on the hidden textarea is NOT
+        // enough — `Input.insertText` then lands on nothing and the editor stays empty, which reads
+        // exactly like "autosave never wrote" and cost two red assertions before it was the driver
+        // all along. A real mouse press inside `.view-lines` is what arms the edit context.
+        const rect = await A.call(d, function () {
+            const el = document.querySelector('.monaco-editor .view-lines');
+            if (!el) return null;
+            const r = el.getBoundingClientRect();
+            return { cx: Math.round(r.x + 30), cy: Math.round(r.y + 8) };
+        });
+        if (!rect) throw new Error('SETUP GUARD: no Monaco view-lines on screen — the text tab is not open');
+        await d.click(rect.cx, rect.cy);
+        await A.sleep(300);
+        await d.keys('Ctrl+a');
+        await A.sleep(200);
+        await d.type(TEXT);
         await A.sleep(2500);
+        const landed = await A.call(d, function () {
+            const el = document.querySelector('.monaco-editor .view-lines');
+            return el ? (el.innerText || '').length : 0;
+        });
+        if (!landed) throw new Error('SETUP GUARD: the text never reached the editor — driver problem, not a product one');
         await d.screenshot('text-editor-typed');
     });
 
@@ -418,7 +425,7 @@ async function phaseEncoding() {
         await A.sleep(600);
         await d.screenshot('encoding-menu');
         const items = await A.call(d, function () {
-            return Array.from(document.querySelectorAll('[role="menuitem"], [data-context-menu-item]'))
+            return Array.from(document.querySelectorAll('[data-context-menu="true"] > div'))
                 .map((e) => (e.textContent || '').replace(/\s+/g, ' ').trim());
         });
         run.check('X-1', 'the encoding token offers both reopen-with and save-with',
