@@ -4,6 +4,7 @@ import { ChevronDown, Check } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
 import { Button } from "./Button";
+import { InspectOnlyButton } from "./InspectOnlyButton";
 import { cn } from "../../utils/cn";
 
 export interface SelectOption {
@@ -40,6 +41,15 @@ export interface SelectProps {
     menuDataAttributes?: Record<`data-${string}`, string | undefined>;
     /** Optional z-index override for the dropdown menu panel. */
     menuZIndex?: number;
+    /**
+     * This select changes what is SHOWN and writes nothing.
+     *
+     * The trigger and the option rows are then rendered through {@link InspectOnlyButton}, so an
+     * ancestor read-only clamp - the `disabled` `<fieldset>` a frozen workspace puts around an
+     * inspector field - does not reach them. Only for a select whose `onChange` is view state:
+     * getting it wrong offers a write inside a frozen project.
+     */
+    inspectOnly?: boolean;
 }
 
 const sizeStyles = {
@@ -77,6 +87,7 @@ export function Select({
     menuClassName = "",
     menuDataAttributes,
     menuZIndex,
+    inspectOnly = false,
 }: SelectProps) {
     const { t } = useTranslation();
     const resolvedPlaceholder = placeholder ?? t("dialogs.select.placeholder");
@@ -247,79 +258,125 @@ export function Select({
             style={dropdownPanelStyle}
             {...menuDataAttributes}
         >
-            {options.map((option) => (
-                <button
-                    key={option.value}
-                    className={cn(
-                        "w-full flex items-center gap-2 px-3 py-2 text-left text-sm",
-                        "transition-colors duration-150",
-                        option.disabled
-                            ? "text-fg-subtle cursor-not-allowed"
-                            : "text-fg hover:bg-fill cursor-default",
-                        option.value === value && "bg-fill text-fg",
-                    )}
-                    onClick={() => handleOptionClick(option)}
-                    disabled={option.disabled}
-                >
-                    {multiple && (
-                        <div className="w-4 h-4 border border-edge-strong rounded-md flex items-center justify-center">
-                            {option.value === value && <Check className="w-3 h-3 text-primary" />}
-                        </div>
-                    )}
-                    {option.icon && (
-                        <div className="flex-shrink-0 text-fg-muted">{option.icon}</div>
-                    )}
-                    <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-                        <span className="truncate">{optionLabel(option)}</span>
-                        {option.secondaryLabel ? (
-                            <span className="shrink-0 text-xs text-fg-subtle">{option.secondaryLabel}</span>
-                        ) : null}
-                    </span>
-                </button>
-            ))}
+            {options.map((option) => {
+                const optionClass = cn(
+                    "w-full flex items-center gap-2 px-3 py-2 text-left text-sm",
+                    "transition-colors duration-150",
+                    option.disabled
+                        ? "text-fg-subtle cursor-not-allowed"
+                        : "text-fg hover:bg-fill cursor-default",
+                    option.value === value && "bg-fill text-fg",
+                );
+                const optionBody = (
+                    <>
+                        {multiple && (
+                            <div className="w-4 h-4 border border-edge-strong rounded-md flex items-center justify-center">
+                                {option.value === value && <Check className="w-3 h-3 text-primary" />}
+                            </div>
+                        )}
+                        {option.icon && (
+                            <div className="flex-shrink-0 text-fg-muted">{option.icon}</div>
+                        )}
+                        <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+                            <span className="truncate">{optionLabel(option)}</span>
+                            {option.secondaryLabel ? (
+                                <span className="shrink-0 text-xs text-fg-subtle">{option.secondaryLabel}</span>
+                            ) : null}
+                        </span>
+                    </>
+                );
+                return inspectOnly ? (
+                    <InspectOnlyButton
+                        key={option.value}
+                        className={optionClass}
+                        onClick={() => handleOptionClick(option)}
+                        disabled={option.disabled}
+                    >
+                        {optionBody}
+                    </InspectOnlyButton>
+                ) : (
+                    <button
+                        key={option.value}
+                        className={optionClass}
+                        onClick={() => handleOptionClick(option)}
+                        disabled={option.disabled}
+                    >
+                        {optionBody}
+                    </button>
+                );
+            })}
         </div>
     ) : null;
 
+    const triggerClass = cn(
+        "min-w-0 justify-between bg-fill-subtle hover:bg-fill",
+        variantStyles[variant],
+        sizeStyles[size],
+        isOpen && "border-primary ring-2 ring-primary/20",
+    );
+    const triggerBody = (
+        <>
+            <span
+                className={cn(
+                    "flex min-w-0 flex-1 items-center gap-2 text-left",
+                    selectedOption ? "text-fg" : "text-fg-muted",
+                )}
+            >
+                {selectedOption?.icon ? (
+                    <span className="shrink-0 text-fg-muted">{selectedOption.icon}</span>
+                ) : null}
+                <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+                    <span className="truncate">{selectedOption ? optionLabel(selectedOption) : resolvedPlaceholder}</span>
+                    {selectedOption?.secondaryLabel ? (
+                        <span className="shrink-0 text-2xs text-fg-subtle">
+                            {selectedOption.secondaryLabel}
+                        </span>
+                    ) : null}
+                </span>
+            </span>
+            <ChevronDown
+                className={cn(
+                    "h-4 w-4 shrink-0 text-fg-muted transition-transform duration-150",
+                    isOpen && "rotate-180",
+                )}
+            />
+        </>
+    );
+
     return (
         <div ref={selectRef} className={cn("relative", fullWidth && "w-full min-w-0", className)}>
-            <Button
-                variant="ghost"
-                size={size}
-                fullWidth={fullWidth}
-                disabled={disabled}
-                className={cn(
-                    "min-w-0 justify-between bg-fill-subtle hover:bg-fill",
-                    variantStyles[variant],
-                    sizeStyles[size],
-                    isOpen && "border-primary ring-2 ring-primary/20",
-                )}
-                onClick={() => !disabled && setIsOpen(!isOpen)}
-            >
-                <span
+            {inspectOnly ? (
+                // `Button`'s own classes, spelled out: `Button` renders a `<button>`, and the whole
+                // point of `inspectOnly` is to not be one. Kept in the order it applies them so the
+                // two triggers are indistinguishable; the dimming is computed rather than left to
+                // `disabled:`, which a span never matches.
+                <InspectOnlyButton
+                    disabled={disabled}
+                    aria-expanded={isOpen}
                     className={cn(
-                        "flex min-w-0 flex-1 items-center gap-2 text-left",
-                        selectedOption ? "text-fg" : "text-fg-muted",
+                        "inline-flex items-center justify-center gap-2 rounded-md font-medium",
+                        "transition-all duration-150 ease-out focus:outline-none cursor-default",
+                        disabled && "opacity-50",
+                        "text-fg-muted hover:bg-fill hover:text-fg",
+                        fullWidth && "w-full",
+                        triggerClass,
                     )}
+                    onClick={() => !disabled && setIsOpen(!isOpen)}
                 >
-                    {selectedOption?.icon ? (
-                        <span className="shrink-0 text-fg-muted">{selectedOption.icon}</span>
-                    ) : null}
-                    <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-                        <span className="truncate">{selectedOption ? optionLabel(selectedOption) : resolvedPlaceholder}</span>
-                        {selectedOption?.secondaryLabel ? (
-                            <span className="shrink-0 text-2xs text-fg-subtle">
-                                {selectedOption.secondaryLabel}
-                            </span>
-                        ) : null}
-                    </span>
-                </span>
-                <ChevronDown
-                    className={cn(
-                        "h-4 w-4 shrink-0 text-fg-muted transition-transform duration-150",
-                        isOpen && "rotate-180",
-                    )}
-                />
-            </Button>
+                    {triggerBody}
+                </InspectOnlyButton>
+            ) : (
+                <Button
+                    variant="ghost"
+                    size={size}
+                    fullWidth={fullWidth}
+                    disabled={disabled}
+                    className={triggerClass}
+                    onClick={() => !disabled && setIsOpen(!isOpen)}
+                >
+                    {triggerBody}
+                </Button>
+            )}
 
             {dropdownPanel &&
                 (portalMenu ? createPortal(dropdownPanel, document.body) : dropdownPanel)}
