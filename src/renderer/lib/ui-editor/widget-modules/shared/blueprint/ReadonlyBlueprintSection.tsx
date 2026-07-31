@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { CustomFieldProps } from "@/apps/workspace/modules/properties/framework/types";
+import { selfReadOnly } from "@/apps/workspace/modules/properties/framework/fields/fieldReadOnlyStrategy";
 import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { useBlueprintDocumentRevision } from "@/apps/workspace/modules/blueprint-lite/hooks/useBlueprintDocumentRevision";
 import { useWorkspace } from "@/apps/workspace/context";
@@ -17,8 +18,16 @@ const widgetOwnerLabel = getOwnerLabel("widgetMain");
 
 /**
  * Shared properties-panel block: single widget blueprint preview + entry to the Blueprint editor.
+ *
+ * {@link selfReadOnly} because everything in it reads: a preview of the first layer, a count of the
+ * bindings that are broken, and a way into the blueprint editor - which enforces the freeze itself
+ * (`BlueprintFlowCanvas` drops its node gestures and greys its member-tree actions). Measured before
+ * this: a frozen workspace could select an element and not open its blueprint, because the
+ * framework's `<fieldset disabled>` clamp reaches every `<button>` under a `custom` field.
  */
-export function ReadonlyBlueprintSection({ data }: CustomFieldProps<UIInspectorData>) {
+export const ReadonlyBlueprintSection = selfReadOnly(function ReadonlyBlueprintSection({
+    data,
+}: CustomFieldProps<UIInspectorData>) {
     const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const surfaceId = data.surfaceId;
@@ -75,4 +84,4 @@ export function ReadonlyBlueprintSection({ data }: CustomFieldProps<UIInspectorD
             ) : null}
         </div>
     );
-}
+});

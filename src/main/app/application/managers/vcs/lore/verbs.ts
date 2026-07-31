@@ -19,6 +19,7 @@ import {
     type LoreStatusSummaryPayload,
     type LoreStorageDataPayload,
     type LoreStorageOpenedPayload,
+    type LoreTreeChildPayload,
     type LoreTreeLoadedPayload,
     type LoreTreeNodeInfoPayload,
     type LoreTreeResolvePayload,
@@ -392,6 +393,38 @@ export async function treeNode(
     });
     return info.one<LoreTreeNodeInfoPayload>(LoreTag.REVISION_TREE_NODE_INFO);
 }
+
+/**
+ * The entries directly under one node of a loaded tree.
+ *
+ * `ROOT_NODE_ID` is where a walk starts. Each entry already carries its content
+ * address, so enumerating a revision and reading its files needs no
+ * `revisionTreeResolvePath` round trip per path.
+ *
+ * This is the verb the old comment in `revisionReader.ts` was missing. It is NOT one
+ * of the three the SDK declares and the library does not export: `lore_revision_tree_
+ * list_children` is in the DLL's export table (checked against all 263 symbols of the
+ * win32 build), and this binding is exercised against a real repository in
+ * `revisionReader.integration.test.ts`.
+ */
+export async function listTreeChildren(
+    globals: LoreGlobals,
+    handle: TreeHandle,
+    parentNodeId: number,
+): Promise<LoreTreeChildPayload[]> {
+    const result = await invoke("revisionTreeListChildren", globals, {
+        id: 1,
+        handle: { handleId: handle.handleId },
+        parentNodeId,
+    });
+    return result.of<LoreTreeChildPayload>(LoreTag.REVISION_TREE_CHILD);
+}
+
+/** The node id of a tree's root, which is where {@link listTreeChildren} starts. */
+export const ROOT_NODE_ID = 0;
+
+/** `LoreNodeType`. A walk has to know which entries it may descend into. */
+export const LORE_NODE_TYPE = { DIRECTORY: 0, FILE: 1, LINK: 2 } as const;
 
 /**
  * Read content by address.

@@ -324,6 +324,74 @@ const TEXT_INPUT_EVENTS: readonly WidgetLogicEventDef[] = [
     ...WINDOW_EVENTS,
 ];
 
+/**
+ * The displayable set plus the three media events. They are `lifecycle`, not `interaction`: the
+ * element raises them on its own as the clip advances - nothing the player did causes `ended`.
+ */
+const VIDEO_EVENTS: readonly WidgetLogicEventDef[] = [
+    INIT_EVENT,
+    FLUSH_EVENT,
+    ...SURFACE_LIFECYCLE_EVENTS,
+    UNMOUNT_EVENT,
+    {
+        id: "play",
+        displayName: "Play",
+        description: "Fires when playback starts or resumes.",
+        dispatchKind: "lifecycle",
+        headNodeTypes: ["blueprint.event.head.videoPlay"],
+    },
+    {
+        id: "pause",
+        displayName: "Pause",
+        description: "Fires when playback pauses without reaching the end.",
+        dispatchKind: "lifecycle",
+        headNodeTypes: ["blueprint.event.head.videoPause"],
+    },
+    {
+        id: "ended",
+        displayName: "Ended",
+        description: "Fires when the clip reaches its end. A looping clip never raises it.",
+        dispatchKind: "lifecycle",
+        headNodeTypes: ["blueprint.event.head.videoEnded"],
+    },
+    ...DISPLAYABLE_EVENTS,
+    ...BROADCAST_EVENTS,
+    ...WINDOW_EVENTS,
+];
+
+/**
+ * The displayable set plus the two the *backend* raises.
+ *
+ * `lifecycle`, not `interaction`: nothing the player did causes either. `ready` is the engine's own
+ * boundary - the first frame has been drawn - and `error` is a runtime that was found and then
+ * misbehaved. A project simply carrying no puppet runtime raises neither; that is `missing-backend`,
+ * a quiet state and not an event, so a graph listening for `error` does not fire on every machine
+ * where the author's runtime is not installed.
+ */
+const PUPPET_EVENTS: readonly WidgetLogicEventDef[] = [
+    INIT_EVENT,
+    FLUSH_EVENT,
+    ...SURFACE_LIFECYCLE_EVENTS,
+    UNMOUNT_EVENT,
+    {
+        id: "ready",
+        displayName: "Ready",
+        description: "Fires when the model's first frame has been drawn.",
+        dispatchKind: "lifecycle",
+        headNodeTypes: ["blueprint.event.head.puppetReady"],
+    },
+    {
+        id: "error",
+        displayName: "Error",
+        description: "Fires when the runtime was found and then failed. A missing runtime is not an error.",
+        dispatchKind: "lifecycle",
+        headNodeTypes: ["blueprint.event.head.puppetError"],
+    },
+    ...DISPLAYABLE_EVENTS,
+    ...BROADCAST_EVENTS,
+    ...WINDOW_EVENTS,
+];
+
 const DISPLAYABLE_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
     INIT_EVENT,
     FLUSH_EVENT,
@@ -489,6 +557,93 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
             { id: "imageSource", displayName: "Image source" },
         ],
         writableProps: [{ propPath: "imageFill.assetId", displayName: "Image asset" }],
+    },
+    /**
+     * `nl.video` owns the DOM `<video>`, so the split between the two lists below is not cosmetic:
+     * `readableState` entries like `currentTime` change inside the element with nothing writing to
+     * the override store, and `commands` like Play / Seek are one-shot actions rather than state.
+     * Phase 2 of the Surface video card supplies the mechanism for both; everything listed as
+     * `planned` here is deliberately not claimed to work yet.
+     */
+    "nl.video": {
+        supportsPrivateBlueprint: true,
+        blueprintLabel: "Video logic",
+        events: VIDEO_EVENTS,
+        commands: [
+            ...baseCommands,
+            { id: "play", displayName: "Play", availability: "planned" },
+            { id: "pause", displayName: "Pause", availability: "planned" },
+            { id: "stop", displayName: "Stop", availability: "planned" },
+            { id: "seek", displayName: "Seek", availability: "planned" },
+            { id: "setSource", displayName: "Set video source", availability: "planned" },
+            { id: "setVolume", displayName: "Set volume", availability: "planned" },
+            { id: "setMuted", displayName: "Set muted", availability: "planned" },
+            { id: "setLoop", displayName: "Set loop", availability: "planned" },
+            { id: "setPlaybackRate", displayName: "Set playback rate", availability: "planned" },
+        ],
+        readableState: [
+            { id: "visible", displayName: "Visible" },
+            { id: "enabled", displayName: "Enabled" },
+            { id: "videoSource", displayName: "Video source" },
+            { id: "currentTime", displayName: "Current time" },
+            { id: "duration", displayName: "Duration" },
+            { id: "playing", displayName: "Is playing" },
+            { id: "ended", displayName: "Is ended" },
+            { id: "muted", displayName: "Is muted" },
+            { id: "volume", displayName: "Volume" },
+        ],
+        writableProps: [
+            { propPath: "assetId", displayName: "Video asset" },
+            { propPath: "posterAssetId", displayName: "Poster asset" },
+            { propPath: "objectFit", displayName: "Fit" },
+            { propPath: "loop", displayName: "Loop" },
+            { propPath: "muted", displayName: "Muted" },
+            { propPath: "autoplay", displayName: "Autoplay" },
+            { propPath: "volume", displayName: "Volume" },
+            { propPath: "playbackRate", displayName: "Playback rate" },
+            { propPath: "controls", displayName: "Native controls" },
+        ],
+    },
+    /**
+     * `nl.puppet` owns a live backend instance rather than a DOM node, and the split below follows
+     * from that. `readableState` entries like `status` and `currentMotion` change *inside* the
+     * backend with nothing writing to the override store, and `command` is the engine's own escape
+     * hatch - a named one-shot the engine never interprets, which by contract does not block unless
+     * the caller asks it to. Phase 2 of the Surface puppet card supplies the mechanism for both;
+     * everything marked `planned` here is deliberately not claimed to work yet.
+     *
+     * `setParam` / `setSlot` are commands rather than writable props even though `params` / `slots`
+     * are stored, because writing one key is not the same as replacing the map, and the engine's
+     * merge semantics differ between the two (a slot set to `null` is cleared and *stays a key*).
+     */
+    "nl.puppet": {
+        supportsPrivateBlueprint: true,
+        blueprintLabel: "Model logic",
+        events: PUPPET_EVENTS,
+        commands: [
+            ...baseCommands,
+            { id: "setMotion", displayName: "Set motion", availability: "planned" },
+            { id: "setExpression", displayName: "Set expression", availability: "planned" },
+            { id: "setSkin", displayName: "Set skin", availability: "planned" },
+            { id: "setParam", displayName: "Set parameter", availability: "planned" },
+            { id: "setSlot", displayName: "Set slot", availability: "planned" },
+            { id: "command", displayName: "Send command", availability: "planned" },
+        ],
+        readableState: [
+            { id: "visible", displayName: "Visible" },
+            { id: "enabled", displayName: "Enabled" },
+            { id: "status", displayName: "Status" },
+            { id: "currentMotion", displayName: "Current motion" },
+            { id: "currentExpression", displayName: "Current expression" },
+            { id: "currentSkin", displayName: "Current skin" },
+        ],
+        writableProps: [
+            { propPath: "assetId", displayName: "Model bundle" },
+            { propPath: "backend", displayName: "Runtime" },
+            { propPath: "motion", displayName: "Motion" },
+            { propPath: "expression", displayName: "Expression" },
+            { propPath: "skin", displayName: "Skin" },
+        ],
     },
     "nl.button": {
         supportsPrivateBlueprint: true,

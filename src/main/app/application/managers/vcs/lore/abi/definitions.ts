@@ -216,6 +216,7 @@ export const LORE_STRUCTS = {
     LoreRevisionTreeCloseArgs: { id: "uint64_t", handle: "LoreRevisionTree" },
     LoreRevisionTreeResolvePathArgs: { id: "uint64_t", handle: "LoreRevisionTree", path: "LoreString" },
     LoreRevisionTreeNodeInfoArgs: { id: "uint64_t", handle: "LoreRevisionTree", nodeId: "lore_node_id_t" },
+    LoreRevisionTreeListChildrenArgs: { id: "uint64_t", handle: "LoreRevisionTree", parentNodeId: "lore_node_id_t" },
     LoreBranchListArgs: { archived: "uint8_t" },
     LoreBranchCreateArgs: { branch: "LoreString", category: "LoreString", id: "LoreString" },
     LoreBranchSwitchArgs: { branch: "LoreString", revision: "LoreString", reset: "uint8_t", bare: "uint8_t" },
@@ -326,6 +327,23 @@ export const LORE_STRUCTS = {
         revision: "LoreHash",
         errorCode: "LoreErrorCode",
     },
+    /**
+     * One entry of a directory at a revision. Note there is no `repository`/`revision`
+     * pair and no `fileId` here, unlike the node-info event next door - the fields are
+     * NOT the same shape, and reading one struct with the other's layout produces
+     * plausible-looking garbage rather than an error.
+     */
+    LoreRevisionTreeChildEventData: {
+        id: "uint64_t",
+        nodeId: "lore_node_id_t",
+        name: "LoreString",
+        parentId: "lore_node_id_t",
+        kind: "uint32_t",
+        mode: "uint16_t",
+        size: "uint64_t",
+        address: "LoreAddress",
+        errorCode: "LoreErrorCode",
+    },
     LoreRevisionTreeNodeInfoEventData: {
         id: "uint64_t",
         nodeId: "lore_node_id_t",
@@ -419,6 +437,7 @@ export const LORE_EVENT_TAGS = {
     STORAGE_GET_ITEM_COMPLETE: 195,
     REVISION_TREE_LOADED: 200,
     REVISION_TREE_RESOLVE_PATH_COMPLETE: 201,
+    REVISION_TREE_CHILD: 202,
     REVISION_TREE_NODE_INFO: 203,
     REVISION_TREE_CLOSE_COMPLETE: 212,
 } as const;
@@ -507,6 +526,7 @@ export const LORE_VERBS = {
     revisionTreeClose: { symbol: "lore_revision_tree_close", args: "LoreRevisionTreeCloseArgs" },
     revisionTreeResolvePath: { symbol: "lore_revision_tree_resolve_path", args: "LoreRevisionTreeResolvePathArgs" },
     revisionTreeNodeInfo: { symbol: "lore_revision_tree_node_info", args: "LoreRevisionTreeNodeInfoArgs" },
+    revisionTreeListChildren: { symbol: "lore_revision_tree_list_children", args: "LoreRevisionTreeListChildrenArgs" },
     branchList: { symbol: "lore_branch_list", args: "LoreBranchListArgs" },
     branchCreate: { symbol: "lore_branch_create", args: "LoreBranchCreateArgs" },
     branchSwitch: { symbol: "lore_branch_switch", args: "LoreBranchSwitchArgs" },

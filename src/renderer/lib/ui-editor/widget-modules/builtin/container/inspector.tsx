@@ -19,8 +19,13 @@ function ContainerAppearanceField(props: CustomFieldProps<UIInspectorData>) {
     const { documentService } = props.data;
     const element = props.data.element;
 
+    // Deferred, not refused, while the workspace is read-only: this is bookkeeping nobody asked for
+    // - it fills in appearance keys a document predates - and running it on a frozen project raised
+    // "Nothing is being saved right now" about a write the author never made, just for selecting an
+    // element. `readOnly` is an input of the effect, so it happens as soon as writing is possible
+    // again; the model that was out of date still is.
     useLayoutEffect(() => {
-        if (!isUsableAppearanceModel(appearance)) {
+        if (props.readOnly || !isUsableAppearanceModel(appearance)) {
             return;
         }
         const f = getContainerProps(element);
@@ -31,7 +36,7 @@ function ContainerAppearanceField(props: CustomFieldProps<UIInspectorData>) {
                 appearance: next,
             });
         }
-    }, [appearance, documentService, element]);
+    }, [appearance, documentService, element, props.readOnly]);
 
     return (
         <AppearanceAuthoringPanel
@@ -46,6 +51,7 @@ function ContainerAppearanceField(props: CustomFieldProps<UIInspectorData>) {
             }}
             inspectorData={props.data}
             draftResetKey={props.data.element.id}
+            readOnly={props.readOnly}
         />
     );
 }

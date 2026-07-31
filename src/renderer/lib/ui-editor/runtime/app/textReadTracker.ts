@@ -45,6 +45,15 @@ export type TextReadTrackerOptions = {
 export type TextReadTracker = {
     /** Current node value: dialog line on screen && its message is read. */
     isCurrentTextRead: () => boolean;
+    /**
+     * Whether a specific line has ever been read, by its text id.
+     *
+     * The read set is keyed by the story line's `textId`, which is also the
+     * translation unit id and the engine's `voiceId` - one key space. That is
+     * what lets a voice EXTRA screen ask "has the player heard this line" without
+     * a record of its own, and why a player's existing saves already answer it.
+     */
+    hasRead: (textId: string) => boolean;
     /** Resolves once the persisted read set has been merged in. */
     whenLoaded: Promise<void>;
     /**
@@ -135,6 +144,10 @@ export function createTextReadTracker(options: TextReadTrackerOptions): TextRead
 
     return {
         isCurrentTextRead: () => currentTextRead,
+        hasRead: (textId: string) => {
+            const id = textId.trim();
+            return id ? readIds.has(id) : false;
+        },
         whenLoaded,
         clearAll: () => {
             if (detached) {

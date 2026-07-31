@@ -10,7 +10,8 @@ import { useWorkspace } from "../../context";
 import { freezeContextMenuRows, useFreezeGuard } from "../../components/ui/freezeGuard";
 import { Character } from "@/lib/workspace/services/character/Character";
 import { CharacterAppearanceKind, CharacterGroup } from "@/lib/workspace/services/character/types";
-import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
+import { listKnownPuppetRuntimes } from "@shared/utils/puppetRuntimes";
+import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import { useCharacterAvatarBake } from "./useCharacterAvatarBake";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -402,8 +403,15 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         closeMenu();
     }, [characterService, context, loadCharacters, closeMenu, t]);
 
-    // The appearance kind is fixed when the character is created and the two kinds share no data,
-    // so it has to be asked before the name rather than switched afterwards.
+    // The appearance kind is fixed when the character is created and the kinds share no data, so it
+    // has to be asked before the name rather than switched afterwards.
+    //
+    // The runtimes Studio knows are named here rather than hidden behind one "external runtime" row.
+    // That row was the whole problem: an author looking for Live2D had no way to tell that this was
+    // where it lived, and picking it left them with an empty free-text field naming a folder they
+    // were expected to have created already. Naming the products costs nothing and ships none of
+    // their code — the row still only creates a character; installing a runtime is a separate,
+    // guided act (see PuppetRuntimeInstaller).
     const kindItems = useCallback((groupId?: string): ContextMenuItemDef[] => ([
         {
             id: "new-character-preset",
@@ -415,7 +423,13 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
             label: t("characters.editor.kind.layered"),
             onClick: () => handleCreateCharacter("layered", groupId),
         },
+        ...listKnownPuppetRuntimes().map(runtime => ({
+            id: `new-character-${runtime.id}`,
+            label: runtime.productName,
+            onClick: () => handleCreateCharacter(runtime.id, groupId),
+        })),
         {
+            // Last, and worded as the escape hatch it is: a runtime the author wrote themselves.
             id: "new-character-puppet",
             label: t("characters.editor.kind.puppet"),
             onClick: () => handleCreateCharacter("puppet", groupId),

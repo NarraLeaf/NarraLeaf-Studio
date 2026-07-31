@@ -6,6 +6,7 @@ import { RequestStatus } from "@shared/types/ipcEvents";
 import { AppHost, AppProtocol } from "@shared/types/constants";
 import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { refuseFrozenWrite, refuseReloadingWrite } from "@/lib/app/writeFreeze";
+import { readProjectDataFromSource } from "@/lib/app/documentSource";
 import { getInterface } from "@/lib/app/bridge";
 
 /**
@@ -96,11 +97,45 @@ export class BaseFileSystemService {
     }
 
     public static async read(path: string, encoding: BufferEncoding): Promise<FsRequestResult<string>> {
-        return this.fetch(path, encoding);
+        const substituted = await this.readFromDocumentSource(path, encoding);
+        return substituted ?? this.fetch(path, encoding);
     }
 
     public static async readRaw(path: string): Promise<FsRequestResult<Uint8Array>> {
         return this.fetchRaw(path);
+    }
+
+    /**
+     * The version-view half of the boundary: while the workspace is showing a revision,
+     * project data is read out of that revision rather than off the disk.
+     *
+     * Answers null when the caller should read the disk - no source installed, a path
+     * outside the repository (`.nlstudio/`, `editor/cache/`, `dist/`), or an encoding a
+     * source cannot answer. `@/lib/app/documentSource` owns the reasoning; the only thing
+     * decided here is the shape of the answer, and "not present at that version" has to
+     * be the SAME `NOT_FOUND` every load path already handles - the branch that puts a
+     * service into its "missing, use defaults" state at project open.
+     */
+    private static async readFromDocumentSource(
+        path: string,
+        encoding: BufferEncoding,
+    ): Promise<FsRequestResult<string> | null> {
+        // A source hands back a string; anything read under another encoding is being read
+        // for its bytes, and decoding a blob as UTF-8 to re-encode it would corrupt it.
+        if (encoding !== "utf-8" && encoding !== "utf8") {
+            return null;
+        }
+        const answered = await readProjectDataFromSource(path);
+        if (!answered) {
+            return null;
+        }
+        if (answered.text === null) {
+            return {
+                ok: false,
+                error: { code: FsRejectErrorCode.NOT_FOUND, message: `${path} does not exist at the version being shown` },
+            };
+        }
+        return { ok: true, data: answered.text };
     }
 
     public static async write(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
@@ -167,7 +202,18 @@ export class BaseFileSystemService {
         return this.wrapIPCError(await appPrivilegedFacade.fs.moveDir(src, dest));
     }
 
+    /**
+     * Redirected to the active document source along with {@link read}, because several
+     * load paths ask this first and treat `false` as "create the default" -
+     * `StoryService.loadLibrary` is one. Left on the disk, a document absent from the
+     * revision would be reported as present and then fail to read, which is a louder and
+     * less honest version of the same answer.
+     */
     public static async isFileExists(path: string): Promise<FsRequestResult<boolean>> {
+        const substituted = await this.readFromDocumentSource(path, "utf-8");
+        if (substituted) {
+            return { ok: true, data: substituted.ok };
+        }
         return this.wrapIPCError(await appPrivilegedFacade.fs.isFileExists(path));
     }
 

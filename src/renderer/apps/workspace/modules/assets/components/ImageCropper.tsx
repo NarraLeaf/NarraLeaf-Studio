@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AlertCircle, Crop, RefreshCw, X } from "lucide-react";
+import { useEscapeToClose } from "@/lib/components/elements/Modal";
 import { useTranslation } from "@/lib/i18n";
 
 type CropRect = {
@@ -55,6 +56,9 @@ export function ImageCropper({
     onChange,
 }: ImageCropperProps) {
     const { t } = useTranslation();
+    // The step straight after the asset picker in the thumbnail flow, hand-built the same way and
+    // missing the same keystroke. Fixing only the picker would have moved the dead end one dialog on.
+    useEscapeToClose(visible, onClose);
     const containerRef = useRef<HTMLDivElement | null>(null);
     const imageRef = useRef<HTMLImageElement | null>(null);
     const [imageSize, setImageSize] = useState<Size | null>(null);

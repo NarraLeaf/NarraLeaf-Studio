@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { CustomFieldProps } from "@/apps/workspace/modules/properties/framework/types";
+import { selfReadOnly } from "@/apps/workspace/modules/properties/framework/fields/fieldReadOnlyStrategy";
 import { useBlueprintDocumentRevision } from "@/apps/workspace/modules/blueprint-lite/hooks/useBlueprintDocumentRevision";
 import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { useWorkspace } from "@/apps/workspace/context";
@@ -14,7 +15,17 @@ import {
 import { useReadonlySurfaceBlueprintSummary } from "@/lib/ui-editor/widget-modules/shared/blueprint/useReadonlySurfaceBlueprintSummary";
 import type { SceneEditorContext } from "../schemas/sceneSchema";
 
-export function SurfaceBlueprintEntrySection({ data }: CustomFieldProps<SceneEditorContext>) {
+/**
+ * The interface's own logic: a preview of its first blueprint layer, and the way into it.
+ *
+ * {@link selfReadOnly} for the same reason as `ReadonlyBlueprintSection` - opening a blueprint is
+ * navigation, and the blueprint editor enforces the freeze itself. Without it the framework's
+ * `<fieldset disabled>` clamp made a frozen workspace unable to read the logic of the interface it
+ * had open.
+ */
+export const SurfaceBlueprintEntrySection = selfReadOnly(function SurfaceBlueprintEntrySection({
+    data,
+}: CustomFieldProps<SceneEditorContext>) {
     const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const openBlueprint = useOpenBlueprintTarget();
@@ -69,4 +80,4 @@ export function SurfaceBlueprintEntrySection({ data }: CustomFieldProps<SceneEdi
             ) : null}
         </div>
     );
-}
+});

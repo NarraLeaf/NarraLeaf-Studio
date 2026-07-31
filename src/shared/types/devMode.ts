@@ -4,6 +4,7 @@ import type { PersistentVariableRuntimeTable } from "./variables/registry";
 import type { GameLocalizationBundle } from "./localization";
 import type { AutoSaveConfiguration } from "./saves";
 import type { GameVoiceBundle } from "./voice";
+import type { GameAudioBundle } from "./audio";
 import type { UIDocument } from "./ui-editor/document";
 import type { UIGraphDocument } from "./ui-editor/graph";
 import type { UISurfaceId } from "./ui-editor/document";
@@ -209,6 +210,14 @@ export type DevModeBundle = {
      * voice set up.
      */
     voice?: GameVoiceBundle;
+    /**
+     * Audio clip regions (in/out points) marked on audio assets, baked from the
+     * `assets/assets.metadata.audio.json` shard. Carried by the bundle so Dev
+     * Mode and the packaged runtime share one channel: the story compiler folds
+     * a region into the `Sound` it builds, and the blueprint sound family folds
+     * it into a clip a Surface plays. Absent when no asset has been marked.
+     */
+    audio?: GameAudioBundle;
     /**
      * Automatic saving, baked from `.nlproj` `app.autoSave`. Always present on a
      * freshly assembled bundle; absent only on ones that predate the feature,

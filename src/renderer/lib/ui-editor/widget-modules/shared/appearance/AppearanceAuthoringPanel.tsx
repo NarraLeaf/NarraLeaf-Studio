@@ -27,6 +27,7 @@ import { CompactContainerAppearance } from "./compact/CompactContainerAppearance
 import { CompactButtonAppearance } from "./compact/CompactButtonAppearance";
 import { CompactTextAppearance } from "./compact/CompactTextAppearance";
 import { moduleHasAnyAppearanceTransitionInModel } from "./appearanceMotion";
+import { AppearanceReadOnlyProvider } from "./appearanceReadOnly";
 import {
     BUTTON_MODULE_KEYS as BUTTON_KEYS,
     CONTAINER_MODULE_KEYS as CONTAINER_KEYS,
@@ -117,6 +118,11 @@ export type AppearanceAuthoringPanelProps = {
     onReplace: (next: AppearanceModel) => void;
     inspectorData: UIInspectorData;
     draftResetKey: string;
+    /**
+     * The inspector field's own `readOnly`, forwarded so the parts of this panel that render outside
+     * the field's clamped subtree can honour it - see {@link AppearanceReadOnlyProvider}.
+     */
+    readOnly?: boolean;
 };
 
 function cloneVariantShallow(source: AppearanceVariant, id: string, name: string): AppearanceVariant {
@@ -133,6 +139,7 @@ export function AppearanceAuthoringPanel({
     onReplace,
     inspectorData,
     draftResetKey,
+    readOnly = false,
 }: AppearanceAuthoringPanelProps) {
     const { t } = useTranslation();
     const elementId = inspectorData.element.id;
@@ -337,7 +344,9 @@ export function AppearanceAuthoringPanel({
         onReplace(renameVariant(model, selectedVariant.id, raw));
     };
 
-    return (
+    // Named rather than returned directly so the provider can wrap it without re-indenting the whole
+    // panel; nothing else about the tree changes.
+    const body = (
         <div className="space-y-3 min-w-0">
             <div className="flex flex-wrap gap-2 items-center min-w-0">
                 <div className="flex-1 min-w-[8rem]">
@@ -444,4 +453,6 @@ export function AppearanceAuthoringPanel({
             )}
         </div>
     );
+
+    return <AppearanceReadOnlyProvider value={readOnly}>{body}</AppearanceReadOnlyProvider>;
 }

@@ -146,6 +146,18 @@ export function extractStoryAssetReferences(document: StoryDocument, storyName: 
             });
         }
 
+        if (isLibraryAssetId(scene.bgm?.assetId)) {
+            references.push({
+                id: `story:${document.id}:${scene.id}:__scene__:bgm`,
+                assetId: scene.bgm!.assetId.trim(),
+                kind: "story",
+                label: sceneName,
+                detail,
+                field: "scene.bgm.assetId",
+                target: { kind: "storyScene", storyId: document.id, sceneId: scene.id, storyName, sceneName },
+            });
+        }
+
         // Depth first, so the "used by" list under an asset reads down the scene the way the author
         // wrote it. The record's key order would be UUID order once it has been rewritten once.
         for (const block of listSceneBlocksInDocumentOrder(scene)) {
@@ -397,6 +409,23 @@ function extractElementAssetReferences(element: UIElement, ownerLabel: string | 
             }
             if (key === "fontAssetId") {
                 push(childPath, childPath, value);
+                continue;
+            }
+            /**
+             * The literal names `surfaceResourcePreload.ts` keys its preload walk on. Until
+             * `nl.video` there was no widget storing a bare asset id under `assetId`, so this walk
+             * only knew `imageFill` / `fontAssetId` plus the `nl.image` legacy branch below - which
+             * means a new widget naming its prop `assetId` was preloaded by the shipped game and
+             * simultaneously invisible to "what uses this asset", the one place an author looks
+             * before deleting it. The two walks now agree on the same names.
+             *
+             * `nl.image`'s bare id is skipped here because the branch below pushes it under this
+             * exact reference id, with a dormancy rule this generic arm cannot express.
+             */
+            if (key === "assetId" || key === "posterAssetId") {
+                if (!(key === "assetId" && element.type === "nl.image")) {
+                    push(childPath, childPath, value);
+                }
                 continue;
             }
             walkValue(value, childPath, depth);

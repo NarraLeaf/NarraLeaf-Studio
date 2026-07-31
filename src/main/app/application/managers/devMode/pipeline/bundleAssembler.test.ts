@@ -6,6 +6,7 @@ import { encodeProjectConfig } from "@shared/utils/nlproj";
 import { DEFAULT_AUTO_SAVE_CONFIGURATION } from "@shared/types/saves";
 import {
     loadAutoSaveConfiguration,
+    loadGameAudio,
     loadGameLocalization,
     resolveStoryDocumentPathForIndexEntry,
 } from "./bundleAssembler";
@@ -139,5 +140,81 @@ describe("bundleAssembler auto save", () => {
     it("falls back to the defaults when the project cannot be read", async () => {
         expect(await loadAutoSaveConfiguration(path.join(os.tmpdir(), "nls-missing-project")))
             .toEqual(DEFAULT_AUTO_SAVE_CONFIGURATION);
+    });
+});
+
+/**
+ * Audio clip regions. The in/out points an author marks in the asset manager only reach the game
+ * through this table, so "the marker did nothing" is exactly the failure these guard.
+ */
+describe("bundleAssembler audio clip regions", () => {
+    const tempDirs: string[] = [];
+
+    afterEach(async () => {
+        await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })));
+    });
+
+    async function createProject(shard: unknown): Promise<string> {
+        const projectPath = await mkdtemp(path.join(os.tmpdir(), "nls-audio-test-"));
+        tempDirs.push(projectPath);
+        if (shard !== undefined) {
+            await mkdir(path.join(projectPath, "assets"), { recursive: true });
+            await writeFile(
+                path.join(projectPath, "assets", "assets.metadata.audio.json"),
+                JSON.stringify(shard),
+            );
+        }
+        return projectPath;
+    }
+
+    it("returns undefined when no audio asset carries a region", async () => {
+        const projectPath = await createProject({
+            a1: { id: "a1", name: "theme.mp3" },
+            a2: { id: "a2", name: "hit.wav", extras: {} },
+        });
+        // An empty table would put a key in every bundle and make "regions exist" unanswerable
+        // with one check.
+        expect(await loadGameAudio(projectPath)).toBeUndefined();
+    });
+
+    it("carries only the marked clips", async () => {
+        const projectPath = await createProject({
+            a1: { id: "a1", extras: { audioLoop: { inMs: 4200, outMs: 92500 } } },
+            a2: { id: "a2", extras: { audioLoop: { inMs: 1000 } } },
+            a3: { id: "a3", name: "unmarked.wav" },
+        });
+        expect(await loadGameAudio(projectPath)).toEqual({
+            clips: {
+                a1: { inMs: 4200, outMs: 92500 },
+                a2: { inMs: 1000 },
+            },
+        });
+    });
+
+    it("reads the cue-point shape that preceded the region", async () => {
+        const projectPath = await createProject({
+            a1: { id: "a1", extras: { cuePoints: [{ timeMs: 900 }, { timeMs: 200 }] } },
+        });
+        // Earliest two in time order, so a record written against the old shape opens with what the
+        // author marked rather than blank.
+        expect(await loadGameAudio(projectPath)).toEqual({ clips: { a1: { inMs: 200, outMs: 900 } } });
+    });
+
+    it("drops an out point that is not after the in point", async () => {
+        const projectPath = await createProject({
+            a1: { id: "a1", extras: { audioLoop: { inMs: 5000, outMs: 5000 } } },
+        });
+        expect(await loadGameAudio(projectPath)).toEqual({ clips: { a1: { inMs: 5000 } } });
+    });
+
+    it("degrades to no regions when the shard is missing or unreadable", async () => {
+        expect(await loadGameAudio(await createProject(undefined))).toBeUndefined();
+
+        const broken = await mkdtemp(path.join(os.tmpdir(), "nls-audio-test-"));
+        tempDirs.push(broken);
+        await mkdir(path.join(broken, "assets"), { recursive: true });
+        await writeFile(path.join(broken, "assets", "assets.metadata.audio.json"), "{not json");
+        // Every clip then plays whole, which is what happened before regions existed.
+        expect(await loadGameAudio(broken)).toBeUndefined();
     });
 });
