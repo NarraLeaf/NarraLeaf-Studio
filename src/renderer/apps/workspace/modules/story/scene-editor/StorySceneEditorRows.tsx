@@ -2204,7 +2204,7 @@ function ActionCommandMenu(props: {
                             const Icon = entry.group.icon;
                             return (
                                 <div key={entry.group.id}>
-                                    <div className="flex items-center gap-1.5 px-2 pb-1 pt-2 text-2xs font-medium uppercase tracking-wide text-fg-subtle">
+                                    <div className="flex items-center gap-1.5 px-2 pb-1 pt-2 text-2xs font-medium tracking-wide text-fg-subtle">
                                         <Icon className="h-3 w-3 shrink-0" style={{ color: entry.group.iconColor }} />
                                         <span>{t(commandCategoryLabelKey(entry.group.id))}</span>
                                     </div>
