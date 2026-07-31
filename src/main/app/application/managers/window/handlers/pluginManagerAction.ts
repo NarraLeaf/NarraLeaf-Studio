@@ -281,9 +281,33 @@ export class PluginRegistryFetchHandler extends IPCHandler<IPCEventType.pluginRe
         if (denied) return denied;
 
         const registryUrl = resolveRegistryUrl(window.app.getGlobalState().get("plugins.registryUrl"));
+        // Refresh means the whole store, thumbnails included: an icon that was
+        // unreachable last time gets another chance. Ones already on disk stay
+        // there — they are keyed by version, so they cannot be stale.
+        window.app.pluginIconCache.clearFailures();
         return this.tryUse(async () => ({
             registryUrl,
             index: await fetchRegistryIndex(registryUrl),
+        }));
+    }
+}
+
+export class PluginRegistryIconHandler extends IPCHandler<IPCEventType.pluginRegistryIcon> {
+    readonly name = IPCEventType.pluginRegistryIcon;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        data: IPCEvents[IPCEventType.pluginRegistryIcon]["data"],
+    ): Promise<RequestStatus<{ icon: string | null }>> {
+        const denied = ensurePluginInstallCapability(window);
+        if (denied) return denied;
+
+        // Same shape as the install handler: the renderer names a plugin, and
+        // the address is taken from the index main trusts. It never supplies one.
+        const registryUrl = resolveRegistryUrl(window.app.getGlobalState().get("plugins.registryUrl"));
+        return this.tryUse(async () => ({
+            icon: await window.app.pluginIconCache.resolve(registryUrl, data.pluginId),
         }));
     }
 }
@@ -334,6 +358,10 @@ export class PluginInstallFromRegistryHandler extends IPCHandler<IPCEventType.pl
         });
         if (installed.success && !installed.data.canceled) {
             void window.app.refreshPluginLocales();
+            // The version moved, so a thumbnail cached against the old one is
+            // stale — and the installed package now carries its own icon anyway.
+            // Dropping it here doubles as the retry for one that failed to fetch.
+            void window.app.pluginIconCache.invalidate(data.pluginId);
         }
         return installed;
     }

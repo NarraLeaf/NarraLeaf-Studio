@@ -10,6 +10,7 @@ import { PluginInstallPermissionSections } from "@/lib/plugins/PluginInstallPerm
 import type { PluginListItem, PluginStatus } from "@shared/types/plugins";
 import type { PluginRegistryEntry } from "@shared/types/pluginRegistry";
 import { projectAvatarColor, projectInitials } from "../projectAvatar";
+import { useStoreIcon } from "./useStoreIcon";
 
 /** Whether a registry entry offers a newer version than what is installed. */
 export function hasUpdate(installed: PluginListItem | null | undefined, entry: PluginRegistryEntry | null | undefined): boolean {
@@ -55,11 +56,11 @@ export function PluginStatusBadge({ status }: { status: PluginStatus }) {
  * The plugin's thumbnail, or a monogram tile colored from its name — the same
  * language as the projects list.
  *
- * The image is boxed to the same square either way, so a plugin cannot change
- * the shape of its row by what it ships. An icon that fails to load (a store
- * entry whose remote image is gone) falls back to the monogram rather than to a
- * broken-image glyph; the failure is remembered per URL so a re-render does not
- * retry it forever, and a different URL gets a fresh attempt.
+ * `src` is always local: an `app://` address for an installed package, a
+ * `data:` URL for a store thumbnail main fetched on our behalf. The image is
+ * boxed to the same square either way, so a plugin cannot change the shape of
+ * its row by what it ships, and anything that still fails to decode falls back
+ * to the monogram rather than to a broken-image glyph.
  */
 export function PluginAvatar({ name, src, size = 36 }: { name: string; src?: string | null; size?: number }) {
     const [failedSrc, setFailedSrc] = useState<string | null>(null);
@@ -72,9 +73,7 @@ export function PluginAvatar({ name, src, size = 36 }: { name: string; src?: str
                 aria-hidden
                 width={size}
                 height={size}
-                loading="lazy"
                 decoding="async"
-                referrerPolicy="no-referrer"
                 onError={() => setFailedSrc(src)}
                 className="shrink-0 rounded-lg object-cover"
                 style={{ width: size, height: size }}
@@ -136,6 +135,9 @@ export function PluginDetailsModal({
     const updateAvailable = hasUpdate(installed, registryEntry);
     const compatible = isCompatible(registryEntry);
     const link = registryEntry?.homepage || registryEntry?.release.page;
+    // The installed copy's icon was checked at install time and is already on
+    // disk; only fall back to asking main for the registry's.
+    const storeIcon = useStoreIcon(pluginId, Boolean(registryEntry?.icon) && !installed?.iconUrl);
 
     const footer = (
         <div className="flex items-center gap-2">
@@ -194,9 +196,7 @@ export function PluginDetailsModal({
         <Modal isOpen onClose={onClose} title={name} size="md" footer={footer}>
             <div className="space-y-4">
                 <div className="flex items-start gap-3">
-                    {/* The installed copy went through Studio's icon checks; the
-                        registry's is a remote image, so it is only the fallback. */}
-                    <PluginAvatar name={name} src={installed?.iconUrl ?? registryEntry?.icon} size={44} />
+                    <PluginAvatar name={name} src={installed?.iconUrl ?? storeIcon} size={44} />
                     <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-1.5">
                             {version ? <Badge tone="neutral">v{version}</Badge> : null}
