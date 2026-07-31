@@ -447,6 +447,11 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
             // mod+shift to clear. The transport's repeat toggle gave up L for that and took R
             // (its button has always been the Repeat icon); a marker family with a hole in it
             // would cost more than one relocated toggle.
+            //
+            // These keys are the *fallback*. What actually fires is resolved by catalog id
+            // (`catalogPrefix` + `id`) in `KeybindingService.getEffectiveKey`, so every one of
+            // them also has an entry in `keybindingCatalog.ts` - and `keybindingCatalog.test.ts`
+            // fails the build if the two ever disagree again.
             { id: "loop", key: "r", description: "Toggle loop", handler: () => setLoop(value => !value) },
             { id: "mark-in", key: "i", description: "Set in point", handler: () => markLoopPoint("in") },
             { id: "mark-loop", key: "l", description: "Set loop point", handler: () => markLoopPoint("loop") },
