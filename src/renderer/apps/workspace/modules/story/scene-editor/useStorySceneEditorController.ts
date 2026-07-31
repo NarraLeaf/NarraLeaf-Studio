@@ -36,6 +36,7 @@ import type { StoryPuppetVocabulary } from "./storyCommandValues";
 
 import { collectTempSpeakers, promoteTempSpeaker } from "@/lib/workspace/services/story/storyModel";
 import { CHARACTERS_PANEL_ID } from "../../characters";
+import { PROPERTIES_PANEL_ID } from "../../properties/propertiesPanelId";
 import {
     annotateDialogueGroups,
     buildDialogueAppearances,
@@ -1280,6 +1281,21 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
     }, [frozen, scene, startInsertInside]);
 
+    /**
+     * Bring the property editor onto the screen. Visibility only — no focus moves, so the caret and the
+     * keyboard stay in the scene exactly where the gesture left them, and the author sees the row's
+     * fields without losing the row.
+     *
+     * This is the one place that decides the rail is *on screen*; what it renders is decided elsewhere,
+     * by the selection the tab publishes (see the rail effect in `StorySceneEditorTab`). Keeping the two
+     * apart is deliberate: the rail following the selection must stay a silent, per-selection thing, or
+     * arrow-keying down a scene would keep re-opening a panel the author closed. Revealing happens only
+     * for a gesture that asks for it.
+     */
+    const revealInspectorPanel = useCallback(() => {
+        uiService?.panels.show(PROPERTIES_PANEL_ID);
+    }, [uiService]);
+
     /** Escape's inspector rung: close the property editor, keeping the row selected. */
     const closeInspector = useCallback(() => {
         setEditorMode(current => (current.kind === "inspector" ? { kind: "idle" } : current));
@@ -2254,7 +2270,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         dismissInsertChooser, discardInsertSlot, resolveInsertLine, commitInvalidFromInsert, chooseTempSpeakerForInsert, tempSpeakers,
         createActionFromSidebar, addInsideContainer, addConditionBranch,
         navigateFromTextEdit, resetGoalColumn, handleBackspaceAtEmptyStart, enterEditOrInspectorForActive,
-        activateBlockForInspectorOrOp, closeInspector,
+        activateBlockForInspectorOrOp, closeInspector, revealInspectorPanel,
         extendRowSelection, moveSelectedRows, duplicateSelection, jumpRowSelection, pageRowSelection,
         moveDraggedBlockAfter, moveDraggedBlockToSortablePosition, startDraggingBlock, endDraggingBlock,
         createLayerBeforeBlock, slashAtAlias,

@@ -1598,6 +1598,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 current.redoEdit();
             },
             openInspector: blockId => latest().editor.activateBlockForInspectorOrOp(blockId),
+            revealInspectorPanel: () => latest().editor.revealInspectorPanel(),
             updatePayload: (blockId, payload) => latest().editor.updateBlockPayloadFor(blockId, payload),
             setDialogueCharacter: (blockId, characterId) => {
                 const block = blockOf(blockId);

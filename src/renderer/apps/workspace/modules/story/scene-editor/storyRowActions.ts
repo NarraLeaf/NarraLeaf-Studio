@@ -43,6 +43,11 @@ export type StoryRowActions = {
     redoBeyondRow: () => void;
     /** Activate a non-text row: opens its inspector, or runs its card-less op. */
     openInspector: (blockId: StoryBlockId) => void;
+    /**
+     * Bring the property editor's rail on screen without taking focus. Addresses no row — the rail
+     * already follows the selection — so it takes no id.
+     */
+    revealInspectorPanel: () => void;
     updatePayload: (blockId: StoryBlockId, payload: StoryBlock["payload"]) => void;
     setDialogueCharacter: (blockId: StoryBlockId, characterId: string | undefined) => void;
     /**
@@ -82,6 +87,7 @@ const NOOP_ACTIONS: StoryRowActions = {
     undoBeyondRow: () => {},
     redoBeyondRow: () => {},
     openInspector: () => {},
+    revealInspectorPanel: () => {},
     updatePayload: () => {},
     setDialogueCharacter: () => {},
     setPosition: () => {},
