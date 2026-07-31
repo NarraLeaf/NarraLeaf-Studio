@@ -106,6 +106,14 @@ export function shouldExcludeProjectPackagePath(relativePath: string): boolean {
     if (segments[0] === ".git" || segments[0] === "node_modules") {
         return true;
     }
+    // The repository, not the project. An export is "here is a copy of my project", and every
+    // revision anyone ever made is a different offer - one that also carries the backend's own
+    // store files and lock state, which have never been shown to survive being copied to another
+    // machine. The `.loreignore` beside it is NOT excluded: it is a policy file, it is small, and
+    // it is right about this project wherever the project ends up.
+    if (segments[0] === ".lore") {
+        return true;
+    }
     if (segments[0] === "editor" && segments[1] === "cache") {
         return true;
     }
@@ -119,6 +127,13 @@ export function shouldExcludeProjectPackagePath(relativePath: string): boolean {
             segments[1] === "temp" ||
             segments[1] === "dev-mode" ||
             segments[1] === "build" ||
+            // Studio's own state, not the project's: panel layout, notification history, recent
+            // colours. It moved here out of `editor/services/` when version control needed a line
+            // between "the author's project" and "how this window was arranged" - and an export
+            // that carried it would rearrange the recipient's window to match the sender's.
+            // The service stores that ARE project content (the character table, plugin stores)
+            // live elsewhere; the classification is `shared/vcs/serviceStores.ts`.
+            segments[1] === "services" ||
             segments[1] === "dist")
     ) {
         return true;

@@ -28,6 +28,7 @@ import {
     UI_EDITOR_WRITABLE,
     type UIEditorReadOnly,
 } from "@/lib/ui-editor/interaction/readOnlyInteraction";
+import { subscribeVideoPreviewPlayback } from "@/lib/ui-editor/interaction/videoPreviewPlayback";
 
 // Props
 type UIEditorDockerBarProps = {
@@ -821,6 +822,13 @@ export function UIEditorDockerBar({
     const [selection, setSelection] = useState<SelectionState>(stateService.getSelection());
     const [tool, setTool] = useState<UITool>(stateService.getTool());
     const [docVersion, setDocVersion] = useState(0);
+    /**
+     * Docker items are rebuilt on document change, which is enough for every item that edits
+     * document data. `nl.video`'s preview transport does not: it is editor state, so toggling it
+     * bumps nothing the memo below watches and the play/pause icon would show the opposite of what
+     * the canvas is doing. One counter, bumped only while an author is scrubbing a video preview.
+     */
+    const [ephemeralPreviewVersion, setEphemeralPreviewVersion] = useState(0);
     const [componentsLibraryOpen, setComponentsLibraryOpen] = useState(false);
 
     useEffect(() => {
@@ -845,6 +853,10 @@ export function UIEditorDockerBar({
         });
         return unsub;
     }, [documentService]);
+
+    useEffect(() => subscribeVideoPreviewPlayback(() => {
+        setEphemeralPreviewVersion((v) => v + 1);
+    }), []);
 
     // Active insert type (if in insert mode)
     const activeInsertType = tool.kind === "insert" ? tool.nodeType : null;
@@ -904,7 +916,7 @@ export function UIEditorDockerBar({
             surfaceId,
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedElement, selectedModule, documentService, docVersion]);
+    }, [selectedElement, selectedModule, documentService, docVersion, ephemeralPreviewVersion]);
 
     const multiSelectItems = useMemo<DockerBarItem[]>(() => {
         if (selectedElements.length < 2) {

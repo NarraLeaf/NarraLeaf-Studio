@@ -1899,6 +1899,85 @@ describe("compileStudioStoryToNlr voice", () => {
         expect(propsOf("dark")).toEqual([expect.objectContaining({ filter: "brightness(0)" })]);
     });
 
+    it("compiles /camera motion into a camera Transform, and settles its end pose into the snapshot", async () => {
+        // The camera is a Displayable in the engine, so a Story Motion drives it exactly as it drives a
+        // sprite. Two things this pins: the transform reaches `story.camera` (not some other element),
+        // and the motion's settled end state is what a row-precise launch pre-poses - the pose is the
+        // shot the author left the camera in, so a launch after this row must not open on neutral.
+        const animation: StoryAnimationAsset = {
+            schemaVersion: 1,
+            id: "00000000-0000-4000-8000-000000000501",
+            name: "Camera push in",
+            targetKind: "camera",
+            sequences: [],
+            timeline: {
+                tracks: [{
+                    id: "track-zoom",
+                    property: "zoom",
+                    keyframes: [
+                        { id: "kf-zoom-0", timeMs: 0, value: 1, easing: "linear" },
+                        { id: "kf-zoom-1600", timeMs: 1600, value: 1.35, easing: "easeInOut" },
+                    ],
+                }],
+            },
+        };
+        const blocks: Record<string, StoryBlock> = {
+            shot: {
+                id: "shot",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "camera", operation: "motion", motion: { mode: "animation", animationId: animation.id } },
+            },
+            target: narrationBlock("target", "target-text", "After the push"),
+        };
+        const document = baseDocument(blocks, ["shot", "target"]);
+
+        const compiled = await compileStudioStoryToNlr({
+            document,
+            sceneId: "scene-1",
+            animations: { [animation.id]: animation },
+        });
+        const transforms = getDisplayableTransforms(
+            compiled.actionIdBindings
+                .filter(binding => binding.blockId === "shot")
+                .flatMap(binding => collectActionTree(binding.action, compiled.story)),
+        );
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(transforms[0]?.sequences?.map(sequence => sequence.props)).toEqual([
+            expect.objectContaining({ zoom: 1 }),
+            expect.objectContaining({ zoom: 1.35 }),
+        ]);
+
+        const snapshot = computeStoryStageSnapshot({
+            document,
+            sceneId: "scene-1",
+            targetBlockId: "target",
+            animations: { [animation.id]: animation },
+        });
+        expect(snapshot.camera).toEqual({ props: { zoom: 1.35 }, effects: {} });
+    });
+
+    it("diagnoses a /camera motion row with nothing bound instead of emitting a broken transform", async () => {
+        const blocks: Record<string, StoryBlock> = {
+            shot: {
+                id: "shot",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "camera", operation: "motion" },
+            },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["shot"]),
+            sceneId: "scene-1",
+        });
+
+        expect(compiled.actionIdBindings.some(binding => binding.blockId === "shot")).toBe(false);
+        expect(compiled.diagnostics.map(diagnostic => diagnostic.level)).toEqual(["warning"]);
+    });
+
     it("pre-poses the stage camera when a row-precise launch starts after a /camera op", async () => {
         // A launch that starts after `/camera zoom 2` must open on the zoomed shot. The pose is
         // pre-posed onto story.camera through the same DevTools path the built-in layers use, and its
@@ -2488,6 +2567,52 @@ describe("puppet characters", () => {
         expect(one("motion", "puppet:setMotion")?.callee).toBe(compiled.sceneElements?.["scene-1"]?.puppets.get("char-doll"));
     });
 
+    /**
+     * A parameter row is a map, and `Puppet.setParam` merges - so the row becomes one call per entry.
+     * That is what makes "turn the head" (three parameters) one row instead of three.
+     */
+    it("compiles a parameter row into one setParam per entry", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                ...characterBlock("enter"),
+                params: {
+                    id: "params",
+                    kind: "action",
+                    parentId: null,
+                    childrenIds: [],
+                    payload: {
+                        action: "character",
+                        operation: "setParams",
+                        characterId: "char-doll",
+                        // A blank id and a non-finite value are both dropped rather than forwarded: the
+                        // engine would take them as real requests against ids no model has.
+                        params: { ParamAngleX: 12, ParamAngleY: -7.5, "": 1, ParamBad: Number.NaN },
+                    },
+                },
+                empty: {
+                    id: "empty",
+                    kind: "action",
+                    parentId: null,
+                    childrenIds: [],
+                    payload: { action: "character", operation: "setParams", characterId: "char-doll", params: {} },
+                },
+            }, ["row", "params", "empty"]),
+            sceneId: "scene-1",
+            characters: [PUPPET],
+            resolveAssetUrl: async assetId => `nlr://bundle/${assetId}/model.json`,
+        });
+
+        const setParams = compiled.actionIdBindings
+            .filter(binding => binding.blockId === "params")
+            .flatMap(binding => collectActionTree(binding.action, compiled.story))
+            .filter(action => action?.type === "puppet:setParam");
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(setParams.map(action => action?.contentNode?.getContent?.())).toEqual([["ParamAngleX", 12], ["ParamAngleY", -7.5]]);
+        // A row asking for nothing compiles to nothing, rather than to a statement the timeline draws.
+        expect(compiled.actionIdBindings.filter(binding => binding.blockId === "empty")).toEqual([]);
+    });
+
     it("refuses a state channel on a character Studio draws itself", async () => {
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument({
@@ -2516,5 +2641,179 @@ describe("puppet characters", () => {
 
         // A puppet has no portrait to read a differential off, so the default is set directly.
         expect([...compiled.avatarAssetIdByUrl]).toContainEqual(["nlr://asset-avatar", "asset-avatar"]);
+    });
+});
+
+/**
+ * Audio: the scene's own track, and the in/out points an author marked on the asset.
+ *
+ * The markers only reach playback through the `audioClips` table, so "the marker did nothing" is the
+ * failure these guard - and it is the failure that shipped before this table existed.
+ */
+describe("story audio", () => {
+    function bgmRow(id: string, assetId: string, extra: Record<string, unknown> = {}): Record<string, StoryBlock> {
+        return {
+            [id]: {
+                id,
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "audio", operation: "setBgm", assetId, ...extra } as StoryActionPayload,
+            },
+        };
+    }
+
+    it("plays the scene's configured music from its own init, with the marked loop region", async () => {
+        const document = baseDocument({ say: narrationBlock("say", "text-say", "Quiet.") }, ["say"]);
+        document.scenes["scene-1"].bgm = { assetId: "asset-theme", volume: 0.5, fadeMs: 1500 };
+        const calls: string[] = [];
+
+        const compiled = await compileStudioStoryToNlr({
+            document,
+            sceneId: "scene-1",
+            audioClips: { "asset-theme": { inMs: 4200, outMs: 92500 } },
+            resolveAssetUrl: async (assetId, assetType) => {
+                calls.push(`${assetType}:${assetId}`);
+                return `nlr://${assetId}`;
+            },
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(calls).toEqual(["audio:asset-theme"]);
+        // Scene *config*, not a leading statement: the engine plays it during the scene's init, so it
+        // is already going when the first row runs and it survives a load into mid-scene.
+        const music = (compiled.scene as any).state.backgroundMusic;
+        expect(music.config.src).toBe("nlr://asset-theme");
+        expect(music.config.seek).toBe(4.2);
+        expect(music.config.endTime).toBe(92.5);
+        // Loop defaults on, which is also what makes the region a loop region rather than a hard stop.
+        expect(music.config.loop).toBe(true);
+        expect(music.state.volume).toBe(0.5);
+        expect((compiled.scene as any).config.backgroundMusicFade).toBe(1500);
+    });
+
+    it("leaves a scene with no configured music alone", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ say: narrationBlock("say", "text-say", "Quiet.") }, ["say"]),
+            sceneId: "scene-1",
+        });
+
+        // Absent means "keep whatever is playing", which is how a story that switches music with
+        // /bgm rows has always behaved.
+        expect((compiled.scene as any).state.backgroundMusic).toBeNull();
+    });
+
+    it("folds the marked region into a /bgm row", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(bgmRow("music", "asset-theme", { fadeMs: 800 }), ["music"]),
+            sceneId: "scene-1",
+            audioClips: { "asset-theme": { inMs: 1000, outMs: 60000 } },
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        const sound = compiled.sceneElements?.["scene-1"].sounds.get("bgm");
+        expect((sound as any)?.config.seek).toBe(1);
+        expect((sound as any)?.config.endTime).toBe(60);
+    });
+
+    it("plays an unmarked clip whole", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(bgmRow("music", "asset-theme"), ["music"]),
+            sceneId: "scene-1",
+            audioClips: { "asset-other": { inMs: 1000, outMs: 60000 } },
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        const sound = compiled.sceneElements?.["scene-1"].sounds.get("bgm");
+        expect((sound as any)?.config.seek).toBe(0);
+        // Present-but-undefined would read as "there is an out point here" to the engine's region check.
+        expect((sound as any)?.config.endTime).toBeUndefined();
+    });
+
+    it("trims a sound effect with the same markers", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                se: {
+                    id: "se",
+                    kind: "action",
+                    parentId: null,
+                    childrenIds: [],
+                    payload: { action: "audio", operation: "playSound", objectName: "impact", assetId: "asset-hit" },
+                },
+            }, ["se"]),
+            sceneId: "scene-1",
+            audioClips: { "asset-hit": { inMs: 120, outMs: 500 } },
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        // One region per asset, applied wherever the asset is played - asking the author to mark it
+        // again per row would be a second source of truth.
+        const sound = compiled.sceneElements?.["scene-1"].sounds.get("impact");
+        expect((sound as any)?.config.seek).toBe(0.12);
+        expect((sound as any)?.config.endTime).toBe(0.5);
+    });
+
+    it("lets the sound-control family address a scene's own music", async () => {
+        const document = baseDocument({
+            quieter: {
+                id: "quieter",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "audio", operation: "setVolume", objectName: "bgm", volume: 0.3, fadeMs: 500 },
+            },
+        }, ["quieter"]);
+        document.scenes["scene-1"].bgm = { assetId: "asset-theme" };
+
+        const compiled = await compileStudioStoryToNlr({
+            document,
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        // The reserved name has to be pre-registered, or `/vol 0.5` answers "no background music is
+        // set" on the one scene that definitely has some - the whole point of configuring it.
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiled.sceneElements?.["scene-1"].sounds.get("bgm")).toBe(
+            (compiled.scene as any).state.backgroundMusic,
+        );
+    });
+
+    it("still warns when a control row addresses music no scene or row set", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                quieter: {
+                    id: "quieter",
+                    kind: "action",
+                    parentId: null,
+                    childrenIds: [],
+                    payload: { action: "audio", operation: "setVolume", objectName: "bgm", volume: 0.3 },
+                },
+            }, ["quieter"]),
+            sceneId: "scene-1",
+        });
+
+        expect(compiled.diagnostics.some(entry => /No background music is set/.test(entry.message))).toBe(true);
+    });
+
+    it("compiles /seek on a sound as a play-head move in seconds", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                ...bgmRow("music", "asset-theme"),
+                jump: {
+                    id: "jump",
+                    kind: "action",
+                    parentId: null,
+                    childrenIds: [],
+                    payload: { action: "audio", operation: "seekSound", objectName: "bgm", timeMs: 30000 },
+                },
+            }, ["music", "jump"]),
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiled.actionIdBindings.map(binding => binding.blockId)).toEqual(["music", "jump"]);
     });
 });

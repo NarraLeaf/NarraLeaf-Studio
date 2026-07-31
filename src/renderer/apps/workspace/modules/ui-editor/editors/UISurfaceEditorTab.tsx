@@ -394,8 +394,12 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
             host: surface?.host ?? "app",
             editorStateService: stateService ?? undefined,
             editorDocumentService: documentService ?? undefined,
+            // Beside the two services rather than anywhere else, because those two ARE the write
+            // path a widget renderer can reach from inside its own markup - see
+            // `resolveInlineTextEditHost`, which reads all three together.
+            editorReadOnly: readOnly,
         };
-    }, [documentService, stateService, surface?.host]);
+    }, [documentService, readOnly, stateService, surface?.host]);
 
     const surfaceContent = useMemo(() => {
         if (!surfaceId || !runtimeBridge || !documentService) {

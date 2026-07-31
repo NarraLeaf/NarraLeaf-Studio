@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CharacterAppearance, emptyAppearance } from "./CharacterAppearance";
 import { migrateCharacterStore } from "./migrateAppearance";
 import type { PuppetAppearance } from "./types";
+import { KNOWN_PUPPET_RUNTIME_IDS, knownPuppetRuntime } from "@shared/utils/puppetRuntimes";
 
 function puppet(overrides: Partial<PuppetAppearance> = {}): PuppetAppearance {
     return {
@@ -38,6 +39,45 @@ describe("puppet appearance", () => {
             entry: null,
             size: null,
             options: {},
+        });
+    });
+
+    /**
+     * The named kinds are the same shape as `puppet` and have to travel the same two paths — the
+     * clone (which is a field-by-field whitelist, so a kind it does not carry through is *retyped* on
+     * the next save) and the migration (which deletes what it does not recognise). Both failures are
+     * silent, which is why each named kind is asserted rather than the generic one standing in.
+     */
+    describe.each(KNOWN_PUPPET_RUNTIME_IDS)("%s appearance", kind => {
+        it("keeps its own kind through the store clone", () => {
+            const appearance = new CharacterAppearance(puppet({ kind }));
+            expect(appearance.toJSON()).toEqual(puppet({ kind }));
+            expect(appearance.getKind()).toBe(kind);
+            // Same arm as `puppet`: the runtime cannot tell the three apart, so everything below the
+            // kind has to behave identically.
+            expect(appearance.getPuppet()).not.toBeNull();
+            expect(appearance.listAssetIds()).toEqual(["asset-model"]);
+            expect(appearance.resolveDrawList({})).toEqual([]);
+        });
+
+        it("survives the store migration", () => {
+            const store = [{ profile: { name: "Doll", appearance: puppet({ kind }) } }];
+            const report = migrateCharacterStore(store);
+            expect(report.migrated).toBe(0);
+            expect(store[0].profile.appearance).toEqual(puppet({ kind }));
+        });
+
+        it("starts pointed at the runtime it was created for", () => {
+            // The author picked a product from the menu; making them then type its folder name is the
+            // gap this fills. `puppet` has no name to guess and still starts empty (asserted above).
+            expect(emptyAppearance(kind)).toEqual({
+                kind,
+                assetId: null,
+                backend: knownPuppetRuntime(kind).backend,
+                entry: null,
+                size: null,
+                options: {},
+            });
         });
     });
 

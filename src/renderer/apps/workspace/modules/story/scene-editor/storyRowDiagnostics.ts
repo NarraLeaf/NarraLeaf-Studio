@@ -1,5 +1,6 @@
 import type { StoryBlock } from "@shared/types/story";
 import type { StoryCommandContext } from "./storyCommandResolution";
+import { puppetChannelNames, type StoryPuppetChannel } from "./storyCommandValues";
 
 /**
  * Row-level lint: the mistakes that produce a *silently wrong game* rather than a build error.
@@ -17,7 +18,16 @@ import type { StoryCommandContext } from "./storyCommandResolution";
 
 export type StoryRowDiagnosticCode =
     /** The row points at an asset the project no longer has. Builds ship it; the player sees nothing. */
-    "missingAsset";
+    | "missingAsset"
+    /**
+     * The row asks a puppet's model for a motion / expression / skin the model says it does not have.
+     *
+     * The same failure mode as a missing asset, one layer further out: the compile is happy (the name
+     * is forwarded verbatim, as the engine's contract requires), the build ships, and the backend logs
+     * a warning nobody reads while the model plainly does not do the thing. A typo, or an animation
+     * dropped in a re-export.
+     */
+    | "unknownPuppetName";
 
 export type StoryRowDiagnostic = {
     code: StoryRowDiagnosticCode;
@@ -44,12 +54,75 @@ function referencedAssetId(block: StoryBlock): string | undefined {
     return typeof payload.assetId === "string" && payload.assetId ? payload.assetId : undefined;
 }
 
+/**
+ * The channel a character row asks a puppet's model for, or null for a row that asks for none.
+ *
+ * Only the three operations that carry a `puppetName`. `expression` is shared with the two appearance
+ * kinds Studio draws itself, which is why the name has to be present before the row counts as a puppet
+ * one - a preset character's `expression` row carries a `pose`, never a `puppetName`.
+ */
+function requestedPuppetChannel(block: StoryBlock): { characterId: string; channel: StoryPuppetChannel; name: string } | null {
+    if (block.kind !== "action" || block.payload.action !== "character") {
+        return null;
+    }
+    const payload = block.payload;
+    const name = payload.puppetName?.trim();
+    // Blank is the engine's `null` - the request to clear that channel, which every model can honour.
+    if (!payload.characterId || !name) {
+        return null;
+    }
+    switch (payload.operation) {
+        case "expression":
+            return { characterId: payload.characterId, channel: "expression", name };
+        case "setMotion":
+            return { characterId: payload.characterId, channel: "motion", name };
+        case "setSkin":
+            return { characterId: payload.characterId, channel: "skin", name };
+        default:
+            return null;
+    }
+}
+
+/** The parameter ids a `setParams` row asks for, or null for any other row. */
+function requestedPuppetParams(block: StoryBlock): { characterId: string; ids: string[] } | null {
+    if (block.kind !== "action" || block.payload.action !== "character" || block.payload.operation !== "setParams") {
+        return null;
+    }
+    const characterId = block.payload.characterId;
+    const ids = Object.keys(block.payload.params ?? {}).map(id => id.trim()).filter(id => id !== "");
+    return characterId && ids.length > 0 ? { characterId, ids } : null;
+}
+
 export function diagnoseRow(input: StoryRowDiagnosticInput): StoryRowDiagnostic | null {
     const { block } = input;
 
     const assetId = referencedAssetId(block);
     if (assetId && !assetExists(input.context, assetId)) {
         return { code: "missingAsset" };
+    }
+
+    const requestedParams = requestedPuppetParams(block);
+    if (requestedParams) {
+        // The same two silences as the channels below - and the same reason the list has to be non-empty
+        // before it means anything: a model that reports no parameters has not said that every id is
+        // wrong, only that it does not enumerate them.
+        const known = input.context.puppetByCharacterId[requestedParams.characterId]?.params ?? [];
+        if (known.length > 0 && requestedParams.ids.some(id => !known.some(spec => spec.id === id))) {
+            return { code: "unknownPuppetName" };
+        }
+    }
+
+    const requested = requestedPuppetChannel(block);
+    if (requested) {
+        const names = puppetChannelNames(input.context, requested.characterId, requested.channel);
+        // Two silences, both required. No entry for this character means nobody could ask its model -
+        // no runtime on this machine, or a backend that describes nothing - and marking every row in a
+        // project that merely opened somewhere else would make the colour meaningless. An entry with an
+        // EMPTY list on this channel is a model that had nothing to say about it, which is "no comment"
+        // and not "no name is valid": a Spine skeleton reports eleven animations and zero expressions.
+        if (names.length > 0 && !names.includes(requested.name)) {
+            return { code: "unknownPuppetName" };
+        }
     }
 
     return null;

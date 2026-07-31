@@ -159,6 +159,10 @@ export const story = {
         addStarred: "Add to starred",
         removeStarred: "Remove from starred",
     },
+    music: {
+        missingAudio: "Missing audio",
+        none: "No music",
+    },
     background: {
         missingImage: "Missing image",
         none: "No background",
@@ -187,6 +191,8 @@ export const story = {
         form: "Expression",
         motion: "Motion",
         skin: "Skin",
+        puppetParam: "Parameter",
+        puppetParamValue: "Value",
         imageAsset: "Image",
         imageOrColor: "Image or Color",
         videoAsset: "Video",
@@ -200,7 +206,7 @@ export const story = {
         displayName: "Display Name",
         seekTime: "Seconds",
         // Camera
-        cameraOperation: "Pan / Zoom / Rotate / Darken / Reset",
+        cameraOperation: "Pan / Zoom / Rotate / Darken / Motion / Reset",
         cameraAmount: "Amount or Position",
         // Modifiers
         duration: "Seconds",
@@ -232,6 +238,7 @@ export const story = {
     },
     diagnostics: {
         missingAsset: "This row points at an asset the project no longer has.",
+        unknownPuppetName: "This character's model does not have that name.",
     },
     find: {
         placeholder: "Find in scene",
@@ -279,6 +286,7 @@ export const story = {
                 motion: "A motion its runtime knows (blank rests it)",
                 expression: "An expression its runtime knows (blank clears it)",
                 skin: "A skin its runtime knows (blank restores the default)",
+                param: "A numeric parameter of its model, by id",
             },
             scene: "Scene",
             label: "Label in this scene",
@@ -317,8 +325,15 @@ export const story = {
         placeholderNote: "Note…",
         placeholderText: "Text…",
         dragRow: "Drag row",
-        insert: "Insert",
-        delete: "Delete",
+        // Two strings per row button, and the difference is load-bearing: `insert`/`delete` are the
+        // ACCESSIBLE NAMES and `insertTitle`/`deleteTitle` the tooltips, which add the keybinding. They
+        // read the same because a screen reader and a pointer deserve the same sentence — these used to
+        // be the bare words "Insert" and "Delete", left over from when the buttons had visible text, so
+        // the only thing announced was a verb with no object. The shortcut stays out of the name (it
+        // belongs to the tooltip and the cheat sheet, not to what the control IS), and the bracket
+        // convention lives in the catalogue because zh wants full-width ones.
+        insert: "Insert a blank row after this one",
+        delete: "Delete this row",
         insertTitle: "Insert a blank row after this one ({keys})",
         deleteTitle: "Delete this row ({keys})",
         playFromRow: "Play from this row",
@@ -336,7 +351,8 @@ export const story = {
         voiceOutdated: "Voice outdated, open voice table",
         voiceManage: "Open voice table",
         voicePlay: "Play voice take",
-        voiceStop: "Stop",
+        // "Stop" alone was the accessible name of a mid-row icon button; it now says what stops.
+        voiceStop: "Stop voice take",
     },
     sceneEditor: {
         defaultSceneName: "Untitled Scene",
@@ -349,6 +365,15 @@ export const story = {
         noDescription: "No description",
         defaultBackground: "Default background",
         clearBackground: "Clear background",
+        sceneMusic: "Scene music",
+        clearSceneMusic: "Clear scene music",
+        selectSceneMusic: "Select Scene Music",
+        sceneMusicVolume: "Volume",
+        sceneMusicLoop: "Loop",
+        sceneMusicFade: "Fade in (s)",
+        sceneMusicLoopRegion: "Loops {from}s – {to}s",
+        sceneMusicFromIn: "Starts at {from}s",
+        sceneMusicWholeClip: "Whole clip",
         backgroundResolveError: "Image asset could not be resolved: {error}",
         selectDefaultBackground: "Select Default Background",
         tabInvalid: "Story scene editor tab is invalid.",
@@ -455,6 +480,7 @@ export const story = {
         move: { label: "Move", detail: "Move a character to a position" },
         face: { label: "Face", detail: "Change a character's expression" },
         motion: { label: "Motion", detail: "Set the motion a runtime-drawn character plays" },
+        param: { label: "Parameter", detail: "Set one numeric parameter of a runtime-drawn character's model" },
         skin: { label: "Skin", detail: "Set the skin a runtime-drawn character wears" },
         rename: { label: "Rename", detail: "Change the name a character speaks under" },
         say: { label: "Say", detail: "A line of dialogue" },
@@ -578,6 +604,7 @@ export const story = {
             setName: "Rename",
             setMotion: "Motion",
             setSkin: "Skin",
+            setParams: "Parameter",
         },
         waitDuration: "Wait {seconds}s",
         waitClick: "Wait for click",
@@ -598,6 +625,7 @@ export const story = {
             zoom: "Zoom",
             rotate: "Rotate",
             darken: "Darken stage",
+            motion: "Motion",
             reset: "Reset camera",
         },
         condition: "Condition",

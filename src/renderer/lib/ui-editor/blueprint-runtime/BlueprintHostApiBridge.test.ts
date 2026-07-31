@@ -17,6 +17,8 @@ import {
     createDevModeBlueprintHostApi,
     type BlueprintGamePreferenceKey,
     type BlueprintGamePreferenceValue,
+    type BlueprintSoundPlayInput,
+    type CreateBlueprintHostApiRuntimeOptions,
     type DevModeWidgetRuntimePatch,
 } from "./BlueprintHostApiBridge";
 import {
@@ -169,6 +171,11 @@ function createHostApi(options?: {
     onSetGamePreference?: (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => Promise<void> | void;
     onCloseLayer?: () => Promise<void> | void;
     widgetRuntimeStore?: WidgetRuntimeStateStore;
+    onPlaySound?: CreateBlueprintHostApiRuntimeOptions["onPlaySound"];
+    onStopSound?: CreateBlueprintHostApiRuntimeOptions["onStopSound"];
+    onSetSoundVolume?: CreateBlueprintHostApiRuntimeOptions["onSetSoundVolume"];
+    onSeekSound?: CreateBlueprintHostApiRuntimeOptions["onSeekSound"];
+    onIsSoundPlaying?: CreateBlueprintHostApiRuntimeOptions["onIsSoundPlaying"];
 }) {
     return createDevModeBlueprintHostApi({
         document: options?.document ?? createDocument(),
@@ -198,6 +205,11 @@ function createHostApi(options?: {
         onSetSentenceSpeed: options?.onSetSentenceSpeed,
         onGetGamePreference: options?.onGetGamePreference,
         onSetGamePreference: options?.onSetGamePreference,
+        onPlaySound: options?.onPlaySound,
+        onStopSound: options?.onStopSound,
+        onSetSoundVolume: options?.onSetSoundVolume,
+        onSeekSound: options?.onSeekSound,
+        onIsSoundPlaying: options?.onIsSoundPlaying,
         emit: () => undefined,
         onOpenSurface: options?.onOpenSurface ?? (() => undefined),
         onCloseLayer: options?.onCloseLayer ?? (() => undefined),
@@ -1408,5 +1420,63 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
         } finally {
             vi.useRealTimers();
         }
+    });
+});
+
+/**
+ * The sound family's transport half. `setVolume` doubles as the fade node, so its clamping and its
+ * duration are the two things a bad slider binding would break.
+ */
+describe("createDevModeBlueprintHostApi sound transport", () => {
+    it("clamps the volume and passes the fade through", async () => {
+        const calls: unknown[] = [];
+        const hostApi = createHostApi({
+            onSetSoundVolume: (handle, volume, fadeMs) => void calls.push({ id: handle.id, volume, fadeMs }),
+        });
+
+        await hostApi.sound.setVolume({ kind: "soundHandle", id: "s1" }, 2, 800);
+        await hostApi.sound.setVolume({ kind: "soundHandle", id: "s1" }, -1);
+
+        // 2 from a slider bound to the wrong range means "as loud as it goes"; a dead control is the
+        // worse answer, so this clamps rather than throws.
+        expect(calls).toEqual([
+            { id: "s1", volume: 1, fadeMs: 800 },
+            { id: "s1", volume: 0, fadeMs: 0 },
+        ]);
+    });
+
+    it("floors a negative seek at the start of the clip", async () => {
+        const calls: unknown[] = [];
+        const hostApi = createHostApi({ onSeekSound: (handle, timeMs) => void calls.push({ id: handle.id, timeMs }) });
+
+        await hostApi.sound.seek({ kind: "soundHandle", id: "s1" }, -5);
+        await hostApi.sound.seek({ kind: "soundHandle", id: "s1" }, 30_000);
+
+        expect(calls).toEqual([{ id: "s1", timeMs: 0 }, { id: "s1", timeMs: 30_000 }]);
+    });
+
+    it("stays silent rather than throwing when the host backs no audio", async () => {
+        const hostApi = createHostApi({});
+
+        // The editor's surface preview. A graph built there has to run end to end.
+        await expect(hostApi.sound.play({ assetId: "a1", channel: "bgm", loop: true, volume: 1 }))
+            .resolves.toBeNull();
+        await expect(hostApi.sound.setVolume({ kind: "soundHandle", id: "s1" }, 0.5)).resolves.toBeUndefined();
+        await expect(hostApi.sound.seek({ kind: "soundHandle", id: "s1" }, 1000)).resolves.toBeUndefined();
+    });
+
+    it("hands the play request through untouched", async () => {
+        const seen: BlueprintSoundPlayInput[] = [];
+        const hostApi = createHostApi({
+            onPlaySound: input => {
+                seen.push(input);
+                return { kind: "soundHandle", id: "s7" };
+            },
+        });
+
+        const handle = await hostApi.sound.play({ assetId: "a1", channel: "bgm", loop: true, volume: 0.4 });
+
+        expect(handle).toEqual({ kind: "soundHandle", id: "s7" });
+        expect(seen[0]).toEqual({ assetId: "a1", channel: "bgm", loop: true, volume: 0.4 });
     });
 });

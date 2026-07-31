@@ -57,7 +57,8 @@ import {
     grantModelBundleUrl,
     readPuppetRuntimeStamp,
 } from "./projectPuppetRuntimes";
-import { createPuppetModelSession, type PuppetModelSession } from "./puppetModelSession";
+import { createPuppetModelSession, type PuppetModelSession } from "@/lib/ui-editor/runtime/game/puppetModelSession";
+import { SurfacePuppetUnavailableError } from "@/lib/ui-editor/runtime/game/surfacePuppetSession";
 
 /** The box a model is mounted into when nobody asked for a particular one. */
 const DEFAULT_PROBE_SIZE: PuppetSize = { width: 512, height: 512 };
@@ -198,6 +199,29 @@ export class PuppetDescriptionService
         return null;
     }
 
+    /**
+     * The same synchronous look, addressed by character.
+     *
+     * What the story editor reads: it holds characters, and rebuilding a request out of an appearance
+     * at every call site would put the same four-field mapping in a third place. A character that is
+     * not a puppet, or one whose model has not been asked yet, answers null - which is the caller's
+     * cue to call {@link describeCharacter} and re-render on {@link onDescriptionChanged}.
+     */
+    public peekCharacter(characterId: string): PuppetDescription | null {
+        const characters = this.getContext().services.get<CharacterService>(Services.Character);
+        const puppet = characters.getCharacter(characterId)?.profile.appearance.getPuppet();
+        if (!puppet?.assetId || !puppet.backend) {
+            return null;
+        }
+        return this.peek({
+            assetId: puppet.assetId,
+            backend: puppet.backend,
+            entry: puppet.entry,
+            options: puppet.options,
+            size: puppet.size,
+        });
+    }
+
     /** Forget a description, in memory and on disk. Without a request, forgets everything in memory. */
     public async invalidate(request?: PuppetDescriptionRequest): Promise<void> {
         this.memory.clear();
@@ -212,9 +236,16 @@ export class PuppetDescriptionService
     /**
      * Mount the model into a container the caller owns, and keep it there.
      *
-     * The character editor's preview. The description path disposes its model the moment it has an
-     * answer; a preview keeps it, so the author can watch a motion play. Rejects rather than
-     * degrading — a preview panel has somewhere to put the failure.
+     * The character editor's preview, and a Surface puppet widget on the canvas. The description path
+     * disposes its model the moment it has an answer; these keep it, so the author can watch a motion
+     * play. Rejects rather than degrading — both callers have somewhere to put the failure.
+     *
+     * **Two kinds of rejection, and callers do act on them differently.** A
+     * {@link SurfacePuppetUnavailableError} means there was never anything to mount — no model asset,
+     * no backend named, or the named runtime is not installed — which is the ordinary condition of most
+     * projects and has to degrade to an empty box rather than to an error. Anything else means a
+     * runtime was found and then misbehaved. The distinction rides in the error's type rather than in
+     * its message, so no caller has to pattern-match prose to tell a normal project from a broken one.
      */
     public async openSession(
         request: PuppetDescriptionRequest,
@@ -223,7 +254,13 @@ export class PuppetDescriptionService
     ): Promise<PuppetModelSession> {
         const planned = await this.plan(request);
         if (!planned.ok) {
-            throw new Error(planned.result.message ?? planned.result.reason);
+            const { reason, message } = planned.result;
+            throw new SurfacePuppetUnavailableError(
+                // `plan()` cannot answer `not-described` — that is only decided after a mount — but the
+                // union permits it, so it folds into the nearest honest reason instead of being cast away.
+                reason === "no-backend" || reason === "backend-missing" ? reason : "no-model",
+                message ?? reason,
+            );
         }
         const { plan } = planned;
         const session = await createPuppetModelSession({

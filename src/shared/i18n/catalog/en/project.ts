@@ -17,6 +17,10 @@ export const project = {
             title: "Dependencies",
             description: "Plugins this project relies on",
         },
+        runtimes: {
+            title: "Runtimes",
+            description: "Drawing runtimes for Live2D and Spine characters",
+        },
         settings: {
             title: "Settings",
             description: "Networking and packaging behavior",
