@@ -635,6 +635,7 @@ export class GameBuildManager {
                 status: "error",
                 startedAt: session.snapshot.startedAt,
                 finishedAt: Date.now(),
+                platforms: session.snapshot.platforms,
                 error: message,
             };
             this.emit(session, { level: "error", source: "Build", message });
