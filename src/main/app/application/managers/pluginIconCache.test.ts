@@ -48,7 +48,7 @@ describe("PluginIconCache", () => {
         iconBytes = png(512);
         fetchMock = vi.fn(async (url: string) => (
             url === ICON_URL
-                ? new Response(iconBytes, { status: 200 })
+                ? new Response(new Uint8Array(iconBytes), { status: 200 })
                 : new Response(indexBody, { status: 200 })
         ));
         vi.stubGlobal("fetch", fetchMock);
