@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Loader2, MonitorPlay, Package, Play, Square } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { useWorkspace } from "../../context";
@@ -10,6 +10,7 @@ import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
 import { PreviewService } from "@/lib/workspace/services/core/PreviewService";
 import { BuildService } from "@/lib/workspace/services/core/BuildService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
+import { CommandService } from "@/lib/workspace/services/ui/CommandService";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { flushUIDocAndGraphIfDirty } from "./flushDevModeAssets";
@@ -165,32 +166,40 @@ export function RunControl() {
      */
     const buildBlocked = frozen;
 
+    /** Start one mode. Shared with the palette's run commands so the flush-then-launch order is not copied. */
+    const launchMode = (target: RunMode) => {
+        if (!workspace || !context) {
+            return;
+        }
+        if (target === "preview") {
+            void context.services.get<PreviewService>(Services.Preview)
+                .launch({ kind: "surface", surfaceId: MAIN_APP_SURFACE_ID });
+            return;
+        }
+        const dev = context.services.get<DevModeService>(Services.DevMode);
+        void (async () => {
+            try {
+                await flushUIDocAndGraphIfDirty(workspace);
+            } catch (e) {
+                console.error("[DevMode] flush before launch failed", e);
+            }
+            await dev.launch({ kind: "surface", surfaceId: MAIN_APP_SURFACE_ID });
+        })();
+    };
+
     const runOrStop = () => {
         if (!workspace || !context) {
             return;
         }
-        const dev = context.services.get<DevModeService>(Services.DevMode);
-        const preview = context.services.get<PreviewService>(Services.Preview);
         if (devActive) {
-            void dev.stop();
+            void context.services.get<DevModeService>(Services.DevMode).stop();
             return;
         }
         if (previewActive) {
-            void preview.stop();
+            void context.services.get<PreviewService>(Services.Preview).stop();
             return;
         }
-        if (mode === "devMode") {
-            void (async () => {
-                try {
-                    await flushUIDocAndGraphIfDirty(workspace);
-                } catch (e) {
-                    console.error("[DevMode] flush before launch failed", e);
-                }
-                await dev.launch({ kind: "surface", surfaceId: MAIN_APP_SURFACE_ID });
-            })();
-        } else {
-            void preview.launch({ kind: "surface", surfaceId: MAIN_APP_SURFACE_ID });
-        }
+        launchMode(mode);
     };
 
     const selectMode = (next: RunMode) => {
@@ -201,6 +210,65 @@ export function RunControl() {
         setMode(next);
         void getInterface().app.state.setGlobalState(RUN_MODE_SETTINGS_KEY, next);
     };
+
+    /**
+     * The same launches, by name.
+     *
+     * This control is a fixed part of the top bar rather than a registered action, so nothing about
+     * it reached the command palette - running the project was mouse-only. Registered here rather
+     * than in a commands module because the launch sequence (flush dirty UI docs, then launch the
+     * main surface) lives here, and a second copy of it would drift.
+     *
+     * One entry per state, like the freeze commands: an author searching "run" should read off the
+     * list what is running, and a single Run/Stop toggle whose meaning depends on invisible state is
+     * the opposite of that. `when` reads live status through the ref, since the palette re-evaluates
+     * it on every keystroke.
+     */
+    const runStateRef = useRef({ devActive, previewActive, frozen, runOrStop, launchMode });
+    runStateRef.current = { devActive, previewActive, frozen, runOrStop, launchMode };
+
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const commandService = context.services.get<CommandService>(Services.Command);
+        const idle = () => !runStateRef.current.devActive && !runStateRef.current.previewActive;
+        const launch = (target: RunMode) => runStateRef.current.launchMode(target);
+        return commandService.registerMany([
+            {
+                id: "run:dev-mode",
+                titleKey: "actions.run.runDevMode",
+                categoryKey: "workspace.shell.commandPalette.categoryRun",
+                when: idle,
+                run: () => launch("devMode"),
+            },
+            {
+                id: "run:preview",
+                titleKey: "actions.run.runPreview",
+                categoryKey: "workspace.shell.commandPalette.categoryRun",
+                // Preview is what a frozen workspace is specifically not claiming to be; see above.
+                when: () => idle() && !runStateRef.current.frozen,
+                run: () => launch("preview"),
+            },
+            {
+                id: "run:stop-dev-mode",
+                titleKey: "workspace.shell.stopDevMode",
+                categoryKey: "workspace.shell.commandPalette.categoryRun",
+                when: () => runStateRef.current.devActive,
+                run: () => runStateRef.current.runOrStop(),
+            },
+            {
+                id: "run:stop-preview",
+                titleKey: "workspace.shell.stopPreview",
+                categoryKey: "workspace.shell.commandPalette.categoryRun",
+                when: () => runStateRef.current.previewActive,
+                run: () => runStateRef.current.runOrStop(),
+            },
+            // Production Build is deliberately absent: `buildAction` is a registered action, so the
+            // palette already derives it (and drops it while frozen). A second entry would be a
+            // duplicate row that the freeze policy does not reach.
+        ]);
+    }, [context]);
 
     const runTitle = running ? t(meta.stopKey) : t(meta.runKey);
 

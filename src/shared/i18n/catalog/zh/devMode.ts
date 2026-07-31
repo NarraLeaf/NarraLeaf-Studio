@@ -36,6 +36,8 @@ export const devMode = {
         contextInside: "所在",
         contextRunning: "正在运行",
         currentScene: "当前",
+        focusNone: "不聚焦变量",
+        focusLive: "当前运行值",
     },
     panel: {
         float: "浮动面板",

@@ -12,9 +12,15 @@
  * Word boundaries include camel case, because project names are usually written that way and
  * "CodemaoAutoTop" reduces to a useful "CA" rather than a meaningless "CO". A single word gets a
  * single letter - two letters from one word reads like an abbreviation of something else.
+ *
+ * Takes a missing name rather than requiring one. Both helpers here are total on purpose: a
+ * nameless history record once reached this function, threw on `name.length`, and - because the
+ * critical error boundary answers an uncaught render error by terminating - quit the app on every
+ * launch. `recentProjectDisplayName` is the fix for *why* a name would be missing; this is the
+ * guarantee that a monogram can never be the thing that ends the process.
  */
-export function projectInitials(name: string): string {
-    const words = name
+export function projectInitials(name?: string | null): string {
+    const words = (name ?? "")
         // Separators of every kind become spaces: "Aumiao-py", "DrinkGame.sWeb", "my_game".
         .replace(/[^\p{L}\p{N}]+/gu, " ")
         // Then split camel case, so "CodemaoAutoTop" is three words rather than one.
@@ -49,10 +55,11 @@ const AVATAR_HUES = [210, 260, 300, 340, 10, 30, 150, 175, 195];
  * glance without becoming the loudest thing on a screen full of muted surfaces. Lightness is
  * pinned in the middle so the same white monogram stays legible in either theme.
  */
-export function projectAvatarColor(name: string): string {
+export function projectAvatarColor(name?: string | null): string {
+    const source = name ?? "";
     let hash = 0;
-    for (let index = 0; index < name.length; index++) {
-        hash = (Math.imul(hash, 31) + name.charCodeAt(index)) >>> 0;
+    for (let index = 0; index < source.length; index++) {
+        hash = (Math.imul(hash, 31) + source.charCodeAt(index)) >>> 0;
     }
     return `hsl(${AVATAR_HUES[hash % AVATAR_HUES.length]} 30% 44%)`;
 }
