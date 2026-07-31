@@ -386,8 +386,14 @@ async function phaseEdit() {
 
     const bytes = assetBytes(id);
     run.check('E-1', 'the typed text reached disk', Boolean(bytes && bytes.length), bytes ? `${bytes.length} bytes` : 'no file found');
-    run.check('E-2', 'the bytes decode as UTF-8 to exactly what was typed',
-        Boolean(bytes) && bytes.toString('utf8') === TEXT, bytes ? JSON.stringify(bytes.toString('utf8').slice(0, 80)) : 'n/a');
+    // Line endings are normalised on both sides on purpose. The editor writes the document's EOL,
+    // which is a real, visible property (the status bar shows LF or CRLF) and not something this
+    // criterion is about — comparing raw would fail on a correct save just for being CRLF. The EOL
+    // actually written is recorded separately below so the choice stays visible rather than assumed.
+    const onDisk = bytes ? bytes.toString('utf8') : '';
+    run.check('E-2', 'the bytes decode as UTF-8 to exactly what was typed (EOL-insensitive)',
+        onDisk.split('\r\n').join('\n') === TEXT, bytes ? JSON.stringify(onDisk.slice(0, 80)) : 'n/a');
+    run.note(`EOL written for a new file on this platform: ${onDisk.indexOf('\r\n') >= 0 ? 'CRLF' : 'LF'}`);
     run.check('E-3', 'UTF-8 is the default: no BOM was written',
         Boolean(bytes) && !(bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf),
         bytes ? [...bytes.slice(0, 3)].map((b) => b.toString(16)).join(' ') : 'n/a');
@@ -435,26 +441,103 @@ async function phaseEncoding() {
     run.note(`GBK save asserted by hand after driving the menu; pre-change bytes were ${before ? before.length : 0}`);
 }
 
-/** §6.10 — freezing keeps the text readable and disables creation. */
+/**
+ * Each category collapses on its own and leaves its siblings alone.
+ *
+ * This is here because the sidebar shipped a section that could not be collapsed at all: a
+ * ResizeObserver handed *closed* items their own scrollHeight, so they rendered fully open while
+ * the state said shut, and clicking such a phantom reset the genuinely-closed siblings to zero —
+ * one click appearing to collapse two other sections. Nothing in the unit tests or the diff review
+ * saw it; it took looking at the panel.
+ */
+async function phaseAccordion() {
+    await D.onWindow('workspace', A.WINDOWS.workspace, async (d) => {
+        await openAssetsPanel(d);
+        const heights = () => A.call(d, function () {
+            const out = {};
+            document.querySelectorAll('[data-asset-category]').forEach((h) => {
+                const body = h.parentElement && h.parentElement.children[1];
+                out[h.getAttribute('data-asset-category')] = body ? Math.round(body.getBoundingClientRect().height) : null;
+            });
+            return out;
+        });
+        const toggle = (category) => A.call(d, function (c) {
+            const h = document.querySelector('[data-asset-category="' + c + '"]');
+            if (!h) return false;
+            h.scrollIntoView({ block: 'center' });
+            const b = h.querySelector('button');
+            if (!b) return false;
+            b.click();
+            return true;
+        }, category);
+
+        // Only sections with content can prove anything: an empty category is 0 tall open or shut.
+        const start = await heights();
+        const withBody = Object.keys(start).filter((c) => start[c] > 0);
+        if (withBody.length < 2) throw new Error(`SETUP GUARD: need two non-empty categories to test isolation, saw ${JSON.stringify(start)}`);
+
+        for (const category of withBody) {
+            const before = await heights();
+            if (!(await toggle(category))) throw new Error(`SETUP GUARD: no toggle button on the ${category} header`);
+            await A.sleep(700);
+            const after = await heights();
+            const wasOpen = before[category] > 0;
+            const nowClosed = after[category] === 0;
+            run.check(`A-${category}`, `${category} responds to its own toggle`,
+                wasOpen ? nowClosed : after[category] > 0,
+                `${before[category]} -> ${after[category]}`);
+            const moved = Object.keys(after).filter((c) => c !== category && after[c] !== before[c]);
+            run.check(`A-${category}-iso`, `toggling ${category} leaves every other section alone`,
+                moved.length === 0, moved.length ? JSON.stringify(moved.map((c) => `${c}:${before[c]}->${after[c]}`)) : 'none moved');
+            if (wasOpen && nowClosed) { await toggle(category); await A.sleep(500); }
+        }
+        await d.screenshot('accordion-isolation');
+    });
+}
+
+/**
+ * §6.10 — freezing keeps the text readable but refuses edits.
+ *
+ * The obvious probe is a trap: Monaco's hidden `textarea` reports `readOnly === true` whether or
+ * not the workspace is frozen (with the native edit context it is not the input path at all), so
+ * asserting on it is vacuously green. The only honest oracle is to type and see whether the buffer
+ * moved.
+ */
 async function phaseFrozen() {
     await D.onWindow('workspace', A.WINDOWS.workspace, async (d) => {
-        const state = await A.call(d, function () {
-            const ta = document.querySelector('.monaco-editor textarea');
+        const readEditor = () => A.call(d, function () {
             const text = document.querySelector('.monaco-editor .view-lines');
+            if (!text) return null;
+            const r = text.getBoundingClientRect();
             return {
-                readOnly: ta ? ta.readOnly || ta.getAttribute('readonly') !== null : null,
-                visibleText: text ? (text.innerText || '').trim().length : 0,
-                opacity: text ? getComputedStyle(text).opacity : null,
+                content: (text.innerText || ''),
+                len: (text.innerText || '').trim().length,
+                opacity: getComputedStyle(text).opacity,
+                cx: Math.round(r.x + 30),
+                cy: Math.round(r.y + 8),
             };
         });
-        run.check('F-1', 'frozen: the editor is read-only rather than disabled', state.readOnly === true, JSON.stringify(state));
-        run.check('F-2', 'frozen: the text is still visible and legible', state.visibleText > 0 && state.opacity === '1', JSON.stringify(state));
+        const before = await readEditor();
+        if (!before || !before.len) throw new Error('SETUP GUARD: no text editor with content on screen — freeze phase would be vacuous');
+
+        run.check('F-1', 'frozen: the text is still visible at full opacity (freezing must not hide what it protects)',
+            before.opacity === '1', JSON.stringify({ opacity: before.opacity, len: before.len }));
+
+        await d.click(before.cx, before.cy);
+        await A.sleep(300);
+        await d.type('ZZZ-FROZEN-PROBE');
+        await A.sleep(1500);
+        const after = await readEditor();
+        run.check('F-2', 'frozen: typing does not change the buffer',
+            after.content === before.content, `len ${before.len} -> ${after.len}`);
+        await d.screenshot('frozen-typing-refused');
     });
 }
 
 (async () => {
     const phases = {
         seed: phaseSeed,
+        accordion: phaseAccordion,
         categories: phaseCategories,
         grouping: phaseGrouping,
         create: phaseCreate,
@@ -462,7 +545,7 @@ async function phaseFrozen() {
         encoding: phaseEncoding,
         frozen: phaseFrozen,
     };
-    const order = phase === 'all' ? ['seed', 'categories', 'grouping', 'create', 'edit'] : [phase];
+    const order = phase === 'all' ? ['seed', 'accordion', 'categories', 'grouping', 'create', 'edit'] : [phase];
     for (const name of order) {
         if (!phases[name]) throw new Error(`unknown phase "${name}"`);
         console.log(`\n=== phase ${name} ===`);
