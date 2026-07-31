@@ -7,6 +7,7 @@ import { normalizeProjectIconSet, type ProjectIconSet, type ProjectIconSource } 
 import {
     AutoSaveConfiguration,
     BuildConfiguration,
+    LintingConfiguration,
     LocalizationConfiguration,
     MobileConfiguration,
     NetworkConfiguration,
@@ -16,6 +17,7 @@ import {
     VoiceConfiguration,
     normalizeAutoSaveConfiguration,
     normalizeBuildConfiguration,
+    normalizeLintingConfiguration,
     normalizeLocalizationConfiguration,
     normalizeMobileConfiguration,
     normalizeNetworkConfiguration,
@@ -209,6 +211,36 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
                 ...config.app,
                 network: normalizeNetworkConfiguration(config.app?.network),
                 security,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /**
+     * Read the effective project lint policy, falling back to the defaults (lint
+     * on, errors block the build) for projects that predate `app.linting`.
+     */
+    public getLintingConfiguration(): LintingConfiguration {
+        return normalizeLintingConfiguration(this.getProjectConfig().app?.linting);
+    }
+
+    /**
+     * Merge a partial patch into the project lint policy. Used by Project ->
+     * Linting and read by the build gate before it starts a production build.
+     */
+    public async updateLintingConfiguration(patch: Partial<LintingConfiguration>): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const linting: LintingConfiguration = {
+                ...normalizeLintingConfiguration(config.app?.linting),
+                ...patch,
+            };
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                linting,
             };
             return {
                 ...config,
