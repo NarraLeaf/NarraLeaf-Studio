@@ -48,6 +48,9 @@ export const buildAction: ModuleAction = {
     icon: <Package className="w-4 h-4" />,
     tooltip: "Build project",
     tooltipKey: "actions.build.tooltip",
+    // Standalone, so it carries its own palette category — it belongs beside Run Dev Mode and Run
+    // Preview, which is where an author looks for it.
+    paletteCategoryKey: "workspace.shell.commandPalette.categoryRun",
     onClick: (workspace: Workspace) => {
         void openBuildDialog(workspace);
     },
