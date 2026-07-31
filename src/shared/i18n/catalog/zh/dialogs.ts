@@ -66,5 +66,7 @@ export const dialogs = {
         font: "字体",
         model: "模型",
         other: "其他",
+        media: "媒体",
+        data: "数据",
     },
 } satisfies LocaleNamespace<"dialogs">;

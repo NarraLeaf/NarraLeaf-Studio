@@ -5,6 +5,7 @@ import { dialog } from "electron";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import { FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
+import type { FsTextEncoding } from "@shared/types/textEncoding";
 import { PrivilegedCapability, PrivilegedFileSystemCallResult } from "@shared/types/privileged";
 import { PluginPermissionPromptResult, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import type { FileDetails, FileStat, FileEntry } from "@shared/utils/fs";
@@ -266,7 +267,7 @@ export class PrivilegedFsCallHandler extends IPCHandler<IPCEventType.privilegedF
         window: AppWindow,
         fsPath: string,
         raw: boolean,
-        encoding?: BufferEncoding,
+        encoding?: FsTextEncoding,
     ): Promise<FsRequestResult<string>> {
         const hash = window.app.storageManager.allocateHash(fsPath, raw, "read", encoding);
         try {
@@ -298,7 +299,7 @@ export class PrivilegedFsCallHandler extends IPCHandler<IPCEventType.privilegedF
         window: AppWindow,
         fsPath: string,
         raw: boolean,
-        encoding?: BufferEncoding,
+        encoding?: FsTextEncoding,
     ): Promise<FsRequestResult<string>> {
         const hash = window.app.storageManager.allocateHash(fsPath, raw, "write", encoding);
         try {

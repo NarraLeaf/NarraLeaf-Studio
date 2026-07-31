@@ -3,11 +3,14 @@ import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { AssetsService } from "../../core/AssetsService";
 import { Services, WorkspaceContext } from "../../services";
-import { AssetData, AssetExtensions, AssetType, isBundleAssetType } from "../assetTypes";
+import { ASSET_CATEGORY_TYPES, AssetCategory, AssetData, AssetExtensions, AssetType, isBundleAssetType } from "../assetTypes";
+import { assetTypeMatchesExtension } from "../importPathExpansion";
+import { parseSharedBlueprintAssetJson } from "../blueprintAssetSchema";
 import { bundleListingFingerprint, detectModelBundleEntry } from "@shared/utils/modelBundle";
 import { Asset, AssetSource } from "../types";
 import { ProjectNameConvention, isValidAssetStorageId } from "@/lib/workspace/project/nameConvention";
 import { FsRequestResult } from "@shared/types/os";
+import type { FsTextEncoding } from "@shared/types/textEncoding";
 import { FileSystemService } from "../../core/FileSystem";
 import { UuidService } from "../../core/UuidService";
 import { RendererError } from "@shared/utils/error";
@@ -256,6 +259,134 @@ export class LocalAssetsManager {
     }
 
     /**
+     * Overwrite an existing local asset's bytes with `text`, encoded as `encoding`.
+     *
+     * The text counterpart of {@link writeAssetContentFromPath}, and it exists because until the
+     * text editor there was **no** way to create or change an asset's contents without a file
+     * already sitting on disk to copy from. Same division of labour: bytes and digest only - the
+     * record, the thumbnail cache and the `updated` broadcast belong to
+     * {@link AssetsService.writeAssetTextContent}, which has to run them in a fixed order.
+     *
+     * No format gate, unlike the path-based twin: the bytes are ones Studio itself just produced
+     * from a document the author is looking at, so there is nothing to disbelieve. The magic-byte
+     * check exists to stop a `.exe` becoming the contents of an image asset, which is a question
+     * about a *file the author picked*, not about a save.
+     */
+    public async writeAssetContentText<T extends AssetType>(
+        asset: Asset<T, AssetSource.Local>,
+        text: string,
+        encoding: FsTextEncoding,
+    ): Promise<RequestStatus<AssetContentDigest>> {
+        if (!isValidAssetStorageId(asset.id)) {
+            return { success: false, error: `Invalid asset id: ${asset.id}` };
+        }
+        if (isBundleAssetType(asset.type)) {
+            return { success: false, error: "A model bundle has no single text payload" };
+        }
+
+        const metadata = this.assetsService.getAssetsMetadataManager().getAssets();
+        if (!metadata[asset.type][asset.id]) {
+            return { success: false, error: `Asset not found: ${asset.id}` };
+        }
+
+        const destPath = this.getLocalAssetPath(asset.id);
+        const fsService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+        const prepared = await this.ensureAssetShardDir(destPath);
+        if (!prepared.success) {
+            return prepared as RequestStatus<AssetContentDigest>;
+        }
+
+        const written = await fsService.write(destPath, text, encoding);
+        if (!written.ok) {
+            return { success: false, error: `Failed to write asset text: ${destPath}. ${written.error?.message}` };
+        }
+
+        // Recomputed from the destination, exactly as the path-based replace does: the hash is the
+        // cache key every downstream reader compares against, and one that did not move means they
+        // all keep serving the previous save.
+        const hashResult = await appPrivilegedFacade.fs.hash(destPath);
+        const fileHash = hashResult.success && hashResult.data.ok ? hashResult.data.data : "";
+
+        return { success: true, data: { hash: fileHash, ext: asset.ext } };
+    }
+
+    /**
+     * Create a brand-new local asset whose contents are `bytes` rather than a file on disk.
+     *
+     * Follows {@link importLocalAsset} step for step - uuid, unique display name, write the shard,
+     * register the record, announce it - and differs only in where the bytes come from. Empty
+     * `bytes` is a legitimate call (a new, empty text file), which is why there is no format gate
+     * here: `validateFileFormat` rejects a zero-length file, correctly, for imports.
+     */
+    public async createLocalAssetFromBytes<T extends AssetType>(
+        type: T,
+        name: string,
+        bytes: Uint8Array,
+        groupId?: string,
+    ): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
+        if (isBundleAssetType(type)) {
+            return { success: false, error: "A model bundle cannot be created from bytes" };
+        }
+
+        const id = this.getUuidService().generate();
+        const destPath = this.getLocalAssetPath(id);
+        const fsService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+
+        const prepared = await this.ensureAssetShardDir(destPath);
+        if (!prepared.success) {
+            return prepared as RequestStatus<Asset<T, AssetSource.Local>>;
+        }
+
+        const written = await fsService.writeRaw(destPath, bytes);
+        if (!written.ok) {
+            return { success: false, error: `Failed to write asset contents: ${destPath}. ${written.error?.message}` };
+        }
+
+        const hashResult = await appPrivilegedFacade.fs.hash(destPath);
+        const fileHash = hashResult.success && hashResult.data.ok ? hashResult.data.data : "";
+
+        const asset: Asset<T, AssetSource.Local> = {
+            id,
+            type,
+            name: this.resolveUniqueAssetName(type, name),
+            ext: extname(name).slice(1).toLowerCase(),
+            hash: fileHash,
+            source: AssetSource.Local,
+            meta: {},
+            tags: [],
+            description: "",
+            ...(groupId ? { groupId } : {}),
+        };
+
+        const metadata = this.assetsService.getAssetsMetadataManager().getAssets();
+        (metadata[type] as Record<string, Asset<T>>)[id] = asset;
+
+        // Unlike `importLocalAsset`, which is always called inside a loop that marks the type dirty
+        // once at the end, this is a single-shot creation with no such caller.
+        this.assetsService.markDirty(type);
+        this.assetsService.getEvents().emit("updated", asset);
+
+        return { success: true, data: asset };
+    }
+
+    /** The shard directory for an asset id, created if this is the first asset in that shard. */
+    private async ensureAssetShardDir(destPath: string): Promise<RequestStatus<void>> {
+        const fsService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+        const destDir = dirname(destPath);
+        const dirExistCheck = await fsService.isDirExists(destDir);
+        if (!dirExistCheck.ok) {
+            return { success: false, error: `Failed to check destination directory: ${dirExistCheck.error?.message}` };
+        }
+        if (!dirExistCheck.data) {
+            const mkdirResult = await fsService.createDir(destDir);
+            if (!mkdirResult.ok) {
+                return { success: false, error: `Failed to create destination directory: ${destDir}. ${mkdirResult.error?.message}` };
+            }
+        }
+        return { success: true, data: undefined };
+    }
+
+    /**
      * Swap a bundle's whole tree for another folder, keeping the asset id.
      *
      * The old tree is removed first rather than copied over: a merge would leave the previous
@@ -416,6 +547,101 @@ export class LocalAssetsManager {
                 return result.ok ? result.data : null;
             },
         });
+    }
+
+    /**
+     * The same expansion, for a whole sidebar category: run once per member type and union the
+     * results in member order.
+     *
+     * A dropped folder under "Media" holds mp3s and mp4s and the author means both, so filtering it
+     * by a single type is what would silently import half of it.
+     */
+    public async expandCategoryImportPaths(
+        category: AssetCategory,
+        paths: string[]
+    ): Promise<ExpandImportPathsResult> {
+        const files: string[] = [];
+        const seen = new Set<string>();
+        let expandedDirectory = false;
+
+        for (const type of ASSET_CATEGORY_TYPES[category]) {
+            const expansion = await this.expandImportPaths(type, paths);
+            expandedDirectory = expandedDirectory || expansion.expandedDirectory;
+            for (const file of expansion.files) {
+                if (!seen.has(file)) {
+                    seen.add(file);
+                    files.push(file);
+                }
+            }
+        }
+
+        return { files, expandedDirectory };
+    }
+
+    /**
+     * Decide which {@link AssetType} each file in a category import is, and group the paths by it.
+     *
+     * The category is what the author pointed at; the type is still what the importer, the format
+     * validator and the metadata shard need, so the decision has to be made per file and it has to
+     * be made here, where the bytes can be read.
+     *
+     * Extension settles it everywhere but one place: `.json` is claimed by both JSON and Blueprint.
+     * The rule there is to try the blueprint parser first and fall back to JSON — a shared blueprint
+     * is a *specific* JSON document, so a successful parse is positive evidence, while "it is valid
+     * JSON" says nothing either way. `.nlbp` is a blueprint by extension alone.
+     *
+     * Paths matching no member type are dropped rather than forced into the first one; that is only
+     * reachable by dropping files onto a category that does not accept them.
+     */
+    public async bucketPathsByAssetType(
+        category: AssetCategory,
+        paths: string[]
+    ): Promise<{ type: AssetType; paths: string[] }[]> {
+        const memberTypes = ASSET_CATEGORY_TYPES[category];
+        const buckets = new Map<AssetType, string[]>(memberTypes.map(type => [type, []]));
+
+        for (const path of paths) {
+            const candidates = memberTypes.filter(type => assetTypeMatchesExtension(type, path));
+            if (candidates.length === 0) {
+                continue;
+            }
+            const type = candidates.length === 1
+                ? candidates[0]
+                : await this.disambiguateImportType(candidates, path);
+            buckets.get(type)!.push(path);
+        }
+
+        return memberTypes
+            .map(type => ({ type, paths: buckets.get(type)! }))
+            .filter(bucket => bucket.paths.length > 0);
+    }
+
+    /**
+     * Break a tie between member types that all accept this extension, by reading the file.
+     *
+     * Only `data`'s JSON/Blueprint pair is ambiguous today. A read failure falls through to the last
+     * candidate (the more permissive one), so an unreadable file is refused by the importer with its
+     * own error rather than here with a guess.
+     */
+    private async disambiguateImportType(candidates: AssetType[], path: string): Promise<AssetType> {
+        if (candidates.includes(AssetType.Blueprint)) {
+            const fsService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+            const read = await fsService.read(path, "utf-8");
+            if (read.ok) {
+                try {
+                    parseSharedBlueprintAssetJson(read.data.replace(/^\uFEFF/, ""));
+                    return AssetType.Blueprint;
+                } catch {
+                    // Valid JSON that is not a shared blueprint, or not JSON at all. Either way the
+                    // JSON importer is the one that gets to say so.
+                }
+            }
+            const fallback = candidates.find(candidate => candidate !== AssetType.Blueprint);
+            if (fallback) {
+                return fallback;
+            }
+        }
+        return candidates[0];
     }
 
     /**
