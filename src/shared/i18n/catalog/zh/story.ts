@@ -47,6 +47,17 @@ export const story = {
                 other: "{count} 处跳转没有有效目标",
             },
         },
+        branch: {
+            forkChoice: "选择",
+            forkCondition: "条件",
+            fallsThrough: "继续",
+            fallsThroughTitle: "此分支自身没有跳转，流程会继续执行分叉之后的内容",
+            forkCount: {
+                other: "{count} 个分支",
+            },
+            expand: "展开分支",
+            collapse: "收起分支",
+        },
         summary: {
             scenes: {
                 other: "{count} 个场景",
