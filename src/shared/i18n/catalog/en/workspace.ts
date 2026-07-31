@@ -341,6 +341,7 @@ export const workspace = {
                 localization: "localization",
                 voice: "voice library",
                 variables: "variable registry",
+                audioTracks: "audio tracks",
                 characters: "characters",
                 project: "project settings",
                 assets: "asset library",

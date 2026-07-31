@@ -76,6 +76,14 @@ export type StoryCommandContext = {
     tempSpeakers: readonly string[];
     scenes: readonly StoryCommandNamedRef[];
     /**
+     * The project's audio tracks, by the name the author gave them - what `/bgm theme track=Ambience`
+     * resolves against.
+     *
+     * By name, not by bus: a track IS the vocabulary now, and offering "bgm / sound / voice" on the
+     * line would reintroduce the second, unrelated channel vocabulary this round exists to delete.
+     */
+    audioTracks: readonly StoryCommandNamedRef[];
+    /**
      * The `label` rows of the CURRENT scene, in declaration order - what `/goto` may address.
      * Scene-scoped like the engine's own matching, and scanned by the same function the compiler
      * validates with, so the two can never disagree about which names exist.
@@ -137,7 +145,7 @@ export type StoryPuppetParamSpec = {
 };
 
 export const EMPTY_STORY_COMMAND_CONTEXT: StoryCommandContext = {
-    images: [], audio: [], videos: [], characters: [], tempSpeakers: [], scenes: [], labels: [], variables: [], appearanceByCharacterId: {},
+    images: [], audio: [], videos: [], characters: [], tempSpeakers: [], scenes: [], audioTracks: [], labels: [], variables: [], appearanceByCharacterId: {},
     puppetCharacterIds: [],
     puppetByCharacterId: {},
     stageObjects: EMPTY_STORY_COMMAND_STAGE_OBJECTS,
@@ -196,6 +204,8 @@ export type StoryCommandValue =
     /** A numeric parameter of a puppet character's model, by the id the model gave it. */
     | { kind: "puppetParam"; id: string }
     | { kind: "scene"; sceneId: string }
+    /** A project audio track, resolved from its name to the stable id the payload stores. */
+    | { kind: "audioTrack"; trackId: string }
     /** A label declared in this scene - stored as declared, so it matches what the engine sees. */
     | { kind: "label"; name: string }
     /** `name` is the author-facing name as declared - the compound-assignment sugar re-emits it into the desugared source. */
@@ -217,6 +227,8 @@ export type StoryCommandResolutionIssue =
     | { code: "unknownAsset"; span: StoryCommandSpan; value: string; assetType: "image" | "audio" | "video" }
     | { code: "unknownCharacter"; span: StoryCommandSpan; value: string }
     | { code: "unknownScene"; span: StoryCommandSpan; value: string }
+    /** `/bgm theme track=Ambience` with no `Ambience` track - it would silently land on Music instead. */
+    | { code: "unknownAudioTrack"; span: StoryCommandSpan; value: string }
     /** `/goto intro` with no `intro` label in this scene - the engine would refuse to build. */
     | { code: "unknownLabel"; span: StoryCommandSpan; value: string }
     | { code: "unknownVariable"; span: StoryCommandSpan; value: string }

@@ -10,6 +10,7 @@ import { useProjectNavItems, ProjectPanelHome, type ProjectSectionId } from "./P
 import { ProjectSubPage } from "./components/ProjectSubPage";
 import { ProjectDetailsSection } from "./sections/ProjectDetailsSection";
 import { ProjectGameSection } from "./sections/ProjectGameSection";
+import { ProjectAudioSection } from "./sections/ProjectAudioSection";
 import { ProjectAssetsSection } from "./sections/ProjectAssetsSection";
 import { ProjectSettingsSection } from "./sections/ProjectSettingsSection";
 import { ProjectDependenciesSection } from "./sections/ProjectDependenciesSection";
@@ -114,6 +115,7 @@ export function ProjectPanel({ panelId, payload }: PanelComponentProps<ProjectPa
                         >
                             {activeItem.id === "details" ? <ProjectDetailsSection {...sectionProps} /> : null}
                             {activeItem.id === "game" ? <ProjectGameSection {...sectionProps} /> : null}
+                            {activeItem.id === "audio" ? <ProjectAudioSection {...sectionProps} /> : null}
                             {activeItem.id === "assets" ? <ProjectAssetsSection {...sectionProps} /> : null}
                             {activeItem.id === "dependencies" ? <ProjectDependenciesSection {...sectionProps} /> : null}
                             {activeItem.id === "runtimes" ? <ProjectRuntimesSection {...sectionProps} /> : null}

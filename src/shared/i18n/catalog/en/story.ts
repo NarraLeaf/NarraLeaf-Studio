@@ -203,6 +203,7 @@ export const story = {
         lineText: "Text",
         labelName: "Label",
         scene: "Scene",
+        track: "Audio Track",
         displayName: "Display Name",
         seekTime: "Seconds",
         // Camera
@@ -289,6 +290,7 @@ export const story = {
                 param: "A numeric parameter of its model, by id",
             },
             scene: "Scene",
+            audioTrack: "Audio track",
             label: "Label in this scene",
             variable: "Variable",
             content: "New content, typed by the target",
@@ -372,6 +374,8 @@ export const story = {
         sceneMusicLoop: "Loop",
         sceneMusicFade: "Fade in (s)",
         sceneMusicLoopRegion: "Loops {from}s – {to}s",
+        // Intro→loop: the head plays once, then the body repeats. Three markers, still one line.
+        sceneMusicIntroLoop: "Plays {from}s, loops {loop}s – {to}s",
         sceneMusicFromIn: "Starts at {from}s",
         sceneMusicWholeClip: "Whole clip",
         backgroundResolveError: "Image asset could not be resolved: {error}",
