@@ -20,6 +20,7 @@ import { UIBlueprintLifecycleCoordinator } from "./ui-editor/UIBlueprintLifecycl
 import { DevModeService } from "./core/DevModeService";
 import { PreviewService } from "./core/PreviewService";
 import { BuildService } from "./core/BuildService";
+import { LintService } from "./core/LintService";
 import { ConsoleService } from "./core/ConsoleService";
 import { UIEditorFontFaceService } from "./ui-editor/UIEditorFontFaceService";
 import { BlueprintNodeCatalogService } from "./ui-editor/BlueprintNodeCatalogService";
@@ -62,6 +63,7 @@ export class ServiceRegistry {
         [Services.DevMode]: DevModeService.getInstance(),
         [Services.Preview]: PreviewService.getInstance(),
         [Services.Build]: BuildService.getInstance(),
+        [Services.Lint]: LintService.getInstance(),
         [Services.Console]: ConsoleService.getInstance(),
         [Services.UIEditorFontFace]: UIEditorFontFaceService.getInstance(),
         [Services.BlueprintNodeCatalog]: BlueprintNodeCatalogService.getInstance(),

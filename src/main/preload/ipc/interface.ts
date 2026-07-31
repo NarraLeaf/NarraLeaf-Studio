@@ -241,6 +241,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.appCheckRecentProjects, {}) as Promise<RequestStatus<{ missing: MissingRecentProject[] }>>,
         getSystemPath: (name: "desktop" | "home") =>
             ipcClient.invoke(IPCEventType.appSystemPath, { name }) as Promise<RequestStatus<{ path: string }>>,
+        exportDiagnostics: (defaultFileName: string, report: string) =>
+            ipcClient.invoke(IPCEventType.appExportDiagnostics, { defaultFileName, report }),
     },
 
     devMode: {
