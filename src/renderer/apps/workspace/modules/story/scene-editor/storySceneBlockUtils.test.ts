@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
 import { deleteBlockFromScene, insertBlockInScene } from "@/lib/workspace/services/story/storyModel";
-import { annotateDialogueGroups, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isNarrativeRow, isReadableAccentColor, nextSelectionAfterDelete, planRowBackspaceReplacement } from "./storySceneBlockUtils";
+import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isNarrativeRow, isReadableAccentColor, nextSelectionAfterDelete, planRowBackspaceReplacement } from "./storySceneBlockUtils";
+import type { VisibleStoryRow } from "./storySceneEditorTypes";
 
 function control(payload: Extract<StoryBlock, { kind: "control" }>["payload"]): StoryBlock {
     return { id: "b", kind: "control", parentId: null, childrenIds: [], payload };
@@ -110,6 +111,25 @@ describe("nextSelectionAfterDelete", () => {
         const rows = buildVisibleRows(nested, new Set());
         // grp is first and g1 is its (also-deleted) descendant, so the survivor is `after`.
         expect(nextSelectionAfterDelete(nested, rows, ["grp"])).toBe("after");
+    });
+});
+
+/**
+ * The nesting connector needs the same fact the dialogue rail does — where the line it draws stops —
+ * and gets it from one lookahead over the flattened preorder list: a branch at level L ends at a row
+ * exactly when the next row sits at depth L or shallower.
+ */
+describe("annotateNestingBranches", () => {
+    const depthsAndNext = (rows: VisibleStoryRow[]) =>
+        annotateNestingBranches(rows).map(row => `${row.depth}->${row.nextRowDepth}`);
+
+    it("records the following row's depth, and 0 for the last row", () => {
+        const rows = [{ depth: 0 }, { depth: 1 }, { depth: 2 }, { depth: 1 }, { depth: 0 }] as VisibleStoryRow[];
+        expect(depthsAndNext(rows)).toEqual(["0->1", "1->2", "2->1", "1->0", "0->0"]);
+    });
+
+    it("leaves an empty list alone", () => {
+        expect(annotateNestingBranches([])).toEqual([]);
     });
 });
 

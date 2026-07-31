@@ -37,6 +37,7 @@ import { collectTempSpeakers, promoteTempSpeaker } from "@/lib/workspace/service
 import { CHARACTERS_PANEL_ID } from "../../characters";
 import {
     annotateDialogueGroups,
+    annotateNestingBranches,
     buildDialogueAppearances,
     buildVisibleRows,
     canAcceptChildren,
@@ -393,8 +394,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
                 return appearance ? { ...row, appearance } : row;
             });
         }
-        // Grouping runs last, over the exact rows that will render (WI-5).
-        return annotateDialogueGroups(rows);
+        // Grouping runs last, over the exact rows that will render (WI-5); the branch lookahead runs
+        // after it, over the same final list, so "the next row" means the next row on screen.
+        return annotateNestingBranches(annotateDialogueGroups(rows));
     }, [collapsedBlockIds, dialogueAppearances, narrativeOnly, scene]);
     const rowIndexById = useMemo(() => {
         const result = new Map<StoryBlockId, number>();
