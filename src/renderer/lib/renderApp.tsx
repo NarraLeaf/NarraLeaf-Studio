@@ -4,6 +4,7 @@ import { AppInfo } from "@shared/types/app";
 import { PlatformInfo } from "@shared/types/os";
 import { createRoot } from "react-dom/client";
 import { getInterface, hardenRendererBridge, initializeRendererBridge } from "./app/bridge";
+import { installConsoleBuffer } from "./app/diagnostics/consoleBuffer";
 import { CriticalErrorBoundary } from "./app/errorHandling/CriticalErrorBoundary";
 import { RenderingStatusAnnouncer } from "./components/announcers/RenderingStatusAnnouncer";
 import { initI18n } from "./i18n";
@@ -58,6 +59,10 @@ function MotionPreference({ children }: { children: React.ReactNode }) {
 }
 
 async function renderApp(children: React.ReactNode) {
+    // Before anything else can print: a window that fails to start still has to be able to say what
+    // it printed on the way down. See `app/diagnostics/consoleBuffer`.
+    installConsoleBuffer();
+
     // Validate environment
     validateEnv();
 
