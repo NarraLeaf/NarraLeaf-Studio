@@ -75,6 +75,29 @@ export interface AssetExtras {
      */
     modelEntry?: string;
     /**
+     * Text assets only: the encoding the author said this file is in.
+     *
+     * A property of the *file*, not of the window, which is why it rides the record into version
+     * control rather than sitting in session state: the point of a shared plan file is that the
+     * colleague who opens the GBK spreadsheet next gets it right without having to know. Outranks
+     * the byte-order-mark sniff on open, because an author who said so has said more than a
+     * heuristic can.
+     *
+     * Written only when the author explicitly reopens or saves under an encoding. Absent - the
+     * normal state - means "sniff the BOM, then UTF-8", so merely reading a file never produces a
+     * change to commit.
+     */
+    textEncoding?: import("@shared/types/textEncoding").TextEncodingId;
+    /**
+     * Text assets only: the line ending this file uses.
+     *
+     * Recorded for the same reason as {@link textEncoding}, and needed at all because a *new* text
+     * file is zero bytes: there is nothing in the content to detect, so the platform that created it
+     * is the only thing that can answer. For a file that has content, the content wins - see
+     * `resolveLineEnding` - and this is only the fallback.
+     */
+    textEol?: import("@shared/types/textEncoding").PersistedTextEol;
+    /**
      * Superseded by {@link audioLoop}, which replaced a free list of markers with the one in/out
      * pair a clip actually has. Read only so records written by the short-lived cue-point model
      * still open with their points intact - the editor rewrites them as `audioLoop` on the next

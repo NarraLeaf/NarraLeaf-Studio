@@ -25,6 +25,20 @@ export type TextEncodingId =
     | "iso88591";
 
 /**
+ * How a line ending is written down in a project file.
+ *
+ * Lower case, unlike the `"LF"` / `"CRLF"` the editor carries in memory and prints in the status
+ * bar: this one goes into `assets.metadata.other.json`, which is read by tools other than Studio and
+ * follows the same lower-case convention every other persisted enum in that file uses. The two
+ * vocabularies are converted at the persistence boundary and nowhere else.
+ */
+export type PersistedTextEol = "lf" | "crlf";
+
+export function isPersistedTextEol(value: unknown): value is PersistedTextEol {
+    return value === "lf" || value === "crlf";
+}
+
+/**
  * The encoding argument the file-system verbs accept.
  *
  * A widening rather than a replacement: every existing caller passes a Node `BufferEncoding`
