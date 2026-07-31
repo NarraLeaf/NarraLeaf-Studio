@@ -1,5 +1,5 @@
 import type { AudioClipRegion } from "@shared/types/audio";
-import { AssetType } from "./assetTypes";
+import { AssetCategory, AssetType } from "./assetTypes";
 
 export enum AssetSource {
     Local = "local",
@@ -90,20 +90,31 @@ export type AssetsMap = {
 };
 
 /**
- * Asset group for organizing assets
+ * A folder in the asset browser.
+ *
+ * Filed under a {@link AssetCategory}, not an {@link AssetType}: the sidebar's sections are
+ * categories, and a folder under "Media" has to be able to hold an mp3 next to an mp4. Records
+ * written before this carried `type: AssetType` instead and are folded up on read; the id never
+ * changed, so no asset's `groupId` had to be rewritten.
  */
 export interface AssetGroup {
     id: string;
     name: string;
-    type: AssetType;
+    category: AssetCategory;
     parentGroupId?: string;
     createdAt: number;
     updatedAt: number;
 }
 
+/** A group record as it may still exist on disk, from before groups moved up to categories. */
+export interface LegacyTypedAssetGroup extends Omit<AssetGroup, "category"> {
+    category?: AssetCategory;
+    type?: AssetType;
+}
+
 /**
- * Group map organized by asset type
+ * Group map organized by asset category
  */
 export type AssetGroupMap = {
-    [K in AssetType]: Record<string, AssetGroup>;
+    [K in AssetCategory]: Record<string, AssetGroup>;
 };

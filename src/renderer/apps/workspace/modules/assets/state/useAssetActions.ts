@@ -1,6 +1,13 @@
 import { useCallback, useRef } from 'react';
 import { Asset, AssetGroup } from '@/lib/workspace/services/assets/types';
-import { AssetExtensions, AssetType, isBundleAssetType } from '@/lib/workspace/services/assets/assetTypes';
+import {
+    ASSET_CATEGORY_EXTENSIONS,
+    ASSET_CATEGORY_TYPES,
+    AssetCategory,
+    AssetType,
+    isBundleAssetCategory,
+} from '@/lib/workspace/services/assets/assetTypes';
+import { assetTypeMatchesExtension } from '@/lib/workspace/services/assets/importPathExpansion';
 import { runReplaceAssetContentFlow } from '@/lib/workspace/assets/replaceAssetContentFlow';
 import type { ImportQueueController } from './useImportQueue';
 import { WorkspaceContext } from '@/lib/workspace/services/services';
@@ -20,14 +27,20 @@ import {
     type AssetActionTarget,
     type ContextMenuTargetState,
 } from './assetActionTargets';
+import {
+    NEW_TEXT_FILE_DEFAULT_EXTENSION,
+    resolveNewTextFileName,
+    validateNewTextFileName,
+} from './newTextFileName';
+import { openAssetPreviewTabsInEditor } from '../dnd/openDraggedAssetsInEditor';
 
 export type { ContextMenuTargetState };
 
 export interface UseAssetActionsParams {
     context: WorkspaceContext | null;
     inputDialog: InputDialog | null;
-    assets: Record<AssetType, Asset[]>;
-    groups: Record<AssetType, AssetGroup[]>;
+    assets: Record<AssetCategory, Asset[]>;
+    groups: Record<AssetCategory, AssetGroup[]>;
     selectedItems: Set<string>;
     clipboard: ClipboardState | null;
     contextMenuTarget: ContextMenuTargetState | null,
@@ -48,14 +61,14 @@ const REFERENCE_PREVIEW_LIMIT = 5;
 /**
  * Expand delete targets into the assets that would actually be removed.
  *
- * Group deletion cascades (`deleteGroup(type, id, true)`), and nested groups cascade with it, so a
- * reference check that looked only at the selected rows would clear a folder containing referenced
+ * Group deletion cascades (`deleteGroup(category, id, true)`), and nested groups cascade with it, so
+ * a reference check that looked only at the selected rows would clear a folder containing referenced
  * assets without a word.
  */
 function collectAffectedAssets(
     targets: readonly AssetActionTarget[],
-    assets: Record<AssetType, Asset[]>,
-    groups: Record<AssetType, AssetGroup[]>,
+    assets: Record<AssetCategory, Asset[]>,
+    groups: Record<AssetCategory, AssetGroup[]>,
 ): Asset[] {
     const collected = new Map<string, Asset>();
 
@@ -67,7 +80,7 @@ function collectAffectedAssets(
         }
 
         const groupIds = new Set<string>([target.item.id]);
-        const candidates = groups[target.type] ?? [];
+        const candidates = groups[target.category] ?? [];
         // Descend until no new child group appears; group nesting has no depth bound.
         let grew = true;
         while (grew) {
@@ -79,7 +92,7 @@ function collectAffectedAssets(
                 }
             }
         }
-        for (const asset of assets[target.type] ?? []) {
+        for (const asset of assets[target.category] ?? []) {
             if (asset.groupId && groupIds.has(asset.groupId)) {
                 collected.set(asset.id, asset);
             }
@@ -87,6 +100,26 @@ function collectAffectedAssets(
     }
 
     return [...collected.values()];
+}
+
+/**
+ * Which member type a remote URL is imported as.
+ *
+ * Decided from the URL's own extension; a URL that names none (or names one no member accepts)
+ * lands on the section's first member type. There are no bytes to look at yet — the fetch happens
+ * inside the importer — so this is the last point where a guess is even possible, and a wrong guess
+ * is recoverable (the record can be deleted) where a refusal would just be a dead end.
+ */
+function resolveRemoteAssetType(category: AssetCategory, url: string): AssetType {
+    const memberTypes = ASSET_CATEGORY_TYPES[category];
+    let pathname = url;
+    try {
+        pathname = new URL(url).pathname;
+    } catch {
+        // Validated as a URL by the dialog; if it somehow is not, the whole string is a fine name
+        // to look for an extension in.
+    }
+    return memberTypes.find(type => assetTypeMatchesExtension(type, pathname)) ?? memberTypes[0];
 }
 
 function parseFileUriList(dataTransfer?: DataTransfer): string[] {
@@ -238,36 +271,61 @@ export function useAssetActions({
      * Every entry point resolves its paths first and comes through here, so a retry is just this
      * function again with the paths that did not make it — no second trip through the picker.
      */
-    const runImport = useCallback(async (type: AssetType, paths: string[], groupId?: string) => {
+    const runImport = useCallback(async (category: AssetCategory, paths: string[], groupId?: string) => {
         const ctx = contextRef.current;
         if (!ctx || paths.length === 0) return;
         const uiService = ctx.services.get<UIService>(Services.UI);
 
         notifyLoading(true);
-        importQueue?.start({ type, groupId, total: paths.length });
+        importQueue?.start({ category, groupId, total: paths.length });
 
         await withAssetsService(async (assetsService) => {
+            // One category, one or more concrete types. The bucketing reads the ambiguous files
+            // (`.json`, claimed by both JSON and Blueprint) to decide; see
+            // `LocalAssetsManager.bucketPathsByAssetType`.
+            const buckets = await assetsService.bucketPathsByAssetType(category, paths);
             await assetsService.transaction(async (svc) => {
-                const result = await svc.importFromPaths(type, paths, {
-                    onProgress: progress => importQueue?.progress(progress),
-                });
+                const failures: { path: string; error?: string }[] = [];
+                const importedAssets: Asset[] = [];
+                let completed = 0;
 
-                if (!result.success) {
-                    // The whole run fell over, so every file is still outstanding and retryable.
-                    importQueue?.finish(paths.map(path => ({ path, error: result.error })));
-                    uiService.showAlert(t("assets.import.failedTitle"), result.error || t("assets.unknownError"));
-                    return;
+                for (const bucket of buckets) {
+                    const result = await svc.importFromPaths(bucket.type, bucket.paths, {
+                        // Progress counts across the whole run, not per bucket: the author dropped
+                        // one pile of files and "3 of 20" has to mean that pile.
+                        onProgress: progress => importQueue?.progress({
+                            completed: completed + progress.completed,
+                            total: paths.length,
+                            current: progress.current,
+                        }),
+                    });
+
+                    if (!result.success) {
+                        // This bucket fell over, so every file in it is still outstanding.
+                        failures.push(...bucket.paths.map(path => ({ path, error: result.error })));
+                        uiService.showAlert(t("assets.import.failedTitle"), result.error || t("assets.unknownError"));
+                        completed += bucket.paths.length;
+                        continue;
+                    }
+
+                    // `importFromPaths` answers 1:1 with the paths it was handed, which is what lets
+                    // a failure be named by file rather than by a bare error string.
+                    const perFile = result.data ?? [];
+                    failures.push(...perFile.flatMap((assetResult, index) =>
+                        assetResult.success ? [] : [{ path: bucket.paths[index], error: assetResult.error }]
+                    ));
+                    importedAssets.push(...perFile.flatMap(assetResult =>
+                        assetResult.success && assetResult.data ? [assetResult.data as Asset] : []
+                    ));
+                    completed += bucket.paths.length;
                 }
 
-                // `importFromPaths` answers 1:1 with the paths it was handed, which is what lets a
-                // failure be named by file rather than by a bare error string.
-                const perFile = result.data ?? [];
-                const failures = perFile.flatMap((assetResult, index) =>
-                    assetResult.success ? [] : [{ path: paths[index], error: assetResult.error }]
-                );
-                const importedAssets = perFile.flatMap(assetResult =>
-                    assetResult.success && assetResult.data ? [assetResult.data] : []
-                );
+                // Anything the bucketing could not place (dropped onto a section that does not take
+                // it) never reached an importer, and is reported rather than silently swallowed.
+                const attempted = new Set(buckets.flatMap(bucket => bucket.paths));
+                failures.push(...paths
+                    .filter(path => !attempted.has(path))
+                    .map(path => ({ path, error: t("assets.import.noMatchingFiles") })));
 
                 importQueue?.finish(failures);
 
@@ -301,7 +359,7 @@ export function useAssetActions({
         notifyLoading(false);
     }, [importQueue, notifyLoading, onActionComplete, t, withAssetsService]);
 
-    const handleImport = useCallback(async (type: AssetType, groupId?: string, files?: FileList, dataTransfer?: DataTransfer) => {
+    const handleImport = useCallback(async (category: AssetCategory, groupId?: string, files?: FileList, dataTransfer?: DataTransfer) => {
         if (!context || freeze.frozen) return;
         const uiService = context.services.get<UIService>(Services.UI);
 
@@ -345,8 +403,9 @@ export function useAssetActions({
             }
 
             // Dropped folders are expanded to their matching files and everything else is
-            // filtered out; plain files pass through untouched.
-            const expansion = await withAssetsService(svc => svc.expandImportPaths(type, paths));
+            // filtered out; plain files pass through untouched. Expanded against every member type
+            // of the section, so a folder of mp3s and mp4s dropped on Media brings both.
+            const expansion = await withAssetsService(svc => svc.expandCategoryImportPaths(category, paths));
             if (!expansion || expansion.files.length === 0) {
                 if (expansion?.expandedDirectory) {
                     uiService.notifications.info(t("assets.import.noMatchingFiles"));
@@ -354,7 +413,7 @@ export function useAssetActions({
                 return;
             }
             paths = expansion.files;
-        } else if (isBundleAssetType(type)) {
+        } else if (isBundleAssetCategory(category)) {
             // A model bundle is authored as a folder and imported as one asset, so the picker asks
             // for folders. An extension-filtered file dialog cannot express "this whole tree".
             const selection = await getInterface().fs.selectDirectory(true);
@@ -364,23 +423,24 @@ export function useAssetActions({
             paths = selection.data.data;
         } else {
             // Picked here rather than inside the importer so the queue knows the file list up front:
-            // it is what "3 of 20" counts against, and what a retry replays.
-            const selection = await getInterface().fs.selectFile(AssetExtensions[type], true);
+            // it is what "3 of 20" counts against, and what a retry replays. The filter is the
+            // union of the section's member types, so one dialog covers the whole section.
+            const selection = await getInterface().fs.selectFile(ASSET_CATEGORY_EXTENSIONS[category], true);
             if (!selection.success || !selection.data.ok) {
                 return;
             }
             paths = selection.data.data;
         }
 
-        await runImport(type, paths, groupId);
+        await runImport(category, paths, groupId);
     }, [context, runImport, t, withAssetsService]);
 
     /** Re-run the files the last import could not read, into the same group. */
-    const handleRetryImport = useCallback(async (type: AssetType, paths: string[], groupId?: string) => {
-        await runImport(type, paths, groupId);
+    const handleRetryImport = useCallback(async (category: AssetCategory, paths: string[], groupId?: string) => {
+        await runImport(category, paths, groupId);
     }, [runImport]);
 
-    const handleImportRemote = useCallback(async (type: AssetType) => {
+    const handleImportRemote = useCallback(async (category: AssetCategory) => {
         if (!context || !inputDialog) return;
         notifyLoading(true);
 
@@ -397,7 +457,9 @@ export function useAssetActions({
                     return t("assets.import.remoteInvalidUrl");
                 }
             },
-            assetType: type,
+            // The section's first member type: enough for the dialog's own accent, and the type the
+            // fetch actually uses is decided from the URL below.
+            assetType: ASSET_CATEGORY_TYPES[category][0],
         });
 
         if (!url) {
@@ -405,8 +467,11 @@ export function useAssetActions({
             return;
         }
 
+        const trimmed = url.trim();
+        const type = resolveRemoteAssetType(category, trimmed);
+
         await withAssetsService(async (assetsService) => {
-            const result = await assetsService.importRemoteAsset(type, url.trim());
+            const result = await assetsService.importRemoteAsset(type, trimmed);
             if (!result.success) {
                 context.services.get<UIService>(Services.UI).showAlert(
                     t("assets.import.remoteFailedTitle"),
@@ -418,21 +483,21 @@ export function useAssetActions({
         onActionComplete();
         notifyLoading(false);
     }, [context, inputDialog, withAssetsService, onActionComplete, notifyLoading]);
-    
+
     // Support drag-in files directly to a group
-    const handleImportToGroup = useCallback(async (type: AssetType, groupId?: string, files?: FileList, dataTransfer?: DataTransfer) => {
+    const handleImportToGroup = useCallback(async (category: AssetCategory, groupId?: string, files?: FileList, dataTransfer?: DataTransfer) => {
         notifyLoading(true);
-        await handleImport(type, groupId, files, dataTransfer);
+        await handleImport(category, groupId, files, dataTransfer);
         notifyLoading(false);
     }, [handleImport, notifyLoading]);
 
-    const handleCreateGroup = useCallback(async (type: AssetType, parentGroupId?: string) => {
+    const handleCreateGroup = useCallback(async (category: AssetCategory, parentGroupId?: string) => {
         notifyLoading(true);
-        const groupName = inputDialog ? await inputDialog.showCreateGroupDialog(type, parentGroupId) : null;
+        const groupName = inputDialog ? await inputDialog.showCreateGroupDialog(category, parentGroupId) : null;
         if (!groupName) { notifyLoading(false); return; }
 
         await withAssetsService(async (assetsService) => {
-            const result = await assetsService.createGroup(type, groupName, parentGroupId);
+            const result = await assetsService.createGroup(category, groupName, parentGroupId);
             if (!result.success) {
                 // TODO: Show error
             }
@@ -440,6 +505,74 @@ export function useAssetActions({
         onActionComplete();
         notifyLoading(false);
     }, [inputDialog, withAssetsService, onActionComplete, notifyLoading]);
+
+    /**
+     * Create an empty text file under Other and open it.
+     *
+     * The only asset an author *makes* rather than imports, so it is also the only creation path
+     * with no file on disk to start from — see `AssetsService.createLocalAssetFromBytes`. The tab
+     * is opened through the same helper a click on the row uses, so a file created here and a file
+     * opened later land in the same editor with the same id.
+     *
+     * `groupId` is the group the menu was opened on; from the category header there is none and the
+     * file lands loose in the section.
+     */
+    const handleCreateTextFile = useCallback(async (groupId?: string) => {
+        const ctx = contextRef.current;
+        // Frozen is refused here as well as greyed out in the menu: the row is one of several ways
+        // in, and a create that reached the service would write into a project the author froze.
+        if (!ctx || !inputDialog || freeze.frozen) return;
+
+        const typed = await inputDialog.show({
+            title: t("assets.newTextFile.title"),
+            description: t("assets.newTextFile.prompt"),
+            placeholder: t("assets.newTextFile.placeholder"),
+            // Already carrying the extension, so accepting the default is one keystroke and the
+            // author can see what they are getting.
+            initialValue: `${t("assets.newTextFile.defaultName")}.${NEW_TEXT_FILE_DEFAULT_EXTENSION}`,
+            required: true,
+            maxLength: 100,
+            validation: (value) => {
+                const problem = validateNewTextFileName(value);
+                if (problem === "empty") return t("assets.newTextFile.empty");
+                if (problem === "illegalChars") return t("assets.newTextFile.illegalChars");
+                return null;
+            },
+        });
+        if (!typed) return;
+
+        notifyLoading(true);
+        // A name collision inside the group is not this function's problem: the manager runs
+        // `resolveUniqueAssetName` over whatever it is handed.
+        const name = resolveNewTextFileName(typed);
+        const created = await withAssetsService(async (assetsService) => {
+            const result = await assetsService.createLocalAssetFromBytes(
+                AssetType.Other,
+                name,
+                new Uint8Array(0),
+                groupId,
+            );
+            if (!result.success || !result.data) {
+                ctx.services.get<UIService>(Services.UI).showAlert(
+                    t("assets.newTextFile.failedTitle"),
+                    result.error || t("assets.unknownError"),
+                );
+                return null;
+            }
+            return result.data as Asset;
+        });
+
+        onActionComplete();
+        notifyLoading(false);
+
+        if (created) {
+            if (groupId && expandGroup) {
+                // Otherwise the row the author just made is behind a collapsed folder.
+                expandGroup(groupId);
+            }
+            openAssetPreviewTabsInEditor(ctx, [created]);
+        }
+    }, [expandGroup, freeze.frozen, inputDialog, notifyLoading, onActionComplete, t, withAssetsService]);
 
     // ... other actions like handleImport, handleImportToGroup
 
@@ -494,7 +627,7 @@ export function useAssetActions({
                     }
                     // Move groups
                     for (const g of clipboard.groups) {
-                        await svc.moveGroupToParent(g.type, g.id, targetGroupId);
+                        await svc.moveGroupToParent(g.category, g.id, targetGroupId);
                     }
                     setClipboard(null);
                 } else if (clipboard.type === 'copy') {
@@ -507,7 +640,7 @@ export function useAssetActions({
                     }
                     // Duplicate groups (recursively copies all assets and child groups)
                     for (const g of clipboard.groups) {
-                        await svc.duplicateGroup(g.type, g.id, targetGroupId);
+                        await svc.duplicateGroup(g.category, g.id, targetGroupId);
                     }
                 }
             });
@@ -540,7 +673,7 @@ export function useAssetActions({
 
         await withAssetsService(async (assetsService) => {
             if (target.isGroup) {
-                await assetsService.renameGroup(target.type, (target.item as AssetGroup).id, newName);
+                await assetsService.renameGroup(target.category, (target.item as AssetGroup).id, newName);
             } else {
                 await assetsService.renameAsset(target.item as Asset, newName);
             }
@@ -677,7 +810,7 @@ export function useAssetActions({
                 await assetsService.transaction(async (svc) => {
                     await Promise.all(uniqueTargets.map(async (t) => {
                         const result = t.isGroup
-                            ? await svc.deleteGroup(t.type, (t.item as AssetGroup).id, true, { allowReferenced: true })
+                            ? await svc.deleteGroup(t.category, (t.item as AssetGroup).id, true, { allowReferenced: true })
                             : await svc.deleteAsset(t.item as Asset, { allowReferenced: true });
                         if (!result.success && result.error) {
                             deleteFailures.push(result.error);
@@ -768,6 +901,7 @@ export function useAssetActions({
 
     return {
         handleCreateGroup,
+        handleCreateTextFile,
         handleImport,
         handleRetryImport,
         handleImportToGroup,
