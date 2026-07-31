@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
@@ -42,6 +42,19 @@ vi.mock("@xyflow/react", () => ({
     useReactFlow: () => ({ getZoom: () => 1 }),
 }));
 
+/**
+ * The freeze, stubbed at the hook rather than by standing up a workspace: this suite renders one
+ * node with no provider around it, which is the point - a node card has to be renderable on its own.
+ */
+let frozen = false;
+vi.mock("@/apps/workspace/hooks/useWorkspaceFrozen", () => ({
+    useWorkspaceFrozen: () => frozen,
+}));
+
+beforeEach(() => {
+    frozen = false;
+});
+
 describe("BlueprintFlowNode", () => {
     it("renders Animate opacity From/To as stored percent values", () => {
         registerCoreBlueprintNodes();
@@ -79,5 +92,25 @@ describe("BlueprintFlowNode", () => {
         // Unset reads as False, matching the runtime's `value === true` check.
         expect(renderSaveGameCapturePin(undefined)).toContain("False");
         expect(renderSaveGameCapturePin(false)).toContain("False");
+    });
+
+    /**
+     * A frozen workspace, and the reason this is asserted on the CARD rather than on each control:
+     * the clamp is one `<fieldset disabled>` around the whole card, so a node type added later
+     * inherits it. Measured before it existed - every dropdown on every node still took a change and
+     * threw it away on thaw.
+     */
+    it("wraps the whole card in a disabled fieldset while the workspace is frozen", () => {
+        frozen = true;
+        const markup = renderSaveGameCapturePin(true);
+        expect(markup).toContain("<fieldset disabled");
+        // `display: contents`, so React Flow measures the card exactly as it did before.
+        expect(markup).toContain("display:contents");
+        // Still drawn: reading a frozen graph is the point.
+        expect(markup).toContain("True");
+    });
+
+    it("leaves the card alone when the workspace is writable", () => {
+        expect(renderSaveGameCapturePin(true)).not.toContain("<fieldset");
     });
 });
