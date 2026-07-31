@@ -453,6 +453,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onMessage(IPCEventType.pluginLocalesChanged, handler),
         registryFetch: () =>
             ipcClient.invoke(IPCEventType.pluginRegistryFetch, {}),
+        registryIcon: (pluginId: string) =>
+            ipcClient.invoke(IPCEventType.pluginRegistryIcon, { pluginId }),
         installFromRegistry: (pluginId: string) =>
             ipcClient.invoke(IPCEventType.pluginInstallFromRegistry, { pluginId }),
     },
