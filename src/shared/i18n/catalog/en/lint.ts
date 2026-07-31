@@ -39,7 +39,7 @@ export const lint = {
             message: "{asset} collides with {other} on case-insensitive filesystems",
         },
         portabilityMediaFormat: {
-            title: "Unsupported media format",
+            title: "Unplayable format",
             description: "A codec some selected build targets cannot play",
             message: "{asset} does not play on {platform}",
         },
