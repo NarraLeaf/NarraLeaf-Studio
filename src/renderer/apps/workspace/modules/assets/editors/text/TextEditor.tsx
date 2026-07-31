@@ -193,6 +193,13 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
         if (!context || !asset || !model) {
             return;
         }
+        // A frozen workspace refuses writes by answering them as a no-op success, so a save that
+        // went through would clear the dirty flag over bytes that never left memory - and this path
+        // is reachable while frozen: a timer armed a moment before the freeze still flushes on
+        // deactivation. The buffer stays dirty and stays on screen instead.
+        if (freeze.frozen) {
+            return;
+        }
         const result = await context.services
             .get<AssetsService>(Services.Assets)
             .writeAssetTextContent(asset, model.getValue(), encodingRef.current);
@@ -201,7 +208,7 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
         } else {
             setError(result.error ?? t("assets.textEditor.saveFailed"));
         }
-    }, [context, asset, setModified, t]);
+    }, [context, asset, setModified, t, freeze.frozen]);
 
     const saveRef = useRef(save);
     saveRef.current = save;
@@ -224,11 +231,15 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
 
     const scheduleSave = useCallback(() => {
         cancelPendingSave();
+        // Marked before the interlock is consulted, not after: refusing to write is not the same as
+        // there being nothing to write, and a buffer that will never autosave is the one the author
+        // most needs the tab to admit is unsaved. The visible signal is the encoding token, already
+        // tinted `danger` by the lossy decode; the fix is one click inside it.
+        setModified(true);
         if (lossyRef.current) {
             // See `lossyDecode`. An automatic write must never overwrite bytes it could not read.
             return;
         }
-        setModified(true);
         saveTimerRef.current = window.setTimeout(() => {
             saveTimerRef.current = null;
             void saveRef.current();
