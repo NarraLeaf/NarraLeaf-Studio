@@ -316,7 +316,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                         style={{
                             ...groupRail,
                             height: ROW_CONTENT_PAD_PX + STORY_DENSITY_METRICS[props.density].rowBox / 2,
-                            width: RAIL_ELBOW_PX,
+                            width: RAIL_ELBOW_WIDTH,
                         }}
                     />
                 ) : (
@@ -1017,12 +1017,15 @@ const ROW_GAP_PX = 8;
 const ROW_CONTENT_PAD_PX = 4;
 
 /**
- * How far the group connector's last segment turns right, in px.
+ * How far the group connector's last segment turns right: from the plate's centre line, where the
+ * connector hangs, out to the far edge of the name column.
  *
- * Short on purpose: it is a full stop, not an arrow. There are ~22px between the plate's centre line
- * and the name column at any density, so the hook has room to read without ever reaching the words.
+ * That edge is where the words begin, so the tail runs the whole width of the chrome the run's
+ * attribution occupies and stops exactly where its last line's text starts — the turn reads as
+ * handing the run over to the words rather than as a hook of arbitrary length. The `+1` puts the
+ * box's right edge on the column edge despite the 2px left border it carries.
  */
-const RAIL_ELBOW_PX = 10;
+const RAIL_ELBOW_WIDTH = `calc((var(--nl-story-avatar,28px) / 2) + var(--nl-story-name,56px) + ${ROW_GAP_PX + 1}px)`;
 
 /**
  * One nesting level's indent: the plate box plus the gap after it, so a child's plate lands where its
