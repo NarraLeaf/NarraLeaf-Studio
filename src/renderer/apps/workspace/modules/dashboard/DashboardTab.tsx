@@ -88,7 +88,9 @@ function BuildRow({ build, now }: { build: BuildActivityRecord; now: number }) {
                     <span className="truncate text-xs text-fg-muted">
                         {build.ok ? t("dashboard.builds.ok") : t("dashboard.builds.failed")}
                     </span>
-                    {build.platform && <span className="truncate text-2xs text-fg-subtle">{build.platform}</span>}
+                    {build.platforms?.length ? (
+                        <span className="truncate text-2xs text-fg-subtle">{build.platforms.join(" · ")}</span>
+                    ) : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-3 text-2xs tabular-nums text-fg-subtle">
                     <span>{formatBuildDuration(translator, build.durationMs)}</span>
