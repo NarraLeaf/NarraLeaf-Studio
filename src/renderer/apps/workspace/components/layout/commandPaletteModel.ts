@@ -214,10 +214,17 @@ export function collectPaletteCommands(sources: PaletteCommandSources): PaletteC
         });
     };
 
-    // 2) Standalone toolbar actions (those not living inside a group).
+    // 2) Standalone toolbar actions (those not living inside a group). They have no group label to
+    //    borrow a category from, so they may declare one themselves.
     actions
         .filter(action => !action.group && isActionVisible(action, focusContext))
-        .forEach(action => pushAction(action, undefined, isActionFrozenOut(action, frozen)));
+        .forEach(action =>
+            pushAction(
+                action,
+                action.paletteCategoryKey ? translate(action.paletteCategoryKey) : undefined,
+                isActionFrozenOut(action, frozen),
+            ),
+        );
 
     // 3) Grouped actions / menus. Flatten submenus; the group's label is the category.
     const walkItems = (items: ActionMenuItem[], category: string | undefined, frozenOut: boolean) => {

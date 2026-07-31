@@ -188,10 +188,18 @@ export const workspace = {
             categoryView: "视图",
             // 编辑器标签命令的分类与标题（作用于当前活动标签）。
             categoryEditor: "编辑器",
+            // 没有声明分类的命令用它兜底（浏览模式按分类分组）。
+            categoryOther: "其他",
+            categoryGo: "跳转",
+            categoryStory: "剧情",
+            categoryRun: "运行",
+            categoryProject: "项目",
+            categoryPreferences: "偏好设置",
             // 版本控制命令的分类（冻结，以及后续的提交、历史）。
             categoryVersionControl: "版本控制",
             editor: {
                 closeTab: "关闭标签页",
+                closeSelectedTabs: "关闭选中的标签页",
                 closeOthers: "关闭其他标签页",
                 closeToRight: "关闭右侧标签页",
                 closeAll: "关闭全部标签页",
@@ -537,13 +545,21 @@ export const workspace = {
             building: "正在建立搜索索引…",
             empty: "没有匹配结果",
             more: "还有 {count} 条",
+            // 实体分组排在前面：这个框先回答「打开叫 X 的东西」，再回答「找到写着 X 的那句」。
             groups: {
-                story: "剧情文本",
+                scene: "场景",
+                story: "剧本",
+                character: "角色",
+                uiSurface: "UI 界面",
+                blueprint: "蓝图",
                 asset: "素材",
+                storyText: "剧情文本",
                 variable: "变量",
                 uiTextKey: "UI 文本 Key",
                 blueprintNode: "蓝图节点",
             },
+            // 一行结果代表多条一模一样的结果时，行尾显示的角标。
+            occurrences: "×{count}",
         },
         // 标题栏里类 PyCharm 的项目切换器：显示当前项目名，下拉列出最近工作区以便跳转。
         projectSwitcher: {
