@@ -42,16 +42,21 @@ function Cell(props: {
                 <button
                     className="hidden shrink-0 rounded-md p-0.5 text-fg-muted hover:text-fg group-hover/cell:block"
                     aria-label={t("characters.editor.combinations.name")}
+                    title={t("characters.editor.combinations.name")}
                     onClick={props.onName}
                 >
                     <Bookmark className="h-3 w-3" />
                 </button>
+                {/* Hover-reveal while there is nothing to see, but a cell that already carries an
+                    override says so without being hovered - the lit glyph is the only place the
+                    override is visible at all. */}
                 <button
                     className={[
                         "shrink-0 rounded-md p-0.5 hover:text-fg",
                         props.overridden ? "block text-primary" : "hidden text-fg-muted group-hover/cell:block",
                     ].join(" ")}
                     aria-label={t("characters.editor.avatar")}
+                    title={t("characters.editor.avatar")}
                     onClick={event => props.onAvatar(event.currentTarget)}
                 >
                     <UserRound className="h-3 w-3" />

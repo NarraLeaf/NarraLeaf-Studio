@@ -1,8 +1,44 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 29 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 30 as const;
 
 /** Global runtime state key mirrored from the active NarraLeaf dialog hook. */
 export const BLUEPRINT_GAME_NAMETAG_STATE_KEY = "game.dialog.nametag" as const;
+
+/**
+ * Global runtime state key holding the speaking character's authored accent colour, as a
+ * {@link BlueprintRGBAColor}.
+ *
+ * Written on the same beat as the nametag (that write is also the value-graph re-evaluation clock),
+ * so a nametag widget that tints itself from this key repaints with the line it belongs to. Null
+ * when nobody is speaking, when the narrator is, or when the character has no colour set - readers
+ * fall back to the default opaque white every colour pin uses.
+ */
+export const BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY = "game.dialog.color" as const;
+
+/**
+ * Global runtime state key holding the *id* of the speaking character, staged by the host when the
+ * speaker changes.
+ *
+ * Exists because the nametag cannot be used as an identity. The engine reports the authored
+ * (source-language) name, hosts translate it before publishing it, and two characters may share a
+ * display name - so anything that needs to look a speaker up in the character table needs this
+ * instead. Null when nobody is speaking or the speaker is not a project character (a `/temp` name).
+ *
+ * Written by the host on the speaker-change callback and only ever *read* on the dialog beat, which
+ * is what lets a narrator line blank the derived colour without destroying who spoke last.
+ */
+export const BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY = "game.dialog.characterId" as const;
+
+/**
+ * Global runtime state key holding the project's character table as
+ * `BlueprintCharacterInfo[]` (see `./characterInfo`).
+ *
+ * Mirrored once per bundle rather than fetched per read: the table already ships inside the Dev Mode
+ * bundle, it does not change while a game runs, and going through global state means every host that
+ * shares a scope bridge - the app surfaces, each Game UI slot surface, the workspace story preview -
+ * gets `Get Character` for free without its own callback wiring.
+ */
+export const BLUEPRINT_GAME_CHARACTERS_STATE_KEY = "game.characters" as const;
 
 /**
  * Global runtime state key holding the speaking character's dialog avatar, as an asset id.
@@ -388,6 +424,22 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: true,
             async: false,
             input: {},
+            output: null,
+        },
+        getSpeakerColor: {
+            capabilityId: "game.getSpeakerColor",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: {},
+            output: null,
+        },
+        getCharacter: {
+            capabilityId: "game.getCharacter",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: { characterId: "" },
             output: null,
         },
         getNotifications: {

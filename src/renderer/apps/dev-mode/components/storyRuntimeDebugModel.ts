@@ -46,6 +46,13 @@ export type StoryTimelineRow = {
     /** The dialogue speaker's name, or `null` on a row that has none. */
     speaker: string | null;
     /**
+     * The speaker's accent colour, or `null` when the character has none — or when the lookup that
+     * supplied it judged it unreadable. Kept beside the name rather than folded into it for the same
+     * reason `speaker` is: the panel decides how to draw an attribution, the projection only says
+     * whose line it is.
+     */
+    speakerColor: string | null;
+    /**
      * The category hue the editor bars this row with, or `null` for the prose rows that carry none.
      * Same single source as the editor's bar, so a row is one colour in both places.
      */
@@ -90,6 +97,7 @@ export function projectSceneTimeline(scene: StoryScene, lookups: StoryRowLookups
             disabled: block.disabled === true,
             summary: projected.sentence,
             speaker: projected.speaker?.name || null,
+            speakerColor: projected.speaker?.color ?? null,
             barColor: projected.barColor,
         });
         for (const childId of block.childrenIds) {

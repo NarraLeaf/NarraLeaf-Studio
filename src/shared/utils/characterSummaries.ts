@@ -194,12 +194,17 @@ export function mapCharacterStoreEntriesToSummaries(entries: readonly unknown[])
             name?: unknown;
             appearance?: unknown;
             defaultAvatarAssetId?: unknown;
+            color?: unknown;
         };
         const id = trimmed(raw.id);
         if (!id) {
             return [];
         }
         const defaultAvatarAssetId = trimmed(raw.defaultAvatarAssetId);
+        // Trimmed, not parsed. Whether a colour is *usable* is a per-surface question — Studio chrome
+        // applies a readability band to it, the runtime nametag does not — and a mapper that
+        // pre-judged it would take that decision away from both.
+        const color = trimmed(raw.color);
         // Left empty when unnamed, never substituted with `id`: `id` is a UUID, and every consumer
         // of `name` treats it as display text (the story compiler feeds it straight to the NLR
         // nametag). Naming the fallback is the compiler's job, not this mapper's.
@@ -208,6 +213,7 @@ export function mapCharacterStoreEntriesToSummaries(entries: readonly unknown[])
             name: trimmed(raw.name),
             appearance: mapAppearance(raw.appearance),
             ...(defaultAvatarAssetId ? { defaultAvatarAssetId } : {}),
+            ...(color ? { color } : {}),
         }];
     });
 }

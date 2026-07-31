@@ -427,8 +427,16 @@ type SceneCompileContext = {
     avatarAssetIdByUrl: Map<string, string>;
     /** Stage sprites already registered as portraits, so a second row does not register them twice. */
     boundPortraits?: WeakSet<Image>;
-    /** Puppet characters whose dialog avatar has been set, so a second row does not re-resolve it. */
-    boundPuppetAvatars?: Set<string>;
+    /**
+     * Characters whose dialog avatar this compile has already decided — a stage sprite's resolver, or
+     * a puppet's flat url.
+     *
+     * Compile-wide, not per scene, and that is the whole point: `Character` instances are shared
+     * across the scenes of one compile, so a character staged in scene 1 must not have its live
+     * resolver overwritten by scene 2's "never appeared here, use the default" pass. Whoever gets
+     * here first wins, and the fallback pass ({@link bindOffstageDefaultAvatars}) runs last.
+     */
+    avatarBoundCharacterIds: Set<string>;
     /** Single NLR Persistent (Storable-backed, per-save) holding all "saved" variables. */
     savedPersistent: Persistent<Record<string, StoryLiteralValue>>;
     /** Scene-scope declaration table of this scene (variableId → def), scanned once per compile. */
@@ -555,6 +563,8 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     const sceneElements: Record<string, CompiledSceneElements> = {};
     const characters = new Map<string, Character>();
     const avatarAssetIdByUrl = new Map<string, string>();
+    // Compile-wide, because `characters` is: see `SceneCompileContext.avatarBoundCharacterIds`.
+    const avatarBoundCharacterIds = new Set<string>();
     const characterSummaries = new Map((input.characters ?? []).map(character => [character.id, character]));
     const animations = new Map(Object.entries(input.animations ?? {}));
     const assetUrlCache = new Map<string, string | null>();
@@ -611,6 +621,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             characters,
             characterSummaries,
             avatarAssetIdByUrl,
+            avatarBoundCharacterIds,
             savedPersistent,
             sceneVariables: sceneVariableDefs(scene),
             savedVariables,
@@ -667,6 +678,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             characters,
             characterSummaries,
             avatarAssetIdByUrl,
+            avatarBoundCharacterIds,
             savedPersistent,
             savedVariables,
             persistentDefaults,
@@ -681,6 +693,17 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         })
         : allScenes[input.sceneId];
     nlrStory.entry(nlrEntryScene);
+
+    // Last, once every scene (and the launch tail) has had its say about who stood on stage.
+    await bindOffstageDefaultAvatars({
+        characters,
+        characterSummaries,
+        avatarBoundCharacterIds,
+        avatarAssetIdByUrl,
+        resolveAssetUrl,
+        assetUrlCache,
+        diagnostics,
+    });
 
     const sceneLocalNamespaceNames: Record<string, string> = {};
     for (const [sceneId, nlrScene] of Object.entries(allScenes)) {
@@ -720,6 +743,7 @@ async function buildLaunchEntryScene(params: {
     characters: Map<string, Character>;
     characterSummaries: Map<string, DevModeCharacterSummary>;
     avatarAssetIdByUrl: Map<string, string>;
+    avatarBoundCharacterIds: Set<string>;
     savedPersistent: Persistent<Record<string, StoryLiteralValue>>;
     savedVariables: Record<string, StorySavedVariableDefinition>;
     persistentDefaults: Record<string, StoryLiteralValue>;
@@ -778,6 +802,7 @@ async function buildLaunchEntryScene(params: {
         characters: params.characters,
         characterSummaries: params.characterSummaries,
         avatarAssetIdByUrl: params.avatarAssetIdByUrl,
+        avatarBoundCharacterIds: params.avatarBoundCharacterIds,
         savedPersistent: params.savedPersistent,
         sceneVariables: sceneVariableDefs(scene),
         savedVariables: params.savedVariables,
@@ -983,6 +1008,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         characters: new Map(),
         characterSummaries,
         avatarAssetIdByUrl: new Map(),
+        avatarBoundCharacterIds: new Set(),
         savedPersistent,
         sceneVariables: sceneVariableDefs(scene),
         savedVariables,
@@ -1127,6 +1153,17 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         }
     }
     statements.push(previewMarker(input.onAfterTarget));
+
+    // Before the preload sweep below, so a fallback avatar this resolves is warmed with the rest.
+    await bindOffstageDefaultAvatars({
+        characters: ctx.characters,
+        characterSummaries,
+        avatarBoundCharacterIds: ctx.avatarBoundCharacterIds,
+        avatarAssetIdByUrl: ctx.avatarAssetIdByUrl,
+        resolveAssetUrl,
+        assetUrlCache,
+        diagnostics,
+    });
 
     // Register every image URL this compile resolved (snapshot poses AND the target's own
     // sources) with the scene's preloader - injected elements bypass NLR's usual preload
@@ -2297,11 +2334,10 @@ async function bindPuppetAvatar(ctx: SceneCompileContext, characterId: string | 
     if (!summary || !assetId) {
         return;
     }
-    const bound = ctx.boundPuppetAvatars ?? (ctx.boundPuppetAvatars = new Set());
-    if (bound.has(summary.id)) {
+    if (ctx.avatarBoundCharacterIds.has(summary.id)) {
         return;
     }
-    bound.add(summary.id);
+    ctx.avatarBoundCharacterIds.add(summary.id);
     const url = await resolveAsset(ctx, assetId, "image", `avatar:${summary.id}`);
     if (url) {
         ctx.avatarAssetIdByUrl.set(url, assetId);
@@ -2721,10 +2757,34 @@ function getCharacter(ctx: SceneCompileContext, characterId: string | undefined,
     // `state.name === ""`), so `useDialog` reports a real character as `isNarrator` and the avatar
     // silently disappears. `normalizedId` is a characterId UUID, which must never reach the UI.
     // Identity is keyed on `normalizedId` above, so this string is cosmetic only.
-    const displayName = ctx.characterSummaries.get(normalizedId)?.name?.trim() || UNKNOWN_CHARACTER_NAME;
-    const character = new Character(displayName);
+    const summary = ctx.characterSummaries.get(normalizedId);
+    const displayName = summary?.name?.trim() || UNKNOWN_CHARACTER_NAME;
+    const character = new Character(displayName, characterNametagConfig(summary));
     ctx.characters.set(normalizedId, character);
     return character;
+}
+
+/** `#rgb` or `#rrggbb`; anything else is not a colour Studio wrote and is not forwarded. */
+const CHARACTER_ACCENT_HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
+/**
+ * The engine-side half of the character accent: `CharacterConfig.color`, which NLR's `Nametag`
+ * applies as the CSS colour of the speaker's name. Absent config when the character has none, so the
+ * dialogue box keeps whatever its own theme says.
+ *
+ * **Deliberately NOT filtered through `isReadableAccentColor`.** That band exists so an accent stays
+ * legible on Studio's own two chrome surfaces, light and dark — it is a statement about the editor,
+ * not about the game. The dialogue box is the author's artwork: a near-white name over a dark box is
+ * an ordinary choice there, and Studio silently discarding it would ship a game that disagrees with
+ * the colour the author picked, with nothing anywhere to explain why. The band still governs every
+ * Studio surface (the story rows, the Dev Mode timeline), so the one place the two can differ is a
+ * colour Studio declines to draw in its own chrome and forwards to the game exactly as authored.
+ *
+ * The hex is validated, though — a malformed value would land in a CSS declaration.
+ */
+function characterNametagConfig(summary: DevModeCharacterSummary | undefined): { color: `#${string}` } | undefined {
+    const hex = summary?.color?.trim();
+    return hex && CHARACTER_ACCENT_HEX.test(hex) ? { color: hex as `#${string}` } : undefined;
 }
 
 /**
@@ -3699,6 +3759,10 @@ async function bindCharacterPortrait(
     const character = getCharacter(ctx, summary.id);
     character.addPortrait(image);
     character.setAvatar(context => resolveCompiledAvatar(summary, resolved, context));
+    // Claim the character so the off-stage fallback pass leaves this resolver alone. It must: the
+    // resolver reads the engine's *live* Image (`currentSrc` / `tags`), which is what keeps the
+    // avatar right through undo, load and skip, and a flat url would freeze it at compile time.
+    ctx.avatarBoundCharacterIds.add(summary.id);
 
     // Deliberately NOT registered with `ctx.nlrScene.preloadImage`. That warms `ImageCacheManager`,
     // which stores a base64 re-encoding and decodes *that*, reachable only through
@@ -3707,6 +3771,54 @@ async function bindCharacterPortrait(
     // base64 blowup, a decode and a retained full-resolution bitmap that every consumer then
     // ignores. The warm that actually helps is keyed to the URL the widget renders and lives in
     // `characterAvatarAssets.warmAvatarDecode`, run when the session mounts this compile's table.
+}
+
+/**
+ * Give every character that spoke but never stood on stage the dialog avatar its profile declares.
+ *
+ * `defaultAvatarAssetId` is documented as "shown when no differential resolves one — the character is
+ * speaking from off-stage". That promise was only ever kept for characters who *had* been on stage:
+ * the resolver holding the fallback is installed by {@link bindCharacterPortrait}, which only stage
+ * rows call, so a preset or layered character who talks from off-stage for a whole scene got no
+ * resolver and therefore no avatar at all — while a puppet, which never stages, got one
+ * unconditionally ({@link bindPuppetAvatar}). Two paths, opposite answers to the same question.
+ *
+ * This closes it from the other end, and only from the other end: it runs after everything is
+ * compiled and skips every character already claimed, so a staged character keeps the resolver that
+ * reads the live `Image`. Studio never mirrors story state — it only fills in the case where there is
+ * no story state to read.
+ */
+async function bindOffstageDefaultAvatars(params: {
+    characters: Map<string, Character>;
+    characterSummaries: Map<string, DevModeCharacterSummary>;
+    avatarBoundCharacterIds: Set<string>;
+    avatarAssetIdByUrl: Map<string, string>;
+    resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
+    assetUrlCache: Map<string, string | null>;
+    diagnostics: NlrStoryCompileDiagnostic[];
+}): Promise<void> {
+    for (const [key, character] of params.characters) {
+        // Temp speakers are keyed `name:<name>` and have no profile behind them; `UNKNOWN_CHARACTER_ID`
+        // resolves to no summary either. Both fall out here.
+        const summary = params.characterSummaries.get(key);
+        const assetId = summary?.defaultAvatarAssetId?.trim();
+        if (!summary || !assetId || params.avatarBoundCharacterIds.has(summary.id)) {
+            continue;
+        }
+        params.avatarBoundCharacterIds.add(summary.id);
+        const url = await resolveAssetUrlCached({
+            assetId,
+            assetType: "image",
+            blockId: `avatar:${summary.id}`,
+            resolveAssetUrl: params.resolveAssetUrl,
+            assetUrlCache: params.assetUrlCache,
+            diagnostics: params.diagnostics,
+        });
+        if (url) {
+            params.avatarAssetIdByUrl.set(url, assetId);
+            character.setAvatar(url);
+        }
+    }
 }
 
 async function resolveAsset(ctx: SceneCompileContext, assetId: string, assetType: StoryAssetKind, blockId: string): Promise<string | null> {

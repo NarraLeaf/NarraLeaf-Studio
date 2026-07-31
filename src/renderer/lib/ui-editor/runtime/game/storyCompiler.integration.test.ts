@@ -1050,6 +1050,45 @@ describe("compileStudioStoryToNlr", () => {
             expect(speakers[1].state.name).toBe("Unknown");
             expect(speakers[0]).not.toBe(speakers[1]);
         });
+
+        // `CharacterConfig.color` is what NLR's `Nametag` paints the speaker's name with.
+        // `Character.config` is `@internal` and stripped from the published types, so this reads it
+        // the way the avatar probe below does; production code only ever calls the constructor.
+        function nametagColor(speaker: unknown): unknown {
+            return (speaker as { config?: { color?: unknown } }).config?.color;
+        }
+
+        it("hands the author's accent to the runtime nametag", async () => {
+            const speaker = await compileSpeaker([
+                { id: "char-alice", name: "Alice", color: "#40A8C4", appearance: EMPTY_APPEARANCE },
+            ]);
+
+            expect(nametagColor(speaker)).toBe("#40A8C4");
+        });
+
+        // The readability band is a statement about *Studio's* two chrome surfaces, not about the
+        // author's dialogue box. A near-white name over a dark box is an ordinary choice, and
+        // dropping it here would ship a game that disagrees with the colour the author picked.
+        it("forwards an accent Studio's own chrome would refuse to draw", async () => {
+            const speaker = await compileSpeaker([
+                { id: "char-alice", name: "Alice", color: "#FFFFFF", appearance: EMPTY_APPEARANCE },
+            ]);
+
+            expect(nametagColor(speaker)).toBe("#FFFFFF");
+        });
+
+        it.each([
+            ["unset", undefined],
+            ["blank", "   "],
+            ["not a hex colour", "cornflowerblue"],
+            ["malformed", "#12345"],
+        ])("leaves the nametag untinted when the accent is %s", async (_label, color) => {
+            const speaker = await compileSpeaker([
+                { id: "char-alice", name: "Alice", ...(color === undefined ? {} : { color }), appearance: EMPTY_APPEARANCE },
+            ]);
+
+            expect(nametagColor(speaker)).toBeUndefined();
+        });
     });
 
     // A speaker the author typed that has no Studio character behind it. NLR's dialogue box only
@@ -2227,6 +2266,32 @@ describe("dialog avatars", () => {
         };
     }
 
+    /** A line spoken by a character that never appears on stage. */
+    function sayBlock(characterId: string, id = "say"): Record<string, StoryBlock> {
+        return {
+            [id]: {
+                id,
+                kind: "nodeAction",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "dialogue",
+                    characterId,
+                    text: { textId: `text-${id}`, value: "Hello", role: "dialogue" },
+                },
+            },
+        };
+    }
+
+    /** Whether the compiler installed a *resolver* (live stage state) or a flat url. */
+    function avatarIsResolver(
+        compiled: Awaited<ReturnType<typeof compileStudioStoryToNlr>>,
+        characterId: string,
+    ): boolean {
+        const character = compiled.characters.get(characterId) as unknown as { config?: { avatar?: unknown } } | undefined;
+        return typeof character?.config?.avatar === "function";
+    }
+
     it("resolves a preset character's avatar from the pose src the engine reports", async () => {
         const alice: DevModeCharacterSummary = {
             id: "char-alice",
@@ -2315,6 +2380,110 @@ describe("dialog avatars", () => {
         // A src the appearance does not know (a sprite swapped by an `/image` row) is not guessed at.
         expect(resolveAvatar(compiled, "char-alice", { currentSrc: "nlr://asset-stranger" }))
             .toBe("nlr://asset-avatar-default");
+    });
+
+    // `defaultAvatarAssetId`'s own contract is "shown when the character is speaking from off-stage".
+    // It used to reach the runtime only through the resolver that stage rows install, so a character
+    // who spoke without ever being shown got no avatar at all - while a puppet, which never stages,
+    // got one unconditionally.
+    it("gives a character that never appears on stage its default avatar", async () => {
+        const alice: DevModeCharacterSummary = {
+            id: "char-alice",
+            name: "Alice",
+            defaultAvatarAssetId: "asset-avatar-default",
+            appearance: {
+                kind: "preset",
+                poses: [{ id: "pose-neutral", name: "Neutral", assetId: "asset-neutral" }],
+                defaultPoseId: "pose-neutral",
+            },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(sayBlock("char-alice"), ["say"]),
+            sceneId: "scene-1",
+            characters: [alice],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        expect(resolveAvatar(compiled, "char-alice", {})).toBe("nlr://asset-avatar-default");
+        expect(compiled.avatarAssetIdByUrl.get("nlr://asset-avatar-default")).toBe("asset-avatar-default");
+    });
+
+    // The other half of the same fix, and the one that must not regress: a character that IS staged
+    // keeps the resolver reading the engine's live `Image`. A flat url would freeze the avatar at
+    // compile time and break undo / load / skip, which is exactly what Studio must not mirror.
+    it("does not overwrite a staged character's live resolver with the flat default", async () => {
+        const alice: DevModeCharacterSummary = {
+            id: "char-alice",
+            name: "Alice",
+            defaultAvatarAssetId: "asset-avatar-default",
+            appearance: {
+                kind: "preset",
+                poses: [{ id: "pose-neutral", name: "Neutral", assetId: "asset-neutral" }],
+                defaultPoseId: "pose-neutral",
+                avatars: { "pose-neutral": { overrideAssetId: "asset-avatar-neutral" } },
+            },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ ...enterBlock("char-alice"), ...sayBlock("char-alice") }, ["enter", "say"]),
+            sceneId: "scene-1",
+            characters: [alice],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        expect(avatarIsResolver(compiled, "char-alice")).toBe(true);
+        expect(resolveAvatar(compiled, "char-alice", { currentSrc: "nlr://asset-neutral" }))
+            .toBe("nlr://asset-avatar-neutral");
+        // And off-stage the resolver still answers with the character default, as it always did.
+        expect(resolveAvatar(compiled, "char-alice", {})).toBe("nlr://asset-avatar-default");
+    });
+
+    // Scene-crossing version of the same hazard: the `Character` instances are shared across every
+    // scene of one compile, so a per-scene "was anyone staged here" answer would let scene 2 undo
+    // what scene 1 bound.
+    it("keeps the resolver for a character staged in one scene and only heard in another", async () => {
+        const alice: DevModeCharacterSummary = {
+            id: "char-alice",
+            name: "Alice",
+            defaultAvatarAssetId: "asset-avatar-default",
+            appearance: {
+                kind: "preset",
+                poses: [{ id: "pose-neutral", name: "Neutral", assetId: "asset-neutral" }],
+                defaultPoseId: "pose-neutral",
+                avatars: { "pose-neutral": { overrideAssetId: "asset-avatar-neutral" } },
+            },
+        };
+        const document = baseDocument(enterBlock("char-alice"), ["enter"]);
+        document.scenes["scene-2"] = {
+            ...document.scenes["scene-2"],
+            rootBlockIds: ["say"],
+            blocks: sayBlock("char-alice"),
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document,
+            sceneId: "scene-1",
+            characters: [alice],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        expect(avatarIsResolver(compiled, "char-alice")).toBe(true);
+        expect(resolveAvatar(compiled, "char-alice", { currentSrc: "nlr://asset-neutral" }))
+            .toBe("nlr://asset-avatar-neutral");
+    });
+
+    it("leaves a character with no default avatar alone", async () => {
+        const alice: DevModeCharacterSummary = {
+            id: "char-alice",
+            name: "Alice",
+            appearance: { kind: "preset", poses: [], defaultPoseId: null },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(sayBlock("char-alice"), ["say"]),
+            sceneId: "scene-1",
+            characters: [alice],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        expect(resolveAvatar(compiled, "char-alice", {})).toBeUndefined();
     });
 
     it("resolves a baked avatar through its synthetic id", async () => {

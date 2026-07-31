@@ -5,6 +5,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_CHOOSE,
     BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD,
     BLUEPRINT_NODE_TYPE_GAME_GET_BGM_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER,
     BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT,
     BLUEPRINT_NODE_TYPE_GAME_GET_GAME_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_GET_GLOBAL_VOLUME,
@@ -20,6 +21,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_INTERVAL,
     BLUEPRINT_NODE_TYPE_GAME_GET_SOUND_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR,
     BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_END_MODE,
     BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_FADE_DURATION,
     BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_VOLUME,
@@ -54,7 +56,9 @@ import {
 import {
     BLUEPRINT_VALUE_TYPE_ARRAY,
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
+    BLUEPRINT_VALUE_TYPE_RGBA_COLOR,
 } from "@shared/types/blueprint/valueTypes";
+import { blueprintCharacterColorOrDefault } from "@shared/types/blueprint/characterInfo";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import type {
@@ -640,6 +644,93 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             return {
                 outputValues: {
                     avatar: requireHostApi(ctx).game.getSpeakerAvatar(),
+                },
+            };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR,
+        displayName: "Get Speaker Color",
+        category: "Game",
+        keywords: ["game", "dialog", "color", "colour", "accent", "speaker", "character", "nametag", "tint", "nlr"],
+        graphKinds: ["event", "function", "macro"],
+        isPure: true,
+        isLatent: false,
+        pins: [
+            {
+                id: "color",
+                kind: "output",
+                semantic: "data",
+                valueType: BLUEPRINT_VALUE_TYPE_RGBA_COLOR,
+                label: "Color",
+            },
+        ],
+        execute(ctx) {
+            return {
+                outputValues: {
+                    color: requireHostApi(ctx).game.getSpeakerColor(),
+                },
+            };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER,
+        displayName: "Get Character",
+        category: "Game",
+        keywords: ["game", "character", "cast", "name", "color", "colour", "avatar", "portrait", "profile", "nlr"],
+        graphKinds: ["event", "function", "macro"],
+        isPure: true,
+        isLatent: false,
+        pins: [
+            {
+                id: "name",
+                kind: "output",
+                semantic: "data",
+                valueType: "string",
+                label: "Name",
+            },
+            {
+                id: "characterColor",
+                kind: "output",
+                semantic: "data",
+                valueType: BLUEPRINT_VALUE_TYPE_RGBA_COLOR,
+                label: "Color",
+            },
+            {
+                id: "characterAvatar",
+                kind: "output",
+                semantic: "data",
+                valueType: BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
+                label: "Avatar",
+            },
+            // The visible half of "this character was deleted". Without it a dangling reference is
+            // indistinguishable from a character whose name is blank and whose colour is unset -
+            // both would read as empty string / default white with nothing to branch on.
+            {
+                id: "found",
+                kind: "output",
+                semantic: "data",
+                valueType: "boolean",
+                label: "Found",
+            },
+        ],
+        inspectorParams: [
+            {
+                key: "characterId",
+                label: "Character",
+                kind: "select",
+                dynamicOptionsSource: "characters",
+            },
+        ],
+        execute(ctx) {
+            const characterId = String(ctx.params.characterId ?? "").trim();
+            const character = characterId ? requireHostApi(ctx).game.getCharacter(characterId) : null;
+            return {
+                outputValues: {
+                    name: character?.name ?? "",
+                    characterColor: blueprintCharacterColorOrDefault(character?.color),
+                    characterAvatar: character?.avatar ?? null,
+                    found: Boolean(character),
                 },
             };
         },

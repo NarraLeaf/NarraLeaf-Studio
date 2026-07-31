@@ -106,12 +106,14 @@ import {
     BLUEPRINT_NODE_TYPE_FN_HEAD,
     BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD,
     BLUEPRINT_NODE_TYPE_GAME_GET_BGM_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER,
     BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT,
     BLUEPRINT_NODE_TYPE_GAME_GET_GAME_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_GET_GLOBAL_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
     BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS,
     BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR,
     BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED,
@@ -243,6 +245,7 @@ import {
     normalizeBlueprintRGBAColor,
     normalizeBlueprintVector2D,
 } from "@shared/types/blueprint/valueTypes";
+import { blueprintCharacterColorOrDefault } from "@shared/types/blueprint/characterInfo";
 import type { BehaviorGraphValueExecution } from "../../behavior-graph/BehaviorNodeRegistry";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
@@ -1389,6 +1392,15 @@ function resolveGameNodeOutput(
     if (portId === "avatar") {
         return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getSpeakerAvatar() ?? null;
     }
+    // Node-type gated, unlike its neighbours: `color` is a common port id, and this resolver is
+    // reached by every node type in the game whitelist below.
+    if (nodeType === BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR && portId === "color") {
+        // No host (or nobody speaking) yields the default opaque white rather than `undefined` -
+        // the pin is a non-nullable RGBAColor, so there is no "absent" it could carry.
+        return normalizeBlueprintRGBAColor(
+            runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getSpeakerColor(),
+        );
+    }
     if (portId === "isInGame") {
         return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.isInGame() === true;
     }
@@ -1410,6 +1422,41 @@ function resolveGameNodeOutput(
     const preference = GAME_PREFERENCE_OUTPUT_KEYS[nodeType];
     if (preference && portId === preference.portId) {
         return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getPreference(preference.key as never);
+    }
+    return undefined;
+}
+
+/**
+ * `Get Character` - the addressable one. Kept out of {@link resolveGameNodeOutput} and dispatched
+ * ahead of it because that function matches on bare port ids across the whole game family, and this
+ * node's outputs would otherwise be captured by the speaker-scoped branches.
+ */
+function resolveGetCharacterNodeOutput(
+    nodeType: string,
+    portId: string,
+    params: Record<string, unknown>,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    if (nodeType !== BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER) {
+        return undefined;
+    }
+    const characterId = String(params.characterId ?? "").trim();
+    const character = characterId
+        ? runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getCharacter(characterId) ?? null
+        : null;
+    if (portId === "name") {
+        return character?.name ?? "";
+    }
+    if (portId === "characterColor") {
+        return blueprintCharacterColorOrDefault(character?.color);
+    }
+    if (portId === "characterAvatar") {
+        return character?.avatar ?? null;
+    }
+    // False for both "nothing picked" and "the picked character is gone", which is what makes a
+    // deleted reference branchable instead of silently reading as an unnamed, uncoloured character.
+    if (portId === "found") {
+        return Boolean(character);
     }
     return undefined;
 }
@@ -2468,9 +2515,19 @@ function resolveSelfOutput(
     ) {
         return resolvePageNodeOutput(portId, runtime);
     }
+    const getCharacterOutput = resolveGetCharacterNodeOutput(
+        selfNode.type,
+        portId,
+        selfNode.params ?? {},
+        runtime,
+    );
+    if (getCharacterOutput !== undefined) {
+        return getCharacterOutput;
+    }
     if (
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS ||

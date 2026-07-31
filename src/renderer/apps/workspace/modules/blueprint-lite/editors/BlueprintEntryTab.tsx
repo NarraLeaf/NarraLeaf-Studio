@@ -16,6 +16,7 @@ import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import type { UIRuntimeBridgeService } from "@/lib/workspace/services/ui-editor/UIRuntimeBridgeService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
+import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
@@ -76,6 +77,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
     BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE,
+    BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER,
     readBlueprintFnSignatureSnapshot,
 } from "@shared/types/blueprint/graph";
 import {
@@ -501,6 +503,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     const nodeCatalog = context.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
     const runtimeBridge = context.services.get<UIRuntimeBridgeService>(Services.RuntimeBridge);
     const storyService = context.services.get<StoryService>(Services.Story);
+    const characterService = context.services.get<CharacterService>(Services.Character);
     const variableRegistry = context.services.get<VariableRegistryService>(Services.VariableRegistry);
     // Persistent variables live in the M-VAR registry; its edits do not bump the blueprint revision.
     const [registryRevision, setRegistryRevision] = useState(0);
@@ -509,6 +512,14 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     const [storyDocumentsById, setStoryDocumentsById] = useState<Record<string, StoryDocument>>({});
     const [storyLibraryRevision, setStoryLibraryRevision] = useState(0);
     const [dynamicSelectOptionsRevision, setDynamicSelectOptionsRevision] = useState(0);
+    // The `characters` source is reactive: renaming or deleting a character while a blueprint tab is
+    // open has to be visible in the picker, otherwise a stale list is the only evidence the author
+    // ever sees that the reference they are about to pick no longer exists.
+    const [characterLibraryRevision, setCharacterLibraryRevision] = useState(0);
+    useEffect(
+        () => characterService.subscribe(() => setCharacterLibraryRevision(value => value + 1)),
+        [characterService],
+    );
     const [memberPanelState, setMemberPanelState] = useState<BlueprintEditorMemberPanelState>(() =>
         normalizeBlueprintEditorMemberPanelState(
             panelStateService.getPanelState<Partial<BlueprintEditorMemberPanelState>>(
@@ -1320,7 +1331,33 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         }
         const currentDocument = blueprintDocumentService.getDocument();
         const out: Record<string, Record<string, BlueprintInspectorParamSelectOption[]>> = {};
+        // Built lazily: most graphs have no Get Character node, and listing the cast per projection
+        // would be pure cost for them.
+        let characterOptions: BlueprintInspectorParamSelectOption[] | null = null;
         for (const node of Object.values(activeIr.nodes ?? {})) {
+            if (node.type === BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER) {
+                const pickedId = String(node.params?.characterId ?? "").trim();
+                if (!pickedId) {
+                    continue;
+                }
+                characterOptions ??= characterService.listCharacter().map(character => ({
+                    value: character.profile.getId(),
+                    label: character.profile.getName().trim() || t("blueprint.options.unnamedCharacter"),
+                }));
+                if (characterOptions.some(option => option.value === pickedId)) {
+                    continue;
+                }
+                // The character this node points at is gone. Append a stand-in so the picker keeps
+                // showing the dangling id: without it the `<select>` falls back to the empty option
+                // and a deleted reference looks exactly like one that was never set.
+                out[node.id] = {
+                    characters: [
+                        ...characterOptions,
+                        { value: pickedId, label: t("blueprint.options.missingCharacter", { id: pickedId }) },
+                    ],
+                };
+                continue;
+            }
             if (
                 node.type !== BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE &&
                 node.type !== BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE
@@ -1338,7 +1375,17 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             };
         }
         return out;
-    }, [blueprintDocumentService, bp.owner, editor.graphView, ir, revision, uiDocumentRevision]);
+    }, [
+        blueprintDocumentService,
+        bp.owner,
+        characterService,
+        characterLibraryRevision,
+        editor.graphView,
+        ir,
+        revision,
+        t,
+        uiDocumentRevision,
+    ]);
 
     const contextTitle = useMemo(
         () =>
@@ -1431,10 +1478,19 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         } catch {
             // Outside a workspace context; no key options.
         }
+        // The project's cast, for `Get Character`. Ids, not names: a rename must not invalidate a
+        // graph that already points at the character.
+        const characterOptions: BlueprintInspectorParamSelectOption[] = characterService
+            .listCharacter()
+            .map(character => ({
+                value: character.profile.getId(),
+                label: character.profile.getName().trim() || t("blueprint.options.unnamedCharacter"),
+            }));
         const opts: Record<string, BlueprintInspectorParamSelectOption[]> = {
             surfaces: surfaceOptions,
             stories: storyOptions,
             storyScenes: storySceneOptions,
+            characters: characterOptions,
             localizationKeys: localizationKeyOptions,
             callableFns: listCallableBlueprintFnOptions({
                 blueprintDocument: doc,
@@ -1474,6 +1530,8 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         storyService,
         storyDocumentsById,
         storyLibraryRevision,
+        characterService,
+        characterLibraryRevision,
         nodeCatalog,
         dynamicSelectOptionsRevision,
         doc,

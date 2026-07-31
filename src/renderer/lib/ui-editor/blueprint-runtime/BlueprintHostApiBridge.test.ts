@@ -22,10 +22,13 @@ import {
     type DevModeWidgetRuntimePatch,
 } from "./BlueprintHostApiBridge";
 import {
+    BLUEPRINT_GAME_CHARACTERS_STATE_KEY,
     BLUEPRINT_GAME_NAMETAG_STATE_KEY,
+    BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY,
     BLUEPRINT_GAME_TEXT_READ_STATE_KEY,
     BLUEPRINT_TEXT_READ_PERSISTENCE_KEY,
 } from "@shared/types/blueprint/hostApi";
+import { toBlueprintCharacterInfo } from "@shared/types/blueprint/characterInfo";
 import type { BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import { UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
 import { displayableMotionFromCurrent } from "@/lib/ui-editor/runtime/displayableMotion";
@@ -1478,5 +1481,60 @@ describe("createDevModeBlueprintHostApi sound transport", () => {
 
         expect(handle).toEqual({ kind: "soundHandle", id: "s7" });
         expect(seen[0]).toEqual({ assetId: "a1", channel: "bgm", loop: true, volume: 0.4 });
+    });
+});
+
+/**
+ * The character family reads global state rather than host callbacks, on purpose: the mirror is
+ * written once per bundle and every host sharing the scope bridge - the app surfaces, each Game UI
+ * slot surface, the workspace story preview - then answers identically without wiring anything.
+ * These assert that contract, because a slot surface that silently answered `null` would look
+ * exactly like a project with no characters.
+ */
+describe("createDevModeBlueprintHostApi character reads", () => {
+    const ALICE = toBlueprintCharacterInfo({
+        id: "char-alice",
+        name: "Alice",
+        color: "#40a8c4",
+        avatarAssetId: "asset-alice",
+    })!;
+
+    it("answers getCharacter from the mirrored table", () => {
+        const scope = new ScopeStoreBridge();
+        scope.globalSet(BLUEPRINT_GAME_CHARACTERS_STATE_KEY, [ALICE]);
+        const hostApi = createHostApi({ scope });
+
+        expect(hostApi.game.getCharacter("char-alice")).toEqual({
+            id: "char-alice",
+            name: "Alice",
+            color: { r: 64, g: 168, b: 196, a: 1 },
+            avatar: { kind: "imageAsset", assetId: "asset-alice" },
+        });
+        // An id that is not in the table, and no id at all, are both "no character" - neither is an
+        // error, because a graph authored against a since-deleted character must still run.
+        expect(hostApi.game.getCharacter("char-gone")).toBeNull();
+        expect(hostApi.game.getCharacter("")).toBeNull();
+    });
+
+    it("answers getCharacter with null before any mirror is written", () => {
+        expect(createHostApi({}).game.getCharacter("char-alice")).toBeNull();
+    });
+
+    it("normalizes the speaker colour, defaulting to opaque white", () => {
+        const scope = new ScopeStoreBridge();
+        const hostApi = createHostApi({ scope });
+
+        // Nothing mirrored yet: the pin is a non-nullable RGBAColor, so there is no "absent".
+        expect(hostApi.game.getSpeakerColor()).toEqual({ r: 255, g: 255, b: 255, a: 1 });
+
+        scope.globalSet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY, { r: 64, g: 168, b: 196, a: 1 });
+        expect(hostApi.game.getSpeakerColor()).toEqual({ r: 64, g: 168, b: 196, a: 1 });
+
+        // A host that mirrored the raw profile hex instead of the parsed record still resolves.
+        scope.globalSet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY, "#40a8c4");
+        expect(hostApi.game.getSpeakerColor()).toEqual({ r: 64, g: 168, b: 196, a: 1 });
+
+        scope.globalSet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY, null);
+        expect(hostApi.game.getSpeakerColor()).toEqual({ r: 255, g: 255, b: 255, a: 1 });
     });
 });

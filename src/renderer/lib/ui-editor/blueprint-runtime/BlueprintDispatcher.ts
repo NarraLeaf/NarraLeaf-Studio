@@ -255,6 +255,17 @@ function createScriptExecutionContext(input: {
                     input.debug.emit({ type: "function.return", functionId: "game.getNametag" });
                     return "";
                 },
+                getSpeakerColor: () => {
+                    input.debug.emit({ type: "function.call", functionId: "game.getSpeakerColor" });
+                    input.debug.emit({ type: "function.return", functionId: "game.getSpeakerColor" });
+                    // Same default a real host answers with when nobody is speaking.
+                    return { r: 255, g: 255, b: 255, a: 1 };
+                },
+                getCharacter: (_characterId: string) => {
+                    input.debug.emit({ type: "function.call", functionId: "game.getCharacter" });
+                    input.debug.emit({ type: "function.return", functionId: "game.getCharacter" });
+                    return null;
+                },
                 next: async () => {
                     input.debug.emit({ type: "function.call", functionId: "game.next" });
                     input.debug.emit({ type: "function.return", functionId: "game.next" });
