@@ -11,9 +11,14 @@ import { jumpToSearchTarget } from "./searchJump";
 
 const QUERY_DEBOUNCE_MS = 150;
 
-const GROUP_TITLE_KEYS: Record<SearchGroup, TranslationKey> = {
+export const SEARCH_GROUP_TITLE_KEYS: Record<SearchGroup, TranslationKey> = {
+    scene: "workspace.shell.search.groups.scene" as TranslationKey,
     story: "workspace.shell.search.groups.story" as TranslationKey,
+    character: "workspace.shell.search.groups.character" as TranslationKey,
+    uiSurface: "workspace.shell.search.groups.uiSurface" as TranslationKey,
+    blueprint: "workspace.shell.search.groups.blueprint" as TranslationKey,
     asset: "workspace.shell.search.groups.asset" as TranslationKey,
+    storyText: "workspace.shell.search.groups.storyText" as TranslationKey,
     variable: "workspace.shell.search.groups.variable" as TranslationKey,
     uiTextKey: "workspace.shell.search.groups.uiTextKey" as TranslationKey,
     blueprintNode: "workspace.shell.search.groups.blueprintNode" as TranslationKey,
@@ -180,7 +185,7 @@ export function SearchPanel() {
                                         : "border-edge-subtle text-fg-subtle hover:border-edge hover:text-fg-muted"
                                 }`}
                             >
-                                {t(GROUP_TITLE_KEYS[group.group])} {group.total}
+                                {t(SEARCH_GROUP_TITLE_KEYS[group.group])} {group.total}
                             </button>
                         );
                     })}
@@ -196,7 +201,7 @@ export function SearchPanel() {
                     visibleResults.map(group => (
                         <div key={group.group}>
                             <div className="px-3 pt-3 pb-1 text-xs font-medium text-fg-muted">
-                                {t(GROUP_TITLE_KEYS[group.group])}
+                                {t(SEARCH_GROUP_TITLE_KEYS[group.group])}
                             </div>
                             {group.hits.map(hit => (
                                 <button
@@ -205,8 +210,15 @@ export function SearchPanel() {
                                     onClick={() => handleJump(hit.entry.target)}
                                     className="block w-full px-3 py-1.5 text-left transition-colors hover:bg-fill-subtle"
                                 >
-                                    <div className="truncate text-sm text-fg-muted">
-                                        {renderHighlightedText(hit.entry.text, hit.titleRanges)}
+                                    <div className="flex min-w-0 items-baseline gap-2 text-sm text-fg-muted">
+                                        <span className="truncate">
+                                            {renderHighlightedText(hit.entry.text, hit.titleRanges)}
+                                        </span>
+                                        {(hit.entry.count ?? 1) > 1 && (
+                                            <span className="shrink-0 text-2xs text-fg-subtle">
+                                                {t("workspace.shell.search.occurrences", { count: hit.entry.count! })}
+                                            </span>
+                                        )}
                                     </div>
                                     {hit.entry.detail && (
                                         <div className="truncate text-xs text-fg-subtle">{hit.entry.detail}</div>
