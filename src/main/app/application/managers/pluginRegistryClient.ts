@@ -6,6 +6,7 @@ import {
     PLUGIN_REGISTRY_FORMAT_VERSION,
     PLUGIN_REGISTRY_MAX_DOWNLOAD_BYTES,
 } from "@shared/constants/pluginRegistry";
+import { PLUGIN_ICON_MAX_BYTES } from "@shared/constants/pluginIcon";
 import type {
     PluginRegistryEntry,
     PluginRegistryIndex,
@@ -48,6 +49,25 @@ function asStringArray(value: unknown): string[] {
 }
 
 /**
+ * An `https` URL, or `undefined`.
+ *
+ * The store renders the icon URL directly in an `<img>`, so this is the point
+ * where a hostile index is stopped from handing the renderer a `file:`,
+ * `data:` or `javascript:` address.
+ */
+function asHttpsUrl(value: unknown): string | undefined {
+    const raw = asString(value).trim();
+    if (!raw) {
+        return undefined;
+    }
+    try {
+        return new URL(raw).protocol === "https:" ? raw : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+/**
  * Coerce one raw index record into a {@link PluginRegistryEntry}, or `null` if
  * it lacks the fields the store cannot work without (id / version / download).
  * Being lenient here keeps one malformed entry from blanking the whole store.
@@ -77,6 +97,7 @@ function normalizeEntry(raw: unknown): PluginRegistryEntry | null {
         categories: asStringArray(record.categories),
         keywords: asStringArray(record.keywords),
         license: asString(record.license),
+        icon: asHttpsUrl(record.icon),
         homepage: asString(record.homepage) || undefined,
         studioVersion: asString(record.studioVersion) || undefined,
         permissions: Array.isArray(record.permissions) ? (record.permissions as PluginRegistryEntry["permissions"]) : [],
@@ -88,7 +109,33 @@ function normalizeEntry(raw: unknown): PluginRegistryEntry | null {
     };
 }
 
-export async function fetchRegistryIndex(url: string): Promise<PluginRegistryIndex> {
+/**
+ * Last index read per URL.
+ *
+ * Only {@link fetchRegistryIndex} with a `maxAgeMs` reads it, and nothing else
+ * in the store does — a Refresh must really go to the network. It exists so the
+ * icon proxy can resolve "which URL belongs to this plugin id" without one
+ * index round trip per row.
+ */
+const indexMemo = new Map<string, { at: number; index: PluginRegistryIndex }>();
+
+export async function fetchRegistryIndex(
+    url: string,
+    options: { maxAgeMs?: number } = {},
+): Promise<PluginRegistryIndex> {
+    const maxAgeMs = options.maxAgeMs ?? 0;
+    if (maxAgeMs > 0) {
+        const cached = indexMemo.get(url);
+        if (cached && Date.now() - cached.at <= maxAgeMs) {
+            return cached.index;
+        }
+    }
+    const index = await readRegistryIndex(url);
+    indexMemo.set(url, { at: Date.now(), index });
+    return index;
+}
+
+async function readRegistryIndex(url: string): Promise<PluginRegistryIndex> {
     const response = await fetchWithTimeout(url);
     if (!response.ok) {
         throw new Error(`Registry request failed (${response.status} ${response.statusText})`);
@@ -176,4 +223,28 @@ export async function extractPluginZip(buffer: Buffer, destDir: string): Promise
 export async function downloadAndExtract(entry: PluginRegistryEntry, destDir: string): Promise<string> {
     const buffer = await downloadPackage(entry.release.download);
     return extractPluginZip(buffer, destDir);
+}
+
+/**
+ * Fetch a store thumbnail, refusing anything past the icon byte budget.
+ *
+ * Separate from {@link downloadPackage} because the ceilings are three orders of
+ * magnitude apart: a plugin may be 25 MB, an icon may not be half a megabyte,
+ * and applying the package limit here would let the registry hand the cache an
+ * arbitrary blob to keep forever.
+ */
+export async function downloadIcon(url: string): Promise<Buffer> {
+    const response = await fetchWithTimeout(url);
+    if (!response.ok) {
+        throw new Error(`Plugin icon download failed (${response.status} ${response.statusText})`);
+    }
+    const declaredLength = Number(response.headers.get("content-length"));
+    if (Number.isFinite(declaredLength) && declaredLength > PLUGIN_ICON_MAX_BYTES) {
+        throw new Error("Plugin icon exceeds the maximum size");
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.byteLength > PLUGIN_ICON_MAX_BYTES) {
+        throw new Error("Plugin icon exceeds the maximum size");
+    }
+    return buffer;
 }
