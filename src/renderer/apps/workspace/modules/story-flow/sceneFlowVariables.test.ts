@@ -7,6 +7,7 @@ import {
     collectBranchEffects,
     collectSceneEffects,
     computeVariableRanges,
+    foldRouteVariableValue,
     listNumericStoryVariables,
     readSetVariableDelta,
 } from "./sceneFlowVariables";
@@ -513,6 +514,113 @@ describe("computeVariableRanges", () => {
         ], "a");
 
         expect(rangesOf(story, "scene:var_hp")).toEqual({ a: "?", b: "3..3" });
+    });
+});
+
+describe("foldRouteVariableValue", () => {
+    /**
+     * A fork nested inside an option: the jump belongs to `if1`, so the route's arm is `if1` and the
+     * option's own `+2` is only reachable through `if1`'s ancestry. This is the shape that made the
+     * rail's subtree-only fold disagree with the scene chip.
+     */
+    function nestedRouteDocument(endingWrites: StoryBlock[] = []): StoryDocument {
+        return document([
+            scene("a", "Crossroads", [
+                affectionDecl,
+                choiceBlock("c1", ["o1"]),
+                choiceOptionBlock("o1", ["w1", "if1"], "跟她走", "c1"),
+                setExpressionBlock("w1", stepAst("+", 2), "好感 + (2)", "o1"),
+                conditionBranchBlock("if1", ["w2", "j1"], "if", "好感 >= 1", "o1"),
+                setExpressionBlock("w2", stepAst("+", 3), "好感 + (3)", "if1"),
+                jumpBlock("j1", "b", "if1"),
+            ]),
+            scene("b", "River", endingWrites),
+        ], "a");
+    }
+
+    it("agrees with the ending scene's range when one route reaches it", () => {
+        // The equivalence is the whole point of the function living in this module: both readings fold
+        // the same effects, so the rail's "final value" and the map's chip cannot drift apart.
+        const story = nestedRouteDocument();
+        const graph = buildSceneFlowGraph(story);
+        const route = { sceneIds: ["a", "b"], branchIds: ["scene-flow:branch:if1"] };
+
+        expect(foldRouteVariableValue(graph, story, AFFECTION_KEY, route)).toEqual({ kind: "known", min: 5, max: 5 });
+        // 2 from the option's own spine, 3 from the arm that carried the jump - the subtree-only fold
+        // this replaced reported 3, and the chip said 5.
+        expect(computeVariableRanges(graph, story, AFFECTION_KEY).get("b")).toEqual({ kind: "known", min: 5, max: 5 });
+    });
+
+    it("is the value on leaving the ending, not on arriving at it", () => {
+        // The rail calls this a route's *final* value, so a counter the last scene moves is part of it.
+        const story = nestedRouteDocument([setExpressionBlock("w3", stepAst("+", 4), "好感 + (4)")]);
+        const graph = buildSceneFlowGraph(story);
+        const route = { sceneIds: ["a", "b"], branchIds: ["scene-flow:branch:if1"] };
+
+        expect(foldRouteVariableValue(graph, story, AFFECTION_KEY, route)).toEqual({ kind: "known", min: 9, max: 9 });
+        expect(computeVariableRanges(graph, story, AFFECTION_KEY).get("b")).toEqual({ kind: "known", min: 5, max: 5 });
+    });
+
+    it("refuses a route it cannot fold rather than reporting what it managed", () => {
+        const story = nestedRouteDocument();
+        const graph = buildSceneFlowGraph(story);
+
+        // No declared default: nothing to count from.
+        const noDefault = document([
+            scene("a", "Opening", [declarationBlock(AFFECTION, "saved", "好感", "number"), jumpBlock("j1", "b")]),
+            scene("b", "River", []),
+        ], "a");
+        expect(foldRouteVariableValue(buildSceneFlowGraph(noDefault), noDefault, AFFECTION_KEY, {
+            sceneIds: ["a", "b"], branchIds: [],
+        })).toEqual({ kind: "unknown" });
+
+        // An arm the graph does not know, and an arm that leaves a scene the route never visits: both
+        // are routes this fold cannot place in order.
+        expect(foldRouteVariableValue(graph, story, AFFECTION_KEY, { sceneIds: ["a", "b"], branchIds: ["ghost"] }))
+            .toEqual({ kind: "unknown" });
+        expect(foldRouteVariableValue(graph, story, AFFECTION_KEY, {
+            sceneIds: ["b"], branchIds: ["scene-flow:branch:if1"],
+        })).toEqual({ kind: "unknown" });
+    });
+
+    it("will not name a single value for a write a deeper fork decides", () => {
+        // A range widens to hold both worlds; one final number cannot say "2 or 5", and choosing would
+        // be guessing at the condition.
+        const story = document([
+            scene("a", "Crossroads", [
+                affectionDecl,
+                choiceBlock("c1", ["o1"]),
+                choiceOptionBlock("o1", ["w1", "if1", "j1"], "跟她走", "c1"),
+                setExpressionBlock("w1", stepAst("+", 2), "好感 + (2)", "o1"),
+                conditionBranchBlock("if1", ["w2"], "if", "好感 >= 1", "o1"),
+                setExpressionBlock("w2", stepAst("+", 3), "好感 + (3)", "if1"),
+                jumpBlock("j1", "b", "o1"),
+            ]),
+            scene("b", "River", []),
+        ], "a");
+        const graph = buildSceneFlowGraph(story);
+
+        expect(foldRouteVariableValue(graph, story, AFFECTION_KEY, {
+            sceneIds: ["a", "b"], branchIds: ["scene-flow:branch:o1"],
+        })).toEqual({ kind: "unknown" });
+        // The map still answers, because a range can hold both.
+        expect(computeVariableRanges(graph, story, AFFECTION_KEY).get("b")).toEqual({ kind: "known", min: 2, max: 5 });
+    });
+
+    it("counts an arm the route ended on, which leaves no scene", () => {
+        // A fall-through option with nowhere to continue is still an option the player picked.
+        const story = document([
+            scene("a", "Crossroads", [
+                affectionDecl,
+                choiceBlock("c1", ["o1"]),
+                choiceOptionBlock("o1", ["w1"], "留下", "c1"),
+                setExpressionBlock("w1", stepAst("+", 7), "好感 + (7)", "o1"),
+            ]),
+        ], "a");
+
+        expect(foldRouteVariableValue(buildSceneFlowGraph(story), story, AFFECTION_KEY, {
+            sceneIds: ["a"], branchIds: ["scene-flow:branch:o1"],
+        })).toEqual({ kind: "known", min: 7, max: 7 });
     });
 });
 

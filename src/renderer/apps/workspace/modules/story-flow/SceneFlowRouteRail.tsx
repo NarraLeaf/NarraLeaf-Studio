@@ -8,7 +8,7 @@ import { formatSceneFlowArmLabel } from "./SceneFlowBranchNode";
 import type { SceneFlowBranchNodeModel, SceneFlowGraph } from "./sceneFlowModel";
 import { MAX_ROUTES, type SceneFlowRoute, type SceneFlowRouteMap } from "./sceneFlowRoutes";
 import {
-    branchDeltaFor,
+    foldRouteVariableValue,
     type SceneFlowDelta,
     type SceneFlowNumericVariable,
     type SceneFlowRange,
@@ -106,68 +106,6 @@ export function formatSceneFlowVariableChip(
         min: formatNumber(range.min),
         max: formatNumber(range.max),
     });
-}
-
-/**
- * What the focused variable is worth when this route ends.
- *
- * Folded in path order — each scene's own writes, then the arm taken to leave it — seeded with the
- * declaration's default. Three rules make the answer honest rather than merely printable:
- *
- * - **No default, no answer.** A number the author never stated is a number nobody knows.
- * - **`unknown` is absorbing.** One unreadable write anywhere on the path makes the whole result
- *   `?`; the fold does not resume counting from the next readable one. This is the payoff of the
- *   whole feature ("which choices give me the affection route"), and a number reached by guessing at
- *   one step is worse than no number, because the author plans against it.
- * - **An uncertain effect counts as unreadable**, which is what {@link branchDeltaFor} already
- *   returns for one: a write under a fork *deeper* than the arm happens on some runs and not others,
- *   and a single final value cannot say "one of these".
- *
- * One approximation is inherited from `collectBranchEffects` and stated rather than hidden: it is
- * subtree-only, so when a jump belongs to an `if` arm nested inside an option, the *option's* own
- * spine writes are not on this fold. `computeVariableRanges` compensates internally, but its
- * per-arm counterpart is module-private, and a second re-derivation of arm ancestry here is exactly
- * the drift the model's header warns about. The scene chips remain the accurate reading.
- */
-export function foldRouteVariable(route: SceneFlowRoute, focus: SceneFlowVariableFocus): SceneFlowRange {
-    if (focus.variable.defaultValue === null) {
-        return { kind: "unknown" };
-    }
-    let value = focus.variable.defaultValue;
-    const apply = (effects: SceneFlowVariableEffect[] | undefined): boolean => {
-        const delta = effects ? branchDeltaFor(effects, focus.variable.key) : null;
-        if (!delta) {
-            return true;
-        }
-        if (delta.op === "unknown") {
-            return false;
-        }
-        value = delta.op === "set" ? delta.value : value + delta.amount;
-        return true;
-    };
-
-    for (let index = 0; index < route.sceneIds.length; index++) {
-        // `sceneIds` promises no repeats, so a scene's spine is applied exactly once.
-        if (!apply(focus.sceneEffects.get(route.sceneIds[index]))) {
-            return { kind: "unknown" };
-        }
-        const branchId = route.steps[index]?.branchId;
-        if (branchId && !apply(focus.branchEffects.get(branchId))) {
-            return { kind: "unknown" };
-        }
-    }
-
-    // `branchIds` runs one longer than the arms in `steps` when the path ended *on* an arm - a
-    // fall-through option with nowhere to continue, or the arm that looped back. It was taken, so
-    // its writes ran; dropping it would report the last decision of a route as having no effect.
-    const stepArmCount = route.steps.filter(step => step.branchId !== null).length;
-    if (route.branchIds.length === stepArmCount + 1) {
-        if (!apply(focus.branchEffects.get(route.branchIds[route.branchIds.length - 1]))) {
-            return { kind: "unknown" };
-        }
-    }
-
-    return { kind: "known", min: value, max: value };
 }
 
 /** A scene paths stop in, and the paths that stop there. */
@@ -397,7 +335,7 @@ export function SceneFlowRouteRail({
                                                 className="shrink-0 rounded-sm bg-surface-sunken px-1 text-fg tabular-nums"
                                                 title={t("story.flow.variable.finalTitle")}
                                             >
-                                                {routeValueChip(route, focus)}
+                                                {routeValueChip(graph, document, route, focus)}
                                             </span>
                                         )}
                                     </button>
@@ -449,8 +387,13 @@ export function SceneFlowRouteRail({
     );
 }
 
-/** `?` rather than a number the fold had to guess at — see {@link foldRouteVariable}. */
-function routeValueChip(route: SceneFlowRoute, focus: SceneFlowVariableFocus): string {
-    const folded = foldRouteVariable(route, focus);
+/** `?` rather than a number the fold had to guess at — see {@link foldRouteVariableValue}. */
+function routeValueChip(
+    graph: SceneFlowGraph,
+    document: StoryDocument,
+    route: SceneFlowRoute,
+    focus: SceneFlowVariableFocus,
+): string {
+    const folded = foldRouteVariableValue(graph, document, focus.variable.key, route);
     return folded.kind === "known" ? formatNumber(folded.min) : "?";
 }

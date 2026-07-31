@@ -41,7 +41,7 @@ import {
     storyPersistentDefs,
     storyVariableRefKey,
 } from "@shared/types/story";
-import type { SceneFlowGraph } from "./sceneFlowModel";
+import type { SceneFlowBranchNodeModel, SceneFlowGraph } from "./sceneFlowModel";
 
 /**
  * What one `setVariable` row does to its target.
@@ -229,6 +229,39 @@ function collectWritesByScene(document: StoryDocument): Map<StorySceneId, SceneF
     return byScene;
 }
 
+type SceneFlowDocumentIndex = {
+    writesByScene: Map<StorySceneId, SceneFlowWrite[]>;
+    numericVariables: SceneFlowNumericVariable[];
+};
+
+/**
+ * The whole-document scan every entry point below starts from, memoized on the document object.
+ *
+ * {@link foldRouteVariableValue} is called once per route row — up to `MAX_ROUTES` of them in one
+ * render — and walking every block of every scene that many times is not something a rail can
+ * afford. Keying on document *identity* is sound for exactly the reason `SceneFlowTab` already
+ * memoizes the graph, the variable list and the effect maps on `[document]`: a story edit replaces
+ * the document object rather than mutating it. If that ever stopped being true, the graph on screen
+ * would be stale before this cache was.
+ *
+ * Nothing here is handed out directly — callers get freshly built effects — so the cached writes
+ * cannot be mutated from outside.
+ */
+const documentIndexCache = new WeakMap<StoryDocument, SceneFlowDocumentIndex>();
+
+function documentIndex(document: StoryDocument): SceneFlowDocumentIndex {
+    const cached = documentIndexCache.get(document);
+    if (cached) {
+        return cached;
+    }
+    const index: SceneFlowDocumentIndex = {
+        writesByScene: collectWritesByScene(document),
+        numericVariables: listNumericStoryVariables(document),
+    };
+    documentIndexCache.set(document, index);
+    return index;
+}
+
 function effectOf(write: SceneFlowWrite, certain: boolean): SceneFlowVariableEffect {
     return { variableKey: write.variableKey, delta: write.delta, certain };
 }
@@ -251,7 +284,7 @@ export function collectBranchEffects(
     graph: SceneFlowGraph,
     document: StoryDocument,
 ): Map<string, SceneFlowVariableEffect[]> {
-    const writesByScene = collectWritesByScene(document);
+    const { writesByScene } = documentIndex(document);
     const effectsByBranch = new Map<string, SceneFlowVariableEffect[]>();
     for (const branch of graph.branches) {
         const effects: SceneFlowVariableEffect[] = [];
@@ -282,7 +315,7 @@ export function collectBranchEffects(
  */
 export function collectSceneEffects(document: StoryDocument): Map<StorySceneId, SceneFlowVariableEffect[]> {
     const effectsByScene = new Map<StorySceneId, SceneFlowVariableEffect[]>();
-    for (const [sceneId, writes] of collectWritesByScene(document)) {
+    for (const [sceneId, writes] of documentIndex(document).writesByScene) {
         const effects = writes.filter(write => write.armChain.length === 0).map(write => effectOf(write, true));
         if (effects.length > 0) {
             effectsByScene.set(sceneId, effects);
@@ -467,6 +500,20 @@ function isChainSuffix(shorter: readonly StoryBlockId[], longer: readonly StoryB
  * is what the arm's own chip reports. This answers "what is the counter worth on arrival", which is a
  * different question about the same edge.
  */
+function armTraversalEffects(
+    document: StoryDocument,
+    writesByScene: Map<StorySceneId, SceneFlowWrite[]>,
+    branch: SceneFlowBranchNodeModel,
+): SceneFlowVariableEffect[] {
+    const scene = document.scenes[branch.sceneId];
+    const armBlock = scene?.blocks[branch.blockId];
+    // Nearest first, and the arm itself is nearest of all: `[inner if, outer option]`.
+    const armChainWithSelf = armBlock
+        ? [branch.blockId, ...readAncestry(scene, armBlock).armChain]
+        : [branch.blockId];
+    return traversalEffects(writesByScene.get(branch.sceneId) ?? [], armChainWithSelf);
+}
+
 function traversalEffects(
     writes: readonly SceneFlowWrite[],
     armChainWithSelf: readonly StoryBlockId[],
@@ -578,7 +625,7 @@ export function computeVariableRanges(
     const sceneIds = graph.nodes.map(node => node.sceneId);
     const ranges = new Map<StorySceneId, SceneFlowRange>(sceneIds.map(id => [id, UNKNOWN_RANGE]));
 
-    const declaration = listNumericStoryVariables(document).find(variable => variable.key === variableKey);
+    const declaration = documentIndex(document).numericVariables.find(variable => variable.key === variableKey);
     if (!declaration || declaration.defaultValue === null) {
         // Either the key names nothing numeric in this document (a deleted row, a blueprint-declared
         // persistent) or the row states no starting number. Both leave the walk with nothing to seed.
@@ -604,7 +651,7 @@ export function computeVariableRanges(
         return ranges;
     }
 
-    const writesByScene = collectWritesByScene(document);
+    const { writesByScene } = documentIndex(document);
     const sceneEffects = collectSceneEffects(document);
 
     // One traversal per way of getting from a scene to a scene, because that is the granularity the
@@ -624,16 +671,10 @@ export function computeVariableRanges(
         }
         coveredJumps.set(key, covered);
 
-        const scene = document.scenes[branch.sceneId];
-        const armBlock = scene?.blocks[branch.blockId];
-        // Nearest first, and the arm itself is nearest of all: `[inner if, outer option]`.
-        const armChainWithSelf = armBlock
-            ? [branch.blockId, ...readAncestry(scene, armBlock).armChain]
-            : [branch.blockId];
         traversals.push({
             source: branchEdge.sourceSceneId,
             target: branchEdge.target,
-            effects: traversalEffects(writesByScene.get(branch.sceneId) ?? [], armChainWithSelf),
+            effects: armTraversalEffects(document, writesByScene, branch),
         });
     }
     for (const edge of graph.edges) {
@@ -701,4 +742,93 @@ export function computeVariableRanges(
         }
     }
     return ranges;
+}
+
+/**
+ * What the focused variable is worth when one enumerated route ends — the number the route rail
+ * sorts by, and the payoff of the whole layer ("which choices give me the 好感 route").
+ *
+ * **Final, not on-arrival**: the ending scene's own spine writes are applied, because the rail labels
+ * this the route's final value and a counter the last scene moves is part of what the player leaves
+ * with. It therefore equals {@link computeVariableRanges}'s arrival range for that ending exactly
+ * when the ending writes nothing of its own and one route reaches it — and it is folded from the
+ * *same* effect source (`armTraversalEffects`: the arm's subtree plus the spines of the arms it is
+ * nested inside), which is the point of it living here. The rail folding `collectBranchEffects`
+ * instead was subtree-only, so a story with a fork nested inside an option had the route's value and
+ * the ending's chip disagree — two readings of one number, which is the drift
+ * `storyRuntimeDebugModel`'s header exists to warn about.
+ *
+ * Honesty rules, all absorbing — one `?` anywhere on the path is the whole answer:
+ *
+ * - No declared default is no answer. A number the author never stated is not zero.
+ * - An unreadable write makes the route unreadable. The fold does not resume at the next legible one.
+ * - **An uncertain write counts as unreadable.** Unlike a range, which widens to hold both worlds, a
+ *   single final value cannot say "0 or 5", and picking one would be guessing at the deeper fork.
+ * - An arm the graph does not know, or one that leaves a scene this route never visits, is a route
+ *   this function cannot place in order — `unknown` rather than a value folded from what was left.
+ *
+ * Takes the two fields it uses rather than `SceneFlowRoute`, so this module never depends on
+ * `sceneFlowRoutes.ts` (which already depends on this one's siblings).
+ */
+export function foldRouteVariableValue(
+    graph: SceneFlowGraph,
+    document: StoryDocument,
+    variableKey: string,
+    route: { sceneIds: readonly StorySceneId[]; branchIds: readonly string[] },
+): SceneFlowRange {
+    const { writesByScene, numericVariables } = documentIndex(document);
+    const declaration = numericVariables.find(variable => variable.key === variableKey);
+    if (!declaration || declaration.defaultValue === null) {
+        return UNKNOWN_RANGE;
+    }
+
+    // Keyed by the scene the arm leaves. A route takes at most one arm per scene: `sceneIds` promises
+    // no repeats, each step's arm is the one that owns that scene's exit, and the trailing arm a
+    // route can end *on* belongs to the ending scene, which no step leaves.
+    const branchByNodeId = new Map(graph.branches.map(branch => [branch.id, branch]));
+    const armBySceneId = new Map<StorySceneId, SceneFlowBranchNodeModel>();
+    for (const branchId of route.branchIds) {
+        const branch = branchByNodeId.get(branchId);
+        if (!branch) {
+            return UNKNOWN_RANGE;
+        }
+        armBySceneId.set(branch.sceneId, branch);
+    }
+
+    const sceneEffects = collectSceneEffects(document);
+    let value = declaration.defaultValue;
+    let armsApplied = 0;
+    const apply = (effects: readonly SceneFlowVariableEffect[]): boolean => {
+        for (const effect of effects) {
+            if (effect.variableKey !== variableKey) {
+                continue;
+            }
+            if (effect.delta.op === "unknown" || !effect.certain) {
+                return false;
+            }
+            value = effect.delta.op === "set" ? effect.delta.value : value + effect.delta.amount;
+        }
+        return true;
+    };
+
+    for (const sceneId of route.sceneIds) {
+        // Scene spine first, then the arm taken out of it — the order `computeVariableRanges` applies
+        // them in, and the order the author wrote them in.
+        if (!apply(sceneEffects.get(sceneId) ?? [])) {
+            return UNKNOWN_RANGE;
+        }
+        const arm = armBySceneId.get(sceneId);
+        if (arm) {
+            armsApplied += 1;
+            if (!apply(armTraversalEffects(document, writesByScene, arm))) {
+                return UNKNOWN_RANGE;
+            }
+        }
+    }
+    if (armsApplied !== armBySceneId.size) {
+        // An arm on the route left a scene the route never lists. Nothing here can say where in the
+        // sequence its writes belong, and folding the rest would report a number missing one.
+        return UNKNOWN_RANGE;
+    }
+    return { kind: "known", min: value, max: value };
 }
