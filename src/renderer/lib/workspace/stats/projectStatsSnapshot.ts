@@ -20,7 +20,7 @@ import {
     extractUiTranslationRows,
     type TranslatableUnitRef,
 } from "@/lib/workspace/services/localization/localizationModel";
-import { countWords } from "@/lib/workspace/stats/wordCount";
+import { countBlockWords } from "@/lib/workspace/stats/storyTextStats";
 import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene } from "@shared/types/story";
 import { savedVariableDefs, sceneVariableDefs } from "@shared/types/story";
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
@@ -112,6 +112,11 @@ async function loadStoryDocuments(ctx: WorkspaceContext): Promise<StoryDocument[
     return documents;
 }
 
+/**
+ * Walk one scene for the line tallies and its word count. What counts as a word lives in
+ * `countBlockWords`, shared with the status bar's per-scene count so the project total and the
+ * scene total can never disagree about the same text.
+ */
 function scanScene(scene: StoryScene): SceneScan {
     const scan: SceneScan = {
         dialogueLines: 0,
@@ -127,14 +132,13 @@ function scanScene(scene: StoryScene): SceneScan {
             return;
         }
         visited.add(blockId);
+        scan.words += countBlockWords(block);
         if (block.kind === "nodeAction") {
             const payload = block.payload;
             if (payload.action === "narration") {
                 scan.narrationLines += 1;
-                scan.words += countWords(payload.text.value);
             } else if (payload.action === "dialogue") {
                 scan.dialogueLines += 1;
-                scan.words += countWords(payload.text.value);
             } else if (payload.action === "choice") {
                 scan.choices += 1;
             } else if (payload.action === "choiceOption") {

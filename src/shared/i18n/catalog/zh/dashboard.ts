@@ -73,6 +73,7 @@ export const dashboard = {
             removed: "{date} · 删减 {words}",
             unchanged: "{date} · 无变化",
             start: "{date} · 统计从这天开始，没有可对比的基准",
+            rebased: "{date} · 字数统计口径在这天变更，与前一天不可比",
             untracked: "{date} · 早于统计开始时间",
         },
     },

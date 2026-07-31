@@ -75,6 +75,7 @@ export const dashboard = {
             removed: "{date} · {words} removed",
             unchanged: "{date} · no change",
             start: "{date} · tracking started, so this day has no baseline to compare against",
+            rebased: "{date} · the word count rule changed, so this day is not comparable to the one before it",
             untracked: "{date} · before tracking started",
         },
     },
