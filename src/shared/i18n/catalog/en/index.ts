@@ -41,6 +41,7 @@ import { dialogs } from "./dialogs";
 import { defaultDoc } from "./defaultDoc";
 import { build } from "./build";
 import { dashboard } from "./dashboard";
+import { lint } from "./lint";
 
 export const en = {
     common,
@@ -75,4 +76,5 @@ export const en = {
     defaultDoc,
     build,
     dashboard,
+    lint,
 } as const;
