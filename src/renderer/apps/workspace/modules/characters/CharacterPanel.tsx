@@ -18,7 +18,8 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import { Services } from "@/lib/workspace/services/services";
 import { FolderPlus, MoreVertical, RefreshCw, Tag, User, UserPlus, Users } from "lucide-react";
-import { useCharacterFocus } from "./state/useCharacterFocus";
+import { isReadableAccentColor } from "../story/scene-editor/storySceneBlockUtils";
+import { syncCharacterEditorTabTitle, useCharacterFocus } from "./state/useCharacterFocus";
 
 /** The one character-panel menu row that only reads: re-reading the character list off disk. */
 const FREEZE_READ_ONLY_CHARACTER_MENU_IDS: ReadonlySet<string> = new Set(["panel-refresh"]);
@@ -37,6 +38,12 @@ type CharacterItem = {
     thumbnailId: string | null;
     nicknames: string[];
     tags: string[];
+    /**
+     * The editor accent, already through the readability guard — `undefined` when there is none or
+     * when the one set would vanish into one of the two themes' surfaces. Resolved here rather than
+     * at the row so the row cannot forget the guard.
+     */
+    color?: string;
     source: Character;
 };
 
@@ -110,6 +117,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                 thumbnailId: profile.thumbnail,
                 nicknames: profile.nicknames,
                 tags: profile.tags,
+                color: profile.color && isReadableAccentColor(profile.color) ? profile.color : undefined,
                 source: character,
             };
         });
@@ -327,13 +335,16 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
     }, [characterService, inputDialog, loadCharacters, closeMenu, t]);
 
     const handleRenameCharacter = useCallback(async (item: CharacterItem) => {
-        if (!characterService || !inputDialog) return;
+        if (!characterService || !inputDialog || !context) return;
         const nextName = await inputDialog.showRenameDialog(item.name, "character");
         if (!nextName) return;
         characterService.renameCharacter(item.id, nextName);
+        // The tab's title was a snapshot taken at open time, so a rename left it on the old name
+        // until the tab was closed and reopened.
+        syncCharacterEditorTabTitle(context.services.get<UIService>(Services.UI), item.id, nextName);
         loadCharacters();
         closeMenu();
-    }, [characterService, inputDialog, loadCharacters, closeMenu]);
+    }, [characterService, context, inputDialog, loadCharacters, closeMenu]);
 
     const handleDeleteCharacter = useCallback(async (item: CharacterItem) => {
         if (!characterService || !context) return;
@@ -551,7 +562,11 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                     )}
                 </div>
                 <div className="min-w-0 flex-1">
-                    <div className="text-sm text-fg truncate">{item.name}</div>
+                    {/* The accent is a real field the story editor already renders on nametags; the
+                        list was the one place a character's colour could be set and never seen. */}
+                    <div className="text-sm text-fg truncate" style={item.color ? { color: item.color } : undefined}>
+                        {item.name}
+                    </div>
                     {item.nicknames.length > 0 && (
                         <div className="text-xs text-fg-subtle truncate">{item.nicknames.join(", ")}</div>
                     )}

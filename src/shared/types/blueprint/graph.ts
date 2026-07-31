@@ -798,6 +798,14 @@ export const BLUEPRINT_NODE_TYPE_GAME_HISTORY_UNDO_LAST = "blueprint.game.histor
 export const BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG = "blueprint.game.getNametag" as const;
 /** The speaking character's dialog avatar for the differential they are currently wearing. */
 export const BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR = "blueprint.game.getSpeakerAvatar" as const;
+/** The speaking character's authored accent colour. Speaker-scoped, exactly like Get Nametag. */
+export const BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR = "blueprint.game.getSpeakerColor" as const;
+/**
+ * Any character's data, by reference - the addressable sibling of the speaker-scoped getters above.
+ * The character is picked with a `characterId` param (a `"characters"` dynamic select), not a pin,
+ * so no new value type was needed for it.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER = "blueprint.game.getCharacter" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS = "blueprint.game.getNotifications" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT = "blueprint.game.getChoiceCount" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE = "blueprint.game.isNvlMode" as const;

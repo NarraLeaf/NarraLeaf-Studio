@@ -32,8 +32,20 @@ function scene(blocks: StoryBlock[], rootBlockIds: StoryBlockId[]): StoryScene {
 
 const noLookups: StoryRowLookups = { character: () => null };
 
-function lookupsFor(names: Record<string, string>): StoryRowLookups {
-    return { character: id => (names[id] ? { name: names[id] } : null) };
+function lookupsFor(names: Record<string, string>, colors: Record<string, string> = {}): StoryRowLookups {
+    return {
+        character: id => (names[id] ? { name: names[id], ...(colors[id] ? { color: colors[id] } : {}) } : null),
+    };
+}
+
+function dialogueBlock(characterId: string): StoryBlock {
+    return {
+        id: "d",
+        kind: "nodeAction",
+        parentId: null,
+        childrenIds: [],
+        payload: { action: "dialogue", characterId, text: { textId: "t", value: "hi", role: "dialogue" } },
+    };
 }
 
 describe("projectSceneTimeline", () => {
@@ -62,16 +74,33 @@ describe("projectSceneTimeline", () => {
     });
 
     it("carries the speaker beside the line rather than baked into it (the panel prefixes it)", () => {
-        const dialogue: StoryBlock = {
+        const rows = projectSceneTimeline(scene([dialogueBlock("c1")], ["d"]), lookupsFor({ c1: "Alice" }));
+        expect(rows[0]!.summary).toBe("hi");
+        expect(rows[0]!.speaker).toBe("Alice");
+        expect(rows[0]!.speakerColor).toBeNull();
+    });
+
+    it("carries the speaker's accent colour beside the name", () => {
+        const rows = projectSceneTimeline(
+            scene([dialogueBlock("c1")], ["d"]),
+            lookupsFor({ c1: "Alice" }, { c1: "#40A8C4" }),
+        );
+        expect(rows[0]!.speakerColor).toBe("#40A8C4");
+    });
+
+    // A temp speaker (a bare name with no character record) resolves through no lookup at all, so
+    // there is nothing to tint - and the row must still name them.
+    it("leaves a temp speaker uncoloured", () => {
+        const temp: StoryBlock = {
             id: "d",
             kind: "nodeAction",
             parentId: null,
             childrenIds: [],
-            payload: { action: "dialogue", characterId: "c1", text: { textId: "t", value: "hi", role: "dialogue" } },
+            payload: { action: "dialogue", speakerName: "Stranger", text: { textId: "t", value: "hi", role: "dialogue" } },
         };
-        const rows = projectSceneTimeline(scene([dialogue], ["d"]), lookupsFor({ c1: "Alice" }));
-        expect(rows[0]!.summary).toBe("hi");
-        expect(rows[0]!.speaker).toBe("Alice");
+        const rows = projectSceneTimeline(scene([temp], ["d"]), noLookups);
+        expect(rows[0]!.speaker).toBe("Stranger");
+        expect(rows[0]!.speakerColor).toBeNull();
     });
 
     it("gives prose rows no colour bar and staging rows the editor's hue", () => {

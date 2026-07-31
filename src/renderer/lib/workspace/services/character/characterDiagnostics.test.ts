@@ -17,10 +17,15 @@ function codes(appearance: CharacterAppearance, sizes: Record<string, LayerSize>
 }
 
 describe("collectCharacterDiagnostics", () => {
-    it("says nothing about a preset character", () => {
+    it("says nothing about a preset character whose poses all have art", () => {
         const appearance = new CharacterAppearance(emptyAppearance("preset"));
-        appearance.createPose("Idle");
+        const pose = appearance.createPose("Idle")!;
+        appearance.setPoseAsset(pose.id, "asset-1");
         expect(codes(appearance)).toEqual([]);
+    });
+
+    it("says nothing about a puppet, whose interior belongs to a runtime", () => {
+        expect(codes(new CharacterAppearance(emptyAppearance("puppet")))).toEqual([]);
     });
 
     it("leaves a scoped layer alone but reports one that draws nothing at all", () => {
@@ -78,6 +83,46 @@ describe("collectCharacterDiagnostics", () => {
         appearance.rename(angry, "happy");
         const duplicate = collectCharacterDiagnostics(appearance).find(d => d.code === "duplicateTag");
         expect(duplicate).toMatchObject({ severity: "warning", target: { kind: "axis", id: axis.id } });
+    });
+});
+
+describe("preset characters", () => {
+    it("reports a pose with no art, which is otherwise silent everywhere", () => {
+        const appearance = new CharacterAppearance(emptyAppearance("preset"));
+        const pose = appearance.createPose("Idle")!;
+        const found = collectCharacterDiagnostics(appearance).find(d => d.code === "poseNoImage");
+        expect(found).toMatchObject({ severity: "error", target: { kind: "pose", id: pose.id } });
+    });
+
+    it("reports a character with no poses at all, and says nothing else about it", () => {
+        const appearance = new CharacterAppearance(emptyAppearance("preset"));
+        expect(codes(appearance)).toEqual(["noPoses"]);
+    });
+
+    it("reports a default pose that was deleted, which the getter silently papers over", () => {
+        const appearance = new CharacterAppearance(emptyAppearance("preset"));
+        const first = appearance.createPose("Idle")!;
+        const second = appearance.createPose("Angry")!;
+        appearance.setPoseAsset(first.id, "asset-1");
+        appearance.setPoseAsset(second.id, "asset-2");
+        appearance.setDefaultPoseId(second.id);
+        expect(codes(appearance)).not.toContain("defaultPoseMissing");
+
+        // Written by hand rather than through removePose, which repairs the declaration itself -
+        // the dangling id is what a hand-edited or migrated store can still carry.
+        appearance.setDefaultPoseId("p-gone");
+        const found = collectCharacterDiagnostics(appearance).find(d => d.code === "defaultPoseMissing");
+        expect(found).toMatchObject({ severity: "warning", values: { name: "Idle" } });
+    });
+
+    it("reports two poses sharing a display name, which no picker can tell apart", () => {
+        const appearance = new CharacterAppearance(emptyAppearance("preset"));
+        const first = appearance.createPose("Idle")!;
+        const second = appearance.createPose("idle")!;
+        appearance.setPoseAsset(first.id, "asset-1");
+        appearance.setPoseAsset(second.id, "asset-2");
+        const found = collectCharacterDiagnostics(appearance).find(d => d.code === "duplicatePose");
+        expect(found).toMatchObject({ severity: "warning", target: { kind: "pose", id: second.id } });
     });
 });
 

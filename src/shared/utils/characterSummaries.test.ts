@@ -66,6 +66,35 @@ describe("mapCharacterStoreEntriesToSummaries", () => {
         expect(summary.appearance).not.toHaveProperty("defaultState");
     });
 
+    it("carries the accent colour verbatim, trimmed", () => {
+        const [summary] = mapCharacterStoreEntriesToSummaries([entry({
+            id: "char-alice",
+            name: "Alice",
+            color: "  #40A8C4  ",
+        })]);
+
+        expect(summary.color).toBe("#40A8C4");
+    });
+
+    // Readability is a per-surface question: Studio chrome bands it, the runtime nametag takes the
+    // author's word. A mapper that pre-judged the value would take that decision away from both.
+    it("does not judge whether the colour is readable", () => {
+        const [summary] = mapCharacterStoreEntriesToSummaries([entry({ id: "char-alice", color: "#FFFFFF" })]);
+
+        expect(summary.color).toBe("#FFFFFF");
+    });
+
+    it.each([
+        ["empty", ""],
+        ["whitespace-only", "   "],
+        ["missing", undefined],
+        ["non-string", 0x40a8c4],
+    ])("omits a %s colour rather than carrying a blank one", (_label, color) => {
+        const [summary] = mapCharacterStoreEntriesToSummaries([entry({ id: "char-alice", color })]);
+
+        expect(summary).not.toHaveProperty("color");
+    });
+
     it("skips entries with no usable id", () => {
         expect(mapCharacterStoreEntriesToSummaries([
             entry({ id: "", name: "Alice" }),

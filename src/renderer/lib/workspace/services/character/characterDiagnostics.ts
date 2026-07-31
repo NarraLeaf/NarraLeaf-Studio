@@ -3,12 +3,21 @@ import { characterAvatarAxisIds } from "@shared/utils/characterAvatar";
 
 export type LayerSize = { width: number; height: number };
 
+/** What a diagnostic row selects when it is clicked. */
+export type CharacterDiagnosticTarget = { kind: "layer" | "axis" | "pose"; id: string };
+
 export type CharacterDiagnostic = {
     /** Which message to render. The editor owns the wording; this module owns the finding. */
-    code: "offCanvas" | "constantNoImage" | "layerNoImage" | "axisNoTags" | "axisUnused" | "duplicateTag" | "occluded" | "avatarCombinations";
+    code:
+        | "offCanvas" | "constantNoImage" | "layerNoImage" | "axisNoTags" | "axisUnused" | "duplicateTag"
+        | "occluded" | "avatarCombinations"
+        | "poseNoImage" | "noPoses" | "defaultPoseMissing" | "duplicatePose";
     severity: "error" | "warning";
-    /** What to select when the author clicks the row. */
-    target: { kind: "layer" | "axis"; id: string };
+    /**
+     * What to select when the author clicks the row, or `null` when the finding names no single
+     * object — "this character has no poses" is about the absence, and there is nothing to jump to.
+     */
+    target: CharacterDiagnosticTarget | null;
     values: Record<string, string>;
 };
 
@@ -39,11 +48,71 @@ function format(size: LayerSize): string {
  */
 const AVATAR_COMBINATION_BUDGET = 32;
 
+/**
+ * Everything wrong with a preset appearance.
+ *
+ * A preset character used to report nothing at all, which made the one mistake it can actually make
+ * — a named pose with no art — completely silent: the pose is listed, the story row that names it
+ * compiles, and the character simply does not appear. The other three are the same class of thing:
+ * a state the editor renders as if it worked.
+ */
+function collectPresetDiagnostics(appearance: CharacterAppearance): CharacterDiagnostic[] {
+    const found: CharacterDiagnostic[] = [];
+    const poses = appearance.getPoses();
+    if (poses.length === 0) {
+        // Nothing else can be said, and everything below would say it about no poses.
+        return [{ code: "noPoses", severity: "error", target: null, values: {} }];
+    }
+
+    // `getDefaultPoseId` falls back to the first pose, so a declaration pointing at a deleted pose
+    // never surfaces through it — the *stored* value is the only place the dangling id is visible.
+    const stored = appearance.toJSON();
+    const declared = stored.kind === "preset" ? stored.defaultPoseId : null;
+    if (declared && !poses.some(pose => pose.id === declared)) {
+        found.push({
+            code: "defaultPoseMissing",
+            severity: "warning",
+            target: { kind: "pose", id: poses[0].id },
+            values: { name: poses[0].name },
+        });
+    }
+
+    const seen = new Set<string>();
+    for (const pose of poses) {
+        if (!pose.assetId) {
+            found.push({
+                code: "poseNoImage",
+                severity: "error",
+                target: { kind: "pose", id: pose.id },
+                values: { name: pose.name },
+            });
+        }
+        // Two poses of one name are not illegal — ids are what rows store — but the author has no
+        // way to tell them apart in a picker, which is where the mistake gets made.
+        const key = pose.name.trim().toLowerCase();
+        if (seen.has(key)) {
+            found.push({
+                code: "duplicatePose",
+                severity: "warning",
+                target: { kind: "pose", id: pose.id },
+                values: { name: pose.name },
+            });
+        }
+        seen.add(key);
+    }
+    return found;
+}
+
 export function collectCharacterDiagnostics(
     appearance: CharacterAppearance,
     sizes: Record<string, LayerSize> = {},
     occluded: Record<string, boolean> = {},
 ): CharacterDiagnostic[] {
+    if (appearance.getKind() === "preset") {
+        return collectPresetDiagnostics(appearance);
+    }
+    // A puppet's interior belongs to a runtime Studio cannot inspect, so there is nothing here to
+    // find that would not be a guess.
     if (appearance.getKind() !== "layered") {
         return [];
     }

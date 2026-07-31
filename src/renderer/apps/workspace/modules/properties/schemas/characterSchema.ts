@@ -7,6 +7,7 @@ import {
 } from "../framework";
 import type { Translator } from "@shared/i18n";
 import { CharacterAvatarField } from "../fields/CharacterAvatarField";
+import { CharacterColorField } from "../fields/CharacterColorField";
 
 /** Translator function, threaded into schema builders since they run outside React. */
 type TranslateFn = Translator["t"];
@@ -51,6 +52,15 @@ export const characterPropertySchema = (t: TranslateFn) =>
                 ctx.character.profile.setName(value);
             },
             order: 20,
+        },
+        {
+            // Beside the name, not down with the appearance: the accent tints the *nametag*, so it
+            // belongs to how the character is identified rather than to how it is drawn.
+            id: "color",
+            type: "custom",
+            label: t("characters.properties.color"),
+            component: CharacterColorField,
+            order: 25,
         },
         {
             id: "description",

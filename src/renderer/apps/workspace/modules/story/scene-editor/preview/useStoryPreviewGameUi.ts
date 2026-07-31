@@ -3,7 +3,16 @@ import type { Game, LiveGame } from "narraleaf-react";
 import type { ReactNode } from "react";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
-import { BLUEPRINT_GAME_NAMETAG_STATE_KEY } from "@shared/types/blueprint/hostApi";
+import {
+    BLUEPRINT_GAME_CHARACTERS_STATE_KEY,
+    BLUEPRINT_GAME_NAMETAG_STATE_KEY,
+    BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY,
+    BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY,
+} from "@shared/types/blueprint/hostApi";
+import {
+    toBlueprintCharacterInfo,
+    type BlueprintCharacterInfo,
+} from "@shared/types/blueprint/characterInfo";
 import { DEFAULT_UI_SURFACE_SIZE } from "@shared/constants/ui-editor";
 import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { BuiltinElementRenderers } from "@/lib/ui-editor/runtime/builtin";
@@ -111,6 +120,27 @@ export function useStoryPreviewGameUi(input: {
         return mapCharacterStoreEntriesToSummaries(characterService.listCharacter().map(character => character.toJSON()));
     }, [context, enabled]);
 
+    /**
+     * The blueprint-facing character table, read straight off the character service rather than off
+     * the summaries above. The summary shape is the story compiler's, and it carries only what the
+     * *engine* needs; the accent colour is editor data the compiler has no use for.
+     */
+    const characterTable = useMemo((): BlueprintCharacterInfo[] => {
+        if (!context || !enabled) {
+            return [];
+        }
+        const characterService = context.services.get<CharacterService>(Services.Character);
+        return characterService.listCharacter().flatMap(character => {
+            const info = toBlueprintCharacterInfo({
+                id: character.profile.getId(),
+                name: character.profile.getName(),
+                color: character.profile.getColor(),
+                avatarAssetId: character.profile.getDefaultAvatarAssetId(),
+            });
+            return info ? [info] : [];
+        });
+    }, [context, enabled]);
+
     // Snapshot the uidoc/blueprints into a synthetic bundle when the preview opens.
     const bundle = useMemo((): DevModeBundle | null => {
         if (!context || !enabled) {
@@ -162,6 +192,12 @@ export function useStoryPreviewGameUi(input: {
     }, [core]);
 
     const blueprintDocument = bundle?.ui.localBlueprints;
+
+    // Parity with the Dev Mode host: this mirror is what `Get Character` reads, and the dialog
+    // slot's DialogStateBridge joins it against the staged speaker id to derive `Get Speaker Color`.
+    useEffect(() => {
+        core?.scopeBridge.globalSet(BLUEPRINT_GAME_CHARACTERS_STATE_KEY, characterTable);
+    }, [core, characterTable]);
 
     const createPreviewGame = useCallback((gameInput: {
         sessionId: string;
@@ -255,16 +291,24 @@ export function useStoryPreviewGameUi(input: {
                 const nametag = readNlrCharacterName(character);
                 currentDialogNametagRef.current = nametag;
                 activeCore?.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, nametag);
+                // The preview does not translate the nametag, so the reported name *is* the source
+                // name and matches the table directly. A `/temp` speaker is in no table: null.
+                activeCore?.scopeBridge.globalSet(
+                    BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY,
+                    characterTable.find(entry => entry.name === nametag)?.id ?? null,
+                );
             });
             return () => {
                 token.cancel();
                 currentDialogNametagRef.current = null;
                 activeCore?.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, null);
+                activeCore?.scopeBridge.globalSet(BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY, null);
+                activeCore?.scopeBridge.globalSet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY, null);
             };
         };
 
         return { game, onStageNode: slots.onStageNode, wireLiveGame };
-    }, [bundle, core, designSize.height, designSize.width, rendererRegistry, widgetRuntimeStore]);
+    }, [bundle, characterTable, core, designSize.height, designSize.width, rendererRegistry, widgetRuntimeStore]);
 
     return {
         ready: Boolean(bundle && core),
