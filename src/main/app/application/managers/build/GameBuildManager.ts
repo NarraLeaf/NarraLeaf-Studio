@@ -612,7 +612,13 @@ export class GameBuildManager {
         const session: BuildSession = {
             id: crypto.randomUUID(),
             projectPath: normalizedProjectPath,
-            snapshot: { status: "preparing", startedAt: Date.now() },
+            snapshot: {
+                status: "preparing",
+                startedAt: Date.now(),
+                // Deduplicated: one platform can appear as several targets (a zip and an installer
+                // are two entries), and the snapshot names what is being built, not how many ways.
+                platforms: [...new Set(request.targets.map(target => target.platform))],
+            },
             worker: null,
             cancelled: false,
         };
@@ -629,6 +635,7 @@ export class GameBuildManager {
                 status: "error",
                 startedAt: session.snapshot.startedAt,
                 finishedAt: Date.now(),
+                platforms: session.snapshot.platforms,
                 error: message,
             };
             this.emit(session, { level: "error", source: "Build", message });
@@ -926,6 +933,7 @@ export class GameBuildManager {
             status: "done",
             startedAt: session.snapshot.startedAt,
             finishedAt: Date.now(),
+            platforms: session.snapshot.platforms,
             artifacts,
             outputDir,
         };
@@ -1685,6 +1693,7 @@ export class GameBuildManager {
             status: "error",
             startedAt: session.snapshot.startedAt,
             finishedAt: Date.now(),
+            platforms: session.snapshot.platforms,
             error: message,
         };
         if (!session.cancelled) {
