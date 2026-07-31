@@ -158,6 +158,10 @@ export class BuildService extends Service<BuildService> {
         // a run rejected by one of them still reports when it began. The dashboard's build history
         // archives each run's console output from this instant, and those checks log to it.
         const startedAt = Date.now();
+        // The checks below fail without ever reaching the main process, so nothing else will name
+        // the platforms for them - and a build that died in preflight is exactly the one an author
+        // comes back to in the dashboard's history wanting to know what it was building.
+        const platforms = [...new Set(request.targets.map(target => target.platform))];
         try {
             await this.prepareProjectForBuild();
         } catch (error) {
@@ -166,6 +170,7 @@ export class BuildService extends Service<BuildService> {
                 status: "error",
                 startedAt,
                 finishedAt: Date.now(),
+                platforms,
                 error: "Failed to save the project before building",
             });
             return this.state;
@@ -186,6 +191,7 @@ export class BuildService extends Service<BuildService> {
                 status: "error",
                 startedAt,
                 finishedAt: Date.now(),
+                platforms,
                 error: translate("build.invalidCommandSummary", { count: invalid.length }),
             });
             return this.state;
@@ -193,7 +199,7 @@ export class BuildService extends Service<BuildService> {
         // Committed: the selection is now persisted as BuildConfiguration, so
         // the draft has served its purpose and must not shadow it next time.
         this.clearDraft();
-        this.updateState({ status: "preparing", startedAt });
+        this.updateState({ status: "preparing", startedAt, platforms });
         const result = await getInterface().gameBuild.start(this.projectPath(), {
             kind: "surface",
             surfaceId: MAIN_APP_SURFACE_ID,
@@ -201,7 +207,9 @@ export class BuildService extends Service<BuildService> {
         if (result.success) {
             this.updateState(result.data.state);
         } else {
-            this.updateState({ status: "error", error: result.error });
+            // `startedAt` matters as much as the message: the dashboard archives this as a finished
+            // build, and without it the record's duration is measured from the epoch.
+            this.updateState({ status: "error", startedAt, finishedAt: Date.now(), platforms, error: result.error });
         }
         return this.state;
     }

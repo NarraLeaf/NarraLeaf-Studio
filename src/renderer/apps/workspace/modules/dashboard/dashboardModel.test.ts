@@ -40,6 +40,35 @@ describe("dashboard activity model", () => {
         expect(summary.peakDelta).toBe(120);
     });
 
+    it("does not plot a word-counter rule change as a day of writing", () => {
+        // Choice text joined the count on day -1, so the total jumps by every option the project
+        // had already accumulated. That is the rule changing, not the author writing 2,900 words.
+        const stats = statsWith(now, { [-3]: 10_000, [-2]: 10_100, [-1]: 13_000 });
+        stats.days[dayKey(now, -1)].rebased = true;
+
+        const timeline = buildActivityTimeline(stats, now.getTime());
+        const rebased = timeline.find(p => p.key === dayKey(now, -1));
+        expect(rebased?.status).toBe("rebased");
+        expect(rebased?.delta).toBeNull();
+
+        const summary = summarizeActivityWindow(getActivityWindow(timeline));
+        expect(summary.wordsWritten).toBe(100);
+        // The whole point: an unrebased day would have set the chart's scale to 2,900 and flattened
+        // every real bar against it.
+        expect(summary.peakDelta).toBe(100);
+    });
+
+    it("resumes real deltas against the rebased total the day after", () => {
+        const stats = statsWith(now, { [-3]: 10_000, [-2]: 13_000, [-1]: 13_080 });
+        stats.days[dayKey(now, -2)].rebased = true;
+
+        const timeline = buildActivityTimeline(stats, now.getTime());
+        expect(timeline.find(p => p.key === dayKey(now, -1))?.delta).toBe(80);
+        // Yesterday is a real writing day, but the rebased day behind it is unprovable, so the
+        // streak stops there rather than reaching back across the boundary.
+        expect(computeWritingStreak(timeline)).toBe(1);
+    });
+
     it("carries a gap day forward as a real zero delta inside the tracked range", () => {
         const stats = statsWith(now, { [-4]: 100, [-3]: 200, [-1]: 200 });
         const timeline = buildActivityTimeline(stats, now.getTime());
