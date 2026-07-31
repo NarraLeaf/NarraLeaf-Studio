@@ -6,6 +6,7 @@ import type {
     VcsCommitResult,
     VcsHistoryEntry,
     VcsRepositoryInfo,
+    VcsRestoreResult,
     VcsStatus,
     VcsThreeWayResult,
 } from "@shared/types/vcs";
@@ -19,11 +20,16 @@ import { IPCHandler } from "./IPCHandler";
  * VcsManager - Studio is one-project-one-window, so a project-less VCS call
  * would be ambiguous with two projects open.
  *
- * The writes here are the ones that only ever produce a revision:
- * {@link VcsInitRepositoryHandler}, {@link VcsCommitHandler} and
- * {@link VcsCheckpointHandler}. None of them can arrive at a conflict - they add to the
- * author's own branch and never move the working tree - so none of them needs a resolve
- * UI to exist first. Merge and restore, which do move it, remain deliberately absent.
+ * Most of the writes here only ever produce a revision: {@link VcsInitRepositoryHandler},
+ * {@link VcsCommitHandler} and {@link VcsCheckpointHandler}. None of them can arrive at a
+ * conflict - they add to the author's own branch and never move the working tree - so none of
+ * them needed a resolve UI to exist first.
+ *
+ * {@link VcsRestoreRevisionHandler} is the exception and the only one in this file that
+ * overwrites the author's files. It still needs no resolve UI, for a reason worth stating: it
+ * does not MERGE anything. It writes one revision's content over the working tree and records
+ * that as a new revision, so there are never two sides to reconcile. Merge, which does have
+ * two, remains deliberately absent.
  */
 
 /**
@@ -92,7 +98,7 @@ export class VcsInitRepositoryHandler extends IPCHandler<IPCEventType.vcsInitRep
  * Long, and the failure has to reach the author: this settles the window's auto-save
  * debt, stages the whole project, commits, and forces Lore's stores to disk before
  * answering, because a commit reported before that flush is one that may not survive
- * the process. "Nothing has changed since the last revision" comes back as a failure
+ * the process. "Nothing has changed since the last version" comes back as a failure
  * too - it is the answer, phrased so the author can read it.
  */
 export class VcsCommitHandler extends IPCHandler<IPCEventType.vcsCommit> {
@@ -130,6 +136,36 @@ export class VcsCheckpointHandler extends IPCHandler<IPCEventType.vcsCheckpoint>
 }
 
 /**
+ * Put the working tree back to one revision, and record that as a new revision.
+ *
+ * The one handler here that writes over the author's files, so what it promises is worth
+ * restating at the boundary: a checkpoint is committed before a single byte is written and a
+ * failure to take one aborts the whole operation, and no revision between the target and the
+ * head is touched - `#12` restored onto a project at `#61` produces `#62`.
+ *
+ * Slow: two commit pipelines plus a full rewrite of the versioned tree. The renderer must leave
+ * the revision view and re-read every document once this resolves, because the bytes under its
+ * editors are no longer the ones it read.
+ *
+ * A failure answer therefore means the working tree was NOT touched - every step that can fail runs
+ * before the first byte is written. The one exception is the closing commit, which cannot be
+ * reported that way once the files have changed, so it comes back as a SUCCESS carrying
+ * `recordFailure`; a caller that only reads `success` would tell the author nothing happened while
+ * their project sits on a restored, unrecorded tree.
+ */
+export class VcsRestoreRevisionHandler extends IPCHandler<IPCEventType.vcsRestoreRevision> {
+    readonly name = IPCEventType.vcsRestoreRevision;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath, revision, options }: IPCEvents[IPCEventType.vcsRestoreRevision]["data"],
+    ): Promise<RequestStatus<VcsRestoreResult>> {
+        return this.tryUse(() => window.app.getVcsManager().restoreRevision(projectPath, revision, options ?? {}));
+    }
+}
+
+/**
  * What changed in the working tree since the last commit.
  *
  * Answering this runs a scan, and a scan is not a pure read: discovering a NEW
@@ -157,10 +193,10 @@ export class VcsGetHistoryHandler extends IPCHandler<IPCEventType.vcsGetHistory>
 
     public async handle(
         window: AppWindow,
-        { projectPath, limit, includeKinds }: IPCEvents[IPCEventType.vcsGetHistory]["data"],
+        { projectPath, limit, includeDetails }: IPCEvents[IPCEventType.vcsGetHistory]["data"],
     ): Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>> {
         return this.tryUse(async () => ({
-            entries: await window.app.getVcsManager().getHistory(projectPath, limit ?? 0, { includeKinds }),
+            entries: await window.app.getVcsManager().getHistory(projectPath, limit ?? 0, { includeDetails }),
         }));
     }
 }
@@ -176,6 +212,28 @@ export class VcsReadBlobHandler extends IPCHandler<IPCEventType.vcsReadBlob> {
         return this.tryUse(async () => {
             const bytes = await window.app.getVcsManager().readBlob(request);
             return { contentBase64: bytes.toString("base64") };
+        });
+    }
+}
+
+export class VcsReadRevisionDocumentsHandler extends IPCHandler<IPCEventType.vcsReadRevisionDocuments> {
+    readonly name = IPCEventType.vcsReadRevisionDocuments;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath, revision, paths }: IPCEvents[IPCEventType.vcsReadRevisionDocuments]["data"],
+    ): Promise<RequestStatus<{ documents: { path: string; contentBase64: string | null }[] }>> {
+        return this.tryUse(async () => {
+            const read = await window.app.getVcsManager().readRevisionDocuments(projectPath, revision, { paths });
+            // An array rather than a record: a repository-relative path is arbitrary text
+            // and `__proto__` as an object key is not something to find out about later.
+            return {
+                documents: [...read].map(([path, bytes]) => ({
+                    path,
+                    contentBase64: bytes === null ? null : bytes.toString("base64"),
+                })),
+            };
         });
     }
 }

@@ -3,8 +3,29 @@ import { CharacterPose, ICharacterAppearance, isCharacterAppearanceKind, Portrai
 /**
  * Bumped whenever the persisted character store changes shape. A store with no `version` predates
  * versioning and holds the form/group/variant model this module migrates away from.
+ *
+ * v1 → v2 added the `live2d` and `spine` appearance kinds. There is nothing to migrate *forward*:
+ * every v1 store is a valid v2 store, and the bump exists entirely for the other direction. Reading
+ * a store from the future is not a no-op here — {@link isCurrentAppearance} treats a kind it does not
+ * recognise as the pre-rework model and rewrites it, so a Studio that has never heard of `live2d`
+ * would silently replace those characters with empty presets. The version is what lets a reader
+ * notice that before touching anything; see `isNewerCharacterStore`.
  */
-export const CHARACTER_STORE_VERSION = 1 as const;
+export const CHARACTER_STORE_VERSION = 2 as const;
+
+/**
+ * Whether this store was written by a Studio newer than this one.
+ *
+ * A reader that answers yes must not migrate and must not write back. The kinds it is about to fail
+ * to recognise are the author's data, and the destructive path is the *default* one — so the check
+ * has to happen before `migrateCharacterStore`, not instead of trusting it.
+ *
+ * An absent version is not newer: that is the pre-versioning store, which is exactly what migration
+ * is for.
+ */
+export function isNewerCharacterStore(version: unknown): boolean {
+    return typeof version === "number" && Number.isFinite(version) && version > CHARACTER_STORE_VERSION;
+}
 
 /** The shape the pre-v1 store held, read defensively — it was never validated on the way in. */
 export type LegacyForm = {

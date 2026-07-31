@@ -90,6 +90,21 @@ describe("projectStagingLens — duration derivation", () => {
         ]);
     });
 
+    it("leaves a camera motion row unknown rather than drawing its leftover d=", () => {
+        // A `/camera motion` row's real length is in the bound Story Motion's keyframes, which this
+        // pure projection cannot read. `durationMs` there is whatever the row was built with (the spec
+        // seeds 600ms), so drawing it would be a confidently wrong bar next to a real one.
+        const shot = action("shot", "p", { action: "camera", operation: "motion", durationMs: 600, motion: { mode: "animation", animationId: "a" } });
+        const move = action("move", "p", { action: "displayable", operation: "transform", target: { name: "hero" }, durationMs: 400 });
+        const scene = sceneWith(control("p", "parallel", ["shot", "move"]), shot, move);
+
+        const lens = projectStagingLens(scene, scene.blocks.p);
+        expect(lens.tracks.map(t => ({ id: t.blockId, durationMs: t.durationMs, unknown: t.unknown }))).toEqual([
+            { id: "shot", durationMs: 0, unknown: true },
+            { id: "move", durationMs: 400, unknown: false },
+        ]);
+    });
+
     it("draws a vfx fade to scale, and only its fading operations", () => {
         // "The rain fades in while the camera pushes past" is the same canonical parallel, and the
         // engine's Vfx.show/hide WAIT for the fade, so the bar is a real footprint (§12.7). Its instant

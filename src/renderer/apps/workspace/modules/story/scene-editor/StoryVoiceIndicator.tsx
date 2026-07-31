@@ -22,12 +22,19 @@ export function StoryVoiceIndicator({ block }: { block: StoryBlock }) {
         return null;
     }
 
+    const auditionLabel = voice.isPlaying ? t("story.rows.voiceStop") : t("story.rows.voicePlay");
+    const tableLabel = voice.stale ? t("story.rows.voiceOutdated") : t("story.rows.voiceManage");
+
+    // Both buttons name themselves through `aria-label` rather than leaning on `title` as the
+    // last-resort accessible name: it is the convention the rest of the row cluster uses, and it keeps
+    // the name from depending on whether a tooltip is exposed at all.
     return (
         <>
             <button
                 type="button"
                 tabIndex={-1}
-                title={voice.isPlaying ? t("story.rows.voiceStop") : t("story.rows.voicePlay")}
+                title={auditionLabel}
+                aria-label={auditionLabel}
                 className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-subtle transition hover:bg-fill hover:text-fg ${
                     voice.isPlaying ? "opacity-100 text-primary" : "opacity-0 group-hover:opacity-100"
                 }`}
@@ -41,7 +48,8 @@ export function StoryVoiceIndicator({ block }: { block: StoryBlock }) {
             <button
                 type="button"
                 tabIndex={-1}
-                title={voice.stale ? t("story.rows.voiceOutdated") : t("story.rows.voiceManage")}
+                title={tableLabel}
+                aria-label={tableLabel}
                 className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md hover:bg-fill hover:text-fg ${
                     voice.stale ? "text-warning" : "text-fg-subtle"
                 }`}

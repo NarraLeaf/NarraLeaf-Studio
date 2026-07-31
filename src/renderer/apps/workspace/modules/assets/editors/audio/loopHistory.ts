@@ -1,3 +1,4 @@
+import { normalizeAudioClipRegion } from "@shared/types/audio";
 import type { AssetAudioLoop, AssetExtras } from "@/lib/workspace/services/assets/types";
 
 /**
@@ -48,16 +49,12 @@ export function fromAssetLoop(loop: AssetAudioLoop | undefined): LoopPoints {
 /**
  * The stored region, falling back to the cue-point list that preceded it.
  *
- * Those markers existed to record exactly this - "a BGM's loop in/out points" - so the earliest
- * two, in time order, are the in and the out. Reading them keeps records written against the old
- * shape from opening blank and quietly losing what the author marked.
+ * Delegates to the shared normalizer rather than reading `extras` itself: the game bundle reduces
+ * the same records through the same function, so a clip cannot loop one way in this preview and
+ * another way in the running game.
  */
 export function fromAssetExtras(extras: AssetExtras | undefined): LoopPoints {
-    if (extras?.audioLoop) {
-        return fromAssetLoop(extras.audioLoop);
-    }
-    const legacy = [...(extras?.cuePoints ?? [])].sort((a, b) => a.timeMs - b.timeMs);
-    return { inMs: legacy[0]?.timeMs ?? null, outMs: legacy[1]?.timeMs ?? null };
+    return fromAssetLoop(normalizeAudioClipRegion(extras) ?? undefined);
 }
 
 /** Back to the stored shape, or `undefined` when nothing is marked so the key leaves the record. */
