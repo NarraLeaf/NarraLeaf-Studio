@@ -62,6 +62,7 @@ import { DisplayableTargetField } from "./DisplayableTargetField";
 import { StoryLayerField } from "./StoryLayerField";
 import { MotionField } from "../../story-motion";
 import { PuppetPreview } from "@/apps/workspace/modules/characters/editors/components/PuppetPreview";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import {
     puppetDescribeStatusKey,
     puppetDescriptionRequestFor,
@@ -456,6 +457,36 @@ export function ActionInspector(props: {
         props.document.scenes,
         resolveMotionName,
     );
+    const freeze = useFreezeGuard();
+
+    /**
+     * The read-only clamp for a frozen workspace, and the reason it is one `<fieldset>` rather than
+     * a `freeze.writes()` on each control: this inspector is two and a half thousand lines of
+     * per-action editors - forty-odd `Select`s, the numeric grids, the expression and condition
+     * entries - written by whoever added each action kind, and it reaches the panel WITHOUT going
+     * through `FieldRenderer`, so it had inherited none of the framework's read-only work. Measured
+     * on a frozen project: every field accepted input and every change was discarded on thaw.
+     *
+     * `display: contents` keeps it out of the layout, and per HTML every form control beneath it is
+     * disabled without knowing this exists - including the ones in an action editor written after
+     * this line.
+     *
+     * The two things here that are NOT form controls are exactly the two that should keep working:
+     * `Disclosure` is a `<details>`/`<summary>`, so sections still open, and the blueprint entry
+     * card steps out on its own (see `StoryActionBlueprintPreviewCard`).
+     */
+    const fields = (
+        <InspectorFields
+            block={block}
+            document={props.document}
+            sceneId={props.sceneId}
+            characters={props.characters}
+            onUpdatePayload={props.onUpdatePayload}
+            onSetDialogueCharacter={props.onSetDialogueCharacter}
+            generateTextId={props.generateTextId}
+            onCreateLayer={props.onCreateLayer}
+        />
+    );
 
     return (
         // The body of the properties panel: no floating-card chrome, and no close button either — the
@@ -481,16 +512,13 @@ export function ActionInspector(props: {
                     <div className="truncate text-xs text-fg-subtle">{subject}</div>
                 </div>
             </div>
-            <InspectorFields
-                block={block}
-                document={props.document}
-                sceneId={props.sceneId}
-                characters={props.characters}
-                onUpdatePayload={props.onUpdatePayload}
-                onSetDialogueCharacter={props.onSetDialogueCharacter}
-                generateTextId={props.generateTextId}
-                onCreateLayer={props.onCreateLayer}
-            />
+            {freeze.frozen ? (
+                <fieldset disabled aria-readonly style={{ display: "contents" }}>
+                    {fields}
+                </fieldset>
+            ) : (
+                fields
+            )}
         </div>
     );
 }
