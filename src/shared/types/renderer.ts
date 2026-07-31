@@ -463,6 +463,8 @@ export interface RendererPreloadedInterface {
         getLocaleContributions(): Promise<RequestStatus<{ contributions: LocaleContribution[] }>>;
         onLocalesChanged(handler: (change: { version: number }) => void): AppEventToken;
         registryFetch(): Promise<RequestStatus<PluginRegistryFetchResult>>;
+        /** A store thumbnail as a `data:` URL, fetched and cached by main. Null when there is none. */
+        registryIcon(pluginId: string): Promise<RequestStatus<{ icon: string | null }>>;
         installFromRegistry(pluginId: string): Promise<RequestStatus<PluginInstallResult>>;
     };
 
