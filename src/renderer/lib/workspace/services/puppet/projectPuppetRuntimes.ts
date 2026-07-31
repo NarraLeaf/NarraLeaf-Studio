@@ -54,6 +54,45 @@ export async function listProjectPuppetRuntimes(project: Porject): Promise<strin
 }
 
 /**
+ * What is actually on disk for one backend.
+ *
+ * `incomplete` earns its own case rather than folding into `absent`. A directory with no `index.js`
+ * is a *different* situation with a different fix — a half-finished install, an author who unzipped
+ * the wrong thing, a runtime whose build failed — and the two were previously indistinguishable from
+ * the editor, which listed the directory as an available backend and then failed to load it. The pack
+ * step already draws this distinction (`copyPuppetRuntimes` warns and skips such a directory); this
+ * is the same reading, made before the author ships.
+ */
+export type PuppetRuntimeInstallState =
+    | { status: "installed"; stamp: string }
+    | { status: "incomplete" }
+    | { status: "absent" };
+
+/**
+ * Whether this project carries a usable runtime under `backend`.
+ *
+ * Reads the entry file's stamp, which is the same probe {@link readPuppetRuntimeStamp} exists for, and
+ * separates "no directory" from "a directory with nothing to load in it" by listing the parent. An
+ * unreadable `runtimes/puppet/` is reported as `absent`, which is what it means for every project that
+ * has never installed one.
+ */
+export async function readPuppetRuntimeInstallState(
+    project: Porject,
+    backend: string,
+): Promise<PuppetRuntimeInstallState> {
+    const name = backend.trim();
+    if (!name) {
+        return { status: "absent" };
+    }
+    const stamp = await readPuppetRuntimeStamp(project, name);
+    if (stamp !== null) {
+        return { status: "installed", stamp };
+    }
+    const installed = await listProjectPuppetRuntimes(project);
+    return installed.includes(name) ? { status: "incomplete" } : { status: "absent" };
+}
+
+/**
  * A stamp that changes when the runtime changes, or null when the runtime is not installed.
  *
  * Size and modification time of the module's own entry file. Not a content hash: this is read on

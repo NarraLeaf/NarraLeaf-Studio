@@ -18,6 +18,14 @@ export const project = {
             title: "依赖",
             description: "本项目依赖的插件",
         },
+        runtimes: {
+            title: "运行时",
+            description: "Live2D 与 Spine 角色的绘制运行时",
+        },
+        linting: {
+            title: "检查",
+            description: "工程检查报告哪些问题",
+        },
         settings: {
             title: "设置",
             description: "网络与打包行为",

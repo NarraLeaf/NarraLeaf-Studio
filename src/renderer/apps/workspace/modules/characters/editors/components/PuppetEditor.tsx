@@ -8,16 +8,38 @@ import { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { CharacterAppearance } from "@/lib/workspace/services/character/CharacterAppearance";
 import type { PuppetDefaultState } from "@/lib/workspace/services/character/types";
-import { listProjectPuppetRuntimes } from "@/lib/workspace/services/puppet/projectPuppetRuntimes";
+import {
+    listProjectPuppetRuntimes,
+    readPuppetRuntimeInstallState,
+    type PuppetRuntimeInstallState,
+} from "@/lib/workspace/services/puppet/projectPuppetRuntimes";
+import { knownPuppetRuntimeFor } from "@shared/utils/puppetRuntimes";
+import { getInterface } from "@/lib/app/bridge";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { PuppetRuntimeInstaller, type PuppetRuntimeInstallTarget } from "./PuppetRuntimeInstaller";
 import {
     puppetChoiceOptions,
     type PuppetDescriptionRequest,
 } from "@/lib/workspace/services/puppet/puppetDescriptionModel";
 import { Services } from "@/lib/workspace/services/services";
-import { Box, FolderOpen, RefreshCw, X } from "lucide-react";
+import { Box, Download, FolderOpen, FolderPlus, RefreshCw, X } from "lucide-react";
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+    puppetDescribeStatusKey,
+    puppetDescriptionRequestFor,
+    usePuppetDescription,
+} from "@/lib/workspace/hooks/usePuppetDescription";
 import { PuppetPreview } from "./PuppetPreview";
-import { puppetDescribeStatusKey, puppetDescriptionRequestFor, usePuppetDescription } from "./usePuppetDescription";
+
+/**
+ * The asset type a model bundle is.
+ *
+ * Aliased once because this surface names it four times — the picker, the import, the "does this project
+ * have any" count — and `AssetType.Model` reads as a detail at each of them rather than as the one idea
+ * it is: a puppet's model is a directory-shaped asset.
+ */
+const MODEL_ASSET_TYPE = AssetType.Model;
 
 const ROW = "flex items-center gap-2 rounded-md border border-edge bg-fill-subtle px-2 py-1.5 text-xs";
 const ICON_BTN = "p-1 rounded-md text-fg-muted hover:text-fg hover:bg-fill transition-colors";
@@ -100,13 +122,21 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
     const { t } = useTranslation();
     const { context } = useWorkspace();
 
+    const freeze = useFreezeGuard();
+
     const [picking, setPicking] = useState(false);
     const [backends, setBackends] = useState<string[]>([]);
+    const [installState, setInstallState] = useState<PuppetRuntimeInstallState>({ status: "absent" });
+    const [installing, setInstalling] = useState<PuppetRuntimeInstallTarget | null>(null);
+    /** Bumped after an install so the two disk reads below run again. */
+    const [diskVersion, setDiskVersion] = useState(0);
     const anchorRef = useRef<HTMLElement | null>(null);
     const anchorMemo = useMemo(() => ({ current: anchorRef.current }), [picking]);
 
     const puppet = appearance.getPuppet();
     const defaultState: PuppetDefaultState = appearance.getPuppetDefaultState();
+    /** The product this character was created for, when it was created for one. */
+    const runtime = knownPuppetRuntimeFor(appearance.getKind());
 
     /**
      * The runtimes the project actually carries — one directory per backend under
@@ -125,7 +155,34 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
             if (!cancelled) setBackends([]);
         });
         return () => { cancelled = true; };
-    }, [context]);
+    }, [context, diskVersion]);
+
+    /**
+     * Whether *this character's* runtime is there, which is a different question from what the project
+     * carries: a character created for Live2D on another machine names a backend this project may not
+     * have, and the honest answer to that is "not installed here", not an empty dropdown.
+     */
+    useEffect(() => {
+        if (!context || !puppet?.backend) {
+            setInstallState({ status: "absent" });
+            return;
+        }
+        let cancelled = false;
+        void readPuppetRuntimeInstallState(context.project, puppet.backend).then(state => {
+            if (!cancelled) setInstallState(state);
+        }).catch(() => {
+            if (!cancelled) setInstallState({ status: "absent" });
+        });
+        return () => { cancelled = true; };
+    }, [context, puppet?.backend, diskVersion]);
+
+    const modelAssetCount = useMemo(() => {
+        if (!context) {
+            return 0;
+        }
+        const assets = context.services.get<AssetsService>(Services.Assets).getAssets();
+        return Object.keys(assets[MODEL_ASSET_TYPE] ?? {}).length;
+    }, [context, diskVersion, puppet?.assetId]);
 
     const modelName = useMemo(() => {
         if (!context || !puppet?.assetId) {
@@ -140,6 +197,41 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
         }
         return null;
     }, [context, puppet?.assetId]);
+
+    /**
+     * Import a model bundle straight from here.
+     *
+     * A directory picker rather than a file one, because a model *is* a directory — a manifest plus the
+     * textures and motions it names — which is also why the asset panel switches to one for this type.
+     * Offered here because the alternative was an asset picker with nothing in it: the author who has
+     * just made their first Live2D character has no model assets yet, and nothing on this surface said
+     * where they come from.
+     */
+    const importModel = useCallback(async () => {
+        if (!context) return;
+        const picked = await getInterface().fs.selectDirectory(true);
+        if (!picked.success || !picked.data.ok || picked.data.data.length === 0) {
+            return;
+        }
+        const assetsService = context.services.get<AssetsService>(Services.Assets);
+        const imported = await assetsService.importFromPaths(MODEL_ASSET_TYPE, picked.data.data);
+        const first = imported.success ? imported.data.find(entry => entry.success) : undefined;
+        if (first?.success) {
+            // Selected as well as imported: the author asked for a model for *this* character, and
+            // making them then find it in a picker would be the same gap one step later.
+            appearance.setPuppetAsset(first.data.id);
+        }
+        setDiskVersion(version => version + 1);
+    }, [appearance, context]);
+
+    const onInstalled = useCallback((backend: string) => {
+        // A runtime that registers a different name than its folder is filed under the registered one,
+        // so the character follows what actually landed rather than what was asked for.
+        if (puppet && puppet.backend !== backend) {
+            appearance.setPuppetBackend(backend);
+        }
+        setDiskVersion(version => version + 1);
+    }, [appearance, puppet]);
 
     const confirmAsset = useCallback((assets: Asset[]) => {
         appearance.setPuppetAsset(assets[0]?.id ?? null);
@@ -184,14 +276,93 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
         ...backends,
     ].map(name => ({ value: name, label: name }));
 
-    return (
-        <div className="space-y-1.5">
-            <PuppetPreview request={request} state={defaultState} />
+    /**
+     * The two things that have to be true before anything else on this surface means something.
+     *
+     * A puppet with no runtime cannot be described, previewed or drawn, and a puppet with no model has
+     * nothing to describe. The state controls below are filled *from the model*, so showing them first —
+     * as this surface used to, as seven equal rows — presented five inert fields as if they were the
+     * work. They are hidden until the two are satisfied, and this is what stands in their place.
+     */
+    const runtimeReady = installState.status === "installed";
+    const setupDone = runtimeReady && Boolean(puppet.assetId);
 
-            <Field label={t("characters.editor.puppet.model")}>
-                <span className="min-w-0 flex-1 truncate">
-                    {modelName ?? <span className="text-fg-subtle">{t("characters.editor.puppet.noModel")}</span>}
+    const runtimeStatusLabel = !puppet.backend
+        ? t("characters.editor.puppet.runtimeUnchosen")
+        : installState.status === "installed"
+            ? t("characters.editor.puppet.runtimeInstalled")
+            : installState.status === "incomplete"
+                ? t("characters.editor.puppet.runtimeIncomplete")
+                : t("characters.editor.puppet.runtimeMissing");
+
+    const installTarget: PuppetRuntimeInstallTarget = runtime
+        ? { kind: "known", id: runtime.id }
+        : { kind: "custom", suggestedName: puppet.backend };
+    const installLabel = runtimeReady
+        ? t("characters.editor.puppet.reinstall")
+        : t("characters.editor.puppet.install");
+
+    const runtimeRow = (
+        <Field label={t("characters.editor.puppet.stepRuntime")}>
+            {runtime ? (
+                // A named runtime does not get a dropdown: the character was created for this product,
+                // and the only question left is whether it is installed.
+                <span className="min-w-0 flex-1 truncate">{runtime.productName}</span>
+            ) : backendOptions.length === 0 ? (
+                // "You have not chosen one" and "there are none to choose" are different situations,
+                // and one label for both told the author the project carried no runtimes while two sat
+                // in the dropdown. Only the empty list says "installed", and it says where to put one.
+                <span
+                    className="min-w-0 flex-1 truncate text-fg-subtle"
+                    title={t("characters.editor.puppet.noBackendInstalledHint")}
+                >
+                    {t("characters.editor.puppet.noBackendInstalled")}
                 </span>
+            ) : (
+                <Select
+                    options={backendOptions}
+                    value={puppet.backend}
+                    placeholder={t("characters.editor.puppet.chooseBackend")}
+                    size="sm"
+                    fullWidth
+                    portalMenu
+                    onChange={value => appearance.setPuppetBackend(String(value))}
+                />
+            )}
+            <span className={runtimeReady ? "shrink-0 text-2xs text-primary" : "shrink-0 text-2xs text-fg-subtle"}>
+                {runtimeStatusLabel}
+            </span>
+            <button
+                className={ICON_BTN}
+                aria-label={installLabel}
+                onClick={() => setInstalling(installTarget)}
+                // The freeze guard owns `title` so a frozen workspace can say why the button is off.
+                // It writes into `runtimes/`, which is versioned, so an unguarded click would be a
+                // silent no-op rather than an install.
+                {...freeze.writes(false, installLabel)}
+            >
+                <Download className="w-3.5 h-3.5" />
+            </button>
+        </Field>
+    );
+
+    const modelRow = (
+        <Field label={t("characters.editor.puppet.stepModel")}>
+            <span className="min-w-0 flex-1 truncate">
+                {modelName ?? <span className="text-fg-subtle">{t("characters.editor.puppet.noModel")}</span>}
+            </span>
+            {/* An empty picker is not an answer. A project with no model assets gets the import instead,
+                because that is the step the author is actually missing. */}
+            {modelAssetCount === 0 && !puppet.assetId ? (
+                <button
+                    className={ICON_BTN}
+                    aria-label={t("characters.editor.puppet.importModel")}
+                    onClick={() => void importModel()}
+                    {...freeze.writes(false, t("characters.editor.puppet.importModel"))}
+                >
+                    <FolderPlus className="w-3.5 h-3.5" />
+                </button>
+            ) : (
                 <button
                     className={ICON_BTN}
                     aria-label={t("characters.editor.puppet.selectModel")}
@@ -199,41 +370,63 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
                 >
                     <FolderOpen className="w-3.5 h-3.5" />
                 </button>
-                {puppet.assetId && (
-                    <button
-                        className={ICON_BTN}
-                        aria-label={t("characters.editor.puppet.clearModel")}
-                        onClick={() => appearance.setPuppetAsset(null)}
-                    >
-                        <X className="w-3.5 h-3.5" />
-                    </button>
-                )}
-            </Field>
+            )}
+            {puppet.assetId && (
+                <button
+                    className={ICON_BTN}
+                    aria-label={t("characters.editor.puppet.clearModel")}
+                    onClick={() => appearance.setPuppetAsset(null)}
+                    {...freeze.writes()}
+                >
+                    <X className="w-3.5 h-3.5" />
+                </button>
+            )}
+        </Field>
+    );
 
-            <Field label={t("characters.editor.puppet.backend")}>
-                {/* "You have not chosen one" and "there are none to choose" are different
-                    situations, and one label for both told the author the project carried no
-                    runtimes while two sat in the dropdown. Only the empty list says "installed",
-                    and it says where to put one - the same swap `ChoiceField` makes above. */}
-                {backendOptions.length === 0 ? (
-                    <span
-                        className="min-w-0 flex-1 truncate text-fg-subtle"
-                        title={t("characters.editor.puppet.noBackendInstalledHint")}
-                    >
-                        {t("characters.editor.puppet.noBackendInstalled")}
-                    </span>
-                ) : (
-                    <Select
-                        options={backendOptions}
-                        value={puppet.backend}
-                        placeholder={t("characters.editor.puppet.chooseBackend")}
-                        size="sm"
-                        fullWidth
-                        portalMenu
-                        onChange={value => appearance.setPuppetBackend(String(value))}
-                    />
-                )}
-            </Field>
+    const installer = (
+        <PuppetRuntimeInstaller
+            visible={installing !== null}
+            target={installing ?? installTarget}
+            onClose={() => setInstalling(null)}
+            onInstalled={onInstalled}
+        />
+    );
+
+    if (!setupDone) {
+        return (
+            <div className="space-y-1.5">
+                <p className="px-1 text-2xs tracking-wide text-fg-muted">
+                    {t("characters.editor.puppet.setupTitle")}
+                </p>
+                {runtimeRow}
+                {modelRow}
+                <p className="px-1 text-2xs text-fg-subtle">
+                    {modelAssetCount === 0
+                        ? t("characters.editor.puppet.noModelAssets")
+                        : t("characters.editor.puppet.modelHint")}
+                </p>
+                {installer}
+                <AssetSelector
+                    visible={picking}
+                    assetType={MODEL_ASSET_TYPE}
+                    selectedIds={puppet.assetId ? [puppet.assetId] : []}
+                    onClose={() => setPicking(false)}
+                    onConfirm={confirmAsset}
+                    anchorRef={anchorMemo}
+                    title={t("characters.editor.puppet.selectModel")}
+                    multiple={false}
+                />
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-1.5">
+            <PuppetPreview request={request} state={defaultState} />
+
+            {modelRow}
+            {runtimeRow}
 
             <Field label={t("characters.editor.puppet.entry")}>
                 {/* Free text: which files a bundle holds is only knowable after parsing the one
@@ -314,9 +507,11 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
                 </div>
             )}
 
+            {installer}
+
             <AssetSelector
                 visible={picking}
-                assetType={AssetType.Model}
+                assetType={MODEL_ASSET_TYPE}
                 selectedIds={puppet.assetId ? [puppet.assetId] : []}
                 onClose={() => setPicking(false)}
                 onConfirm={confirmAsset}

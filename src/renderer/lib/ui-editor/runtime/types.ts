@@ -7,6 +7,7 @@ import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/
 import type { BehaviorGraphEventControl } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import type { UIEditorReadOnly } from "@/lib/ui-editor/interaction/readOnlyInteraction";
 
 export type UIHost = "app" | "player";
 
@@ -98,6 +99,16 @@ export type UIHostAdapter = {
     editorStateService?: UIEditorStateService;
     /** Editor preview: use the active document service, including component-editor adapters. */
     editorDocumentService?: UIDocumentService;
+    /**
+     * Whether the surface this adapter renders is read-only right now (a frozen workspace).
+     *
+     * The two services above are the only thing a widget renderer needs in order to write the
+     * document from inside its own markup, and the interaction layer's gesture table cannot reach
+     * those handlers - a widget's `onDoubleClick` is attached by the widget, not by the canvas. So
+     * the state travels on the adapter beside them, and {@link resolveInlineTextEditHost} is where
+     * the two are read together.
+     */
+    editorReadOnly?: UIEditorReadOnly;
 };
 
 /** Read/write access to one class of Story variables, resolving ids to their NLR backing store. */

@@ -1,4 +1,5 @@
 import { FsRejectError, FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
+import type { FsTextEncoding } from "@shared/types/textEncoding";
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { IFileSystemService, WorkspaceContext } from "../services";
 import { Service } from "../Service";
@@ -96,7 +97,7 @@ export class BaseFileSystemService {
         return this.wrapIPCError(await getInterface().fs.directorySize(path));
     }
 
-    public static async read(path: string, encoding: BufferEncoding): Promise<FsRequestResult<string>> {
+    public static async read(path: string, encoding: FsTextEncoding): Promise<FsRequestResult<string>> {
         const substituted = await this.readFromDocumentSource(path, encoding);
         return substituted ?? this.fetch(path, encoding);
     }
@@ -118,7 +119,7 @@ export class BaseFileSystemService {
      */
     private static async readFromDocumentSource(
         path: string,
-        encoding: BufferEncoding,
+        encoding: FsTextEncoding,
     ): Promise<FsRequestResult<string> | null> {
         // A source hands back a string; anything read under another encoding is being read
         // for its bytes, and decoding a blob as UTF-8 to re-encode it would corrupt it.
@@ -138,7 +139,7 @@ export class BaseFileSystemService {
         return { ok: true, data: answered.text };
     }
 
-    public static async write(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
+    public static async write(path: string, data: string, encoding: FsTextEncoding): Promise<FsRequestResult<void>> {
         if (refuseFrozenWrite(path) || refuseReloadingWrite(path)) {
             return FROZEN_NO_OP;
         }
@@ -229,7 +230,7 @@ export class BaseFileSystemService {
         return this.wrapIPCError(await appPrivilegedFacade.fs.isDir(path));
     }
 
-    public static async readJSON<T>(path: string, encoding: BufferEncoding = "utf-8"): Promise<FsRequestResult<T>> {
+    public static async readJSON<T>(path: string, encoding: FsTextEncoding = "utf-8"): Promise<FsRequestResult<T>> {
         const fileResult = await this.read(path, encoding);
         if (!fileResult.ok) {
             return fileResult;
@@ -250,7 +251,7 @@ export class BaseFileSystemService {
         }
     }
 
-    private static async fetch(path: string, encoding: BufferEncoding): Promise<FsRequestResult<string>> {
+    private static async fetch(path: string, encoding: FsTextEncoding): Promise<FsRequestResult<string>> {
         const requestResult = this.wrapIPCError(await appPrivilegedFacade.fs.requestRead(path, encoding));
         if (!requestResult.ok) {
             return requestResult;
@@ -298,7 +299,7 @@ export class BaseFileSystemService {
         };
     }
 
-    private static async put(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
+    private static async put(path: string, data: string, encoding: FsTextEncoding): Promise<FsRequestResult<void>> {
         const requestResult = this.wrapIPCError(await appPrivilegedFacade.fs.requestWrite(path, encoding));
         if (!requestResult.ok) {
             return requestResult;
@@ -397,7 +398,7 @@ export class FileSystemService extends Service<FileSystemService> implements IFi
         return BaseFileSystemService.directorySize(path);
     }
 
-    public async read(path: string, encoding: BufferEncoding): Promise<FsRequestResult<string>> {
+    public async read(path: string, encoding: FsTextEncoding): Promise<FsRequestResult<string>> {
         return BaseFileSystemService.read(path, encoding);
     }
 
@@ -405,7 +406,7 @@ export class FileSystemService extends Service<FileSystemService> implements IFi
         return BaseFileSystemService.readRaw(path);
     }
 
-    public async write(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
+    public async write(path: string, data: string, encoding: FsTextEncoding): Promise<FsRequestResult<void>> {
         return BaseFileSystemService.write(path, data, encoding);
     }
 
@@ -473,7 +474,7 @@ export class FileSystemService extends Service<FileSystemService> implements IFi
         return BaseFileSystemService.isDir(path);
     }
 
-    public async readJSON<T>(path: string, encoding: BufferEncoding = "utf-8"): Promise<FsRequestResult<T>> {
+    public async readJSON<T>(path: string, encoding: FsTextEncoding = "utf-8"): Promise<FsRequestResult<T>> {
         return BaseFileSystemService.readJSON<T>(path, encoding);
     }
 }

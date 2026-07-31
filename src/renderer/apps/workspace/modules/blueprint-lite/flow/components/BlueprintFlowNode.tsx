@@ -44,6 +44,7 @@ import {
     normalizeBlueprintImageAssetValue,
     type BlueprintImageAsset,
 } from "@shared/types/blueprint/valueTypes";
+import { normalizeAudioClipRegion } from "@shared/types/audio";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
@@ -194,13 +195,17 @@ function AudioAssetPickerRow({
     } catch {
         context = null;
     }
-    const assetName = useMemo(() => {
+    const asset = useMemo(() => {
         if (!assetId || !context) {
             return null;
         }
-        const assetsService = context.services.get<AssetsService>(Services.Assets);
-        return assetsService.getAssets()[AssetType.Audio]?.[assetId]?.name ?? null;
+        return context.services.get<AssetsService>(Services.Assets).getAssets()[AssetType.Audio]?.[assetId] ?? null;
     }, [assetId, context]);
+    const assetName = asset?.name ?? null;
+    // Whether the author marked in/out points on this clip decides whether Loop loops the body or
+    // the whole file - and it is decided somewhere else entirely (the asset manager's audio preview),
+    // so the node has to say which it is.
+    const marked = normalizeAudioClipRegion(asset?.extras) !== null;
 
     return (
         <div
@@ -224,6 +229,11 @@ function AudioAssetPickerRow({
                         ? assetName ?? t("blueprint.image.missing")
                         : t("blueprint.image.select")}
                 </span>
+                {marked && (
+                    <span className="shrink-0 rounded bg-fill-subtle px-1 text-2xs text-fg-subtle">
+                        {t("blueprint.audio.marked")}
+                    </span>
+                )}
                 {assetId && !disabled && (
                     <span
                         role="button"
@@ -2308,7 +2318,39 @@ function BlueprintImageAssetLiteralNodeCard({
     );
 }
 
-export function BlueprintFlowNode({ data, selected }: NodeProps) {
+/**
+ * One node on the graph, plus the read-only clamp a frozen workspace needs it to wear.
+ *
+ * **The clamp is here rather than on each control**, and it is the same instrument the properties
+ * framework uses (`FieldRenderer`): a `disabled` `<fieldset>` with `display: contents`, so it takes
+ * no part in layout and React Flow measures the card exactly as before. Per HTML every form control
+ * beneath it is disabled without knowing this code exists - which is the whole reason to prefer it
+ * here. A node card carries thirteen `Select`s, the on-card number and text inputs, the pin literal
+ * editors, the keyboard-binding capture, the asset pickers and the element binder, and they are
+ * written across two thousand lines by whoever added a node type; a per-control `freeze.writes()`
+ * would have to be remembered by each of them, and measured on a frozen project it had not been:
+ * every dropdown on every node still accepted a change and threw it away on thaw.
+ *
+ * **Nothing on a card is inspection-only**, which is what makes the blanket safe here and would not
+ * be in the inspector. Reading a frozen graph is selection, panning and zooming - none of them form
+ * controls, none of them touched by this - and the canvas switches off the gestures that write
+ * (`BlueprintFlowCanvas`: dragging, connecting, the pane menu, delete). Even the pin's "edit value"
+ * toggle writes: which pins are open is stored in the node's params.
+ */
+export function BlueprintFlowNode(props: NodeProps) {
+    const freeze = useFreezeGuard();
+    const card = <BlueprintFlowNodeCard {...props} />;
+    if (!freeze.frozen) {
+        return card;
+    }
+    return (
+        <fieldset disabled aria-readonly style={{ display: "contents" }}>
+            {card}
+        </fieldset>
+    );
+}
+
+function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
     const { t } = useTranslation();
     const {
         catalog,

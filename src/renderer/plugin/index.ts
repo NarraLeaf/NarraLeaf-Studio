@@ -17,6 +17,11 @@ import type {
     RuntimeBlueprintNodeExecute,
 } from "@/lib/ui-editor/runtime/plugins/runtimePluginApi";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules";
+import type {
+    PluginTextEditorActionDef,
+    PluginTextEditorLanguageDef,
+    PluginTextEditorPreviewDef,
+} from "@/lib/workspace/services/ui/textEditorContributions";
 import {
     AssetExtensions,
     AssetType,
@@ -132,6 +137,21 @@ export type {
     StoryBlockId,
     StoryBlockKind,
 } from "@shared/types/story";
+/**
+ * Every one of these has to be listed explicitly. The types package is generated with
+ * `exportReferencedTypes: false`, so a type that is only reachable *through* another export is
+ * emitted without being exported - and silently disappears from `narraleaf-studio/plugin`.
+ */
+export type {
+    PluginTextEditorActionContext,
+    PluginTextEditorActionDef,
+    PluginTextEditorEncodingId,
+    PluginTextEditorLanguageConfiguration,
+    PluginTextEditorLanguageDef,
+    PluginTextEditorMonarchGrammar,
+    PluginTextEditorPreviewDef,
+    PluginTextEditorPreviewProps,
+} from "@/lib/workspace/services/ui/textEditorContributions";
 
 export const ui = pluginUi;
 
@@ -180,6 +200,30 @@ export type PluginVoiceUnitEntry = {
     /** Speaker name when the line has one. */
     character: string | null;
     durationSec: number | null;
+};
+
+/**
+ * Studio's built-in text editor, as a plugin extends it.
+ *
+ * Studio ships the editor (monaco over a text asset, encodings, autosave) and stops there: no
+ * Markdown preview, no lint, no formatter. Those are plugin work, and this is the whole seam for
+ * them - a grammar to colour the document, a pane to render it beside the editor, a command to
+ * transform it.
+ *
+ * Two things worth knowing before you register:
+ *
+ *  - **Nothing is drawn for an empty registry.** The preview toggle and the action buttons appear
+ *    in the editor's status bar only while a contribution matches the open document's extension.
+ *    A Studio with no such plugin shows no dead controls, so a preview that never appears means
+ *    your `extensions` did not match - not that the API is unimplemented.
+ *  - **Languages install lazily.** `registerLanguage` records the definition; monaco receives it
+ *    the first time a matching document is opened. Registering at `setup` time therefore costs
+ *    nothing at startup.
+ */
+export type PluginTextEditorService = {
+    registerLanguage(def: PluginTextEditorLanguageDef): PluginCleanup;
+    registerPreview(def: PluginTextEditorPreviewDef): PluginCleanup;
+    registerAction(def: PluginTextEditorActionDef): PluginCleanup;
 };
 
 export type PluginStorageService = {
@@ -275,6 +319,8 @@ export type PluginServices = {
     storage: PluginStorageService;
     assets: PluginAssetsService;
     i18n: PluginI18n;
+    /** Extend Studio's built-in text editor; see {@link PluginTextEditorService}. */
+    textEditor: PluginTextEditorService;
     ui: {
         panels: {
             register<TPayload = unknown>(panel: PanelDefinition<TPayload>): PluginCleanup;

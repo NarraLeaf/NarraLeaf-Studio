@@ -195,6 +195,14 @@ export interface AccordionItemProps {
     className?: string;
     /** Additional className for the header */
     headerClassName?: string;
+    /**
+     * Extra DOM props for the header row — a right-click handler, a `data-*` handle a caller needs
+     * to find this section by.
+     *
+     * On the row rather than on the title, because a header is one target to a person: right-click
+     * anywhere along it, including the empty space beside the actions, and the same menu opens.
+     */
+    headerProps?: React.HTMLAttributes<HTMLDivElement> & { [dataAttribute: `data-${string}`]: string };
     /** Additional className for the content */
     contentClassName?: string;
     /** Level for nested indentation */
@@ -216,6 +224,7 @@ export function AccordionItem({
     className = "",
     headerClassName = "",
     contentClassName = "",
+    headerProps,
     level = 0,
 }: AccordionItemProps) {
     const context = useAccordionContext();
@@ -229,8 +238,14 @@ export function AccordionItem({
     const [contentHeight, setContentHeight] = useState<AccordionContentHeight>(isOpen ? "auto" : 0);
     const isHeightAuto = contentHeight === "auto";
     const isHeightAutoRef = useRef(isHeightAuto);
+    /**
+     * Read by the measurement paths below, which run outside render (a rAF, a ResizeObserver) and
+     * would otherwise close over a stale `isOpen`.
+     */
+    const isOpenRef = useRef(isOpen);
 
     isHeightAutoRef.current = isHeightAuto;
+    isOpenRef.current = isOpen;
 
     // Nested toggle notification
     const parentNestedContext = useContext(AccordionNestedContext);
@@ -238,7 +253,7 @@ export function AccordionItem({
     const notifyNestedToggle = () => {
         // Use rAF to measure after DOM updates for more accurate height
         requestAnimationFrame(() => {
-            if (contentRef.current && !isHeightAutoRef.current) {
+            if (contentRef.current && isOpenRef.current && !isHeightAutoRef.current) {
                 setContentHeight(contentRef.current.scrollHeight);
             }
             // Propagate notification to higher levels after own measurement
@@ -293,6 +308,16 @@ export function AccordionItem({
         if (typeof ResizeObserver === 'undefined') return;
 
         const observer = new ResizeObserver(() => {
+            // A closed section has no height to track. It used to take one anyway: the observed
+            // element keeps its natural size behind the collapsed box, so any resize of it - assets
+            // finishing their load, the panel's scrollbar coming or going - handed the section its
+            // full body height while `openItems` still said it was shut. The section then showed
+            // its contents with the chevron still pointing right, clicking its header "did nothing"
+            // (it was being opened, which changed nothing on screen), and the re-render that click
+            // caused snapped every other phantom section closed.
+            if (!isOpenRef.current) {
+                return;
+            }
             if (!isHeightAutoRef.current) {
                 setContentHeight(el.scrollHeight);
             }
@@ -338,12 +363,16 @@ export function AccordionItem({
                 data-accordion-item={id}
             >
                 {/* Header */}
-                <div className={cn(
-                    "w-full flex items-center group transition-colors duration-200",
-                    !disabled && "hover:bg-fill",
-                    isFocused && !disabled && focusable && "bg-primary/20",
-                    headerClassName,
-                )}>
+                <div
+                    {...headerProps}
+                    className={cn(
+                        "w-full flex items-center group transition-colors duration-200",
+                        !disabled && "hover:bg-fill",
+                        isFocused && !disabled && focusable && "bg-primary/20",
+                        headerClassName,
+                        headerProps?.className,
+                    )}
+                >
                     <button
                         onClick={handleClick}
                         onMouseEnter={handleMouseEnter}

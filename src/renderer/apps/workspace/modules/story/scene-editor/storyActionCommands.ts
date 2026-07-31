@@ -38,6 +38,7 @@ export type ActionCommandId =
     | "soundVolume"
     | "soundRate"
     | "muteSound"
+    | "seekSound"
     | "setVariable"
     | "incrementVariable"
     | "decrementVariable"
@@ -167,6 +168,8 @@ export function createBlockForCommand(commandId: ActionCommandId, generateId: ()
             return { ...base, kind: "action", payload: { action: "audio", operation: "setRate", objectName: "sound", rate: 1 } };
         case "muteSound":
             return { ...base, kind: "action", payload: { action: "audio", operation: "muteSound", objectName: "sound", muted: true } };
+        case "seekSound":
+            return { ...base, kind: "action", payload: { action: "audio", operation: "seekSound", objectName: "sound", timeMs: 0 } };
         // The four assignment sugars build the same block `/set` does - they differ only in the
         // expression `applyCommandArgs` writes onto it, so they must not diverge here.
         case "setVariable":

@@ -20,6 +20,8 @@ import {
     BLUEPRINT_NODE_TYPE_SOUND_PAUSE,
     BLUEPRINT_NODE_TYPE_SOUND_PLAY,
     BLUEPRINT_NODE_TYPE_SOUND_RESUME,
+    BLUEPRINT_NODE_TYPE_SOUND_SEEK,
+    BLUEPRINT_NODE_TYPE_SOUND_SET_VOLUME,
     BLUEPRINT_NODE_TYPE_SOUND_STOP,
 } from "@shared/types/blueprint/graph";
 import {
@@ -97,13 +99,28 @@ const volumeIn: BlueprintNodePinDef = {
     allowInlineLiteral: true,
 };
 
+/**
+ * Seconds, like every other time an author types into a blueprint (`Delay`'s `Duration (s)`, the
+ * animation nodes) and like every time on a story line. Milliseconds are an internal unit: the host
+ * capability speaks them, and the conversion happens at this boundary and nowhere else.
+ */
 const fadeIn: BlueprintNodePinDef = {
-    id: "fadeMs",
+    id: "fade",
     kind: "input",
     semantic: "data",
-    valueType: "integer",
-    label: "Fade (ms)",
+    valueType: "float",
+    label: "Fade (s)",
     optional: true,
+    allowInlineLiteral: true,
+};
+
+/** Where to move the play head, measured from the start of the file rather than from the in point. */
+const timeIn: BlueprintNodePinDef = {
+    id: "time",
+    kind: "input",
+    semantic: "data",
+    valueType: "float",
+    label: "Time (s)",
     allowInlineLiteral: true,
 };
 
@@ -125,6 +142,12 @@ function readPin(ctx: SoundExecuteCtx, pinId: string): unknown {
         instanceKey: ctx.instanceKey,
         executionOwner: ctx.executionOwner,
     });
+}
+
+/** A seconds pin as the milliseconds the host capability takes. Negative and unset both read as 0. */
+function readSecondsAsMs(ctx: SoundExecuteCtx, portId: string): number {
+    const seconds = readOptionalNumber(readPin(ctx, portId)) ?? 0;
+    return seconds > 0 ? Math.round(seconds * 1000) : 0;
 }
 
 function readOptionalNumber(value: unknown): number | undefined {
@@ -217,7 +240,7 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
         async execute(ctx) {
             await requireHostApi(ctx).sound.stop(
                 normalizeBlueprintSoundHandle(readPin(ctx, "handle")),
-                readOptionalNumber(readPin(ctx, "fadeMs")) ?? 0,
+                readSecondsAsMs(ctx, "fade"),
             );
             return { nextPort: "next" };
         },
@@ -247,6 +270,44 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
         pins: [execIn, handleIn, execNext],
         async execute(ctx) {
             await requireHostApi(ctx).sound.resume(requireHandle(ctx, "Resume Sound"));
+            return { nextPort: "next" };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_SOUND_SET_VOLUME,
+        displayName: "Set Sound Volume",
+        category: "Sound",
+        keywords: ["sound", "audio", "volume", "fade", "duck", "music", "bgm", "level", "quieter"],
+        graphKinds: [...SOUND_GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        // Volume and fade in one node, so this is also the fade: "duck the music over a second" and
+        // "set it to 0.3" are the same request with a different duration, and a separate Fade Sound
+        // would just be this node with one pin pre-filled.
+        pins: [execIn, handleIn, volumeIn, fadeIn, execNext],
+        async execute(ctx) {
+            await requireHostApi(ctx).sound.setVolume(
+                requireHandle(ctx, "Set Sound Volume"),
+                readOptionalNumber(readPin(ctx, "volume")) ?? 1,
+                readSecondsAsMs(ctx, "fade"),
+            );
+            return { nextPort: "next" };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_SOUND_SEEK,
+        displayName: "Seek Sound",
+        category: "Sound",
+        keywords: ["sound", "audio", "seek", "position", "jump", "skip", "scrub", "music", "bgm"],
+        graphKinds: [...SOUND_GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [execIn, handleIn, timeIn, execNext],
+        async execute(ctx) {
+            await requireHostApi(ctx).sound.seek(
+                requireHandle(ctx, "Seek Sound"),
+                readSecondsAsMs(ctx, "time"),
+            );
             return { nextPort: "next" };
         },
     },

@@ -14,20 +14,17 @@
  * Neither changes what the build packages today; the build still ships the whole directory.
  */
 
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { ASSET_CATEGORY_ORDER, AssetCategory, categoryOfAssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 
-/** Fixed presentation order — the order the sidebar lists its categories in. */
-export const ASSET_OVERVIEW_TYPE_ORDER: readonly AssetType[] = [
-    AssetType.Image,
-    AssetType.Audio,
-    AssetType.Video,
-    AssetType.Font,
-    AssetType.JSON,
-    AssetType.Blueprint,
-    AssetType.Model,
-    AssetType.Other,
-];
+/**
+ * Fixed presentation order — the same sections the sidebar draws.
+ *
+ * Categories rather than types on purpose: this page and the tree are two views of one panel, and a
+ * breakdown that split "Media" back into Audio and Videos would not reconcile against the counts in
+ * the section headers three clicks away.
+ */
+export const ASSET_OVERVIEW_CATEGORY_ORDER: readonly AssetCategory[] = ASSET_CATEGORY_ORDER;
 
 export interface AssetOverviewEntry {
     asset: Asset;
@@ -42,8 +39,8 @@ export interface AssetOverviewEntry {
     referenceCount: number;
 }
 
-export interface AssetOverviewTypeBucket {
-    type: AssetType;
+export interface AssetOverviewCategoryBucket {
+    category: AssetCategory;
     count: number;
     bytes: number;
     referencedCount: number;
@@ -75,7 +72,7 @@ export interface AssetOverviewSummary {
     referenced: AssetOverviewGroupTotals;
     /** The complement of the referenced set: nothing in the project points at these. */
     orphan: AssetOverviewGroupTotals;
-    byType: AssetOverviewTypeBucket[];
+    byCategory: AssetOverviewCategoryBucket[];
     /** Heaviest first; ties broken by name so the list does not shuffle between rebuilds. */
     largest: AssetOverviewEntry[];
     packaging: AssetOverviewPackaging;
@@ -121,15 +118,15 @@ export function buildAssetOverview(input: AssetOverviewInput): AssetOverviewSumm
     const referenced = entries.filter(entry => entry.referenced);
     const orphan = entries.filter(entry => !entry.referenced);
 
-    const byType = ASSET_OVERVIEW_TYPE_ORDER.map(type => {
-        const ofType = entries.filter(entry => entry.asset.type === type);
-        const referencedOfType = ofType.filter(entry => entry.referenced);
+    const byCategory = ASSET_OVERVIEW_CATEGORY_ORDER.map(category => {
+        const ofCategory = entries.filter(entry => categoryOfAssetType(entry.asset.type) === category);
+        const referencedOfCategory = ofCategory.filter(entry => entry.referenced);
         return {
-            type,
-            count: ofType.length,
-            bytes: ofType.reduce((sum, entry) => sum + weigh(entry), 0),
-            referencedCount: referencedOfType.length,
-            referencedBytes: referencedOfType.reduce((sum, entry) => sum + weigh(entry), 0),
+            category,
+            count: ofCategory.length,
+            bytes: ofCategory.reduce((sum, entry) => sum + weigh(entry), 0),
+            referencedCount: referencedOfCategory.length,
+            referencedBytes: referencedOfCategory.reduce((sum, entry) => sum + weigh(entry), 0),
         };
     }).filter(bucket => bucket.count > 0);
 
@@ -143,7 +140,7 @@ export function buildAssetOverview(input: AssetOverviewInput): AssetOverviewSumm
         total: totals(entries),
         referenced: totals(referenced),
         orphan: totals(orphan),
-        byType,
+        byCategory,
         largest,
         packaging: {
             actualBytes: input.directoryBytes,

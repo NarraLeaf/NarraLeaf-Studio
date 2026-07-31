@@ -71,6 +71,7 @@ export const storyInspector = {
         layer: "Layer",
         character: "Character",
         displayable: "Displayable",
+        camera: "Stage camera",
     },
 
     variableScope: {
@@ -231,7 +232,19 @@ export const storyInspector = {
         rotate: "Rotate",
         // "stage", not "screen": this is the camera's brightness, not `/vignette`'s in-scene mask.
         darken: "Darken stage",
+        motion: "Camera motion",
         reset: "Reset camera",
+    },
+
+    // The picker labels: short enough that six fit side by side. The full names above stay as each
+    // button's tooltip, so `Darken stage` still gets to say *stage* where it matters.
+    cameraOperationShort: {
+        zoom: "Zoom",
+        pan: "Pan",
+        rotate: "Rotate",
+        darken: "Darken",
+        motion: "Motion",
+        reset: "Reset",
     },
 
     camera: {
@@ -302,6 +315,7 @@ export const storyInspector = {
         setVolume: "Set volume",
         setRate: "Set rate",
         muteSound: "Mute / unmute",
+        seekSound: "Seek",
     },
 
     screenEffectOption: {
@@ -357,6 +371,7 @@ export const storyInspector = {
         bgmAsset: "BGM asset",
         soundAsset: "Sound asset",
         fade: "Fade (s)",
+        seekTime: "Seek to (s)",
         volume: "Volume",
         rate: "Rate",
         loop: "Loop",

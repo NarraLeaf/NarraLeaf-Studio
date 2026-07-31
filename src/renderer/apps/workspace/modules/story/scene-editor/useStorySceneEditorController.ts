@@ -29,12 +29,14 @@ import { buildStoryCommandContext } from "./storyCommandContext";
 import { canCommit, parseCommandLine } from "./storyCommandParser";
 import { resolveCommandLine, type StoryCommandResolvedArgs } from "./storyCommandResolution";
 import { getCommandSpec } from "./commands/registry";
+import { opensInspectorAfterCommit } from "./commands/spec";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { PuppetDescriptionService } from "@/lib/workspace/services/puppet/PuppetDescriptionService";
 import type { StoryPuppetVocabulary } from "./storyCommandValues";
 
 import { collectTempSpeakers, promoteTempSpeaker } from "@/lib/workspace/services/story/storyModel";
 import { CHARACTERS_PANEL_ID } from "../../characters";
+import { PROPERTIES_PANEL_ID } from "../../properties/propertiesPanelId";
 import {
     annotateDialogueGroups,
     annotateNestingBranches,
@@ -769,7 +771,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         const hasNameChange = patch.name !== undefined && nextName !== scene.name;
         const hasDescriptionChange = patch.description !== undefined && nextDescription !== (scene.description ?? "");
         const hasBackgroundChange = patch.defaultBackgroundAssetId !== undefined && nextBackgroundAssetId !== (scene.defaultBackgroundAssetId ?? undefined);
-        if (!hasNameChange && !hasDescriptionChange && !hasBackgroundChange) {
+        // The service is the authority on what a bgm patch means; this only decides whether the edit is
+        // worth an undo step, so comparing the whole record is both sufficient and cheap.
+        const hasBgmChange = patch.bgm !== undefined
+            && JSON.stringify(patch.bgm ?? null) !== JSON.stringify(scene.bgm ?? null);
+        if (!hasNameChange && !hasDescriptionChange && !hasBackgroundChange && !hasBgmChange) {
             return false;
         }
 
@@ -1246,6 +1252,21 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
     }, [frozen, scene, startInsertInside]);
 
+    /**
+     * Bring the property editor onto the screen. Visibility only — no focus moves, so the caret and the
+     * keyboard stay in the scene exactly where the gesture left them, and the author sees the row's
+     * fields without losing the row.
+     *
+     * This is the one place that decides the rail is *on screen*; what it renders is decided elsewhere,
+     * by the selection the tab publishes (see the rail effect in `StorySceneEditorTab`). Keeping the two
+     * apart is deliberate: the rail following the selection must stay a silent, per-selection thing, or
+     * arrow-keying down a scene would keep re-opening a panel the author closed. Revealing happens only
+     * for a gesture that asks for it.
+     */
+    const revealInspectorPanel = useCallback(() => {
+        uiService?.panels.show(PROPERTIES_PANEL_ID);
+    }, [uiService]);
+
     /** Escape's inspector rung: close the property editor, keeping the row selected. */
     const closeInspector = useCallback(() => {
         setEditorMode(current => (current.kind === "inspector" ? { kind: "idle" } : current));
@@ -1495,9 +1516,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return false;
         }
         const block = spec.build(args, { generateId: () => uuidService.generate(), context: commandContext });
-        insertBlock(block, editorMode.slot.afterBlockId, spec.inspectorAfterCommit === true, { target: editorMode.slot.target, replaceBlockId: editorMode.slot.replaceBlockId });
+        const openInspector = opensInspectorAfterCommit(spec, block);
+        insertBlock(block, editorMode.slot.afterBlockId, openInspector, { target: editorMode.slot.target, replaceBlockId: editorMode.slot.replaceBlockId });
         scaffoldContainer(block, args.test?.kind === "expression" ? args.test.expression : undefined);
-        if (spec.inspectorAfterCommit) {
+        if (openInspector) {
             return true;
         }
         // A speaker with no line yet (`/say Alice`) lands the caret in the body, exactly as picking a
@@ -2218,7 +2240,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         dismissInsertChooser, discardInsertSlot, resolveInsertLine, commitInvalidFromInsert, chooseTempSpeakerForInsert, tempSpeakers,
         createActionFromSidebar, addInsideContainer, addConditionBranch,
         navigateFromTextEdit, resetGoalColumn, handleBackspaceAtEmptyStart, enterEditOrInspectorForActive,
-        activateBlockForInspectorOrOp, closeInspector,
+        activateBlockForInspectorOrOp, closeInspector, revealInspectorPanel,
         extendRowSelection, moveSelectedRows, duplicateSelection, jumpRowSelection, pageRowSelection,
         moveDraggedBlockAfter, moveDraggedBlockToSortablePosition, startDraggingBlock, endDraggingBlock,
         createLayerBeforeBlock, slashAtAlias,

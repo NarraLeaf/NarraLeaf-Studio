@@ -5,6 +5,7 @@ import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { buildMergedPersistentView } from "@shared/variables/mergedPersistentView";
 import { collectTempSpeakers } from "@/lib/workspace/services/story/storyModel";
 import type { Character } from "@/lib/workspace/services/character/Character";
+import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { AssetsMap } from "@/lib/workspace/services/assets/types";
 import { listSceneDisplayableTargets } from "../../story-motion/storyMotionPreviewTarget";
@@ -149,7 +150,7 @@ export function buildStoryCommandContext(input: {
     const characters: StoryCommandNamedRef[] = input.characters.map(character => {
         const id = character.profile.getId();
         const appearance = character.profile.appearance;
-        if (appearance.getKind() === "puppet") {
+        if (isPuppetAppearanceKind(appearance.getKind())) {
             puppetCharacterIds.push(id);
         }
         appearanceByCharacterId[id] = appearance.getKind() === "preset"

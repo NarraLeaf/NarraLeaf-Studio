@@ -2,6 +2,7 @@ import { RendererInterfaceKey } from "@shared/types/constants";
 import { Namespace } from "@shared/types/ipc";
 import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "@shared/types/menu";
+import type { FsTextEncoding } from "@shared/types/textEncoding";
 import type { BlueprintPersistenceProjectRef, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import type { MissingRecentProject } from "@shared/types/state/appStateTypes";
@@ -15,7 +16,7 @@ import type { DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/dev
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import type { PrivilegedActor } from "@shared/types/privileged";
-import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsHistoryEntry, VcsInitOptions, VcsRepositoryInfo, VcsStatus, VcsThreeWayResult } from "@shared/types/vcs";
+import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsHistoryEntry, VcsInitOptions, VcsRepositoryInfo, VcsRestoreOptions, VcsRestoreResult, VcsStatus, VcsThreeWayResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
@@ -51,11 +52,11 @@ function createPrivilegedBridge(guarded: boolean): RendererPrivilegedInterface {
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "list", path }),
             details: (actor: PrivilegedActor, path: string) =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "details", path }),
-            requestRead: (actor: PrivilegedActor, path: string, encoding: BufferEncoding) =>
+            requestRead: (actor: PrivilegedActor, path: string, encoding: FsTextEncoding) =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestRead", path, encoding, raw: false }),
             requestReadRaw: (actor: PrivilegedActor, path: string) =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestRead", path, raw: true }),
-            requestWrite: (actor: PrivilegedActor, path: string, encoding: BufferEncoding) =>
+            requestWrite: (actor: PrivilegedActor, path: string, encoding: FsTextEncoding) =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestWrite", path, encoding, raw: false }),
             requestWriteRaw: (actor: PrivilegedActor, path: string) =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestWrite", path, raw: true }),
@@ -147,10 +148,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         list: (path: string) => ipcClient.invoke(IPCEventType.fsList, { path }),
         details: (path: string) => ipcClient.invoke(IPCEventType.fsDetails, { path }),
         directorySize: (path: string) => ipcClient.invoke(IPCEventType.fsDirectorySize, { path }),
-        requestRead: (path: string, encoding: BufferEncoding) => ipcClient.invoke(IPCEventType.fsRequestRead, { path, encoding, raw: false }),
+        requestRead: (path: string, encoding: FsTextEncoding) => ipcClient.invoke(IPCEventType.fsRequestRead, { path, encoding, raw: false }),
         requestReadRaw: (path: string) => ipcClient.invoke(IPCEventType.fsRequestRead, { path, raw: true }),
         requestReadDir: (path: string) => ipcClient.invoke(IPCEventType.fsRequestReadDir, { path }),
-        requestWrite: (path: string, encoding: BufferEncoding) => ipcClient.invoke(IPCEventType.fsRequestWrite, { path, encoding, raw: false }),
+        requestWrite: (path: string, encoding: FsTextEncoding) => ipcClient.invoke(IPCEventType.fsRequestWrite, { path, encoding, raw: false }),
         requestWriteRaw: (path: string) => ipcClient.invoke(IPCEventType.fsRequestWrite, { path, raw: true }),
         ensureRegularFile: (path: string, data: string, encoding: BufferEncoding = "utf-8") => ipcClient.invoke(IPCEventType.fsEnsureRegularFile, { path, data, encoding }),
         writeFileNoFollow: (path: string, data: string, encoding: BufferEncoding = "utf-8") => ipcClient.invoke(IPCEventType.fsWriteFileNoFollow, { path, data, encoding }),
@@ -208,8 +209,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.send(IPCEventType.workspaceMenuSync, { model }),
         reportLoadResult: (ok: boolean) =>
             ipcClient.send(IPCEventType.workspaceReportLoadResult, { ok }),
-        reportWriteFreeze: (reason: WorkspaceFreezeKind | null) =>
-            ipcClient.send(IPCEventType.workspaceReportWriteFreeze, { reason }),
+        reportWriteFreeze: (reason: WorkspaceFreezeKind | null, revision?: RevisionId) =>
+            ipcClient.send(IPCEventType.workspaceReportWriteFreeze, { reason, revision }),
         onOpenViewRequest: (handler: (view: WorkspaceViewRequest) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceOpenView, (data) => handler(data.view)),
     },
@@ -240,6 +241,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.appCheckRecentProjects, {}) as Promise<RequestStatus<{ missing: MissingRecentProject[] }>>,
         getSystemPath: (name: "desktop" | "home") =>
             ipcClient.invoke(IPCEventType.appSystemPath, { name }) as Promise<RequestStatus<{ path: string }>>,
+        exportDiagnostics: (defaultFileName: string, report: string) =>
+            ipcClient.invoke(IPCEventType.appExportDiagnostics, { defaultFileName, report }),
     },
 
     devMode: {
@@ -317,9 +320,9 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     },
 
     /**
-     * Version control. Reads, plus the writes that produce a revision: `initRepository`,
-     * `commit` and `checkpoint`. The writes that need a conflict story - merge, restore -
-     * are still deliberately absent.
+     * Version control. Reads, the writes that produce a revision (`initRepository`, `commit`,
+     * `checkpoint`), and `restoreRevision` - the only one that overwrites the author's files.
+     * Merge, which is the write that needs a conflict story, is still deliberately absent.
      * Blobs arrive base64-encoded - decode at the call site that needs bytes.
      */
     vcs: {
@@ -348,9 +351,21 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         /** Same pipeline, labelled a checkpoint. `revision: null` = nothing to record. */
         checkpoint: (projectPath: string, reason: VcsCheckpointReason) =>
             ipcClient.invoke(IPCEventType.vcsCheckpoint, { projectPath, reason }) as Promise<RequestStatus<{ revision: VcsCommitResult | null }>>,
-        /** `includeKinds` costs one call per revision; leave it off unless the kinds are shown. */
-        getHistory: (projectPath: string, limit?: number, includeKinds?: boolean) =>
-            ipcClient.invoke(IPCEventType.vcsGetHistory, { projectPath, limit, includeKinds }) as Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>>,
+        /**
+         * Write one revision's content over the working tree and record it as a new revision.
+         *
+         * The only call here that touches the author's files. It checkpoints first (and aborts if
+         * it cannot), and it never removes a revision - `#12` restored at `#61` produces `#62`.
+         * The caller must leave any revision view and re-read every document afterwards.
+         */
+        restoreRevision: (projectPath: string, revision: RevisionId, options?: VcsRestoreOptions) =>
+            ipcClient.invoke(IPCEventType.vcsRestoreRevision, { projectPath, revision, options }) as Promise<RequestStatus<VcsRestoreResult>>,
+        /**
+         * `includeDetails` costs one call per revision; leave it off unless the details
+         * are shown. One call carries the kind, message, timestamp and author together.
+         */
+        getHistory: (projectPath: string, limit?: number, includeDetails?: boolean) =>
+            ipcClient.invoke(IPCEventType.vcsGetHistory, { projectPath, limit, includeDetails }) as Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>>,
         readBlob: (projectPath: string, revision: RevisionId, path: string) =>
             ipcClient.invoke(IPCEventType.vcsReadBlob, { projectPath, revision, path }) as Promise<RequestStatus<{ contentBase64: string }>>,
         /** Every document at one revision in one round trip; `contentBase64: null` = absent there. */
@@ -447,6 +462,11 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.uiTemplateRegistryFetch, {}),
         fetchBundle: (templateId: string) =>
             ipcClient.invoke(IPCEventType.uiTemplateFetchBundle, { templateId }),
+    },
+
+    puppetRuntimes: {
+        installSdk: (runtimeId: string, projectPath: string, archivePath: string) =>
+            ipcClient.invoke(IPCEventType.puppetRuntimeInstallSdk, { runtimeId, projectPath, archivePath }),
     },
 
     privileged: privilegedBootstrapBridge,
