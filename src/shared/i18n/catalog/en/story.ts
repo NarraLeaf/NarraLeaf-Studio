@@ -67,6 +67,49 @@ export const story = {
             expand: "Show branches",
             collapse: "Hide branches",
         },
+        // The route rail: endings derived from the graph (a scene the story cannot leave) and
+        // every decision path that reaches one.
+        route: {
+            title: "Routes",
+            show: "Show routes",
+            hide: "Hide routes",
+            count: {
+                one: "{count} route",
+                other: "{count} routes",
+            },
+            // The header count once the walk hit the cap - the "+" is the whole point of the key.
+            countTruncated: "{count}+ routes",
+            // Says the list is capped AND that every number under it is about the capped list,
+            // because a rail that shows 200 of 4000 routes silently reads as "these are all of them".
+            truncated: "Capped at {count} routes. Counts and notes below cover only those.",
+            noEntryScene: "No entry scene, so no routes.",
+            noRoutes: "No routes.",
+            noDecisions: "No decisions",
+            // A path can stop in a scene that is not an ending, and calling that an ending is a lie.
+            stopsHere: "stops here",
+            stopsHereTitle: "A path stops here without this being an ending — it looped back, or an option ran out of continuations",
+            diagnostics: {
+                unreachableEndings: {
+                    one: "{count} ending no route reaches",
+                    other: "{count} endings no route reaches",
+                },
+                deadBranches: {
+                    one: "{count} option on no route",
+                    other: "{count} options on no route",
+                },
+            },
+        },
+        // Variable focus (好感度分歧线). A scene's chip is the value on ARRIVAL - before that
+        // scene's own writes - so every string here has to avoid reading as a final value.
+        variable: {
+            none: "No variable focus",
+            hintArrival: "Scene chips show the value on arrival",
+            arrivalTitle: "Value on arrival, before this scene's own changes",
+            finalTitle: "Value at the end of this route",
+            rangeChip: "{name} {min}–{max}",
+            valueChip: "{name} {value}",
+            unknownChip: "{name} ?",
+        },
         summary: {
             scenes: {
                 one: "{count} scene",

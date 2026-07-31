@@ -58,6 +58,38 @@ export const story = {
             expand: "展开分支",
             collapse: "收起分支",
         },
+        route: {
+            title: "路线",
+            show: "显示路线",
+            hide: "隐藏路线",
+            count: {
+                other: "{count} 条路线",
+            },
+            countTruncated: "{count}+ 条路线",
+            truncated: "已达 {count} 条路线上限，下方的计数与统计仅覆盖已列出的路线。",
+            noEntryScene: "未设置入口场景，无法列出路线。",
+            noRoutes: "没有路线。",
+            noDecisions: "没有分支选择",
+            stopsHere: "在此中断",
+            stopsHereTitle: "路径在此停止，但这里并不是结局——它绕回了已访问过的场景，或某个分支没有后续内容",
+            diagnostics: {
+                unreachableEndings: {
+                    other: "{count} 个结局没有路线到达",
+                },
+                deadBranches: {
+                    other: "{count} 个分支不在任何路线上",
+                },
+            },
+        },
+        variable: {
+            none: "不聚焦变量",
+            hintArrival: "场景上的数值为到达时的取值",
+            arrivalTitle: "到达该场景时的取值，不含该场景自身的改动",
+            finalTitle: "该路线结束时的取值",
+            rangeChip: "{name} {min}–{max}",
+            valueChip: "{name} {value}",
+            unknownChip: "{name} ?",
+        },
         summary: {
             scenes: {
                 other: "{count} 个场景",
