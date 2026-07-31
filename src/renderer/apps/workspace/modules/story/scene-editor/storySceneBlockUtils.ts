@@ -121,11 +121,12 @@ function sameGroupSpeaker(a: GroupSpeaker, b: GroupSpeaker): boolean {
  * flattened list is not adjacency in the tree). Only dialogue and in-group expression rows are cloned;
  * every other row is returned untouched, so referential identity is preserved where it can be.
  *
- * `groupContinues` is set on a head whose very next row is one of its members. It is not a grouping
- * rule — the runs are exactly the ones the loop below already found — only the one fact a row cannot
- * see about itself: whether the attribution rail has to leave its bottom edge (U1 WI-1). Without it
- * the rail starts abruptly under the first continuation line and never reaches the speaker it points
- * at, which is the whole thing it exists to say.
+ * `groupContinues` is set on any row of a run whose very next row is still one of its members — heads
+ * and members alike. It is not a grouping rule (the runs are exactly the ones the loop below already
+ * found), only the one fact a row cannot see about itself: whether the attribution rail has to leave
+ * its bottom edge. A head without it never reaches the lines it attributes; a MEMBER without it is
+ * the last line of the run, which is what lets the rail finish with an end instead of running off the
+ * bottom of the last row into whatever follows.
  */
 export function annotateDialogueGroups(rows: VisibleStoryRow[]): VisibleStoryRow[] {
     let groupSpeaker: GroupSpeaker | null = null;
@@ -159,9 +160,20 @@ export function annotateDialogueGroups(rows: VisibleStoryRow[]): VisibleStoryRow
         return row;
     });
     return annotated.map((row, index) =>
-        row.groupRole === "head" && annotated[index + 1]?.groupRole === "member"
+        row.groupRole !== undefined && annotated[index + 1]?.groupRole === "member"
             ? { ...row, groupContinues: true }
             : row);
+}
+
+/**
+ * Records each row's successor depth, which is what lets a nesting connector know where to stop.
+ *
+ * The visible list is a preorder flattening, so the branch at level L ends at row `i` exactly when the
+ * next row sits at depth L or shallower — one lookahead, no tree walk. The last row ends every branch,
+ * hence the 0.
+ */
+export function annotateNestingBranches(rows: VisibleStoryRow[]): VisibleStoryRow[] {
+    return rows.map((row, index) => ({ ...row, nextRowDepth: rows[index + 1]?.depth ?? 0 }));
 }
 
 export function buildVisibleRows(scene: StoryScene, collapsedIds: Set<StoryBlockId>): VisibleStoryRow[] {
