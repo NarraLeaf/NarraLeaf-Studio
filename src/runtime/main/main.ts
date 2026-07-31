@@ -175,7 +175,17 @@ void app.whenReady().then(async () => {
     // After the window exists so a sidecar's first event has somewhere to land,
     // and unawaited so a slow handshake never delays the game's first paint.
     sidecarHost.startAutostart();
-    await mainWindow.loadURL(`${GAME_RUNTIME_PROTOCOL}://runtime/index.html`);
+    // A preview stopped while it was still booting quits mid-load, and the pending navigation then
+    // rejects with ERR_FAILED. That is the shutdown working, not a failure to report - and the
+    // author, who pressed Stop, would otherwise read an unhandled rejection on the Studio console.
+    // Keyed on the quit rather than on the window being destroyed: `app.quit()` aborts the load
+    // first and tears the window down after, so `isDestroyed()` is still false when this rejects.
+    await mainWindow.loadURL(`${GAME_RUNTIME_PROTOCOL}://runtime/index.html`).catch(error => {
+        if (isQuitting) {
+            return;
+        }
+        throw error;
+    });
 });
 
 /**

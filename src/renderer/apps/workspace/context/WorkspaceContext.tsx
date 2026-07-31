@@ -20,6 +20,14 @@ interface WorkspaceContextValue {
     context: WorkspaceCtx | null;
     isInitialized: boolean;
     error: Error | null;
+    /**
+     * Start the whole initialization over.
+     *
+     * Worth having because most of what makes this fail is not the project: a file still being
+     * written by another tool, a network volume that had not woken up, a plugin that threw once.
+     * Before this existed the only way to try again was to kill the window.
+     */
+    retry: () => void;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
@@ -44,8 +52,17 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
     const [context, setContext] = useState<WorkspaceCtx | null>(null);
     const [isInitialized, setIsInitialized] = useState(false);
     const [error, setError] = useState<Error | null>(null);
+    const [attempt, setAttempt] = useState(0);
     const contextRef = useRef<WorkspaceCtx | null>(null);
     contextRef.current = context;
+
+    const retry = React.useCallback(() => {
+        setError(null);
+        setIsInitialized(false);
+        setWorkspace(null);
+        setContext(null);
+        setAttempt(previous => previous + 1);
+    }, []);
 
     useEffect(() => {
         let mounted = true;
@@ -121,7 +138,7 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
                 void enqueueWorkspaceInit(disposeWorkspace);
             }
         };
-    }, []);
+    }, [attempt]);
 
     useEffect(() => {
         if (!context) {
@@ -193,7 +210,7 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
     }, []);
 
     return (
-        <WorkspaceContext.Provider value={{ workspace, context, isInitialized, error }}>
+        <WorkspaceContext.Provider value={{ workspace, context, isInitialized, error, retry }}>
             {children}
         </WorkspaceContext.Provider>
     );

@@ -24,18 +24,13 @@ import {
 import type { PaletteCommand } from "./commandPaletteModel";
 import type { SearchGroup, SearchHit } from "@/lib/workspace/services/search/searchIndexModel";
 import { jumpToSearchTarget } from "../../modules/search/searchJump";
-import { renderHighlightedText } from "../../modules/search/SearchPanel";
+import { renderHighlightedText, SEARCH_GROUP_TITLE_KEYS } from "../../modules/search/SearchPanel";
 
 /** VSCode-style mode prefix: a leading `>` means "commands"; anything else is a project search. */
 const COMMAND_PREFIX = ">";
 
-const SEARCH_GROUP_TITLE_KEYS: Record<SearchGroup, TranslationKey> = {
-    story: "workspace.shell.search.groups.story" as TranslationKey,
-    asset: "workspace.shell.search.groups.asset" as TranslationKey,
-    variable: "workspace.shell.search.groups.variable" as TranslationKey,
-    uiTextKey: "workspace.shell.search.groups.uiTextKey" as TranslationKey,
-    blueprintNode: "workspace.shell.search.groups.blueprintNode" as TranslationKey,
-};
+/** Category caption for commands that declare none, so browsing never has an unlabelled run. */
+const UNCATEGORIZED_KEY = "workspace.shell.commandPalette.categoryOther" as TranslationKey;
 
 /**
  * Render a command title with the fuzzy-matched characters emphasized. `positions` are indices
@@ -201,13 +196,43 @@ export function CommandPalette() {
         return () => cancelAnimationFrame(frame);
     }, [open, boxPresent]);
 
+    const commandFilter = isCommandMode ? query.slice(COMMAND_PREFIX.length).trim() : "";
+    /**
+     * With nothing typed, `>` is a *browse* of everything the workspace can do, so the list is
+     * ordered by category and captioned. The moment a filter exists, relevance ordering is the
+     * whole point and category runs would fight it — so captions are suppressed rather than
+     * shuffling the ranked list back into category order.
+     */
+    const browsingCommands = isCommandMode && commandFilter.length === 0;
+
     const rankedCommands = useMemo(() => {
         if (!isCommandMode) {
             return [];
         }
-        const commandFilter = query.slice(COMMAND_PREFIX.length);
-        return rankFuzzyList(commands, commandFilter, command => [command.title, command.category ?? ""]);
-    }, [isCommandMode, commands, query]);
+        const ranked = rankFuzzyList(commands, commandFilter, command => [
+            command.title,
+            command.category ?? "",
+        ]);
+        if (commandFilter.length > 0) {
+            return ranked;
+        }
+        // Stable sort by category only: within a category the collector's order is deliberate
+        // (registered → actions → panels → keybindings) and worth preserving. Uncategorized
+        // commands sink to the bottom — a section literally called "Other" leading the list is
+        // the first thing that reads as disorganized.
+        return ranked
+            .map((entry, index) => ({ entry, index }))
+            .sort((a, b) => {
+                const left = a.entry.item.category;
+                const right = b.entry.item.category;
+                if (!left !== !right) {
+                    return left ? -1 : 1;
+                }
+                const byCategory = (left ?? "").localeCompare(right ?? "");
+                return byCategory !== 0 ? byCategory : a.index - b.index;
+            })
+            .map(({ entry }) => entry);
+    }, [isCommandMode, commands, commandFilter]);
 
     const searchHits = useMemo(() => {
         if (isCommandMode || !open || !searchService || !query.trim()) {
@@ -238,10 +263,12 @@ export function CommandPalette() {
                 row: {
                     key: item.id,
                     icon: item.icon,
+                    section: browsingCommands ? (item.category ?? t(UNCATEGORIZED_KEY)) : undefined,
                     title: (
                         <span className="flex min-w-0 items-baseline gap-2">
                             <span className="truncate">{highlightTitle(item.title, positions)}</span>
-                            {item.category && (
+                            {/* Redundant with the caption while browsing; the only locator while filtering. */}
+                            {item.category && !browsingCommands && (
                                 <span className="shrink-0 text-xs text-fg-subtle">{item.category}</span>
                             )}
                         </span>
@@ -267,6 +294,9 @@ export function CommandPalette() {
             return searchHits.map(({ group, hit }) => ({
                 row: {
                     key: hit.entry.id,
+                    // Results arrive grouped and ranked *within* each group, so a caption per group
+                    // never fights the ordering — it just names what the run of rows is.
+                    section: t(SEARCH_GROUP_TITLE_KEYS[group]),
                     title: (
                         <span className="flex min-w-0 items-baseline gap-2">
                             <span className="truncate">{renderHighlightedText(hit.entry.text, hit.titleRanges)}</span>
@@ -277,7 +307,10 @@ export function CommandPalette() {
                             )}
                         </span>
                     ),
-                    trailing: t(SEARCH_GROUP_TITLE_KEYS[group]),
+                    trailing:
+                        (hit.entry.count ?? 1) > 1
+                            ? t("workspace.shell.search.occurrences", { count: hit.entry.count! })
+                            : undefined,
                 },
                 run: () => {
                     jumpToSearchTarget(hit.entry.target, { openEditorTab, setPanelVisibility, context });
@@ -326,6 +359,7 @@ export function CommandPalette() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [
         isCommandMode,
+        browsingCommands,
         rankedCommands,
         query,
         searchHits,
