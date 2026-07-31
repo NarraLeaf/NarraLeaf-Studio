@@ -12,9 +12,11 @@ import {
     type NlrStageSession,
 } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
 import { createWorkspaceBlobUrlResolver, type WorkspaceBlobUrlResolver } from "@/lib/workspace/assets/resolveWorkspaceAssetUrl";
+import { collectAudioClipRegions } from "@/lib/workspace/assets/audioClipRegions";
 import { Services, WorkspaceContext } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
+import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { registerCharacterAvatarAssets } from "@/lib/ui-editor/runtime/characterAvatarAssets";
 import { useStoryPreviewGameUi, type StoryPreviewIssue } from "./useStoryPreviewGameUi";
 import { resolvePreviewTargetBlockId } from "./storyScenePreviewTarget";
@@ -185,6 +187,13 @@ export function useStoryScenePreviewController(input: {
             return resolver ? resolver.resolve(assetId, assetType) : null;
         };
     }, [context]);
+
+    // Recomputed per open rather than per render: the preview recompiles on a debounce anyway, and a
+    // marker edited while the pane is open lands on the next rebuild.
+    const audioClips = useMemo(
+        () => (context && open ? collectAudioClipRegions(context.services.get<AssetsService>(Services.Assets)) : undefined),
+        [context, open],
+    );
 
     const resolvedTargetId = useMemo(
         () => (scene ? resolvePreviewTargetBlockId(scene, activeBlockId) : null),
@@ -392,6 +401,7 @@ export function useStoryScenePreviewController(input: {
                 characters: host.characters,
                 animations,
                 resolveAssetUrl,
+                audioClips,
                 blueprintDocument: host.blueprintDocument,
                 persistence: host.persistence,
                 onStagePosed: () => handleStagePosed(runId),

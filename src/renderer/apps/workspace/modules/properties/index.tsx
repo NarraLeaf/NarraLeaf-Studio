@@ -2,6 +2,7 @@ import { Settings } from "lucide-react";
 import { translate } from "@/lib/i18n";
 import { PanelModule } from "../types";
 import { PropertiesPanel } from "./PropertiesPanel";
+import { PROPERTIES_PANEL_ID } from "./propertiesPanelId";
 import { PanelPosition } from "../../registry/types";
 
 /**
@@ -10,7 +11,7 @@ import { PanelPosition } from "../../registry/types";
  */
 export const propertiesModule: PanelModule = {
     metadata: {
-        id: "narraleaf-studio:properties",
+        id: PROPERTIES_PANEL_ID,
         // Resolved lazily on read (module registration runs after i18n init).
         titleKey: "placeholders.moduleTitles.properties",
         get title() {
@@ -23,6 +24,8 @@ export const propertiesModule: PanelModule = {
     },
     component: PropertiesPanel,
 };
+
+export * from "./propertiesPanelId";
 
 // Export framework
 export * from "./framework";

@@ -37,6 +37,10 @@ const READ_ONLY_STORY_ROW_ACTIONS: ReadonlySet<keyof StoryRowActions> = new Set<
     // `activateBlockForInspectorOrOp` (re-open an invalid line, add a line to a container) are refused
     // by the controller.
     "openInspector",
+    // Panel visibility, and nothing else. Reading a row's fields on a frozen workspace is worth
+    // nothing if the rail holding them is collapsed and the gesture that opens it has been switched
+    // off.
+    "revealInspectorPanel",
     // Dev Mode from a row. Not a project-data write; running a frozen version is U4's problem and is
     // gated in the main process, not here.
     "playFromRow",

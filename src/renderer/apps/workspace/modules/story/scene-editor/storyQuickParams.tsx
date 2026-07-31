@@ -11,6 +11,7 @@ import {
     type QuickParamValue,
 } from "@/lib/story/storyQuickParamsModel";
 import { characterRowLookup } from "./storySceneBlockUtils";
+import { useStoryMotionNames } from "./useStoryMotionNames";
 import { storyActionRowFragments, type StoryRowFragment } from "@/lib/story/storyRowProjection";
 import type { Character } from "@/lib/workspace/services/character/Character";
 
@@ -50,8 +51,9 @@ export function blockOverview(
     scene: StoryScene | undefined,
     scenes: Record<StorySceneId, StoryScene> | undefined,
     label: (key: "story.quickParam.jumpLabel" | "story.quickParam.waitLabel") => string,
+    motionName?: (animationId: string) => string | null,
 ): OverviewFragment[] {
-    return storyActionRowFragments(block, { character: characterRowLookup(characters), scene, scenes }, label);
+    return storyActionRowFragments(block, { character: characterRowLookup(characters), scene, scenes, motionName }, label);
 }
 
 /**
@@ -68,7 +70,10 @@ export function BlockOverview(props: {
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
 }) {
     const { t } = useTranslation();
-    const fragments = blockOverview(props.block, props.characters, props.scene, props.scenes, key => t(key));
+    // Resolved here rather than threaded from the rows host: the projection stays pure and the React
+    // layer, which has the service, supplies the lookup (the rule `describeBlockSubject` documents).
+    const motionName = useStoryMotionNames();
+    const fragments = blockOverview(props.block, props.characters, props.scene, props.scenes, key => t(key), motionName);
 
     return (
         // Italic, and no fragment brighter than `fg-muted`: an action row is a stage direction, and it

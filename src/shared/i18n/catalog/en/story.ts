@@ -51,6 +51,65 @@ export const story = {
                 other: "{count} jumps with no valid target",
             },
         },
+        // Option-level branch rows drawn inside an expanded scene node. A "fork" is the question
+        // (a choice, an if-group); a "branch" is one arm answering it.
+        branch: {
+            forkChoice: "Choice",
+            forkCondition: "Condition",
+            // Deliberately not "dead end": an arm whose own nested fork does the jumping falls
+            // through too, and so does one that simply plays a line and rejoins the scene.
+            fallsThrough: "continues",
+            fallsThroughTitle: "No jump of its own — the scene continues past the fork",
+            forkCount: {
+                one: "{count} branch",
+                other: "{count} branches",
+            },
+            expand: "Show branches",
+            collapse: "Hide branches",
+        },
+        // The route rail: endings derived from the graph (a scene the story cannot leave) and
+        // every decision path that reaches one.
+        route: {
+            title: "Routes",
+            show: "Show routes",
+            hide: "Hide routes",
+            count: {
+                one: "{count} route",
+                other: "{count} routes",
+            },
+            // The header count once the walk hit the cap - the "+" is the whole point of the key.
+            countTruncated: "{count}+ routes",
+            // Says the list is capped AND that every number under it is about the capped list,
+            // because a rail that shows 200 of 4000 routes silently reads as "these are all of them".
+            truncated: "Capped at {count} routes. Counts and notes below cover only those.",
+            noEntryScene: "No entry scene, so no routes.",
+            noRoutes: "No routes.",
+            noDecisions: "No decisions",
+            // A path can stop in a scene that is not an ending, and calling that an ending is a lie.
+            stopsHere: "stops here",
+            stopsHereTitle: "A path stops here without this being an ending — it looped back, or an option ran out of continuations",
+            diagnostics: {
+                unreachableEndings: {
+                    one: "{count} ending no route reaches",
+                    other: "{count} endings no route reaches",
+                },
+                deadBranches: {
+                    one: "{count} option on no route",
+                    other: "{count} options on no route",
+                },
+            },
+        },
+        // Variable focus (好感度分歧线). A scene's chip is the value on ARRIVAL - before that
+        // scene's own writes - so every string here has to avoid reading as a final value.
+        variable: {
+            none: "No variable focus",
+            hintArrival: "Scene chips show the value on arrival",
+            arrivalTitle: "Value on arrival, before this scene's own changes",
+            finalTitle: "Value at the end of this route",
+            rangeChip: "{name} {min}–{max}",
+            valueChip: "{name} {value}",
+            unknownChip: "{name} ?",
+        },
         summary: {
             scenes: {
                 one: "{count} scene",
@@ -159,6 +218,10 @@ export const story = {
         addStarred: "Add to starred",
         removeStarred: "Remove from starred",
     },
+    music: {
+        missingAudio: "Missing audio",
+        none: "No music",
+    },
     background: {
         missingImage: "Missing image",
         none: "No background",
@@ -202,7 +265,7 @@ export const story = {
         displayName: "Display Name",
         seekTime: "Seconds",
         // Camera
-        cameraOperation: "Pan / Zoom / Rotate / Darken / Reset",
+        cameraOperation: "Pan / Zoom / Rotate / Darken / Motion / Reset",
         cameraAmount: "Amount or Position",
         // Modifiers
         duration: "Seconds",
@@ -321,8 +384,15 @@ export const story = {
         placeholderNote: "Note…",
         placeholderText: "Text…",
         dragRow: "Drag row",
-        insert: "Insert",
-        delete: "Delete",
+        // Two strings per row button, and the difference is load-bearing: `insert`/`delete` are the
+        // ACCESSIBLE NAMES and `insertTitle`/`deleteTitle` the tooltips, which add the keybinding. They
+        // read the same because a screen reader and a pointer deserve the same sentence — these used to
+        // be the bare words "Insert" and "Delete", left over from when the buttons had visible text, so
+        // the only thing announced was a verb with no object. The shortcut stays out of the name (it
+        // belongs to the tooltip and the cheat sheet, not to what the control IS), and the bracket
+        // convention lives in the catalogue because zh wants full-width ones.
+        insert: "Insert a blank row after this one",
+        delete: "Delete this row",
         insertTitle: "Insert a blank row after this one ({keys})",
         deleteTitle: "Delete this row ({keys})",
         playFromRow: "Play from this row",
@@ -340,7 +410,8 @@ export const story = {
         voiceOutdated: "Voice outdated, open voice table",
         voiceManage: "Open voice table",
         voicePlay: "Play voice take",
-        voiceStop: "Stop",
+        // "Stop" alone was the accessible name of a mid-row icon button; it now says what stops.
+        voiceStop: "Stop voice take",
     },
     sceneEditor: {
         defaultSceneName: "Untitled Scene",
@@ -353,6 +424,15 @@ export const story = {
         noDescription: "No description",
         defaultBackground: "Default background",
         clearBackground: "Clear background",
+        sceneMusic: "Scene music",
+        clearSceneMusic: "Clear scene music",
+        selectSceneMusic: "Select Scene Music",
+        sceneMusicVolume: "Volume",
+        sceneMusicLoop: "Loop",
+        sceneMusicFade: "Fade in (s)",
+        sceneMusicLoopRegion: "Loops {from}s – {to}s",
+        sceneMusicFromIn: "Starts at {from}s",
+        sceneMusicWholeClip: "Whole clip",
         backgroundResolveError: "Image asset could not be resolved: {error}",
         selectDefaultBackground: "Select Default Background",
         tabInvalid: "Story scene editor tab is invalid.",
@@ -604,6 +684,7 @@ export const story = {
             zoom: "Zoom",
             rotate: "Rotate",
             darken: "Darken stage",
+            motion: "Motion",
             reset: "Reset camera",
         },
         condition: "Condition",

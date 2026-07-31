@@ -1,5 +1,6 @@
 import type { FileDetails, FileStat, FileEntry } from "@shared/utils/fs";
 import type { FsRequestResult } from "./os";
+import type { FsTextEncoding } from "./textEncoding";
 import type { PluginPermissionRequest } from "./pluginPermissions";
 
 export const PrivilegedCapability = {
@@ -22,9 +23,9 @@ export type PrivilegedFileSystemCall =
     | { operation: "stat"; path: string }
     | { operation: "list"; path: string }
     | { operation: "details"; path: string }
-    | { operation: "requestRead"; path: string; raw: false; encoding: BufferEncoding }
+    | { operation: "requestRead"; path: string; raw: false; encoding: FsTextEncoding }
     | { operation: "requestRead"; path: string; raw: true }
-    | { operation: "requestWrite"; path: string; raw: false; encoding: BufferEncoding }
+    | { operation: "requestWrite"; path: string; raw: false; encoding: FsTextEncoding }
     | { operation: "requestWrite"; path: string; raw: true }
     | { operation: "ensureRegularFile"; path: string; data: string; encoding?: BufferEncoding }
     | { operation: "writeFileNoFollow"; path: string; data: string; encoding?: BufferEncoding }

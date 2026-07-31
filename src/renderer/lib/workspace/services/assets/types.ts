@@ -1,4 +1,5 @@
-import { AssetType } from "./assetTypes";
+import type { AudioClipRegion } from "@shared/types/audio";
+import { AssetCategory, AssetType } from "./assetTypes";
 
 export enum AssetSource {
     Local = "local",
@@ -51,12 +52,12 @@ export interface Asset<Type extends AssetType = AssetType, Source extends AssetS
  * One pair per asset, not a list of markers: a clip has exactly one region worth naming, and the
  * thing downstream wants to ask is "where does this loop", which a bag of markers cannot answer.
  * Either end may stand alone while the author is still deciding.
+ *
+ * The same shape the game bundle carries ({@link AudioClipRegion}) - deliberately one type, because
+ * the region an author marks here is the region the engine plays. `@shared/types/audio` owns the
+ * normalizer both sides read it with.
  */
-export interface AssetAudioLoop {
-    /** Offset from the start of the clip, in milliseconds. */
-    inMs?: number;
-    outMs?: number;
-}
+export type AssetAudioLoop = AudioClipRegion;
 
 export interface AssetExtras {
     /** Audio only: the loop region shown and edited by the audio preview. */
@@ -89,20 +90,31 @@ export type AssetsMap = {
 };
 
 /**
- * Asset group for organizing assets
+ * A folder in the asset browser.
+ *
+ * Filed under a {@link AssetCategory}, not an {@link AssetType}: the sidebar's sections are
+ * categories, and a folder under "Media" has to be able to hold an mp3 next to an mp4. Records
+ * written before this carried `type: AssetType` instead and are folded up on read; the id never
+ * changed, so no asset's `groupId` had to be rewritten.
  */
 export interface AssetGroup {
     id: string;
     name: string;
-    type: AssetType;
+    category: AssetCategory;
     parentGroupId?: string;
     createdAt: number;
     updatedAt: number;
 }
 
+/** A group record as it may still exist on disk, from before groups moved up to categories. */
+export interface LegacyTypedAssetGroup extends Omit<AssetGroup, "category"> {
+    category?: AssetCategory;
+    type?: AssetType;
+}
+
 /**
- * Group map organized by asset type
+ * Group map organized by asset category
  */
 export type AssetGroupMap = {
-    [K in AssetType]: Record<string, AssetGroup>;
+    [K in AssetCategory]: Record<string, AssetGroup>;
 };

@@ -5,6 +5,7 @@ import { BlueprintPersistenceProjectRef, RequestStatus, WorkspaceFreezeKind } fr
 import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "./menu";
 import { FsRequestResult, PlatformInfo } from "./os";
+import type { FsTextEncoding } from "./textEncoding";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults, WorkspaceViewRequest } from "./window";
 import { GlobalStateValue } from "./state/globalState";
 import { GlobalStateKeys } from "./state/globalState";
@@ -30,6 +31,7 @@ import type {
     WorkspacePluginDescriptor,
 } from "./plugins";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
+import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult } from "./uiTemplateRegistry";
 import type {
     PrivilegedActor,
@@ -37,7 +39,7 @@ import type {
 } from "./privileged";
 import { AppEventToken } from "./app";
 import type { LocaleContribution } from "@shared/i18n";
-import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsHistoryEntry, VcsInitOptions, VcsRepositoryInfo, VcsStatus, VcsThreeWayResult } from "./vcs";
+import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsHistoryEntry, VcsInitOptions, VcsRepositoryInfo, VcsRestoreOptions, VcsRestoreResult, VcsStatus, VcsThreeWayResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -47,9 +49,9 @@ export interface RendererPrivilegedInterface {
         stat(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileStat>>>;
         list(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileEntry[]>>>;
         details(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileDetails>>>;
-        requestRead(actor: PrivilegedActor, path: string, encoding: BufferEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
+        requestRead(actor: PrivilegedActor, path: string, encoding: FsTextEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
         requestReadRaw(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<string>>>;
-        requestWrite(actor: PrivilegedActor, path: string, encoding: BufferEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
+        requestWrite(actor: PrivilegedActor, path: string, encoding: FsTextEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
         requestWriteRaw(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<string>>>;
         ensureRegularFile(actor: PrivilegedActor, path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
         writeFileNoFollow(actor: PrivilegedActor, path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
@@ -120,14 +122,14 @@ export interface RendererPreloadedInterface {
          * it shares the build's own measurement - see {@link Fs.directorySize}.
          */
         directorySize(path: string): Promise<RequestStatus<FsRequestResult<DirectorySizeResult>>>;
-        requestRead(path: string, encoding: BufferEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
+        requestRead(path: string, encoding: FsTextEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
         requestReadRaw(path: string): Promise<RequestStatus<FsRequestResult<string>>>;
         /**
          * Grant read access to a directory tree, served as `app://fs/{hash}/{relative/path}`.
          * Studio-internal (not on the plugin privileged surface) - see the IPC event's note.
          */
         requestReadDir(path: string): Promise<RequestStatus<FsRequestResult<string>>>;
-        requestWrite(path: string, encoding: BufferEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
+        requestWrite(path: string, encoding: FsTextEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
         requestWriteRaw(path: string): Promise<RequestStatus<FsRequestResult<string>>>;
         ensureRegularFile(path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
         writeFileNoFollow(path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
@@ -213,8 +215,12 @@ export interface RendererPreloadedInterface {
          * disabled controls in the top bar are affordance, not enforcement. Reported on every change
          * AND once at startup: the renderer's latch is module-level and not persisted, so a window
          * that reloads mid-freeze has to clear what main still believes.
+         *
+         * `revision` accompanies a `"revision"` freeze, because Dev Mode is not refused - it compiles
+         * that revision, and main cannot find it from the kind alone. Omitting it makes main refuse the
+         * launch instead of running the working tree.
          */
-        reportWriteFreeze(reason: WorkspaceFreezeKind | null): void;
+        reportWriteFreeze(reason: WorkspaceFreezeKind | null, revision?: RevisionId): void;
         /** Main asking this workspace to reveal a surface on the Settings window's behalf. */
         onOpenViewRequest(handler: (view: WorkspaceViewRequest) => void): AppEventToken;
     };
@@ -256,6 +262,16 @@ export interface RendererPreloadedInterface {
         /** Which remembered projects are no longer on disk. Reports only; removes nothing. */
         checkRecentProjects(): Promise<RequestStatus<{ missing: MissingRecentProject[] }>>;
         getSystemPath(name: "desktop" | "home"): Promise<RequestStatus<{ path: string }>>;
+        /**
+         * Write a support bundle - `report` plus the environment header and the main-process log
+         * tail - to a file the user picks. On the base surface rather than `workspace` so a window
+         * whose workspace failed to start can still call it.
+         */
+        exportDiagnostics(defaultFileName: string, report: string): Promise<RequestStatus<{
+            canceled: boolean;
+            filePath?: string;
+            byteLength?: number;
+        }>>;
     };
 
     devMode: {
@@ -348,8 +364,30 @@ export interface RendererPreloadedInterface {
          * is a success, because an empty revision per interval is not history.
          */
         checkpoint(projectPath: string, reason: VcsCheckpointReason): Promise<RequestStatus<{ revision: VcsCommitResult | null }>>;
-        /** `includeKinds` costs one call per revision; leave it off unless kinds are shown. */
-        getHistory(projectPath: string, limit?: number, includeKinds?: boolean): Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>>;
+        /**
+         * Write one revision's content over the working tree and record it as a new revision.
+         *
+         * The only call on this surface that changes the author's files, and three properties are
+         * part of the contract rather than implementation detail:
+         *
+         *  - a checkpoint is committed BEFORE anything is written, and a failure to take one aborts
+         *    the restore rather than proceeding;
+         *  - no revision is removed - restoring `#12` onto a project at `#61` produces `#62`, and
+         *    `#13`..`#61` are all still there;
+         *  - only paths under version control are touched, in either direction. `.nlstudio/`,
+         *    `editor/cache`, `dist` and `.lore/` are outside the operation.
+         *
+         * Long: two commit pipelines plus a rewrite of the whole versioned tree. The caller must
+         * leave any revision view and re-read every document once it resolves - the bytes under the
+         * editors are no longer the ones they were read from.
+         */
+        restoreRevision(projectPath: string, revision: RevisionId, options?: VcsRestoreOptions): Promise<RequestStatus<VcsRestoreResult>>;
+        /**
+         * `includeDetails` costs one call per revision; leave it off unless the details are
+         * shown. One call carries `kind`, `message`, `timestamp` and `author` together -
+         * which is why the flag is named for all four rather than for the kind alone.
+         */
+        getHistory(projectPath: string, limit?: number, includeDetails?: boolean): Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>>;
         /** File contents at a revision, base64-encoded. */
         readBlob(projectPath: string, revision: RevisionId, path: string): Promise<RequestStatus<{ contentBase64: string }>>;
         /**
@@ -442,6 +480,26 @@ export interface RendererPreloadedInterface {
     uiTemplates: {
         registryFetch(): Promise<RequestStatus<UITemplateFetchResult>>;
         fetchBundle(templateId: string): Promise<RequestStatus<UITemplateBundle>>;
+    };
+
+    /**
+     * Author-supplied 2D model runtimes. Studio-internal and deliberately *not* on the plugin facade:
+     * this writes a megabyte of generated code into the project, and a plugin has no business asking
+     * for that.
+     */
+    puppetRuntimes: {
+        /**
+         * Compile a named runtime from the SDK archive at `archivePath` into the project.
+         *
+         * Only for runtimes whose registry entry offers `sdk-zip`; the host refuses the rest. There is
+         * no matching verb for a prebuilt adapter — that is a directory copy plus a trial load, both of
+         * which the renderer can already do (see `installPrebuiltPuppetRuntime`).
+         */
+        installSdk(
+            runtimeId: string,
+            projectPath: string,
+            archivePath: string,
+        ): Promise<RequestStatus<PuppetRuntimeInstallResult>>;
     };
 
     privileged: RendererPrivilegedBootstrapInterface;

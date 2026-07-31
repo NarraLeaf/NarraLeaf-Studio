@@ -18,6 +18,7 @@
  */
 
 import type { PuppetDescription } from "narraleaf-react";
+import { encodeStableJson } from "@shared/utils/stableJson";
 
 /** Bump when the record shape changes; every older file then reads as a miss. */
 export const PUPPET_DESCRIPTION_CACHE_VERSION = 1;
@@ -131,27 +132,11 @@ export function puppetDescriptionDigest(text: string): string {
 /**
  * Order-independent JSON, tolerant of whatever an options bag holds.
  *
- * Not {@link import("@shared/documents/canonicalJson").encodeCanonicalJson}: that one throws on
- * `undefined`, `NaN` and friends because a *document* must never lose data silently. This encodes a
- * fingerprint input, where the only requirement is that two equal bags produce equal text and two
- * different ones usually do not — so an unrepresentable value is stamped rather than rejected. An
- * options bag is the author's, and a throw here would take the description down with it.
+ * Moved to `@shared/utils/stableJson` when the Surface puppet widget needed the same keying in the
+ * packaged game runtime, which cannot import anything from `@/lib/workspace`. Re-exported under its
+ * original name because it is the key derivation this module's cache files are already named after.
  */
-export function stablePuppetJson(value: unknown): string {
-    if (value === null) return "null";
-    if (value === undefined) return "?";
-    const type = typeof value;
-    if (type === "number") return Number.isFinite(value as number) ? String(value) : "?num";
-    if (type === "boolean" || type === "bigint") return String(value);
-    if (type === "string") return JSON.stringify(value);
-    if (type === "function" || type === "symbol") return "?opaque";
-    if (Array.isArray(value)) {
-        return `[${value.map(stablePuppetJson).join(",")}]`;
-    }
-    const entries = Object.entries(value as Record<string, unknown>)
-        .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
-    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stablePuppetJson(item)}`).join(",")}}`;
-}
+export const stablePuppetJson = encodeStableJson;
 
 /**
  * Which model/runtime pair an answer belongs to — the cache file's name.

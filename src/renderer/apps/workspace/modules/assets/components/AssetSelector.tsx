@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { useEscapeToClose } from "@/lib/components/elements/Modal";
 import { Asset } from "@/lib/workspace/services/assets/types";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { AssetType, categoryOfAssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import { Services } from "@/lib/workspace/services/services";
@@ -156,9 +156,20 @@ export function AssetSelector({
         // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by value; see above
     }, [selectedIdsKey, visible]);
 
-    const typeAssets = useMemo(() => assets[assetType] ?? [], [assets, assetType]);
-    const filteredTypeAssets = useMemo(() => filteredAssets[assetType] ?? [], [filteredAssets, assetType]);
-    const filteredTypeGroups = useMemo(() => filteredGroups[assetType] ?? [], [filteredGroups, assetType]);
+    // The selector still picks exactly one `AssetType`, but the browser's lists are keyed by the
+    // sidebar section that type is filed under, so each one is narrowed back down here. The folder
+    // tree is the section's — `shouldRenderGroup` below already drops any folder holding nothing of
+    // this type, so a voice picker under "Media" never shows a folder of nothing but video.
+    const assetCategory = useMemo(() => categoryOfAssetType(assetType), [assetType]);
+    const typeAssets = useMemo(
+        () => (assets[assetCategory] ?? []).filter(asset => asset.type === assetType),
+        [assets, assetCategory, assetType],
+    );
+    const filteredTypeAssets = useMemo(
+        () => (filteredAssets[assetCategory] ?? []).filter(asset => asset.type === assetType),
+        [filteredAssets, assetCategory, assetType],
+    );
+    const filteredTypeGroups = useMemo(() => filteredGroups[assetCategory] ?? [], [filteredGroups, assetCategory]);
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
     const [expandedVirtualGroups, setExpandedVirtualGroups] = useState<Set<string>>(new Set());
     const [stateReady, setStateReady] = useState(false);
@@ -187,7 +198,7 @@ export function AssetSelector({
 
     useEffect(() => {
         if (!hasLoaded) return;
-        const knownGroupIds = new Set((groups[assetType] ?? []).map(group => group.id));
+        const knownGroupIds = new Set((groups[assetCategory] ?? []).map(group => group.id));
         setExpandedGroups(prev => {
             const next = new Set(Array.from(prev).filter(id => knownGroupIds.has(id)));
             return next.size === prev.size ? prev : next;

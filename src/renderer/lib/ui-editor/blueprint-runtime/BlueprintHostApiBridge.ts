@@ -313,6 +313,10 @@ export type BlueprintHostApiRuntime = {
         stop: (handle: BlueprintSoundHandle | null, fadeMs?: number) => Promise<void>;
         pause: (handle: BlueprintSoundHandle) => Promise<void>;
         resume: (handle: BlueprintSoundHandle) => Promise<void>;
+        /** Ramp rather than jump when `fadeMs` is set - this is also the fade-out/duck node. */
+        setVolume: (handle: BlueprintSoundHandle, volume: number, fadeMs?: number) => Promise<void>;
+        /** Milliseconds from the start of the file, not from the clip's in point. */
+        seek: (handle: BlueprintSoundHandle, timeMs: number) => Promise<void>;
         isPlaying: (handle: BlueprintSoundHandle) => boolean;
     };
     devtools: {
@@ -400,6 +404,8 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onStopSound?: (handle: BlueprintSoundHandle | null, fadeMs: number) => Promise<void> | void;
     onPauseSound?: (handle: BlueprintSoundHandle) => Promise<void> | void;
     onResumeSound?: (handle: BlueprintSoundHandle) => Promise<void> | void;
+    onSetSoundVolume?: (handle: BlueprintSoundHandle, volume: number, fadeMs: number) => Promise<void> | void;
+    onSeekSound?: (handle: BlueprintSoundHandle, timeMs: number) => Promise<void> | void;
     onIsSoundPlaying?: (handle: BlueprintSoundHandle) => boolean;
     emit: (event: BlueprintDebugEvent) => void;
     onOpenSurface: (surfaceId: string, props?: Record<string, unknown>) => void | Promise<void>;
@@ -1481,6 +1487,8 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onStopSound,
         onPauseSound,
         onResumeSound,
+        onSetSoundVolume,
+        onSeekSound,
         onIsSoundPlaying,
         emit,
         onOpenSurface,
@@ -2934,6 +2942,27 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     await onResumeSound?.(handle);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setVolume: async (handle: BlueprintSoundHandle, volume: number, fadeMs = 0) => {
+                const cap = "sound.setVolume";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // Clamped, not rejected: a slider bound to the wrong range asking for 1.2 means
+                    // "as loud as it goes", and a dead control is the worse answer.
+                    const safeVolume = Number.isFinite(volume) ? Math.min(1, Math.max(0, volume)) : 1;
+                    await onSetSoundVolume?.(handle, safeVolume, Math.max(0, fadeMs));
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            seek: async (handle: BlueprintSoundHandle, timeMs: number) => {
+                const cap = "sound.seek";
+                emitHostCall(emit, cap, "call");
+                try {
+                    await onSeekSound?.(handle, Number.isFinite(timeMs) ? Math.max(0, timeMs) : 0);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

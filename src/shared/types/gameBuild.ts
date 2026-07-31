@@ -155,6 +155,14 @@ export type GameBuildStateSnapshot = {
     status: GameBuildStatus;
     startedAt?: number;
     finishedAt?: number;
+    /**
+     * Platforms this build was asked to produce, deduplicated in request order. Carried on the
+     * snapshot rather than left to the caller because the renderer only ever sees the snapshot -
+     * the dashboard archives finished builds off this poll and has no other route to the request.
+     *
+     * Absent on the idle snapshot, which describes no build.
+     */
+    platforms?: GameBuildPlatform[];
     /** Absolute paths of produced artifacts (installers/archives/app dirs). */
     artifacts?: string[];
     /** Absolute output directory of the finished build. */

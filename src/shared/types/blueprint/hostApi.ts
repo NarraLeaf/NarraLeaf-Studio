@@ -1,5 +1,5 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 28 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 29 as const;
 
 /** Global runtime state key mirrored from the active NarraLeaf dialog hook. */
 export const BLUEPRINT_GAME_NAMETAG_STATE_KEY = "game.dialog.nametag" as const;
@@ -554,6 +554,22 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: false,
             async: true,
             input: { handle: null },
+            output: null,
+        },
+        setVolume: {
+            capabilityId: "sound.setVolume",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { handle: null, volume: 1, fadeMs: 0 },
+            output: null,
+        },
+        seek: {
+            capabilityId: "sound.seek",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { handle: null, timeMs: 0 },
             output: null,
         },
         isPlaying: {
