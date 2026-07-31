@@ -19,6 +19,7 @@ import { CommandPalette } from "./CommandPalette";
 import { EditorCommands } from "./EditorCommands";
 import { WorkspaceFreezeCommands } from "./WorkspaceFreezeCommands";
 import { LintCommands } from "../../modules/lint/LintCommands";
+import { WorkspaceCommands } from "./WorkspaceCommands";
 import { KeybindingCheatSheet } from "./KeybindingCheatSheet";
 import { TitleBarSearchBox } from "./TitleBarSearchBox";
 import { StatusBar, STATUS_BAR_HEIGHT } from "./StatusBar";
@@ -851,6 +852,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             <CommandPalette />
             <QuickOpenPicker />
             <EditorCommands />
+            <WorkspaceCommands />
             <WorkspaceFreezeCommands />
             <LintCommands />
             <KeybindingCheatSheet />
