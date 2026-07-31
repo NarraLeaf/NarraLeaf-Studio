@@ -134,6 +134,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
         onUndoBeyondRow: actions.undoBeyondRow,
         onRedoBeyondRow: actions.redoBeyondRow,
         onOpenInspector: () => actions.openInspector(blockId),
+        onRevealInspectorPanel: actions.revealInspectorPanel,
         onUpdatePayload: (payload: StoryBlock["payload"]) => actions.updatePayload(blockId, payload),
         onSetDialogueCharacter: (characterId: string | undefined) => actions.setDialogueCharacter(blockId, characterId),
         // The placement source is the row's own resolved appearance, which only the row knows.
@@ -282,6 +283,18 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
             onMouseLeave={() => setHovered(false)}
             onDoubleClick={event => {
                 event.stopPropagation();
+                // Double-click is the "show me this row" gesture, so it brings the property editor out
+                // of a collapsed rail — for every kind of row, including the text ones whose second
+                // click is already spoken for below. Reveal only: focus stays in the scene, so the
+                // caret this same gesture is placing is not taken away from the author.
+                //
+                // Deliberately NOT gated on `editing`. A first version skipped a row already open for
+                // editing, on the theory that a double-click inside a live field is word selection
+                // rather than a request to inspect. Driving it proved the state does not exist: a
+                // plain click on a row's text opens it from the mouseup gesture, so `editing` is
+                // ALREADY true when the second click lands and the gate silently excluded every text
+                // row — the majority of a scene.
+                on.onRevealInspectorPanel();
                 // A row that holds text enters edit from the mouseup gesture, which carries the
                 // author's selection in with it — a double-click there is that gesture's second
                 // click and is already handled. Empty text rows and action rows have no selection to

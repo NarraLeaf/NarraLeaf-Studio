@@ -30,6 +30,7 @@ const ALL_ROW_ACTIONS: Array<keyof StoryRowActions> = [
     "undoBeyondRow",
     "redoBeyondRow",
     "openInspector",
+    "revealInspectorPanel",
     "updatePayload",
     "setDialogueCharacter",
     "setPosition",
@@ -63,6 +64,8 @@ describe("isStoryRowActionReadOnlySafe", () => {
         expect(isStoryRowActionReadOnlySafe("toggleCollapsed")).toBe(true);
         expect(isStoryRowActionReadOnlySafe("toggleLens")).toBe(true);
         expect(isStoryRowActionReadOnlySafe("openInspector")).toBe(true);
+        // Reading a row's fields is worth nothing if the rail holding them cannot be revealed.
+        expect(isStoryRowActionReadOnlySafe("revealInspectorPanel")).toBe(true);
     });
 
     it("refuses opening a row's text and everything that edits it", () => {
