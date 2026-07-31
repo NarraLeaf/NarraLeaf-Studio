@@ -18,6 +18,10 @@ import {
     storyContainerChain,
 } from "@/lib/story/storyRowProjection";
 import type {
+    SceneFlowDelta,
+    SceneFlowRange,
+} from "@/apps/workspace/modules/story-flow/sceneFlowVariables";
+import type {
     StoryBlock,
     StoryBlockId,
     StoryDocument,
@@ -404,4 +408,231 @@ export function listDeclaredStoryVariables(
         });
     }
     return variables;
+}
+
+// --- The run's own trail ----------------------------------------------------------------------
+
+/**
+ * Where every block lives, and which blocks can carry the play head out of their scene.
+ *
+ * Built once per document because both questions are asked inside the play-head subscription, which
+ * fires at engine frequency: a scan of every scene per action is the one place this panel could cost
+ * the running game something.
+ */
+export type StorySceneBlockIndex = {
+    sceneIdByBlockId: Map<StoryBlockId, StorySceneId>;
+    /**
+     * `jump` blocks — the only witness this panel gets of WHICH arm a run took.
+     *
+     * A choice compiles to a single action bound to the `choice` container and a condition to one
+     * bound to the group, so neither the option the player picked nor the branch that held has an
+     * action id of its own. The jump inside the arm does, and the scene map already attributes that
+     * jump to its arm (`SceneFlowBranchEdgeModel.jumps`), so observing the jump is observing the arm
+     * — with the model's attribution rather than a second one.
+     */
+    jumpBlockIds: Set<StoryBlockId>;
+};
+
+export function buildStorySceneBlockIndex(document: StoryDocument): StorySceneBlockIndex {
+    const sceneIdByBlockId = new Map<StoryBlockId, StorySceneId>();
+    const jumpBlockIds = new Set<StoryBlockId>();
+    for (const [sceneId, scene] of Object.entries(document.scenes)) {
+        for (const block of Object.values(scene.blocks)) {
+            sceneIdByBlockId.set(block.id, sceneId);
+            if (block.kind === "jump") {
+                jumpBlockIds.add(block.id);
+            }
+        }
+    }
+    return { sceneIdByBlockId, jumpBlockIds };
+}
+
+/** One scene the run entered, and how it got in. */
+export type StoryTrailStep = {
+    sceneId: StorySceneId;
+    /**
+     * The jump block the play head passed through on the way in. `null` for the scene the run
+     * started in, and for a scene entered while nobody was watching — which is a real state, not a
+     * defect, and the projection answers it by falling back to the scene pair.
+     */
+    viaJumpBlockId: StoryBlockId | null;
+};
+
+/**
+ * The scenes this run has been through, in order.
+ *
+ * Accumulated rather than read, because there is nothing to read. The engine keeps a backlog and the
+ * bridge exposes it as `getPlayedBlockTokens`, but that is a *map* keyed by block with no ordering
+ * contract, it only holds lines that earned a restore snapshot (no jump ever does), and a timeline
+ * restore trims it. None of the three can be worked around from outside the bridge, so the trail is
+ * folded out of the play-head stream instead — see {@link advanceStoryRunTrail}.
+ */
+export type StoryRunTrail = {
+    steps: StoryTrailStep[];
+    /**
+     * A jump the head has passed that has not landed yet. Deliberately not a step: a jump that fires
+     * and a scene that is entered are two events, and crediting the arm before the second one
+     * arrives would draw a path the run has not taken.
+     */
+    pendingJumpBlockId: StoryBlockId | null;
+};
+
+/** A fresh trail for a run that starts in `sceneId` (`null` before the story context is known). */
+export function seedStoryRunTrail(sceneId: StorySceneId | null): StoryRunTrail {
+    return {
+        steps: sceneId ? [{ sceneId, viaJumpBlockId: null }] : [],
+        pendingJumpBlockId: null,
+    };
+}
+
+/** One play-head observation, already resolved from an action id to a Studio block. */
+export type StoryTrailObservation = {
+    sceneId: StorySceneId | null;
+    blockId: StoryBlockId | null;
+    isJump: boolean;
+};
+
+/**
+ * Fold one observation into the trail, returning the SAME object when nothing moved.
+ *
+ * Identity is the contract the caller leans on: the subscription runs for every action and most
+ * actions change nothing, so an unchanged trail must not schedule a render.
+ *
+ * Only a change of scene makes a step. Rows inside a scene are the timeline tab's business, and a
+ * trail that recorded them would be a transcript, not a path.
+ */
+export function advanceStoryRunTrail(trail: StoryRunTrail, observation: StoryTrailObservation): StoryRunTrail {
+    const { sceneId, blockId, isJump } = observation;
+    if (!blockId || !sceneId) {
+        // An action that belongs to no Studio block — the engine's own tail actions, a compiled-in
+        // transition. It says nothing about where the story is, so it leaves the trail alone.
+        return trail;
+    }
+    let steps = trail.steps;
+    let pending = trail.pendingJumpBlockId;
+    const last = steps[steps.length - 1];
+    if (!last || last.sceneId !== sceneId) {
+        steps = [...steps, { sceneId, viaJumpBlockId: pending }];
+        pending = null;
+    }
+    if (isJump) {
+        pending = blockId;
+    }
+    return steps === trail.steps && pending === trail.pendingJumpBlockId
+        ? trail
+        : { steps, pendingJumpBlockId: pending };
+}
+
+/**
+ * What the trail projection reads off the scene map, duck-typed.
+ *
+ * Structural for the same reason `StackViewLike` is: the projection is then testable with plain
+ * objects, and this file stays a pure model rather than a second consumer of the workspace canvas.
+ */
+export type StoryTrailGraphLike = {
+    edges: readonly {
+        id: string;
+        source: StorySceneId;
+        target: StorySceneId;
+        jumps: readonly { blockId: StoryBlockId }[];
+    }[];
+    branchEdges: readonly {
+        id: string;
+        sourceBranchId: string;
+        sourceSceneId: StorySceneId;
+        target: StorySceneId;
+        jumps: readonly { blockId: StoryBlockId }[];
+    }[];
+};
+
+/** `SceneFlowCanvas`'s emphasis mask, built from where the run has been. */
+export type StoryTrailHighlight = {
+    sceneIds: Set<StorySceneId>;
+    edgeIds: Set<string>;
+};
+
+/**
+ * The scenes and lines this run has actually used.
+ *
+ * The jump the head was seen passing through decides the arm — but only when it is a jump the map
+ * agrees leads from this scene to that one. A witness that does not match the pair is discarded
+ * rather than trusted, so a jump left pending by a self-loop can never light a line the run did not
+ * take.
+ *
+ * With no usable witness the scene edge still lights: `SceneFlowEdgeModel` is keyed by scene pair, so
+ * there is exactly one line between two scenes and no guess is involved in lighting it. The *arm* is
+ * another matter — five options into one hallway are five arms and one line — so an arm lights only
+ * when the pair leaves no choice about which one it was. Guessing there would tell the author their
+ * player picked an option they did not.
+ */
+export function projectStoryTrailHighlight(
+    trail: StoryRunTrail,
+    graph: StoryTrailGraphLike,
+): StoryTrailHighlight {
+    const sceneIds = new Set<StorySceneId>();
+    const edgeIds = new Set<string>();
+    for (const step of trail.steps) {
+        sceneIds.add(step.sceneId);
+    }
+    for (let index = 1; index < trail.steps.length; index++) {
+        const from = trail.steps[index - 1].sceneId;
+        const step = trail.steps[index];
+        const sceneEdge = graph.edges.find(edge => edge.source === from && edge.target === step.sceneId);
+        const candidates = graph.branchEdges.filter(
+            edge => edge.sourceSceneId === from && edge.target === step.sceneId,
+        );
+        const witnessed = step.viaJumpBlockId
+            ? candidates.find(edge => edge.jumps.some(jump => jump.blockId === step.viaJumpBlockId))
+            : undefined;
+        const taken = witnessed ?? (candidates.length === 1 ? candidates[0] : undefined);
+        if (taken) {
+            edgeIds.add(taken.id);
+            // The arm itself, so it stays bright even where its line is not drawn (a collapsed
+            // scene draws only the scene edge) — `isBranchEmphasised` accepts an arm's own id.
+            edgeIds.add(taken.sourceBranchId);
+        }
+        if (sceneEdge) {
+            edgeIds.add(sceneEdge.id);
+        }
+    }
+    return { sceneIds, edgeIds };
+}
+
+// --- Variable focus chips ---------------------------------------------------------------------
+
+/** U+2212 MINUS SIGN: a hyphen next to a digit reads as a dash at the sizes the map is drawn at. */
+const MINUS_SIGN = "−";
+/** U+2013 EN DASH — a range, not a subtraction. */
+const EN_DASH = "–";
+
+/** `?` — what the variable pass prints wherever it cannot derive a number. Never a 0. */
+const UNKNOWN_CHIP = "?";
+
+function formatSigned(amount: number): string {
+    return amount < 0 ? `${MINUS_SIGN}${Math.abs(amount)}` : `+${amount}`;
+}
+
+/** What one arm does to the focused counter: `+2`, `−1`, `=5`, `?`. */
+export function formatStoryVariableDeltaChip(delta: SceneFlowDelta): string {
+    if (delta.op === "add") {
+        return formatSigned(delta.amount);
+    }
+    if (delta.op === "set") {
+        return `=${delta.value}`;
+    }
+    return UNKNOWN_CHIP;
+}
+
+/**
+ * What the counter can hold **on arrival** at a scene: `4`, `0–7`, `?`.
+ *
+ * The variable's name is deliberately not repeated on every box — the focus picker names it once,
+ * three characters from the chip, and a 380px panel draws these at a zoom where the name would be
+ * the only thing that did not fit.
+ */
+export function formatStoryVariableRangeChip(range: SceneFlowRange): string {
+    if (range.kind === "unknown") {
+        return UNKNOWN_CHIP;
+    }
+    return range.min === range.max ? String(range.min) : `${range.min}${EN_DASH}${range.max}`;
 }
