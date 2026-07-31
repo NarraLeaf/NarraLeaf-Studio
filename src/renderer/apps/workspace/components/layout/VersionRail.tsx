@@ -182,12 +182,13 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
         : t("workspace.shell.versionControl.close");
 
     return (
+        // No right edge: `bg-surface-sunken` already separates this column from the editor beside
+        // it, and a rule on top of a tone change is one seam drawn twice. The frozen state does not
+        // get one either - it is said by the tinted block at the top of the panel, the button under
+        // it and the status cell, all of which say WHICH version, which a coloured line cannot.
         <div
             data-workspace-version-rail="panel"
-            className={cn(
-                "flex shrink-0 flex-col border-r bg-surface-sunken",
-                onRevision ? "border-primary" : "border-edge",
-            )}
+            className="flex shrink-0 flex-col bg-surface-sunken"
             style={{ width: VERSION_RAIL_EXPANDED_WIDTH }}
         >
             <div className="flex h-12 shrink-0 items-center justify-between border-b border-edge px-3">
@@ -428,7 +429,7 @@ function ChangesSection({ surface }: { surface: VersionSurface }) {
     return (
         <div data-vcs-seam="change-list" className="border-b border-edge px-3 py-2">
             <div className="flex items-center justify-between gap-2">
-                <span className="text-2xs uppercase tracking-wide text-fg-subtle">
+                <span className="text-2xs tracking-wide text-fg-subtle">
                     {t("workspace.shell.versionControl.changes")}
                 </span>
                 <button
@@ -691,8 +692,11 @@ function HistoryList({ surface, rows }: { surface: VersionSurface; rows: FlatHis
 
     return (
         <div data-vcs-seam="history-list">
-            <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-edge/60 bg-surface-sunken px-3 pb-1 pt-2">
-                <span className="text-2xs uppercase tracking-wide text-fg-subtle">
+            {/* Opaque, not ruled: the rows slide under it because it carries the panel's own
+                background, and a line under a sticky header is a border that appears from nowhere
+                the moment the list is scrolled. */}
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-2 bg-surface-sunken px-3 pb-1 pt-2">
+                <span className="text-2xs tracking-wide text-fg-subtle">
                     {t("workspace.shell.versionControl.history")}
                 </span>
                 {(surface.hiddenCheckpoints > 0 || surface.showCheckpoints) && (
