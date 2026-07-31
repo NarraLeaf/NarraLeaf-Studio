@@ -8,7 +8,6 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
-import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import {
     useTextEditorActions,
@@ -20,21 +19,40 @@ import {
     type PluginTextEditorActionDef,
     type PluginTextEditorPreviewDef,
 } from "@/lib/workspace/services/ui/textEditorContributions";
-import {
-    DEFAULT_TEXT_ENCODING,
-    TEXT_ENCODING_IDS,
-    detectTextEncodingFromBom,
-    textEncodingLabel,
-    type TextEncodingId,
-} from "@shared/types/textEncoding";
+import { detectTextEncodingFromBom, type TextEncodingId } from "@shared/types/textEncoding";
+import type {
+    TextDocumentCommands,
+    TextDocumentSelection,
+} from "@/lib/workspace/services/ui/textDocumentStatus";
 // Type-only, and it has to stay that way. `./studioMonaco` reads `window` while its module body
 // runs (monaco's own `base/browser/window.js` does), and this component is reachable from
 // `workspaceEditorSession`, which several node-environment unit tests import - a value import here
 // fails them at collection with `window is not defined`. It would also make every workspace pay
 // Monaco module init at startup whether or not a text file is ever opened.
 import type * as StudioMonaco from "./studioMonaco";
-import { detectLineEnding, monacoLanguageForFileName, textFileExtension, type LineEnding } from "./textEditableFiles";
+import { monacoLanguageForFileName, textFileExtension, type LineEnding } from "./textEditableFiles";
+import {
+    readTextDocumentPreferences,
+    resolveLineEnding,
+    resolveOpenEncoding,
+    textPreferencePatch,
+    type TextPreferenceIntent,
+} from "./textDocumentPreferences";
 import type { TextEditorTabPayload } from "./textEditorTabId";
+
+/** The caret, before the first read lands and after a reopen swaps the model. */
+const NO_SELECTION: TextDocumentSelection = { line: 1, column: 1, characters: 0, ranges: 0 };
+
+/**
+ * Breathing room above the first line and below the last.
+ *
+ * Monaco's own option rather than CSS padding on the host: the host element is what monaco measures
+ * to lay out lines, the gutter and the scrollbar, so padding it would leave every one of those
+ * measurements a few pixels wrong - the scrollbar would end short and the last line would sit under
+ * the edge. `padding` is inside monaco's own coordinate system and is the only place the space can
+ * come from.
+ */
+const EDITOR_PADDING = { top: 12, bottom: 12 } as const;
 
 /** House style: commit on a timer, never on the keystroke. Matches `TypeScriptBlueprintEditorPane`. */
 const AUTOSAVE_DEBOUNCE_MS = 400;
@@ -65,9 +83,12 @@ function loadStudioMonaco(): Promise<typeof StudioMonaco> {
  *  - **Debounced autosave, no close confirmation.** Studio has no per-tab "save your changes?"
  *    anywhere, so a dirty buffer that only exists in memory is a buffer the author will lose. The
  *    tab flushes on deactivation and on unmount as well as on the timer.
- *  - **One status bar, values only.** `plan.md · UTF-8 · LF · Ln 12, Col 3`. The encoding token is
- *    the only control in the whole tab; everything else Monaco already offers as a gesture or a
- *    shortcut, and a toolbar would just restate it.
+ *  - **The tab has no status bar of its own.** File name, encoding, line ending and selection are
+ *    cells in the *workspace* status bar; this component publishes them through
+ *    `UIService.textDocumentStatus` and implements the commands they invoke. What is left here is a
+ *    strip that exists only for plugin contributions, and it does not render at all when there are
+ *    none - which, with no plugin installed, is always. A tab that drew its own copy of the same
+ *    four values under a bar that already has room for them was the thing this replaced.
  */
 export function TextEditor({ tabId, payload, active }: EditorComponentProps<TextEditorTabPayload>) {
     const { t } = useTranslation();
@@ -75,9 +96,12 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
     const freeze = useFreezeGuard();
     const asset = payload?.asset;
 
-    const [encoding, setEncoding] = useState<TextEncodingId>(DEFAULT_TEXT_ENCODING);
-    const [lineEnding, setLineEnding] = useState<LineEnding>("LF");
-    const [cursor, setCursor] = useState({ line: 1, column: 1 });
+    // Seeded from the record rather than from the defaults, so the very first frame of a GBK file's
+    // status cells says GBK instead of flashing UTF-8 while the read is out.
+    const recorded = useMemo(() => readTextDocumentPreferences(asset?.extras), [asset?.extras]);
+    const [encoding, setEncoding] = useState<TextEncodingId>(() => resolveOpenEncoding(recorded.encoding, null));
+    const [lineEnding, setLineEnding] = useState<LineEnding>(() => resolveLineEnding("", recorded.lineEnding));
+    const [selection, setSelection] = useState<TextDocumentSelection>(NO_SELECTION);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     /**
@@ -86,8 +110,6 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
      * schedule a reload that could land on top of the next keystroke.
      */
     const [reload, setReload] = useState<{ token: number; encoding: TextEncodingId | null }>({ token: 0, encoding: null });
-
-    const { menuState, showMenu, hideMenu } = useContextMenu();
 
     /** Set once Monaco has loaded and the editor exists; the load effect waits on it. */
     const [editorReady, setEditorReady] = useState(false);
@@ -168,6 +190,16 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
      */
     const languagesRef = useRef(allLanguages);
     languagesRef.current = allLanguages;
+    /**
+     * What the asset record says, out of the load effect's deps for the same reason.
+     *
+     * It has to be a ref specifically because saving *changes the record*: `patchAssetExtras` marks
+     * the assets metadata dirty and broadcasts `updated`, so a record in the dependency array would
+     * make choosing an encoding re-read the file from disk a second time, on top of the reload the
+     * choice already scheduled.
+     */
+    const recordedRef = useRef(recorded);
+    recordedRef.current = recorded;
 
     const assetPath = useMemo(
         () => (context && asset ? context.project.resolve(ProjectNameConvention.AssetsDataShard(asset.id)) : null),
@@ -258,6 +290,41 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
         }
     }, [scheduleSave]);
 
+    /**
+     * Read the caret and the selection off the editor.
+     *
+     * Computed from the editor rather than from the event, so the same function answers a cursor
+     * move, a drag, a multi-cursor Alt-click and a model swap identically - and so it can be called
+     * directly after a reopen, where there is no event at all.
+     *
+     * The character count is `getValueLengthInRange`, not "end column minus start column": a
+     * selection that spans lines, and one over a CJK document where a character is three bytes on
+     * disk, both have to come out as the number of characters the author can see they picked.
+     */
+    const syncSelection = useCallback(() => {
+        const editor = editorRef.current;
+        const model = editor?.getModel();
+        if (!editor || !model) {
+            return;
+        }
+        const position = editor.getPosition();
+        let characters = 0;
+        let ranges = 0;
+        for (const range of editor.getSelections() ?? []) {
+            if (range.isEmpty()) {
+                continue;
+            }
+            characters += model.getValueLengthInRange(range);
+            ranges += 1;
+        }
+        setSelection({
+            line: position?.lineNumber ?? 1,
+            column: position?.column ?? 1,
+            characters,
+            ranges,
+        });
+    }, []);
+
     // ---- the editor instance ------------------------------------------------
 
     useEffect(() => {
@@ -285,6 +352,7 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
                 tabSize: 4,
                 renderWhitespace: "selection",
                 renderLineHighlight: "line",
+                padding: EDITOR_PADDING,
                 smoothScrolling: true,
                 scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
                 // Studio's own read-only affordance for a frozen workspace: the text stays
@@ -298,9 +366,13 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
             const unwatchTheme = studio.watchStudioMonacoTheme();
 
             const changed = editor.onDidChangeModelContent(() => handleContentChanged());
-            const moved = editor.onDidChangeCursorPosition(event =>
-                setCursor({ line: event.position.lineNumber, column: event.position.column }),
-            );
+            // Both, and both routed to the same reader. Monaco raises a selection change for a plain
+            // caret move as well, so one of them would do for the caret - but only the selection
+            // event fires when a drag *shrinks* to nothing on the same line, and only the position
+            // event is guaranteed after a programmatic `setPosition`. Reading the editor rather than
+            // the event makes the pair idempotent, so subscribing to both costs nothing.
+            const moved = editor.onDidChangeCursorPosition(() => syncSelection());
+            const selected = editor.onDidChangeCursorSelection(() => syncSelection());
 
             monacoRef.current = studio;
             editorRef.current = editor;
@@ -309,6 +381,7 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
             dispose = () => {
                 changed.dispose();
                 moved.dispose();
+                selected.dispose();
                 unwatchTheme();
                 editor.getModel()?.dispose();
                 editor.dispose();
@@ -337,16 +410,20 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
 
         const fs = context.services.get<FileSystemService>(Services.FileSystem);
         void (async () => {
-            // Only a byte-order mark is trusted to name the encoding; see
-            // `detectTextEncodingFromBom` for why nothing else is guessed. The first read is for
-            // those three bytes, the second asks the main process to decode under the answer.
+            // What the author said, then the byte-order mark, then UTF-8 - `resolveOpenEncoding`
+            // owns that order and the argument for it. Nothing is guessed from the byte histogram;
+            // see `detectTextEncodingFromBom`. The first read is for those three bytes, the second
+            // asks the main process to decode under the answer.
             let chosen = reload.encoding;
             if (!chosen) {
                 const raw = await fs.readRaw(assetPath);
                 if (!mounted) {
                     return;
                 }
-                chosen = (raw.ok ? detectTextEncodingFromBom(raw.data) : null) ?? DEFAULT_TEXT_ENCODING;
+                chosen = resolveOpenEncoding(
+                    recordedRef.current.encoding,
+                    raw.ok ? detectTextEncodingFromBom(raw.data) : null,
+                );
             }
 
             const text = await fs.read(assetPath, chosen);
@@ -364,7 +441,9 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
             if (!editor || !studio) {
                 return;
             }
-            const ending = detectLineEnding(text.data);
+            // Content first, then the record, then the platform: a file with lines in it has already
+            // answered, and only an empty one has to fall back. See `resolveLineEnding`.
+            const ending = resolveLineEnding(text.data, recordedRef.current.lineEnding);
             // A plugin grammar for this extension wins over Studio's built-in mapping, and is
             // handed to Monaco here rather than when the plugin registered it: `studioMonaco` IS
             // Monaco, and installing at registration time would drag the whole editor into
@@ -394,7 +473,7 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
             // guesses which one it is; it only refuses to write over it.
             setLossyDecode(text.data.includes("\uFFFD"));
             setLineEnding(ending);
-            setCursor({ line: 1, column: 1 });
+            setSelection(NO_SELECTION);
             // Loading swaps the model without firing a content change, so an open preview would
             // otherwise keep rendering the previous document.
             setPreviewText(text.data);
@@ -436,7 +515,41 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
         [],
     );
 
-    // ---- encoding menu ------------------------------------------------------
+    // ---- the commands the status bar invokes ---------------------------------
+
+    /**
+     * Record an author's encoding or line-ending decision on the asset, so the next person to open
+     * the file - on this machine or on a colleague's - gets it without having to know.
+     *
+     * Three properties this has to keep, all of them easy to lose:
+     *
+     *  - **Opening writes nothing.** `textPreferencePatch` refuses the `"open"` intent outright, so
+     *    browsing a project cannot produce a diff.
+     *  - **Nothing is written that is already there.** The same function returns null for a no-op,
+     *    because the assets metadata is a project file and a redundant write is a line in someone's
+     *    commit.
+     *  - **The record is read live, not off the payload.** `patchAssetExtras` mutates the record the
+     *    metadata manager holds; the tab's payload was captured when the tab opened and can be a
+     *    different object, which would make every patch compare against stale extras and rewrite
+     *    what is already on disk.
+     */
+    const persistPreference = useCallback(
+        (intent: TextPreferenceIntent, next: { encoding?: TextEncodingId; lineEnding?: LineEnding }) => {
+            // Frozen refuses writes at the boundary anyway; not asking keeps the freeze from
+            // reporting a failed save about bookkeeping the author never asked for.
+            if (!context || !asset || freeze.frozen) {
+                return;
+            }
+            const assets = context.services.get<AssetsService>(Services.Assets);
+            const live = assets.getAssets()[asset.type]?.[asset.id] ?? asset;
+            const patch = textPreferencePatch(intent, live.extras, next);
+            if (!patch) {
+                return;
+            }
+            void assets.patchAssetExtras(live, patch);
+        },
+        [context, asset, freeze.frozen],
+    );
 
     const reopenWith = useCallback(
         (next: TextEncodingId) => {
@@ -444,10 +557,11 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
                 // Flush first: the buffer is still in the *old* encoding, and re-reading before
                 // writing would throw away whatever the last 400ms typed.
                 await flush();
+                persistPreference("reopen-with", { encoding: next });
                 setReload(current => ({ token: current.token + 1, encoding: next }));
             })();
         },
-        [flush],
+        [flush, persistPreference],
     );
 
     const saveWith = useCallback(
@@ -458,38 +572,101 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
             // An explicit save is an author decision, so it lifts the interlock as well as writing.
             setLossyDecode(false);
             lossyRef.current = false;
+            persistPreference("save-with", { encoding: next });
             void saveRef.current();
         },
-        [cancelPendingSave],
+        [cancelPendingSave, persistPreference],
     );
 
-    const encodingMenu = useMemo<ContextMenuDef>(
-        () => [
-            {
-                id: "reopen",
-                label: t("assets.textEditor.reopenWithEncoding"),
-                submenu: TEXT_ENCODING_IDS.map(id => ({
-                    id: `reopen-${id}`,
-                    label: textEncodingLabel(id),
-                    onClick: () => reopenWith(id),
-                })),
-            },
-            {
-                id: "save",
-                label: t("assets.textEditor.saveWithEncoding"),
-                // Reopening is inspection and stays live while frozen; saving is a write and does
-                // not. See `frozenWorkspaceReadability`.
-                ...freeze.menuRow(),
-                submenu: TEXT_ENCODING_IDS.map(id => ({
-                    id: `save-${id}`,
-                    label: textEncodingLabel(id),
-                    ...freeze.menuRow(),
-                    onClick: () => saveWith(id),
-                })),
-            },
-        ],
-        [t, freeze, reopenWith, saveWith],
+    /**
+     * Convert the document's line endings and write it back.
+     *
+     * Through the model rather than by rewriting the text: `setEOL` is a single undoable edit that
+     * leaves the caret and the selection where they were, and `getValue()` then hands the save the
+     * converted string with no second pass over it. Saving immediately rather than on the debounce
+     * is deliberate - this is a menu choice, not typing, and the author should be able to close the
+     * tab straight after making it.
+     */
+    const setDocumentLineEnding = useCallback(
+        (next: LineEnding) => {
+            const studio = monacoRef.current;
+            const model = editorRef.current?.getModel();
+            if (!studio || !model || next === lineEnding) {
+                return;
+            }
+            // The menu row is already greyed out on a frozen workspace, so this is unreachable from
+            // the UI - and it is here anyway, because converting the buffer while the save is
+            // refused would leave the status bar saying LF over a file that is still CRLF on disk.
+            if (freeze.frozen) {
+                return;
+            }
+            model.setEOL(
+                next === "CRLF"
+                    ? studio.monaco.editor.EndOfLineSequence.CRLF
+                    : studio.monaco.editor.EndOfLineSequence.LF,
+            );
+            setLineEnding(next);
+            cancelPendingSave();
+            persistPreference("set-eol", { lineEnding: next });
+            void saveRef.current();
+        },
+        [cancelPendingSave, freeze.frozen, lineEnding, persistPreference],
     );
+
+    /**
+     * The command trio the status bar holds, stable for the life of the tab.
+     *
+     * Trampolines through refs rather than the callbacks themselves: the record is registered once,
+     * and re-registering it every time `save` closes over a new buffer would churn the status cells
+     * on every keystroke.
+     */
+    const commandsRef = useRef({ reopenWith, saveWith, setDocumentLineEnding });
+    commandsRef.current = { reopenWith, saveWith, setDocumentLineEnding };
+    const commands = useMemo<TextDocumentCommands>(
+        () => ({
+            reopenWith: id => commandsRef.current.reopenWith(id),
+            saveWith: id => commandsRef.current.saveWith(id),
+            setLineEnding: ending => commandsRef.current.setDocumentLineEnding(ending),
+        }),
+        [],
+    );
+
+    // ---- publishing to the workspace status bar ------------------------------
+
+    const statusService = useMemo(
+        () => (context ? context.services.get<UIService>(Services.UI).textDocumentStatus : null),
+        [context],
+    );
+
+    // Registered once per tab, with whatever the values are at mount; the effect below pushes the
+    // real ones in the same commit, so there is no frame where the bar reports a default.
+    const initialStatusRef = useRef({ encoding, lineEnding, fileName: asset?.name ?? "" });
+    useEffect(() => {
+        if (!statusService) {
+            return;
+        }
+        return statusService.register(
+            {
+                tabId,
+                fileName: initialStatusRef.current.fileName,
+                encoding: initialStatusRef.current.encoding,
+                lineEnding: initialStatusRef.current.lineEnding,
+                lossy: false,
+                selection: NO_SELECTION,
+            },
+            commands,
+        );
+    }, [statusService, tabId, commands]);
+
+    useEffect(() => {
+        statusService?.update(tabId, {
+            fileName: asset?.name ?? "",
+            encoding,
+            lineEnding,
+            lossy: lossyDecode,
+            selection,
+        });
+    }, [statusService, tabId, asset?.name, encoding, lineEnding, lossyDecode, selection]);
 
     // ---- plugin previews and actions ----------------------------------------
 
@@ -546,14 +723,22 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
     // ---- render -------------------------------------------------------------
 
     const PreviewComponent = activePreview?.component ?? null;
+    /** Whether the tab's own strip has anything to be. See the render note below. */
+    const strip = previews.length > 0 || actions.length > 0 || Boolean(error);
 
     return (
-        <div className="flex h-full min-h-0 flex-col bg-surface-sunken" data-text-editor-tab-id={tabId}>
+        // `.nl-editor-surface`, not `bg-surface-sunken`: this is a reading surface like the story
+        // editor's prose column and the inspector, and it resolves its alpha from the same
+        // `editor.surfaceOpacity` setting they do. Pinned to the opaque token, the text editor was
+        // the one editor in Studio that stayed a solid black rectangle under a workspace wallpaper.
+        // Monaco itself paints nothing - see `transparent` in `studioMonaco` for why the alpha
+        // cannot live in `editor.background`.
+        <div className="nl-editor-surface flex h-full min-h-0 flex-col" data-text-editor-tab-id={tabId}>
             <div className="flex min-h-0 flex-1">
                 <div className="relative min-h-0 min-w-0 flex-1">
                     <div ref={hostRef} className="absolute inset-0" />
                     {loading && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-surface-sunken text-fg-subtle">
+                        <div className="nl-editor-surface absolute inset-0 flex items-center justify-center text-fg-subtle">
                             <Loader2 className="h-5 w-5 animate-spin" />
                         </div>
                     )}
@@ -574,78 +759,57 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
                 )}
             </div>
 
-            {/* One status bar. Values only, in the order a reader scans them: which file, how it is
-                encoded, how its lines end, where the caret is. */}
-            <div className="flex shrink-0 items-center gap-1.5 border-t border-edge px-3 py-1 text-2xs tabular-nums text-fg-subtle">
-                <span className="max-w-[20rem] truncate">{asset?.name}</span>
-                <span aria-hidden className="opacity-40">·</span>
-                {/* Tinted, not captioned: a lossy decode is a fact about this value, and the fix
-                    is one click away inside this very control. A sentence next to it would say
-                    less. */}
-                <button
-                    type="button"
-                    onClick={showMenu}
-                    onContextMenu={showMenu}
-                    // The token's visible text is the value alone, which reads as a bare word to a
-                    // screen reader; the label says what the value is of.
-                    data-text-editor-encoding={encoding}
-                    aria-label={t("assets.textEditor.encodingLabel", { encoding: textEncodingLabel(encoding) })}
-                    className={`rounded px-1 -mx-1 transition-colors hover:bg-fill hover:text-fg focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/50${
-                        lossyDecode ? " text-danger" : ""
-                    }`}
-                >
-                    {textEncodingLabel(encoding)}
-                </button>
-                <span aria-hidden className="opacity-40">·</span>
-                <span>{lineEnding}</span>
-                <span aria-hidden className="opacity-40">·</span>
-                <span>{t("assets.textEditor.caret", { line: cursor.line, column: cursor.column })}</span>
-                {/* Everything past this point exists only while a plugin contributed something for
-                    THIS extension. With no such plugin the bar ends at the caret read-out, which
-                    is the shape the design calls for - no disabled toggle, no empty overflow menu.
-                    Toggling a preview is inspection, so it stays live on a frozen workspace; an
-                    action can rewrite the document, so it does not. */}
-                {previews.map(preview => (
-                    <button
-                        key={preview.id}
-                        type="button"
-                        onClick={() => togglePreview(preview.id)}
-                        aria-pressed={previewId === preview.id}
-                        title={contributionTitle(preview)}
-                        data-text-editor-preview-id={preview.id}
-                        className={`flex items-center gap-1 rounded px-1 -mx-1 transition-colors hover:bg-fill hover:text-fg focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/50${
-                            previewId === preview.id ? " bg-fill text-fg" : ""
-                        }`}
-                    >
-                        {preview.icon ?? contributionTitle(preview)}
-                    </button>
-                ))}
-                {actions.map(action => (
-                    <button
-                        key={action.id}
-                        type="button"
-                        onClick={() => runAction(action)}
-                        {...freeze.writes(false, contributionTitle(action))}
-                        data-text-editor-action-id={action.id}
-                        className="flex items-center gap-1 rounded px-1 -mx-1 transition-colors hover:bg-fill hover:text-fg focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-subtle"
-                    >
-                        {action.icon ?? contributionTitle(action)}
-                    </button>
-                ))}
-                {error && (
-                    <>
-                        <span className="flex-1" />
-                        <span className="max-w-[24rem] truncate text-danger">{error}</span>
-                    </>
-                )}
-            </div>
+            {/* The tab's own strip, which exists ONLY for plugin contributions and for a failure the
+                author has to see. File name, encoding, line ending and selection are cells in the
+                workspace status bar now - drawing a second copy of them here under a bar that
+                already shows them is the duplication this replaced.
 
-            <ContextMenu
-                items={encodingMenu}
-                position={menuState.position}
-                onClose={hideMenu}
-                visible={menuState.visible}
-            />
+                With no plugin registered for this extension and nothing broken, `strip` is false and
+                nothing renders at all: no border, no height, no empty row. That is the shape the
+                design calls for - a tab with no bottom bar. */}
+            {strip && (
+                <div className="flex shrink-0 items-center gap-1.5 border-t border-edge px-3 py-1 text-2xs tabular-nums text-fg-subtle">
+                    {/* Toggling a preview is inspection, so it stays live on a frozen workspace; an
+                        action can rewrite the document, so it does not. */}
+                    {previews.map(preview => (
+                        <button
+                            key={preview.id}
+                            type="button"
+                            onClick={() => togglePreview(preview.id)}
+                            aria-pressed={previewId === preview.id}
+                            title={contributionTitle(preview)}
+                            data-text-editor-preview-id={preview.id}
+                            className={`flex items-center gap-1 rounded px-1 -mx-1 transition-colors hover:bg-fill hover:text-fg focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/50${
+                                previewId === preview.id ? " bg-fill text-fg" : ""
+                            }`}
+                        >
+                            {preview.icon ?? contributionTitle(preview)}
+                        </button>
+                    ))}
+                    {actions.map(action => (
+                        <button
+                            key={action.id}
+                            type="button"
+                            onClick={() => runAction(action)}
+                            {...freeze.writes(false, contributionTitle(action))}
+                            data-text-editor-action-id={action.id}
+                            className="flex items-center gap-1 rounded px-1 -mx-1 transition-colors hover:bg-fill hover:text-fg focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-subtle"
+                        >
+                            {action.icon ?? contributionTitle(action)}
+                        </button>
+                    ))}
+                    {error && (
+                        <>
+                            <span className="flex-1" />
+                            {/* A read or write that failed belongs next to the document it failed
+                                on, not in a global cell that would still be reporting it after the
+                                author switched tabs. It is also why the strip has this second
+                                reason to exist. */}
+                            <span className="max-w-[24rem] truncate text-danger">{error}</span>
+                        </>
+                    )}
+                </div>
+            )}
         </div>
     );
 }
