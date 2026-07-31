@@ -57,6 +57,15 @@ export type VisibleStoryRow = {
      */
     groupContinues?: boolean;
     /**
+     * The depth of the row that follows this one in the visible list, or 0 when nothing does.
+     *
+     * The other fact a row cannot see about itself, and the one the nesting connector needs: a branch
+     * at level L ends at this row exactly when `nextRowDepth <= L`. Without it every guide ran the full
+     * height of every row it passed, so a block's lines had no ends — the same thing that was wrong
+     * with the dialogue rail before it learned which of its rows was last.
+     */
+    nextRowDepth?: number;
+    /**
      * The row is compiled out (WI-3 / schema v7): disabled itself or nested in a disabled container.
      * Rendered muted at reduced opacity; the runtime behaves as if it were not there.
      */

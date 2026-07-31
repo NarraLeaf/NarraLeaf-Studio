@@ -165,6 +165,17 @@ export function annotateDialogueGroups(rows: VisibleStoryRow[]): VisibleStoryRow
             : row);
 }
 
+/**
+ * Records each row's successor depth, which is what lets a nesting connector know where to stop.
+ *
+ * The visible list is a preorder flattening, so the branch at level L ends at row `i` exactly when the
+ * next row sits at depth L or shallower — one lookahead, no tree walk. The last row ends every branch,
+ * hence the 0.
+ */
+export function annotateNestingBranches(rows: VisibleStoryRow[]): VisibleStoryRow[] {
+    return rows.map((row, index) => ({ ...row, nextRowDepth: rows[index + 1]?.depth ?? 0 }));
+}
+
 export function buildVisibleRows(scene: StoryScene, collapsedIds: Set<StoryBlockId>): VisibleStoryRow[] {
     const rows: VisibleStoryRow[] = [];
     const visit = (blockId: StoryBlockId, depth: number, disabledAncestor: boolean) => {
