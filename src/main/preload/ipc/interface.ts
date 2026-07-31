@@ -9,7 +9,12 @@ import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, W
 import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "@shared/types/gameBuild";
-import type { SigningCredential, SigningCredentialImport, SigningInspectResult } from "@shared/types/signing";
+import type {
+    MacSigningIdentity,
+    SigningCredential,
+    SigningCredentialImport,
+    SigningInspectResult,
+} from "@shared/types/signing";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
@@ -407,6 +412,9 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         /** `storePassword` is plain text. Do not log it or keep it after the call. */
         keystoreAliases: (file: string, storePassword: string) =>
             ipcClient.invoke(IPCEventType.signingKeystoreAliases, { file, storePassword }) as Promise<RequestStatus<{ aliases: string[] }>>,
+        /** The code-signing identities in this Mac's keychains; empty on other hosts. */
+        macIdentities: () =>
+            ipcClient.invoke(IPCEventType.signingMacIdentities, {}) as Promise<RequestStatus<{ identities: MacSigningIdentity[] }>>,
     },
 
     blueprintPersistence: {
