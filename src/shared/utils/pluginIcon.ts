@@ -35,6 +35,41 @@ const FORMAT_OF_EXTENSION: Record<PluginIconExtension, ImageFormat> = {
 };
 
 /**
+ * Check bytes against the icon rules that do not depend on a file name, and
+ * report the format they really are.
+ *
+ * Split out from {@link validatePluginIconBytes} because a downloaded store
+ * thumbnail has no trustworthy name to check an extension against — the format
+ * has to come from the bytes either way.
+ */
+export function inspectPluginIconBytes(
+    bytes: Uint8Array,
+): { format: ImageFormat; size: number } | { error: string } {
+    if (bytes.byteLength > PLUGIN_ICON_MAX_BYTES) {
+        return { error: `Plugin icon must be at most ${Math.floor(PLUGIN_ICON_MAX_BYTES / 1024)} KB` };
+    }
+    const probe = readImageDimensions(bytes);
+    if (!probe) {
+        return { error: `Plugin icon is not a readable ${PLUGIN_ICON_EXTENSIONS.join("/").toUpperCase()} image` };
+    }
+    if (probe.width !== probe.height) {
+        return { error: `Plugin icon must be square (got ${probe.width}x${probe.height})` };
+    }
+    if (probe.width > PLUGIN_ICON_MAX_DIMENSION) {
+        return { error: `Plugin icon must be at most ${PLUGIN_ICON_MAX_DIMENSION}x${PLUGIN_ICON_MAX_DIMENSION} (got ${probe.width}x${probe.height})` };
+    }
+    if (probe.width < PLUGIN_ICON_MIN_DIMENSION) {
+        return { error: `Plugin icon must be at least ${PLUGIN_ICON_MIN_DIMENSION}x${PLUGIN_ICON_MIN_DIMENSION} (got ${probe.width}x${probe.height})` };
+    }
+    return { format: probe.format, size: probe.width };
+}
+
+/** `image/png` and friends — the media type for a format {@link inspectPluginIconBytes} reported. */
+export function pluginIconMimeType(format: ImageFormat): string {
+    return `image/${format}`;
+}
+
+/**
  * Check an icon's actual bytes against the shipping rules, returning an error
  * message or `null` when it passes.
  *
@@ -51,26 +86,18 @@ export function validatePluginIconBytes(bytes: Uint8Array, iconPath: string): st
     if (!extension) {
         return `Plugin icon must be one of: ${pluginIconExtensionList()}`;
     }
-    if (bytes.byteLength > PLUGIN_ICON_MAX_BYTES) {
-        return `Plugin icon must be at most ${Math.floor(PLUGIN_ICON_MAX_BYTES / 1024)} KB`;
-    }
-    const probe = readImageDimensions(bytes);
-    if (!probe) {
-        return `Plugin icon "${iconPath}" is not a readable ${extension.toUpperCase()} image`;
+    const inspected = inspectPluginIconBytes(bytes);
+    if ("error" in inspected) {
+        // Re-point the generic "not a readable image" at the declared extension,
+        // which is the more useful thing to tell an author.
+        return inspected.error.startsWith("Plugin icon is not a readable")
+            ? `Plugin icon "${iconPath}" is not a readable ${extension.toUpperCase()} image`
+            : inspected.error;
     }
     // A file named .png that decodes as something else is either a mistake or an
     // attempt to smuggle a format past the extension allowlist.
-    if (probe.format !== FORMAT_OF_EXTENSION[extension]) {
-        return `Plugin icon "${iconPath}" is a ${probe.format.toUpperCase()} file with a .${extension} name`;
-    }
-    if (probe.width !== probe.height) {
-        return `Plugin icon must be square (got ${probe.width}x${probe.height})`;
-    }
-    if (probe.width > PLUGIN_ICON_MAX_DIMENSION) {
-        return `Plugin icon must be at most ${PLUGIN_ICON_MAX_DIMENSION}x${PLUGIN_ICON_MAX_DIMENSION} (got ${probe.width}x${probe.height})`;
-    }
-    if (probe.width < PLUGIN_ICON_MIN_DIMENSION) {
-        return `Plugin icon must be at least ${PLUGIN_ICON_MIN_DIMENSION}x${PLUGIN_ICON_MIN_DIMENSION} (got ${probe.width}x${probe.height})`;
+    if (inspected.format !== FORMAT_OF_EXTENSION[extension]) {
+        return `Plugin icon "${iconPath}" is a ${inspected.format.toUpperCase()} file with a .${extension} name`;
     }
     return null;
 }
