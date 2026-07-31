@@ -113,12 +113,19 @@ export function ProjectAudioSection({ uiService }: ProjectSectionProps) {
     }, [references, t, trackService, uiService]);
 
     return (
-        <div className="grid gap-3">
+        // `[&>*]:min-w-0` on every grid in this subtree, and it is load-bearing rather than
+        // defensive. A grid item's `min-width` defaults to `auto`, i.e. min-content - and an
+        // `<input>` carries an intrinsic width from its default `size=20` (~258px here, once the
+        // field's icon and unit padding are counted) that `min-w-0` on the input itself does NOT
+        // remove from its parent's min-content contribution. Without these clamps that number
+        // propagates through every ungated grid item up to the section's single column, which is
+        // how this surface came to be 206px wider than the 294px panel it lives in.
+        <div className="grid gap-3 [&>*]:min-w-0">
             <div className="flex justify-end">
                 <AddTrackButton onClick={addTrack} disabled={!trackService} />
             </div>
 
-            <div className="grid gap-2">
+            <div className="grid gap-2 [&>*]:min-w-0">
                 {tracks.map(track => (
                     <TrackRow
                         key={track.id}
@@ -177,7 +184,7 @@ function TrackRow({
 
     return (
         <div
-            className="group grid gap-1.5 rounded-md border border-edge bg-fill-subtle p-2"
+            className="group grid min-w-0 gap-1.5 rounded-md border border-edge bg-fill-subtle p-2 [&>*]:min-w-0"
             title={frozen.title}
         >
             <TrackNameInput
@@ -232,38 +239,39 @@ function TrackRow({
                 </button>
             </div>
 
-            <div className="flex items-center gap-1.5">
-                <NumericDraftEnhancedInput
-                    committedDisplay={String(Math.round(track.fadeInMs))}
-                    draftResetKey={`${track.id}-fade-in`}
-                    onFiniteNumber={fadeInMs => onPatch({ fadeInMs })}
-                    disabled={frozen.disabled}
-                    inputMode="numeric"
-                    type="number"
-                    min={0}
-                    unit="ms"
-                    leftIcon={<ArrowUpRight className="h-3.5 w-3.5" />}
-                    aria-label={t("project.audio.fadeInAria")}
-                    popoverWhenNarrow={false}
-                    selectAllOnFocus
-                    className="min-w-0 flex-1"
-                />
-                <NumericDraftEnhancedInput
-                    committedDisplay={String(Math.round(track.fadeOutMs))}
-                    draftResetKey={`${track.id}-fade-out`}
-                    onFiniteNumber={fadeOutMs => onPatch({ fadeOutMs })}
-                    disabled={frozen.disabled}
-                    inputMode="numeric"
-                    type="number"
-                    min={0}
-                    unit="ms"
-                    leftIcon={<ArrowDownRight className="h-3.5 w-3.5" />}
-                    aria-label={t("project.audio.fadeOutAria")}
-                    popoverWhenNarrow={false}
-                    selectAllOnFocus
-                    className="min-w-0 flex-1"
-                />
-            </div>
+            {/* One fade per line, the way Details stacks its fields. Sharing a line put two
+                fields carrying 80px of icon-and-unit chrome into 294px, leaving 64px of each for
+                digits - and at the 240px panel minimum they could not fit at all. */}
+            <NumericDraftEnhancedInput
+                committedDisplay={String(Math.round(track.fadeInMs))}
+                draftResetKey={`${track.id}-fade-in`}
+                onFiniteNumber={fadeInMs => onPatch({ fadeInMs })}
+                disabled={frozen.disabled}
+                inputMode="numeric"
+                type="number"
+                min={0}
+                unit="ms"
+                leftIcon={<ArrowUpRight className="h-3.5 w-3.5" />}
+                aria-label={t("project.audio.fadeInAria")}
+                popoverWhenNarrow={false}
+                selectAllOnFocus
+                className="w-full"
+            />
+            <NumericDraftEnhancedInput
+                committedDisplay={String(Math.round(track.fadeOutMs))}
+                draftResetKey={`${track.id}-fade-out`}
+                onFiniteNumber={fadeOutMs => onPatch({ fadeOutMs })}
+                disabled={frozen.disabled}
+                inputMode="numeric"
+                type="number"
+                min={0}
+                unit="ms"
+                leftIcon={<ArrowDownRight className="h-3.5 w-3.5" />}
+                aria-label={t("project.audio.fadeOutAria")}
+                popoverWhenNarrow={false}
+                selectAllOnFocus
+                className="w-full"
+            />
 
             <div className="flex items-center gap-2 text-2xs text-fg-subtle">
                 {/* The point of the whole feature, stated as values: the player slider this track
