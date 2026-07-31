@@ -3,8 +3,8 @@
  *
  * This module is deliberately dependency-free and `Buffer`-free: it is imported by the renderer
  * (which needs the list, the labels and the BOM sniff) as well as by the main process. The actual
- * transcoding lives in `@shared/utils/textCodec`, which pulls in `iconv-lite` and therefore must
- * never be reachable from a renderer bundle.
+ * transcoding lives in `src/main/utils/textCodec`, which pulls in `iconv-lite` and therefore is
+ * kept out of `@shared` so that it can never be reachable from a renderer bundle.
  *
  * `utf8` and `utf8bom` are two ids for one encoding on purpose. They decode identically, so the
  * distinction only exists on the way out - and it has to exist, because "keep the BOM this file
@@ -88,9 +88,9 @@ export function textEncodingLabel(id: TextEncodingId): string {
  * produces replacement characters is left on screen - visibly wrong, and one menu click from
  * being reopened correctly - rather than quietly "corrected" to whatever GBK made of it.
  *
- * UTF-16 BE is checked before UTF-16 LE only because their marks are byte-reversed pairs and the
- * order of the two tests is what decides `FF FE`; both are complete two-byte tests, so the
- * ordering below is the actual disambiguation, not a shortcut.
+ * The UTF-16 marks are a byte-reversed pair (`FE FF` big-endian, `FF FE` little-endian) and each
+ * test below reads both bytes, so the two cannot both match and the order they are written in
+ * decides nothing. It is a reading order, not a disambiguation.
  */
 export function detectTextEncodingFromBom(bytes: Uint8Array): TextEncodingId | null {
     if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
@@ -103,9 +103,4 @@ export function detectTextEncodingFromBom(bytes: Uint8Array): TextEncodingId | n
         return "utf16le";
     }
     return null;
-}
-
-/** Whether a decoded document is expected to carry a byte-order mark when written back. */
-export function textEncodingHasBom(id: TextEncodingId): boolean {
-    return id === "utf8bom" || id === "utf16le" || id === "utf16be";
 }

@@ -51,10 +51,29 @@ function metadataShard(...records: string[]): string {
     return `{${records.map(record => `${JSON.stringify(JSON.parse(record).id)}:${record}`).join(",")}}`;
 }
 
-/** `path suffix → file text`. Anything not listed reads back as absent. */
-function createHarness(files: Record<string, string> = {}) {
+/**
+ * Every metadata shard, empty.
+ *
+ * Only needed by a harness that refuses writes: `AssetsMetadataManager` creates its shards with
+ * `ensureRegularFile` and, when that is refused, falls down its own corrupted-shard recovery path.
+ * That is a different question from this file's, and seeding the files keeps it out of the way.
+ */
+function emptyMetadataShards(): Record<string, string> {
+    return Object.fromEntries(Object.values(AssetType).map(type => [`assets.metadata.${type}.json`, "{}"]));
+}
+
+/**
+ * `path suffix → file text`. Anything not listed reads back as absent.
+ *
+ * `refuseWrites` is the freeze latch, and it is the reason the merge cannot be built on a write:
+ * `FileSystemService` answers a write refused by the freeze - or by a working tree being re-read
+ * after a version restore - as a no-op success, so the file never appears and nothing in the result
+ * says so. Modelled on the three verbs that carry the guard.
+ */
+function createHarness(files: Record<string, string> = {}, options: { refuseWrites?: boolean } = {}) {
     const writes: { path: string; data: string }[] = [];
     const present = { ...files };
+    const refused = { ok: true as const, data: undefined };
 
     const suffixOf = (path: string): string | undefined =>
         Object.keys(present).find(candidate => path.endsWith(candidate));
@@ -72,6 +91,9 @@ function createHarness(files: Record<string, string> = {}) {
 
     const filesystemService = {
         async ensureRegularFile(path: string, data: string) {
+            if (options.refuseWrites) {
+                return refused;
+            }
             if (readText(path) === undefined) {
                 return record(path, data);
             }
@@ -98,9 +120,15 @@ function createHarness(files: Record<string, string> = {}) {
             }
         },
         async write(path: string, data: string) {
+            if (options.refuseWrites) {
+                return refused;
+            }
             return record(path, data);
         },
         async writeFileNoFollow(path: string, data: string) {
+            if (options.refuseWrites) {
+                return refused;
+            }
             if (readText(path) === undefined) {
                 return { ok: false as const, error: { code: "ENOENT", message: `lstat '${path}'` } };
             }
@@ -238,6 +266,40 @@ describe("folders, merging audio + video into media", () => {
 
         expect(groupManager.getGroups(AssetCategory.Media)).toEqual([]);
         expect(JSON.parse(lastWrite(harness.writes, MEDIA_GROUPS)!)).toEqual({});
+    });
+
+    it("still reads the folders out of the legacy shards when the write that would create the merged file is refused", async () => {
+        // The open a frozen workspace performs, and the one a version restore performs while it
+        // re-reads the working tree. Creating the merged shard is an optimisation for the next open;
+        // if it were a precondition for reading, every such open would come up with no folders at
+        // all - or fail outright on the read-back of a file that was never written.
+        const harness = createHarness({
+            ...emptyMetadataShards(),
+            [AUDIO_GROUPS]: groupsShard(legacyGroup("group_a", "Chapter 1", AssetType.Audio)),
+            [VIDEO_GROUPS]: groupsShard(legacyGroup("group_v", "Cutscenes", AssetType.Video)),
+        }, { refuseWrites: true });
+
+        const { groupManager } = await initAssets(harness);
+
+        expect(groupManager.getGroups(AssetCategory.Media).map(group => group.id)).toEqual(["group_a", "group_v"]);
+        // The refusal really did keep the file off the disk, so the next open repeats the merge.
+        expect(harness.present[MEDIA_GROUPS]).toBeUndefined();
+    });
+
+    it("refuses to migrate a legacy shard that is on disk and cannot be read, and writes nothing", async () => {
+        // The other half of "absent contributes nothing": a shard that exists but does not parse
+        // holds folders this merge cannot see. Treating it as empty would write a merged file
+        // without them - and every open after that would read the merged file and never look at
+        // the audio shard again, turning one bad read into a permanent loss.
+        const harness = createHarness({
+            [AUDIO_GROUPS]: "{ not json at all",
+            [VIDEO_GROUPS]: groupsShard(legacyGroup("group_v", "Cutscenes", AssetType.Video)),
+        });
+
+        await expect(initAssets(harness)).rejects.toThrow(/legacy assets groups shard/);
+
+        expect(harness.writes.some(write => write.path.endsWith(MEDIA_GROUPS))).toBe(false);
+        expect(harness.present[MEDIA_GROUPS]).toBeUndefined();
     });
 });
 

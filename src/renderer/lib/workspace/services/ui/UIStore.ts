@@ -389,11 +389,15 @@ export class UIStore {
 
     // === Text editor contributions ===
     //
-    // Three flat, id-keyed lists, deliberately as dumb as the panel list above: re-registering an
-    // id replaces it in place, and every mutation goes out on `stateChanged` so the open text tabs
-    // pick it up through the same hook mechanism every other UI registry uses. Registration order
-    // is preserved - `TextEditorContributionService.languageForExtension` resolves a contested
-    // extension by first-registered, which is only a stable answer if this list never reorders.
+    // Three flat, id-keyed lists, deliberately as dumb as the panel list above: every mutation goes
+    // out on `stateChanged`, so the open text tabs pick it up through the same hook mechanism every
+    // other UI registry uses.
+    //
+    // The order is registration order, and it carries meaning:
+    // `TextEditorContributionService.languageForExtension` resolves a contested extension by taking
+    // the first entry that claims it. Re-registering an id does not replace it in place - it drops
+    // the old entry and appends the new one - so a plugin that re-registers moves itself behind
+    // everyone else and hands a contested extension to whoever is now in front.
 
     public registerTextEditorLanguage(def: PluginTextEditorLanguageDef): void {
         this.state.textEditorLanguages = [

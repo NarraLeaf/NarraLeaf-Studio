@@ -87,35 +87,53 @@ export const WORKER_FREE_EDITOR_OPTIONS: monaco.editor.IStandaloneEditorConstruc
 };
 
 /**
- * Plugin language ids already handed to monaco. Monaco's own registry is global and additive -
- * calling `register` twice for one id stacks a second grammar behind the same name - so the guard
- * has to live here rather than at the call site, which is a React effect that runs per tab.
+ * Language ids `monaco.languages.register` has already been given. Monaco's own language list is
+ * global and additive - calling `register` twice for one id declares the same language twice - so
+ * the guard has to live here rather than at the call site, which is a React effect that runs per
+ * tab. Never cleared: an id monaco knows about, it knows about for the life of the window.
  */
-const installedPluginLanguages = new Set<string>();
+const registeredPluginLanguages = new Set<string>();
 
 /**
- * Install a plugin's language into monaco, once, on the first document that needs it.
+ * The definition each installed language's grammar came from.
+ *
+ * Keyed on the *definition*, not just the id, because the id alone cannot answer "is what monaco
+ * holds still what the registry says". A plugin that reloads registers a fresh object, and marking
+ * the id installed forever would leave every window pinned to the grammar of the version that
+ * happened to open the first document. Re-installing is cheap and safe: the tokens provider and the
+ * language configuration are keyed registries in monaco, so setting them again replaces rather than
+ * stacks.
+ */
+const installedPluginLanguages = new Map<string, PluginTextEditorLanguageDef>();
+
+/**
+ * Install a plugin's language into monaco, on the first document that needs it and again whenever
+ * the registered definition is no longer the one that was installed.
  *
  * Deferred to here rather than done when the plugin registers because this module *is* monaco:
  * importing it at plugin-setup time would drag the whole editor into workspace startup for every
  * project, opened text file or not.
  *
  * A grammar that throws is logged and dropped, not rethrown: a plugin's malformed monarch rules
- * must not be the reason an author cannot open a shared plan. The id stays marked as attempted,
- * so a broken grammar is not retried on every tab.
+ * must not be the reason an author cannot open a shared plan. It is also not recorded as installed -
+ * marking a failed install would make the caller's fallback to the built-in mapping permanent, and
+ * would hand the *next* caller an id monaco has no grammar for, which degrades to plaintext with
+ * nothing said.
  */
 export function installPluginTextEditorLanguage(def: PluginTextEditorLanguageDef): string | null {
-    if (installedPluginLanguages.has(def.id)) {
+    if (installedPluginLanguages.get(def.id) === def) {
         return def.id;
     }
-    installedPluginLanguages.add(def.id);
     try {
-        monaco.languages.register({
-            id: def.id,
-            // Monaco wants the dot; the registry accepts either spelling from plugins.
-            extensions: def.extensions.map(extension => `.${normalizeTextEditorExtension(extension)}`),
-            aliases: def.aliases,
-        });
+        if (!registeredPluginLanguages.has(def.id)) {
+            monaco.languages.register({
+                id: def.id,
+                // Monaco wants the dot; the registry accepts either spelling from plugins.
+                extensions: def.extensions.map(extension => `.${normalizeTextEditorExtension(extension)}`),
+                aliases: def.aliases,
+            });
+            registeredPluginLanguages.add(def.id);
+        }
         if (def.monarch) {
             monaco.languages.setMonarchTokensProvider(
                 def.id,
@@ -128,9 +146,11 @@ export function installPluginTextEditorLanguage(def: PluginTextEditorLanguageDef
                 def.configuration as unknown as monaco.languages.LanguageConfiguration,
             );
         }
+        installedPluginLanguages.set(def.id, def);
         return def.id;
     } catch (error) {
         console.error(`[text-editor] failed to install plugin language "${def.id}":`, error);
+        installedPluginLanguages.delete(def.id);
         return null;
     }
 }
