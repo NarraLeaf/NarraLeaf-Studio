@@ -325,7 +325,18 @@ function buildCapabilityDomains(
         } else {
             // Keys are namespaced here rather than in every backend, so the
             // desktop file store and the web IndexedDB store stay dumb.
-            const prefix = `${pluginId}:`;
+            //
+            // The separator is `-`, not `:`, and not `.`:
+            //  - `:` is rejected outright by the persistence key validator
+            //    (`^[a-zA-Z0-9]+([._-][a-zA-Z0-9]+)*$`), so every get/set threw
+            //    and no plugin using `store` could persist anything at runtime.
+            //    The editor hid it: `store` is absent there, and readers already
+            //    degrade to "nothing stored".
+            //  - `.` would validate, but a plugin id is itself dotted, so the
+            //    prefix `narraleaf.gallery.` is a prefix of the legacy key
+            //    `narraleaf.gallery.unlocked` too — `keys()` below would strip it
+            //    and hand back the wrong name.
+            const prefix = `${pluginId}-`;
             domains.store = {
                 get: async <T,>(key: string) => {
                     const value = await backend.get(prefix + key);
