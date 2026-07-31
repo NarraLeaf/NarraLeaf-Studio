@@ -21,6 +21,10 @@ export const project = {
             title: "Runtimes",
             description: "Drawing runtimes for Live2D and Spine characters",
         },
+        linting: {
+            title: "Linting",
+            description: "Which problems the project check reports",
+        },
         settings: {
             title: "Settings",
             description: "Networking and packaging behavior",
