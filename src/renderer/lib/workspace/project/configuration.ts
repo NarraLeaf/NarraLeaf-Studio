@@ -113,12 +113,14 @@ export const DEFAULT_BUILD_COMPRESSION: GameBuildCompression = "maximum";
  * another machine leaves them dangling on purpose - preflight then says which
  * credential to import, rather than the build silently shipping unsigned.
  *
- * macOS has no entry: signing a Mac build needs Apple tooling that only runs on
- * a Mac, and that is a separate batch.
+ * Every platform but the web export has an entry; a web export is files on a
+ * server, with nothing to sign.
  */
 export type SigningConfiguration = {
     /** Credential id for the Windows target (Authenticode). */
     windows?: string;
+    /** Credential id for the macOS target (codesign, optionally notarized). */
+    macos?: string;
     /** Credential id for the GPG detached signatures over the artifacts. */
     linux?: string;
     /** Credential id for the Android release keystore. */
@@ -133,6 +135,7 @@ export type SigningConfiguration = {
  */
 const SIGNING_PLATFORM_KEYS: Record<SigningPlatform, true> = {
     windows: true,
+    macos: true,
     linux: true,
     android: true,
     ios: true,
