@@ -122,8 +122,3 @@ export function encodeTextBytes(text: string, encoding: TextEncodingId): Buffer 
     const encoded = spec.node ? Buffer.from(body, spec.node) : iconv.encode(body, spec.iconv!);
     return spec.bom ? Buffer.concat([Buffer.from(spec.bom), encoded]) : encoded;
 }
-
-/** Whether iconv-lite recognises the encoding at all, for a guard at the edge of the IPC. */
-export function isSupportedTextEncoding(encoding: FsTextEncoding | undefined): boolean {
-    return resolveTextEncodingId(encoding) !== null;
-}

@@ -629,7 +629,7 @@ export class LocalAssetsManager {
             const read = await fsService.read(path, "utf-8");
             if (read.ok) {
                 try {
-                    parseSharedBlueprintAssetJson(read.data.replace(/^\uFEFF/, ""));
+                    parseSharedBlueprintAssetJson(read.data);
                     return AssetType.Blueprint;
                 } catch {
                     // Valid JSON that is not a shared blueprint, or not JSON at all. Either way the
