@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+    audioTracksSpec,
     localizationDocumentSpec,
     localizationKeysSpec,
     variableRegistrySpec,
@@ -19,6 +20,7 @@ describe("document specs agree with ProjectNameConvention", () => {
 
     it("puts every adopted document where the convention says it goes", () => {
         expect(variableRegistrySpec.pathFor()).toBe(of(ProjectNameConvention.EditorVariableRegistry));
+        expect(audioTracksSpec.pathFor()).toBe(of(ProjectNameConvention.EditorAudioTracks));
         expect(voiceDocumentSpec.pathFor({ locale: "ja" })).toBe(of(ProjectNameConvention.EditorVoiceDocument("ja")));
         expect(localizationDocumentSpec.pathFor({ locale: "zh-CN" }))
             .toBe(of(ProjectNameConvention.EditorLocalizationDocument("zh-CN")));

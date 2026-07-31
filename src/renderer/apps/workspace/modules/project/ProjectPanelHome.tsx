@@ -1,10 +1,10 @@
 import { useMemo } from "react";
-import { Boxes, ChevronRight, Gamepad2, Image as ImageIcon, Info, Puzzle, SlidersHorizontal, type LucideIcon } from "lucide-react";
+import { AudioLines, Boxes, ChevronRight, Gamepad2, Image as ImageIcon, Info, Puzzle, SlidersHorizontal, type LucideIcon } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { InteractiveCard } from "@/lib/components/elements";
 import type { ProjectConfig } from "@/lib/workspace/project/project";
 
-export type ProjectSectionId = "details" | "game" | "assets" | "settings" | "dependencies" | "runtimes";
+export type ProjectSectionId = "details" | "game" | "audio" | "assets" | "settings" | "dependencies" | "runtimes";
 
 export type ProjectNavItem = {
     id: ProjectSectionId;
@@ -16,6 +16,7 @@ export type ProjectNavItem = {
 const PROJECT_NAV_ICONS: Record<ProjectSectionId, LucideIcon> = {
     details: Info,
     game: Gamepad2,
+    audio: AudioLines,
     assets: ImageIcon,
     dependencies: Puzzle,
     runtimes: Boxes,
@@ -24,10 +25,12 @@ const PROJECT_NAV_ICONS: Record<ProjectSectionId, LucideIcon> = {
 
 // Game sits next to Details on purpose: both describe the game itself, while
 // Assets / Dependencies / Runtimes / Settings describe how it is built and
-// shipped. Runtimes follows Dependencies because it answers the same shape of
-// question - what does this project need that is not in it yet - for the
-// author-supplied 2D model runtimes rather than for plugins.
-const PROJECT_NAV_ORDER: ProjectSectionId[] = ["details", "game", "assets", "dependencies", "runtimes", "settings"];
+// shipped. Audio follows Game for the same reason - an audio track is a
+// decision about what the player hears, not about packaging. Runtimes follows
+// Dependencies because it answers the same shape of question - what does this
+// project need that is not in it yet - for the author-supplied 2D model
+// runtimes rather than for plugins.
+const PROJECT_NAV_ORDER: ProjectSectionId[] = ["details", "game", "audio", "assets", "dependencies", "runtimes", "settings"];
 
 /**
  * The project navigation rows, with localized title/description. Shared by the

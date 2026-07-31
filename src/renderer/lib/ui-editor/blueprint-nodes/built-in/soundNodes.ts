@@ -28,10 +28,8 @@ import {
     BLUEPRINT_VALUE_TYPE_SOUND_HANDLE,
     normalizeBlueprintSoundHandle,
 } from "@shared/types/blueprint/valueTypes";
-import {
-    normalizeBlueprintSoundChannel,
-    type BlueprintSoundChannel,
-} from "../../blueprint-runtime/BlueprintHostApiBridge";
+import { normalizeBlueprintSoundChannel } from "../../blueprint-runtime/BlueprintHostApiBridge";
+import { DEFAULT_AUDIO_TRACK_ID } from "@shared/types/audioTrack";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { resolveDataPinValue } from "./graphParamResolvers";
@@ -44,7 +42,24 @@ const execNext: BlueprintNodePinDef = { id: "next", kind: "output", semantic: "e
 const SOUND_GRAPH_KINDS = ["event", "macro"] as const;
 
 export const BLUEPRINT_SOUND_PARAM_ASSET = "soundAssetId";
+
+/**
+ * The project audio track this play lands on.
+ *
+ * Spelled `audioTrackId`, not `trackId`: story motion already keys its timeline rows on `trackId`
+ * and the two would collide in any structural sweep over a document.
+ */
+export const BLUEPRINT_SOUND_PARAM_TRACK = "audioTrackId";
+
+/**
+ * The pre-track channel select. Kept as a constant, not as a control: a graph written before tracks
+ * existed still carries it, and both the document migration and {@link resolveTrackId} need the
+ * spelling to read it back. Nothing writes it any more.
+ */
 export const BLUEPRINT_SOUND_PARAM_CHANNEL = "soundChannel";
+
+/** The dynamic select source the flow projection populates from `AudioTrackService`. */
+export const BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE = "audioTracks";
 
 const handleIn: BlueprintNodePinDef = {
     id: "handle",
@@ -114,6 +129,24 @@ const fadeIn: BlueprintNodePinDef = {
     allowInlineLiteral: true,
 };
 
+/**
+ * Fade-in for a play, in seconds like every other authored duration.
+ *
+ * Its own pin rather than the shared `Fade (s)` above, because a play has only one direction to
+ * fade and reusing the neutral label on a node that cannot fade out reads as the wrong control.
+ * Unset falls back to the track's `fadeInMs`, which is what makes a Music track cross-fade by
+ * default without the author wiring anything.
+ */
+const fadeInIn: BlueprintNodePinDef = {
+    id: "fadeIn",
+    kind: "input",
+    semantic: "data",
+    valueType: "float",
+    label: "Fade In (s)",
+    optional: true,
+    allowInlineLiteral: true,
+};
+
 /** Where to move the play head, measured from the start of the file rather than from the in point. */
 const timeIn: BlueprintNodePinDef = {
     id: "time",
@@ -150,6 +183,26 @@ function readSecondsAsMs(ctx: SoundExecuteCtx, portId: string): number {
     return seconds > 0 ? Math.round(seconds * 1000) : 0;
 }
 
+/**
+ * The same conversion, but keeping "unset" distinguishable from "zero".
+ *
+ * A play's fade-in needs the distinction the transport ones do not: unset means "use the track's
+ * fade", while an explicit 0 means "start at full volume now" and must not be overwritten by a
+ * Music track's 800ms.
+ */
+function readOptionalSecondsAsMs(ctx: SoundExecuteCtx, portId: string): number | undefined {
+    const seconds = readOptionalNumber(readPin(ctx, portId));
+    if (seconds === undefined) {
+        return undefined;
+    }
+    return seconds > 0 ? Math.round(seconds * 1000) : 0;
+}
+
+/** Only a real boolean is an override; anything else leaves the track's own loop policy in force. */
+function readOptionalBoolean(value: unknown): boolean | undefined {
+    return typeof value === "boolean" ? value : undefined;
+}
+
 function readOptionalNumber(value: unknown): number | undefined {
     if (typeof value === "number" && Number.isFinite(value)) {
         return value;
@@ -169,8 +222,24 @@ function resolveAssetId(ctx: SoundExecuteCtx): string {
     return typeof param === "string" ? param.trim() : "";
 }
 
-function resolveChannel(ctx: SoundExecuteCtx): BlueprintSoundChannel {
-    return normalizeBlueprintSoundChannel(ctx.params[BLUEPRINT_SOUND_PARAM_CHANNEL]);
+/**
+ * The track id this node plays on.
+ *
+ * A graph saved before tracks existed carries `soundChannel` instead; `migrateBlueprintDocument`
+ * rewrites it on read, but a graph can still reach execution unmigrated (a plugin building nodes at
+ * runtime, a host call), so the same mapping is applied here. Both arms land on the built-in track
+ * for that channel, which reproduces the old behaviour exactly.
+ */
+function resolveTrackId(ctx: SoundExecuteCtx): string | null {
+    const stored = ctx.params[BLUEPRINT_SOUND_PARAM_TRACK];
+    const trackId = typeof stored === "string" ? stored.trim() : "";
+    if (trackId) {
+        return trackId;
+    }
+    const legacy = ctx.params[BLUEPRINT_SOUND_PARAM_CHANNEL];
+    return legacy === undefined || legacy === null
+        ? null
+        : DEFAULT_AUDIO_TRACK_ID[normalizeBlueprintSoundChannel(legacy)];
 }
 
 /**
@@ -185,15 +254,18 @@ function requireHandle(ctx: SoundExecuteCtx, nodeLabel: string) {
     return handle;
 }
 
-const channelParam = {
-    key: BLUEPRINT_SOUND_PARAM_CHANNEL,
-    label: "Channel",
+/**
+ * The track picker that replaced the old three-value `Channel` select.
+ *
+ * Dynamic rather than static because the whole point of a track is that a project can add one:
+ * "Ambience" has to appear here the moment the author creates it on the project Audio surface,
+ * without a node-catalog change. An empty selection resolves to the built-in SFX track.
+ */
+const audioTrackParam = {
+    key: BLUEPRINT_SOUND_PARAM_TRACK,
+    label: "Track",
     kind: "select" as const,
-    options: [
-        { value: "sound", label: "Sound (SFX)" },
-        { value: "bgm", label: "Music (BGM)" },
-        { value: "voice", label: "Voice" },
-    ],
+    dynamicOptionsSource: BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE,
 };
 
 export const soundBlueprintNodes: BlueprintNodeDef[] = [
@@ -201,25 +273,29 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_SOUND_PLAY,
         displayName: "Play Sound",
         category: "Sound",
-        keywords: ["sound", "audio", "play", "music", "bgm", "sfx", "voice", "clip", "track"],
+        keywords: ["sound", "audio", "play", "music", "bgm", "sfx", "voice", "clip", "track", "fade"],
         graphKinds: [...SOUND_GRAPH_KINDS],
         isPure: false,
         isLatent: true,
-        pins: [execIn, assetIdIn, loopIn, volumeIn, execNext, handleOut],
+        pins: [execIn, assetIdIn, loopIn, volumeIn, fadeInIn, execNext, handleOut],
         inspectorParams: [
             { key: BLUEPRINT_SOUND_PARAM_ASSET, label: "Clip", kind: "audioAsset" },
-            channelParam,
+            audioTrackParam,
         ],
         async execute(ctx) {
             const assetId = resolveAssetId(ctx);
             if (!assetId) {
                 throw new BlueprintGraphExecutionError("Play Sound: pick a clip or wire an Asset Id", ctx.node.id);
             }
+            // Every override is passed as "unset" when its pin is unwired, so the host resolves the
+            // track's own default rather than this node inventing one. A hard-coded `loop: false`
+            // here is what would keep a Music track from looping.
             const handle = await requireHostApi(ctx).sound.play({
                 assetId,
-                channel: resolveChannel(ctx),
-                loop: readPin(ctx, "loop") === true,
-                volume: readOptionalNumber(readPin(ctx, "volume")) ?? 1,
+                audioTrackId: resolveTrackId(ctx),
+                loop: readOptionalBoolean(readPin(ctx, "loop")),
+                volume: readOptionalNumber(readPin(ctx, "volume")),
+                fadeInMs: readOptionalSecondsAsMs(ctx, "fadeIn"),
             });
             // A null handle means this environment backs no audio (editor
             // preview). The graph continues; downstream transport is a no-op.
