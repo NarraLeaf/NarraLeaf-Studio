@@ -202,10 +202,18 @@ export const workspace = {
             categoryView: "View",
             // Category + titles for the editor-tab commands (act on the active tab).
             categoryEditor: "Editor",
+            // Caption for commands that declare no category (browse mode groups by category).
+            categoryOther: "Other",
+            categoryGo: "Go",
+            categoryStory: "Story",
+            categoryRun: "Run",
+            categoryProject: "Project",
+            categoryPreferences: "Preferences",
             // Category for the version-control commands (freeze, and later: commit, history).
             categoryVersionControl: "Version Control",
             editor: {
                 closeTab: "Close Tab",
+                closeSelectedTabs: "Close Selected Tabs",
                 closeOthers: "Close Other Tabs",
                 closeToRight: "Close Tabs to the Right",
                 closeAll: "Close All Tabs",
@@ -589,13 +597,22 @@ export const workspace = {
             building: "Building search index…",
             empty: "No results",
             more: "{count} more",
+            // Entity groups come first: the box answers "open the thing called X" before
+            // "find the line that says X".
             groups: {
-                story: "Story Text",
+                scene: "Scenes",
+                story: "Stories",
+                character: "Characters",
+                uiSurface: "UI Surfaces",
+                blueprint: "Blueprints",
                 asset: "Assets",
+                storyText: "Story Text",
                 variable: "Variables",
                 uiTextKey: "UI Text Keys",
                 blueprintNode: "Blueprint Nodes",
             },
+            // Trailing badge on a result row standing in for several identical ones.
+            occurrences: "×{count}",
         },
         // The PyCharm-style project switcher in the title bar: current project name plus a
         // dropdown of recent workspaces to jump between.

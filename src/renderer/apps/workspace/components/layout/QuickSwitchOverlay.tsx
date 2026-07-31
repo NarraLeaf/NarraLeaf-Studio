@@ -16,6 +16,12 @@ export interface QuickListRow {
     /** Renders the small "modified" dot before the trailing content. */
     modified?: boolean;
     disabled?: boolean;
+    /**
+     * Section this row belongs to. A caption renders above the first row of each run of equal
+     * values — captions are not rows, so selection indices still map 1:1 onto this array and every
+     * caller's arrow-key arithmetic is unaffected. Leave undefined for an ungrouped list.
+     */
+    section?: string;
 }
 
 export interface QuickSwitchOverlaySearch {
@@ -126,9 +132,20 @@ export function QuickSwitchOverlay({
                     >
                         {rows.map((row, index) => {
                             const selected = index === selectedIndex;
+                            const heading = row.section && row.section !== rows[index - 1]?.section
+                                ? row.section
+                                : null;
                             return (
+                                <React.Fragment key={row.key}>
+                                {heading && (
+                                    <div
+                                        role="presentation"
+                                        className="px-3 pt-2 pb-1 text-2xs font-medium uppercase tracking-wide text-fg-subtle"
+                                    >
+                                        {heading}
+                                    </div>
+                                )}
                                 <button
-                                    key={row.key}
                                     ref={(node) => {
                                         if (node) {
                                             rowRefs.current.set(row.key, node);
@@ -165,6 +182,7 @@ export function QuickSwitchOverlay({
                                         <span className="shrink-0 text-xs text-fg-subtle">{row.trailing}</span>
                                     )}
                                 </button>
+                                </React.Fragment>
                             );
                         })}
                     </div>
