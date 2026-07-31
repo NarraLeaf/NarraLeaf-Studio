@@ -137,7 +137,6 @@ export const workspace = {
     shell: {
         errorTitle: "Failed to initialize workspace",
         showStackTrace: "Show stack trace",
-        errorConsoleHint: "If the problem persists, export the logs and include them in your report.",
         retry: "Retry",
         openOtherProject: "Open another project",
         errorCopyDetails: "Copy details",
