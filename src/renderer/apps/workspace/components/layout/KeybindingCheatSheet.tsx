@@ -72,6 +72,7 @@ export function KeybindingCheatSheet() {
         return commandService.register({
             id: "workspace:open-keybindings",
             titleKey: "workspace.shell.keybindings.openSettings",
+            categoryKey: "workspace.shell.commandPalette.categoryPreferences",
             run: () => openKeybindingSettings(),
         });
     }, [context]);

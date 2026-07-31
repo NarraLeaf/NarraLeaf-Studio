@@ -120,6 +120,24 @@ describe("collectPaletteCommands", () => {
         expect(commands[0]).toMatchObject({ id: "devmode", title: "Dev Mode", source: "action" });
     });
 
+    it("puts a standalone action in the category it declares", () => {
+        const commands = collectPaletteCommands(
+            build({
+                actions: [action({ id: "build", tooltip: "Build project", paletteCategoryKey: "cat.run" as never })],
+            }),
+        );
+        expect(commands[0]).toMatchObject({ title: "Build project", category: "cat.run" });
+    });
+
+    it("ignores a declared category on a grouped action - the group label wins", () => {
+        const group: ActionGroup = {
+            id: "file",
+            label: "File",
+            items: [action({ id: "open", label: "Open", paletteCategoryKey: "cat.run" as never })],
+        };
+        expect(collectPaletteCommands(build({ actionGroups: [group] }))[0]?.category).toBe("File");
+    });
+
     it("prefers the label over the tooltip when both exist", () => {
         const commands = collectPaletteCommands(
             build({ actions: [action({ id: "x", label: "Real Label", tooltip: "Tip" })] }),
