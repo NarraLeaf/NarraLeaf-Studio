@@ -198,6 +198,7 @@ export enum IPCEventType {
     pluginLocaleList = "plugin.localeList",
     pluginLocalesChanged = "plugin.localesChanged",
     pluginRegistryFetch = "plugin.registryFetch",
+    pluginRegistryIcon = "plugin.registryIcon",
     pluginInstallFromRegistry = "plugin.installFromRegistry",
 
     uiTemplateRegistryFetch = "uiTemplate.registryFetch",
@@ -1676,6 +1677,21 @@ export type IPCPluginManagerEvents = {
         consumer: IPCType.Host,
         data: {},
         response: PluginRegistryFetchResult;
+    };
+    /**
+     * Store: the plugin's thumbnail, as a `data:` URL, or null when it has none.
+     *
+     * The renderer sends an id, never a URL, and never fetches the image itself:
+     * renderers do not talk to the network, so main resolves the address from
+     * the index it trusts, checks the bytes, and caches them by version.
+     */
+    [IPCEventType.pluginRegistryIcon]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            pluginId: string;
+        },
+        response: { icon: string | null };
     };
     // Store: download + extract + install a registry plugin by id. The download
     // URL is taken from the freshly fetched index, never from the renderer. Lands
