@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 
 type Props = {
     code: string;
@@ -9,9 +10,20 @@ type Props = {
 
 /**
  * TypeScript Blueprint source editor (Monaco deferred; textarea matches Studio chrome).
+ *
+ * **`readOnly` rather than `disabled` while the workspace is frozen**, which is the opposite of what
+ * the rest of this pass does and is right here for two reasons: a disabled textarea is greyed to the
+ * point of being hard to read, and reading the source is the entire reason to open a past version of
+ * a script. `readOnly` keeps the text selectable and copyable and refuses every keystroke.
+ *
+ * The debounce below is the second half: it commits on a timer rather than on the keystroke, so a
+ * freeze landing mid-edit would otherwise fire one last write after the author could no longer see
+ * they were typing. It is skipped while frozen for the same reason `toReadOnlyDockerBarItems` marks
+ * its number fields `readOnly` as well as `disabled`.
  */
 export function TypeScriptBlueprintEditorPane({ code, onChange, debounceMs = 400 }: Props) {
     const { t } = useTranslation();
+    const freeze = useFreezeGuard();
     const [draft, setDraft] = useState(code);
 
     useEffect(() => {
@@ -19,13 +31,16 @@ export function TypeScriptBlueprintEditorPane({ code, onChange, debounceMs = 400
     }, [code]);
 
     useEffect(() => {
+        if (freeze.frozen) {
+            return;
+        }
         const t = window.setTimeout(() => {
             if (draft !== code) {
                 onChange(draft);
             }
         }, debounceMs);
         return () => window.clearTimeout(t);
-    }, [draft, code, onChange, debounceMs]);
+    }, [draft, code, onChange, debounceMs, freeze.frozen]);
 
     const onInput = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
         setDraft(e.target.value);
@@ -38,7 +53,8 @@ export function TypeScriptBlueprintEditorPane({ code, onChange, debounceMs = 400
                 spellCheck={false}
                 value={draft}
                 onChange={onInput}
-                title={t("blueprint.tsPane.importHint")}
+                readOnly={freeze.frozen}
+                title={freeze.frozen ? freeze.reason : t("blueprint.tsPane.importHint")}
                 aria-label={t("blueprint.tsPane.sourceLabel")}
             />
         </div>
