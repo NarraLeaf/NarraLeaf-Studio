@@ -44,6 +44,8 @@ The current core catalog includes event heads, local variables, flow branching a
 | `blueprint.page.quit` | `Quit` | `Page` | Terminal latent node that exits the current application runtime. In Studio Dev Mode it stops the Dev Mode session instead of terminating Studio itself. |
 | `blueprint.game.startStory` | `Start Game` | `Game` | Terminal latent node that starts a selected Story / Scene in the NarraLeaf game runtime and hides the current app Page stack behind the game stage. |
 | `blueprint.game.getNametag` | `Get Nametag` | `Game` | Pure node that reads the current NarraLeaf Dialog speaker name, returning `null` when none is active; usable in Blueprint Value. |
+| `blueprint.game.getSpeakerColor` | `Get Speaker Color` | `Game` | Pure node that reads the speaking character's authored accent colour as an `RGBAColor`. Speaker-scoped like `Get Nametag`. The pin is not nullable, so a narrator line, an uncoloured character, and an unparseable colour all yield opaque white; usable in Blueprint Value. |
+| `blueprint.game.getCharacter` | `Get Character` | `Game` | Pure node that reads *any* character by id (a `characters` dynamic select, not a pin): `Name` (string), `Color` (`RGBAColor`), `Avatar` (`ImageAsset\|null`), `Found` (boolean). Resolved from the character table the host mirrors into blueprint global state, so the engine is not involved. `Found` is `false` both when nothing is picked and when the picked character has been deleted - the value pins read empty/default in both cases, which is why it exists; usable in Blueprint Value. |
 | `blueprint.game.getNotifications` | `Get Notifications` | `Game` | Pure node that reads the current NarraLeaf notifications as an `array` of `{ id, message }` objects; usable in Blueprint Value. |
 | `blueprint.game.getChoiceCount` | `Get Choice Count` | `Game` | Pure node that reads the visible choice count of the active NarraLeaf menu (`0` when no menu is active); usable in Blueprint Value. |
 | `blueprint.game.isNvlMode` | `Is NVL Mode` | `Game` | Pure node that returns whether the NarraLeaf game is currently in NVL mode; usable in Blueprint Value. |
@@ -486,6 +488,10 @@ return { nextPort: "next", outputValues: { value: await api.localization.getLoca
 `GraphExecutor` stores those generically, but the read side does **not** pick them up generically: `resolveSelfOutput` in `built-in/graphParamResolvers.ts` is a per-node-type whitelist, and a node type missing from it resolves to `undefined` for every downstream consumer — silently, with no error and no diagnostic. Register the node type and its output port ids there whenever you add an exec node with data output pins.
 
 `graphParamResolvers.test.ts` sweeps the registry for exactly this and fails with the offending `type.pin` list, so the mistake surfaces at test time rather than in a shipped game.
+
+**The sweep only covers exec nodes.** A *pure* node never publishes `outputValues` — every one of its pins is computed inside `resolveSelfOutput` — so it needs the same two registrations (the per-type whitelist branch and a `portId ===` arm in the family resolver) with no automatic guard behind it. Write the pin assertion yourself, through `resolveDataPinValue` rather than through `executeGraph`: a pure node's `execute()` is not on the data path, so an executor-based test passes while every real consumer reads `undefined`.
+
+One more trap for pure getters in a shared family: the family resolvers match on **bare port ids** across every node type routed to them. `resolveGameNodeOutput` answers `avatar` with the *speaker's* avatar for any game node that reaches it, which is why `Get Character` names its pins `characterColor` / `characterAvatar` and is dispatched ahead of that function rather than folded into it.
 
 ## Host API nodes
 

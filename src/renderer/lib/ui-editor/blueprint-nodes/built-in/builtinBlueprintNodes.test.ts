@@ -109,7 +109,9 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_GAME_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_GET_GLOBAL_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+    BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER,
     BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR,
     BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS,
     BLUEPRINT_NODE_TYPE_GAME_CLEAR_TEXT_READ,
     BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE,
@@ -245,7 +247,16 @@ import { blueprintNodeRegistry } from "../BlueprintNodeRegistry";
 import { registerCoreBlueprintNodes } from "../registerCoreBlueprintNodes";
 import { isValidBlueprintPinConnection } from "../connectionPolicy";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
-import { toBlueprintImageAsset, type BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
+import {
+    normalizeBlueprintRGBAColor,
+    toBlueprintImageAsset,
+    type BlueprintImageAsset,
+} from "@shared/types/blueprint/valueTypes";
+import {
+    findBlueprintCharacterInfo,
+    toBlueprintCharacterInfo,
+    type BlueprintCharacterInfo,
+} from "@shared/types/blueprint/characterInfo";
 import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
 import { resolveSliderRuntimeValue, type UISliderRuntimeValue } from "@shared/types/ui-editor/slider";
 import { executeGraph } from "../../behavior-graph/GraphExecutor";
@@ -354,6 +365,8 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     restoreHistory: async () => undefined,
                     getNametag: () => null,
                     getSpeakerAvatar: () => null,
+                    getSpeakerColor: () => ({ r: 255, g: 255, b: 255, a: 1 }),
+                    getCharacter: () => null,
                     getNotifications: () => [],
                     getChoiceCount: () => 0,
                     isNvlMode: () => false,
@@ -478,6 +491,8 @@ function createPageNavigationHostAdapter(
                     restoreHistory: async () => undefined,
                     getNametag: () => null,
                     getSpeakerAvatar: () => null,
+                    getSpeakerColor: () => ({ r: 255, g: 255, b: 255, a: 1 }),
+                    getCharacter: () => null,
                     getNotifications: () => [],
                     getChoiceCount: () => 0,
                     isNvlMode: () => false,
@@ -518,6 +533,9 @@ function createGameSaveHostAdapter(options: {
     autoSaves?: AutoSaveEntry[];
     nametag?: string | null;
     speakerAvatar?: BlueprintImageAsset | null;
+    /** Raw profile hex, as the mirror carries it - the bridge parses it. */
+    speakerColor?: string | null;
+    characters?: BlueprintCharacterInfo[];
     notifications?: Array<{ id: string; message: string }>;
     choiceCount?: number;
     nvlMode?: boolean;
@@ -602,6 +620,10 @@ function createGameSaveHostAdapter(options: {
                     },
                     getNametag: () => options.nametag ?? null,
                     getSpeakerAvatar: () => options.speakerAvatar ?? null,
+                    getSpeakerColor: () =>
+                        normalizeBlueprintRGBAColor(options.speakerColor ?? null),
+                    getCharacter: (characterId: string) =>
+                        findBlueprintCharacterInfo(options.characters ?? [], characterId),
                     getNotifications: () => options.notifications ?? [],
                     getChoiceCount: () => options.choiceCount ?? 0,
                     isNvlMode: () => options.nvlMode ?? false,
@@ -7248,6 +7270,132 @@ describe("sound node transport", () => {
         expect(log.ops).toEqual([
             { op: "setVolume", handle, volume: 0.25, fadeMs: 800 },
             { op: "seek", handle, timeMs: 30000 },
+        ]);
+    });
+});
+
+/**
+ * Reading character data from a graph.
+ *
+ * Both nodes are PURE, so `execute()` is never called on the data path - every value comes from
+ * `resolveDataPinValue`, which reaches them only if the node type is registered in BOTH places in
+ * `graphParamResolvers` (the per-type whitelist and a port branch). Miss either and the pin reads
+ * `undefined` with no error, so these assert through the resolver rather than through the executor.
+ */
+describe("character data nodes", () => {
+    const ALICE = toBlueprintCharacterInfo({
+        id: "char-alice",
+        name: "Alice",
+        color: "#40a8c4",
+        avatarAssetId: "asset-alice-avatar",
+    })!;
+    const MUTE = toBlueprintCharacterInfo({ id: "char-mute", name: "Mute" })!;
+
+    function resolveCharacterPin(
+        portId: string,
+        params: Record<string, unknown>,
+        characters: BlueprintCharacterInfo[],
+    ): unknown {
+        registerCoreBlueprintNodes();
+        return resolveDataPinValue(
+            { nodes: { character: { type: BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER, params } }, edges: [] },
+            "character",
+            portId,
+            params,
+            undefined,
+            0,
+            { hostAdapter: createGameSaveHostAdapter({ characters }) },
+        );
+    }
+
+    function resolveSpeakerColor(speakerColor?: string | null): unknown {
+        registerCoreBlueprintNodes();
+        return resolveDataPinValue(
+            { nodes: { speaker: { type: BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR, params: {} } }, edges: [] },
+            "speaker",
+            "color",
+            {},
+            undefined,
+            0,
+            { hostAdapter: createGameSaveHostAdapter({ speakerColor }) },
+        );
+    }
+
+    it("parses the speaker's profile hex into an RGBAColor pin", () => {
+        expect(resolveSpeakerColor("#40a8c4")).toEqual({ r: 64, g: 168, b: 196, a: 1 });
+        // Shorthand and alpha are the colour control's parser, not a second one written here.
+        expect(resolveSpeakerColor("#fff")).toEqual({ r: 255, g: 255, b: 255, a: 1 });
+    });
+
+    it("yields opaque white for a speaker with no colour, a narrator, and a broken value", () => {
+        const white = { r: 255, g: 255, b: 255, a: 1 };
+        // The three ways "no colour" reaches the pin: unset on the profile, nobody speaking, garbage.
+        expect(resolveSpeakerColor(null)).toEqual(white);
+        expect(resolveSpeakerColor(undefined)).toEqual(white);
+        expect(resolveSpeakerColor("not-a-colour")).toEqual(white);
+    });
+
+    it("reads a named character's name, colour and avatar", () => {
+        const params = { characterId: "char-alice" };
+        expect(resolveCharacterPin("name", params, [ALICE])).toBe("Alice");
+        expect(resolveCharacterPin("characterColor", params, [ALICE])).toEqual({ r: 64, g: 168, b: 196, a: 1 });
+        expect(resolveCharacterPin("characterAvatar", params, [ALICE]))
+            .toEqual({ kind: "imageAsset", assetId: "asset-alice-avatar" });
+        expect(resolveCharacterPin("found", params, [ALICE])).toBe(true);
+    });
+
+    it("does not let Get Character's avatar pin fall through to the speaker's avatar", () => {
+        // `Get Speaker Avatar` owns the port id `avatar`, and `resolveGameNodeOutput` matches port
+        // ids across the whole game family. If Get Character's outputs were named the same, this
+        // node would answer with whoever is speaking instead of the character it points at.
+        const avatarPins = gameBlueprintNodes
+            .find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER)!
+            .pins.filter(pin => pin.id === "avatar" || pin.id === "color");
+        expect(avatarPins).toEqual([]);
+    });
+
+    it("degrades visibly when the referenced character is gone", () => {
+        const params = { characterId: "char-alice" };
+        // Deleted: the table no longer has it.
+        expect(resolveCharacterPin("found", params, [])).toBe(false);
+        expect(resolveCharacterPin("name", params, [])).toBe("");
+        expect(resolveCharacterPin("characterAvatar", params, [])).toBeNull();
+        expect(resolveCharacterPin("characterColor", params, [])).toEqual({ r: 255, g: 255, b: 255, a: 1 });
+        // Never picked at all reads the same on the value pins, which is exactly why `found` exists.
+        expect(resolveCharacterPin("found", {}, [ALICE])).toBe(false);
+    });
+
+    it("separates a character with no colour from one that is missing", () => {
+        const params = { characterId: "char-mute" };
+        expect(resolveCharacterPin("found", params, [MUTE])).toBe(true);
+        expect(resolveCharacterPin("name", params, [MUTE])).toBe("Mute");
+        expect(resolveCharacterPin("characterColor", params, [MUTE])).toEqual({ r: 255, g: 255, b: 255, a: 1 });
+    });
+
+    it("registers both nodes in the Game category and offers them to value graphs", () => {
+        registerCoreBlueprintNodes();
+        const valuePaletteTypes = new Set(
+            listBlueprintNodePaletteEntries({
+                graphKind: "event",
+                owner: { kind: "widgetValue", surfaceId: "surface", elementId: "text", propPath: "text" },
+                widgetElementType: "nl.text",
+                isBlueprintValueGraph: true,
+            }).map(entry => entry.type),
+        );
+        // A colour that cannot be bound to a widget property is useless, so both must be pure and
+        // reachable from a Blueprint Value graph.
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER)).toBe(true);
+
+        const speaker = gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR)!;
+        expect(speaker.isPure).toBe(true);
+        expect(speaker.pins.map(pin => pin.id)).toEqual(["color"]);
+
+        const character = gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER)!;
+        expect(character.isPure).toBe(true);
+        expect(character.pins.map(pin => pin.id)).toEqual(["name", "characterColor", "characterAvatar", "found"]);
+        expect(character.inspectorParams).toEqual([
+            { key: "characterId", label: "Character", kind: "select", dynamicOptionsSource: "characters" },
         ]);
     });
 });

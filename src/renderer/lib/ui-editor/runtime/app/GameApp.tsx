@@ -33,10 +33,14 @@ import {
     registerCharacterAvatarAssets,
 } from "@/lib/ui-editor/runtime/characterAvatarAssets";
 import {
+    BLUEPRINT_GAME_CHARACTERS_STATE_KEY,
     BLUEPRINT_GAME_NAMETAG_STATE_KEY,
+    BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY,
+    BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY,
     BLUEPRINT_GAME_TEXT_READ_STATE_KEY,
     BLUEPRINT_TEXT_READ_PERSISTENCE_KEY,
 } from "@shared/types/blueprint/hostApi";
+import { toBlueprintCharacterInfo } from "@shared/types/blueprint/characterInfo";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type {
@@ -291,6 +295,45 @@ export function GameApp(props: GameAppProps): ReactNode {
         const locale = typeof stored === "string" && stored ? stored : localization.sourceLocale;
         return resolveLocalizedUnitText(localization, locale, characterTranslationUnitId(character.id)) ?? name;
     }, [bundle.localization, bundle.storyLibrary, core]);
+    /**
+     * The speaking character's *id*, from the authored name NLR reports.
+     *
+     * Same match `translateCharacterName` makes, and for the same reason it is done on the source
+     * name: that is the only name the engine ever hands back. A `/temp` speaker is in no table and
+     * resolves to null.
+     */
+    const resolveSpeakerCharacterId = useCallback((sourceName: string | null): string | null => {
+        if (!sourceName) {
+            return null;
+        }
+        return bundle.storyLibrary?.characters.find(entry => entry.name === sourceName)?.id ?? null;
+    }, [bundle.storyLibrary]);
+    /**
+     * Mirror the project's character table into blueprint global state, so `Get Character` can
+     * answer without the graph reaching into the bundle.
+     *
+     * Once per bundle: the table is authoring data baked into the build, and nothing in a running
+     * game edits it. Every host that shares this scope bridge - the app surfaces and each Game UI
+     * slot surface - reads the same mirror, which is why no slot has to wire a callback of its own.
+     *
+     * `color` is additive on the summary, so a bundle built before it existed simply mirrors with no
+     * colour - `toBlueprintCharacterInfo` treats absent and empty alike.
+     */
+    useEffect(() => {
+        if (!core) {
+            return;
+        }
+        const table = (bundle.storyLibrary?.characters ?? []).flatMap(entry => {
+            const info = toBlueprintCharacterInfo({
+                id: entry.id,
+                name: entry.name,
+                color: entry.color,
+                avatarAssetId: entry.defaultAvatarAssetId,
+            });
+            return info ? [info] : [];
+        });
+        core.scopeBridge.globalSet(BLUEPRINT_GAME_CHARACTERS_STATE_KEY, table);
+    }, [bundle.storyLibrary, core]);
     const [widgetPatchesByScope, setWidgetPatchesByScope] = useState<Record<string, Record<string, DevModeWidgetRuntimePatch>>>({});
     const widgetPatchesByScopeRef = useRef(widgetPatchesByScope);
     const navigation = useMemo(() => new NavigationController(), []);
@@ -584,6 +627,10 @@ export function GameApp(props: GameAppProps): ReactNode {
     const clearCurrentDialogNametag = useCallback(() => {
         currentDialogNametagRef.current = null;
         core?.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, null);
+        // Who was speaking and what colour that made the nametag are part of the same fact; leaving
+        // either behind would tint a screen after the game they belonged to is gone.
+        core?.scopeBridge.globalSet(BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY, null);
+        core?.scopeBridge.globalSet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY, null);
     }, [core]);
 
     const setChoiceRuntime = useCallback((runtime: ChoiceSlotRuntime | null): void => {
@@ -2190,9 +2237,17 @@ export function GameApp(props: GameAppProps): ReactNode {
                 }
                 nlrCharacterPromptTokenRef.current?.cancel();
                 nlrCharacterPromptTokenRef.current = liveGame.onCharacterPrompt(({ character }) => {
-                    const nametag = translateCharacterName(readNlrCharacterName(character));
+                    const sourceName = readNlrCharacterName(character);
+                    const nametag = translateCharacterName(sourceName);
                     currentDialogNametagRef.current = nametag;
                     core.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, nametag);
+                    // Staged, not consumed here: `DialogStateBridge` joins this against the mirrored
+                    // character table on the dialog beat. Publishing the id rather than the derived
+                    // colour is what survives a narrator line in between.
+                    core.scopeBridge.globalSet(
+                        BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY,
+                        resolveSpeakerCharacterId(sourceName),
+                    );
                 });
                 nlrPreferenceTokenRef.current?.cancel();
                 nlrPreferenceTokenRef.current = subscribeGamePreferenceChanges(

@@ -80,6 +80,17 @@ export type DevModeCharacterSummary = {
     appearance: CharacterAppearanceSummary;
     /** Dialog avatar used when no differential resolves one (speaking off-stage, or nothing baked). */
     defaultAvatarAssetId?: string | null;
+    /**
+     * The author's accent colour for this character, verbatim from the profile (a hex string, e.g.
+     * `#40A8C4`) and absent when none is set. Two very different surfaces read it, so it is carried
+     * unfiltered and each side decides for itself:
+     *
+     *  - Studio chrome (the story rows, the Dev Mode timeline) puts it through
+     *    `isReadableAccentColor` first, because that chrome renders on both themes' surfaces;
+     *  - the runtime nametag takes it as authored — the dialogue box is the author's own art, so
+     *    Studio has no standing to call a colour unreadable there.
+     */
+    color?: string;
 };
 
 /**

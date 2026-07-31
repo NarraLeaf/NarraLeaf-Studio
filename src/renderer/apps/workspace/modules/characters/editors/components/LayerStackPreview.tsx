@@ -62,6 +62,15 @@ export function LayerStackPreview(props: {
     canvas: { width: number; height: number } | null;
     sizes: Record<string, LayerSize>;
     onMeasured: (layerId: string, size: LayerSize) => void;
+    /**
+     * What the header says about the picture. Omit for the layer count, which is the right answer
+     * only for a kind that has layers — a preset character's single finished sprite was being
+     * reported as "1 drawn", teaching a vocabulary that does not apply to it and saying nothing
+     * about which of its poses is on screen. Pass `null` for no caption at all.
+     */
+    caption?: React.ReactNode;
+    /** Drawn over the stack — the portrait crop box, which has to sit on the picture it frames. */
+    overlay?: React.ReactNode;
     toolbar?: React.ReactNode;
 }) {
     const { t } = useTranslation();
@@ -79,7 +88,9 @@ export function LayerStackPreview(props: {
                     this same toolbar, so a sentence saying there is no canvas yet would only be
                     naming the button beside it. */}
                 {reference ? <span>{`${reference.width} × ${reference.height}`}</span> : null}
-                <span>{t("characters.editor.layerCount", { count: drawn.length })}</span>
+                {props.caption === undefined
+                    ? <span>{t("characters.editor.layerCount", { count: drawn.length })}</span>
+                    : props.caption ? <span className="truncate">{props.caption}</span> : null}
                 <div className="ml-auto flex items-center gap-1">{props.toolbar}</div>
             </div>
             <div className="relative flex-1 overflow-hidden bg-surface">
@@ -108,6 +119,9 @@ export function LayerStackPreview(props: {
                         ))}
                     </>
                 )}
+                {/* Above every layer, whatever the stack's depth: each `Layer` carries an explicit
+                    z-index, so a later sibling would otherwise still sit under a tall stack. */}
+                {props.overlay ? <div className="absolute inset-0" style={{ zIndex: 1000 }}>{props.overlay}</div> : null}
             </div>
         </div>
     );

@@ -1,17 +1,26 @@
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import {
     normalizeBlueprintImageAssetValue,
+    normalizeBlueprintRGBAColor,
     toBlueprintImageAsset,
     type BlueprintElementRef,
     type BlueprintImageAsset,
+    type BlueprintRGBAColor,
     type BlueprintSoundHandle,
 } from "@shared/types/blueprint/valueTypes";
+import {
+    findBlueprintCharacterInfo,
+    normalizeBlueprintCharacterInfo,
+    type BlueprintCharacterInfo,
+} from "@shared/types/blueprint/characterInfo";
 import { truncateDebugEventMessage } from "./DebugBridge";
 import {
+    BLUEPRINT_GAME_CHARACTERS_STATE_KEY,
     BLUEPRINT_GAME_CHOICE_COUNT_STATE_KEY,
     BLUEPRINT_GAME_NAMETAG_STATE_KEY,
     BLUEPRINT_GAME_NOTIFICATIONS_STATE_KEY,
     BLUEPRINT_GAME_SPEAKER_AVATAR_STATE_KEY,
+    BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY,
     BLUEPRINT_GAME_NVL_MODE_STATE_KEY,
     BLUEPRINT_GAME_TEXT_READ_STATE_KEY,
     BLUEPRINT_TEXT_READ_PERSISTENCE_KEY,
@@ -290,6 +299,18 @@ export type BlueprintHostApiRuntime = {
          * character is currently wearing - the engine resolves it off the live portrait element.
          */
         getSpeakerAvatar: () => BlueprintImageAsset | null;
+        /**
+         * The speaking character's authored accent colour, already in pin shape. Opaque white when
+         * nobody is speaking, the narrator is, or the character has no colour - the pin it feeds is
+         * a non-nullable RGBAColor, so "no colour" and "the default colour" are the same answer.
+         */
+        getSpeakerColor: () => BlueprintRGBAColor;
+        /**
+         * Any character by id, from the table mirrored into global state - the addressable read the
+         * speaker-scoped getters above cannot do. Null when the id is empty, or names a character
+         * that is not (or is no longer) in the project.
+         */
+        getCharacter: (characterId: string) => BlueprintCharacterInfo | null;
         getNotifications: () => BlueprintGameNotification[];
         getChoiceCount: () => number;
         isNvlMode: () => boolean;
@@ -378,6 +399,14 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onRestoreHistory?: (id?: string) => Promise<void> | void;
     onGetNametag?: () => string | null;
     onGetSpeakerAvatar?: () => BlueprintImageAsset | null;
+    /** Optional override; without it the speaker colour comes from the mirrored dialog state key. */
+    onGetSpeakerColor?: () => unknown;
+    /**
+     * Optional override; without it `getCharacter` looks the id up in the character table mirrored
+     * into global state. Left unset by every real host - the mirror is the whole point, since it
+     * reaches Game UI slot surfaces without each of them wiring a callback.
+     */
+    onGetCharacter?: (characterId: string) => unknown;
     onGetNotifications?: () => BlueprintGameNotification[];
     onGetChoiceCount?: () => number;
     onIsNvlMode?: () => boolean;
@@ -1468,6 +1497,8 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onRestoreHistory,
         onGetNametag,
         onGetSpeakerAvatar,
+        onGetSpeakerColor,
+        onGetCharacter,
         onGetNotifications,
         onGetChoiceCount,
         onIsNvlMode,
@@ -2708,6 +2739,36 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         ? onGetSpeakerAvatar()
                         : scope.globalGet(BLUEPRINT_GAME_SPEAKER_AVATAR_STATE_KEY);
                     return normalizeBlueprintImageAssetValue(value);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getSpeakerColor: () => {
+                const cap = "game.getSpeakerColor";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const value = onGetSpeakerColor
+                        ? onGetSpeakerColor()
+                        : scope.globalGet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY);
+                    // `normalizeBlueprintRGBAColor` accepts the record the mirror writes *and* a raw
+                    // hex string, and turns null/undefined into the default white.
+                    return normalizeBlueprintRGBAColor(value);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getCharacter: (characterId: string) => {
+                const cap = "game.getCharacter";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const id = String(characterId ?? "").trim();
+                    if (!id) {
+                        return null;
+                    }
+                    if (onGetCharacter) {
+                        return normalizeBlueprintCharacterInfo(onGetCharacter(id));
+                    }
+                    return findBlueprintCharacterInfo(scope.globalGet(BLUEPRINT_GAME_CHARACTERS_STATE_KEY), id);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

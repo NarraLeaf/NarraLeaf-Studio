@@ -1,14 +1,18 @@
 import { useEffect } from "react";
 import { useAvatar, useDialog } from "narraleaf-react";
 import {
+    BLUEPRINT_GAME_CHARACTERS_STATE_KEY,
     BLUEPRINT_GAME_NAMETAG_STATE_KEY,
     BLUEPRINT_GAME_SPEAKER_AVATAR_STATE_KEY,
+    BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY,
+    BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY,
 } from "@shared/types/blueprint/hostApi";
+import { findBlueprintCharacterInfo } from "@shared/types/blueprint/characterInfo";
 import { toBlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 
 /**
- * Mirrors the NarraLeaf dialog state (speaker nametag and avatar) into the blueprint
+ * Mirrors the NarraLeaf dialog state (speaker nametag, avatar and accent colour) into the blueprint
  * global scope and flushes dialog-bound elements whenever the dialog text,
  * speaker, or completion state changes. Must render inside <NlrDialog>.
  *
@@ -18,6 +22,12 @@ import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBluep
  * URL (that is what an `<img>` takes); a blueprint pin carries an `ImageAsset`, so the compile's
  * own url→assetId inverse turns it back. A URL that inverse does not know resolves to no avatar
  * rather than to a guess.
+ *
+ * The accent colour is a Studio-side field the engine knows nothing about, so it is derived here
+ * rather than reported: the host stages *who* is speaking (a character id, not the nametag - see
+ * `BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY`) and mirrors the character table, and this bridge
+ * joins the two on the dialog beat. Deriving it here rather than staging the colour itself is what
+ * lets a narrator line blank the colour without losing who spoke last.
  */
 export function DialogStateBridge(props: {
     core: BlueprintRuntimeCore | null;
@@ -40,6 +50,15 @@ export function DialogStateBridge(props: {
         // The same write is the clock: `refreshAll` is key-agnostic, so mirroring the avatar here
         // re-evaluates every value graph on the same beat the nametag already did.
         core.scopeBridge.globalSet(BLUEPRINT_GAME_SPEAKER_AVATAR_STATE_KEY, toBlueprintImageAsset(avatarAssetId));
+        // Same beat, same reason: a nametag widget that tints itself from the speaker colour has to
+        // repaint with the line it belongs to, not one line late.
+        const speakerId = dialog.isNarrator
+            ? null
+            : core.scopeBridge.globalGet(BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY);
+        const speaker = typeof speakerId === "string"
+            ? findBlueprintCharacterInfo(core.scopeBridge.globalGet(BLUEPRINT_GAME_CHARACTERS_STATE_KEY), speakerId)
+            : null;
+        core.scopeBridge.globalSet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY, speaker?.color ?? null);
         flushDialogElements();
     }, [
         core,
