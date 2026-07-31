@@ -27,6 +27,14 @@ export type PluginRegistryEntry = {
     categories: string[];
     keywords: string[];
     license: string;
+    /**
+     * Absolute `https` URL of the plugin's thumbnail, as published by the
+     * registry. Unlike an installed plugin's icon this one has not been through
+     * Studio's square/size checks — it is a remote image the store shows while
+     * browsing — so the UI boxes it and falls back to the monogram if it fails
+     * to load. The installed copy is validated at install time.
+     */
+    icon?: string;
     homepage?: string;
     /** Advisory semver range; Studio does not enforce it. */
     studioVersion?: string;

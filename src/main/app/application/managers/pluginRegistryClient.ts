@@ -48,6 +48,25 @@ function asStringArray(value: unknown): string[] {
 }
 
 /**
+ * An `https` URL, or `undefined`.
+ *
+ * The store renders the icon URL directly in an `<img>`, so this is the point
+ * where a hostile index is stopped from handing the renderer a `file:`,
+ * `data:` or `javascript:` address.
+ */
+function asHttpsUrl(value: unknown): string | undefined {
+    const raw = asString(value).trim();
+    if (!raw) {
+        return undefined;
+    }
+    try {
+        return new URL(raw).protocol === "https:" ? raw : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+/**
  * Coerce one raw index record into a {@link PluginRegistryEntry}, or `null` if
  * it lacks the fields the store cannot work without (id / version / download).
  * Being lenient here keeps one malformed entry from blanking the whole store.
@@ -77,6 +96,7 @@ function normalizeEntry(raw: unknown): PluginRegistryEntry | null {
         categories: asStringArray(record.categories),
         keywords: asStringArray(record.keywords),
         license: asString(record.license),
+        icon: asHttpsUrl(record.icon),
         homepage: asString(record.homepage) || undefined,
         studioVersion: asString(record.studioVersion) || undefined,
         permissions: Array.isArray(record.permissions) ? (record.permissions as PluginRegistryEntry["permissions"]) : [],
