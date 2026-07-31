@@ -70,6 +70,13 @@ export type StoryRowLookups = {
      * has always done for the list.
      */
     assetName?: (assetId: string) => string | null;
+    /**
+     * The name of a Story Motion asset, or `null` when it is unknown. Same split as `assetName`: a row
+     * stores only the motion's id and the projection is pure. Omit it and a motion row falls back to
+     * naming its operation — which is what the Dev Mode timeline does, since its bundle carries no
+     * motion index.
+     */
+    motionName?: (animationId: string) => string | null;
     /** The scene the block belongs to — variable, layer and displayable refs resolve against it. */
     scene?: StoryScene;
     /** Every scene in the document: jump targets and cross-scene variable names. */
@@ -448,8 +455,18 @@ const CAMERA_PAN_PLACEMENTS: Record<number, StagePlacement> = (["left", "center"
  * How a camera row reads: the operation plus the one value it carries. The verb is NOT repeated from
  * the badge, but the knob is named ("Zoom ×1.5", not "×1.5"), because five operations share one badge.
  */
-function describeCamera(payload: Extract<StoryActionPayload, { action: "camera" }>): string {
+function describeCamera(
+    payload: Extract<StoryActionPayload, { action: "camera" }>,
+    motionName?: StoryRowLookups["motionName"],
+): string {
     const operation = translate(`story.describe.cameraOp.${payload.operation}` as TranslationKey);
+    if (payload.operation === "motion") {
+        // The bound motion IS the content of this row; several `/camera motion` rows in a scene are
+        // otherwise all just "Motion".
+        const animationId = payload.motion?.animationId;
+        const name = animationId ? motionName?.(animationId) : undefined;
+        return name ? `${operation} ${name}` : operation;
+    }
     if (payload.operation === "zoom") {
         return `${operation} ×${payload.zoom ?? 1}`;
     }
@@ -546,7 +563,7 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
         if (payload.action === "vfx") return translate("story.describe.vfx", { operation: payload.operation, name: payload.objectName || translate("story.describe.unnamed") });
         if (payload.action === "nvl") return translate("story.describe.nvl");
         if (payload.action === "blueprint") return translate("story.describe.blueprint");
-        if (payload.action === "camera") return describeCamera(payload);
+        if (payload.action === "camera") return describeCamera(payload, lookups.motionName);
         return translate("story.describe.effect", { effect: payload.effect });
     }
     if (block.kind === "control") {

@@ -1,3 +1,4 @@
+import type { ComponentType } from "react";
 import type { FieldType } from "../types";
 
 /**
@@ -45,12 +46,52 @@ const SELF_READ_ONLY_FIELD_TYPES: ReadonlySet<FieldType> = new Set<FieldType>([
     "section",
 ]);
 
-/** Which of the two ways `field` has to be made read-only. */
-export function fieldReadOnlyStrategy(type: FieldType): FieldReadOnlyStrategy {
+/** Which of the two ways a field of this TYPE has to be made read-only. */
+export function fieldTypeReadOnlyStrategy(type: FieldType): FieldReadOnlyStrategy {
     return SELF_READ_ONLY_FIELD_TYPES.has(type) ? "own" : "structural";
 }
 
+/**
+ * A custom field component that is read-only-aware, and says so.
+ *
+ * `custom` is one bucket in the table above and it has to be, because the framework cannot see what
+ * a caller's component does - so every custom field is clamped. That default is right for the great
+ * majority of them and wrong for the ones that only LOOK: the blueprint entry a widget shows in its
+ * Interaction tab is a preview and a way into another editor, and a clamped one meant a frozen
+ * workspace could not open the blueprint of the element it had selected, which is reading.
+ *
+ * Declared on the COMPONENT rather than on each field definition, because the definitions are
+ * copies: eleven widget inspectors each write their own `interaction.blueprint.readonly` literal,
+ * and the twelfth would be written by copying one of them. A flag on the literal is a flag the copy
+ * can drop silently; a component that carries its own strategy cannot be pasted without it.
+ */
+export type ReadOnlyAwareComponent = { readOnlyStrategy?: FieldReadOnlyStrategy };
+
+/**
+ * Mark a custom field component as honouring `readOnly` itself, so the framework leaves its subtree
+ * alone.
+ *
+ * Only for components that genuinely do - either because every control in them is inspection (a
+ * preview, an entry into another editor) or because they thread `readOnly` down to their own inputs.
+ * Getting this wrong offers a write inside a frozen project, which is the one direction this whole
+ * pass is not allowed to be wrong in.
+ */
+export function selfReadOnly<C extends ComponentType<any>>(component: C): C & ReadOnlyAwareComponent {
+    return Object.assign(component, { readOnlyStrategy: "own" as const });
+}
+
+/** What the framework has to render around a field, given its type and (for `custom`) its component. */
+export function fieldReadOnlyStrategy(field: {
+    type: FieldType;
+    component?: unknown;
+}): FieldReadOnlyStrategy {
+    if ((field.component as ReadOnlyAwareComponent | undefined)?.readOnlyStrategy === "own") {
+        return "own";
+    }
+    return fieldTypeReadOnlyStrategy(field.type);
+}
+
 /** Whether the framework must clamp this field's rendered subtree from outside. */
-export function needsStructuralReadOnly(type: FieldType): boolean {
-    return fieldReadOnlyStrategy(type) === "structural";
+export function needsStructuralReadOnly(field: { type: FieldType; component?: unknown }): boolean {
+    return fieldReadOnlyStrategy(field) === "structural";
 }

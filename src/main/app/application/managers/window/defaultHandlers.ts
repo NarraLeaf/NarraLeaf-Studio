@@ -1,6 +1,6 @@
 import { IPCEventType } from "@shared/types/ipcEvents";
 import { IPCHandler } from "./handlers/IPCHandler";
-import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppRemoveRecentProjectHandler, AppCheckRecentProjectsHandler, AppInfoHandler, AppOpenExternalHandler, AppPickBackgroundImageHandler, AppPlatformInfoHandler, AppReadBackgroundImageHandler, AppTerminateHandler, AppWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowEditCommandHandler, AppWindowGetControlHandler, AppWindowGetFullscreenHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler } from "./handlers/appAction";
+import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppRemoveRecentProjectHandler, AppCheckRecentProjectsHandler, AppInfoHandler, AppOpenExternalHandler, AppPickBackgroundImageHandler, AppPlatformInfoHandler, AppReadBackgroundImageHandler, AppTerminateHandler, AppWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowEditCommandHandler, AppWindowGetControlHandler, AppWindowGetFullscreenHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler, AppExportDiagnosticsHandler } from "./handlers/appAction";
 import { AppCountWorkspaceWindowsHandler, AppRequestWorkspaceViewHandler, AppSettingsWindowLaunchHandler } from "./handlers/settingAction";
 import {
     FsStatHandler, FsListHandler, FsDetailsHandler, FsDirectorySizeHandler, FsRequestReadHandler, FsRequestReadDirHandler, FsRequestWriteHandler,
@@ -13,7 +13,7 @@ import {
     VcsGetAvailabilityHandler, VcsIsRepositoryHandler, VcsGetInfoHandler, VcsGetHistoryHandler, VcsReadBlobHandler,
     VcsReadRevisionDocumentsHandler, VcsGetChangedPathsHandler, VcsGetThreeWayHandler, VcsGetMergeBaseHandler,
     VcsInitRepositoryHandler,
-    VcsGetStatusHandler, VcsCommitHandler, VcsCheckpointHandler,
+    VcsGetStatusHandler, VcsCommitHandler, VcsCheckpointHandler, VcsRestoreRevisionHandler,
 } from "./handlers/vcsAction";
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./handlers/projectWizardAction";
 import { WorkspaceExportProjectPackageHandler, WorkspaceImportProjectPackageHandler } from "./handlers/projectPackageAction";
@@ -78,6 +78,7 @@ import {
     UITemplateFetchBundleHandler,
     UITemplateRegistryFetchHandler,
 } from "./handlers/uiTemplateAction";
+import { PuppetRuntimeInstallSdkHandler } from "./handlers/puppetRuntimeAction";
 import {
     BlueprintPersistenceGetAllHandler,
     BlueprintPersistenceGetValueHandler,
@@ -118,6 +119,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new AppRemoveRecentProjectHandler(),
         new AppCheckRecentProjectsHandler(),
         new AppSystemPathHandler(),
+        new AppExportDiagnosticsHandler(),
 
         new AppSettingsWindowLaunchHandler(),
         new AppCountWorkspaceWindowsHandler(),
@@ -205,6 +207,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new PluginInstallFromRegistryHandler(),
         new UITemplateRegistryFetchHandler(),
         new UITemplateFetchBundleHandler(),
+        new PuppetRuntimeInstallSdkHandler(),
 
         // Actor-aware privileged facade handlers
         new PrivilegedFsCallHandler(),
@@ -240,14 +243,15 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new FsGrantFileAccessHandler(),
         new FsHashHandler(),
 
-        // Version control (reads, plus the writes that only ever add a revision -
-        // see docs/version-control.md)
+        // Version control (reads, the writes that only ever add a revision, and restore -
+        // the one that overwrites the working tree. See docs/version-control.md)
         new VcsGetAvailabilityHandler(),
         new VcsIsRepositoryHandler(),
         new VcsGetInfoHandler(),
         new VcsInitRepositoryHandler(),
         new VcsCommitHandler(),
         new VcsCheckpointHandler(),
+        new VcsRestoreRevisionHandler(),
         new VcsGetStatusHandler(),
         new VcsGetHistoryHandler(),
         new VcsReadBlobHandler(),

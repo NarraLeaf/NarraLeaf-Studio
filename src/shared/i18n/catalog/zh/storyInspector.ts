@@ -64,6 +64,7 @@ export const storyInspector = {
         layer: "图层",
         character: "角色",
         displayable: "可显示对象",
+        camera: "舞台镜头",
     },
     variableScope: {
         scene: "场景",
@@ -206,7 +207,17 @@ export const storyInspector = {
         pan: "平移",
         rotate: "旋转",
         darken: "压暗舞台",
+        motion: "运镜动作",
         reset: "复位镜头",
+    },
+
+    cameraOperationShort: {
+        zoom: "推拉",
+        pan: "平移",
+        rotate: "旋转",
+        darken: "压暗",
+        motion: "运镜",
+        reset: "复位",
     },
 
     camera: {
@@ -271,6 +282,7 @@ export const storyInspector = {
         setVolume: "设置音量",
         setRate: "设置倍速",
         muteSound: "静音／取消静音",
+        seekSound: "跳转位置",
     },
     screenEffectOption: {
         blink: "闪烁",
@@ -315,6 +327,7 @@ export const storyInspector = {
         bgmAsset: "背景音乐资源",
         soundAsset: "音效资源",
         fade: "淡入淡出（秒）",
+        seekTime: "跳转到（秒）",
         volume: "音量",
         rate: "倍速",
         loop: "循环",

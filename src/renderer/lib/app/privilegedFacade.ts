@@ -1,5 +1,6 @@
 import type { FileDetails, FileStat, FileEntry } from "@shared/utils/fs";
 import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
+import type { FsTextEncoding } from "@shared/types/textEncoding";
 import type { RequestStatus } from "@shared/types/ipcEvents";
 import type { PluginIdentity, PluginPermissionRequest, PluginPermissionPromptResult } from "@shared/types/pluginPermissions";
 import type { PrivilegedBashExecuteResult } from "@shared/types/privileged";
@@ -73,11 +74,11 @@ function createBoundPrivilegedFacade(token: PrivilegedFacadeToken) {
                 privileged().fs.list(actor(), path),
             details: (path: string): Promise<RequestStatus<FsRequestResult<FileDetails>>> =>
                 privileged().fs.details(actor(), path),
-            requestRead: (path: string, encoding: BufferEncoding): Promise<RequestStatus<FsRequestResult<string>>> =>
+            requestRead: (path: string, encoding: FsTextEncoding): Promise<RequestStatus<FsRequestResult<string>>> =>
                 privileged().fs.requestRead(actor(), path, encoding),
             requestReadRaw: (path: string): Promise<RequestStatus<FsRequestResult<string>>> =>
                 privileged().fs.requestReadRaw(actor(), path),
-            requestWrite: (path: string, encoding: BufferEncoding): Promise<RequestStatus<FsRequestResult<string>>> =>
+            requestWrite: (path: string, encoding: FsTextEncoding): Promise<RequestStatus<FsRequestResult<string>>> =>
                 refuseFrozenWrite(path)
                     ? frozenRejection(path)
                     : privileged().fs.requestWrite(actor(), path, encoding),

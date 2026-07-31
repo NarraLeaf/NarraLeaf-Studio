@@ -1,19 +1,19 @@
 import { useMemo, useCallback, useState, Dispatch, SetStateAction, DragEvent } from "react";
 import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
 import { Upload, Link, FolderPlus, RefreshCw } from "lucide-react";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { ASSET_CATEGORY_ORDER, AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
 import { useAssetsPanelContext } from "../AssetsPanelContext";
-import { ASSET_TYPE_ICONS } from "../constants";
+import { ASSET_CATEGORY_ICONS, ASSET_TYPE_ICONS } from "../constants";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 
 interface AssetsListViewProps {
     dropTargetId: string | null;
-    handleRootDrop: (event: DragEvent, type: AssetType, contextualGroup?: AssetGroup | null) => Promise<void>;
-    handleImport: (type: AssetType) => void;
-    handleImportRemote: (type: AssetType) => void;
-    handleCreateGroup: (type: AssetType) => void;
+    handleRootDrop: (event: DragEvent, category: AssetCategory, contextualGroup?: AssetGroup | null) => Promise<void>;
+    handleImport: (category: AssetCategory) => void;
+    handleImportRemote: (category: AssetCategory) => void;
+    handleCreateGroup: (category: AssetCategory) => void;
     actionLoading: boolean;
     setDropTargetId: Dispatch<SetStateAction<string | null>>;
     openItems: string[];
@@ -33,25 +33,40 @@ export function AssetsListView({
     onOpenChange,
     disableAnimation,
 }: AssetsListViewProps) {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
     const freeze = useFreezeGuard();
-    const { filteredAssets, filteredGroups, draggedItem } = useAssetsPanelContext();
+    const { filteredAssets, filteredGroups, draggedItem, showContextMenu } = useAssetsPanelContext();
 
     const hasAnyItems = useMemo(() => Object.values(filteredAssets).some(list => list.length > 0) || Object.values(filteredGroups).some(list => list.length > 0), [filteredAssets, filteredGroups]);
 
     return (
         <Accordion openItems={openItems} onOpenChange={onOpenChange} multiple disableAnimation={disableAnimation}>
-            {Object.values(AssetType).map((type) => {
-                const TypeIcon = ASSET_TYPE_ICONS[type];
-                const typeAssets = filteredAssets[type];
-                const typeGroups = filteredGroups[type];
+            {ASSET_CATEGORY_ORDER.map((category) => {
+                const CategoryIcon = ASSET_CATEGORY_ICONS[category];
+                const categoryAssets = filteredAssets[category];
+                const categoryGroups = filteredGroups[category];
 
                 return (
                     <AccordionItem
-                        key={type}
-                        id={type}
-                        icon={<TypeIcon className="w-4 h-4" />}
-                        title={`${t(`assets.types.${type}`)} (${typeAssets.length})`}
+                        key={category}
+                        id={category}
+                        icon={<CategoryIcon className="w-4 h-4" />}
+                        headerProps={{
+                            // The section's handle: verification and any future command that has to
+                            // find a category on screen reads this rather than matching its label,
+                            // which is translated.
+                            "data-asset-category": category,
+                            // The header had no menu at all. It is the section's own row, so it is
+                            // where a command about the section as a whole belongs — today, Other's
+                            // "New Text File". The body below still swallows contextmenu.
+                            onContextMenu: (event) => showContextMenu(event, category, null, false),
+                        }}
+                        title={
+                            <span className="flex items-center gap-1.5">
+                                <span>{t(`assets.categories.${category}`)}</span>
+                                <span className="text-xs text-fg-subtle">{tn("assets.itemCount", categoryAssets.length)}</span>
+                            </span>
+                        }
                         actions={
                             actionLoading ? (
                                 <RefreshCw className="w-3 h-3 animate-spin text-fg" />
@@ -60,7 +75,7 @@ export function AssetsListView({
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            handleImport(type);
+                                            handleImport(category);
                                         }}
                                         className="p-1 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
                                         {...freeze.writes(false, t("common.import"))}
@@ -70,7 +85,7 @@ export function AssetsListView({
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            handleImportRemote(type);
+                                            handleImportRemote(category);
                                         }}
                                         className="p-1 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
                                         {...freeze.writes(false, t("assets.importRemote"))}
@@ -80,7 +95,7 @@ export function AssetsListView({
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            handleCreateGroup(type);
+                                            handleCreateGroup(category);
                                         }}
                                         className="p-1 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
                                         {...freeze.writes(false, t("assets.menu.newGroup"))}
@@ -92,27 +107,27 @@ export function AssetsListView({
                         }
                     >
                         <div
-                            className={`${dropTargetId === `root:${type}` ? 'bg-primary/10' : ''}`}
-                            onDrop={(e) => handleRootDrop(e, type)}
+                            className={`${dropTargetId === `root:${category}` ? 'bg-primary/10' : ''}`}
+                            onDrop={(e) => handleRootDrop(e, category)}
                             onDragOver={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                if (draggedItem?.type === type || e.dataTransfer.types.includes('Files')) {
-                                    setDropTargetId(`root:${type}`);
+                                if (draggedItem?.category === category || e.dataTransfer.types.includes('Files')) {
+                                    setDropTargetId(`root:${category}`);
                                 }
                             }}
                             onDragLeave={(e) => {
                                 e.stopPropagation();
-                                setDropTargetId((prev) => (prev === `root:${type}` ? null : prev));
+                                setDropTargetId((prev) => (prev === `root:${category}` ? null : prev));
                             }}
                             onContextMenu={(e) => e.preventDefault()}
                         >
                             {/* An empty category prints nothing. The accordion header's import buttons
                                 are the way in; announcing the absence is not information. */}
-                            {(typeAssets.length > 0 || typeGroups.length > 0) && (
+                            {(categoryAssets.length > 0 || categoryGroups.length > 0) && (
                                 <div className="py-1">
-                                    {typeGroups.filter(g => !g.parentGroupId).map(group => <GroupItem key={group.id} group={group} type={type} level={0} />)}
-                                    {typeAssets.filter(a => !a.groupId).map(asset => <AssetItem key={asset.id} asset={asset} type={type} level={0} />)}
+                                    {categoryGroups.filter(g => !g.parentGroupId).map(group => <GroupItem key={group.id} group={group} category={category} level={0} />)}
+                                    {categoryAssets.filter(a => !a.groupId).map(asset => <AssetItem key={asset.id} asset={asset} category={category} level={0} />)}
                                 </div>
                             )}
                         </div>
@@ -126,7 +141,7 @@ export function AssetsListView({
     );
 }
 
-function GroupItem({ group, type, level }: { group: AssetGroup; type: AssetType; level: number }) {
+function GroupItem({ group, category, level }: { group: AssetGroup; category: AssetCategory; level: number }) {
     const freeze = useFreezeGuard();
     const {
         filteredGroups,
@@ -163,8 +178,8 @@ function GroupItem({ group, type, level }: { group: AssetGroup; type: AssetType;
         });
     }, [group.id, setExpandedGroups]);
 
-    const childGroups = filteredGroups[type].filter(g => g.parentGroupId === group.id);
-    const groupAssets = filteredAssets[type].filter(a => a.groupId === group.id);
+    const childGroups = filteredGroups[category].filter(g => g.parentGroupId === group.id);
+    const groupAssets = filteredAssets[category].filter(a => a.groupId === group.id);
     const isDragging = !!draggedItem && draggedItem.isGroup && draggedItem.item.id === group.id;
     const isSelected = selectedItems.has(`group:${group.id}`);
     const isCut = clipboard?.type === 'cut' && clipboard.groups.some(g => g.id === group.id);
@@ -176,7 +191,7 @@ function GroupItem({ group, type, level }: { group: AssetGroup; type: AssetType;
                 e.preventDefault();
                 e.stopPropagation();
                 const files = e.dataTransfer.types.includes("Files");
-                const internal = draggedItem && draggedItem.type === type;
+                const internal = draggedItem && draggedItem.category === category;
                 // A frozen library never lights up as a drop target: the move and the import are both
                 // refused, and a folder that glows and then keeps its old contents reads as a bug.
                 if (freeze.frozen || (!internal && !files)) {
@@ -194,14 +209,15 @@ function GroupItem({ group, type, level }: { group: AssetGroup; type: AssetType;
                 e.stopPropagation();
                 setDragOverLocal(false);
                 if (draggedItem && handleDropOnItem) {
-                    handleDropOnItem(e, type, group);
+                    handleDropOnItem(e, category, group);
                 } else {
-                    handleImportToGroup(type, group.id, e.dataTransfer.files, e.dataTransfer);
+                    handleImportToGroup(category, group.id, e.dataTransfer.files, e.dataTransfer);
                 }
             }}
         >
             <div
                 draggable
+                data-asset-group-id={group.id}
                 className={`nl-drag-source flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-fill ${isSelected ? 'bg-primary/20 border-l-2 border-primary' : ''} ${isFocused(`group:${group.id}`) ? 'bg-fill-subtle' : ''} ${isDragging ? 'opacity-50' : ''} ${isCut ? 'opacity-40' : ''}`}
                 style={{ paddingLeft: `${20 + level * 12}px` }}
                 onClick={(e) => {
@@ -209,8 +225,8 @@ function GroupItem({ group, type, level }: { group: AssetGroup; type: AssetType;
                     handleGroupFocus(group.id);
                     toggleOpen();
                 }}
-                onContextMenu={(e) => showContextMenu(e, type, group, true)}
-                onDragStart={(e) => handleDragStart?.(e, type, group, true)}
+                onContextMenu={(e) => showContextMenu(e, category, group, true)}
+                onDragStart={(e) => handleDragStart?.(e, category, group, true)}
                 onDragEnd={() => handleDragEnd?.()}
             >
                 <FolderPlus className="w-4 h-4 text-primary" />
@@ -220,15 +236,15 @@ function GroupItem({ group, type, level }: { group: AssetGroup; type: AssetType;
 
             {isOpen && (
                 <div>
-                    {childGroups.map(child => <GroupItem key={child.id} group={child} type={type} level={level + 1} />)}
-                    {groupAssets.map(asset => <AssetItem key={asset.id} asset={asset} type={type} level={level + 1} />)}
+                    {childGroups.map(child => <GroupItem key={child.id} group={child} category={category} level={level + 1} />)}
+                    {groupAssets.map(asset => <AssetItem key={asset.id} asset={asset} category={category} level={level + 1} />)}
                 </div>
             )}
         </div>
     );
 }
 
-function AssetItem({ asset, type, level }: { asset: Asset; type: AssetType; level: number }) {
+function AssetItem({ asset, category, level }: { asset: Asset; category: AssetCategory; level: number }) {
     const { selectedItems, clipboard, draggedItem, handleItemSelect, handleAssetClick, showContextMenu, handleDragStart, handleDragEnd, isFocused, isMultiSelectMode } = useAssetsPanelContext();
     const Icon = ASSET_TYPE_ICONS[asset.type];
     const isSelected = selectedItems.has(`asset:${asset.id}`);
@@ -243,8 +259,8 @@ function AssetItem({ asset, type, level }: { asset: Asset; type: AssetType; leve
                 handleItemSelect(asset.id, false, e);
                 handleAssetClick(asset, isMultiSelectMode);
             }}
-            onContextMenu={(e) => showContextMenu(e, type, asset, false)}
-            onDragStart={(e) => handleDragStart?.(e, type, asset, false)}
+            onContextMenu={(e) => showContextMenu(e, category, asset, false)}
+            onDragStart={(e) => handleDragStart?.(e, category, asset, false)}
             onDragEnd={() => handleDragEnd?.()}
         >
             <Icon className="w-4 h-4 text-fg-muted" />

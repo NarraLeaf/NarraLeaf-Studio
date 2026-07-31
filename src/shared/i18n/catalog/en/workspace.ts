@@ -137,8 +137,15 @@ export const workspace = {
     shell: {
         errorTitle: "Failed to initialize workspace",
         showStackTrace: "Show stack trace",
-        errorConsoleHint: "If the problem persists, please check the console for more details.",
         retry: "Retry",
+        openOtherProject: "Open another project",
+        errorCopyDetails: "Copy details",
+        errorCopied: "Error details copied to the clipboard.",
+        errorCopyFailed: "Could not copy: {error}",
+        errorExportLogs: "Export logs",
+        errorExported: "Logs saved to {path}",
+        errorExportFailed: "Could not export the logs: {error}",
+        errorOpenFailed: "Could not open that folder: {error}",
         initializing: "Initializing workspace…",
         notAProjectTitle: "This folder is not a NarraLeaf project",
         notAProjectDetail: "No .nlproj file was found.",
@@ -195,10 +202,18 @@ export const workspace = {
             categoryView: "View",
             // Category + titles for the editor-tab commands (act on the active tab).
             categoryEditor: "Editor",
+            // Caption for commands that declare no category (browse mode groups by category).
+            categoryOther: "Other",
+            categoryGo: "Go",
+            categoryStory: "Story",
+            categoryRun: "Run",
+            categoryProject: "Project",
+            categoryPreferences: "Preferences",
             // Category for the version-control commands (freeze, and later: commit, history).
             categoryVersionControl: "Version Control",
             editor: {
                 closeTab: "Close Tab",
+                closeSelectedTabs: "Close Selected Tabs",
                 closeOthers: "Close Other Tabs",
                 closeToRight: "Close Tabs to the Right",
                 closeAll: "Close All Tabs",
@@ -289,6 +304,7 @@ export const workspace = {
                 notifications: "Notifications",
                 theme: "Theme switcher",
                 zoom: "Zoom level",
+                version: "Version",
             },
         },
         // Save reporting: the sticky toast raised when a file cannot be written, and the lines the
@@ -367,6 +383,152 @@ export const workspace = {
             noneDetail: "This project has only one revision, so there is nothing earlier to show.",
             failedTitle: "Could not show that revision",
         },
+        // The version control surfaces: the rail down the far left, the version section inside the
+        // project switcher's menu, and the status-bar cell. All three name a VERSION and never a change
+        // count - counting needs a scan, and a scan is not a pure read (docs/version-control.md §4.17).
+        versionControl: {
+            title: "Version",
+            open: "Open the version rail",
+            // Two labels for one button, because it does two things: while the workspace is frozen the
+            // panel collapses to the 48px strip (which must stay - it is the way out), and at HEAD there
+            // is no strip, so closing it leaves nothing behind. "Collapse" there would promise a column
+            // the author would then not find.
+            collapse: "Collapse the version rail",
+            close: "Close the version rail",
+            // Hover text on the collapsed rail, the widget and the status cell while a past revision is
+            // on screen. `{version}` is the revision's own label, e.g. `#4`.
+            viewingVersion: "You are looking at version {version}",
+            currentVersion: "Current version",
+            // The escape hatch, and the reason it appears in both rail states: a frozen workspace the
+            // author cannot get out of is the worst thing this feature can do to them.
+            returnToCurrent: "Return to the current version",
+            returning: "Returning to the current version…",
+            // The one action in this whole surface that changes the author's files, and the three
+            // lines below are the only thing standing between them and that happening.
+            //
+            // The action names itself rather than saying "restore": the confirm dialog puts this
+            // string on the button, and a button reading "OK" beside a sentence about overwriting
+            // files is how someone confirms the wrong thing.
+            restore: "Restore this version",
+            // Names the version so the dialog cannot be mistaken for one about a different one -
+            // the author reached it from a list of them. `{version}` is `#12`, or a short hash for
+            // a revision entered from somewhere that carried no label.
+            restoreConfirm: "Restore version {version}?",
+            // Two sentences, and neither is optional. The first is what the author is agreeing to;
+            // the second is why agreeing is safe, and leaving it out would present a recoverable
+            // operation as an irreversible one - after which nobody uses it. "Recorded first" is
+            // literal: the checkpoint is committed before a single byte is written, and a
+            // checkpoint that cannot be taken cancels the whole thing.
+            restoreConfirmDetail:
+                "Your project files will be replaced with the ones from this version. "
+                + "Everything you have now is recorded as a checkpoint first, and no version is deleted.",
+            // Long: a checkpoint, a rewrite of every versioned file, a second version, and then the
+            // same full re-read as returning to the current version.
+            restoring: "Restoring this version…",
+            // The one restore failure that happens with the author's files ALREADY replaced: the
+            // rewrite finished and only the commit recording it did not. It leads with what is true
+            // of their project rather than with the error, because the assumption they would
+            // otherwise make - "it failed, so nothing happened" - is the opposite of the truth, and
+            // they would carry on working on a project that quietly went back a week. `{action}` is
+            // the Submit-a-version button, named from its own string so the sentence cannot come to
+            // point at a control that no longer says that.
+            restoreNotRecordedTitle: "Your files were restored, but the version was not submitted",
+            restoreNotRecordedDetail:
+                "Your project files are now the ones from version {version}. Submitting that as a new "
+                + "version failed ({error}). Nothing is lost - press \"{action}\" to submit it yourself.",
+            // A project with no repository. Named for what is missing, not for the mechanism.
+            //
+            // Short because two of its three homes are narrow: the status-bar cell and the top-bar
+            // widget both truncate, and the previous wording ("No version history") arrived on a
+            // real app as "No version hist…", which says nothing at all. Its third home is the
+            // rail, where the Enable button and `enableHint` sit directly beneath it and carry the
+            // explanation - so the title only has to name the state, not describe it.
+            //
+            // Deliberately NOT interchangeable with `noHistory` below: this one says version
+            // control is off for this project, that one says it is on and has recorded nothing.
+            notVersioned: "Not versioned",
+            enable: "Enable version control",
+            // One line, because enabling writes into the author's project folder and takes an
+            // exclusive lock on it - so it says what it will do before they press it.
+            // "Keeps" rather than "Records": this line is about the history that will exist, not
+            // about the act - and leaving the one surviving "record" in author-facing copy directly
+            // under a button that now says "Submit a version" would read as two names for one thing.
+            enableHint: "Keeps a version history inside this project's folder.",
+            enabling: "Setting up version control…",
+            // A repository that exists and holds nothing - which is NOT `notVersioned` above, and
+            // the wording keeps them apart on purpose: "not versioned" is a project the feature was
+            // never turned on for, "empty history" is one where it is on and has recorded nothing.
+            // Short for the same reason: the narrow surfaces truncate.
+            noHistory: "Empty history",
+            history: "History",
+            loadingHistory: "Reading the version history…",
+            // The end of the list, when the read stopped at its limit rather than at the beginning
+            // of the project. Says what the author gets, not how it is fetched - "load more" would
+            // describe the mechanism, and the mechanism (re-read with a larger limit) is not
+            // something they should have to know about.
+            loadMoreHistory: "Show older versions",
+            // The first read of a revision on a project with a remote fetches it over the network,
+            // so this is a real wait rather than a courtesy spinner.
+            loadingRevision: "Opening that version…",
+            showVersion: "Show this version in the editors",
+            // A revision with more than one parent. Marked rather than expanded: the rail is a linear
+            // list, and an unmarked merge would be a linear list that lies.
+            merge: "Merge",
+            changes: "Changes",
+            refreshChanges: "Check for changes",
+            // The button that submits a version. "Submit" rather than "Commit" because every other
+            // line here speaks of versions, and an author who has never used version control has no
+            // reason to know the word - and "Submit" rather than "Record" because the remote lore
+            // server this grows into will call the same action a submission, so the word is settled
+            // now instead of half the surfaces being renamed later.
+            commit: "Submit a version",
+            // A question rather than an instruction, and it says "optional" because it is: an empty
+            // message is a valid revision, and one with no message names itself in the list above.
+            commitPlaceholder: "What changed? (optional)",
+            commitMessage: "Version message",
+            // Never instant: the pipeline settles this window's unsaved work, stages the whole
+            // project, and waits for the backend to put its stores on disk.
+            committing: "Submitting this version…",
+            // "Nobody has looked yet", which is not the same as "clean" - and the difference matters,
+            // because looking is a scan and this surface never does it on its own.
+            changesUnknown: "Not checked",
+            noChanges: "No changes",
+            changesCount: "{count} changed",
+            // The per-file list. Every row is display-only: reading what changed INSIDE a file is a
+            // later milestone, and a row that opened onto nothing would be exactly the promise this
+            // panel has been careful not to make.
+            //
+            // What the marker on each row means. The backend has no "modified" action of its own -
+            // an edited file is reported as KEEP (docs §4.18) and translated on the way out - so
+            // these five are Studio's vocabulary and the author never sees the backend's.
+            changeKind: {
+                added: "Added",
+                modified: "Changed",
+                deleted: "Deleted",
+                moved: "Moved",
+                copied: "Copied",
+            },
+            // Where a move or a copy came from. `{path}` is repository-relative, like the row itself.
+            changeFromPath: "from {path}",
+            // The only change that stops a version from being submitted, which is why it is called out
+            // and why it sorts to the top of the list rather than sitting wherever the path puts it.
+            changeConflict: "Unresolved conflict",
+            // The list is capped. Said out loud, because a list that quietly stopped at fifty would
+            // be read as "that is everything", and the author would submit a version believing they
+            // had seen all of what they were submitting.
+            changesMore: "{count} more not shown",
+            // Checkpoints are the ones Studio recorded on a timer; there are dozens on a writing day.
+            showCheckpoints: "Show {count} checkpoints",
+            hideCheckpoints: "Hide checkpoints",
+            // Version control is OPTIONAL - Epic ships no native backend for macOS Intel or Windows
+            // ARM64 - so these two say different things because the author can only act on one of
+            // them. Neither is rendered as a disabled control: on those machines the feature was never
+            // shipped, and a greyed rail would report a broken installation where there is none.
+            unavailable: {
+                platform: "Version control is not available on this machine.",
+                installation: "Version control is not available in this installation of Studio.",
+            },
+        },
         // Keyboard-shortcut customization (Settings window → Editor) + the "?" cheat sheet overlay.
         keybindings: {
             searchPlaceholder: "Search shortcuts…",
@@ -435,13 +597,22 @@ export const workspace = {
             building: "Building search index…",
             empty: "No results",
             more: "{count} more",
+            // Entity groups come first: the box answers "open the thing called X" before
+            // "find the line that says X".
             groups: {
-                story: "Story Text",
+                scene: "Scenes",
+                story: "Stories",
+                character: "Characters",
+                uiSurface: "UI Surfaces",
+                blueprint: "Blueprints",
                 asset: "Assets",
+                storyText: "Story Text",
                 variable: "Variables",
                 uiTextKey: "UI Text Keys",
                 blueprintNode: "Blueprint Nodes",
             },
+            // Trailing badge on a result row standing in for several identical ones.
+            occurrences: "×{count}",
         },
         // The PyCharm-style project switcher in the title bar: current project name plus a
         // dropdown of recent workspaces to jump between.

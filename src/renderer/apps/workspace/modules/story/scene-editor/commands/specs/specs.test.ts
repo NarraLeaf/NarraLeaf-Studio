@@ -3,6 +3,7 @@ import type { StoryBlock } from "@shared/types/story";
 import { parseCommandLine } from "../../storyCommandParser";
 import { resolveCommandLine, type StoryCommandContext } from "../../storyCommandResolution";
 import { getCommandSpec, listCommandSpecs } from "../registry";
+import { opensInspectorAfterCommit } from "../spec";
 import { declarationFromArgs } from "./variables";
 
 /**
@@ -333,9 +334,23 @@ describe("sound (bible B4: target defaults to bgm)", () => {
             kind: "action",
             payload: { action: "video", operation: "seek", objectName: "clip", timeMs: 3000 },
         });
-        // Not omissible, unlike the sound family: an implied BGM has no seek to perform.
+        // Still not omissible, even now that a sound can answer it: "/seek 3" reads as three seconds
+        // into *what*, and unlike /vol the subject is not overwhelmingly the music channel.
         expect(getCommandSpec("seek")?.params.target.core).toBe(true);
         expect(getCommandSpec("seek")?.params.target.skippable).toBeUndefined();
+    });
+
+    it("/seek dispatches to audio when the target is a sound", () => {
+        // Same dispatch-on-target shape as /stop and /pause: one token, two payloads.
+        expect(build("/seek music 30")).toMatchObject({
+            kind: "action",
+            payload: { action: "audio", operation: "seekSound", objectName: "music", timeMs: 30000 },
+        });
+        // A name that resolves to nothing on stage falls back to audio, so /seek bgm reaches the
+        // reserved music channel without the author having created a named sound first.
+        expect(build("/seek bgm 12")).toMatchObject({
+            payload: { action: "audio", operation: "seekSound", objectName: "bgm", timeMs: 12000 },
+        });
     });
 });
 
@@ -491,6 +506,24 @@ describe("logic and effects", () => {
         expect(build("/camera pan")).toMatchObject({ payload: { operation: "pan", position: { xalign: 0.5 } } });
         // The operation is the required core (B9): a bare `/camera` has nothing to commit.
         expect(getCommandSpec("camera")?.params.op.core).toBe(true);
+    });
+
+    it("/camera motion commits an unbound Story Motion ref and routes only that line to the inspector", () => {
+        // The knob for `motion` is a motion ASSET, which no command line can name - so the line lands
+        // the ref in animation mode and the inspector does the picking. The other five operations are
+        // complete as typed, and yanking the caret out of those rows would stop the author mid-flow;
+        // hence a predicate rather than the spec-wide boolean `/fx` and `/vfx` use.
+        const shot = build("/camera motion");
+        expect(shot).toMatchObject({
+            kind: "action",
+            payload: { action: "camera", operation: "motion", motion: { mode: "animation" } },
+        });
+        const spec = getCommandSpec("camera");
+        expect(opensInspectorAfterCommit(spec, shot)).toBe(true);
+        expect(opensInspectorAfterCommit(spec, build("/camera zoom 1.5"))).toBe(false);
+        expect(opensInspectorAfterCommit(spec, build("/camera reset"))).toBe(false);
+        // `/camera shot` is the alias, and it resolves to the canonical operation (bible B6).
+        expect(build("/cam shot")).toMatchObject({ payload: { action: "camera", operation: "motion" } });
     });
 
     it("/vfx places a looping overlay and names it off the clip", () => {

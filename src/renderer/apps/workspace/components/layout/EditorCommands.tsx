@@ -74,6 +74,10 @@ export function EditorCommands() {
                 id: "editor:close-tab",
                 titleKey: "workspace.shell.commandPalette.editor.closeTab",
                 categoryKey: "workspace.shell.commandPalette.categoryEditor",
+                // Claiming the chord is what keeps this off the list twice: EditorGroup registers
+                // the same close on `mod+w` per group, and without a claim here the palette listed
+                // both — one "Close Tab" under Editor and another under General.
+                keybinding: "mod+w",
                 when: focus => {
                     const target = activeTarget(focus);
                     return !!target && target.tab.closable !== false;

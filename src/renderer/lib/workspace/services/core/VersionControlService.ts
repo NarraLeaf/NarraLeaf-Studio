@@ -10,6 +10,8 @@ import type {
     VcsHistoryEntry,
     VcsInitOptions,
     VcsRepositoryInfo,
+    VcsRestoreOptions,
+    VcsRestoreResult,
     VcsStatus,
 } from "@shared/types/vcs";
 import { Service } from "../Service";
@@ -21,6 +23,9 @@ import { RevisionDocumentSource } from "./RevisionDocumentSource";
 // Type-only: the instance comes from the registry. Version control drives the freeze; the freeze does
 // not know version control exists (see WorkspaceFreezeService for why that separation is deliberate).
 import type { WorkspaceFreezeService } from "./WorkspaceFreezeService";
+// Type-only, same reason. Reached only by `restoreRevision`, for the case where the working tree
+// changed under editors that were never frozen.
+import type { WorkspaceReloadService } from "./WorkspaceReloadService";
 
 /**
  * The renderer's side of version control.
@@ -51,14 +56,35 @@ import type { WorkspaceFreezeService } from "./WorkspaceFreezeService";
  * **The automatic checkpoint lives here too**, in {@link CheckpointScheduler}, because
  * only the renderer knows when a document was actually written. It is driven by
  * `FileSystemService.observeWrites`, never by asking the backend what changed, for the
- * same §4.17 reason the paragraph above gives. Restore, branch and push are still to
- * come and are deliberately not stubbed: a method that resolves without doing anything
- * is worse than one that does not exist.
+ * same §4.17 reason the paragraph above gives. Branch and push are still to come and are
+ * deliberately not stubbed: a method that resolves without doing anything is worse than
+ * one that does not exist.
+ *
+ * {@link restoreRevision} is the one method here that changes the author's files, and the only
+ * one whose failure mode is losing work rather than showing something wrong. Its contract - a
+ * checkpoint first, a new revision rather than a rewind, and a full re-read afterwards - is on the
+ * method, and none of the three is optional.
  */
 
 type VersionControlServiceEvents = {
     /** Null once the cached snapshot is dropped, e.g. on teardown or after init. */
     statusChanged: VcsStatus | null;
+    /**
+     * A revision now exists that did not before, so HEAD has moved.
+     *
+     * Every surface that names a version reads the head for itself - the rail, the switcher menu
+     * and the status-bar cell are three separate readers by design - and none of them can see a
+     * commit made through another one. Without this they disagree on screen: the rail says `#3`
+     * while the cell still says `#2`, which is the contradiction that makes an author stop
+     * believing the feature.
+     *
+     * Fires for the automatic checkpoint too, where it matters more: nobody pressed anything, so
+     * there is no other moment at which a surface would think to look.
+     *
+     * **Not a substitute for a scan.** It says the head moved, never what is in the working tree
+     * (see the class comment on why nothing here may refresh a status on its own).
+     */
+    revisionRecorded: void;
 };
 
 /** The settings key holding the checkpoint interval in minutes. 0 disables. */
@@ -353,20 +379,28 @@ export class VersionControlService extends Service<VersionControlService> implem
      * fragments over the network (docs §6). Show a loading state; there is
      * deliberately no synchronous accessor to fall back on.
      *
-     * `includeKinds` asks which revisions are checkpoints. It is opt-in because the
-     * backend has no batch metadata verb, so it costs one call PER REVISION - and it is
-     * part of the cache key rather than a filter on one cached list, because a page read
-     * without kinds cannot answer a later question about them.
+     * `includeDetails` asks what each revision says about itself: its kind, message,
+     * timestamp and author. It is opt-in because the backend has no batch metadata verb,
+     * so it costs one call PER REVISION - and it is part of the cache key rather than a
+     * filter on one cached list, because a page read without details cannot answer a
+     * later question about them.
+     *
+     * All four arrive on the SAME read and are deliberately NOT separate states of that
+     * key: the main process reads them out of one metadata call, so there is no such
+     * thing as a page that has the kind and lacks the message. Splitting the key per
+     * field would double the cached pages and re-pay that per-revision cost for data
+     * already in hand - which is what the flag's name has to say, and why it is not
+     * called `includeKinds`.
      */
-    public async getHistory(limit = 0, options: { includeKinds?: boolean } = {}): Promise<VcsHistoryEntry[]> {
-        const includeKinds = options.includeKinds === true;
-        const key = `${limit}:${includeKinds ? "kinds" : "plain"}`;
+    public async getHistory(limit = 0, options: { includeDetails?: boolean } = {}): Promise<VcsHistoryEntry[]> {
+        const includeDetails = options.includeDetails === true;
+        const key = `${limit}:${includeDetails ? "details" : "plain"}`;
         const cached = this.history.get(key);
         if (cached) return cached;
 
         const pending = (async () => {
             if (!(await this.isAvailable())) return [];
-            const result = await getInterface().vcs.getHistory(this.projectPath(), limit, includeKinds);
+            const result = await getInterface().vcs.getHistory(this.projectPath(), limit, includeDetails);
             return result.success ? result.data.entries : [];
         })();
         this.history.set(key, pending);
@@ -453,6 +487,63 @@ export class VersionControlService extends Service<VersionControlService> implem
         return reason?.kind === "revision" ? reason.revision : null;
     }
 
+    /**
+     * Put the working tree back to a past revision, then leave the version view and re-read.
+     *
+     * The write itself happens entirely in the main process - it reads a revision tree and rewrites
+     * project files, neither of which the renderer can do - so this method owns only the two halves
+     * around it: asking, and putting the workspace back into a state that matches the disk.
+     *
+     * **The freeze does not stop it, and it must not.** A revision view freezes project data at the
+     * renderer's write boundary; the restore writes from main and never passes that latch. So the
+     * ordering here is not about permission, it is about memory: once main has rewritten the files,
+     * every document this window holds - including the historical ones a revision view deliberately
+     * loaded - describes something that is no longer on disk, and the next save would put them back.
+     * Leaving the revision view is what re-reads them (`thaw` drops the source, reloads from disk and
+     * only then unfreezes, in that order). At HEAD there is no freeze to leave, so the same re-read
+     * is asked for directly - the working tree changed under the editors either way, and that is the
+     * whole reason `WorkspaceReloadService` exists.
+     *
+     * Throws rather than degrading, like {@link commit}: the author asked for this, and a restore
+     * that quietly did not happen leaves them believing their project is a version it is not.
+     */
+    public async restoreRevision(revision: RevisionId, options: VcsRestoreOptions = {}): Promise<VcsRestoreResult> {
+        const availability = await this.getAvailability();
+        if (!availability.available) {
+            throw new Error(`Version control is not available on this machine (${availability.reason})`);
+        }
+        const freeze = this.freezeService();
+        // Held for the whole rewrite, and this is the half of the ordering above that a disabled
+        // button cannot provide: main is rewriting the working tree file by file, so ANY other way
+        // out of the revision view - the command palette, the switcher menu, a keybinding somebody
+        // adds next month - would re-read a tree that is half one version and half another, and the
+        // next save would put that hybrid on disk.
+        const release = freeze.holdRelease();
+        let result;
+        try {
+            result = await getInterface().vcs.restoreRevision(this.projectPath(), revision, options);
+        } finally {
+            // **Released before this method leaves the view itself, and the order is not optional.**
+            // The hold does not know who owns it, so a restore still holding its own hold would
+            // refuse its own `thaw` - and the author would sit in a history view, on a working tree
+            // that is already the old version, with no way back that works.
+            release();
+        }
+        if (!result.success) throw new Error(result.error);
+        // Before the re-read, because the head has moved and the surfaces that name it re-read it
+        // themselves - and because everything cached here describes the tree as it was.
+        this.afterRevision();
+
+        if (freeze.isFrozen()) {
+            freeze.thaw();
+        } else {
+            await this.getContext().services
+                .get<WorkspaceReloadService>(Services.WorkspaceReload)
+                .reload("restore");
+        }
+        return result.data;
+    }
+
     private freezeService(): WorkspaceFreezeService {
         return this.getContext().services.get<WorkspaceFreezeService>(Services.WorkspaceFreeze);
     }
@@ -535,10 +626,14 @@ export class VersionControlService extends Service<VersionControlService> implem
      * cached history page is now one entry short. Deliberately does NOT scan to replace
      * the snapshot: a scan is not a pure read (see the class comment), so what to do next
      * is the caller's decision, not this method's.
+     *
+     * The event is what stops the version surfaces from drifting apart - they each read the
+     * head themselves and none of them can see a revision another one caused.
      */
     private afterRevision(): void {
         this.history.clear();
         this.setStatus(null);
+        this.events.emit("revisionRecorded", undefined);
     }
 
     /**
@@ -609,6 +704,17 @@ export class VersionControlService extends Service<VersionControlService> implem
 
     public onStatusChanged(handler: (status: VcsStatus | null) => void): () => void {
         return this.events.on("statusChanged", handler);
+    }
+
+    /**
+     * A revision was recorded - by a commit, a checkpoint, or the repository being created.
+     *
+     * Subscribe from anything that displays which version this project is on. Re-reading the head
+     * here is cheap and does not scan: one `isRepository` round trip and one `getInfo`, which is a
+     * `scan: false, revisionOnly: true` status read in the main process.
+     */
+    public onRevisionRecorded(handler: () => void): () => void {
+        return this.events.on("revisionRecorded", handler);
     }
 
     private async isAvailable(): Promise<boolean> {

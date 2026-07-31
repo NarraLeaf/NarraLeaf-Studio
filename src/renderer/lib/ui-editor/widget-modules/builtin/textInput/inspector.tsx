@@ -50,8 +50,10 @@ function TextInputAppearanceField(props: CustomFieldProps<UIInspectorData>) {
     const { documentService, element } = props.data;
     const appearance = getTextInputProps(element).appearance;
 
+    // Deferred while read-only - see `ContainerAppearanceField` for why this key-filling pass must
+    // not run inside a frozen project.
     useLayoutEffect(() => {
-        if (!isUsableAppearanceModel(appearance)) {
+        if (props.readOnly || !isUsableAppearanceModel(appearance)) {
             return;
         }
         const next = ensureButtonAppearanceHasAllKeys(
@@ -61,7 +63,7 @@ function TextInputAppearanceField(props: CustomFieldProps<UIInspectorData>) {
         if (next !== appearance) {
             documentService.updateElementProps(element.id, { appearance: next });
         }
-    }, [appearance, documentService, element]);
+    }, [appearance, documentService, element, props.readOnly]);
 
     return (
         <AppearanceAuthoringPanel
@@ -73,6 +75,7 @@ function TextInputAppearanceField(props: CustomFieldProps<UIInspectorData>) {
             }}
             inspectorData={props.data}
             draftResetKey={element.id}
+            readOnly={props.readOnly}
         />
     );
 }

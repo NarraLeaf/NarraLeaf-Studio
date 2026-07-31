@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
 import type { ImportProgress } from "@/lib/workspace/services/assets/mgr/LocalAssetsManager";
 
 export interface ImportQueueFailure {
@@ -9,8 +9,13 @@ export interface ImportQueueFailure {
 
 /** What the last (or current) import run is doing, and what it left behind. */
 export interface ImportQueueState {
-    /** The run in flight or most recently finished; null before the first import. */
-    run: { type: AssetType; groupId?: string; total: number } | null;
+    /**
+     * The run in flight or most recently finished; null before the first import.
+     *
+     * Named by the sidebar section it was started from, not by asset type: one run can cross types
+     * (mp3s and mp4s in one drop), and the retry replays the same section.
+     */
+    run: { category: AssetCategory; groupId?: string; total: number } | null;
     completed: number;
     /** File being read right now, absent when idle. */
     current?: string;
@@ -20,7 +25,7 @@ export interface ImportQueueState {
 }
 
 export interface ImportQueueController {
-    start(run: { type: AssetType; groupId?: string; total: number }): void;
+    start(run: { category: AssetCategory; groupId?: string; total: number }): void;
     progress(progress: ImportProgress): void;
     finish(failures: ImportQueueFailure[]): void;
 }

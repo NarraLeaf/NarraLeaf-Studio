@@ -4,7 +4,8 @@ import { fileURLToPath } from "url";
 import { AssetResolved, AssetResolver, ProtocolHandler, ProtocolResponse, ProtocolRule, ProtocolScheme } from "./types";
 import { Fs, getMimeType } from "@shared/utils/fs";
 import { normalizePath } from "@shared/utils/string";
-import { FsRejectErrorCode } from "@shared/types/os";
+import { FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
+import { decodeTextBytes, encodeTextBytes, resolveTextEncodingId } from "../../../../utils/textCodec";
 import { FileStorageInfo, StorageManager } from "../storageManager";
 
 export class FileSystemHandler implements ProtocolHandler, AssetResolver {
@@ -262,7 +263,10 @@ export class FileSystemHashHandler implements ProtocolHandler {
         if (storageInfo.raw) {
             result = await Fs.readRaw(storageInfo.path);
         } else {
-            result = await Fs.read(storageInfo.path, storageInfo.encoding);
+            // The encodings Node cannot name (GBK, Shift_JIS, UTF-16 BE, a UTF-8 that keeps its
+            // mark) are decoded here rather than by `Fs`, so iconv-lite stays out of the module the
+            // packaged game runtime imports. See `src/main/utils/textCodec.ts`.
+            result = await this.readDecodedText(storageInfo);
         }
 
         if (!result.ok) {
@@ -301,6 +305,28 @@ export class FileSystemHashHandler implements ProtocolHandler {
         };
     }
 
+    /**
+     * Read `storageInfo.path` as text under the grant's encoding.
+     *
+     * Split out of {@link handleRead} because the two halves answer different questions: Node's own
+     * `readFile(path, {encoding})` covers the encodings it names, and {@link decodeTextBytes} covers
+     * the rest plus the byte-order-mark handling that neither Node nor the caller should be doing by
+     * hand. The string this produces goes on the wire as UTF-8 (`new Response(string)`) and comes
+     * back out of `response.text()` as UTF-8, so the grant's encoding describes the *file* only -
+     * it never describes the transport.
+     */
+    private async readDecodedText(storageInfo: FileStorageInfo): Promise<FsRequestResult<string>> {
+        const textEncoding = resolveTextEncodingId(storageInfo.encoding);
+        if (!textEncoding) {
+            return Fs.read(storageInfo.path, storageInfo.encoding as BufferEncoding | undefined);
+        }
+        const bytes = await Fs.readRaw(storageInfo.path);
+        if (!bytes.ok) {
+            return bytes;
+        }
+        return { ok: true, data: decodeTextBytes(bytes.data, textEncoding) };
+    }
+
     private async handleWrite(hash: string, request: Request, storageInfo: FileStorageInfo): Promise<ProtocolResponse> {
         try {
             const content = await request.arrayBuffer();
@@ -310,8 +336,18 @@ export class FileSystemHashHandler implements ProtocolHandler {
             if (storageInfo.raw) {
                 result = await Fs.writeRaw(storageInfo.path, buffer);
             } else {
-                const textContent = buffer.toString(storageInfo.encoding || 'utf-8');
-                result = await Fs.write(storageInfo.path, textContent, storageInfo.encoding);
+                // The wire is always UTF-8 and has nothing to do with `storageInfo.encoding`: the
+                // renderer PUTs a JS string as the fetch body, and a USVString body is UTF-8-encoded
+                // by definition. `storageInfo.encoding` describes the *file*. Decoding the wire with
+                // it - which this did - was a no-op for UTF-8 and would have silently mangled every
+                // other encoding the moment one existed.
+                const textContent = buffer.toString("utf-8");
+                const textEncoding = resolveTextEncodingId(storageInfo.encoding);
+                result = textEncoding
+                    // `writeRaw`, not `write`: same atomic temp-file-and-rename core, but the bytes
+                    // are ours rather than `Buffer.from(text, encoding)`'s.
+                    ? await Fs.writeRaw(storageInfo.path, encodeTextBytes(textContent, textEncoding))
+                    : await Fs.write(storageInfo.path, textContent, storageInfo.encoding as BufferEncoding | undefined);
             }
 
             if (!result.ok) {

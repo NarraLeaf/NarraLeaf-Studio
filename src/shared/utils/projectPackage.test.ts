@@ -45,4 +45,16 @@ describe("project package", () => {
         expect(shouldExcludeProjectPackagePath("editor/ui/uidoc.json")).toBe(false);
         expect(shouldExcludeProjectPackagePath("assets/content/ab/cd/file")).toBe(false);
     });
+
+    it("excludes the repository and Studio's own state, but not the project's", () => {
+        expect(shouldExcludeProjectPackagePath(".lore/store/fragments/00/ab")).toBe(true);
+        expect(shouldExcludeProjectPackagePath(".nlstudio/services/panel_state.json")).toBe(true);
+        // The ignore policy travels with the project: it is small, and it is right about this
+        // project wherever the project ends up.
+        expect(shouldExcludeProjectPackagePath(".loreignore")).toBe(false);
+        // Service stores that ARE project content stayed in the versioned tree, and an export
+        // without the character table would be an export of a different project.
+        expect(shouldExcludeProjectPackagePath("editor/services/character.json")).toBe(false);
+        expect(shouldExcludeProjectPackagePath(".nlstudio/plugins/example/index.js")).toBe(false);
+    });
 });

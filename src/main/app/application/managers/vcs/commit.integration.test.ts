@@ -225,7 +225,7 @@ describe.skipIf(!supported)("checkpoints", () => {
     }, 120_000);
 
     it("tells checkpoints and commits apart in history, and only when asked", async () => {
-        const withKinds = await manager.getHistory(root, 0, { includeKinds: true });
+        const withKinds = await manager.getHistory(root, 0, { includeDetails: true });
         expect(withKinds.length).toBeGreaterThanOrEqual(3);
         expect(withKinds[0].kind).toBe("checkpoint");
         expect(withKinds.some((entry) => entry.kind === "commit")).toBe(true);

@@ -138,6 +138,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
         onUndoBeyondRow: actions.undoBeyondRow,
         onRedoBeyondRow: actions.redoBeyondRow,
         onOpenInspector: () => actions.openInspector(blockId),
+        onRevealInspectorPanel: actions.revealInspectorPanel,
         onUpdatePayload: (payload: StoryBlock["payload"]) => actions.updatePayload(blockId, payload),
         onSetDialogueCharacter: (characterId: string | undefined) => actions.setDialogueCharacter(blockId, characterId),
         // The placement source is the row's own resolved appearance, which only the row knows.
@@ -283,6 +284,18 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
             onMouseLeave={() => setHovered(false)}
             onDoubleClick={event => {
                 event.stopPropagation();
+                // Double-click is the "show me this row" gesture, so it brings the property editor out
+                // of a collapsed rail — for every kind of row, including the text ones whose second
+                // click is already spoken for below. Reveal only: focus stays in the scene, so the
+                // caret this same gesture is placing is not taken away from the author.
+                //
+                // Deliberately NOT gated on `editing`. A first version skipped a row already open for
+                // editing, on the theory that a double-click inside a live field is word selection
+                // rather than a request to inspect. Driving it proved the state does not exist: a
+                // plain click on a row's text opens it from the mouseup gesture, so `editing` is
+                // ALREADY true when the second click lands and the gate silently excluded every text
+                // row — the majority of a scene.
+                on.onRevealInspectorPanel();
                 // A row that holds text enters edit from the mouseup gesture, which carries the
                 // author's selection in with it — a double-click there is that gesture's second
                 // click and is already handled. Empty text rows and action rows have no selection to
@@ -800,8 +813,11 @@ function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; ac
             ].join(" ")}
         >
             {/* Icons, not words: the cluster sits at the end of every row and two text buttons cost
-                three times the width while saying what the glyph and its tooltip already say. The
-                labels stay as `aria-label`, so the accessible names did not change with the look. */}
+                three times the width while saying what the glyph and its tooltip already say.
+                What the accessible names must NOT do is inherit the old visible text: "Insert" and
+                "Delete" were fine as words next to each other in a row's context, and are a verb with
+                no object once they are the only thing a screen reader gets. They now carry the same
+                sentence as the tooltip, minus the keybinding. */}
             <button
                 type="button"
                 tabIndex={-1}
@@ -1417,10 +1433,12 @@ function ContainerFooter(props: {
 // Parallel / race containers.
 //
 // The staging lens (M7) used to render their children as a bar timeline down the right of the row.
-// It is gone: a coloured bar with no ruler, no scale and no labels beside it reads as decoration, and
-// it was the last thing in the list that did not obey the row's columns. Their children are ordinary
-// rows again. The lens's remaining machinery (`lensTrack`, `resolveEffectiveLensContainers`) still
-// marks them so the container's tail "+" keeps working.
+// It is gone, machinery and all: a coloured bar with no ruler, no scale and no labels beside it reads
+// as decoration, and it was the last thing in the list that did not obey the row's columns. Two of its
+// side effects outlived its usefulness and were bugs on their own — it discarded the collapse flag for
+// any container it had ever been switched on for (a permanently dead fold chevron), and it replaced a
+// container's whole subtree with one row per direct child, silently hiding grandchildren. Their
+// children are ordinary rows now, and the container's own footer carries the inside-add.
 // ---------------------------------------------------------------------------
 
 /** The engine-mode badge on a parallel/race header (WI-3): `all` / `allAsync` / `any`, in control colour. */
@@ -2127,7 +2145,7 @@ function ActionCommandMenu(props: {
                             const Icon = entry.group.icon;
                             return (
                                 <div key={entry.group.id}>
-                                    <div className="flex items-center gap-1.5 px-2 pb-1 pt-2 text-2xs font-medium uppercase tracking-wide text-fg-subtle">
+                                    <div className="flex items-center gap-1.5 px-2 pb-1 pt-2 text-2xs font-medium tracking-wide text-fg-subtle">
                                         <Icon className="h-3 w-3 shrink-0" style={{ color: entry.group.iconColor }} />
                                         <span>{t(commandCategoryLabelKey(entry.group.id))}</span>
                                     </div>

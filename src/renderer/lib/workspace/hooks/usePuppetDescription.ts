@@ -1,10 +1,15 @@
 /**
- * The character inspector's view of what a model contains.
+ * What a model contains, for an inspector that has to draw dropdowns from it.
  *
  * A thin adapter over `PuppetDescriptionService`: it decides *when* to ask (the puppet's identity
  * changed) and keeps the answer in React state. The lookup itself lives in the service on purpose —
  * a story row offering a character's motions needs the same answer, and a hook is not reachable
  * from a command's parameter resolver.
+ *
+ * Lives under `lib/workspace/hooks/` beside `useAssetObjectUrl` and `useSurfacePuppetSession` rather
+ * than inside the character editor that first needed it: the `nl.puppet` widget's inspector asks the
+ * same question, and a widget reaching into `apps/workspace/modules/characters` for it would be the
+ * wrong dependency.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -81,7 +86,10 @@ export function usePuppetDescription(request: PuppetDescriptionRequest | null): 
  * inspector — and a second copy of it would be a second answer to "is this the same model".
  */
 export function puppetDescriptionRequestFor(appearance: CharacterAppearance | undefined): PuppetDescriptionRequest | null {
-    const puppet = appearance?.getKind() === "puppet" ? appearance.getPuppet() : null;
+    // `getPuppet()` already answers null for a kind that is not runtime-drawn, and it answers for all
+    // three that are - so it is asked directly. A `getKind() === "puppet"` guard here would have
+    // starved every `live2d` and `spine` character of its description while looking like a null check.
+    const puppet = appearance?.getPuppet() ?? null;
     if (!puppet?.assetId || !puppet.backend) {
         return null;
     }
@@ -109,6 +117,11 @@ export function puppetDescribeStatusKey(reason: PuppetDescriptionUnavailableReas
         case "backend-missing": return "characters.editor.puppet.describeBackendMissing";
         case "not-described": return "characters.editor.puppet.describeNotSupported";
         case "failed": return "characters.editor.puppet.describeFailed";
-        default: return "characters.editor.puppet.describeOk";
+        // Exhaustive rather than defaulting: a `default` arm reported a *new* kind of unavailability as
+        // "filled from the model", which is the one answer that is certainly wrong. `null` - the
+        // description succeeded - is the only case that maps to the success line.
+        case null:
+        case undefined:
+            return "characters.editor.puppet.describeOk";
     }
 }

@@ -24,11 +24,16 @@ import type { StoryAssetKind } from "@/lib/ui-editor/runtime/game/storyCompiler"
 
 /** The engine's SoundToken surface, duck-typed so an older dist degrades. */
 type EngineSoundToken = {
-    stop?: (options?: { fade?: number }) => unknown;
+    /** The option key is `fadeDuration`; a token from an older dist simply ignores it. */
+    stop?: (options?: { fadeDuration?: number }) => unknown;
     pause?: () => unknown;
     resume?: () => unknown;
     isPlaying?: () => boolean;
+    getVolume?: () => number;
     setVolume?: (volume: number) => unknown;
+    /** Ramps the gain. Present since the sound backend's first release. */
+    fade?: (from: number, to: number, duration: number) => { finished?: Promise<void> } | unknown;
+    seek?: (time: number) => unknown;
 };
 
 /** `LiveGame.playSound` and the Sound constructor, both feature-detected. */
@@ -47,7 +52,14 @@ export type SoundTransportOptions = {
      * imported so this module stays free of a hard engine dependency and can be
      * unit-tested without one.
      */
-    createSound: (input: { src: string; channel: BlueprintSoundPlayInput["channel"]; loop: boolean; volume: number }) => unknown;
+    createSound: (input: {
+        src: string;
+        channel: BlueprintSoundPlayInput["channel"];
+        loop: boolean;
+        volume: number;
+        /** So the host can fold in the in/out points marked on this asset. */
+        assetId: string;
+    }) => unknown;
     log: (level: "info" | "warning" | "error", message: string) => void;
 };
 
@@ -56,6 +68,8 @@ export type SoundTransport = {
     stop: (handle: BlueprintSoundHandle | null, fadeMs: number) => Promise<void>;
     pause: (handle: BlueprintSoundHandle) => Promise<void>;
     resume: (handle: BlueprintSoundHandle) => Promise<void>;
+    setVolume: (handle: BlueprintSoundHandle, volume: number, fadeMs: number) => Promise<void>;
+    seek: (handle: BlueprintSoundHandle, timeMs: number) => Promise<void>;
     isPlaying: (handle: BlueprintSoundHandle) => boolean;
     /** Stop everything and forget every token. Call when a session ends. */
     dispose: () => void;
@@ -106,6 +120,7 @@ export function createSoundTransport(options: SoundTransportOptions): SoundTrans
                 channel: input.channel,
                 loop: input.loop,
                 volume: input.volume,
+                assetId: input.assetId,
             });
             const token = await host.playSound(sound);
             if (!token) {
@@ -124,12 +139,12 @@ export function createSoundTransport(options: SoundTransportOptions): SoundTrans
             // Page's exit handler wants: it does not track what it played.
             if (!handle) {
                 for (const token of tokens.values()) {
-                    token.stop?.(fadeMs > 0 ? { fade: fadeMs } : undefined);
+                    token.stop?.(fadeMs > 0 ? { fadeDuration: fadeMs } : undefined);
                 }
                 tokens.clear();
                 return;
             }
-            tokenFor(handle)?.stop?.(fadeMs > 0 ? { fade: fadeMs } : undefined);
+            tokenFor(handle)?.stop?.(fadeMs > 0 ? { fadeDuration: fadeMs } : undefined);
             forget(handle);
         },
 
@@ -139,6 +154,29 @@ export function createSoundTransport(options: SoundTransportOptions): SoundTrans
 
         async resume(handle) {
             tokenFor(handle)?.resume?.();
+        },
+
+        /**
+         * Volume and fade in one operation, because "duck the music over a second" and "set it to
+         * 0.3" are the same request with a different duration - so this is also the fade node.
+         */
+        async setVolume(handle, volume, fadeMs) {
+            const token = tokenFor(handle);
+            if (!token) {
+                return;
+            }
+            if (fadeMs > 0 && token.fade) {
+                const from = token.getVolume?.() ?? 1;
+                token.fade(from, volume, fadeMs);
+                return;
+            }
+            token.setVolume?.(volume);
+        },
+
+        async seek(handle, timeMs) {
+            // Milliseconds in the graph, seconds at the engine boundary - the same conversion the
+            // story compiler makes for `/seek`.
+            tokenFor(handle)?.seek?.(timeMs / 1000);
         },
 
         isPlaying(handle) {
