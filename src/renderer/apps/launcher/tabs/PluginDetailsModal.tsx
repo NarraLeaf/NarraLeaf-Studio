@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { Badge, Modal, dialogFooterButtonClass } from "@/lib/components/elements";
 import { getInterface } from "@/lib/app/bridge";
@@ -50,8 +51,37 @@ export function PluginStatusBadge({ status }: { status: PluginStatus }) {
     return <Badge tone={tone}>{statusText(status, t)}</Badge>;
 }
 
-/** A round monogram tile, colored from the plugin name — same language as the projects list. */
-export function PluginAvatar({ name, size = 36 }: { name: string; size?: number }) {
+/**
+ * The plugin's thumbnail, or a monogram tile colored from its name — the same
+ * language as the projects list.
+ *
+ * The image is boxed to the same square either way, so a plugin cannot change
+ * the shape of its row by what it ships. An icon that fails to load (a store
+ * entry whose remote image is gone) falls back to the monogram rather than to a
+ * broken-image glyph; the failure is remembered per URL so a re-render does not
+ * retry it forever, and a different URL gets a fresh attempt.
+ */
+export function PluginAvatar({ name, src, size = 36 }: { name: string; src?: string | null; size?: number }) {
+    const [failedSrc, setFailedSrc] = useState<string | null>(null);
+
+    if (src && failedSrc !== src) {
+        return (
+            <img
+                src={src}
+                alt=""
+                aria-hidden
+                width={size}
+                height={size}
+                loading="lazy"
+                decoding="async"
+                referrerPolicy="no-referrer"
+                onError={() => setFailedSrc(src)}
+                className="shrink-0 rounded-lg object-cover"
+                style={{ width: size, height: size }}
+            />
+        );
+    }
+
     return (
         <span
             aria-hidden
@@ -164,7 +194,9 @@ export function PluginDetailsModal({
         <Modal isOpen onClose={onClose} title={name} size="md" footer={footer}>
             <div className="space-y-4">
                 <div className="flex items-start gap-3">
-                    <PluginAvatar name={name} size={44} />
+                    {/* The installed copy went through Studio's icon checks; the
+                        registry's is a remote image, so it is only the fallback. */}
+                    <PluginAvatar name={name} src={installed?.iconUrl ?? registryEntry?.icon} size={44} />
                     <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-1.5">
                             {version ? <Badge tone="neutral">v{version}</Badge> : null}

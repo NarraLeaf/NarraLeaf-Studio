@@ -55,7 +55,12 @@ export class PluginEntryHandler implements ProtocolHandler {
     }
 
     async handle(request: Request): Promise<ProtocolResponse> {
-        const filePath = await this.pluginManager.resolvePluginEntryFile(new URL(request.url));
+        const url = new URL(request.url);
+        // Icons share the host and URL shape with entries but not their enabled
+        // gate, so they are resolved separately rather than folded into the
+        // entry allowlist.
+        const filePath = await this.pluginManager.resolvePluginEntryFile(url)
+            ?? await this.pluginManager.resolvePluginIconFile(url);
         if (!filePath) {
             return {
                 statusCode: 404,

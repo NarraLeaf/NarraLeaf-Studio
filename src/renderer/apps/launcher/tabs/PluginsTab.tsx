@@ -385,7 +385,7 @@ function InstalledRow({
                 onClick={onOpen}
                 className="flex w-full cursor-default items-center gap-3 rounded-md px-3 py-2.5 pr-36 text-left transition-colors hover:bg-fill"
             >
-                <PluginAvatar name={plugin.manifest.name} />
+                <PluginAvatar name={plugin.manifest.name} src={plugin.iconUrl} />
                 <span className="min-w-0 flex-1">
                     <span className="flex min-w-0 items-center gap-1.5">
                         <span className="truncate text-sm text-fg">{plugin.manifest.name}</span>
@@ -458,7 +458,7 @@ function StoreRow({
                 onClick={onOpen}
                 className="flex w-full cursor-default items-center gap-3 rounded-md px-3 py-2.5 pr-40 text-left transition-colors hover:bg-fill"
             >
-                <PluginAvatar name={entry.name} />
+                <PluginAvatar name={entry.name} src={entry.icon} />
                 <span className="min-w-0 flex-1">
                     <span className="flex min-w-0 items-center gap-1.5">
                         <span className="truncate text-sm text-fg">{entry.name}</span>
