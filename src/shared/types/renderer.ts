@@ -261,6 +261,16 @@ export interface RendererPreloadedInterface {
         /** Which remembered projects are no longer on disk. Reports only; removes nothing. */
         checkRecentProjects(): Promise<RequestStatus<{ missing: MissingRecentProject[] }>>;
         getSystemPath(name: "desktop" | "home"): Promise<RequestStatus<{ path: string }>>;
+        /**
+         * Write a support bundle - `report` plus the environment header and the main-process log
+         * tail - to a file the user picks. On the base surface rather than `workspace` so a window
+         * whose workspace failed to start can still call it.
+         */
+        exportDiagnostics(defaultFileName: string, report: string): Promise<RequestStatus<{
+            canceled: boolean;
+            filePath?: string;
+            byteLength?: number;
+        }>>;
     };
 
     devMode: {
