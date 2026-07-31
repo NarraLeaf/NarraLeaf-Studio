@@ -17,10 +17,13 @@ export const ACTIVITY_WINDOW_DAYS = 30;
  *   collection began, not what was written that day, so the delta is *unknowable* rather than
  *   zero. Zero-baselining it would plot the project's entire back catalogue as one day's work,
  *   dwarfing every real bar and permanently wrecking the chart's scale.
+ * - `rebased` - the day the word counter itself changed. Its total was measured by a different
+ *   rule than the previous day's, so the difference is the rule change, not the author's work.
+ *   Same reasoning as `start`, arriving through a different door.
  * - `tracked` - a real delta against the previous day's total. A day with no stored entry inside
  *   the tracked range is genuinely different: the total carries forward, so its delta is 0.
  */
-export type ActivityPointStatus = "untracked" | "start" | "tracked";
+export type ActivityPointStatus = "untracked" | "start" | "rebased" | "tracked";
 
 export type ActivityPoint = {
     key: string;
@@ -89,6 +92,9 @@ export function buildActivityTimeline(stats: ProjectStatsV1, now: number): Activ
             delta = null;
         } else if (previousTotal === null) {
             status = "start";
+            delta = null;
+        } else if (day?.rebased) {
+            status = "rebased";
             delta = null;
         } else {
             status = "tracked";
@@ -225,6 +231,9 @@ export function formatActivityTooltip(translator: Translator, point: ActivityPoi
     }
     if (point.status === "start") {
         return translator.t("dashboard.activity.tooltip.start", { date });
+    }
+    if (point.status === "rebased") {
+        return translator.t("dashboard.activity.tooltip.rebased", { date });
     }
     const delta = point.delta ?? 0;
     if (delta > 0) {
