@@ -1,5 +1,5 @@
 import React from "react";
-import { AlertCircle, ClipboardCheck, ClipboardCopy, FileDown, FolderOpen, LogOut, RefreshCw } from "lucide-react";
+import { AlertCircle, ClipboardCheck, ClipboardCopy, LogOut, RefreshCw } from "lucide-react";
 import { getInterface } from "@/lib/app/bridge";
 import { Button, TitleBar } from "@/lib/components";
 import { useTranslation } from "@/lib/i18n";
@@ -14,7 +14,8 @@ interface ErrorScreenProps {
 
 const REPORT_SCOPE = "workspace-init";
 
-type Feedback = { kind: "ok" | "bad"; text: string } | null;
+/** `transient` messages retire themselves; the export's saved-to path stays until something replaces it. */
+type Feedback = { kind: "ok" | "bad"; text: string; transient?: boolean } | null;
 
 /**
  * What the workspace shows when it could not start.
@@ -35,6 +36,16 @@ export function ErrorScreen({ error, onRetry }: ErrorScreenProps) {
     const [projectPath, setProjectPath] = React.useState<string | null>(null);
     const [feedback, setFeedback] = React.useState<Feedback>(null);
     const [busy, setBusy] = React.useState(false);
+    const [copied, setCopied] = React.useState(false);
+
+    // Clears the tick on the copy button. Held in a ref so a second copy restarts the countdown
+    // instead of the first one's timer cutting the second one short.
+    const copiedTimer = React.useRef<number | null>(null);
+    React.useEffect(() => () => {
+        if (copiedTimer.current !== null) {
+            window.clearTimeout(copiedTimer.current);
+        }
+    }, []);
 
     // The project path is the single most useful fact about this failure, and it does NOT come from
     // the workspace context - that is what failed to build. It is read straight off the window's
@@ -68,7 +79,17 @@ export function ErrorScreen({ error, onRetry }: ErrorScreenProps) {
     const handleCopy = async () => {
         try {
             await copyTextToClipboard(buildReport());
-            setFeedback({ kind: "ok", text: t("workspace.shell.errorCopied") });
+            // The tick answers the button; the status line answers a screen reader. Both go away
+            // again, because neither is worth leaving on screen once it has been read.
+            setCopied(true);
+            setFeedback({ kind: "ok", text: t("workspace.shell.errorCopied"), transient: true });
+            if (copiedTimer.current !== null) {
+                window.clearTimeout(copiedTimer.current);
+            }
+            copiedTimer.current = window.setTimeout(() => {
+                setCopied(false);
+                setFeedback(current => (current?.transient ? null : current));
+            }, 2500);
         } catch (copyError) {
             setFeedback({
                 kind: "bad",
@@ -152,9 +173,22 @@ export function ErrorScreen({ error, onRetry }: ErrorScreenProps) {
 
                     {/* Selectable on purpose. The app sets `user-select: none` globally, which is
                         right for an editor chrome and wrong for the one screen whose entire content
-                        is a message the user has to pass on. */}
-                    <div className="nl-selectable-text bg-danger/10 border border-danger/30 rounded-lg p-4 mb-4">
-                        <p className="text-sm text-danger font-mono whitespace-pre-wrap break-all">{error.message}</p>
+                        is a message the user has to pass on.
+
+                        Copy sits here rather than in the action row: it acts on this box, and the
+                        row is for deciding what to do next. It also keeps that row down to the two
+                        answers worth giving equal weight. */}
+                    <div className="group relative nl-selectable-text bg-danger/10 border border-danger/30 rounded-lg p-4 mb-4">
+                        <button
+                            type="button"
+                            onClick={() => void handleCopy()}
+                            className="absolute right-2 top-2 rounded-md p-1.5 text-danger/70 opacity-0 transition-opacity hover:bg-danger/10 hover:text-danger focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/40 group-hover:opacity-100 cursor-default"
+                            title={t("workspace.shell.errorCopyDetails")}
+                            aria-label={t("workspace.shell.errorCopyDetails")}
+                        >
+                            {copied ? <ClipboardCheck className="h-4 w-4" /> : <ClipboardCopy className="h-4 w-4" />}
+                        </button>
+                        <p className="pr-8 text-sm text-danger font-mono whitespace-pre-wrap break-all">{error.message}</p>
                         {error.stack && (
                             <details className="mt-3">
                                 <summary className="text-xs text-danger cursor-default hover:text-danger/80">
@@ -167,32 +201,39 @@ export function ErrorScreen({ error, onRetry }: ErrorScreenProps) {
                         )}
                     </div>
 
-                    <div className="flex flex-wrap gap-2">
+                    {/* Two answers, then two afterthoughts. Try it again, or leave - everything else
+                        is rarer than those and does not deserve the same weight. */}
+                    <div className="flex flex-wrap items-center gap-2">
                         {onRetry && (
                             <Button variant="primary" size="md" onClick={onRetry} disabled={busy}>
                                 <RefreshCw className="w-4 h-4" />
                                 <span>{t("workspace.shell.retry")}</span>
                             </Button>
                         )}
-                        <Button variant="secondary" size="md" onClick={() => void handleOpenOther()} disabled={busy}>
-                            <FolderOpen className="w-4 h-4" />
-                            <span>{t("workspace.shell.openOtherProject")}</span>
-                        </Button>
                         <Button variant="secondary" size="md" onClick={handleOpenLauncher} disabled={busy}>
                             <LogOut className="w-4 h-4" />
                             <span>{t("workspace.shell.openLauncher")}</span>
                         </Button>
                     </div>
 
-                    <div className="mt-2 flex flex-wrap gap-2">
-                        <Button variant="ghost" size="md" onClick={() => void handleCopy()} disabled={busy}>
-                            {feedback?.kind === "ok" ? <ClipboardCheck className="w-4 h-4" /> : <ClipboardCopy className="w-4 h-4" />}
-                            <span>{t("workspace.shell.errorCopyDetails")}</span>
-                        </Button>
-                        <Button variant="ghost" size="md" onClick={() => void handleExport()} disabled={busy}>
-                            <FileDown className="w-4 h-4" />
-                            <span>{t("workspace.shell.errorExportLogs")}</span>
-                        </Button>
+                    <div className="mt-3 flex flex-wrap items-center gap-1 text-xs text-fg-subtle">
+                        <button
+                            type="button"
+                            onClick={() => void handleOpenOther()}
+                            disabled={busy}
+                            className="rounded px-1 py-0.5 underline-offset-2 hover:text-fg hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-edge-strong disabled:opacity-50 cursor-default"
+                        >
+                            {t("workspace.shell.openOtherProject")}
+                        </button>
+                        <span aria-hidden>·</span>
+                        <button
+                            type="button"
+                            onClick={() => void handleExport()}
+                            disabled={busy}
+                            className="rounded px-1 py-0.5 underline-offset-2 hover:text-fg hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-edge-strong disabled:opacity-50 cursor-default"
+                        >
+                            {t("workspace.shell.errorExportLogs")}
+                        </button>
                     </div>
 
                     {feedback && (
@@ -203,10 +244,6 @@ export function ErrorScreen({ error, onRetry }: ErrorScreenProps) {
                             {feedback.text}
                         </p>
                     )}
-
-                    <p className="mt-4 text-xs text-fg-subtle">
-                        {t("workspace.shell.errorConsoleHint")}
-                    </p>
                 </div>
             </div>
         </div>
