@@ -145,9 +145,15 @@ export const blueprint = {
         layerName: "图层名称",
         defaultName: "图层 {index}",
     },
+    // 蓝图挂在什么东西上——搜索结果要靠它说明节点在哪。
+    owner: {
+        global: "全局",
+        storyAction: "剧情动作",
+    },
     memberTree: {
         layers: "图层",
         unnamedEvent: "未命名事件",
+        unnamedFunction: "未命名函数",
         errorBadge: "- {count} 错误",
         warningBadge: "- {count} 警告",
         default: "默认值",
