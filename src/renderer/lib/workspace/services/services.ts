@@ -1,4 +1,5 @@
 import { FsRequestResult } from "@shared/types/os";
+import type { FsTextEncoding } from "@shared/types/textEncoding";
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { Porject, ProjectConfig, ProjectMetadata } from "../project/project";
 import type { ProjectIconSet, ProjectIconSource } from "@shared/types/projectIcons";
@@ -224,9 +225,9 @@ interface IFileSystemService extends IService {
     list(path: string): Promise<FsRequestResult<FileEntry[]>>;
     details(path: string): Promise<FsRequestResult<FileDetails>>;
     directorySize(path: string): Promise<FsRequestResult<DirectorySizeResult>>;
-    read(path: string, encoding: BufferEncoding): Promise<FsRequestResult<string>>;
+    read(path: string, encoding: FsTextEncoding): Promise<FsRequestResult<string>>;
     readRaw(path: string): Promise<FsRequestResult<Uint8Array>>;
-    write(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
+    write(path: string, data: string, encoding: FsTextEncoding): Promise<FsRequestResult<void>>;
     writeRaw(path: string, data: Uint8Array): Promise<FsRequestResult<void>>;
     ensureRegularFile(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
     writeFileNoFollow(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;

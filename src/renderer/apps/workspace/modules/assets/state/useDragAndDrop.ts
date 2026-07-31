@@ -1,6 +1,6 @@
 import { useState, useCallback, DragEvent } from 'react';
 import { Asset, AssetGroup } from '@/lib/workspace/services/assets/types';
-import { AssetType } from '@/lib/workspace/services/assets/assetTypes';
+import { AssetCategory, categoryOfAssetType } from '@/lib/workspace/services/assets/assetTypes';
 import { WorkspaceContext } from '@/lib/workspace/services/services';
 import { AssetsService } from '@/lib/workspace/services/core/AssetsService';
 import { Services } from '@/lib/workspace/services/services';
@@ -20,20 +20,24 @@ export interface InternalAssetDropCompletedInfo {
 }
 
 export interface DraggedItemState {
-    type: AssetType;
+    /**
+     * The sidebar section the drag started in. A category, not a type: a folder under "Media" takes
+     * audio and video alike, and the refusal that still stands is the cross-*category* one.
+     */
+    category: AssetCategory;
     item: Asset | AssetGroup;
     isGroup: boolean;
 }
 
 export interface UseDragAndDropParams {
     context: WorkspaceContext | null;
-    groups: Record<AssetType, AssetGroup[]>;
+    groups: Record<AssetCategory, AssetGroup[]>;
     /** Called after a successful in-panel move; pass moved ids so cut clipboard can be pruned. */
     onDropCompleted: (info?: InternalAssetDropCompletedInfo) => void;
     /** Current selection keys (`asset:id` / `group:id`) for multi-asset workspace drag. */
     selectedItems: Set<string>;
-    filteredGroups: Record<AssetType, AssetGroup[]>;
-    filteredAssets: Record<AssetType, Asset[]>;
+    filteredGroups: Record<AssetCategory, AssetGroup[]>;
+    filteredAssets: Record<AssetCategory, Asset[]>;
     panelId: string;
     onWorkspaceDragSessionStart?: (assets: Asset[], primaryId: string, sourcePanelId?: string) => void;
     onWorkspaceDragSessionEnd?: () => void;
@@ -67,9 +71,9 @@ export function useDragAndDrop({
     }, []);
 
     const handleDragStart = useCallback(
-        (event: DragEvent, type: AssetType, item: Asset | AssetGroup, isGroup: boolean) => {
+        (event: DragEvent, category: AssetCategory, item: Asset | AssetGroup, isGroup: boolean) => {
             event.stopPropagation();
-            setDraggedItem({ type, item, isGroup });
+            setDraggedItem({ category, item, isGroup });
 
             if (isGroup) {
                 onWorkspaceDragSessionEnd?.();
@@ -144,7 +148,7 @@ export function useDragAndDrop({
     }, [draggedItem, freeze]);
 
     const handleDropOnItem = useCallback(
-        async (event: DragEvent, targetType: AssetType, targetGroup: AssetGroup | null) => {
+        async (event: DragEvent, targetCategory: AssetCategory, targetGroup: AssetGroup | null) => {
             event.preventDefault();
             event.stopPropagation();
 
@@ -152,7 +156,9 @@ export function useDragAndDrop({
 
             const assetsService = context.services.get<AssetsService>(Services.Assets);
 
-            if (draggedItem.type !== targetType) {
+            // Cross-*category* drops are still refused; cross-type ones inside a category are the
+            // whole point of the category (an mp3 and an mp4 in the same folder).
+            if (draggedItem.category !== targetCategory) {
                 setDragOver(false);
                 setDropTargetId(null);
                 return;
@@ -163,7 +169,7 @@ export function useDragAndDrop({
                 const targetGroupId = targetGroup?.id;
                 if (
                     targetGroupId &&
-                    (group.id === targetGroupId || isDescendantGroup(group.id, targetGroupId, groups[targetType]))
+                    (group.id === targetGroupId || isDescendantGroup(group.id, targetGroupId, groups[targetCategory]))
                 ) {
                     console.error("Cannot move a group into itself or its descendants");
                     setDragOver(false);
@@ -171,7 +177,7 @@ export function useDragAndDrop({
                     return;
                 }
                 const groupStatus = await assetsService.moveGroupToParent(
-                    targetType,
+                    targetCategory,
                     group.id,
                     targetGroupId ?? undefined
                 );
@@ -190,7 +196,7 @@ export function useDragAndDrop({
                     selectedItems,
                     filteredGroups,
                     filteredAssets
-                ).filter(a => a.type === targetType);
+                ).filter(a => categoryOfAssetType(a.type) === targetCategory);
 
                 if (candidates.length === 0) {
                     setDragOver(false);

@@ -20,6 +20,66 @@ export enum AssetType {
     Other = "other",
 }
 
+/**
+ * The asset browser's organizing unit: one category holds one or more {@link AssetType}s.
+ *
+ * A layer *above* the type, not a replacement for it. Every per-type mechanism stays exactly as it
+ * was — the metadata shard, the format validator, the extension table, the asset selector, the
+ * packer. What moves up here is what the sidebar is: the section an author sees, the folders inside
+ * it, and the row order of both. Audio and video are still two types; they are simply filed under
+ * one heading, and a folder under that heading holds either.
+ */
+export enum AssetCategory {
+    Image = "image",
+    Media = "media",
+    Data = "data",
+    Font = "font",
+    Model = "model",
+    Other = "other",
+}
+
+/** Sidebar order. Fixed, not derived from the enum, so reordering is a one-line decision. */
+export const ASSET_CATEGORY_ORDER: readonly AssetCategory[] = [
+    AssetCategory.Image,
+    AssetCategory.Media,
+    AssetCategory.Data,
+    AssetCategory.Font,
+    AssetCategory.Model,
+    AssetCategory.Other,
+];
+
+/**
+ * Which types a category holds, in the order they are listed under it.
+ *
+ * The order matters: it is the sequence a category's assets are concatenated in, and the first
+ * member is the fallback a category-level operation lands on when nothing narrower can be decided
+ * (a remote URL with no recognisable extension, say).
+ */
+export const ASSET_CATEGORY_TYPES: Record<AssetCategory, AssetType[]> = {
+    [AssetCategory.Image]: [AssetType.Image],
+    [AssetCategory.Media]: [AssetType.Audio, AssetType.Video],
+    [AssetCategory.Data]: [AssetType.JSON, AssetType.Blueprint],
+    [AssetCategory.Font]: [AssetType.Font],
+    [AssetCategory.Model]: [AssetType.Model],
+    [AssetCategory.Other]: [AssetType.Other],
+};
+
+const ASSET_TYPE_CATEGORY: Record<AssetType, AssetCategory> = {
+    [AssetType.Image]: AssetCategory.Image,
+    [AssetType.Audio]: AssetCategory.Media,
+    [AssetType.Video]: AssetCategory.Media,
+    [AssetType.JSON]: AssetCategory.Data,
+    [AssetType.Blueprint]: AssetCategory.Data,
+    [AssetType.Font]: AssetCategory.Font,
+    [AssetType.Model]: AssetCategory.Model,
+    [AssetType.Other]: AssetCategory.Other,
+};
+
+/** The category a type is filed under. Total over {@link AssetType}. */
+export function categoryOfAssetType(type: AssetType): AssetCategory {
+    return ASSET_TYPE_CATEGORY[type] ?? AssetCategory.Other;
+}
+
 export type ImageAssetMetadata = {
     width: number;
     height: number;
@@ -182,7 +242,36 @@ export const AssetExtensions = {
     [AssetType.Other]: ["*"],
 };
 
+/**
+ * Every extension the category's member types accept, de-duplicated, in member order.
+ *
+ * `["*"]` when any member accepts anything, because a filter that listed extensions beside a
+ * wildcard would hide files the category can in fact import.
+ */
+export const ASSET_CATEGORY_EXTENSIONS: Record<AssetCategory, string[]> = Object.fromEntries(
+    ASSET_CATEGORY_ORDER.map(category => {
+        const types = ASSET_CATEGORY_TYPES[category];
+        if (types.some(type => AssetExtensions[type].includes("*"))) {
+            return [category, ["*"]];
+        }
+        const merged: string[] = [];
+        for (const type of types) {
+            for (const ext of AssetExtensions[type]) {
+                if (!merged.includes(ext)) {
+                    merged.push(ext);
+                }
+            }
+        }
+        return [category, merged];
+    }),
+) as Record<AssetCategory, string[]>;
+
 /** Whether assets of this type are a directory tree rather than a single file. */
 export function isBundleAssetType(type: AssetType): boolean {
     return type === AssetType.Model;
+}
+
+/** Whether the category's assets are directory trees — the picker asks for folders, not files. */
+export function isBundleAssetCategory(category: AssetCategory): boolean {
+    return ASSET_CATEGORY_TYPES[category].every(isBundleAssetType);
 }
