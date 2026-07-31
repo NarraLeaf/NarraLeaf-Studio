@@ -167,6 +167,30 @@ function readChannels(styles: CSSStyleDeclaration, name: string, fallback: strin
     return `#${hex}`;
 }
 
+/**
+ * The same colour, fully transparent (`#RRGGBB00`).
+ *
+ * Monaco does parse eight-digit hex - `Color.Format.CSS.parseHex` handles `#RRGGBBAA` - and the alpha
+ * survives all the way into the `--vscode-editor-background` custom property it writes; measured on a
+ * real instance, the value comes back out of `getComputedStyle` as `rgba(11, 13, 18, 0)`. It is still
+ * the wrong place to put the workspace's surface opacity, and that is worth writing down because the
+ * obvious implementation looks right until you set a wallpaper.
+ *
+ * `editor.background` is **stacked**, not applied once. Two elements paint that variable over the
+ * text area - `.monaco-editor` and `.monaco-editor-background`, the lines layer inside it - and the
+ * gutter adds a third fill through `editorGutter.background`, which defaults to the editor's own
+ * background. So at 50% the text area would composite to 75% and the gutter to 87%: a rectangle both
+ * more solid than, and internally seamed against, the story editor beside it, which resolves the
+ * identical variable exactly once.
+ *
+ * So the editor paints nothing and the host element carries `.nl-editor-surface` - one fill, the one
+ * rule every other reading surface in Studio uses, and the opacity setting reaches it without this
+ * module knowing the setting exists.
+ */
+function transparent(hex: string): string {
+    return `${hex}00`;
+}
+
 function isDark(hex: string): boolean {
     const value = parseInt(hex.slice(1), 16);
     // Rec. 601 luma, the same rough test the accent contrast helper uses.
@@ -210,7 +234,8 @@ export function defineStudioMonacoTheme(): void {
             { token: "tag", foreground: accent.slice(1) },
         ],
         colors: {
-            "editor.background": background,
+            // Transparent on purpose - the host element paints the surface. See `transparent`.
+            "editor.background": transparent(background),
             "editor.foreground": foreground,
             "editorLineNumber.foreground": subtle,
             "editorLineNumber.activeForeground": muted,

@@ -296,6 +296,10 @@ export const workspace = {
                 theme: "主题切换",
                 zoom: "缩放比例",
                 version: "版本",
+                textFileName: "文本文件名",
+                textEncoding: "文本编码",
+                textLineEnding: "行尾符号",
+                textSelection: "光标位置",
             },
         },
         // 保存反馈：文件写不进去时弹出的常驻提示，以及「存储」控制台频道的日志行。

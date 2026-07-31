@@ -9,6 +9,7 @@ import { EditorService } from "../ui/EditorService";
 import { DialogService } from "../ui/DialogService";
 import { StatusBarService } from "../ui/StatusBarService";
 import { TextEditorContributionService } from "../ui/TextEditorContributionService";
+import { TextDocumentStatusService } from "../ui/TextDocumentStatusService";
 import { FocusManager } from "../ui/FocusManager";
 import {
     KeybindingService,
@@ -37,6 +38,7 @@ import type { AppEventToken } from "@shared/types/app";
  * - focus: Focus management
  * - keybindings: Keyboard shortcuts
  * - textEditor: Plugin contributions to the built-in text editor
+ * - textDocumentStatus: What the open text tabs report to the status bar
  */
 export class UIService extends Service<UIService> implements IUIService {
     private store: UIStore;
@@ -51,6 +53,7 @@ export class UIService extends Service<UIService> implements IUIService {
     private _dialogs: DialogService;
     private _statusBar: StatusBarService;
     private _textEditor: TextEditorContributionService;
+    private _textDocumentStatus: TextDocumentStatusService;
     private _focus: FocusManager;
     private _keybindings: KeybindingService;
 
@@ -65,6 +68,7 @@ export class UIService extends Service<UIService> implements IUIService {
         this._dialogs = new DialogService(this.store, this._focus);
         this._statusBar = new StatusBarService(this.store);
         this._textEditor = new TextEditorContributionService(this.store);
+        this._textDocumentStatus = new TextDocumentStatusService();
         this._keybindings = new KeybindingService(this._focus, this.store);
         this.store.setKeybindingService(this._keybindings);
     }
@@ -223,6 +227,15 @@ export class UIService extends Service<UIService> implements IUIService {
      */
     public get textEditor(): TextEditorContributionService {
         return this._textEditor;
+    }
+
+    /**
+     * What the open text tabs are reporting about themselves, for the status bar.
+     *
+     * Host-internal and not part of any plugin surface; see {@link TextDocumentStatusService}.
+     */
+    public get textDocumentStatus(): TextDocumentStatusService {
+        return this._textDocumentStatus;
     }
 
     /**

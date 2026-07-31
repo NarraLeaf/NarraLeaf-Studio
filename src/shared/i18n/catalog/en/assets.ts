@@ -291,15 +291,29 @@ export const assets = {
         invalid: "This file is not valid JSON, showing raw content.",
         truncated: "File is too large to pretty-print, showing the beginning only.",
     },
-    // The built-in Monaco text editor. Its status bar is values only - the file name, the encoding,
-    // the line ending and the caret - so the only strings here are the two encoding commands, the
-    // caret read-out and the two failures.
+    // The built-in Monaco text editor. It has no status bar of its own: the file name, encoding,
+    // line ending and selection are cells in the WORKSPACE status bar, so most of what follows is
+    // read by `modules/status-bar/textDocumentEntries` rather than by the tab.
+    //
+    // The value strings stay under `assets.textEditor` rather than moving to
+    // `workspace.shell.statusBar` because they describe a text document, not the bar - the same
+    // words would be needed if these ever appeared anywhere else.
     textEditor: {
         loadFailed: "Failed to read this file.",
         saveFailed: "Failed to save this file.",
         caret: "Ln {line}, Col {column}",
+        // Appended to the caret read-out while something is selected, VS Code's wording. The
+        // multi-range form exists because a bare character count under three cursors is a number
+        // the author cannot attribute to anything they can see.
+        selected: "({count} selected)",
+        selectedInRanges: "({count} selected in {ranges} ranges)",
+        selectionLabel: "Cursor position and selection",
         reopenWithEncoding: "Reopen with Encoding",
         saveWithEncoding: "Save with Encoding",
+        selectEncoding: "Select the file's encoding",
+        selectLineEnding: "Select the file's line ending",
+        /** Screen-reader name for the status-bar line-ending cell, whose visible text is `LF`/`CRLF`. */
+        lineEndingLabel: "Line ending: {ending}",
         /** Screen-reader name for the status-bar encoding token, whose visible text is the value alone. */
         encodingLabel: "Encoding: {encoding}",
         /**

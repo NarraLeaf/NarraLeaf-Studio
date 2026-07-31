@@ -33,6 +33,8 @@ import {
     validateNewTextFileName,
 } from './newTextFileName';
 import { openAssetPreviewTabsInEditor } from '../dnd/openDraggedAssetsInEditor';
+import { platformDefaultLineEnding } from '../editors/text/textEditableFiles';
+import { toPersistedEol } from '../editors/text/textDocumentPreferences';
 
 export type { ContextMenuTargetState };
 
@@ -559,6 +561,14 @@ export function useAssetActions({
                 );
                 return null;
             }
+            // The line ending is recorded here and only here, because a new file is zero bytes:
+            // there is nothing in the content to detect it from, and the OS that made the file is
+            // the only thing that can answer. Once the file has lines in it, the lines win - see
+            // `resolveLineEnding`. Failure is not surfaced: the file exists and opens, and the
+            // fallback (the same platform default, recomputed) is the value this would have written.
+            await assetsService.patchAssetExtras(result.data, {
+                textEol: toPersistedEol(platformDefaultLineEnding()),
+            });
             return result.data as Asset;
         });
 
