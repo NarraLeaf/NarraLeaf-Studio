@@ -9,9 +9,10 @@ function ColumnMark({ point, peak }: { point: ActivityPoint; peak: number }) {
     if (point.status === "untracked") {
         return <div className="h-px w-full rounded-full bg-edge" />;
     }
-    // The first tracked day has no previous total to subtract, so there is no bar to draw —
-    // a marker says "tracking starts here" instead of implying a day of zero writing.
-    if (point.status === "start") {
+    // The first tracked day has no previous total to subtract, and a rebased day's previous total
+    // was measured by a different rule — so there is no bar to draw. The same marker says "no
+    // comparable day behind this one" for both, instead of implying a day of zero writing.
+    if (point.status === "start" || point.status === "rebased") {
         return (
             <div className="relative h-full w-full">
                 <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 border-l border-dashed border-edge-strong" />
