@@ -182,6 +182,11 @@ export class VcsManager extends Manager {
     private readonly sessions = new Map<string, VcsSession>();
     /** Serializes work per project so two callers cannot interleave on one store. */
     private readonly operations = new Map<string, Promise<unknown>>();
+    /**
+     * Opens in flight, so concurrent first callers share one store rather than each opening their
+     * own. See {@link sessionFor} for what the second store costs.
+     */
+    private readonly opening = new Map<string, Promise<VcsSession>>();
 
     constructor(app: BaseApp, private readonly flushPendingSaves?: PendingSaveFlush) {
         super(app);
@@ -277,56 +282,105 @@ export class VcsManager extends Manager {
         };
     }
 
+    /**
+     * The session for one project, opening it the first time it is asked for.
+     *
+     * **At most one open per project is ever in flight, and that is load-bearing.** Recording the
+     * session takes two awaits - the store, then the identity read - and a second caller arriving
+     * inside that window used to miss the map and open a store of its own. Only the last one
+     * reached `sessions.set`; the earlier handles were unreachable, so `closeProject` could not
+     * release them and Lore held the repository - exclusively - for the rest of the process's life.
+     * Measured in a running Studio: opening a versioned project logged four "Opened session" lines
+     * and closing it logged one.
+     *
+     * What that costs is not a stale cache. Reopening the same project then blocks on the lock
+     * Lore never gave back (it blocks rather than failing, §4.12), and because every Lore call is a
+     * koffi `async` call it blocks on a **libuv thread pool** thread. Four of them is the whole
+     * default pool, and `fs` runs on that same pool - so the second open of a project stopped the
+     * main process reading ANY file: no assets, no stories, no dashboard, and a window that could
+     * not be closed because the close path waits for a checkpoint.
+     *
+     * So callers that arrive during an open join it instead of starting another.
+     */
     private async sessionFor(projectPath: string): Promise<{ session: VcsSession; backend: VcsBackend }> {
         const backend = await requireVcsBackend();
         const key = projectKey(projectPath);
         const existing = this.sessions.get(key);
         if (existing) return { session: existing, backend };
 
-        // The resolved path rather than the key: the key is case-folded for lookup and this is what
-        // is handed to the backend and used to build absolute paths off.
-        const root = path.resolve(projectPath);
-        const globals = this.globalsFor(root);
-        const store = await this.openStoreAnnouncingDelay(backend, globals, root);
+        const opening = this.opening.get(key) ?? this.openSession(projectPath, key, backend);
+        return { session: await opening, backend };
+    }
 
-        let repositoryId: LoreHex;
-        try {
-            // The repository id comes off the revision-history header, a purely
-            // local read. Deliberately not `repositoryInfo`: that verb dials the
-            // remote even under `offline: true` and blocks until the socket times out.
-            const identity = await backend.readRepositoryIdentity(globals);
-            if (!identity?.repository) {
-                throw new Error(
-                    "Repository has no revisions yet; version control is unavailable until the first commit",
-                );
+    /**
+     * Open one store and record it, exactly once per project.
+     *
+     * Registered in {@link opening} before it can yield - the body runs synchronously up to its
+     * first await, and nothing else can interleave in between - so a caller arriving a tick later
+     * finds the promise rather than an empty map.
+     */
+    private openSession(projectPath: string, key: string, backend: VcsBackend): Promise<VcsSession> {
+        const pending = (async (): Promise<VcsSession> => {
+            // The resolved path rather than the key: the key is case-folded for lookup and this is
+            // what is handed to the backend and used to build absolute paths off.
+            const root = path.resolve(projectPath);
+            const globals = this.globalsFor(root);
+            const store = await this.openStoreAnnouncingDelay(backend, globals, root);
+
+            let repositoryId: LoreHex;
+            try {
+                // The repository id comes off the revision-history header, a purely
+                // local read. Deliberately not `repositoryInfo`: that verb dials the
+                // remote even under `offline: true` and blocks until the socket times out.
+                const identity = await backend.readRepositoryIdentity(globals);
+                if (!identity?.repository) {
+                    throw new Error(
+                        "Repository has no revisions yet; version control is unavailable until the first commit",
+                    );
+                }
+                repositoryId = identity.repository;
+            } catch (error) {
+                // Do not leak the handle (or the exclusive lock) if identity lookup fails.
+                // Closing the store is not enough on its own: Lore keeps the repository
+                // itself open afterwards, and while it does, the directory cannot be
+                // deleted and the author's `lore` CLI blocks on the lock instead of
+                // failing. This path runs on every `isRepository` check against a
+                // directory that turns out not to be one, so it is not a rare corner.
+                await backend.closeStore(globals, store).catch(() => undefined);
+                await backend.releaseRepository(globals).catch(() => undefined);
+                throw error;
             }
-            repositoryId = identity.repository;
-        } catch (error) {
-            // Do not leak the handle (or the exclusive lock) if identity lookup fails.
-            // Closing the store is not enough on its own: Lore keeps the repository
-            // itself open afterwards, and while it does, the directory cannot be
-            // deleted and the author's `lore` CLI blocks on the lock instead of
-            // failing. This path runs on every `isRepository` check against a
-            // directory that turns out not to be one, so it is not a rare corner.
-            await backend.closeStore(globals, store).catch(() => undefined);
-            await backend.releaseRepository(globals).catch(() => undefined);
-            throw error;
-        }
 
-        const session: VcsSession = { root, store, repositoryId, globals, details: new Map() };
-        this.sessions.set(key, session);
-        this.app.logger.info("[Vcs] Opened session", root, repositoryId);
-        return { session, backend };
+            const session: VcsSession = { root, store, repositoryId, globals, details: new Map() };
+            this.sessions.set(key, session);
+            this.app.logger.info("[Vcs] Opened session", root, repositoryId);
+            return session;
+        })();
+
+        this.opening.set(key, pending);
+        void pending.catch(() => undefined).finally(() => {
+            // A failed open must not become the cached answer: the next caller has to try again
+            // (a directory that is not a repository is asked about on every `isRepository`).
+            if (this.opening.get(key) === pending) this.opening.delete(key);
+        });
+        return pending;
     }
 
     /**
      * True when this host has a working backend AND the directory is a Lore
      * repository. Returns false rather than throwing on an unsupported host, so
      * a caller can use it as a plain feature check.
+     *
+     * Queued like every other verb, and not because it touches the store: it is the ONE question
+     * three separate surfaces ask the moment a workspace opens (the rail, the switcher menu and the
+     * status-bar cell each read the head for themselves, by design), so an unqueued one ran
+     * alongside whatever else those surfaces started - which is how the open race in
+     * {@link sessionFor} became the normal case rather than a corner. The queue is also what makes
+     * {@link closeProject} able to see a session this call is about to record.
      */
     public async isRepository(projectPath: string): Promise<boolean> {
         try {
-            await this.sessionFor(projectPath);
+            await this.serialize(projectPath, () => this.sessionFor(projectPath));
             return true;
         } catch {
             return false;
@@ -945,13 +999,32 @@ export class VcsManager extends Manager {
      *
      * The session is removed from the map BEFORE the queue, deliberately: anything arriving after
      * this call must open a fresh session rather than join one that is on its way out.
+     *
+     * **An open still in flight is waited for and released too.** A window can close while the
+     * first read of its repository is still opening one - and that session records itself while
+     * this call sits in the queue, so a close that only looked once would leave it behind holding
+     * the exclusive lock. What that costs is in {@link sessionFor}: the next open of the project
+     * blocks on the lock, on a libuv thread pool thread, and takes the process's file reads with it.
      */
     public async closeProject(projectPath: string): Promise<void> {
         const key = projectKey(projectPath);
         const session = this.sessions.get(key);
-        if (!session) return;
+        // Nothing open, nothing opening, and nothing QUEUED that could open one. The last of the
+        // three is not padding: a read started a moment before the window closed has not reached
+        // `sessionFor` yet, so both maps are still empty while a session is on its way.
+        if (!session && !this.opening.has(key) && !this.operations.has(key)) return;
         this.sessions.delete(key);
-        return this.serialize(projectPath, () => this.releaseSession(session));
+        return this.serialize(projectPath, async () => {
+            // An open that is in flight right now was started outside the queue, so it settles on
+            // its own rather than behind this task. Awaited for its settlement, not its value: a
+            // failed open has already released its own handle.
+            const opening = this.opening.get(key);
+            if (opening) await opening.catch(() => undefined);
+            const late = this.sessions.get(key);
+            this.sessions.delete(key);
+            if (session) await this.releaseSession(session);
+            if (late && late !== session) await this.releaseSession(late);
+        });
     }
 
     /** The teardown itself, run with exclusive access to the project - see {@link closeProject}. */
@@ -986,7 +1059,10 @@ export class VcsManager extends Manager {
 
     /** Release every session; called on app teardown. */
     public async dispose(): Promise<void> {
-        await Promise.all([...this.sessions.keys()].map((key) => this.closeProject(key)));
+        // Opens in flight included: quitting while one is still opening would otherwise leave the
+        // repository locked, and on Windows that is a directory the author cannot move or delete.
+        const keys = new Set([...this.sessions.keys(), ...this.opening.keys()]);
+        await Promise.all([...keys].map((key) => this.closeProject(key)));
     }
 
     /** Exposed for diagnostics: which projects currently hold a Lore store. */
