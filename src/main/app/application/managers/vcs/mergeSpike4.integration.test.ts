@@ -48,6 +48,16 @@ import { cloneInto, publishToRemote, pushToRemote, writeRemote } from "./remote"
  *
  * This is a probe. Nothing about Lore's behaviour is asserted; observations are printed.
  *
+ * **Read R6 before believing any framing above.** R5 tried to answer "does one project's
+ * sync blind another" and its control failed twice: repositories that had never synced
+ * were unreadable too. R6 attributes that, and the answer moves the whole defect: a
+ * revision committed through globals with `offline: false` cannot be read back by the
+ * process that wrote it, and nothing else is affected. Every earlier fixture - R2's,
+ * R4's, R5's first two runs - committed `mine` online, so what §4.29 recorded as "the
+ * sync poisons the process" was largely that. The fixtures here now commit the way
+ * `VcsManager` does (offline globals), and R4 reads the author's own commit and the
+ * revision the sync received separately, because only the second one is written online.
+ *
  * ```bash
  * LORE_TEST_REMOTE="lore://127.0.0.1:41337" npx vitest run \
  *   src/main/app/application/managers/vcs/mergeSpike4.integration.test.ts
@@ -64,6 +74,7 @@ const RUN = Date.now().toString(36);
 const BASE_TEXT = `${JSON.stringify({ id: "scene", title: "Prologue", version: 7 }, null, 2)}\n`;
 const MINE_TEXT = `${JSON.stringify({ id: "scene", title: "Prologue (main)", version: 7 }, null, 2)}\n`;
 const THEIRS_TEXT = `${JSON.stringify({ id: "scene", title: "Prologue (feature)", version: 7 }, null, 2)}\n`;
+const HAND_TEXT = `${JSON.stringify({ id: "scene", title: "Prologue (third)", version: 7 }, null, 2)}\n`;
 
 // -- plumbing ---------------------------------------------------------------
 
@@ -198,8 +209,17 @@ interface Poisoned {
     offlineGlobals: LoreGlobals;
     onlineGlobals: LoreGlobals;
     repositoryId: string;
-    /** The author's own commit, made BEFORE the sync. §4.29 says even this becomes unreadable. */
+    /**
+     * The author's own commit, made BEFORE the sync - and made through OFFLINE globals,
+     * which is what `VcsManager` does (`globalsFor` sets `offline: !options.online`, and
+     * only the network verbs get `offline: false` spread in). R6 is why that detail is
+     * spelled out here: a revision committed through online globals cannot be read back by
+     * the process that wrote it, so a fixture that commits online measures that instead of
+     * whatever it meant to measure.
+     */
     revision: string;
+    /** What the sync pulled from the server: written by an online call, by construction. */
+    receivedRevision?: string;
     url: string;
     cloneRoot: string;
     cloneGlobals: LoreGlobals;
@@ -209,13 +229,14 @@ interface Poisoned {
 }
 
 /**
- * Build a repository, publish it, let a clone push a change, commit locally, sync.
+ * A repository on the server with one local commit on top, and NOTHING fetched.
  *
- * The clone writes a DIFFERENT file so the sync is clean: §4.29 measured conflicted and
- * clean syncs failing identically, and a clean one has fewer moving parts to confuse a
- * recovery result with.
+ * Split out of {@link preparedFixture} after R5's first run: with the clone included,
+ * both repositories were already unreadable BEFORE either of them synced, so the
+ * experiment proved nothing. This is the shape R2 measured as reading fine (its step c),
+ * and it is the only shape that can serve as a control.
  */
-async function poisonedFixture(name: string): Promise<Poisoned> {
+async function publishedFixture(name: string): Promise<Poisoned> {
     const root = tmp(`nl-m4-${name}-`);
     const offlineGlobals = offline(root);
     const onlineGlobals = online(root);
@@ -249,39 +270,109 @@ async function poisonedFixture(name: string): Promise<Poisoned> {
         await pushToRemote(onlineGlobals);
         await releaseRepository(onlineGlobals);
 
-        await cloneInto(cloneGlobals, { repositoryUrl: fixture.url });
-        write(cloneRoot, "other.json", THEIRS_TEXT);
-        await commitAll(cloneGlobals, cloneRoot, "theirs");
-        await pushToRemote(cloneGlobals);
-        await releaseRepository(cloneGlobals);
-
         write(root, DOCUMENT, MINE_TEXT);
-        fixture.revision = await commitAll(onlineGlobals, root, "mine");
-        const synced = await syncRevision(onlineGlobals);
-        fixture.conflicts = synced.progress?.fileConflict ?? 0;
-        fixture.automerges = synced.progress?.fileAutomerge ?? 0;
-        // The tail §4.29 already proved insufficient on its own. Every recovery variant
-        // below therefore differs from this known-failing state by exactly one call.
-        await flushRepository(onlineGlobals);
-        await releaseRepository(onlineGlobals);
+        fixture.revision = await commitAll(offlineGlobals, root, "mine");
+        await releaseRepository(offlineGlobals);
     } catch (error) {
         fixture.setupError = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
     }
     return fixture;
 }
 
+/**
+ * Give the fixture something to sync: clone it in THIS process and push a change.
+ *
+ * The clone writes a DIFFERENT file so the sync is clean - §4.29 measured conflicted and
+ * clean syncs failing identically, and a clean one has fewer moving parts. `mine` is
+ * never pushed, so the clone only ever sees `base` and the two lines diverge.
+ */
+async function divergeViaClone(fixture: Poisoned) {
+    return observe(async () => {
+        await cloneInto(fixture.cloneGlobals, { repositoryUrl: fixture.url });
+        write(fixture.cloneRoot, "other.json", THEIRS_TEXT);
+        const revision = await commitAll(fixture.cloneGlobals, fixture.cloneRoot, "theirs");
+        await pushToRemote(fixture.cloneGlobals);
+        await releaseRepository(fixture.cloneGlobals);
+        return { theirs: revision };
+    });
+}
+
+/** Everything a sync needs, stopping one call short of it. */
+async function preparedFixture(name: string): Promise<Poisoned> {
+    const fixture = await publishedFixture(name);
+    if (fixture.setupError) return fixture;
+    const diverged = await divergeViaClone(fixture);
+    if (failed(diverged)) fixture.setupError = diverged.error;
+    return fixture;
+}
+
+/**
+ * The one call under study, with the tail §4.29 already proved insufficient on its own.
+ * Every recovery variant below therefore differs from this state by exactly one call.
+ */
+async function syncFixture(fixture: Poisoned) {
+    return observe(async () => {
+        const synced = await syncRevision(fixture.onlineGlobals);
+        fixture.conflicts = synced.progress?.fileConflict ?? 0;
+        fixture.automerges = synced.progress?.fileAutomerge ?? 0;
+        fixture.receivedRevision = synced.target?.targetRevision;
+        await flushRepository(fixture.onlineGlobals);
+        await releaseRepository(fixture.onlineGlobals);
+        return {
+            conflicts: fixture.conflicts,
+            automerges: fixture.automerges,
+            target: synced.target?.targetRevision,
+            targetIsLocal: synced.target?.local,
+        };
+    });
+}
+
+async function poisonedFixture(name: string): Promise<Poisoned> {
+    const fixture = await preparedFixture(name);
+    if (fixture.setupError) return fixture;
+    const synced = await syncFixture(fixture);
+    if (failed(synced)) fixture.setupError = synced.error;
+    return fixture;
+}
+
 /** Tree and bytes, side by side: §4.29's signature is the tree reading while bytes do not. */
-async function readBack(fixture: Poisoned, label: string) {
+async function readRevision(fixture: Poisoned, revision: string, label: string, document = DOCUMENT) {
     return guarded(label, 120_000, () => withStore(fixture.offlineGlobals, fixture.root, async (store) => ({
         tree: await observe(async () =>
-            (await listFilesAt(fixture.offlineGlobals, store, fixture.repositoryId, fixture.revision))
+            (await listFilesAt(fixture.offlineGlobals, store, fixture.repositoryId, revision))
                 .map((entry) => entry.path).sort()),
         bytes: await observe(async () => ({
             byteLength: (await blobAt(
-                fixture.offlineGlobals, store, fixture.repositoryId, fixture.revision, DOCUMENT,
+                fixture.offlineGlobals, store, fixture.repositoryId, revision, document,
             )).byteLength,
         })),
     })));
+}
+
+async function readBack(fixture: Poisoned, label: string) {
+    return readRevision(fixture, fixture.revision, label);
+}
+
+/**
+ * The two reads that mean different things after a sync.
+ *
+ * `ownOfflineCommit` is content this process wrote locally; `received` is content that
+ * only ever existed on the server. The path matters: the clone changes `other.json` and
+ * leaves `doc.json` alone, so reading `doc.json` at the received revision would succeed
+ * off a fragment that was already local from the base commit and prove nothing.
+ */
+async function readPair(fixture: Poisoned, label: string) {
+    return {
+        ownOfflineCommit: await readBack(fixture, `${label}:own`),
+        received: fixture.receivedRevision
+            ? await readRevision(fixture, fixture.receivedRevision, `${label}:received`, "other.json")
+            : { error: "the sync reported no target revision" },
+    };
+}
+
+function pairReads(pair: unknown) {
+    const both = pair as { ownOfflineCommit?: unknown; received?: unknown };
+    return { own: bytesRead(both?.ownOfflineCommit), received: bytesRead(both?.received) };
 }
 
 function bytesRead(result: unknown): boolean {
@@ -319,7 +410,8 @@ async function recover(fixture: Poisoned, variant: Variant) {
             return "called";
         });
     }
-    steps.readAfterRecovery = await readBack(fixture, `${fixture.name}:${variant}`);
+    steps.readAfterRecovery = await readPair(fixture, `${fixture.name}:${variant}`);
+    steps.reads = pairReads(steps.readAfterRecovery);
     return steps;
 }
 
@@ -341,8 +433,14 @@ describe.skipIf(!remoteEnabled)("R4 - recovering from the sync poisoning in one 
             };
             if (a.setupError) return;
 
-            const baseline = await readBack(a, "a:baseline");
+            // Two reads, not one, and the difference is the whole point after R6: the
+            // author's own commit went in through OFFLINE globals the way Studio does it,
+            // while the revision the sync brought in was written by an online call. If
+            // only the second is dark then nothing is "poisoned" - the process simply
+            // cannot read what it just received, and Studio's own history is intact.
+            const baseline = await readPair(a, "a:baseline");
             observations.step1_baselineAfterSync = baseline;
+            observations.step1_reads = pairReads(baseline);
 
             // Only `storageGet` is supposed to be affected. If the verbs that never touch
             // content still answer, the poison is narrow and Studio could at least keep
@@ -367,31 +465,30 @@ describe.skipIf(!remoteEnabled)("R4 - recovering from the sync poisoning in one 
             };
             await observe(() => releaseRepository(a.offlineGlobals));
 
-            if (bytesRead(baseline)) {
-                observations.stopped = "the baseline read SUCCEEDED - the defect did not reproduce here";
+            if (pairReads(baseline).received) {
+                observations.stopped = "the received revision READ - the defect did not reproduce here";
                 return;
             }
 
             // -- 2. reset after everything is given back ---------------------------
             observations.step2_resetAfterRelease = await recover(a, "resetAfterRelease");
-            const afterVariant1 = bytesRead(
-                (observations.step2_resetAfterRelease as { readAfterRecovery?: unknown }).readAfterRecovery);
+            const afterVariant1 = (observations.step2_resetAfterRelease as { reads: { received: boolean } })
+                .reads.received;
 
             // -- 3. the other ordering, on its own repository ----------------------
             const b = await poisonedFixture("b");
             observations.fixtureB = { setupError: b.setupError, revision: b.revision };
             let afterVariant2 = false;
             if (!b.setupError) {
-                observations.step3_baselineB = await readBack(b, "b:baseline");
+                observations.step3_baselineB = pairReads(await readPair(b, "b:baseline"));
                 observations.step3_resetBeforeRelease = await recover(b, "resetBeforeRelease");
-                afterVariant2 = bytesRead(
-                    (observations.step3_resetBeforeRelease as { readAfterRecovery?: unknown }).readAfterRecovery);
+                afterVariant2 = (observations.step3_resetBeforeRelease as { reads: { received: boolean } })
+                    .reads.received;
 
-                // Is the poison scoped to the repository that synced, or to the process?
-                // B's sync happened after A was (possibly) healed, so if A is dark again
-                // then one project's sync blinds every project the window has open, and a
-                // per-project remedy cannot be correct.
-                observations.step3b_readAAfterBSync = await readBack(a, "a:afterBSync");
+                // Does B's sync reach into A? R5 asks this properly; here it is nearly
+                // free, and it is the same question: A's own commit and A's received
+                // revision, read after a DIFFERENT repository synced.
+                observations.step3b_readAAfterBSync = pairReads(await readPair(a, "a:afterBSync"));
             }
 
             // -- 4. stability: two more poison/recover cycles with the winner -------
@@ -406,12 +503,12 @@ describe.skipIf(!remoteEnabled)("R4 - recovering from the sync poisoning in one 
                         repeats.push({ name, setupError: fixture.setupError });
                         continue;
                     }
-                    const before = await readBack(fixture, `${name}:baseline`);
+                    const before = pairReads(await readPair(fixture, `${name}:baseline`));
                     const recovered = await recover(fixture, winner);
                     repeats.push({
                         name,
-                        poisonedBeforeRecovery: !bytesRead(before),
-                        readAfterRecovery: (recovered as { readAfterRecovery?: unknown }).readAfterRecovery,
+                        beforeRecovery: before,
+                        afterRecovery: (recovered as { reads?: unknown }).reads,
                     });
                 }
                 observations.step4_repeats = repeats;
@@ -420,7 +517,7 @@ describe.skipIf(!remoteEnabled)("R4 - recovering from the sync poisoning in one 
             // -- 5. does a SECOND sync in a poisoned process fail differently? ------
             const e = await poisonedFixture("e");
             observations.step5_secondSync = e.setupError ? { setupError: e.setupError } : await observe(async () => {
-                const firstRead = await readBack(e, "e:baseline");
+                const firstRead = pairReads(await readPair(e, "e:baseline"));
                 write(e.cloneRoot, "third.json", THEIRS_TEXT);
                 await commitAll(e.cloneGlobals, e.cloneRoot, "theirs again");
                 await pushToRemote(e.cloneGlobals);
@@ -437,9 +534,9 @@ describe.skipIf(!remoteEnabled)("R4 - recovering from the sync poisoning in one 
                 await observe(() => flushRepository(e.onlineGlobals));
                 await observe(() => releaseRepository(e.onlineGlobals));
                 return {
-                    poisonedAfterFirstSync: !bytesRead(firstRead),
+                    afterFirstSync: firstRead,
                     secondSyncResult: second,
-                    readAfterSecondSync: await readBack(e, "e:afterSecondSync"),
+                    afterSecondSync: pairReads(await readPair(e, "e:afterSecondSync")),
                 };
             });
 
@@ -481,4 +578,173 @@ describe.skipIf(!remoteEnabled)("R4 - recovering from the sync poisoning in one 
         }
         expect(Object.keys(observations).length).toBeGreaterThan(0);
     }, 1_200_000);
+});
+
+// ===========================================================================
+// R5 - is the poison scoped to the repository that synced, or to the process?
+// ===========================================================================
+
+/**
+ * The open item R4 left, and the only thing that decides what Studio can say to the
+ * author. `VcsManager` keys its sessions per project and Studio runs several projects in
+ * one main process, so if syncing project A also blinds project B then the honest prompt
+ * is "restart Studio" and no per-project remedy can be correct.
+ *
+ * The first attempt at this asked the question directly - two fully prepared repositories,
+ * sync one, read the other - and the control failed: BOTH were already unreadable before
+ * either had synced. R6 explains why (they committed through online globals) and the
+ * fixture now commits offline, so the control can hold. Every stage is still read back on
+ * both repositories, because attributing the call is worth more than assuming it:
+ *
+ *   B published (no fetch)              -> read A, read B      the control
+ *   A published (no fetch)              -> read A, read B
+ *   A cloned in-process + clone pushes  -> read A, read B      does a CLONE poison?
+ *   A syncs                             -> read A, read B      does a SYNC poison?
+ *   B syncs (nothing to fetch)          -> read A, read B
+ *
+ * B never clones, so if B goes dark it is not because of anything B did.
+ */
+describe.skipIf(!remoteEnabled)("R5 - the blast radius of one project's remote traffic", () => {
+    it("attributes the poison to a call, and to a repository or to the process", async () => {
+        const observations: Record<string, unknown> = { run: RUN, server: SERVER };
+        const stages: Record<string, unknown>[] = [];
+        try {
+            // B first and never cloned: the control has to exist before anything can
+            // invalidate it, and B's readability is the whole question later on.
+            const b = await publishedFixture("r5b");
+            const a = await publishedFixture("r5a");
+            observations.setup = {
+                a: { setupError: a.setupError, revision: a.revision, repositoryId: a.repositoryId },
+                b: { setupError: b.setupError, revision: b.revision, repositoryId: b.repositoryId },
+            };
+            if (a.setupError || b.setupError) return;
+
+            const both = async (stage: string, detail?: unknown) => {
+                const readA = await readBack(a, `r5a:${stage}`);
+                const readB = await readBack(b, `r5b:${stage}`);
+                stages.push({
+                    stage,
+                    detail,
+                    aReads: bytesRead(readA),
+                    bReads: bytesRead(readB),
+                    a: readA,
+                    b: readB,
+                });
+            };
+
+            await both("afterPublishOnly");
+            await both("afterCloningA", await divergeViaClone(a));
+            await both("afterSyncingA", await syncFixture(a));
+            // B has nothing to fetch - it was never cloned - so this is the sync path
+            // running with no incoming work, which is worth having on the record either way.
+            await both("afterSyncingB", await syncFixture(b));
+        } finally {
+            observations.stages = stages;
+            report("R5 POISON SCOPE", observations);
+        }
+        expect(Object.keys(observations).length).toBeGreaterThan(0);
+    }, 900_000);
+});
+
+// ===========================================================================
+// R6 - which call actually blinds the process?
+// ===========================================================================
+
+/**
+ * R5's control failed twice: a repository that had only been published and pushed was
+ * already unreadable, with no clone and no sync anywhere near it. So §4.29's attribution
+ * to `revisionSync` cannot be right, and the scope question cannot be answered until the
+ * real trigger is named.
+ *
+ * What no earlier experiment ever did: read a revision that was committed AFTER the
+ * repository was pushed. R2's four reading steps all read a commit made before the push,
+ * and they all worked; R4/R5 all read `mine`, committed afterwards, and none did.
+ *
+ * One repository, one process, and the SAME base revision read after every step - so a
+ * previously readable revision going dark (a poisoning) is distinguishable from new
+ * commits simply not being where the reader looks (a different defect entirely, and one
+ * that would make "restart Studio" the wrong advice).
+ *
+ * The last two steps commit the same kind of change twice, once through offline globals
+ * and once through online ones, because `offline` is the only difference between the
+ * session that R2 read successfully and the sessions that cannot read anything.
+ */
+describe.skipIf(!remoteEnabled)("R6 - attributing the blindness to a call", () => {
+    it("reads one base revision after every step of connecting and committing", async () => {
+        const observations: Record<string, unknown> = { run: RUN, server: SERVER };
+        const stages: Record<string, unknown>[] = [];
+        try {
+            const root = tmp("nl-m4-r6-");
+            const offlineGlobals = offline(root);
+            const onlineGlobals = online(root);
+            track({ root, globals: onlineGlobals });
+            const url = `${SERVER}/m4-r6-${RUN}`;
+
+            const created = await createRepository(offlineGlobals, {
+                repositoryUrl: VCS_UNCONFIGURED_REMOTE_URL,
+                description: "merge spike 4 (attribution)",
+            });
+            const fixture: Poisoned = {
+                name: "r6",
+                root,
+                offlineGlobals,
+                onlineGlobals,
+                repositoryId: created.repository,
+                revision: "",
+                url,
+                cloneRoot: "",
+                cloneGlobals: offlineGlobals,
+            };
+
+            write(root, DOCUMENT, BASE_TEXT);
+            const base = await commitAll(offlineGlobals, root, "base");
+            fixture.revision = base;
+            await releaseRepository(offlineGlobals);
+
+            const revisions: Record<string, string> = { base };
+            const stage = async (name: string, act: () => Promise<unknown>) => {
+                const detail = await observe(act);
+                // Release before reading: `openStore` on a repository this process still
+                // holds never returns (§4.28), and every step above acquires it.
+                await observe(() => releaseRepository(onlineGlobals));
+                const reads: Record<string, unknown> = {};
+                const readable: string[] = [];
+                for (const [label, revision] of Object.entries(revisions)) {
+                    const result = await readRevision(fixture, revision, `r6:${name}:${label}`);
+                    reads[label] = result;
+                    if (bytesRead(result)) readable.push(label);
+                }
+                stages.push({ stage: name, detail, readable, reads });
+            };
+
+            await stage("afterLocalCommit", async () => "nothing done");
+            await stage("afterWriteRemote", () => writeRemote(root, url).then(() => "ok"));
+            await stage("afterPublish", () =>
+                publishToRemote(onlineGlobals, { url, repositoryId: created.repository }).then(() => "ok"));
+            await stage("afterPush", () => pushToRemote(onlineGlobals));
+            await stage("afterOfflineCommit", async () => {
+                write(root, DOCUMENT, MINE_TEXT);
+                revisions.committedOffline = await commitAll(offlineGlobals, root, "mine, offline session");
+                return { revision: revisions.committedOffline };
+            });
+            await stage("afterOnlineCommit", async () => {
+                write(root, DOCUMENT, THEIRS_TEXT);
+                revisions.committedOnline = await commitAll(onlineGlobals, root, "mine, online session");
+                return { revision: revisions.committedOnline };
+            });
+            // The control for the step above: the two commits differ in their `offline`
+            // flag, but they are also first and second. A THIRD commit, offline again,
+            // separates "the flag decides" from "everything after the first online commit
+            // is lost" - and those two have completely different consequences for Studio.
+            await stage("afterSecondOfflineCommit", async () => {
+                write(root, DOCUMENT, HAND_TEXT);
+                revisions.committedOfflineAgain = await commitAll(offlineGlobals, root, "offline again");
+                return { revision: revisions.committedOfflineAgain };
+            });
+        } finally {
+            observations.stages = stages;
+            report("R6 ATTRIBUTION", observations);
+        }
+        expect(Object.keys(observations).length).toBeGreaterThan(0);
+    }, 900_000);
 });
