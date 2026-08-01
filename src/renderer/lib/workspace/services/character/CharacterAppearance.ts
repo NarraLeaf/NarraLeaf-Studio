@@ -283,7 +283,10 @@ export class CharacterAppearance {
     public setAvatar(key: string, entry: CharacterAvatarEntry | null): void {
         if (!key || isPuppetAppearance(this.appearance)) return;
         const avatars = { ...this.getAvatars() };
-        const next = entry && (entry.baked || entry.overrideAssetId) ? { ...entry } : null;
+        // `portrait` counts as something to remember. It was left out once and the symptom was a
+        // crop that appeared to save and was gone on reopen: an entry carrying only a crop looked
+        // empty to this check and was deleted on the way out.
+        const next = entry && (entry.baked || entry.overrideAssetId || entry.portrait) ? { ...entry } : null;
         if (next) {
             avatars[key] = next;
         } else {
@@ -291,6 +294,29 @@ export class CharacterAppearance {
         }
         this.appearance.avatars = avatars;
         this.notifyChange();
+    }
+
+    /**
+     * Frame one differential, or clear it back to the character-wide crop with `null`.
+     *
+     * Merges rather than replaces: the bake fingerprint and any hand-drawn override on the same key
+     * must survive a reframing, and vice versa.
+     */
+    public setAvatarPortrait(key: string, portrait: PortraitCrop | null): void {
+        if (!key || isPuppetAppearance(this.appearance)) return;
+        const current = this.getAvatar(key);
+        const next: CharacterAvatarEntry = { ...(current ?? {}) };
+        if (portrait) {
+            next.portrait = { ...portrait };
+        } else {
+            delete next.portrait;
+        }
+        this.setAvatar(key, next);
+    }
+
+    /** The crop written for this differential, if the author framed this one specifically. */
+    public getAvatarPortrait(key: string): PortraitCrop | null {
+        return this.getAvatar(key)?.portrait ?? null;
     }
 
     /** Which axes a layered character's avatar varies with. Empty means every axis (see the model). */

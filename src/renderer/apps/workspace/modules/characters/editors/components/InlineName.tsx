@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { cn } from "@/lib/utils/cn";
 
 /**
  * A name you edit where it is written.
@@ -71,11 +72,11 @@ export function InlineName(props: {
                 value={draft ?? ""}
                 draggable={false}
                 size={props.grow === false ? Math.max(4, props.value.length) : undefined}
-                className={[
+                className={cn(
                     box,
                     "rounded-sm border border-primary/60 bg-surface px-1 py-0 outline-none",
-                    props.className ?? "",
-                ].join(" ")}
+                    props.className,
+                )}
                 onChange={event => setDraft(event.target.value)}
                 onBlur={commit}
                 // Stopped here rather than at the row: the layer list, the axis cards and the
@@ -100,7 +101,7 @@ export function InlineName(props: {
 
     return (
         <span
-            className={[box, "truncate", props.className ?? ""].join(" ")}
+            className={cn(box, "truncate", props.className)}
             title={props.title}
             tabIndex={props.disabled ? undefined : 0}
             onDoubleClick={begin}
