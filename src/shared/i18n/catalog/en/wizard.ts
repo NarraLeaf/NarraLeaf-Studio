@@ -1,4 +1,10 @@
-/** `wizard` - new-project creation wizard (template, details, settings, review steps). */
+/**
+ * `wizard` - the new-project wizard.
+ *
+ * Two flows behind one entry point: `template -> details -> settings -> review` writes a project
+ * here, and `template -> source -> clone` copies one down from a version-control server. The
+ * `steps.*` entries cover every page of both.
+ */
 export const wizard = {
     appTitle: "New Project",
     header: {
@@ -22,10 +28,20 @@ export const wizard = {
             label: "Review",
             description: "Review and create",
         },
+        source: {
+            label: "Source",
+            description: "Server and destination",
+        },
+        clone: {
+            label: "Get Project",
+            description: "Copy it onto this machine",
+        },
     },
     nav: {
         createProject: "Create Project",
         creating: "Creating…",
+        cloneProject: "Get Project",
+        cloning: "Getting…",
     },
     error: {
         createFailedTitle: "Failed to Create Project",
@@ -48,6 +64,11 @@ export const wizard = {
                 name: "Empty",
                 description: "Start with a blank project and build from scratch",
                 category: "Custom",
+            },
+            clone: {
+                name: "From a server",
+                description: "Copy a project that already exists on a version-control server",
+                category: "Existing project",
             },
         },
     },
@@ -106,6 +127,53 @@ export const wizard = {
             hourly: "Hourly",
             daily: "Daily",
             weekly: "Weekly",
+        },
+    },
+    // The clone flow's first page. Deliberately short: everything else about the project is
+    // already recorded on the server.
+    source: {
+        title: "Where the Project Lives",
+        subtitle: "Point Studio at the server that holds the project, and choose where to keep your copy.",
+        server: {
+            title: "Server",
+            description: "The address of the project on its version-control server.",
+        },
+        addressLabel: "Project address",
+        addressHint: "Ask whoever set up the project for this address.",
+        // Names what is missing rather than saying "invalid": the mistake this catches is almost
+        // always an address with the server but not the project name on the end.
+        addressInvalid: "A project address needs the project's name on the end, like lore://studio.example.lan:41337/my-game",
+        parsedServer: "Server",
+        parsedName: "Project on the server",
+        destination: {
+            title: "Destination",
+            description: "Where the copy is kept on this machine.",
+        },
+        destinationLabel: "Where to put it",
+        // Said before they choose, not after: the emptiness check runs in the main process and a
+        // refusal there is a refusal after the author has already committed to the folder.
+        destinationHint: "Must be a new or empty folder.",
+        destinationWillBeCreated: "This folder will be created when the project is copied down",
+    },
+    // The clone flow's last page - the one that touches the network.
+    clone: {
+        title: "Get the Project",
+        subtitle: "Nothing has been downloaded yet. This copies the whole project onto this machine.",
+        summary: {
+            title: "What Will Be Copied",
+            description: "Check this before starting; the whole project comes over the network.",
+        },
+        // No percentage: the backend reports a clone's progress only once it has finished, so a
+        // bar here would sit at zero and then disappear.
+        working: "Copying the project from the server. This can take a while.",
+        error: {
+            failedTitle: "Could not get the project",
+            generic: "Could not get the project from the server.",
+            // A Lore server holds repositories, and a repository is not necessarily a Studio
+            // project. The files are named because they are real, they are why this folder cannot
+            // be reused, and nothing else on screen says where they went.
+            notAProjectTitle: "This is not a NarraLeaf Studio project",
+            notAProject: "The copy finished, but it contains no Studio project file, so Studio cannot open it. What was copied is in {path}. Check the address with whoever set up the project, then choose a different empty folder and try again.",
         },
     },
     review: {

@@ -1,58 +1,75 @@
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/lib/components/elements";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { WizardStep } from "../types";
+import { ProjectFlow, StepConfig, WizardStep } from "../types";
 
 /**
  * Props for WizardNavigation component
  */
 interface WizardNavigationProps {
+    /** The pages of the flow the author is in, in order. */
+    steps: StepConfig[];
     currentStep: WizardStep;
+    flow: ProjectFlow;
     canProceed: boolean;
-    isCreatingProject: boolean;
+    /** A project is being written or copied down. Nothing may move while it is. */
+    isBusy: boolean;
     onPrevStep: () => void;
     onNextStep: () => void;
-    onCreateProject: () => void;
+    /** The last page's action: create the project, or fetch it from its server. */
+    onFinish: () => void;
     onCancel: () => void;
 }
 
 /**
  * Navigation component for the project wizard
+ *
+ * The page list is passed in rather than known here, because the two flows have different ones -
+ * a hard-coded array would put the primary button on the wrong page of the clone flow, which is
+ * the page that starts a network transfer.
  */
 export function WizardNavigation({
+    steps,
     currentStep,
+    flow,
     canProceed,
-    isCreatingProject,
+    isBusy,
     onPrevStep,
     onNextStep,
-    onCreateProject,
+    onFinish,
     onCancel
 }: WizardNavigationProps) {
     const { t } = useTranslation();
-    const isLastStep = currentStep === "review";
-    const currentStepIndex = ["template", "details", "settings", "review"].indexOf(currentStep);
+    const currentStepIndex = steps.findIndex(step => step.key === currentStep);
+    const isLastStep = currentStepIndex === steps.length - 1;
+
+    const finishLabel = flow === "clone"
+        ? (isBusy ? t("wizard.nav.cloning") : t("wizard.nav.cloneProject"))
+        : (isBusy ? t("wizard.nav.creating") : t("wizard.nav.createProject"));
 
     return (
         <div className="flex items-center justify-between p-6 border-t border-edge">
+            {/* Locked while a project is being written or copied down: both leave a folder
+                half-populated if abandoned, and the clone has a server on the other end. */}
             <Button
                 variant="ghost"
                 onClick={onPrevStep}
-                disabled={currentStepIndex === 0}
+                disabled={currentStepIndex <= 0 || isBusy}
             >
                 <ChevronLeft className="w-4 h-4 mr-2" />
                 {t("common.back")}
             </Button>
 
             <div className="flex items-center gap-2">
-                <Button variant="ghost" onClick={onCancel}>
+                <Button variant="ghost" onClick={onCancel} disabled={isBusy}>
                     {t("common.cancel")}
                 </Button>
                 {isLastStep ? (
                     <Button
-                        onClick={onCreateProject}
-                        disabled={!canProceed || isCreatingProject}
+                        onClick={onFinish}
+                        disabled={!canProceed || isBusy}
                     >
-                        {isCreatingProject ? t("wizard.nav.creating") : t("wizard.nav.createProject")}
+                        {finishLabel}
                     </Button>
                 ) : (
                     <Button
