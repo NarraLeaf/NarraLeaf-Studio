@@ -1809,6 +1809,22 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     >
                         <BookOpen className="h-4 w-4" />
                     </button>
+                    {/* The preview toggle used to float over the bottom-right corner of the prose,
+                        where it covered the last rows and read as part of the text surface. It
+                        belongs with the other editor controls — the divider keeps it legible as an
+                        action that opens a pane rather than a fourth view toggle, and it keeps its
+                        label because it is the one control here worth naming. */}
+                    <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-edge" />
+                    <button
+                        type="button"
+                        onClick={togglePreview}
+                        title={previewOpen ? t("story.preview.closePreview") : t("story.preview.openPreview")}
+                        aria-pressed={previewOpen}
+                        className={["flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors", previewOpen ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
+                    >
+                        <MonitorPlay className="h-4 w-4" />
+                        {t("story.preview.label")}
+                    </button>
                 </div>
             </div>
 
@@ -2066,15 +2082,6 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 visible={densityMenu.menuState.visible}
                 onClose={densityMenu.hideMenu}
             />
-            <button
-                type="button"
-                className={`absolute bottom-3 right-3 z-[5] flex items-center gap-1.5 rounded-lg border border-edge px-2.5 py-1.5 text-xs shadow-lg transition-colors ${previewOpen ? "bg-primary/20 text-primary" : "bg-surface-overlay text-fg-muted hover:bg-fill"}`}
-                onClick={togglePreview}
-                title={previewOpen ? t("story.preview.closePreview") : t("story.preview.openPreview")}
-            >
-                <MonitorPlay className="h-4 w-4" />
-                {t("story.preview.label")}
-            </button>
             </div>
             {previewOpen && previewMode === "dock" ? (
                 <>
