@@ -109,15 +109,49 @@ async function ensureTextTab(d) {
     });
     if (!open) {
         await openAssetsPanel(d);
-        const row = await A.call(d, function (name) {
+
+        // Expand Other first. A collapsed section keeps its children in a `height:0;
+        // overflow:hidden` box, and they go on returning perfectly ordinary rects from inside it -
+        // one of these rows measured *above* its own header. Clicking those coordinates hits
+        // whatever is really painted there, the click does nothing, and it reads exactly like
+        // "clicking a text asset no longer opens it". That cost a wrong regression call.
+        await A.call(d, function () {
+            const header = document.querySelector('[data-asset-category="other"]');
+            if (!header) return false;
+            const body = header.parentElement && header.parentElement.children[1];
+            if (body && body.getBoundingClientRect().height === 0) {
+                const toggle = header.querySelector('button');
+                if (toggle) toggle.click();
+            }
+            return true;
+        });
+        await A.sleep(700);
+
+        const findRow = (name) => A.call(d, function (n) {
             const el = Array.from(document.querySelectorAll('*'))
-                .find((e) => e.children.length === 0 && (e.textContent || '').trim() === name);
-            if (!el) return null;
+                .find((e) => e.children.length === 0 && (e.textContent || '').trim() === n);
+            if (!el) return { found: false };
             el.scrollIntoView({ block: 'center' });
+            return { found: true };
+        }, name);
+        const measureRow = (name) => A.call(d, function (n) {
+            const el = Array.from(document.querySelectorAll('*'))
+                .find((e) => e.children.length === 0 && (e.textContent || '').trim() === n);
+            if (!el) return { found: false };
             const r = el.getBoundingClientRect();
-            return { cx: Math.round(r.x + r.width / 2), cy: Math.round(r.y + r.height / 2) };
-        }, ASSET_NAME);
-        if (!row) throw new Error(`SETUP GUARD: ${ASSET_NAME} is not in the sidebar`);
+            const cx = Math.round(r.x + r.width / 2);
+            const cy = Math.round(r.y + r.height / 2);
+            const hit = document.elementFromPoint(cx, cy);
+            // Strict on purpose: `hit.contains(el)` - the check the shared probe also accepts -
+            // is true for any ancestor, so a clipped row inside a collapsed section passes it
+            // while being invisible. Only the element itself or something inside it counts.
+            return { found: true, cx, cy, reachable: Boolean(hit && (hit === el || el.contains(hit))) };
+        }, name);
+
+        if (!(await findRow(ASSET_NAME)).found) throw new Error(`SETUP GUARD: ${ASSET_NAME} is not in the sidebar`);
+        await A.sleep(500);
+        const row = await measureRow(ASSET_NAME);
+        if (!row.reachable) throw new Error(`SETUP GUARD: ${ASSET_NAME} has a rect but nothing paints there — ${JSON.stringify(row)}`);
         await d.click(row.cx, row.cy);
         await A.sleep(2500);
     }
@@ -161,14 +195,21 @@ async function phaseStrip() {
             const editor = root.querySelector('.monaco-editor');
             const rootR = root.getBoundingClientRect();
             const edR = editor.getBoundingClientRect();
+            // The strip is not unconditionally gone: it comes back for a plugin contribution and for
+            // a read/write error, which is where the error text now lives. Report which, so a red
+            // here says whether the layout regressed or the file simply failed to load.
+            const stripText = (root.innerText || '').replace((editor.innerText || ''), '').replace(/\s+/g, ' ').trim();
             return {
                 gapBelowEditor: Math.round((rootR.y + rootR.height) - (edR.y + edR.height)),
                 hasEncodingToken: Boolean(root.querySelector('[data-text-editor-encoding]')),
+                pluginControls: root.querySelectorAll('[data-text-editor-preview-id], [data-text-editor-action-id]').length,
+                residualText: stripText.slice(0, 80),
             };
         });
         if (!shape) throw new Error('SETUP GUARD: no text editor tab root on screen');
         run.check('S-1', 'the tab has no bottom strip of its own (editor reaches the bottom of the tab)',
-            shape.gapBelowEditor <= 2, `${shape.gapBelowEditor}px below the editor`);
+            shape.gapBelowEditor <= 2,
+            `${shape.gapBelowEditor}px below the editor; plugin controls ${shape.pluginControls}; residual "${shape.residualText}"`);
         run.check('S-2', 'the encoding control no longer lives inside the tab',
             shape.hasEncodingToken === false, `token inside tab: ${shape.hasEncodingToken}`);
         await d.screenshot('sb-tab-no-strip');
