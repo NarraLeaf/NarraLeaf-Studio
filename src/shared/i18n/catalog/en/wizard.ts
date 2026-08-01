@@ -1,14 +1,19 @@
 /**
- * `wizard` - the new-project wizard.
+ * `wizard` - the add-project wizard.
  *
- * Two flows behind one entry point: `template -> details -> settings -> review` writes a project
- * here, and `template -> source -> clone` copies one down from a version-control server. The
- * `steps.*` entries cover every page of both.
+ * Three flows behind one entry point, chosen on the first page:
+ * `template -> details -> settings -> review` writes a new project here,
+ * `template -> import` unpacks one from a `.nlspkg`, and
+ * `template -> source -> clone` copies one down from a version-control server.
+ * The `steps.*` entries cover every page of all three.
+ *
+ * Titled "Add" rather than "Create": two of the three flows create nothing, they bring in a
+ * project somebody else already made.
  */
 export const wizard = {
-    appTitle: "New Project",
+    appTitle: "Add Project",
     header: {
-        title: "Create New Project",
+        title: "Add a Project",
         stepIndicator: "Step {current} of {total}",
     },
     steps: {
@@ -36,12 +41,20 @@ export const wizard = {
             label: "Get Project",
             description: "Copy it onto this machine",
         },
+        import: {
+            label: "Import",
+            description: "Unpack it onto this machine",
+        },
     },
     nav: {
         createProject: "Create Project",
         creating: "Creating…",
         cloneProject: "Get Project",
         cloning: "Getting…",
+        // Names the next thing that happens - a file dialog - rather than the whole operation,
+        // because that dialog opening unannounced is the confusing part.
+        importProject: "Choose Package…",
+        importing: "Importing…",
     },
     error: {
         createFailedTitle: "Failed to Create Project",
@@ -56,14 +69,19 @@ export const wizard = {
         appId: "App ID",
     },
     template: {
-        title: "Choose a Project Template",
-        subtitle: "Select a project template to get started quickly with pre-configured structure and settings.",
-        // Template option labels - keyed by the template `id` in constants.ts.
+        title: "Where Is This Project Coming From?",
+        subtitle: "Start something new, or bring in a project that already exists.",
+        // Option labels - keyed by the card `id` in constants.ts.
         options: {
             empty: {
                 name: "Empty",
                 description: "Start with a blank project and build from scratch",
                 category: "Custom",
+            },
+            import: {
+                name: "From a package",
+                description: "Unpack a project someone exported as a .nlspkg file",
+                category: "Existing project",
             },
             clone: {
                 name: "From a server",
@@ -127,6 +145,29 @@ export const wizard = {
             hourly: "Hourly",
             daily: "Daily",
             weekly: "Weekly",
+        },
+    },
+    // The import flow's only page. It collects nothing - both choices are made in native dialogs
+    // once the button is pressed - so its job is to say what is about to appear.
+    import: {
+        title: "Import a Project Package",
+        subtitle: "Unpack a .nlspkg file into a folder on this machine.",
+        steps: {
+            title: "What Happens Next",
+            description: "Two dialogs open in turn, then the project is unpacked.",
+            pickPackage: "First: choose the .nlspkg file to unpack.",
+            pickFolder: "Then: choose the folder to unpack it into.",
+        },
+        // NOT "unpacking". For almost all of the time this is on screen the author is standing in
+        // front of a file dialog and nothing is being unpacked - saying otherwise is a spinner
+        // that lies about what it is waiting for, and it reads as a hang if they alt-tab away
+        // from the dialog and come back.
+        working: "Waiting for you to choose a package and a folder. Unpacking starts once both are picked.",
+        error: {
+            failedTitle: "Could not import the project",
+            generic: "Could not import the project package.",
+            notAProjectTitle: "This is not a NarraLeaf Studio project",
+            notAProject: "The package unpacked, but it contains no Studio project file, so Studio cannot open it. What was unpacked is in {path}. Check you were given the right file, then try again.",
         },
     },
     // The clone flow's first page. Deliberately short: everything else about the project is

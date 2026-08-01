@@ -5,21 +5,18 @@ import { ContextMenu, IconButton, Input, Modal, dialogFooterButtonClass } from "
 import type { ContextMenuDef } from "@/lib/components/elements";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
-import { AlertTriangle, CloudDownload, FolderOpen, MoreVertical, Plus, Search, Upload, X } from "lucide-react";
+import { AlertTriangle, FolderOpen, MoreVertical, Plus, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { collapseHomePath, normalizeProjectPath } from "@shared/utils/recentProject";
 import { useHomeDir } from "@/lib/app/hooks/useHomeDir";
 import { useMissingRecentProjects, useRecentProjects, useRemoveRecentProject } from "@/lib/app/hooks/useRecentProjects";
 import { createProjectFromWizard, openProjectFromFolder, relocateRecentProject } from "../projectActions";
-import { CloneProjectModal } from "../components/CloneProjectModal";
 import { projectAvatarColor, projectInitials } from "../projectAvatar";
 
 export function ProjectsTab() {
     const { t } = useTranslation();
     const [isOpening, setIsOpening] = useState(false);
-    const [isImporting, setIsImporting] = useState(false);
     const [operationError, setOperationError] = useState<string | null>(null);
-    const [cloning, setCloning] = useState(false);
     // Live, so a project opened or removed from another window shows up here too.
     const recentProjects = useRecentProjects();
     const removeRecentProject = useRemoveRecentProject();
@@ -33,7 +30,7 @@ export function ProjectsTab() {
     // The row whose overflow menu is open, with the screen point to anchor it to.
     const [rowMenu, setRowMenu] = useState<{ project: RecentlyOpenedProject; x: number; y: number } | null>(null);
     const homeDir = useHomeDir();
-    const isBusy = isOpening || isImporting;
+    const isBusy = isOpening;
 
     // Plain case-insensitive substring, over name *and* path. Matching the path is what makes this
     // worth having: several projects can share a name ("Demo", "test"), and where they live is
@@ -138,7 +135,13 @@ export function ProjectsTab() {
         ];
     };
 
-    const handleNewProject = async () => {
+    /**
+     * The one way in for a project that is not already on this disk.
+     *
+     * Still `createProjectFromWizard` - the wizard is what widened, not this call. It now asks
+     * *how* the project should arrive (blank, package, server) before asking anything else.
+     */
+    const handleAddProject = async () => {
         if (isBusy) return;
         setOperationError(null);
         const error = await createProjectFromWizard();
@@ -162,33 +165,6 @@ export function ProjectsTab() {
             setOperationError(error instanceof Error ? error.message : String(error));
         } finally {
             setIsOpening(false);
-        }
-    };
-
-    const handleImportProject = async () => {
-        if (isBusy) return;
-
-        setIsImporting(true);
-        setOperationError(null);
-        try {
-            const result = await getInterface().workspace.importProjectPackage();
-            if (!result.success) {
-                setOperationError(result.error || t("launcher.projects.errorImport"));
-                return;
-            }
-            if (result.data.canceled || !result.data.projectPath) {
-                return;
-            }
-
-            await getInterface().workspace.launch(
-                { projectPath: result.data.projectPath },
-                true
-            );
-        } catch (error) {
-            console.error("Error importing project:", error);
-            setOperationError(error instanceof Error ? error.message : String(error));
-        } finally {
-            setIsImporting(false);
         }
     };
 
@@ -220,6 +196,15 @@ export function ProjectsTab() {
                         className="bg-transparent border-transparent focus:border-edge-strong"
                     />
                 </div>
+                {/* Two buttons, and they answer the only two questions there are: is this project
+                    already on this disk, or does it have to be brought in from somewhere?
+
+                    There used to be four. A cloud-download and an upload arrow sat here as
+                    separate, unlabelled entry points for "from a server" and "from a package" -
+                    two of the three ways to add a project, given equal billing with the toolbar's
+                    other icons and no hint that they belonged together. They are now the second
+                    and third cards on the wizard's first page, where the question they answer is
+                    written down. */}
                 <IconButton
                     variant="ghost"
                     size="sm"
@@ -230,35 +215,13 @@ export function ProjectsTab() {
                 >
                     <FolderOpen className="h-4 w-4" />
                 </IconButton>
-                {/* Beside "open a folder", because that is the same question asked of a project
-                    that is somewhere else: this one is on a server rather than on this disk. */}
                 <IconButton
                     variant="ghost"
                     size="sm"
-                    onClick={() => setCloning(true)}
+                    onClick={handleAddProject}
                     disabled={isBusy}
-                    title={t("launcher.projects.clone.title")}
-                    aria-label={t("launcher.projects.clone.title")}
-                >
-                    <CloudDownload className="h-4 w-4" />
-                </IconButton>
-                <IconButton
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleImportProject}
-                    disabled={isBusy}
-                    title={t("launcher.projects.importProject")}
-                    aria-label={t("launcher.projects.importProject")}
-                >
-                    <Upload className="h-4 w-4" />
-                </IconButton>
-                <IconButton
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleNewProject}
-                    disabled={isBusy}
-                    title={t("launcher.projects.newProject")}
-                    aria-label={t("launcher.projects.newProject")}
+                    title={t("launcher.projects.addProject")}
+                    aria-label={t("launcher.projects.addProject")}
                 >
                     <Plus className="h-4 w-4" />
                 </IconButton>
@@ -278,12 +241,12 @@ export function ProjectsTab() {
                     <div className="flex flex-col items-center gap-2 px-3 py-10">
                         <button
                             type="button"
-                            onClick={handleNewProject}
+                            onClick={handleAddProject}
                             disabled={isBusy}
                             className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-3 py-1.5 text-sm text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
                         >
                             <Plus className="h-4 w-4" />
-                            {t("launcher.projects.newProject")}
+                            {t("launcher.projects.addProject")}
                         </button>
                         <button
                             type="button"
@@ -383,7 +346,6 @@ export function ProjectsTab() {
                     onClose={() => setMissingTarget(null)}
                 />
             )}
-            <CloneProjectModal isOpen={cloning} onClose={() => setCloning(false)} />
         </div>
     );
 }
