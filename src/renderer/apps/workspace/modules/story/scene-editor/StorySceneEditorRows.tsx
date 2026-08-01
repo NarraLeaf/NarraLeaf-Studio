@@ -1605,9 +1605,7 @@ export function InsertRow(props: {
     // menu until the next keystroke clears it (see the controller), so it forces "none" here.
     const chooser = props.mode.chooserDismissed ? "none" : insertChooserType(value, props.slashAtAlias);
     const menuAnchorRef = useRef<HTMLDivElement | null>(null);
-    // The tallest of the three menus this frame places: the command menu's 288px body plus its key
-    // strip. Under-guess it and a menu that does not fit below the line is placed below anyway.
-    const menuFrame = useAnchoredMenuFrame(menuAnchorRef, chooser !== "none", 320);
+    const menuFrame = useAnchoredMenuFrame(menuAnchorRef, chooser !== "none", 312);
     const pluginCommands = useStoryPluginActionCommands();
     const actionOptions = useMemo<PaletteActionCommand[]>(
         () => searchActionCommands(
@@ -2356,9 +2354,10 @@ function ActionCommandMenu(props: {
         >
             {/* A fixed height, not a cap. Under `max-h`, the box took the taller column's height, and
                 the category column is 284px against the cap's 288 — so a category whose commands did
-                not fill the panel (镜头 has one, 工具 three) shrank the whole menu by those 4px and put
-                the key strip back down again on the way out. The menu is the same size whatever is
-                open; only the right column scrolls. */}
+                not fill the panel (镜头 has one, 工具 three) shrank the whole menu by those 4px and
+                grew it back on the way out. Switching category is the one thing this column exists
+                for, and it flinched every time. Same size whatever is open; only the right column
+                scrolls. */}
             <div className="flex h-72">
                 {/* Pointer-only, by design: the arrows belong to the caret in the line being typed.
                     So the chosen category wears a plain fill and the accent stays on the command row —
@@ -2391,29 +2390,8 @@ function ActionCommandMenu(props: {
                     {rows}
                 </div>
             </div>
-            {/* Every key this menu answers to, and no more — ←/→ are absent because they are the
-                caret's, and a strip that listed them would be teaching the wrong thing. */}
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-edge bg-surface-sunken px-2 py-1.5">
-                <MenuKeyHint keys={["↑", "↓"]} label={t("story.actionCreator.hint.move")} />
-                <MenuKeyHint keys={["Enter"]} label={t("story.actionCreator.hint.insert")} />
-                <MenuKeyHint keys={["Esc"]} label={t("story.actionCreator.hint.dismiss")} />
-            </div>
         </div>,
         globalThis.document.body,
-    );
-}
-
-/** One key (or one pair of them) and what it does, in the menu's footer. */
-function MenuKeyHint({ keys, label }: { keys: readonly string[]; label: string }) {
-    return (
-        <span className="flex shrink-0 items-center gap-1 text-2xs text-fg-subtle">
-            {keys.map(key => (
-                <kbd key={key} className="rounded-md border border-edge bg-fill-subtle px-1 py-px font-sans text-2xs leading-none text-fg-muted">
-                    {key}
-                </kbd>
-            ))}
-            <span>{label}</span>
-        </span>
     );
 }
 

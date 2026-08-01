@@ -4,6 +4,7 @@ import { WizardHeader, WizardNavigation } from "./components";
 import { useProjectWizard } from "./hooks/useProjectWizard";
 import { CloneStep } from "./steps/CloneStep";
 import { DetailsStep } from "./steps/DetailsStep";
+import { ImportStep } from "./steps/ImportStep";
 import { ReviewStep } from "./steps/ReviewStep";
 import { SettingsStep } from "./steps/SettingsStep";
 import { SourceStep } from "./steps/SourceStep";
@@ -24,6 +25,7 @@ const STEP_LABEL_KEYS: Record<WizardStep, { label: TranslationKey; description: 
     review: { label: "wizard.steps.review.label", description: "wizard.steps.review.description" },
     source: { label: "wizard.steps.source.label", description: "wizard.steps.source.description" },
     clone: { label: "wizard.steps.clone.label", description: "wizard.steps.clone.description" },
+    import: { label: "wizard.steps.import.label", description: "wizard.steps.import.description" },
 };
 
 /**
@@ -48,6 +50,8 @@ export function ProjectWizardApp() {
         creationError,
         cloneStatus,
         cloneFailure,
+        importStatus,
+        importFailure,
         updateProjectName,
         updateAppId,
         updateProjectData,
@@ -57,6 +61,7 @@ export function ProjectWizardApp() {
         handleLocationFocus,
         handleSelectDirectory,
         cloneProject,
+        importProject,
         nextStep,
         prevStep,
         createProject,
@@ -86,12 +91,17 @@ export function ProjectWizardApp() {
     /**
      * The last page's action, whichever flow it belongs to.
      *
-     * A clone reports into `CloneStep` rather than into the shared error panel below: its two
-     * failures need the destination path alongside them, and that is the page that has it.
+     * Clone and import report into their own pages rather than into the shared error panel below:
+     * both have a "this is not a Studio project" failure that needs the destination path beside
+     * it, and those are the pages that have it.
      */
     const handleFinish = () => {
         if (flow === "clone") {
             void cloneProject();
+            return;
+        }
+        if (flow === "import") {
+            void importProject();
             return;
         }
         void handleCreateProject();
@@ -162,6 +172,8 @@ export function ProjectWizardApp() {
                         cloneFailure={cloneFailure}
                     />
                 );
+            case "import":
+                return <ImportStep importStatus={importStatus} importFailure={importFailure} />;
             default:
                 return null;
         }
@@ -214,7 +226,7 @@ export function ProjectWizardApp() {
                     currentStep={currentStep}
                     flow={flow}
                     canProceed={canProceed()}
-                    isBusy={isCreatingProject || cloneStatus !== "idle"}
+                    isBusy={isCreatingProject || cloneStatus !== "idle" || importStatus !== "idle"}
                     onPrevStep={prevStep}
                     onNextStep={nextStep}
                     onFinish={handleFinish}

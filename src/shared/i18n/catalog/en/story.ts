@@ -280,13 +280,6 @@ export const story = {
         noActions: "No action found.",
         addStarred: "Add to starred",
         removeStarred: "Remove from starred",
-        // The `@` menu's footer. Verbs, not nouns: the strip says what a key does. It lists the
-        // menu's whole keyboard — ←/→ are the caret's, so the category column is not on it.
-        hint: {
-            move: "Select",
-            insert: "Insert",
-            dismiss: "Close",
-        },
     },
     music: {
         missingAudio: "Missing audio",

@@ -4,11 +4,15 @@ import { findProjectConfigFileName } from "@shared/utils/nlproj";
 import type { RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
 
 /**
- * The launcher's "new project" and "open project" flows.
+ * The launcher's "add project" and "open project" flows.
  *
  * Extracted from the Projects tab so the macOS File menu can drive the same code: the menu is
  * handled at the app level (a tab can be unmounted when the user is on another tab), and two
  * copies of these flows would drift.
+ *
+ * **Two, and there used to be four.** Getting a project off a server and unpacking one from a
+ * package were separate entry points here; they are now cards on the wizard's first page, so the
+ * only two questions left are "somewhere on this disk" and "bring one in".
  *
  * Each returns an error message to display, or null when it succeeded or the user cancelled.
  */
@@ -43,34 +47,6 @@ export async function openProjectFromFolder(): Promise<string | null> {
     await getInterface().workspace.launch(
         { projectPath: result.data.path },
         true,
-    );
-    return null;
-}
-
-/**
- * Copy a project from a version-control server onto this machine, then open it.
- *
- * **The one entry point that creates a project without a wizard**, and the only way a second
- * person ever gets a project that lives on a server - which is why it is in the launcher rather
- * than in the workspace: at the moment it is needed, the author has no project open to be in.
- *
- * The address is the whole one the project's owner hands out (`lore://host:41337/my-game`),
- * including the name at the end - that name is what the server knows the repository by, and a
- * URL without it is rejected outright. The destination is picked with the ordinary folder
- * picker; the main process refuses one that already holds anything, because the backend writes
- * into whatever it is pointed at without asking.
- *
- * Long: the whole project comes over the network. The caller owns the progress state.
- */
-export async function cloneProjectFromServer(url: string, destination: string): Promise<string | null> {
-    const result = await getInterface().vcs.clone(url.trim(), destination);
-    if (!result.success) {
-        return result.error || translate("launcher.projects.clone.error");
-    }
-
-    await getInterface().workspace.launch(
-        { projectPath: result.data.root },
-        true, // Close the launcher, exactly as opening a folder does.
     );
     return null;
 }
