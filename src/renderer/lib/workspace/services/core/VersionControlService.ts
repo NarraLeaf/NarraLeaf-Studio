@@ -9,7 +9,10 @@ import type {
     VcsFileChange,
     VcsHistoryEntry,
     VcsInitOptions,
+    VcsPushResult,
     VcsRepositoryInfo,
+    VcsSyncResult,
+    VcsSyncState,
     VcsRestoreOptions,
     VcsRestoreResult,
     VcsStatus,
@@ -546,6 +549,129 @@ export class VersionControlService extends Service<VersionControlService> implem
 
     private freezeService(): WorkspaceFreezeService {
         return this.getContext().services.get<WorkspaceFreezeService>(Services.WorkspaceFreeze);
+    }
+
+    // -- remote ---------------------------------------------------------------
+
+    /**
+     * The server this project synchronises with, or null when it has none.
+     *
+     * A LOCAL read - it reads the repository's own config and opens no socket - so it is
+     * safe to ask on opening the panel, which is the whole reason it is separate from
+     * {@link getSyncState}. Answers null rather than throwing on an unavailable backend,
+     * so a caller can use it as a plain "is there a server" check.
+     */
+    public async getRemote(): Promise<string | null> {
+        if (!(await this.isAvailable())) return null;
+        const result = await getInterface().vcs.getRemote(this.projectPath());
+        return result.success ? result.data.url : null;
+    }
+
+    /**
+     * Point this project at a server, or disconnect it with null.
+     *
+     * Throws on failure, because the author asked for it and a setting that silently did
+     * not save is worse than one that reported why.
+     *
+     * **Does not contact the server**, deliberately: setting up and reaching are separate
+     * acts, so this works with the network down and answers instantly. Whether anyone is
+     * there is the next question, and it is the author's to ask.
+     */
+    public async setRemote(url: string | null): Promise<string | null> {
+        const availability = await this.getAvailability();
+        if (!availability.available) {
+            throw new Error(`Version control is not available on this machine (${availability.reason})`);
+        }
+        const result = await getInterface().vcs.setRemote(this.projectPath(), url);
+        if (!result.success) throw new Error(result.error);
+        return result.data.url;
+    }
+
+    /**
+     * Where this branch stands against its server.
+     *
+     * **The one read on this service that waits on a network.** Measured at up to ~2s
+     * when nothing answers, which is why it is never called on project open and never on
+     * a timer - the same rule as `refreshStatus`, arrived at for a different reason
+     * (latency rather than the scan's side effects). Call it when the author opens the
+     * server section, presses refresh, or right after a push or sync.
+     *
+     * An unreachable server is `remoteAvailable: false`, not an error.
+     */
+    public async getSyncState(): Promise<VcsSyncState | null> {
+        if (!(await this.isAvailable())) return null;
+        const result = await getInterface().vcs.getSyncState(this.projectPath());
+        return result.success ? result.data : null;
+    }
+
+    /**
+     * Send this branch's revisions to the server.
+     *
+     * Throws on failure with the backend's own words, which for the failure that actually
+     * happens - a diverged branch - already name the remedy. Nothing local changes, so a
+     * failure leaves the project exactly as it was and the author can simply sync and
+     * press again.
+     */
+    public async push(): Promise<VcsPushResult> {
+        const availability = await this.getAvailability();
+        if (!availability.available) {
+            throw new Error(`Version control is not available on this machine (${availability.reason})`);
+        }
+        const result = await getInterface().vcs.push(this.projectPath());
+        if (!result.success) throw new Error(result.error);
+        return result.data;
+    }
+
+    /**
+     * Bring the server's revisions down, then re-read everything they made wrong.
+     *
+     * **This is a working-tree write, so it carries `restoreRevision`'s whole contract**
+     * and for the same reason: main rewrites project files without passing the renderer's
+     * write latch, so afterwards every document this window holds describes something
+     * that is no longer on disk - and the next auto-save would put it back. The hold, the
+     * `afterRevision`, and the thaw-or-reload below are therefore not optional, and the
+     * ordering is the one `restoreRevision` documents.
+     *
+     * The hold matters more here than it looks: a sync can take a while on a real
+     * project, and any other way out of a revision view during it - the palette, the
+     * switcher, a keybinding - would re-read a tree that is half one version and half
+     * another.
+     *
+     * A conflicted sync resolves SUCCESSFULLY carrying `conflicts`. That is not
+     * squeamishness: by then the tree is written, so reporting a failure would tell the
+     * author nothing happened while their files say otherwise. The caller shows the list
+     * and says Studio cannot resolve them yet.
+     */
+    public async sync(): Promise<VcsSyncResult> {
+        const availability = await this.getAvailability();
+        if (!availability.available) {
+            throw new Error(`Version control is not available on this machine (${availability.reason})`);
+        }
+        const freeze = this.freezeService();
+        const release = freeze.holdRelease();
+        let result;
+        try {
+            result = await getInterface().vcs.sync(this.projectPath());
+        } finally {
+            // Before leaving the view, exactly as in `restoreRevision`: a sync still
+            // holding its own hold would refuse its own thaw.
+            release();
+        }
+        if (!result.success) throw new Error(result.error);
+
+        // Nothing arrived, so nothing on screen is stale and there is no reason to make
+        // every editor re-read. The head has not moved either.
+        if (result.data.alreadyCurrent) return result.data;
+
+        this.afterRevision();
+        if (freeze.isFrozen()) {
+            freeze.thaw();
+        } else {
+            await this.getContext().services
+                .get<WorkspaceReloadService>(Services.WorkspaceReload)
+                .reload("restore");
+        }
+        return result.data;
     }
 
     /** Paths that differ between two revisions - the filter before diffing. */

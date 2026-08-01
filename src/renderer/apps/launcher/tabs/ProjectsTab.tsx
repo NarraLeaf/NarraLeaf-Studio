@@ -5,12 +5,13 @@ import { ContextMenu, IconButton, Input, Modal, dialogFooterButtonClass } from "
 import type { ContextMenuDef } from "@/lib/components/elements";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
-import { AlertTriangle, FolderOpen, MoreVertical, Plus, Search, Upload, X } from "lucide-react";
+import { AlertTriangle, CloudDownload, FolderOpen, MoreVertical, Plus, Search, Upload, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { collapseHomePath, normalizeProjectPath } from "@shared/utils/recentProject";
 import { useHomeDir } from "@/lib/app/hooks/useHomeDir";
 import { useMissingRecentProjects, useRecentProjects, useRemoveRecentProject } from "@/lib/app/hooks/useRecentProjects";
 import { createProjectFromWizard, openProjectFromFolder, relocateRecentProject } from "../projectActions";
+import { CloneProjectModal } from "../components/CloneProjectModal";
 import { projectAvatarColor, projectInitials } from "../projectAvatar";
 
 export function ProjectsTab() {
@@ -18,6 +19,7 @@ export function ProjectsTab() {
     const [isOpening, setIsOpening] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
     const [operationError, setOperationError] = useState<string | null>(null);
+    const [cloning, setCloning] = useState(false);
     // Live, so a project opened or removed from another window shows up here too.
     const recentProjects = useRecentProjects();
     const removeRecentProject = useRemoveRecentProject();
@@ -228,6 +230,18 @@ export function ProjectsTab() {
                 >
                     <FolderOpen className="h-4 w-4" />
                 </IconButton>
+                {/* Beside "open a folder", because that is the same question asked of a project
+                    that is somewhere else: this one is on a server rather than on this disk. */}
+                <IconButton
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setCloning(true)}
+                    disabled={isBusy}
+                    title={t("launcher.projects.clone.title")}
+                    aria-label={t("launcher.projects.clone.title")}
+                >
+                    <CloudDownload className="h-4 w-4" />
+                </IconButton>
                 <IconButton
                     variant="ghost"
                     size="sm"
@@ -369,6 +383,7 @@ export function ProjectsTab() {
                     onClose={() => setMissingTarget(null)}
                 />
             )}
+            <CloneProjectModal isOpen={cloning} onClose={() => setCloning(false)} />
         </div>
     );
 }
