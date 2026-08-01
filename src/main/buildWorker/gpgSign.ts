@@ -44,25 +44,52 @@ export type GpgProbeInput = {
     configuredPath?: string;
     env?: NodeJS.ProcessEnv;
     platform?: NodeJS.Platform;
+    /**
+     * The host's well-known install locations, searched after PATH. Defaults to
+     * `MACOS_GPG_DIRS` on macOS and to nothing elsewhere - Windows derives its
+     * own from the environment, and on Linux a gpg that is not on PATH is a
+     * deliberate choice the credential's `gpgPath` covers.
+     *
+     * Injected for the same reason `platform` and `env` are: these are absolute
+     * paths, so a test can only judge the search against a tree it built itself.
+     */
+    fallbackDirs?: string[];
 };
+
+/**
+ * Where macOS keeps a gpg that PATH will not mention.
+ *
+ * A GUI-launched app on macOS does not inherit the login shell's environment -
+ * launchd hands it a PATH of `/usr/bin:/bin:/usr/sbin:/sbin` and nothing else.
+ * Every way of installing gpg on a Mac puts it somewhere outside that: Homebrew
+ * on Apple Silicon, Homebrew on Intel, MacPorts, and GPG Suite in that order.
+ * So the PATH search below finds gpg when Studio was started from a terminal and
+ * misses it when the author double-clicked the icon - the same binary, the same
+ * machine, two different verdicts. This list is what makes the two agree.
+ */
+export const MACOS_GPG_DIRS = ["/opt/homebrew/bin", "/usr/local/bin", "/opt/local/bin", "/usr/local/MacGPG2/bin"];
 
 /**
  * Absolute path of a gpg binary, or null when the host has none.
  *
  * Order: the credential's own path, `GNUPG_PATH`, a native Gpg4win install,
- * anything on PATH, and finally the gpg that ships inside Git for Windows.
+ * anything on PATH, and finally a host-specific fallback - the gpg that ships
+ * inside Git for Windows, or the install locations macOS hides from a
+ * GUI process.
  *
- * That last arm is not a curiosity - on a Windows dev machine it is usually the
- * only gpg there is, and it is invisible to a PATH search because Git puts it
- * under `usr/bin`, which only Git Bash adds. It has to be derived from wherever
- * git itself was found: Git for Windows is routinely installed outside Program
- * Files. It is last because it is an MSYS build with POSIX path semantics,
- * which behaves differently from a native one for anything path-shaped (see
- * `signArtifactsWithGpg` on why we never hand it GNUPGHOME).
+ * Neither fallback is a curiosity. On a Windows dev machine Git's gpg is usually
+ * the only one there is, and it is invisible to a PATH search because Git puts it
+ * under `usr/bin`, which only Git Bash adds; it has to be derived from wherever
+ * git itself was found, since Git for Windows is routinely installed outside
+ * Program Files. It is last because it is an MSYS build with POSIX path
+ * semantics, which behaves differently from a native one for anything
+ * path-shaped (see `signArtifactsWithGpg` on why we never hand it GNUPGHOME).
+ * The macOS arm is explained at `MACOS_GPG_DIRS`.
  */
 export async function findGpg(input: GpgProbeInput = {}): Promise<string | null> {
     const env = input.env ?? process.env;
-    const windows = (input.platform ?? process.platform) === "win32";
+    const platform = input.platform ?? process.platform;
+    const windows = platform === "win32";
     const names = windows ? ["gpg.exe", "gpg2.exe"] : ["gpg", "gpg2"];
     const inDirs = (dirs: string[]): string[] => dirs.flatMap(dir => names.map(name => path.join(dir, name)));
 
@@ -97,7 +124,11 @@ export async function findGpg(input: GpgProbeInput = {}): Promise<string | null>
         return onPath;
     }
 
-    return windows ? findGitBundledGpg(pathDirs) : null;
+    if (windows) {
+        return findGitBundledGpg(pathDirs);
+    }
+    const fallback = input.fallbackDirs ?? (platform === "darwin" ? MACOS_GPG_DIRS : []);
+    return fallback.length > 0 ? firstExistingFile(inDirs(fallback)) : null;
 }
 
 /**

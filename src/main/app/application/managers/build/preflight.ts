@@ -9,8 +9,10 @@ import type {
     GameBuildPlatform,
 } from "@shared/types/gameBuild";
 import { readProjectIconSet, resolveIconFile } from "@shared/types/projectIcons";
+import { signingNotarizes } from "@shared/types/signing";
 import type {
     SigningCertificateExpiry,
+    SigningCredential,
     SigningCredentialKind,
     SigningPlatform,
 } from "@shared/types/signing";
@@ -350,6 +352,7 @@ export type ProjectSigningIds = Partial<Record<SigningPlatform, string>>;
  */
 const SIGNING_PLATFORM_KEYS: Record<SigningPlatform, true> = {
     windows: true,
+    macos: true,
     linux: true,
     android: true,
     ios: true,
@@ -382,8 +385,8 @@ export function readProjectSigningIds(projectConfig: ProjectConfigData | null): 
 
 /**
  * The signing slot a build target draws its credential from, or null when the
- * target has none to draw. Two platforms have none: a web export is files on a
- * server, and macOS signing needs Apple tooling that only runs on a Mac.
+ * target has none to draw. Only a web export has none: it is files on a server,
+ * with nothing to sign and nothing to check a signature.
  *
  * Exhaustive on purpose - the next platform addition must answer this question
  * rather than fall through to "unsigned" unnoticed.
@@ -392,13 +395,14 @@ export function signingPlatformForTarget(platform: GameBuildPlatform): SigningPl
     switch (platform) {
         case "windows":
             return "windows";
+        case "macos":
+            return "macos";
         case "linux":
             return "linux";
         case "android":
             return "android";
         case "ios":
             return "ios";
-        case "macos":
         case "web":
             return null;
     }
@@ -407,33 +411,59 @@ export function signingPlatformForTarget(platform: GameBuildPlatform): SigningPl
 /**
  * Whether this host can sign with a credential of this kind at all.
  *
- * Only one kind is host-bound: a certificate in the Windows certificate store
- * (a hardware token or HSM) is reachable through the Windows CryptoAPI and
- * nothing else - electron-builder refuses it off Windows rather than producing
- * an unsigned artifact. A PFX file signs from any host, and Azure Trusted
- * Signing runs remotely.
+ * Three kinds are host-bound, all for the same underlying reason: the private
+ * key is held by an OS service rather than by a file we could carry anywhere.
+ * A certificate in the Windows certificate store (typically a hardware token or
+ * HSM) is reachable through the Windows CryptoAPI and nothing else, and both
+ * macOS kinds need Apple's `codesign`, which exists only on macOS - the .p12
+ * route included, since a certificate file still has to be imported into a
+ * keychain to be used. electron-builder refuses each of these off its own
+ * platform rather than producing an unsigned artifact.
+ *
+ * A Windows PFX file signs from any host - app-builder-lib signs through
+ * osslsigncode when it is not on Windows - and Azure Trusted Signing runs
+ * remotely.
  */
 export function signingCredentialSupportedOnHost(
     kind: SigningCredentialKind,
     hostPlatform: GameBuildDesktopPlatform,
 ): boolean {
-    return kind !== "windows-store" || hostPlatform === "windows";
+    if (kind === "windows-store") {
+        return hostPlatform === "windows";
+    }
+    if (kind === "macos-keychain" || kind === "macos-apple") {
+        return hostPlatform === "macos";
+    }
+    return true;
 }
 
 /**
- * Whether signing with this kind of credential reaches the network. It matters
- * because every other part of a build is deliberately offline, and an author who
- * builds on an air-gapped machine has to hear about it before the build, not
- * from a timeout.
+ * Whether signing with this credential reaches the network. It matters because
+ * every other part of a build is deliberately offline, and an author who builds
+ * on an air-gapped machine has to hear about it before the build, not from a
+ * timeout.
  *
  * Both Windows file/store paths do: the signature is timestamped by a
  * certificate authority (without which it stops verifying the day the
  * certificate expires), and a host with no Windows SDK also downloads the
- * signing tool. Azure signs remotely by definition. The keystore, Apple and gpg
- * paths are entirely local.
+ * signing tool. Azure signs remotely by definition. Notarizing a macOS build
+ * uploads it to Apple and waits for a verdict, so it does too - but only when
+ * the credential carries a notary key, which is why this takes the credential
+ * and not just its kind. Signing a Mac build without notarizing is local, as are
+ * the keystore, iOS and gpg paths.
  */
-export function signingReachesNetwork(kind: SigningCredentialKind): boolean {
-    return kind === "windows-pfx" || kind === "windows-store" || kind === "windows-azure";
+export function signingReachesNetwork(credential: SigningCredential): boolean {
+    switch (credential.kind) {
+        case "windows-pfx":
+        case "windows-store":
+        case "windows-azure":
+            return true;
+        case "macos-keychain":
+        case "macos-apple":
+            return signingNotarizes(credential);
+        default:
+            return false;
+    }
 }
 
 /**
