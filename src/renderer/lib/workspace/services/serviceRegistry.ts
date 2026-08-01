@@ -21,6 +21,7 @@ import { DevModeService } from "./core/DevModeService";
 import { PreviewService } from "./core/PreviewService";
 import { BuildService } from "./core/BuildService";
 import { LintService } from "./core/LintService";
+import { TestRunService } from "@/lib/testing/TestRunService";
 import { ConsoleService } from "./core/ConsoleService";
 import { UIEditorFontFaceService } from "./ui-editor/UIEditorFontFaceService";
 import { BlueprintNodeCatalogService } from "./ui-editor/BlueprintNodeCatalogService";
@@ -65,6 +66,7 @@ export class ServiceRegistry {
         [Services.Preview]: PreviewService.getInstance(),
         [Services.Build]: BuildService.getInstance(),
         [Services.Lint]: LintService.getInstance(),
+        [Services.TestRun]: TestRunService.getInstance(),
         [Services.Console]: ConsoleService.getInstance(),
         [Services.UIEditorFontFace]: UIEditorFontFaceService.getInstance(),
         [Services.BlueprintNodeCatalog]: BlueprintNodeCatalogService.getInstance(),

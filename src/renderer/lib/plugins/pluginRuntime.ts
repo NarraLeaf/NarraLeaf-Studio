@@ -42,6 +42,8 @@ import { WorkspaceReloadService } from "@/lib/workspace/services/core/WorkspaceR
 import { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
 import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
+import { testRegistry } from "@/lib/testing/registry";
+import { TEST_PROTOCOL_VERSION } from "@/lib/testing/types";
 import type { WorkspacePluginDescriptor } from "@shared/types/plugins";
 import { FsRejectErrorCode } from "@shared/types/os";
 import { pluginStoreNamespace } from "@shared/utils/pluginStorage";
@@ -268,6 +270,22 @@ function assertDeclaredWidget(descriptor: WorkspacePluginDescriptor, type: strin
         throw new Error(
             `Widget type is not declared in manifest contributes.widgets: ${type}. ` +
             "Declare it so Studio can statically validate projects that use it.",
+        );
+    }
+}
+
+/**
+ * Test registrations must match `contributes.tests` for a reason the other two
+ * do not share: the manifest is the only thing that can say what a plugin checks
+ * *before its code runs*. The Launcher lists a plugin's tests from the manifest
+ * alone, so a test that exists only at registration time is one the author is
+ * never told about until they have already installed and loaded the plugin.
+ */
+function assertDeclaredTest(descriptor: WorkspacePluginDescriptor, id: string): void {
+    if (!descriptor.manifest.contributes.tests.includes(id)) {
+        throw new Error(
+            `Test id is not declared in manifest contributes.tests: ${id}. ` +
+            "Declare it so Studio can list what this plugin checks before loading it.",
         );
     }
 }
@@ -538,6 +556,33 @@ export function createPluginApp(
                 formatDate: (value, options) => i18nStore.getTranslator().formatDate(value, options),
                 formatList: (items, options) => i18nStore.getTranslator().formatList(items, options),
                 createTranslator: bundle => createPluginTranslator(bundle),
+            },
+            tests: {
+                protocolVersion: TEST_PROTOCOL_VERSION,
+                register: definition => {
+                    assertOwnedId(descriptor.plugin.id, definition.id, "test");
+                    assertDeclaredTest(descriptor, definition.id);
+                    // `ownerPluginId` is taken from the descriptor, never from the definition:
+                    // a plugin must not be able to attribute its test to somebody else.
+                    return trackReturn(testRegistry.register(definition, {
+                        ownerPluginId: descriptor.plugin.id,
+                        replaceExisting: true,
+                    }));
+                },
+                registerMany: definitions => {
+                    // Validate the whole batch before registering any of it, so a typo in the
+                    // last definition does not leave the first half installed.
+                    for (const definition of definitions) {
+                        assertOwnedId(descriptor.plugin.id, definition.id, "test");
+                        assertDeclaredTest(descriptor, definition.id);
+                    }
+                    return combine(definitions.map(definition => trackReturn(
+                        testRegistry.register(definition, {
+                            ownerPluginId: descriptor.plugin.id,
+                            replaceExisting: true,
+                        }),
+                    )));
+                },
             },
             textEditor: {
                 // Purely imperative, exactly like `ui.panels`: no manifest `contributes` key

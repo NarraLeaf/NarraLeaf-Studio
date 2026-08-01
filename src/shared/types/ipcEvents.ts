@@ -1470,6 +1470,10 @@ export type IPCGameTestEvents = {
         type: IPCMessageType.message,
         consumer: IPCType.Client,
         data: GameTestEventPayload;
+        // Required by `IPCConfiguration` even for a one-way push. Omitting it does not just weaken
+        // this entry: `IPCEvents` stops satisfying the constraint every IPC generic is written
+        // against, so every handler in main and every preload call fails to typecheck at once.
+        response: never;
     };
 };
 

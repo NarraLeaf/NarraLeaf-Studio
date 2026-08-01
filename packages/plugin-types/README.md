@@ -43,6 +43,30 @@ export default defineRuntimePlugin({
 The two are physically isolated at runtime. Importing `narraleaf-studio/plugin`
 from a runtime entry throws — the runtime host has no Studio services.
 
+## Tests
+
+`narraleaf-studio/plugin` also carries the **test protocol** (`TestDefinition` and
+everything it references, plus `TEST_PROTOCOL_VERSION`): checks an author runs
+against their own game from Studio's Run ▸ Test, contributed through
+`app.services.tests`. Nothing to do with your plugin's own unit tests.
+
+```ts
+app.services.tests.register({
+    id: "acme.qa-pack.scene-names",   // declare it in contributes.tests
+    title: { text: "Scenes are named" },
+    presentation: "headless",
+    requires: ["project.read"],
+    async run(ctx) { /* … */ return { status: "passed" }; },
+});
+```
+
+The contract — declaration, capabilities, who may claim which verdict, the
+game-session lifecycle — is
+[`docs/plugin-test-protocol.md`](https://github.com/NarraLeaf/NarraLeaf-Studio/blob/master/docs/plugin-test-protocol.md).
+
+`TEST_PROTOCOL_VERSION` is a compile-time constant; import it with `import type`
+and read the host's own version from `app.services.tests.protocolVersion`.
+
 ## You must mark these external
 
 Both specifiers have to be `external` in your bundler. Studio resolves them (and
