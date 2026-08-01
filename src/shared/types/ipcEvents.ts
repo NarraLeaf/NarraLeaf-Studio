@@ -136,6 +136,7 @@ export enum IPCEventType {
     workspaceImportProjectPackage = "workspace.projectPackage.import",
     workspaceExportConsoleLogs = "workspace.console.exportLogs",
     workspaceConfirmClose = "workspace.confirmClose",
+    workspaceCloseProgress = "workspace.closeProgress",
     workspaceFlushPendingSaves = "workspace.flushPendingSaves",
     workspaceResolveAssetUrl = "workspace.resolveAssetUrl",
     workspaceResolveImageAssetUrl = "workspace.resolveImageAssetUrl",
@@ -270,6 +271,20 @@ export type BlueprintPersistenceProjectRef = {
  * right place to be asked what to say about it.
  */
 export type WorkspaceFreezeKind = "revision" | "manual";
+
+/**
+ * Which part of the close a workspace is currently waiting on.
+ *
+ * The close is a sequence of waits the author cannot see - the last auto-saves going out, then
+ * Lore writing the closing checkpoint, which is the long one - and until this existed the window
+ * simply sat there for those seconds with the title bar still on screen.
+ *
+ * Named stages rather than a fraction because none of the steps can report a fraction: the
+ * checkpoint is one call into the backend that answers when it answers. Naming what is happening
+ * is the honest amount of detail, and it is also the part that answers "why is this taking so
+ * long" - "recording a version" is a reason, "43%" is not.
+ */
+export type WorkspaceCloseStage = "saving" | "checkpoint" | "launcher";
 
 export type IPCEvents = {
     [IPCEventType.getPlatform]: {
@@ -1108,6 +1123,25 @@ export type IPCWorkspaceEvents = {
         consumer: IPCType.Client,
         data: {};
         response: RequestStatus<{ confirmed: boolean }>;
+    };
+    /**
+     * Tells the workspace which stage of its own close is running, so it can say so on screen.
+     *
+     * A message rather than a request: main must not wait on the renderer to acknowledge a
+     * progress note - the whole point of the note is that main is busy with something else - and a
+     * workspace that never renders it still closes exactly as before.
+     *
+     * `stage: null` means the close was called off (the launcher failed to start, so the window
+     * stays open) and the indicator should go away. The ordinary ending needs no message: the
+     * window is destroyed, and the indicator with it.
+     */
+    [IPCEventType.workspaceCloseProgress]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: {
+            stage: WorkspaceCloseStage | null;
+        };
+        response: never;
     };
     /**
      * Tells the workspace to write out every auto-save it still owes, and waits for it.

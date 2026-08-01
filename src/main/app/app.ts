@@ -1,4 +1,4 @@
-import { IPCEventType } from "@shared/types/ipcEvents";
+import { IPCEventType, WorkspaceCloseStage } from "@shared/types/ipcEvents";
 import { WindowAppType, WindowControlPolicy, WindowProps } from "@shared/types/window";
 import { BaseApp, BaseAppConfig } from "./application/baseApp";
 import { getGameHostWindowBackgroundColor } from "./application/theme";
@@ -305,10 +305,12 @@ export class App extends BaseApp {
         // Confirm first, flush second: asking the renderer to write while a modal is up would
         // block on a dialog, and a user who answers "don't close" should keep their timers running
         // rather than get a write they did not ask for.
+        this.reportWorkspaceCloseStage(window, "saving");
         await this.flushWorkspacePendingSaves(window);
 
         // Flush first, check point second: the checkpoint's whole value is that it
         // records what is on disk, and the flush is what puts the last edit there.
+        this.reportWorkspaceCloseStage(window, "checkpoint");
         await this.checkpointBeforeClose(window);
 
         // The app may have started quitting, or the window may be gone, while the sheet was up.
@@ -318,6 +320,7 @@ export class App extends BaseApp {
         }
 
         if (this.globalState.get("workspace.returnToLauncherOnClose")) {
+            this.reportWorkspaceCloseStage(window, "launcher");
             try {
                 await this.ensureLauncher();
             } catch (error) {
@@ -325,11 +328,35 @@ export class App extends BaseApp {
                 // window, and the home the user asked to return to is the thing that failed.
                 // Keeping the workspace open loses nothing and leaves them somewhere to work.
                 this.logger.error("[Workspace] Keeping the window open, the launcher failed to start:", error);
+                // The window is staying, so the "closing" indicator has to go: leaving it up would
+                // put a scrim over a workspace that is fully usable again.
+                this.reportWorkspaceCloseStage(window, null);
                 return;
             }
         }
 
         window.forceClose();
+    }
+
+    /**
+     * Tell a workspace which part of its close is running now.
+     *
+     * Fire and forget by design. This is the window's own progress note; a window that has already
+     * gone, or a renderer that never registered a handler, changes nothing about the close, so a
+     * failure here must not surface as one.
+     */
+    private reportWorkspaceCloseStage(
+        window: AppWindow<WindowAppType.Workspace>,
+        stage: WorkspaceCloseStage | null,
+    ): void {
+        if (window.isClosed()) {
+            return;
+        }
+        try {
+            window.sendIpcEvent(IPCEventType.workspaceCloseProgress, { stage });
+        } catch (error) {
+            this.logger.warn(`[Workspace] Could not report the close stage: ${String(error)}`);
+        }
     }
 
     async launchSettings(

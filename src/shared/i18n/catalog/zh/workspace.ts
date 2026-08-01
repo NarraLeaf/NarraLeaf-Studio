@@ -641,5 +641,13 @@ export const workspace = {
             message: "确定要关闭当前工作区吗？",
             detail: "将会自动保存已作出的更改",
         },
+        // 关闭过程中工作区自己说的话，一个阶段一句（见 `WorkspaceCloseStage`）。
+        // 真正花时间的是检查点那一步，也正是需要点名说清楚的那一步。
+        closing: {
+            title: "正在关闭工作区",
+            saving: "正在保存更改…",
+            checkpoint: "正在记录项目的检查点…",
+            launcher: "正在返回启动器…",
+        },
     },
 } satisfies LocaleNamespace<"workspace">;
