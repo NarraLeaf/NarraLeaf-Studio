@@ -1357,7 +1357,7 @@ function AudioActionEditor(props: {
                     />
                 ) : null}
             </div>
-            <div className="text-[11px] tabular-nums text-fg-subtle">{status}</div>
+            <div className="text-2xs tabular-nums text-fg-subtle">{status}</div>
         </div>
     );
 }
