@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CSSProperties, ReactNode, RefObject, MouseEvent } from "react";
 import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Hash, Image, List, Music, Play, Plus, Route, Trash2, TriangleAlert, UserRoundPlus, Variable, Video } from "lucide-react";
@@ -1976,11 +1976,33 @@ type AnchoredMenuFrame = { placement: PopupPlacement; style: CSSProperties };
 
 const MENU_GAP_PX = 4;
 
-function useAnchoredMenuFrame(anchorRef: RefObject<HTMLElement | null>, open: boolean, expectedHeight: number): AnchoredMenuFrame {
-    const [frame, setFrame] = useState<AnchoredMenuFrame>({ placement: "below", style: {} });
+/**
+ * The box a menu carries before it has been measured — out of flow, and invisible.
+ *
+ * It cannot be an empty style. These panels portal into `document.body`, so a style with no
+ * `position` drops a 420×256 block at the END OF THE DOCUMENT: the page grows past the viewport, the
+ * window gains a scrollbar, and every pane in the editor re-lays-out one notch narrower — then back
+ * again the moment the measure lands. Typing "@" made the whole editor jump. `fixed` keeps the panel
+ * out of the document's flow whatever else is (not yet) known about it, and `hidden` keeps that first
+ * frame from being seen or clicked at 0,0.
+ */
+const UNMEASURED_MENU_FRAME: AnchoredMenuFrame = {
+    placement: "below",
+    style: { position: "fixed", top: 0, left: 0, visibility: "hidden", pointerEvents: "none" },
+};
 
-    useEffect(() => {
+function useAnchoredMenuFrame(anchorRef: RefObject<HTMLElement | null>, open: boolean, expectedHeight: number): AnchoredMenuFrame {
+    const [frame, setFrame] = useState<AnchoredMenuFrame>(UNMEASURED_MENU_FRAME);
+
+    // Layout, not passive: the menu mounts in the same commit that opens it, so the measure has to
+    // land BEFORE that commit is painted. As a plain effect it painted once unplaced, which is the
+    // frame the scrollbar flash above lived in.
+    useLayoutEffect(() => {
         if (!open) {
+            // Drop the closed menu's box. The next open may be a different row, and a stale frame
+            // would place the panel over the old one for a frame. Same object identity every time, so
+            // this bails out of re-rendering rather than looping.
+            setFrame(UNMEASURED_MENU_FRAME);
             return;
         }
         const updateFrame = () => {
