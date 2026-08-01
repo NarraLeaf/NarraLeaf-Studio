@@ -121,9 +121,17 @@ export const settings = {
             label: "自动检查点间隔",
             description: "间隔多久在项目的版本历史里记录一个检查点。只在确实有改动时记录，填 0 则关闭自动检查点",
         },
+        checkpointOnClose: {
+            label: "关闭工作区时记录检查点",
+            description: "关闭工作区窗口时在项目的版本历史里记录一个检查点，这样没提交过的这一段工作不会丢。与上面的间隔各自独立",
+        },
         versionControlAuthor: {
             label: "作者名",
             description: "记录为提交与检查点的作者，留空则记为 NarraLeaf Studio",
+        },
+        versionControlAuthorEmail: {
+            label: "作者邮箱",
+            description: "与作者名一起记录在提交与检查点上，形如「作者名 <邮箱>」，留空则不记录地址",
         },
         confirmBeforeClose: {
             label: "关闭工作区时弹出提示",
