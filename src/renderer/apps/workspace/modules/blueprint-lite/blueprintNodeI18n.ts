@@ -459,6 +459,8 @@ const PORT_LABEL_KEYS: Record<string, TranslationKey> = {
     "Loop": "blueprint.port.loop",
     "Playing": "blueprint.port.playing",
     "Fade (s)": "blueprint.port.fadeS",
+    "Fade In (s)": "blueprint.port.fadeInS",
+    "Track": "blueprint.port.audioTrack",
     "Time (s)": "blueprint.port.timeS",
     "Max": "blueprint.port.max",
     "Max Offset": "blueprint.port.maxOffset",

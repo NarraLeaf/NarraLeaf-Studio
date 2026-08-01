@@ -34,6 +34,7 @@ import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { AssetsListView } from "./views/AssetsListView";
 import { AssetsIconView } from "./views/AssetsIconView";
 import { useWorkspaceAssetDragOptional } from "@/apps/workspace/dnd/WorkspaceAssetDragProvider";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useTranslation } from "@/lib/i18n";
 import { AssetOverviewView } from "../asset-overview/AssetOverviewView";
 
@@ -130,6 +131,10 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { registerActionGroup, unregisterActionGroup } = useRegistry();
+    // The panel's own shortcuts. Every button and menu row here is greyed where it is rendered, but
+    // a keystroke has no control to grey - and a keybinding bypasses the disabled menu row it shares
+    // an action with, so Ctrl+V and Delete kept working on a frozen project.
+    const freeze = useFreezeGuard();
     const searchBoxRef = useRef<HTMLInputElement>(null);
     const inputDialog = useMemo(() => {
         if (!context) return null;
@@ -391,13 +396,18 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         onWorkspaceDragSessionEnd: workspaceDrag?.endSession,
     });
 
+    // F2 opens the rename dialog, which writes the new name straight to the asset record. Nothing
+    // renders for the key, so the refusal goes on the handler; memoised so the binding is not
+    // re-registered on every render.
+    const renameShortcut = useMemo(() => freeze.run(handleRename), [freeze, handleRename]);
+
     useKeyboardShortcuts({
         isInitialized,
         panelId,
         onCopy: () => handleCopyRef.current(),
         onCut: () => handleCutRef.current(),
         onPaste: () => handlePasteRef.current(),
-        onRename: handleRename,
+        onRename: renameShortcut,
         registerClipboardShortcuts: false, // already provided by action shortcuts
     });
 
@@ -474,7 +484,12 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                     tooltip: t("assets.actions.pasteTooltip"),
                     shortcut: "mod+v",
                     menuRole: "paste",
-                    onClick: (_workspace) => handlePasteRef.current(),
+                    // Paste copies assets into the library, so a frozen project refuses it. The
+                    // refusal sits on the handler rather than on `disabled`: the menu row is greyed
+                    // by the freeze policy already, but `mod+v` runs the action straight from the
+                    // keybinding, and on a frozen project it created assets that never landed.
+                    // Copy and cut above only fill the clipboard, so they are left alone.
+                    onClick: freeze.run((_workspace) => handlePasteRef.current()),
                     disabled: !hasClipboardContent || actionLoading,
                     when,
                     order: 2,
@@ -486,7 +501,9 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                     tooltip: t("assets.actions.deleteTooltip"),
                     shortcut: "delete",
                     menuRole: "delete",
-                    onClick: (_workspace) => handleDeleteRef.current(),
+                    // Same for Delete, which reaches the files themselves: the key runs the action
+                    // without ever consulting the greyed row.
+                    onClick: freeze.run((_workspace) => handleDeleteRef.current()),
                     disabled: !hasSelection || actionLoading,
                     when,
                     order: 3,
@@ -497,7 +514,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         return () => {
             unregisterActionGroup(groupId);
         };
-    }, [context, panelId, selectedItems.size, clipboard?.assets.length, clipboard?.groups.length, actionLoading, focusArea, t]);
+    }, [context, panelId, selectedItems.size, clipboard?.assets.length, clipboard?.groups.length, actionLoading, focusArea, t, freeze]);
 
     useEffect(() => {
         if (showHeader) {

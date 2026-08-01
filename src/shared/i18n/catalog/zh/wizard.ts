@@ -86,6 +86,9 @@ export const wizard = {
         },
         versionControl: {
             description: "为项目设置版本控制",
+            loreHint: "会在项目文件夹内建立版本历史，并把此刻记为第一个版本",
+            unavailablePlatform: "本机不支持版本控制，项目将不带版本控制创建",
+            unavailableInstallation: "当前安装的 Studio 不含版本控制，项目将不带版本控制创建",
         },
         projectLocation: "项目位置",
         projectLocationPlaceholder: "输入项目位置…",

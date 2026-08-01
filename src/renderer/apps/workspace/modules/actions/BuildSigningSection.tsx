@@ -9,6 +9,8 @@ import {
     SIGNING_CREDENTIAL_PLATFORM,
     SIGNING_EXPIRY_WARNING_DAYS,
     signingKindsForPlatform,
+    signingNotarizes,
+    type MacSigningIdentity,
     type SigningCredential,
     type SigningCredentialKind,
     type SigningInspectResult,
@@ -231,6 +233,17 @@ function CredentialSummary({
     if (credential.kind === "windows-store") {
         return <SummaryLine text={credential.subjectName || credential.sha1 || ""} />;
     }
+    if (credential.kind === "macos-keychain") {
+        // No file to read, so the identity name is the whole description. The
+        // notarization note still applies and is the half an author is most
+        // likely to have got wrong.
+        return (
+            <>
+                <SummaryLine text={credential.identity} />
+                <NotarizationLine credential={credential} />
+            </>
+        );
+    }
     if (!certificate) {
         // Still being read. An empty line beats a spinner that flashes for the
         // 200ms an already-cached certificate takes.
@@ -251,22 +264,46 @@ function CredentialSummary({
     const expiry = expiryOf(notAfter);
     const date = formatDate(notAfter);
     return (
-        <div className="mt-1.5 flex items-center gap-2">
-            <span className="min-w-0 flex-1 truncate text-2xs text-fg-muted" title={subject}>
-                {credential.kind === "android-keystore"
-                    ? `${t("build.signing.alias", { alias: credential.alias })} · ${subject}`
-                    : subject}
-            </span>
-            <span
-                className={cn(
-                    "shrink-0 text-2xs",
-                    expiry === "expired" ? "text-danger" : expiry === "expiring" ? "text-warning" : "text-fg-subtle",
-                )}
-            >
-                {expiry === "expired" ? t("build.signing.expired", { date }) : t("build.signing.expires", { date })}
-            </span>
-        </div>
+        <>
+            <div className="mt-1.5 flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-2xs text-fg-muted" title={subject}>
+                    {credential.kind === "android-keystore"
+                        ? `${t("build.signing.alias", { alias: credential.alias })} · ${subject}`
+                        : subject}
+                </span>
+                <span
+                    className={cn(
+                        "shrink-0 text-2xs",
+                        expiry === "expired" ? "text-danger" : expiry === "expiring" ? "text-warning" : "text-fg-subtle",
+                    )}
+                >
+                    {expiry === "expired" ? t("build.signing.expired", { date }) : t("build.signing.expires", { date })}
+                </span>
+            </div>
+            <NotarizationLine credential={credential} />
+        </>
     );
+}
+
+/**
+ * Whether a macOS credential notarizes, said plainly on the row.
+ *
+ * Worth its own line because the two outcomes look identical until a player
+ * opens the app: a signed-but-unnotarized build passes every check on the
+ * machine that made it and is refused by Gatekeeper on any other. An author who
+ * skipped notarization should have decided to, not discovered it later.
+ *
+ * Renders nothing for the non-macOS kinds, so callers can place it
+ * unconditionally.
+ */
+function NotarizationLine({ credential }: { credential: SigningCredential }) {
+    const { t } = useTranslation();
+    if (credential.kind !== "macos-keychain" && credential.kind !== "macos-apple") {
+        return null;
+    }
+    return signingNotarizes(credential)
+        ? <SummaryLine text={t("build.signing.notarized")} />
+        : <SummaryLine tone="warning" text={t("build.signing.notNotarized")} />;
 }
 
 function SummaryLine({ text, tone }: { text: string; tone?: "warning" }) {
@@ -425,6 +462,10 @@ function ImportField({
         return <AliasField field={field} draft={draft} onChange={onChange} />;
     }
 
+    if (field.type === "identity") {
+        return <MacIdentityField field={field} draft={draft} onChange={onChange} />;
+    }
+
     return (
         <Input
             size="sm"
@@ -507,6 +548,77 @@ function AliasField({
             />
             {error && <p className="whitespace-pre-wrap text-2xs leading-relaxed text-danger">{error}</p>}
         </div>
+    );
+}
+
+/**
+ * The certificate to sign a Mac build with, offered rather than typed.
+ *
+ * The name is long, punctuated and case-sensitive
+ * (`Developer ID Application: Someone (A1B2C3D4E5)`), and a typo in it does not
+ * fail at import - it fails much later, when codesign cannot find a match. So
+ * the host is asked what it actually holds and the author picks from that.
+ *
+ * Identities that are not `Developer ID Application` ones are still listed, and
+ * marked: they sign a build that runs locally but that Gatekeeper rejects
+ * everywhere else, which is a legitimate thing to want and a terrible thing to
+ * choose by accident.
+ */
+function MacIdentityField({
+    field,
+    draft,
+    onChange,
+}: {
+    field: SigningImportField & { type: "identity" };
+    draft: SigningImportDraft;
+    onChange: (name: string, value: string) => void;
+}) {
+    const { t } = useTranslation();
+    const [identities, setIdentities] = useState<MacSigningIdentity[] | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        void (async () => {
+            const result = await getInterface().signing.macIdentities();
+            if (!cancelled) {
+                setIdentities(result.success ? result.data.identities : []);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    const selected = draft[field.name] ?? "";
+    // Same reasoning as the keystore alias picker: one identity is a question
+    // with a single answer, so it answers itself.
+    const single = identities?.length === 1 ? identities[0].name : null;
+    useEffect(() => {
+        if (single && selected !== single) {
+            onChange(field.name, single);
+        }
+        // `onChange` is a fresh closure each render; re-running on it would loop.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [single, selected, field.name]);
+
+    if (identities !== null && identities.length === 0) {
+        return <p className="text-2xs leading-relaxed text-warning">{t("build.signing.macIdentityEmpty")}</p>;
+    }
+    return (
+        <Select
+            size="sm"
+            fullWidth
+            disabled={identities === null}
+            value={selected}
+            placeholder={t("build.signing.macIdentityLoading")}
+            onChange={value => onChange(field.name, String(value))}
+            options={(identities ?? []).map(identity => ({
+                value: identity.name,
+                label: identity.developerId
+                    ? identity.name
+                    : `${identity.name} · ${t("build.signing.macIdentityNotDeveloperId")}`,
+            }))}
+        />
     );
 }
 

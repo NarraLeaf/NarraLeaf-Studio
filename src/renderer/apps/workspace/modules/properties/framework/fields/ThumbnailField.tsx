@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef, useCallback, memo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
 import { ImagePlus } from "lucide-react";
 import { ThumbnailFieldDefinition } from "../types";
+import { makeFreezeGuard, useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { ImageCropper } from "@/apps/workspace/modules/assets/components/ImageCropper";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
@@ -87,6 +88,23 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
     const [error, setError] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const anchorRef = useRef<HTMLButtonElement>(null);
+
+    /**
+     * Every button in here writes: Clear deletes the thumbnail file and drops the id, Select and the
+     * empty frame open the picker whose crop is written back through `setThumbnail`. On a frozen
+     * project all three still ran - the crop was encoded, the file written, the id set - and the whole
+     * edit was discarded on thaw.
+     *
+     * Driven by the definition's own `readOnly` flag rather than by the workspace directly, because
+     * `fieldReadOnlyStrategy` lists `"thumbnail"` among the types that make themselves read-only: no
+     * `<fieldset>` clamp is rendered around this field, so honouring the flag is all there is. The
+     * workspace guard supplies only the hover string, which is the same one everywhere else.
+     */
+    const workspaceFreeze = useFreezeGuard();
+    const freeze = useMemo(
+        () => makeFreezeGuard(field.readOnly === true, workspaceFreeze.reason),
+        [field.readOnly, workspaceFreeze.reason],
+    );
 
     // Use refs to avoid stale closures and unnecessary effect triggers
     const dataRef = useRef(data);
@@ -347,9 +365,9 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
                     <div className="flex items-center gap-2">
                         {thumbnailId && (
                             <button
-                                className="text-xs text-danger hover:text-danger/80"
+                                className="text-xs text-danger hover:text-danger/80 disabled:opacity-50 disabled:cursor-not-allowed"
                                 onClick={handleClearThumbnail}
-                                disabled={isSaving}
+                                {...freeze.writes(isSaving)}
                             >
                                 {t("common.clear")}
                             </button>
@@ -358,7 +376,7 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
                             ref={anchorRef}
                             className={secondaryGhostButtonClass}
                             onClick={() => setSelectorOpen(true)}
-                            disabled={isSaving}
+                            {...freeze.writes(isSaving)}
                         >
                             {t("properties.select")}
                         </button>
@@ -380,7 +398,7 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
                         <button
                             type="button"
                             onClick={() => setSelectorOpen(true)}
-                            disabled={isSaving}
+                            {...freeze.writes(isSaving)}
                             aria-label={t("properties.thumbnail.selectTitle")}
                             className="absolute inset-0 flex items-center justify-center text-fg-subtle transition-colors hover:bg-fill-subtle hover:text-fg-muted disabled:opacity-50"
                         >

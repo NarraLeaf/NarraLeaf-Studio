@@ -109,6 +109,9 @@ export const ProjectNameConvention = {
     // Project-level persistent variable registry (M-VAR). Cross-cutting (blueprint + story), so it
     // sits at editor root rather than under ui/ or story/. Not packaged into the product.
     EditorVariableRegistry: ["editor", "variables.json"],
+    // The project's audio tracks (the authoring-time mix presets story rows, blueprint sound nodes
+    // and widgets point at). Cross-cutting like the variable registry, so it sits at editor root.
+    EditorAudioTracks: ["editor", "audio-tracks.json"],
     EditorStory: ["editor", "story/"],
     EditorStoryStories: ["editor", "story", "stories/"],
     EditorStoryIndex: ["editor", "story", "index.json"],
