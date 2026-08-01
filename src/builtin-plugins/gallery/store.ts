@@ -6,6 +6,18 @@
  * inspector that its dynamic dropdowns changed, then persist. Persisting last
  * keeps the UI responsive; normalizing first means the store never holds a shape
  * the runtime would reject.
+ *
+ * The catalog is versioned project content (`editor/services/`), which is what
+ * both of the unusual things in here are about:
+ *
+ *  - **`commit` refuses to run while the project is frozen.** Persisting last is
+ *    only safe while the write actually lands. Frozen, the write is discarded at
+ *    the boundary and the mutation would survive in memory alone - and memory is
+ *    what the *next* successful save writes. On a version the author is only
+ *    looking at, that is their working tree overwritten with history.
+ *  - **`reload` exists.** Studio replaces the project's documents under the
+ *    editors (a restored version, a version view, a thaw) and this store is one
+ *    of them; see `main.tsx`, which enrols it in that pass.
  */
 
 import type { Asset, BlueprintInspectorParamSelectOption, PluginApp } from "narraleaf-studio/plugin";
@@ -67,7 +79,17 @@ export function createGalleryStore(app: PluginApp) {
         app.services.blueprintNodes.notifyDynamicSelectOptionsChanged();
     };
 
+    const read = async () => normalizeGalleryStore(
+        await app.services.storage.readJson<GalleryStoreData>(GALLERY_STORE_NAMESPACE),
+    );
+
     const commit = async (next: Partial<GalleryStoreData>) => {
+        // Nothing at all, not even in memory - see the note at the top of this file.
+        // The editor tab greys out every control that gets here, so reaching this is
+        // a path that was missed rather than something the author can do.
+        if (app.services.workspace.frozen) {
+            return;
+        }
         data = normalizeGalleryStore({ ...data, ...next });
         notify();
         await app.services.storage.writeJson<GalleryStoreData>(GALLERY_STORE_NAMESPACE, data);
@@ -124,9 +146,19 @@ export function createGalleryStore(app: PluginApp) {
 
     return {
         async load() {
-            data = normalizeGalleryStore(
-                await app.services.storage.readJson<GalleryStoreData>(GALLERY_STORE_NAMESPACE),
-            );
+            data = await read();
+            notify();
+        },
+        /**
+         * Re-read the catalog because the project's documents were replaced.
+         *
+         * Reads into a local before touching `data`, so a failed read leaves the
+         * author looking at the catalog they had rather than at an empty gallery -
+         * the same contract Studio's own reload participants hold themselves to.
+         */
+        async reload() {
+            const next = await read();
+            data = next;
             notify();
         },
         getData: () => data,

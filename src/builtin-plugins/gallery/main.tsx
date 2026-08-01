@@ -9,6 +9,12 @@
  * The node defs registered here read the *live* panel store, so an author sees
  * their edits in an in-editor preview immediately. The runtime entry registers
  * the same defs against the copy published with the game (see runtime.ts).
+ *
+ * The fourth registration is the catalog's place in version control: the store
+ * holds a versioned project document in memory, so it re-reads whenever Studio
+ * replaces the project's documents. Without it, restoring a past version would
+ * leave the gallery showing - and about to save - the catalog from before the
+ * restore.
  */
 
 import { Images } from "lucide-react";
@@ -41,6 +47,8 @@ export default definePlugin({
             component: () => <GalleryEditorTab app={app} store={store} />,
         });
 
+        const unregisterReloader = app.services.workspace.registerReloader(() => store.reload());
+
         const unregisterArtworkOptions = app.services.blueprintNodes.registerDynamicSelectOptionsSource(
             DYNAMIC_OPTIONS_SOURCE,
             () => store.getArtworkOptions(),
@@ -69,6 +77,7 @@ export default definePlugin({
 
         return () => {
             unregisterPanel();
+            unregisterReloader();
             unregisterArtworkOptions();
             unregisterVariantOptions();
             unregisterGroupOptions();
