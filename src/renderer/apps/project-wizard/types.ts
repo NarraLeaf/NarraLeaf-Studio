@@ -4,14 +4,17 @@ import { TranslationKey } from "@shared/i18n";
 /**
  * Which path through the wizard a first-page card starts.
  *
- * **The first page is no longer only about templates.** `create` scaffolds a project here from
- * answers the author types; `clone` copies one that already exists on a version-control server,
- * where every one of those answers is already decided and stored. They are two different wizards
- * behind one entry point, so the flow is a property of the card rather than something read off
- * its id - a card that only *looked* like a template while silently taking the other path is the
- * kind of thing that is invisible until it is wrong.
+ * **The first page is not about templates; it is about where the project comes from.** `create`
+ * scaffolds one here from answers the author types. `import` unpacks one somebody handed them as
+ * a file. `clone` copies one that already exists on a version-control server. Only the first has
+ * anything left to ask - for the other two every answer is already recorded in what is being
+ * brought in.
+ *
+ * They are three different wizards behind one entry point, so the flow is a property of the card
+ * rather than something read off its id: a card that only *looked* like a template while silently
+ * taking another path is the kind of thing that stays invisible until it is wrong.
  */
-export type ProjectFlow = "create" | "clone";
+export type ProjectFlow = "create" | "import" | "clone";
 
 /**
  * Project template configuration
@@ -91,7 +94,7 @@ export interface ValidationErrors {
  * Not a sequence: which of these the author walks through, and in what order, depends on the
  * {@link ProjectFlow} they picked on the first page. See `WIZARD_FLOW_STEPS`.
  */
-export type WizardStep = "template" | "details" | "settings" | "review" | "source" | "clone";
+export type WizardStep = "template" | "details" | "settings" | "review" | "source" | "clone" | "import";
 
 /**
  * How a clone is going, for the last page to draw.
@@ -110,6 +113,26 @@ export type CloneStatus = "idle" | "cloning";
  * picked is no longer empty, so the next attempt needs a different one.
  */
 export type CloneFailure =
+    | { kind: "failed"; message: string }
+    | { kind: "notAProject"; destination: string };
+
+/**
+ * How an import is going.
+ *
+ * `picking` is not cosmetic: the whole of an import happens inside one main-process call that puts
+ * two native dialogs on screen, so for most of its life this page is waiting on the author rather
+ * than on work. Saying "unpacking" through that would be a lie, and a spinner with no explanation
+ * over a dialog the author is already looking at is noise.
+ */
+export type ImportStatus = "idle" | "picking";
+
+/**
+ * An import that did not end with an openable project.
+ *
+ * Shares `notAProject` with {@link CloneFailure} and for the same reason: a package that unpacked
+ * cleanly can still contain something Studio cannot open, and the files are on disk either way.
+ */
+export type ImportFailure =
     | { kind: "failed"; message: string }
     | { kind: "notAProject"; destination: string };
 
