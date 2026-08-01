@@ -48,7 +48,8 @@ import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions
 
 export interface RendererPrivilegedInterface {
     fs: {
-        selectFile(actor: PrivilegedActor, filters: string[], multiple: boolean): Promise<RequestStatus<FsRequestResult<string[]>>>;
+        /** `title` titles the native picker; omitting it keeps the historical default. */
+        selectFile(actor: PrivilegedActor, filters: string[], multiple: boolean, title?: string): Promise<RequestStatus<FsRequestResult<string[]>>>;
         /** Native save dialog; resolves to the chosen path, or null when cancelled. */
         selectSaveFile(actor: PrivilegedActor, defaultFileName: string, filters: string[]): Promise<RequestStatus<FsRequestResult<string | null>>>;
         stat(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileStat>>>;

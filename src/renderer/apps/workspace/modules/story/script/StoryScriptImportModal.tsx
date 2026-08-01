@@ -8,7 +8,7 @@ import type {
     StoryScriptImportPlan,
     StoryScriptSceneStats,
 } from "@/lib/story/script/storyScriptTypes";
-import { applicableScenePlans } from "./storyScriptIo";
+import { applicableScenePlans, type StoryScriptUndoState } from "./storyScriptIo";
 
 const ROW = "flex items-start gap-2 rounded-md border border-edge bg-fill-subtle px-2 py-1.5 text-xs";
 const NOTE = "flex items-start gap-1.5 px-1 text-2xs";
@@ -61,12 +61,12 @@ function Diagnostic(props: { diagnostic: StoryScriptDiagnostic }) {
 export function StoryScriptImportModal(props: {
     plan: StoryScriptImportPlan | null;
     busy: boolean;
-    /** False when at least one scene being written has no open editor to undo it. */
-    undoable: boolean;
+    /** Undo is per open scene editor, so a multi-scene import can be undoable in part. */
+    undo: StoryScriptUndoState;
     onClose: () => void;
     onImport: () => void;
 }) {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
     const plan = props.plan;
     const applicable = plan ? applicableScenePlans(plan) : [];
 
@@ -80,7 +80,11 @@ export function StoryScriptImportModal(props: {
             footer={
                 <div className="flex w-full items-center gap-2">
                     <span className="min-w-0 flex-1 truncate text-2xs text-warning">
-                        {!props.undoable && applicable.length > 0 ? t("story.script.noUndo") : ""}
+                        {applicable.length === 0 || props.undo.coverage === "all"
+                            ? ""
+                            : props.undo.coverage === "none"
+                                ? t("story.script.noUndo")
+                                : tn("story.script.noUndoSome", props.undo.unundoable)}
                     </span>
                     <button
                         type="button"

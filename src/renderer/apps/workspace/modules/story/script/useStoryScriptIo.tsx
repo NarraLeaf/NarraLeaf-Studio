@@ -21,10 +21,13 @@ import { StoryScriptExportModal } from "./StoryScriptExportModal";
 import { StoryScriptImportModal } from "./StoryScriptImportModal";
 import {
     applicableScenePlans,
+    applyStoryScriptScenes,
     createStoryScriptLabeller,
     createStoryScriptSpeakerLabeller,
     createStoryScriptSpeakerResolver,
     storyScriptFileName,
+    storyScriptUndoCoverage,
+    type StoryScriptUndoState,
 } from "./storyScriptIo";
 
 /** What an export was asked to write: one scene, or the whole story when `sceneIds` is null. */
@@ -144,7 +147,9 @@ export function useStoryScriptIo(): StoryScriptIo {
             return;
         }
         try {
-            const selection = await appPrivilegedFacade.fs.selectFile(["txt"], false);
+            // The picker's own title: the generic one reads "Select Icon File", which is a puzzle to
+            // an author who asked to import a script.
+            const selection = await appPrivilegedFacade.fs.selectFile(["txt"], false, t("story.script.importTitle"));
             if (!selection.success || !selection.data.ok || selection.data.data.length === 0) {
                 return;
             }
@@ -162,14 +167,28 @@ export function useStoryScriptIo(): StoryScriptIo {
             const storyService = context.services.get<StoryService>(Services.Story);
             const characterService = context.services.get<CharacterService>(Services.Character);
             const uuidService = context.services.get<UuidService>(Services.Uuid);
-            const plan = planStoryScriptImport({
-                script: parsed.script,
-                live: await storyService.loadStory(storyId),
-                // UUID v4, from the same mint every other story id comes out of: `assertValidStoryEntityId`
-                // rejects anything else, and it would not say so until the document was next loaded.
-                generateId: () => uuidService.generate(),
-                resolveSpeaker: createStoryScriptSpeakerResolver(characterService.listCharacter()),
-            });
+            const characters = characterService.listCharacter();
+            const live = await storyService.loadStory(storyId);
+            let plan: StoryScriptImportPlan;
+            try {
+                plan = planStoryScriptImport({
+                    script: parsed.script,
+                    live,
+                    // UUID v4, from the same mint every other story id comes out of: `assertValidStoryEntityId`
+                    // rejects anything else, and it would not say so until the document was next loaded.
+                    generateId: () => uuidService.generate(),
+                    resolveSpeaker: createStoryScriptSpeakerResolver(characters),
+                    // The same labeller export runs through, built from the same character list: it is
+                    // what lets import tell an untouched speaker label from an edited one instead of
+                    // re-resolving a display name that may name a deleted, duplicate or invented speaker.
+                    speakerLabel: createStoryScriptSpeakerLabeller(characters),
+                });
+            } catch (error) {
+                // The codec throws only on its own invariants (`assertStoryScriptSceneValid`) or a
+                // malformed id; either way the author gets a sentence, not an assertion in English.
+                console.error("Story script: planning the import failed", error);
+                throw new Error(t("story.script.planFailed"));
+            }
             setImportRequest({ storyId, plan });
         } catch (error) {
             report(error);
@@ -183,26 +202,39 @@ export function useStoryScriptIo(): StoryScriptIo {
         setBusy(true);
         try {
             const storyService = context.services.get<StoryService>(Services.Story);
+            const ui = context.services.get<UIService>(Services.UI);
             const scenes = applicableScenePlans(importRequest.plan);
             // The checkpoint has to precede the first write, and cover the whole batch: an import that
             // rewrote three scenes and then asked for undo would find the first two already replaced.
             recordStorySceneUndoCheckpoints(importRequest.storyId, scenes.map(scene => scene.sceneId));
-            for (const scene of scenes) {
+            const outcome = applyStoryScriptScenes(scenes, scene => {
                 storyService.replaceScene(importRequest.storyId, scene.sceneId, scene.scene);
+            });
+            if (outcome.failed) {
+                // A scene the plan was built against is gone (deleted while this dialog was open), so
+                // the batch stopped where it stood. The dialog closes with it: re-confirming would
+                // re-apply the scenes already written from a plan that no longer describes the project.
+                console.error("Story script: applying the import failed", outcome.failed.error);
+                ui.showError(t("story.script.importFailed", {
+                    scene: outcome.failed.scene.sceneName,
+                    applied: outcome.applied.length,
+                    total: scenes.length,
+                }));
+            } else {
+                ui.showNotification(tn("story.script.imported", outcome.applied.length), "success");
             }
-            context.services.get<UIService>(Services.UI)
-                .showNotification(tn("story.script.imported", scenes.length), "success");
             setImportRequest(null);
         } catch (error) {
             report(error);
         } finally {
             setBusy(false);
         }
-    }, [context, importRequest, report, tn]);
+    }, [context, importRequest, report, t, tn]);
 
-    const undoable = importRequest !== null
-        && applicableScenePlans(importRequest.plan)
-            .every(scene => hasStorySceneUndoRecorder(importRequest.storyId, scene.sceneId));
+    const undo: StoryScriptUndoState = storyScriptUndoCoverage(
+        importRequest === null ? [] : applicableScenePlans(importRequest.plan),
+        sceneId => importRequest !== null && hasStorySceneUndoRecorder(importRequest.storyId, sceneId),
+    );
 
     const beginExport = useCallback((target: StoryScriptExportTarget) => {
         if (ready) {
@@ -230,7 +262,7 @@ export function useStoryScriptIo(): StoryScriptIo {
                 <StoryScriptImportModal
                     plan={importRequest?.plan ?? null}
                     busy={busy}
-                    undoable={undoable}
+                    undo={undo}
                     onClose={() => setImportRequest(null)}
                     onImport={runImport}
                 />
