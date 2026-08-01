@@ -34,6 +34,7 @@ import {
     useContextMenu,
 } from "@/lib/components/elements";
 import type { AssetSelectorProps } from "@/apps/workspace/modules/assets/components/AssetSelector";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 
 type DivProps = React.HTMLAttributes<HTMLDivElement>;
 
@@ -223,6 +224,20 @@ export function PluginPanelEmptyState({
 }
 
 export const pluginUi = Object.freeze({
+    /**
+     * What a plugin's writing controls render as while the project is read-only.
+     *
+     * Studio's own panels call this, and a plugin surface calling it renders the identical
+     * treatment: greyed rather than hidden, one shared reason on hover, and navigation, selection and
+     * inspection left completely alone - a frozen project is one the author came to *read*. Route
+     * every control that writes through `writes()`, every drag through `gesture()`, and every
+     * keybinding or dialog confirm through `run()`.
+     *
+     * Affordance only. The refusal itself happens at the write boundary whether a plugin opts in or
+     * not; what opting in buys is not lying to the author about what will happen. See
+     * `services.workspace` for the non-React half.
+     */
+    useFreezeGuard,
     Button,
     IconButton,
     Input,
