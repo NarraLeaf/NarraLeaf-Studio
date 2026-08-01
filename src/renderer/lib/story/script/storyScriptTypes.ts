@@ -55,9 +55,9 @@ export type StoryScriptSpeakerLabeller = (scene: StoryScene, blockId: StoryBlock
  * The inverse: what a speaker label the author typed (or edited) means. Returns the character it
  * names, or the bare name to carry as a temp speaker (`StoryNodeActionPayload.speakerName`).
  *
- * Import compares the *resolution* rather than the label, which is what makes "did the author change
- * the speaker?" answerable without the codec ever knowing a character's name: if the label still
- * resolves to the binding the row already has, nothing changed.
+ * Consulted **only for a label the author actually changed** - see `speakerLabel` on
+ * {@link StoryScriptPlanInput}. `character -> display name` is neither total nor injective, so asking
+ * this what an *unedited* label means is how a round trip with no edits in it destroys a binding.
  */
 export type StoryScriptSpeakerResolver = (label: string) => { characterId: string } | { speakerName: string };
 
@@ -135,7 +135,11 @@ export type StoryScriptDiagnosticCode =
     | "unknownAnchor"
     /** An anchor whose row is an action, on a line the author rewrote as prose. The row is kept and
      *  the edit is dropped - never the other way around. */
-    | "shapeMismatch"
+    | "shapeMismatchAction"
+    /** The mirror image: an anchor whose row is text, on a line the author rewrote as a `»` action.
+     *  Kept apart from {@link shapeMismatchAction} because the two sentences differ in *which* half
+     *  of the file survived, which is the only thing the author needs to know to fix it. */
+    | "shapeMismatchText"
     /** The same anchor twice: the author copied a line. The first keeps its identity; the rest are
      *  cloned with fresh ids, because two rows cannot share a `textId` without merging their
      *  translations and their voice takes. */
@@ -212,4 +216,18 @@ export type StoryScriptPlanInput = {
      * ignored with a `speakerUnresolved` diagnostic rather than guessed at.
      */
     resolveSpeaker?: StoryScriptSpeakerResolver;
+    /**
+     * The labeller the file was **exported** through, so import can ask the only question it can answer
+     * correctly: *did the author change this label?*
+     *
+     * Without it, the only available question is "what does this label resolve to?", and that answer is
+     * wrong on three states no display name can express - a binding to a deleted character (which
+     * prints nothing), two characters sharing a name (first-wins rebinds the row to the wrong one), and
+     * a temp speaker spelled like a character (silently promoted into a binding). All three are edits
+     * the author did not make, on a file they did not touch.
+     *
+     * Optional so the codec stays usable without a project, but a caller that has the export's labeller
+     * and does not pass it is asking for those three corruptions.
+     */
+    speakerLabel?: StoryScriptSpeakerLabeller;
 };

@@ -53,6 +53,11 @@ export const story = {
         stale: "导出之后该场景已被修改，导入会覆盖这些改动",
         sceneMissing: "该场景已不在此故事中，将被跳过",
         noUndo: "从这里导入无法撤销",
+        noUndoSome: {
+            other: "导入后其中 {count} 个场景无法撤销",
+        },
+        planFailed: "无法为导入准备此脚本，未做任何改动",
+        importFailed: "导入在「{scene}」处中断：共 {total} 个场景，已写入 {applied} 个，其余保持原样",
         line: "第 {line} 行",
         stat: {
             unchanged: "未变 {count}",
@@ -72,11 +77,12 @@ export const story = {
         diag: {
             opaqueWithoutAnchor: "某个动作行丢失了标记，该动作无法还原",
             unknownAnchor: "某个标记指向此脚本中不存在的行",
-            shapeMismatch: "某个动作行被改写成了正文；动作被保留，改写被丢弃",
+            shapeMismatchAction: "某个动作行被改写成了正文；动作被保留，改写被丢弃",
+            shapeMismatchText: "某个正文行被改写成了动作行；正文被保留，改写被丢弃",
             duplicateAnchor: "某一行被复制过；副本已获得新的身份",
             unknownRun: "某个格式标记指向此脚本中不存在的格式",
             unplaceableLine: "新增的这一行在此处无处安放",
-            speakerUnresolved: "某一行绑定了角色，但说话人被改名；该行维持原样",
+            speakerUnresolved: "某一行没有绑定角色，其说话人名字被改动；已保留原名，该行的正文修改仍然生效",
         },
     },
     flow: {

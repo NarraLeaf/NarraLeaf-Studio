@@ -9,7 +9,12 @@ import {
     planStoryScriptImport,
     storyScriptDigest,
 } from "./storyScriptCodec";
-import type { StoryScriptExportOptions, StoryScriptScenePlan, StoryScriptSpeakerResolver } from "./storyScriptTypes";
+import type {
+    StoryScriptExportOptions,
+    StoryScriptScenePlan,
+    StoryScriptSpeakerLabeller,
+    StoryScriptSpeakerResolver,
+} from "./storyScriptTypes";
 
 /**
  * The merge rules, one test each. Every one of them is a promise the confirm dialog makes on this
@@ -21,6 +26,10 @@ const SCENE_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
 const STORY_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1";
 const ALICE = "cccccccc-cccc-4ccc-8ccc-ccccccccccc1";
 const SANAE = "cccccccc-cccc-4ccc-8ccc-ccccccccccc2";
+/** A second character with the same display name - nothing forbids it (`renameCharacter` checks nothing). */
+const ALICE_TWIN = "cccccccc-cccc-4ccc-8ccc-ccccccccccc3";
+/** A character the author deleted. Deleting one does not touch the story documents that name it. */
+const GHOST = "cccccccc-cccc-4ccc-8ccc-ccccccccccc9";
 
 const N1 = "dddddddd-dddd-4ddd-8ddd-ddddddddddd1";
 const D1 = "dddddddd-dddd-4ddd-8ddd-ddddddddddd2";
@@ -30,7 +39,7 @@ const C1 = "dddddddd-dddd-4ddd-8ddd-ddddddddddd5";
 const O1 = "dddddddd-dddd-4ddd-8ddd-ddddddddddd6";
 const J1 = "dddddddd-dddd-4ddd-8ddd-ddddddddddd7";
 
-const CHARACTERS: Record<string, string> = { [ALICE]: "Alice", [SANAE]: "早苗" };
+const CHARACTERS: Record<string, string> = { [ALICE]: "Alice", [SANAE]: "早苗", [ALICE_TWIN]: "Alice" };
 
 function segment(textId: string, value: string, role: StoryTextSegment["role"]): StoryTextSegment {
     return { textId, value, role };
@@ -100,7 +109,12 @@ function anchorIndex(lines: string[], anchor: number): number {
     return index;
 }
 
-type PlanOptions = { live?: StoryDocument; resolver?: StoryScriptSpeakerResolver | null };
+type PlanOptions = {
+    live?: StoryDocument;
+    resolver?: StoryScriptSpeakerResolver | null;
+    /** `null` drops the labeller, which is the only way to reach the codec's resolve-everything fallback. */
+    speakerLabel?: StoryScriptSpeakerLabeller | null;
+};
 
 function planOf(text: string, document: StoryDocument, options: PlanOptions = {}): StoryScriptScenePlan {
     const parsed = parseStoryScript(text);
@@ -112,8 +126,29 @@ function planOf(text: string, document: StoryDocument, options: PlanOptions = {}
         live: options.live ?? document,
         generateId: idFactory(),
         ...(options.resolver === null ? {} : { resolveSpeaker: options.resolver ?? resolveSpeaker }),
+        // The product passes the very labeller the export ran through, so that is the default here.
+        ...(options.speakerLabel === null ? {} : { speakerLabel: options.speakerLabel ?? exportOptions.speaker }),
     });
     return plan.scenes[0];
+}
+
+/** The fixture with its one dialogue row given a different speaker binding. */
+function withSpeaker(document: StoryDocument, speaker: Record<string, string>): StoryDocument {
+    document.scenes[SCENE_ID].blocks[D1] = makeBlock(D1, "nodeAction", {
+        action: "dialogue",
+        ...speaker,
+        text: segment("t2", "你好", "dialogue"),
+    });
+    return document;
+}
+
+/** Export the merged scene again: equal bytes is the strongest statement that nothing moved. */
+function reexport(plan: StoryScriptScenePlan, document: StoryDocument): string {
+    return exportStoryScript(
+        { ...document, scenes: { ...document.scenes, [SCENE_ID]: plan.scene } },
+        [SCENE_ID],
+        exportOptions,
+    );
 }
 
 function edit(document: StoryDocument, mutate: (lines: string[]) => void): StoryScriptScenePlan {
@@ -210,7 +245,22 @@ describe("story script merge rules", () => {
 
         expect(plan.scene.blocks[A1]).toEqual(document.scenes[SCENE_ID].blocks[A1]);
         expect(plan.diagnostics).toContainEqual(
-            expect.objectContaining({ code: "shapeMismatch", severity: "error" }),
+            expect.objectContaining({ code: "shapeMismatchAction", severity: "error" }),
+        );
+        expect(plan.stats.edited).toBe(0);
+    });
+
+    it("keeps the text and drops the edit when a prose row was rewritten as a » line", () => {
+        const document = fixture();
+        const plan = edit(document, lines => {
+            lines[anchorIndex(lines, 1)] = "» 我把这行改成了动作 ⟦1⟧";
+        });
+
+        // The other direction of the same refusal, and a different sentence: the row that survived is
+        // text, not an action, so a message naming an action would describe the wrong half of the file.
+        expect(plan.scene.blocks[N1]).toEqual(document.scenes[SCENE_ID].blocks[N1]);
+        expect(plan.diagnostics).toContainEqual(
+            expect.objectContaining({ code: "shapeMismatchText", severity: "error" }),
         );
         expect(plan.stats.edited).toBe(0);
     });
@@ -334,6 +384,69 @@ describe("story script merge rules", () => {
         expect(plan.diagnostics).toContainEqual(
             expect.objectContaining({ code: "unplaceableLine", severity: "error" }),
         );
+    });
+});
+
+/**
+ * The three states a display name cannot describe.
+ *
+ * Import asks "did the author change this label?", never "what does this label resolve to?" - because
+ * `character -> display name` is neither total (a deleted character prints nothing) nor injective (two
+ * characters may share a name, and a temp speaker may be spelled like one). Every case below is a file
+ * the author did not touch, so the only correct outcome is no outcome at all.
+ */
+describe("story script speakers on an untouched round trip", () => {
+    it("keeps a row bound to a character that no longer exists", () => {
+        const document = withSpeaker(fixture(), { characterId: GHOST });
+        const text = exportStoryScript(document, [SCENE_ID], exportOptions);
+        // Nothing can print a name for a deleted character, so the line carries an empty label.
+        expect(text).toContain(": 你好 ⟦2⟧");
+
+        const plan = planOf(text, document);
+        const after = plan.scene.blocks[D1];
+        expect(after.kind === "nodeAction" && after.payload.action === "dialogue" && after.payload.characterId).toBe(GHOST);
+        expect(after.kind === "nodeAction" && after.payload.action === "dialogue" && "speakerName" in after.payload).toBe(false);
+        expect(plan.scene).toEqual(document.scenes[SCENE_ID]);
+        expect(plan.stats).toEqual({ unchanged: 7, edited: 0, added: 0, removed: 0, cloned: 0, moved: 0 });
+        expect(reexport(plan, document)).toBe(text);
+    });
+
+    it("keeps the binding when another character shares the display name", () => {
+        const document = withSpeaker(fixture(), { characterId: ALICE_TWIN });
+        const text = exportStoryScript(document, [SCENE_ID], exportOptions);
+        expect(text).toContain("Alice: 你好 ⟦2⟧");
+
+        const plan = planOf(text, document);
+        const after = plan.scene.blocks[D1];
+        // Rebinding to the first Alice would take her appearance and her voice takes with it.
+        expect(after.kind === "nodeAction" && after.payload.action === "dialogue" && after.payload.characterId).toBe(ALICE_TWIN);
+        expect(plan.scene).toEqual(document.scenes[SCENE_ID]);
+        expect(plan.stats.edited).toBe(0);
+        expect(reexport(plan, document)).toBe(text);
+    });
+
+    it("leaves a temp speaker unbound even when a character is named the same", () => {
+        const document = withSpeaker(fixture(), { speakerName: "Alice" });
+        const text = exportStoryScript(document, [SCENE_ID], exportOptions);
+        expect(text).toContain("Alice: 你好 ⟦2⟧");
+
+        const plan = planOf(text, document);
+        const after = plan.scene.blocks[D1];
+        expect(after.kind === "nodeAction" && after.payload.action === "dialogue" && after.payload.speakerName).toBe("Alice");
+        expect(after.kind === "nodeAction" && after.payload.action === "dialogue" && "characterId" in after.payload).toBe(false);
+        expect(plan.scene).toEqual(document.scenes[SCENE_ID]);
+        expect(plan.stats.edited).toBe(0);
+        expect(reexport(plan, document)).toBe(text);
+    });
+
+    it("never unbinds a character over an empty label, even with no labeller to compare against", () => {
+        const document = withSpeaker(fixture(), { characterId: GHOST });
+        const text = exportStoryScript(document, [SCENE_ID], exportOptions);
+        const plan = planOf(text, document, { speakerLabel: null });
+
+        const after = plan.scene.blocks[D1];
+        expect(after.kind === "nodeAction" && after.payload.action === "dialogue" && after.payload.characterId).toBe(GHOST);
+        expect(plan.stats.edited).toBe(0);
     });
 });
 

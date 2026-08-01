@@ -60,6 +60,11 @@ export function createStoryScriptLabeller(
  * A resolved character wins over `speakerName` because that is what the payload means - see the note
  * on `speakerName` in the story document types - so the script prints the name Studio and the game
  * both show, not a shadow one only the file would know about.
+ *
+ * **Import needs this too**, as `speakerLabel` on the plan input: comparing the file's label against
+ * what this would print for the snapshot row is the only way to tell an edited label from an untouched
+ * one. Export and import must therefore run the same function over the same character list - a labeller
+ * that disagrees with the exporter reports edits the author never made.
  */
 export function createStoryScriptSpeakerLabeller(characters: Character[]): StoryScriptSpeakerLabeller {
     const character = characterRowLookup(characters);
@@ -84,7 +89,9 @@ export function createStoryScriptSpeakerLabeller(characters: Character[]): Story
  * Case- and whitespace-insensitive: the writer retypes these by hand on a device Studio is not
  * running on, and a slipped capital must not silently detach a line from its character. Two
  * characters sharing a display name resolve to the first one, so the same file always imports the
- * same way; nothing else here can tell them apart.
+ * same way; nothing else here can tell them apart - which is precisely why the codec asks this only
+ * about labels the author *changed* (see `speakerLabel` on `StoryScriptPlanInput`). Answering it for
+ * an untouched label would rebind every line of the second twin to the first.
  *
  * The fallback is a bare `speakerName`, which is a valid line rather than an error - NarraLeaf's
  * dialogue box displays whatever name it is handed.
@@ -112,6 +119,57 @@ export function createStoryScriptSpeakerResolver(characters: Character[]): Story
  */
 export function applicableScenePlans(plan: StoryScriptImportPlan): StoryScriptScenePlan[] {
     return plan.scenes.filter(scene => !scene.missing);
+}
+
+/**
+ * Write the scenes in order, stopping at the first one that refuses.
+ *
+ * A plan is computed when the file is picked and applied when the author confirms, and the project can
+ * change in between - deleting a scene in another window is enough for `replaceScene` to throw halfway
+ * through. There is no transaction to roll back to (each `replaceScene` is its own document mutation),
+ * so the honest answer is to stop and say exactly how far it got.
+ */
+export function applyStoryScriptScenes(
+    scenes: StoryScriptScenePlan[],
+    write: (scene: StoryScriptScenePlan) => void,
+): { applied: StoryScriptScenePlan[]; failed?: { scene: StoryScriptScenePlan; error: unknown } } {
+    const applied: StoryScriptScenePlan[] = [];
+    for (const scene of scenes) {
+        try {
+            write(scene);
+        } catch (error) {
+            return { applied, failed: { scene, error } };
+        }
+        applied.push(scene);
+    }
+    return { applied };
+}
+
+/**
+ * How much of an import the author would be able to undo afterwards, and how much of it they would not.
+ * The count travels with the verdict because "some of this cannot be undone" is only useful with a
+ * number attached.
+ */
+export type StoryScriptUndoState = {
+    coverage: "all" | "partial" | "none";
+    /** Scenes with no open editor to take the write back. */
+    unundoable: number;
+};
+
+/**
+ * Undo is per open scene editor, so an import that spans scenes can be undoable in part. Answering
+ * that with `every` (as this did) tells an author with two of three scenes open that none of it can be
+ * taken back, which is both false and the kind of false that stops them importing at all.
+ */
+export function storyScriptUndoCoverage(
+    scenes: StoryScriptScenePlan[],
+    canUndo: (sceneId: string) => boolean,
+): StoryScriptUndoState {
+    const unundoable = scenes.filter(scene => !canUndo(scene.sceneId)).length;
+    if (unundoable === 0) {
+        return { coverage: "all", unundoable };
+    }
+    return { coverage: unundoable === scenes.length ? "none" : "partial", unundoable };
 }
 
 /** Whether anything at all is worth showing the author beyond the counts. */

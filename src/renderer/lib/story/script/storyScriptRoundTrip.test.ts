@@ -153,14 +153,21 @@ function randomSegment(rng: Rng, role: StoryTextSegment["role"], newId: () => st
     return { textId: newId(), value: richRunsToPlain(runs), role, ...(rich ? { rich } : {}) };
 }
 
-/** Speaker names that are NOT character names, so a temp speaker never resolves into a binding. */
-const TEMP_SPEAKERS = ["？？？", "Voice in the dark", "", "  spaced  ", "Dr: Who"];
+/**
+ * Speaker names, including the ones a display name cannot tell apart from a binding: `"Alice"` is also
+ * a character's name, so a row carrying it as a *temp* speaker must not come back bound to her.
+ */
+const TEMP_SPEAKERS = ["？？？", "Voice in the dark", "", "  spaced  ", "Dr: Who", "Alice", "早苗"];
 const CHARACTERS: Array<{ id: string; name: string }> = [
     { id: "11111111-1111-4111-8111-111111111111", name: "Alice" },
     { id: "22222222-2222-4222-8222-222222222222", name: "早苗" },
     { id: "33333333-3333-4333-8333-333333333333", name: "Prof: Layton" },
     { id: "44444444-4444-4444-8444-444444444444", name: "  Padded  " },
+    // Two characters, one display name. Nothing forbids it, and the file cannot tell them apart.
+    { id: "55555555-5555-4555-8555-555555555555", name: "Alice" },
 ];
+/** A character the author deleted. The rows that named it keep the id, and no name can be printed for it. */
+const DELETED_CHARACTER = "66666666-6666-4666-8666-666666666666";
 
 /** Every payload shape the `»` label has to stand in for. Values are inert here - the codec never reads them. */
 function randomOpaqueBlock(rng: Rng, id: string, newId: () => string): StoryBlock {
@@ -225,9 +232,16 @@ function randomRow(rng: Rng, depth: number, newId: () => string): Built {
         return { block: control, children: randomRows(rng, depth + 1, newId, 3) };
     }
     if (roll === 2) {
-        const dialogue = rng.chance(0.5)
-            ? { action: "dialogue", characterId: rng.pick(CHARACTERS).id, text: randomSegment(rng, "dialogue", newId) }
-            : { action: "dialogue", speakerName: rng.pick(TEMP_SPEAKERS), text: randomSegment(rng, "dialogue", newId) };
+        const text = randomSegment(rng, "dialogue", newId);
+        const speaker = rng.int(4);
+        const dialogue =
+            speaker === 0
+                // A dangling binding: the row prints no name at all, and resolving that empty label
+                // would delete the id the author can still repair by re-creating the character.
+                ? { action: "dialogue", characterId: DELETED_CHARACTER, text }
+                : speaker === 1
+                    ? { action: "dialogue", speakerName: rng.pick(TEMP_SPEAKERS), text }
+                    : { action: "dialogue", characterId: rng.pick(CHARACTERS).id, text };
         const row = block(id, "nodeAction", dialogue);
         markDisabled(rng, row);
         return { block: row, children: [] };
@@ -334,6 +348,9 @@ describe("story script round trip", () => {
                 live: document,
                 generateId: idFactory("00000002"),
                 resolveSpeaker,
+                // The same labeller the export ran through: an unedited label is recognised as
+                // unedited rather than re-resolved through a name that means several things.
+                speakerLabel: exportOptions.speaker,
             });
             const scenePlan = plan.scenes[0];
             expect(scenePlan.diagnostics, `seed ${seed}`).toEqual([]);
@@ -382,6 +399,9 @@ describe("story script round trip", () => {
                 live: document,
                 generateId: idFactory("00000002"),
                 resolveSpeaker,
+                // The same labeller the export ran through: an unedited label is recognised as
+                // unedited rather than re-resolved through a name that means several things.
+                speakerLabel: exportOptions.speaker,
             });
             expect(plan.scenes[0].scene, `seed ${seed}`).toEqual(document.scenes[sceneId]);
             expect(plan.scenes[0].diagnostics, `seed ${seed}`).toEqual([]);
@@ -416,6 +436,9 @@ describe("story script round trip", () => {
                 live: document,
                 generateId: idFactory("00000002"),
                 resolveSpeaker,
+                // The same labeller the export ran through: an unedited label is recognised as
+                // unedited rather than re-resolved through a name that means several things.
+                speakerLabel: exportOptions.speaker,
             });
             const merged = plan.scenes[0].scene;
             for (const [id, before] of Object.entries(scene.blocks)) {
