@@ -46,6 +46,7 @@ import { resolveCommandLine, type StoryCommandContext } from "./storyCommandReso
 import { StoryCommandCandidateMenu, useStoryCandidateMenuState, type StoryCandidateItem } from "./StoryCommandCandidateMenu";
 import { RichTextInput, type ActiveMarks, type EventClickInfo, type InterpolationClickInfo, type PauseClickInfo, type RichTextInputHandle } from "./RichTextInput";
 import { RichTextToolbar } from "./RichTextToolbar";
+import type { RichTextToolbarHandle } from "./RichTextToolbar";
 import { InterpolationPopover } from "./InterpolationPopover";
 import { ExpressionPopover } from "./ExpressionPopover";
 import { collectStoryVariableOptions, resolveInterpolationName, type PersistentVariableOption } from "./storyInterpolation";
@@ -583,6 +584,7 @@ function TextEditBox(props: {
         : null;
     const initialRuns = useMemo(() => segmentToRuns(getTextSegment(props.block)), [props.block]);
     const containerRef = useRef<HTMLDivElement | null>(null);
+    const toolbarRef = useRef<RichTextToolbarHandle | null>(null);
     const { context, isInitialized } = useWorkspace();
     const [persistentVars, setPersistentVars] = useState<PersistentVariableOption[]>([]);
     useEffect(() => {
@@ -693,6 +695,14 @@ function TextEditBox(props: {
             if (containerRef.current && active && containerRef.current.contains(active)) {
                 return;
             }
+            // The style strip is a portal on <body>, so it is NOT inside the container — and the
+            // keyboard path walks focus straight into it (Tab from the field). Without this the very
+            // first Tab committed the row and closed the editor, which is indistinguishable from the
+            // toolbar simply not working. The pointer path never hit this: it prevents focus from
+            // moving at all, which is what the `lastToolbarInteractRef` window above is for.
+            if (active instanceof HTMLElement && active.closest("[data-rt-toolbar]")) {
+                return;
+            }
             props.onCommitTextEdit();
         }, 0);
     };
@@ -712,7 +722,7 @@ function TextEditBox(props: {
             // from the click that was aiming at them.
             className="relative flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center self-stretch overflow-visible"
         >
-            <RichTextToolbar editor={props.editorRef} anchorRef={containerRef} commitGuard={commitGuardRef} active={activeMarks} hasVariables={variableOptions.scene.length + variableOptions.saved.length + variableOptions.persistent.length > 0} canInsertEvent={Boolean(dialoguePayload?.characterId)} onInsertEvent={insertEvent} />
+            <RichTextToolbar ref={toolbarRef} editor={props.editorRef} anchorRef={containerRef} commitGuard={commitGuardRef} active={activeMarks} hasVariables={variableOptions.scene.length + variableOptions.saved.length + variableOptions.persistent.length > 0} canInsertEvent={Boolean(dialoguePayload?.characterId)} onInsertEvent={insertEvent} onReturnToText={() => props.editorRef.current?.focus()} />
             <RichTextInput
                 ref={props.editorRef}
                 initialRuns={initialRuns}
@@ -732,6 +742,9 @@ function TextEditBox(props: {
                 onEnter={props.onContinue}
                 onShiftEnter={() => { props.onCommitTextEdit(); props.onInsertAfter(); }}
                 onArrowOut={props.onArrowOut}
+                // "Tab advances within a row" (interaction model, rule 3): within a row being edited,
+                // the next thing to advance to is the style strip.
+                onTab={backwards => toolbarRef.current?.enterFromEditor(backwards) ?? false}
                 onGoalColumnInvalidated={props.onGoalColumnInvalidated}
                 onBackspaceAtEmptyStart={props.onBackspaceAtEmptyStart}
                 onUndoBeyondRow={props.onUndoBeyondRow}

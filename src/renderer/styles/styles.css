@@ -312,6 +312,26 @@ select:focus {
 }
 
 /*
+ * Opt back in to a VISIBLE focus indicator.
+ *
+ * The rule immediately above is `!important`, so on a `<button>` nothing short of another
+ * `!important` can put a focus indicator back — Tailwind's own `focus:ring-*` included. That failure
+ * is silent and convincing: every ring custom property resolves correctly, `:focus` matches, the
+ * utility is in the stylesheet, and only the composed `box-shadow` is discarded. It looks like it
+ * works right up until you photograph it.
+ *
+ * Needed by any control that is reachable by keyboard but deliberately NOT focusable by pointer —
+ * the story editor's rich-text strip, whose `mousedown` is prevented so the caret stays in the line.
+ * There, focus arrives only from the keyboard, and an invisible focus position is the whole feature
+ * missing. `outline` rather than `box-shadow` so the indicator costs no layout and cannot be clipped
+ * by an overflow ancestor.
+ */
+.nl-focus-ring:focus {
+    outline: 2px solid rgb(var(--nl-primary)) !important;
+    outline-offset: 1px !important;
+}
+
+/*
  * Custom workspace background reveal (see WorkspaceLayout). When a wallpaper is set the workspace
  * root carries `.nl-has-workspace-bg`, and a single pre-composited backdrop (surface colour +
  * wallpaper at its configured strength) sits behind the chrome. Making the base `bg-surface` fill
