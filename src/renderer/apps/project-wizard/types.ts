@@ -2,10 +2,24 @@ import { LucideIcon } from "lucide-react";
 import { TranslationKey } from "@shared/i18n";
 
 /**
+ * Which path through the wizard a first-page card starts.
+ *
+ * **The first page is no longer only about templates.** `create` scaffolds a project here from
+ * answers the author types; `clone` copies one that already exists on a version-control server,
+ * where every one of those answers is already decided and stored. They are two different wizards
+ * behind one entry point, so the flow is a property of the card rather than something read off
+ * its id - a card that only *looked* like a template while silently taking the other path is the
+ * kind of thing that is invisible until it is wrong.
+ */
+export type ProjectFlow = "create" | "clone";
+
+/**
  * Project template configuration
  */
 export interface ProjectTemplate {
     id: string;
+    /** Which wizard this card starts. See {@link ProjectFlow}. */
+    flow: ProjectFlow;
     name: string;
     /** i18n key; when set, overrides `name` at render time (falls back to `name`). */
     nameKey?: TranslationKey;
@@ -42,6 +56,15 @@ export interface ProjectData {
     resolution: string;
     appId: string;
     versionControl: VersionControlChoice;
+    /**
+     * The server address a cloned project comes from, e.g. `lore://studio.example.lan:41337/my-game`.
+     *
+     * Only the `clone` flow reads it, and it is the ONLY thing that flow asks about the project
+     * itself: name, app id, stage size, licence and author are all already recorded in what the
+     * server sends, and asking again would let the author give answers that the clone then
+     * overwrites.
+     */
+    remoteUrl: string;
 }
 
 /**
@@ -63,9 +86,32 @@ export interface ValidationErrors {
 }
 
 /**
- * Wizard step types
+ * Wizard step types.
+ *
+ * Not a sequence: which of these the author walks through, and in what order, depends on the
+ * {@link ProjectFlow} they picked on the first page. See `WIZARD_FLOW_STEPS`.
  */
-export type WizardStep = "template" | "details" | "settings" | "review";
+export type WizardStep = "template" | "details" | "settings" | "review" | "source" | "clone";
+
+/**
+ * How a clone is going, for the last page to draw.
+ *
+ * Two states and no more, because there is no third thing to say: the backend delivers a clone's
+ * progress events only once the call has finished, and the check that follows it is a single
+ * directory listing. A phase the author sees for ten milliseconds is not information.
+ */
+export type CloneStatus = "idle" | "cloning";
+
+/**
+ * A clone that did not end with an openable project, and what the author can do about it.
+ *
+ * `notAProject` carries the destination because those files are still on disk - the clone
+ * succeeded, it simply brought down something Studio cannot open - and the folder the author
+ * picked is no longer empty, so the next attempt needs a different one.
+ */
+export type CloneFailure =
+    | { kind: "failed"; message: string }
+    | { kind: "notAProject"; destination: string };
 
 /**
  * Step configuration

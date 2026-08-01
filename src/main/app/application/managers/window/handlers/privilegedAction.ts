@@ -77,7 +77,9 @@ export class PrivilegedFsCallHandler extends IPCHandler<IPCEventType.privilegedF
 
                 try {
                     const dialogOptions: Electron.OpenDialogOptions = {
-                        title: "Select Icon File",
+                        // The caller's own sentence when it has one. The default is the string this
+                        // generic picker has always used, so callers that say nothing are unaffected.
+                        title: data.title ?? "Select Icon File",
                         buttonLabel: "Select",
                         properties: data.multiple ? ["openFile", "multiSelections"] : ["openFile"],
                         securityScopedBookmarks: true,
