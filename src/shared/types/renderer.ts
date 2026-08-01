@@ -1,7 +1,7 @@
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
-import { BlueprintPersistenceProjectRef, RequestStatus, WorkspaceFreezeKind } from "./ipcEvents";
+import { BlueprintPersistenceProjectRef, RequestStatus, WorkspaceCloseStage, WorkspaceFreezeKind } from "./ipcEvents";
 import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "./menu";
 import { FsRequestResult, PlatformInfo } from "./os";
@@ -203,6 +203,12 @@ export interface RendererPreloadedInterface {
          * workspace context - see the note on `onConfirmClose`.
          */
         onFlushPendingSaves(handler: () => Promise<RequestStatus<{ flushed: boolean }>>): AppEventToken;
+        /**
+         * Follow the close the main process is running on this window's behalf, so the workspace
+         * can show what it is waiting on. `null` means the close was called off and the window is
+         * staying. Registered on mount for the same reason as the two handlers above.
+         */
+        onCloseProgress(handler: (stage: WorkspaceCloseStage | null) => void): AppEventToken;
         onResolveAssetUrl(handler: (payload: { assetId: string; assetType?: string }) => Promise<RequestStatus<{ url: string }>>): AppEventToken;
         onResolveImageAssetUrl(handler: (payload: { assetId: string }) => Promise<RequestStatus<{ url: string }>>): AppEventToken;
         onBlueprintNavigateFromPreview(handler: (payload: PreviewStudioBlueprintOpenPayload) => void): AppEventToken;
