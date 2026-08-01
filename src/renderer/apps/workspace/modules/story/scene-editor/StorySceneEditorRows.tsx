@@ -1813,14 +1813,10 @@ export function InsertRow(props: {
                                 return;
                             }
                         }
-                        // ←/→ cross the command menu's two columns. Only that menu takes them: the
-                        // argument menu and the speaker picker leave them to the caret, which is what
-                        // keeps `/bg forest|day` editable a character at a time.
-                        if ((event.key === "ArrowLeft" || event.key === "ArrowRight") && actionMenuOpen) {
-                            event.preventDefault();
-                            actionMenu.crossTo(event.key === "ArrowLeft" ? "categories" : "commands");
-                            return;
-                        }
+                        // ←/→ are never the menu's: they belong to the caret in the line being typed,
+                        // in EVERY chooser. The command menu's category column is a mouse-driven
+                        // filter for that reason — a column that took the arrows would cost `@shwo`
+                        // its one-character fix, and the whole point of the slot is that it is text.
                         // Tab and Enter both take the highlight. Keeping them identical here is the
                         // point: the highlight is the pointer, so whichever key the author reaches for
                         // does what the menu is showing. Tab no longer cycles categories.
@@ -1835,13 +1831,6 @@ export function InsertRow(props: {
                                 return true;
                             }
                             if (actionMenuOpen) {
-                                // In the category column the highlight is a category, not a command, so
-                                // taking it means "these are the ones I want" — cross to them. It must
-                                // still report success, or Enter would fall through and commit the line.
-                                if (actionMenu.pane === "categories") {
-                                    actionMenu.crossTo("commands");
-                                    return true;
-                                }
                                 const command = actionMenu.activeStop?.command;
                                 if (!command) {
                                     return false;
@@ -1900,7 +1889,6 @@ export function InsertRow(props: {
                         category={actionMenu.category}
                         reachable={actionMenu.reachable}
                         onCategory={actionMenu.chooseCategory}
-                        pane={actionMenu.pane}
                         activeKey={actionMenu.activeStop?.key ?? null}
                         onHighlight={actionMenu.selectKey}
                         onChoose={chooseCommandCandidate}
@@ -2072,15 +2060,6 @@ function useAnchoredMenuFrame(anchorRef: RefObject<HTMLElement | null>, open: bo
 const ALL_MENU_CATEGORY = "all";
 type MenuCategory = typeof ALL_MENU_CATEGORY | StoryCommandCategoryId;
 
-/** The column the arrow keys are in. The menu opens on the commands, so Enter still means what it did. */
-type MenuPane = "categories" | "commands";
-
-/** The category column top to bottom — the order ↑/↓ walk it in, so it is the order it renders in. */
-const MENU_CATEGORY_ORDER: readonly MenuCategory[] = [
-    ALL_MENU_CATEGORY,
-    ...STORY_COMMAND_CATEGORIES.map(category => category.id),
-];
-
 /**
  * State for the inline `/` command menu: a category column on the left, its commands on the right.
  *
@@ -2102,11 +2081,11 @@ const MENU_CATEGORY_ORDER: readonly MenuCategory[] = [
  * the full filing back — "everything I can do to an Image" has to list `/show`, and there it is the
  * answer rather than a repeat.
  *
- * Both columns are reachable from the keyboard: ←/→ cross between them, ↑/↓ walk whichever one the
- * arrows are in, and Enter in the category column crosses to its commands rather than taking one. That
- * costs the caret its ←/→ inside the command name, which is why the interception is scoped to THIS
- * menu — the argument menu and the speaker picker never see those keys, so a caret in `/bg forest|day`
- * still moves the way a caret does.
+ * The column takes no keys. ↑/↓ walk the commands and Enter takes one, exactly as they did before the
+ * column existed; ←/→ stay the caret's, in this chooser as in every other. A column that answered to
+ * the arrows would have to take them from the text being typed, and the slot is a line of text first —
+ * `@shwo` has to be fixable with one ← and one keystroke. So the category is chosen with the pointer,
+ * and it narrows what the keyboard then walks.
  *
  * `allGroups` is the undeduped sidebar projection; `options` is the ranked flat list for the query.
  * Either way the highlight walks `stops` — one stop per rendered row, keyed by `group:id` so a verb
@@ -2121,7 +2100,6 @@ function useActionCommandMenuState(
 ) {
     const browse = query.trim() === "";
     const [category, setCategory] = useState<MenuCategory>(ALL_MENU_CATEGORY);
-    const [pane, setPane] = useState<MenuPane>("commands");
     // 全部 with a query is the one case that stays flat: the ranking is the answer there, and a header
     // over each hit would only argue with it.
     const ranked = category === ALL_MENU_CATEGORY && !browse;
@@ -2173,26 +2151,20 @@ function useActionCommandMenuState(
         setActiveKey(current => stops.some(stop => stop.key === current) ? current : stops[0]?.key ?? null);
     }, [stops]);
 
-    // Pointing at a row is a claim on the arrows too: hovering the list and then pressing ↓ has to
-    // move down the list, not down the categories the pointer just left.
     const selectKey = (key: string) => {
         setActiveKey(key);
-        setPane("commands");
     };
 
+    /**
+     * Picking a category is a pointer gesture only, and it does not move the highlight itself — the
+     * effect above does, because the new category is a new `stops` and the old key is not in it.
+     */
     const chooseCategory = (next: MenuCategory) => {
         setCategory(next);
-        setPane("categories");
     };
 
-    /** ↑/↓ — one step down whichever column the arrows are in. Both wrap. */
+    /** ↑/↓ — one step down the commands. Wraps. The category column is never what the arrows walk. */
     const move = (direction: -1 | 1) => {
-        if (pane === "categories") {
-            const currentIndex = Math.max(0, MENU_CATEGORY_ORDER.indexOf(category));
-            const nextIndex = (currentIndex + direction + MENU_CATEGORY_ORDER.length) % MENU_CATEGORY_ORDER.length;
-            setCategory(MENU_CATEGORY_ORDER[nextIndex]);
-            return;
-        }
         if (stops.length === 0) {
             return;
         }
@@ -2201,19 +2173,12 @@ function useActionCommandMenuState(
         setActiveKey(stops[nextIndex].key);
     };
 
-    /** ←/→ — cross between the columns. Idempotent, so holding → against the right edge does nothing. */
-    const crossTo = (next: MenuPane) => {
-        setPane(next);
-    };
-
     return {
         ranked,
         sections,
         reachable,
         category,
         chooseCategory,
-        pane,
-        crossTo,
         stops,
         activeStop,
         activeKey,
@@ -2225,8 +2190,6 @@ function useActionCommandMenuState(
 function ActionCommandMenuRow(props: {
     stop: StoryCommandMenuStop;
     active: boolean;
-    /** The arrows are in the other column: keep the place, but stop claiming the keyboard. */
-    resting: boolean;
     onHighlight: (key: string) => void;
     onChoose: (commandId: string) => void;
 }) {
@@ -2242,7 +2205,7 @@ function ActionCommandMenuRow(props: {
             data-action-command-key={props.stop.key}
             className={[
                 "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
-                props.active ? (props.resting ? "bg-fill text-fg" : "bg-primary/15 text-fg") : "hover:bg-fill",
+                props.active ? "bg-primary/15 text-fg" : "hover:bg-fill",
             ].join(" ")}
             onMouseDown={() => props.onChoose(command.id)}
             onMouseEnter={() => props.onHighlight(props.stop.key)}
@@ -2261,14 +2224,15 @@ function ActionCommandMenuRow(props: {
  *
  * `onMouseDown` rather than `onClick`, like every row in this menu: the slot's textarea holds focus,
  * and a click that lands after the blur has already closed the chooser picks nothing.
+ *
+ * The chosen one wears a plain fill, never the accent the command rows use: the accent means "Enter
+ * takes this", and only one thing in the menu can mean that. A category is what the list is OF.
  */
 function ActionCommandCategoryRow(props: {
     icon: typeof LayoutGrid;
     iconColor: string;
     label: string;
     active: boolean;
-    /** The arrows are in the other column: keep the place, but stop claiming the keyboard. */
-    resting: boolean;
     empty: boolean;
     onSelect: () => void;
 }) {
@@ -2280,7 +2244,7 @@ function ActionCommandCategoryRow(props: {
             aria-current={props.active ? "true" : undefined}
             className={[
                 "flex h-7 w-full shrink-0 items-center gap-1.5 rounded-md px-1.5 text-xs transition-colors",
-                props.active ? (props.resting ? "bg-fill text-fg" : "bg-primary/15 text-fg") : "text-fg-muted hover:bg-fill hover:text-fg",
+                props.active ? "bg-fill text-fg" : "text-fg-muted hover:bg-fill hover:text-fg",
                 props.empty && !props.active ? "opacity-45" : "",
             ].join(" ")}
             onMouseDown={props.onSelect}
@@ -2298,8 +2262,6 @@ function ActionCommandMenu(props: {
     category: MenuCategory;
     reachable: ReadonlySet<MenuCategory>;
     onCategory: (category: MenuCategory) => void;
-    /** Which column the arrows are in — the only thing that decides which highlight looks live. */
-    pane: MenuPane;
     activeKey: string | null;
     onHighlight: (key: string) => void;
     onChoose: (commandId: string) => void;
@@ -2345,7 +2307,6 @@ function ActionCommandMenu(props: {
                         key={stop.key}
                         stop={stop}
                         active={stop.key === props.activeKey}
-                        resting={props.pane !== "commands"}
                         onHighlight={props.onHighlight}
                         onChoose={props.onChoose}
                     />
@@ -2372,7 +2333,6 @@ function ActionCommandMenu(props: {
                                         key={key}
                                         stop={{ key, group: entry.group, command }}
                                         active={key === props.activeKey}
-                                        resting={props.pane !== "commands"}
                                         onHighlight={props.onHighlight}
                                         onChoose={props.onChoose}
                                     />
@@ -2400,16 +2360,15 @@ function ActionCommandMenu(props: {
                 the key strip back down again on the way out. The menu is the same size whatever is
                 open; only the right column scrolls. */}
             <div className="flex h-72">
-                {/* ← brings the arrows here, → sends them back; the column that does not have them
-                    keeps its place in a flat fill, so there is never a second live-looking highlight
-                    competing for what Enter will do. Tab still means "take the highlight". */}
+                {/* Pointer-only, by design: the arrows belong to the caret in the line being typed.
+                    So the chosen category wears a plain fill and the accent stays on the command row —
+                    one live highlight, and it is always the one Enter will take. */}
                 <div className="nl-no-scrollbar flex w-[96px] shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-edge bg-surface-sunken p-1 pt-3">
                     <ActionCommandCategoryRow
                         icon={LayoutGrid}
                         iconColor="#a8adb5"
                         label={t("story.actionCategory.all")}
                         active={props.category === ALL_MENU_CATEGORY}
-                        resting={props.pane !== "categories"}
                         empty={!props.reachable.has(ALL_MENU_CATEGORY)}
                         onSelect={() => props.onCategory(ALL_MENU_CATEGORY)}
                     />
@@ -2420,7 +2379,6 @@ function ActionCommandMenu(props: {
                             iconColor={category.iconColor}
                             label={t(commandCategoryLabelKey(category.id))}
                             active={props.category === category.id}
-                            resting={props.pane !== "categories"}
                             empty={!props.reachable.has(category.id)}
                             onSelect={() => props.onCategory(category.id)}
                         />
@@ -2433,12 +2391,10 @@ function ActionCommandMenu(props: {
                     {rows}
                 </div>
             </div>
-            {/* The keys this menu answers to, on the menu. Two of them (←/→, and ↑/↓ meaning two
-                different lists) are new enough that nothing else in the editor teaches them, and a
-                strip that is read once is cheaper than a shortcut nobody finds. */}
+            {/* Every key this menu answers to, and no more — ←/→ are absent because they are the
+                caret's, and a strip that listed them would be teaching the wrong thing. */}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-edge bg-surface-sunken px-2 py-1.5">
                 <MenuKeyHint keys={["↑", "↓"]} label={t("story.actionCreator.hint.move")} />
-                <MenuKeyHint keys={["←", "→"]} label={t("story.actionCreator.hint.cross")} />
                 <MenuKeyHint keys={["Enter"]} label={t("story.actionCreator.hint.insert")} />
                 <MenuKeyHint keys={["Esc"]} label={t("story.actionCreator.hint.dismiss")} />
             </div>
