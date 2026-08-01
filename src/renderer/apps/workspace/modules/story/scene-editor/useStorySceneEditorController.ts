@@ -63,7 +63,10 @@ import { cloneSerializedBlock, insertSerializedClone, serializeBlockSubtree } fr
 import { getSelectionUnitRange, richRunsToPlain } from "./richText";
 import type { RichTextInputHandle } from "./RichTextInput";
 import type { EditorMode, StoryBlockTarget, StoryCaretTarget, StoryStagePlacement } from "./storySceneEditorTypes";
-import { useStorySceneClipboardHandlers } from "./useStorySceneClipboardHandlers";
+import { useStorySceneClipboardHandlers, type StoryPasteWizardRequest } from "./useStorySceneClipboardHandlers";
+import { materializePastedRows } from "@/lib/story/paste/storyPasteModel";
+import type { PastePlan, PasteSeparatorChoice, SpeakerMappingTarget } from "@/lib/story/paste/storyPasteTypes";
+import { forgetStoryPasteSeparator, getStoryPasteMemory, rememberStoryPasteSpeakers, saveStoryPasteSeparator } from "./storyPasteMemory";
 import { useSlashAtAlias } from "@/apps/workspace/hooks/useSlashAtAlias";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
 import { isActionCommandLine, toCanonicalCommandLine } from "./commandTrigger";
@@ -231,6 +234,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         slotDiscardedRef.current = true;
         insertDraftRef.current = "";
+        // A `Ctrl+Shift+V` pressed just before the freeze landed has no paste left to be consumed by,
+        // so the flag would sit here and turn the first paste after the thaw plain. Belt to the
+        // tab's braces (its `onKeyDown` is freeze-wrapped, so no new flag can be set while frozen).
+        plainPasteRequestedRef.current = false;
         setEditorMode(current => (current.kind === "text" || current.kind === "insert" ? { kind: "idle" } : current));
     }, [frozen]);
 
@@ -1804,9 +1811,39 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         });
     }, []);
 
-    const { copySelectionToClipboard, handlePaste } = useStorySceneClipboardHandlers({
+    /**
+     * The prose paste the wizard is standing over, or null.
+     *
+     * Nothing has been written while this is set - not a row, not a character - so cancelling is
+     * exactly "drop this", with no undo step and nothing to clean up.
+     */
+    const [pasteWizard, setPasteWizard] = useState<StoryPasteWizardRequest | null>(null);
+    const [pasteWizardBusy, setPasteWizardBusy] = useState(false);
+    /** Bumped when a separator preset is saved or dropped; see {@link pasteMemory}. */
+    const [pasteMemoryRevision, setPasteMemoryRevision] = useState(0);
+
+    /**
+     * Anything that takes focus off the open insert slot has to say so first: the slot commits its line
+     * on blur, and a half-typed `/bg for` committed that way is an `invalid` row a production build
+     * refuses to compile. `slotDiscardedRef` is the existing latch for "this slot's blur means nothing".
+     */
+    const suspendInsertSlotCommit = useCallback(() => {
+        if (editorMode.kind === "insert") {
+            slotDiscardedRef.current = true;
+        }
+    }, [editorMode]);
+
+    /** Undo {@link suspendInsertSlotCommit} once nothing is stealing focus any more. */
+    const resumeInsertSlotCommit = useCallback(() => {
+        if (editorMode.kind === "insert") {
+            slotDiscardedRef.current = false;
+        }
+    }, [editorMode]);
+
+    const { copySelectionToClipboard, handlePaste, handleRowTextPaste, insertPastedBlocks } = useStorySceneClipboardHandlers({
         storyService,
         uuidService,
+        uiService,
         storyId,
         sceneId,
         scene,
@@ -1815,12 +1852,89 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         selectedBlockIds,
         activeBlockId,
         visibleRows,
+        editorMode,
+        insertInputRef,
         plainPasteRequestedRef,
         recordHistory,
         setActiveBlockId,
         setSelectedBlockIds,
         setEditorMode,
+        requestPasteWizard: setPasteWizard,
+        suspendInsertSlotCommit,
+        resumeInsertSlotCommit,
     });
+
+    const cancelPasteWizard = useCallback(() => {
+        setPasteWizard(null);
+        setPasteWizardBusy(false);
+        resumeInsertSlotCommit();
+    }, [resumeInsertSlotCommit]);
+
+    /**
+     * Turn the wizard's plan into rows.
+     *
+     * Order matters and is the reason this lives here rather than in the modal: the characters the
+     * author asked for are created FIRST, so `materializePastedRows` can bind their real ids, and the
+     * mapping memory is written with those ids rather than with "create one" - otherwise importing
+     * chapter two would create a second copy of every character chapter one made.
+     *
+     * `promoteTempSpeaker` is deliberately not used. It rebinds every matching temp speaker in the
+     * whole document, and a paste must not silently rewrite rows the author was not looking at.
+     */
+    const confirmPasteWizard = useCallback((plan: PastePlan, mappings: Record<string, SpeakerMappingTarget>) => {
+        const request = pasteWizard;
+        // Closed rather than left standing: a confirm that cannot run (the workspace froze under the
+        // open dialog, a service went away on a project switch) must not leave the author pressing a
+        // button that does nothing.
+        if (!request || !uuidService || !characterService || !storyService || !storyId || !sceneId || frozen) {
+            cancelPasteWizard();
+            return;
+        }
+        setPasteWizardBusy(true);
+        try {
+            const createdCharacterIds: Record<string, string> = {};
+            for (const name of plan.charactersToCreate) {
+                createdCharacterIds[name] = characterService.createCharacter(name).profile.getId();
+            }
+            const { blocks } = materializePastedRows(plan, {
+                generateId: () => uuidService.generate(),
+                createdCharacterIds,
+            });
+            recordHistory();
+            insertPastedBlocks(blocks, request.target);
+            // An open insert slot survives the wizard: its line is the author's, uncommitted, and
+            // going idle here would drop it without ever writing it anywhere. Every other mode has
+            // nothing in flight (a row being edited was committed by the modal taking focus).
+            setEditorMode(current => (current.kind === "insert" ? current : { kind: "idle" }));
+            rememberStoryPasteSpeakers(panelStateService, resolveMappingsForMemory(mappings, createdCharacterIds));
+            // The next paste in this session has to see what this one just decided - that is the whole
+            // point of the memory, and the store is on disk rather than in state, so nothing else says so.
+            setPasteMemoryRevision(revision => revision + 1);
+        } finally {
+            setPasteWizardBusy(false);
+            setPasteWizard(null);
+            resumeInsertSlotCommit();
+        }
+    }, [cancelPasteWizard, characterService, frozen, insertPastedBlocks, panelStateService, pasteWizard, recordHistory, resumeInsertSlotCommit, sceneId, storyId, storyService, uuidService]);
+
+    const savePasteSeparator = useCallback((name: string, choice: PasteSeparatorChoice) => {
+        saveStoryPasteSeparator(panelStateService, name, choice);
+        setPasteMemoryRevision(revision => revision + 1);
+    }, [panelStateService]);
+
+    const forgetPasteSeparator = useCallback((name: string) => {
+        forgetStoryPasteSeparator(panelStateService, name);
+        setPasteMemoryRevision(revision => revision + 1);
+    }, [panelStateService]);
+
+    // The memory lives on disk, not in React state, so a bump is what tells the open wizard that a
+    // preset was just saved or dropped. Reading and writing it is not a project write and stays live
+    // on a frozen workspace (see `storyPasteMemory`).
+    const pasteMemory = useMemo(
+        () => getStoryPasteMemory(panelStateService),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [panelStateService, pasteMemoryRevision],
+    );
 
     const handleCopy = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
         if (!isStoryEditorFocusActive()) {
@@ -2234,6 +2348,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         density, setDensity, narrativeOnly, setNarrativeOnly,
         rootRef, scrollContainerRef, insertInputRef, textInputRef, uuidService,
         focusRoot, focusWorkspace, revealBlock, handleKeyDown, copySelectionToClipboard: handleCopy, handlePaste: handlePasteInEditor,
+        handleRowTextPaste,
+        pasteWizard, pasteWizardBusy, pasteMemory, cancelPasteWizard, confirmPasteWizard, savePasteSeparator, forgetPasteSeparator,
         deleteRows, deleteSelection, replaceRowWithBlankLine, startInsertAfter, startInsertBefore, selectRow, beginDragSelection,
         selectionRootIds, toggleDisableSelection,
         extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateBlockPayloads, updateSceneMetadata,
@@ -2251,6 +2367,33 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         moveDraggedBlockAfter, moveDraggedBlockToSortablePosition, startDraggingBlock, endDraggingBlock,
         createLayerBeforeBlock, slashAtAlias,
     };
+}
+
+/**
+ * The mapping decisions as they should be REMEMBERED, which is not quite as they were made.
+ *
+ * A `createCharacter` decision is stored as the character it actually created. Storing the decision
+ * verbatim would mean the next chapter opens with "create a character called 林" pre-selected for a 林
+ * that now exists - one paste per chapter, one duplicate cast per chapter.
+ */
+function resolveMappingsForMemory(
+    mappings: Record<string, SpeakerMappingTarget>,
+    createdCharacterIds: Record<string, string>,
+): Record<string, SpeakerMappingTarget> {
+    const resolved: Record<string, SpeakerMappingTarget> = {};
+    for (const [key, target] of Object.entries(mappings)) {
+        if (target.kind !== "createCharacter") {
+            resolved[key] = target;
+            continue;
+        }
+        // The plan named the characters to create by the label the author saw, so the label is the
+        // lookup. A name that somehow did not get created is dropped rather than remembered wrong.
+        const created = Object.entries(createdCharacterIds).find(([name]) => name.trim().toLowerCase() === key);
+        if (created) {
+            resolved[key] = { kind: "character", characterId: created[1] };
+        }
+    }
+    return resolved;
 }
 
 /**
