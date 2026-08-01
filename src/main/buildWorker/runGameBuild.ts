@@ -7,7 +7,17 @@ import {
     type GameBuildFormat,
 } from "@shared/types/gameBuild";
 import { writeArtifactDigests } from "./artifactDigests";
-import { describeWindowsSigning, signtoolPathForTargets, windowsSigningConfiguration, withSigntoolPath } from "./desktopSigning";
+import {
+    describeMacSigning,
+    describeWindowsSigning,
+    isMacSigning,
+    macSigningConfiguration,
+    notarizationForTargets,
+    signtoolPathForTargets,
+    windowsSigningConfiguration,
+    withNotarizationEnv,
+    withSigntoolPath,
+} from "./desktopSigning";
 import { signArtifactsWithGpg } from "./gpgSign";
 import { runMobileRepack } from "./mobile/runMobileRepack";
 import { packageWebSite } from "./packageWebSite";
@@ -49,13 +59,17 @@ const BUILDER_ARCHS: Record<GameBuildArch, Arch> = {
 
 function builderConfiguration(config: GameBuildWorkerConfig, target: GameBuildWorkerTarget): Configuration {
     return {
-        // Authenticode options only ever reach a Windows target: `signing` is
-        // typed for one, but a stray block on another platform would put a
-        // `win` section into a macOS or Linux configuration, which is exactly
-        // the kind of thing that silently signs nothing.
-        ...(target.platform === "windows" && target.signing
-            ? windowsSigningConfiguration(target.signing)
-            : {}),
+        // Each platform's options are gated on the target's own platform, not
+        // just on the block being present: a stray block would otherwise put a
+        // `win` section into a macOS configuration, which is exactly the kind of
+        // thing that silently signs nothing.
+        //
+        // macOS is the asymmetric one - it gets a `mac` block whether or not it
+        // is signed, because "unsigned" there has to be said out loud rather
+        // than left to electron-builder's keychain search. See
+        // macSigningConfiguration.
+        ...windowsSigningFor(target),
+        ...macSigningFor(target),
         appId: config.appId,
         productName: config.productName,
         electronVersion: config.electronVersion,
@@ -77,6 +91,24 @@ function builderConfiguration(config: GameBuildWorkerConfig, target: GameBuildWo
         npmRebuild: false,
         publish: null,
     };
+}
+
+/** The `win` block, when this target is a Windows one carrying Authenticode options. */
+function windowsSigningFor(target: GameBuildWorkerTarget): Partial<Configuration> {
+    const signing = target.signing;
+    if (target.platform !== "windows" || !signing || isMacSigning(signing)) {
+        return {};
+    }
+    return windowsSigningConfiguration(signing);
+}
+
+/** The `mac` block. Every macOS target gets one; an unsigned target gets the one that says so. */
+function macSigningFor(target: GameBuildWorkerTarget): Partial<Configuration> {
+    if (target.platform !== "macos") {
+        return {};
+    }
+    const signing = target.signing;
+    return macSigningConfiguration(signing && isMacSigning(signing) ? signing : null);
 }
 
 export async function runGameBuild(config: GameBuildWorkerConfig, log: GameBuildLogger): Promise<string[]> {
@@ -105,29 +137,36 @@ async function packageDesktopTargets(config: GameBuildWorkerConfig, log: GameBui
         await ensureWinCodeSignCache(log);
     }
     const artifacts: string[] = [];
+    // Both wrappers below set process-wide environment, which electron-builder
+    // reads at sign time. Set around the whole loop rather than per target, so a
+    // mixed selection cannot flip either mid-build.
+    //
     // SIGNTOOL_PATH is the only way to tell electron-builder which signtool to
-    // use, and it reads it at sign time; set around the whole loop rather than
-    // per target so a mixed selection does not flip it mid-build. Unset when the
-    // host has no Windows SDK - electron-builder then downloads its own bundle.
-    await withSigntoolPath(signtoolPathForTargets(config.targets), async () => {
-        for (const target of config.targets) {
-            const platform = BUILDER_PLATFORMS[target.platform];
-            const targetNames = target.formats.map(format => BUILDER_TARGET_NAMES[format]);
-            log("info", `packaging ${target.platform} (${target.formats.join(", ")})`);
-            if (target.platform === "windows" && target.signing) {
-                log("info", describeWindowsSigning(target.signing));
+    // use; unset when the host has no Windows SDK, in which case it downloads
+    // its own bundle. The Apple variables are likewise @electron/notarize's only
+    // interface - see withNotarizationEnv.
+    await withNotarizationEnv(notarizationForTargets(config.targets), () =>
+        withSigntoolPath(signtoolPathForTargets(config.targets), async () => {
+            for (const target of config.targets) {
+                const platform = BUILDER_PLATFORMS[target.platform];
+                const targetNames = target.formats.map(format => BUILDER_TARGET_NAMES[format]);
+                log("info", `packaging ${target.platform} (${target.formats.join(", ")})`);
+                if (target.signing) {
+                    log("info", isMacSigning(target.signing)
+                        ? describeMacSigning(target.signing)
+                        : describeWindowsSigning(target.signing));
+                }
+                const produced = await build({
+                    // Exactly one arch per target: a multi-arch NSIS request would be
+                    // folded into a single installer whose name drops the ${arch} macro,
+                    // which the dialog's artifact preview could not have predicted.
+                    targets: platform.createTarget(targetNames, BUILDER_ARCHS[target.arch]),
+                    projectDir: appDir,
+                    config: builderConfiguration(config, target),
+                });
+                artifacts.push(...produced.map(artifact => path.resolve(artifact)));
             }
-            const produced = await build({
-                // Exactly one arch per target: a multi-arch NSIS request would be
-                // folded into a single installer whose name drops the ${arch} macro,
-                // which the dialog's artifact preview could not have predicted.
-                targets: platform.createTarget(targetNames, BUILDER_ARCHS[target.arch]),
-                projectDir: appDir,
-                config: builderConfiguration(config, target),
-            });
-            artifacts.push(...produced.map(artifact => path.resolve(artifact)));
-        }
-    });
+        }));
     return artifacts;
 }
 

@@ -88,6 +88,49 @@ export type GameBuildWorkerWindowsSigning =
     };
 
 /**
+ * App Store Connect API credentials for notarization, when the macOS credential
+ * carries them. Present or absent as a whole - the vault refuses a partial set.
+ *
+ * These reach @electron/notarize only as environment variables, because that is
+ * the only interface it has: `MacTargetHelper.getNotarizeOptions` reads
+ * `APPLE_API_KEY`/`APPLE_API_KEY_ID`/`APPLE_API_ISSUER` off `process.env` and
+ * takes nothing from the configuration. See `withNotarizationEnv`.
+ */
+export type GameBuildWorkerNotarization = {
+    /** Absolute path of the vault's copy of the .p8 private key. */
+    keyFile: string;
+    keyId: string;
+    issuerId: string;
+};
+
+/**
+ * macOS code signing, mapped onto electron-builder's `mac` options.
+ *
+ * Two sources, and they are exclusive for the same reason the Windows ones are:
+ * `mac.identity` names a certificate to look up, while `cscLink` supplies one to
+ * import into a throwaway keychain. Setting both means the lookup runs against a
+ * keychain that the import may or may not have populated yet, so the union makes
+ * choosing exactly one the only thing that can be expressed.
+ *
+ * Notarization hangs off either source, since it is about the finished .app and
+ * not about where the key came from.
+ */
+export type GameBuildWorkerMacSigning =
+    | {
+        /** A certificate in the host's keychain -> `mac.identity`. macOS hosts only. */
+        source: "keychain";
+        identity: string;
+        notarization?: GameBuildWorkerNotarization;
+    }
+    | {
+        /** A .p12 to import -> `mac.cscLink` + `mac.cscKeyPassword`. */
+        source: "p12";
+        certificateFile: string;
+        certificatePassword: string;
+        notarization?: GameBuildWorkerNotarization;
+    };
+
+/**
  * The GPG identity for detached signatures over the finished artifacts. Only a
  * key id: the private key stays in the host's gpg-agent and Studio never sees
  * it, which is why this block has no password.
@@ -171,12 +214,16 @@ export type GameBuildWorkerTarget = {
     iconPath?: string;
     /**
      * Code signing for this target's binaries and installers, done inside
-     * electron-builder. Present only on Windows targets: macOS signing needs
-     * Apple tooling that runs on a Mac (a separate batch), and Linux packages
-     * carry no OS-level signature - their integrity ships as the detached GPG
+     * electron-builder. Windows and macOS targets only; Linux packages carry no
+     * OS-level signature at all - their integrity ships as the detached GPG
      * signatures in `GameBuildWorkerConfig.gpg`.
+     *
+     * The two arms are told apart by `signing.source`, and the worker checks the
+     * target's platform before reading either: a Windows block reaching a macOS
+     * target would put a `win` section into a macOS configuration, which is the
+     * shape of a build that silently signs nothing.
      */
-    signing?: GameBuildWorkerWindowsSigning;
+    signing?: GameBuildWorkerWindowsSigning | GameBuildWorkerMacSigning;
 };
 
 /**

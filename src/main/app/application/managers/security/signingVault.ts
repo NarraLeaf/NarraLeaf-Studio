@@ -2,8 +2,10 @@ import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
 import {
+    APPLE_NOTARIZATION_FIELDS,
     SIGNING_CREDENTIAL_MATERIAL_FIELDS,
     SIGNING_CREDENTIAL_SECRET_FIELDS,
+    SIGNING_OPTIONAL_FIELDS,
     isSigningCredentialKind,
     type ResolvedSigningMaterial,
     type SigningCredential,
@@ -68,12 +70,12 @@ const METADATA_FIELDS: Record<SigningCredentialKind, readonly string[]> = {
     "windows-pfx": [],
     "windows-store": ["subjectName", "sha1"],
     "windows-azure": ["endpoint", "codeSigningAccountName", "certificateProfileName", "publisherName"],
+    "macos-keychain": ["identity", "notaryKeyId", "notaryIssuerId"],
+    "macos-apple": ["notaryKeyId", "notaryIssuerId"],
     "android-keystore": ["alias"],
     "ios-apple": [],
     "linux-gpg": ["keyId", "gpgPath"],
 };
-
-const OPTIONAL_FIELDS = new Set(["subjectName", "sha1", "gpgPath"]);
 
 /** A credential as it sits on disk: the redacted shape plus the sealed secrets. */
 type StoredCredential = SigningCredential & {
@@ -132,6 +134,9 @@ export class SigningVault {
             try {
                 const material: Record<string, string> = {};
                 for (const field of SIGNING_CREDENTIAL_MATERIAL_FIELDS[kind]) {
+                    if (isBlank(payload[field]) && SIGNING_OPTIONAL_FIELDS.has(field)) {
+                        continue;
+                    }
                     const source = requireString(payload[field], field);
                     const name = materialFileName(field, source);
                     const destination = path.join(materialDir, name);
@@ -153,8 +158,8 @@ export class SigningVault {
                 const metadata: Record<string, string> = {};
                 for (const field of METADATA_FIELDS[kind]) {
                     const value = payload[field];
-                    if (value === undefined || value === null || value === "") {
-                        if (!OPTIONAL_FIELDS.has(field)) {
+                    if (isBlank(value)) {
+                        if (!SIGNING_OPTIONAL_FIELDS.has(field)) {
                             throw new Error(`Signing credential of kind "${kind}" requires ${field}`);
                         }
                         continue;
@@ -164,6 +169,7 @@ export class SigningVault {
                 if (kind === "windows-store" && !metadata.subjectName && !metadata.sha1) {
                     throw new Error("A Windows certificate-store credential needs a subject name or a thumbprint");
                 }
+                assertNotarizationComplete(kind, { ...metadata, ...material });
 
                 // Assembled field by field from the whitelists above, so the
                 // result matches the union by construction; TS cannot follow that.
@@ -230,6 +236,9 @@ export class SigningVault {
             }
         }
         for (const field of SIGNING_CREDENTIAL_MATERIAL_FIELDS[kind]) {
+            if (isBlank(record[field]) && SIGNING_OPTIONAL_FIELDS.has(field)) {
+                continue;
+            }
             const name = requireString(record[field], field);
             resolved[field] = path.join(this.materialDir(stored.id), safeMaterialName(name));
         }
@@ -403,6 +412,30 @@ function requireString(value: unknown, field: string): string {
         throw new Error(`Signing credential field "${field}" is required`);
     }
     return value;
+}
+
+function isBlank(value: unknown): boolean {
+    return value === undefined || value === null || value === "";
+}
+
+/**
+ * Notarization is all three fields or none of them.
+ *
+ * Each one is individually optional - a macOS credential that notarizes nothing
+ * is a perfectly good credential - so nothing above this would catch a set with
+ * two of the three filled in. That import has to fail here: it is unambiguously
+ * a request to notarize, and accepting it would produce a credential that signs
+ * happily and silently skips the step the author asked for.
+ */
+function assertNotarizationComplete(kind: SigningCredentialKind, fields: Record<string, string>): void {
+    const present = APPLE_NOTARIZATION_FIELDS.filter(field => Boolean(fields[field]));
+    if (present.length !== 0 && present.length !== APPLE_NOTARIZATION_FIELDS.length) {
+        const missing = APPLE_NOTARIZATION_FIELDS.filter(field => !fields[field]);
+        throw new Error(
+            `A "${kind}" credential that notarizes needs all of ${APPLE_NOTARIZATION_FIELDS.join(", ")}; `
+            + `missing ${missing.join(", ")}`,
+        );
+    }
 }
 
 /**

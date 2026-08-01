@@ -125,6 +125,21 @@ export type BuildPreflightCode =
     /** A signed APK still cannot go to Google Play, which takes only AABs. */
     | "signing-android-not-play"
     | "signing-ios-profile-mismatch"
+    /** The keychain identity the macOS credential names is not on this machine. */
+    | "signing-macos-identity-missing"
+    /**
+     * The identity is in the keychain but `security` will not offer it: expired,
+     * missing its private key, or not chaining to a trusted root. A distinct
+     * code from "missing" because the author has to fix the certificate they
+     * have rather than go looking for one they do not.
+     */
+    | "signing-macos-identity-unusable"
+    /**
+     * The macOS identity is not a `Developer ID Application` one, so Gatekeeper
+     * will reject the result on a player's machine and Apple will refuse to
+     * notarize it.
+     */
+    | "signing-macos-not-developer-id"
     | "cross-build-download"
     | "output-not-writable"
     | "output-not-empty";

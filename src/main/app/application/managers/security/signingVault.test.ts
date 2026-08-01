@@ -269,6 +269,75 @@ describe("SigningVault", () => {
         expect(material).toEqual([]);
     });
 
+    it("imports a macOS credential that notarizes nothing, and copies no .p8", async () => {
+        // `notaryKeyFile` is an optional material field: the credential means
+        // something coherent without it - sign, do not notarize - which is the
+        // case the material loop had to learn to skip rather than demand.
+        const vault = makeVault();
+        const credential = await vault.import({
+            kind: "macos-keychain",
+            label: "My Developer ID",
+            identity: "Developer ID Application: NarraLeaf Ltd (A1B2C3D4E5)",
+        });
+
+        expect(credential).toMatchObject({ kind: "macos-keychain", identity: "Developer ID Application: NarraLeaf Ltd (A1B2C3D4E5)" });
+        expect(credential).not.toHaveProperty("notaryKeyFile");
+        expect(await fs.readdir(vault.materialDir(credential.id))).toEqual([]);
+
+        const material = await vault.resolveMaterial(credential.id);
+        expect(material).toEqual({
+            id: credential.id,
+            kind: "macos-keychain",
+            identity: "Developer ID Application: NarraLeaf Ltd (A1B2C3D4E5)",
+        });
+    });
+
+    it("copies the notary key in when a macOS credential does notarize", async () => {
+        const vault = makeVault();
+        const p8Path = path.join(sourceDir, "AuthKey_ABC123.p8");
+        await fs.writeFile(p8Path, "pretend pkcs8 bytes");
+
+        const credential = await vault.import({
+            kind: "macos-apple",
+            label: "Developer ID file",
+            p12File: pfxPath,
+            p12Password: PASSWORD,
+            notaryKeyFile: p8Path,
+            notaryKeyId: "ABC123",
+            notaryIssuerId: "11111111-2222-3333-4444-555555555555",
+        });
+
+        const material = await vault.resolveMaterial(credential.id);
+        expect(material).toMatchObject({
+            kind: "macos-apple",
+            p12Password: PASSWORD,
+            notaryKeyId: "ABC123",
+            notaryIssuerId: "11111111-2222-3333-4444-555555555555",
+        });
+        // The .p8 is a private key and lands under the same 0600 material
+        // directory as every other key the vault holds.
+        const notaryKeyFile = (material as { notaryKeyFile: string }).notaryKeyFile;
+        expect(path.dirname(notaryKeyFile)).toBe(vault.materialDir(credential.id));
+        expect(await fs.readFile(notaryKeyFile, "utf8")).toBe("pretend pkcs8 bytes");
+    });
+
+    it("refuses a half-filled notary set, leaving nothing behind", async () => {
+        // Each of the three is individually optional, so nothing else rejects
+        // this - and it is unambiguously a request to notarize. Accepting it
+        // would give the author a credential that signs and silently skips the
+        // step they asked for.
+        const vault = makeVault();
+        await expect(vault.import({
+            kind: "macos-keychain",
+            label: "Half",
+            identity: "Developer ID Application: X",
+            notaryKeyId: "ABC123",
+        })).rejects.toThrow(/notaryKeyFile.*notaryIssuerId|notarizes/);
+
+        expect(await vault.list()).toEqual([]);
+        expect(await fs.readdir(path.join(root, "material")).catch(() => [])).toEqual([]);
+    });
+
     it("cleans up the material when a source file cannot be copied", async () => {
         const vault = makeVault();
         await expect(vault.import({ ...pfxImport(), file: path.join(sourceDir, "absent.pfx") }))

@@ -1,7 +1,9 @@
 import type { TranslationKey } from "@shared/i18n";
 import {
+    APPLE_NOTARIZATION_FIELDS,
     SIGNING_CREDENTIAL_MATERIAL_FIELDS,
     SIGNING_CREDENTIAL_SECRET_FIELDS,
+    type AppleNotarizationImport,
     type SigningCredentialImport,
     type SigningCredentialKind,
 } from "@shared/types/signing";
@@ -20,9 +22,31 @@ import {
 /** A field the author fills in. `name` is the key in the import payload. */
 export type SigningImportField =
     | { type: "text" | "secret"; name: string; labelKey: TranslationKey; optional?: boolean; placeholderKey?: TranslationKey }
-    | { type: "file"; name: string; labelKey: TranslationKey; extensions: string[] }
+    | { type: "file"; name: string; labelKey: TranslationKey; extensions: string[]; optional?: boolean }
     /** A key inside a keystore, listed by opening `fileField` with `passwordField`. */
-    | { type: "alias"; name: string; labelKey: TranslationKey; fileField: string; passwordField: string };
+    | { type: "alias"; name: string; labelKey: TranslationKey; fileField: string; passwordField: string }
+    /** A code-signing identity in this Mac's keychain, listed by the host probe. */
+    | { type: "identity"; name: string; labelKey: TranslationKey };
+
+/**
+ * Notarization, offered on both macOS kinds and required on neither.
+ *
+ * All three rows are optional individually, and the vault rejects a set with
+ * some filled in - see `assertNotarizationComplete`. `isImportComplete` enforces
+ * the same rule here so the button never goes live on an import that would be
+ * refused.
+ */
+const APPLE_NOTARIZATION_ROWS: SigningImportField[] = [
+    {
+        type: "file",
+        name: "notaryKeyFile",
+        labelKey: "build.signing.field.notaryKey",
+        extensions: ["p8"],
+        optional: true,
+    },
+    { type: "text", name: "notaryKeyId", labelKey: "build.signing.field.notaryKeyId", optional: true },
+    { type: "text", name: "notaryIssuerId", labelKey: "build.signing.field.notaryIssuerId", optional: true },
+];
 
 /** The form's answers so far. `label` is always present; the rest is per kind. */
 export type SigningImportDraft = { label: string } & Record<string, string | undefined>;
@@ -50,6 +74,15 @@ const IMPORT_FIELDS: Record<SigningCredentialKind, SigningImportField[]> = {
         { type: "text", name: "codeSigningAccountName", labelKey: "build.signing.field.account" },
         { type: "text", name: "certificateProfileName", labelKey: "build.signing.field.profile" },
         { type: "text", name: "publisherName", labelKey: "build.signing.field.publisher" },
+    ],
+    "macos-keychain": [
+        { type: "identity", name: "identity", labelKey: "build.signing.field.macIdentity" },
+        ...APPLE_NOTARIZATION_ROWS,
+    ],
+    "macos-apple": [
+        { type: "file", name: "p12File", labelKey: "build.signing.field.appleCertificate", extensions: ["p12", "pfx"] },
+        { type: "secret", name: "p12Password", labelKey: "build.signing.field.password" },
+        ...APPLE_NOTARIZATION_ROWS,
     ],
     "android-keystore": [
         { type: "file", name: "file", labelKey: "build.signing.field.keystore", extensions: KEYSTORE_EXTENSIONS },
@@ -104,9 +137,23 @@ export function isImportComplete(kind: SigningCredentialKind, draft: SigningImpo
     if (kind === "windows-store") {
         return Boolean(draft.subjectName?.trim() || draft.sha1?.trim());
     }
-    return IMPORT_FIELDS[kind].every(field => field.type === "alias"
+    if (!notarizationDraftComplete(draft)) {
+        return false;
+    }
+    return IMPORT_FIELDS[kind].every(field => field.type === "alias" || field.type === "identity"
         ? Boolean(draft[field.name]?.trim())
         : ("optional" in field && field.optional) || Boolean(draft[field.name]?.trim()));
+}
+
+/**
+ * Whether the notarization rows are all filled in or all empty. Blocking the
+ * in-between is the point: partially filled means the author is asking to
+ * notarize, and the vault would refuse the import rather than quietly produce a
+ * credential that signs and skips it.
+ */
+export function notarizationDraftComplete(draft: SigningImportDraft): boolean {
+    const filled = APPLE_NOTARIZATION_FIELDS.filter(field => Boolean(draft[field]?.trim()));
+    return filled.length === 0 || filled.length === APPLE_NOTARIZATION_FIELDS.length;
 }
 
 /**
@@ -138,6 +185,16 @@ export function buildSigningImport(kind: SigningCredentialKind, draft: SigningIm
                 certificateProfileName: read("certificateProfileName"),
                 publisherName: read("publisherName"),
             };
+        case "macos-keychain":
+            return { kind, label, identity: read("identity"), ...notarizationImport(read) };
+        case "macos-apple":
+            return {
+                kind,
+                label,
+                p12File: read("p12File"),
+                p12Password: draft.p12Password ?? "",
+                ...notarizationImport(read),
+            };
         case "android-keystore":
             return {
                 kind,
@@ -165,6 +222,22 @@ export function buildSigningImport(kind: SigningCredentialKind, draft: SigningIm
                 ...(read("gpgPath") ? { gpgPath: read("gpgPath") } : {}),
             };
     }
+}
+
+/**
+ * The notarization half of a macOS import: all three fields or none, never a
+ * key with an empty string for its id. `isImportComplete` has already ruled out
+ * the in-between, so the check here is the one that makes the omission total.
+ */
+function notarizationImport(read: (name: string) => string): AppleNotarizationImport {
+    if (APPLE_NOTARIZATION_FIELDS.some(field => !read(field))) {
+        return {};
+    }
+    return {
+        notaryKeyFile: read("notaryKeyFile"),
+        notaryKeyId: read("notaryKeyId"),
+        notaryIssuerId: read("notaryIssuerId"),
+    };
 }
 
 /** Every field name the form collects for a kind. Used by the test below. */

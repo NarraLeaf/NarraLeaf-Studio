@@ -40,6 +40,7 @@ import type {
 import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
 import type {
     SigningCredential,
+    MacSigningIdentity,
     SigningCredentialImport,
     SigningInspectResult,
 } from "./signing";
@@ -178,6 +179,7 @@ export enum IPCEventType {
     signingRemove = "signing.remove",
     signingInspect = "signing.inspect",
     signingKeystoreAliases = "signing.keystoreAliases",
+    signingMacIdentities = "signing.macIdentities",
 
     blueprintPersistenceGetAll = "blueprintPersistence.getAll",
     blueprintPersistenceGetValue = "blueprintPersistence.getValue",
@@ -1514,6 +1516,19 @@ export type IPCSigningEvents = {
         },
         response: {
             aliases: string[];
+        };
+    };
+    /**
+     * The code-signing identities in this Mac's keychains, so the import form can
+     * offer them rather than asking for a certificate name typed from memory.
+     * Empty on every other host, and on a Mac that holds none.
+     */
+    [IPCEventType.signingMacIdentities]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>,
+        response: {
+            identities: MacSigningIdentity[];
         };
     };
 };
