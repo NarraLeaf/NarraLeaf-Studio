@@ -2394,7 +2394,12 @@ function ActionCommandMenu(props: {
                 event.stopPropagation();
             }}
         >
-            <div className="flex max-h-72">
+            {/* A fixed height, not a cap. Under `max-h`, the box took the taller column's height, and
+                the category column is 284px against the cap's 288 — so a category whose commands did
+                not fill the panel (镜头 has one, 工具 three) shrank the whole menu by those 4px and put
+                the key strip back down again on the way out. The menu is the same size whatever is
+                open; only the right column scrolls. */}
+            <div className="flex h-72">
                 {/* ← brings the arrows here, → sends them back; the column that does not have them
                     keeps its place in a flat fill, so there is never a second live-looking highlight
                     competing for what Enter will do. Tab still means "take the highlight". */}
