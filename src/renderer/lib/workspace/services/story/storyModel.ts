@@ -1056,8 +1056,13 @@ function normalizeSceneBgm(value: StoryScene["bgm"]): StoryScene["bgm"] {
         ? Math.min(1, Math.max(0, value.volume))
         : undefined;
     const fadeMs = normalizeOptionalNonNegativeNumber(value.fadeMs);
+    const audioTrackId = normalizeOptionalString(value.audioTrackId);
     return {
         assetId,
+        // Kept as authored even when no track of that id exists: a reference to a deleted track
+        // resolves to its bus's built-in at compile time, and dropping the id here would silently
+        // discard the author's choice the moment they deleted a track they meant to re-create.
+        ...(audioTrackId !== undefined ? { audioTrackId } : {}),
         ...(volume !== undefined ? { volume } : {}),
         ...(typeof value.loop === "boolean" ? { loop: value.loop } : {}),
         ...(fadeMs !== undefined ? { fadeMs } : {}),

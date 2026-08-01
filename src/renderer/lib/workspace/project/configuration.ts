@@ -2,6 +2,7 @@ import type { LocalizationConfiguration } from "@shared/types/localization";
 import type { AutoSaveConfiguration } from "@shared/types/saves";
 import type { SigningPlatform } from "@shared/types/signing";
 import type { VoiceConfiguration } from "@shared/types/voice";
+import type { LintRuleSeverity } from "@/lib/lint/types";
 import {
     GAME_BUILD_FORMATS_BY_PLATFORM,
     isDesktopBuildPlatform,
@@ -46,6 +47,25 @@ export type NetworkConfiguration = {
 export type SecurityConfiguration = {
     /** When true, packaged and previewed builds protect game assets and data. */
     encryptAssets: boolean;
+};
+
+/**
+ * Project lint policy (see `@/lib/lint`).
+ *
+ * `severities` and `options` are **sparse**: they hold only what the author changed away from the
+ * rule's own default. A dense map would freeze today's defaults into every project ever saved, so
+ * improving a default would never reach an existing project - and adding a rule would silently
+ * leave it unconfigured in a file that looks exhaustive.
+ */
+export type LintingConfiguration = {
+    /** Sweep the project as part of a production build (ruling R3: on by default). */
+    runOnBuild: boolean;
+    /** Lowest severity that refuses the build. */
+    failBuildOn: "error" | "warning";
+    /** ruleId -> severity, only where it differs from the rule's default. */
+    severities: Record<string, LintRuleSeverity>;
+    /** ruleId -> option values, only where they differ from the rule's declared defaults. */
+    options: Record<string, Record<string, string | number>>;
 };
 
 /** Orientations a mobile build can lock to, in display order. */
@@ -184,6 +204,8 @@ export type ProjectAppConfiguration = {
     signing?: SigningConfiguration;
     /** Last production-build dialog selection; absent until the first build. */
     build?: BuildConfiguration;
+    /** Project lint policy; absent until configured (see the defaults). */
+    linting?: LintingConfiguration;
 };
 
 /**
@@ -235,6 +257,76 @@ export function normalizeSecurityConfiguration(value: unknown): SecurityConfigur
         encryptAssets: typeof record.encryptAssets === "boolean"
             ? record.encryptAssets
             : DEFAULT_SECURITY_CONFIGURATION.encryptAssets,
+    };
+}
+
+/**
+ * Lint on, blocking on errors: what a project that never opened the settings panel means. Ruling
+ * R3 - a gate nobody enabled is a gate nobody has.
+ */
+export const DEFAULT_LINTING_CONFIGURATION: LintingConfiguration = {
+    runOnBuild: true,
+    failBuildOn: "error",
+    severities: {},
+    options: {},
+};
+
+const LINT_RULE_SEVERITIES: readonly LintRuleSeverity[] = ["error", "warning", "info", "off"];
+
+/**
+ * Coerce an unknown persisted value into a complete LintingConfiguration.
+ *
+ * Malformed entries are dropped rather than repaired, and never throw: an unreadable severity for
+ * one rule must not cost the whole lint config, and a rule id this Studio has never heard of is
+ * kept as-is (it may belong to a newer version - dropping it would silently discard the author's
+ * choice when the project travels back).
+ */
+export function normalizeLintingConfiguration(value: unknown): LintingConfiguration {
+    if (!value || typeof value !== "object") {
+        return { ...DEFAULT_LINTING_CONFIGURATION, severities: {}, options: {} };
+    }
+    const record = value as Record<string, unknown>;
+
+    const severities: Record<string, LintRuleSeverity> = {};
+    if (record.severities && typeof record.severities === "object") {
+        for (const [ruleId, severity] of Object.entries(record.severities as Record<string, unknown>)) {
+            if (ruleId && LINT_RULE_SEVERITIES.includes(severity as LintRuleSeverity)) {
+                severities[ruleId] = severity as LintRuleSeverity;
+            }
+        }
+    }
+
+    const options: Record<string, Record<string, string | number>> = {};
+    if (record.options && typeof record.options === "object") {
+        for (const [ruleId, raw] of Object.entries(record.options as Record<string, unknown>)) {
+            if (!ruleId || !raw || typeof raw !== "object") {
+                continue;
+            }
+            const entries: Record<string, string | number> = {};
+            for (const [key, optionValue] of Object.entries(raw as Record<string, unknown>)) {
+                if (typeof optionValue === "string") {
+                    entries[key] = optionValue;
+                } else if (typeof optionValue === "number" && Number.isFinite(optionValue)) {
+                    entries[key] = optionValue;
+                }
+            }
+            // The rule's own spec has the final say on whether a value is usable (see
+            // resolveRuleOptions); this only guarantees the shape.
+            if (Object.keys(entries).length > 0) {
+                options[ruleId] = entries;
+            }
+        }
+    }
+
+    return {
+        runOnBuild: typeof record.runOnBuild === "boolean"
+            ? record.runOnBuild
+            : DEFAULT_LINTING_CONFIGURATION.runOnBuild,
+        failBuildOn: record.failBuildOn === "warning" || record.failBuildOn === "error"
+            ? record.failBuildOn
+            : DEFAULT_LINTING_CONFIGURATION.failBuildOn,
+        severities,
+        options,
     };
 }
 

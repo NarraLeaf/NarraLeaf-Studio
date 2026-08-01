@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { clipLength, type AudioClip, type SampleRange } from "./audioClip";
+import { clipLength, type AudioClip } from "./audioClip";
+import {
+    playbackPosition,
+    resolvePlaybackGeometry,
+    type PlaybackGeometry,
+    type PlayRange,
+} from "./transport";
+
+export type { PlayRange } from "./transport";
 
 /**
  * Playback for the edited clip.
@@ -14,8 +22,13 @@ export function useClipPlayback(clip: AudioClip | null) {
     const sourceRef = useRef<AudioBufferSourceNode | null>(null);
     const gainRef = useRef<GainNode | null>(null);
     const gainValueRef = useRef(1);
-    /** Sample the current playback started from, and the context time it started at. */
-    const originRef = useRef({ sample: 0, startedAt: 0 });
+    /**
+     * What the sounding run is doing, and the context time it started at.
+     *
+     * The same geometry the source node was armed with - see {@link PlaybackGeometry}. Null while
+     * nothing is sounding.
+     */
+    const originRef = useRef<{ geometry: PlaybackGeometry; startedAt: number } | null>(null);
     const [playing, setPlaying] = useState(false);
     const [position, setPosition] = useState(0);
     const [loop, setLoop] = useState(false);
@@ -54,6 +67,8 @@ export function useClipPlayback(clip: AudioClip | null) {
     const stop = useCallback(() => {
         const source = sourceRef.current;
         sourceRef.current = null;
+        // Nothing is sounding, so there is no geometry to read a playhead out of.
+        originRef.current = null;
         if (source) {
             source.onended = null;
             try {
@@ -78,7 +93,7 @@ export function useClipPlayback(clip: AudioClip | null) {
     }, []);
 
     const play = useCallback(
-        (from: number, range: SampleRange | null) => {
+        (from: number, range: PlayRange | null) => {
             if (!clip || clipLength(clip) === 0) {
                 return;
             }
@@ -93,23 +108,27 @@ export function useClipPlayback(clip: AudioClip | null) {
             source.buffer = buffer;
             source.connect(gainRef.current ?? context.destination);
 
-            const start = Math.max(0, Math.min(clipLength(clip) - 1, from));
-            if (range && range.end > range.start) {
-                source.loop = loop;
-                source.loopStart = range.start / clip.sampleRate;
-                source.loopEnd = range.end / clip.sampleRate;
-            } else {
-                source.loop = loop;
-                source.loopStart = 0;
-                source.loopEnd = clipLength(clip) / clip.sampleRate;
-            }
+            // Resolved once and used for both jobs below: arming the node, and reading the playhead
+            // back out in the tick. Two derivations of the same thing is how they came apart.
+            const geometry = resolvePlaybackGeometry({
+                from,
+                range,
+                totalSamples: clipLength(clip),
+                looping: loop,
+            });
+            source.loop = geometry.looping;
+            // The turnaround, not the entry: starting before `loopStart` is the whole point of an
+            // intro→loop, and Web Audio does exactly that - it plays from `offset` and wraps to
+            // `loopStart` the first time it reaches `loopEnd`.
+            source.loopStart = geometry.loopStart / clip.sampleRate;
+            source.loopEnd = geometry.end / clip.sampleRate;
 
-            const offsetSeconds = start / clip.sampleRate;
+            const offsetSeconds = geometry.start / clip.sampleRate;
             const durationSeconds =
-                range && range.end > range.start && !loop
-                    ? Math.max(0, (range.end - start) / clip.sampleRate)
+                !geometry.looping && geometry.end < clipLength(clip)
+                    ? Math.max(0, (geometry.end - geometry.start) / clip.sampleRate)
                     : undefined;
-            originRef.current = { sample: start, startedAt: context.currentTime };
+            originRef.current = { geometry, startedAt: context.currentTime };
             source.onended = () => {
                 if (sourceRef.current === source) {
                     sourceRef.current = null;
@@ -126,13 +145,14 @@ export function useClipPlayback(clip: AudioClip | null) {
             sourceRef.current = source;
             setPlaying(true);
             setFinished(false);
-            setPosition(start);
+            setPosition(geometry.start);
         },
         [clip, getContext, loop, stop],
     );
 
     // Track the playhead while playing. Driven by the audio clock (not a timer count) so it stays
-    // true even when frames are dropped.
+    // true even when frames are dropped, and folded through the run's own geometry so the line
+    // wraps where the audio wraps - to the loop point, not to the head of the file.
     useEffect(() => {
         if (!playing || !clip) {
             return;
@@ -140,11 +160,10 @@ export function useClipPlayback(clip: AudioClip | null) {
         let frame = 0;
         const tick = () => {
             const context = contextRef.current;
-            if (context) {
-                const elapsed = context.currentTime - originRef.current.startedAt;
-                const total = clipLength(clip);
-                const raw = originRef.current.sample + elapsed * clip.sampleRate;
-                setPosition(total > 0 ? raw % total : 0);
+            const origin = originRef.current;
+            if (context && origin) {
+                const elapsed = context.currentTime - origin.startedAt;
+                setPosition(playbackPosition(origin.geometry, elapsed * clip.sampleRate));
             }
             frame = requestAnimationFrame(tick);
         };

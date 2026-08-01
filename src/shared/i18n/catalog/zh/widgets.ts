@@ -220,6 +220,8 @@ export const widgets = {
         autoplayHint: "只在游戏里生效。编辑画布始终暂停，预览请用工具条。",
         volume: "音量",
         volumeHint: "0 到 1。运行时蓝图的音量引脚会覆盖此值。",
+        audioTrack: "音轨",
+        audioTrackDefault: "音效",
         playbackRate: "速度",
         controls: "原生控件",
         controlsHint: "在画面上显示浏览器自带的播放条。",

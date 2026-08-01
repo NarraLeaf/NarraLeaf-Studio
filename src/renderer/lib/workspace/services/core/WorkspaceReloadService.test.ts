@@ -58,6 +58,7 @@ type Harness = {
         storyReload: ReturnType<typeof vi.fn>;
         uiDocumentLoad: ReturnType<typeof vi.fn>;
         uiGraphLoad: ReturnType<typeof vi.fn>;
+        audioTracksLoad: ReturnType<typeof vi.fn>;
         localizationReload: ReturnType<typeof vi.fn>;
         voiceReload: ReturnType<typeof vi.fn>;
         surfaceHistoryClear: ReturnType<typeof vi.fn>;
@@ -86,6 +87,7 @@ async function createHarness(seed?: string): Promise<Harness> {
         }),
         uiDocumentLoad: vi.fn(async () => undefined),
         uiGraphLoad: vi.fn(async () => undefined),
+        audioTracksLoad: vi.fn(async () => undefined),
         localizationReload: vi.fn(async () => undefined),
         voiceReload: vi.fn(async () => undefined),
         surfaceHistoryClear: vi.fn(),
@@ -128,6 +130,7 @@ async function createHarness(seed?: string): Promise<Harness> {
         [Services.Story]: { reloadFromDisk: stubs.storyReload },
         [Services.UIDocument]: { load: stubs.uiDocumentLoad },
         [Services.UIGraph]: { load: stubs.uiGraphLoad, consumeLegacyPersistentVariables: () => null },
+        [Services.AudioTracks]: { load: stubs.audioTracksLoad },
         [Services.Localization]: { reloadFromDisk: stubs.localizationReload },
         [Services.Voice]: { reloadFromDisk: stubs.voiceReload },
         [Services.UIEditorHistory]: { clear: stubs.surfaceHistoryClear },
@@ -259,7 +262,7 @@ describe("WorkspaceReloadService", () => {
         expect(result.failures).toEqual([]);
         expect(result.reloaded).toEqual([
             "project", "assets", "characters", "story",
-            "uiDocument", "uiGraph", "variables", "localization", "voice",
+            "uiDocument", "uiGraph", "variables", "audioTracks", "localization", "voice",
         ]);
         expect(harness.stubs.assetsReload).toHaveBeenCalledTimes(1);
         expect(harness.stubs.voiceReload).toHaveBeenCalledTimes(1);

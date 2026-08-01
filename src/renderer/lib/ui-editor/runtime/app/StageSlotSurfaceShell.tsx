@@ -27,6 +27,8 @@ import {
     type DevModeWidgetRuntimePatch,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { createDevModeBlueprintHostAdapter } from "@/lib/ui-editor/runtime/hostAdapters/devModeBlueprintHostAdapter";
+import type { ProjectAudioTrack } from "@shared/types/audioTrack";
+import type { SoundTransport } from "./soundTransport";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 import type { SurfaceLifecycleOrchestrator } from "./lifecycle/surfaceLifecycleOrchestrator";
 import { collectSurfaceFlushElementIds } from "@/lib/ui-editor/runtime/game/surfaceFlushTargets";
@@ -92,6 +94,21 @@ export type GameUiSlotHostOptions = {
     setSentenceSpeedInGame: (cps: number) => Promise<void>;
     getGamePreferenceInGame: (key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue;
     setGamePreferenceInGame: (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => Promise<void>;
+    /**
+     * The session's sound transport.
+     *
+     * Optional because a host may back no audio at all (the in-editor story preview), in which case
+     * the sound nodes degrade to their warned no-op exactly as they do on a Page previewed in
+     * Studio. It is *not* optional in the sense of "nice to have": a slot surface without it is the
+     * shipped defect where a button-click sound in a dialogue box, choice or NVL surface silently
+     * did nothing, because this shell built its host API with none of the sound callbacks the
+     * top-level surfaces pass.
+     */
+    soundTransport?: SoundTransport;
+    /** Project audio tracks (from the bundle); resolves the video widget's mixer volume. */
+    audioTracks?: readonly ProjectAudioTrack[];
+    /** Preference stream so a mid-playback volume-slider drag reaches host-owned media elements. */
+    subscribeGamePreferences?: (listener: () => void) => () => void;
     setWidgetPatchesByScope: Dispatch<SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>>;
     widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
     widgetRuntimeStore: WidgetRuntimeStateStore;
@@ -204,6 +221,18 @@ export function useStageSlotSurfaceRuntime(input: {
             onSetSentenceSpeed: options.setSentenceSpeedInGame,
             onGetGamePreference: options.getGamePreferenceInGame,
             onSetGamePreference: options.setGamePreferenceInGame,
+            // Same seven callbacks the top-level surfaces pass. Left off, `sound.play` returns null
+            // and every transport node is a silent no-op, so an authored click sound inside a
+            // dialogue box just never happens.
+            onPlaySound: options.soundTransport?.play,
+            onStopSound: options.soundTransport?.stop,
+            onPauseSound: options.soundTransport?.pause,
+            onResumeSound: options.soundTransport?.resume,
+            onSetSoundVolume: options.soundTransport?.setVolume,
+            onSeekSound: options.soundTransport?.seek,
+            onIsSoundPlaying: options.soundTransport?.isPlaying,
+            audioTracks: options.audioTracks,
+            onSubscribeGamePreferences: options.subscribeGamePreferences,
             onWidgetPatch: (elementId, patch) => {
                 applyWidgetRuntimePatch({
                     setWidgetPatchesByScope,

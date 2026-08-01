@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/chrome/RectangleChromeRenderer";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
@@ -10,6 +10,7 @@ import {
     subscribeVideoPreviewPlayback,
 } from "@/lib/ui-editor/interaction/videoPreviewPlayback";
 import { getVideoProps } from "./helpers";
+import { resolveVideoMixerHost, useVideoElementVolume } from "./videoMixer";
 
 /**
  * The `<video>` fills the chrome box rather than replacing it: corner radius, border, fill,
@@ -66,6 +67,14 @@ export function VideoRenderer(props: WidgetRendererProps) {
      */
     const isLiveHost = Boolean(hostAdapter.blueprintRuntime);
 
+    /**
+     * The element is outside the engine's audio graph, so the mixer has to be applied by hand -
+     * otherwise the clip ignores mute, the master slider and its channel's slider entirely. See
+     * `videoMixer.ts` for why this multiplies rather than routing into a gain node.
+     */
+    const mixerHost = useMemo(() => resolveVideoMixerHost(hostAdapter), [hostAdapter]);
+    const elementVolume = useVideoElementVolume(mixerHost, videoProps.audioTrackId, videoProps.volume);
+
     // Pool names as bare strings, not `AssetType.*`: the enum lives in a workspace service module
     // the game-runtime bundle is not allowed to import (see `build-runtime.js`).
     const { url: sourceUrl } = useAssetObjectUrl(videoProps.assetId, "video");
@@ -91,9 +100,9 @@ export function VideoRenderer(props: WidgetRendererProps) {
         if (!node) {
             return;
         }
-        node.volume = videoProps.volume;
+        node.volume = elementVolume;
         node.playbackRate = videoProps.playbackRate;
-    }, [videoProps.volume, videoProps.playbackRate, sourceUrl]);
+    }, [elementVolume, videoProps.playbackRate, sourceUrl]);
 
     useEffect(() => {
         const node = videoRef.current;

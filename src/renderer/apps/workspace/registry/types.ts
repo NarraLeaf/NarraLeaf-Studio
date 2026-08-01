@@ -129,6 +129,14 @@ export interface ActionDefinition {
     when?: (context: FocusContext) => boolean;
     badge?: string | number; // Badge text/count
     group?: string; // Group ID this action belongs to
+    /**
+     * Command-palette category for a *standalone* action (one with no `group`, whose group label
+     * would otherwise supply it). Without it a standalone action lands in the palette's catch-all
+     * section, which is where Build sat: alone, under "Other", next to nothing it relates to.
+     * Ignored for grouped actions — their group's label wins, so a menu and the palette cannot
+     * disagree about where an action belongs.
+     */
+    paletteCategoryKey?: TranslationKey;
     /** When true, shortcut may run while DOM focus is in a text field (default false). */
     allowInEditable?: boolean;
 }

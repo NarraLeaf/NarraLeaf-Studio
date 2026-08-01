@@ -137,6 +137,12 @@ export function buildStoryCommandContext(input: {
      * context built in a test has no project to mount anything from.
      */
     puppetByCharacterId?: Readonly<Record<string, StoryPuppetVocabulary>>;
+    /**
+     * The project's audio tracks. Omitted in tests and wherever no project is open; the result is a
+     * line that reports every track name as unknown, which is the honest answer when the list could
+     * not be read at all.
+     */
+    audioTracks?: readonly { id: string; name: string }[];
 }): StoryCommandContext {
     // What a `/show` row can name after the character: a preset character's poses, a layered one's
     // tags (across every axis — the engine resolves each against the group that owns it, so the
@@ -173,6 +179,9 @@ export function buildStoryCommandContext(input: {
         tempSpeakers: input.document ? collectTempSpeakers(input.document).map(speaker => speaker.name) : [],
         // A scene is addressed by the name the author sees in the panel, not its runtimeName.
         scenes: Object.values(input.document?.scenes ?? {}).map(entry => ({ id: entry.id, name: entry.name })),
+        // Order preserved from the service (built-ins first), so the completion menu leads with the
+        // three tracks every project has rather than sorting them under a custom one.
+        audioTracks: (input.audioTracks ?? []).map(track => ({ id: track.id, name: track.name })),
         // The one scan, shared with the compiler's `goto` validation (§12.9) - not a completion-layer
         // special case, just another table this projection carries.
         labels: sceneLabelNames(input.scene),

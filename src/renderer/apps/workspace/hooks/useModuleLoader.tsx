@@ -62,6 +62,7 @@ export function useModuleLoader() {
                         visible: action.visible,
                         badge: action.badge,
                         when: action.when,
+                        paletteCategoryKey: action.paletteCategoryKey,
                     });
                 });
             }
@@ -102,6 +103,7 @@ export function useModuleLoader() {
                 disabled: action.disabled,
                 visible: action.visible,
                 badge: action.badge,
+                paletteCategoryKey: action.paletteCategoryKey,
             });
         });
 

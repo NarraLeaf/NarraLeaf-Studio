@@ -127,7 +127,11 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
         return (
             <div
                 data-workspace-version-rail="strip"
-                className="flex shrink-0 flex-col items-center gap-1 border-r border-primary bg-primary/15 px-1 py-2"
+                // No right edge here, and this is the one state that goes without one. The tinted
+                // block IS the seam - it meets the sidebar selector's own `border-r border-edge`
+                // directly, and a coloured rule between two columns that are already different
+                // colours is a second edge drawn over the first.
+                className="flex shrink-0 flex-col items-center gap-1 bg-primary/15 px-1 py-2"
                 style={{ width: VERSION_RAIL_COLLAPSED_WIDTH }}
             >
                 <button
@@ -182,12 +186,20 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
         : t("workspace.shell.versionControl.close");
 
     return (
+        // Ruled on the right like every other column of the window's left edge - the same
+        // `border-r border-edge` the sidebar selector and the left dock wear. A tone change alone
+        // was tried and read as a missing edge next to neighbours that all have one; the panel is
+        // one column in that row, not a surface of its own.
+        //
+        // Grey even while frozen: which version is on screen is said by the tinted block at the top
+        // of the panel, the button under it and the status cell, all of which name it - a coloured
+        // line cannot, and it would be the only tinted edge in a row of grey ones.
+        //
+        // The border sits INSIDE `VERSION_RAIL_EXPANDED_WIDTH` (border-box), so the width the dock
+        // solver is told about is still the width this column takes.
         <div
             data-workspace-version-rail="panel"
-            className={cn(
-                "flex shrink-0 flex-col border-r bg-surface-sunken",
-                onRevision ? "border-primary" : "border-edge",
-            )}
+            className="flex shrink-0 flex-col border-r border-edge bg-surface-sunken"
             style={{ width: VERSION_RAIL_EXPANDED_WIDTH }}
         >
             <div className="flex h-12 shrink-0 items-center justify-between border-b border-edge px-3">
@@ -428,7 +440,7 @@ function ChangesSection({ surface }: { surface: VersionSurface }) {
     return (
         <div data-vcs-seam="change-list" className="border-b border-edge px-3 py-2">
             <div className="flex items-center justify-between gap-2">
-                <span className="text-2xs uppercase tracking-wide text-fg-subtle">
+                <span className="text-2xs tracking-wide text-fg-subtle">
                     {t("workspace.shell.versionControl.changes")}
                 </span>
                 <button
@@ -691,8 +703,11 @@ function HistoryList({ surface, rows }: { surface: VersionSurface; rows: FlatHis
 
     return (
         <div data-vcs-seam="history-list">
-            <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-edge/60 bg-surface-sunken px-3 pb-1 pt-2">
-                <span className="text-2xs uppercase tracking-wide text-fg-subtle">
+            {/* Opaque, not ruled: the rows slide under it because it carries the panel's own
+                background, and a line under a sticky header is a border that appears from nowhere
+                the moment the list is scrolled. */}
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-2 bg-surface-sunken px-3 pb-1 pt-2">
+                <span className="text-2xs tracking-wide text-fg-subtle">
                     {t("workspace.shell.versionControl.history")}
                 </span>
                 {(surface.hiddenCheckpoints > 0 || surface.showCheckpoints) && (
