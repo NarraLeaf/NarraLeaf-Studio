@@ -56,7 +56,16 @@ export const story = {
         storyMismatch: "This file was exported from a different story.",
         stale: "This scene changed after the export; importing discards those changes.",
         sceneMissing: "This scene is no longer in the story, so it is skipped.",
+        // Undo is per open scene editor, so a multi-scene import can be undoable in part.
         noUndo: "Importing from here cannot be undone.",
+        noUndoSome: {
+            one: "{count} of these scenes cannot be undone after importing.",
+            other: "{count} of these scenes cannot be undone after importing.",
+        },
+        // Both failure paths state what happened to the project, because "an error occurred" leaves an
+        // author unable to tell a refused import from a half-written one.
+        planFailed: "This script could not be prepared for import. Nothing was changed.",
+        importFailed: "Import stopped at \"{scene}\": {applied} of {total} scenes were written, the rest were left unchanged.",
         line: "Line {line}",
         stat: {
             unchanged: "{count} unchanged",
@@ -76,11 +85,12 @@ export const story = {
         diag: {
             opaqueWithoutAnchor: "An action line lost its marker, so the action could not be restored.",
             unknownAnchor: "A marker names a row this script does not carry.",
-            shapeMismatch: "An action line was rewritten as prose; the action was kept and the edit dropped.",
+            shapeMismatchAction: "An action line was rewritten as prose; the action was kept and the edit dropped.",
+            shapeMismatchText: "A text line was rewritten as an action line; the text was kept and the edit dropped.",
             duplicateAnchor: "A line was copied; the copies were given new identities.",
             unknownRun: "A formatting marker names formatting this script does not carry.",
             unplaceableLine: "A new line has nowhere to go here.",
-            speakerUnresolved: "A speaker was renamed on a line bound to a character; the line was kept as it was.",
+            speakerUnresolved: "A speaker name was edited on a line that binds no character; the original name was kept. The line's text still changed.",
         },
     },
     flow: {

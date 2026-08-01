@@ -18,7 +18,9 @@ export type PrivilegedActor =
     | { kind: "plugin"; pluginId: string; version?: string };
 
 export type PrivilegedFileSystemCall =
-    | { operation: "selectFile"; filters: string[]; multiple: boolean }
+    /** `title` is the dialog's own title bar. Absent keeps the historical default, so existing callers
+     *  are unaffected; every new caller should say what it is asking the author to pick. */
+    | { operation: "selectFile"; filters: string[]; multiple: boolean; title?: string }
     | { operation: "selectSaveFile"; defaultFileName: string; filters: string[] }
     | { operation: "stat"; path: string }
     | { operation: "list"; path: string }

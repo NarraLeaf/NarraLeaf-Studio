@@ -746,8 +746,10 @@ function planScene(parsed: ParsedStoryScriptScene, input: StoryScriptPlanInput):
             byAnchor,
             consumed,
             diagnostics,
+            snapshot,
             generateId: input.generateId,
             resolveSpeaker: input.resolveSpeaker,
+            speakerLabel: input.speakerLabel,
         });
         if (node) {
             nodes.push(node);
@@ -782,8 +784,11 @@ type MergeContext = {
     byAnchor: Map<number, StoryBlock>;
     consumed: Set<StoryBlockId>;
     diagnostics: StoryScriptDiagnostic[];
+    /** The scene as exported. `speakerLabel` is asked about rows of *this* scene, never the live one. */
+    snapshot: StoryScene;
     generateId: StoryScriptPlanInput["generateId"];
     resolveSpeaker: StoryScriptPlanInput["resolveSpeaker"];
+    speakerLabel: StoryScriptPlanInput["speakerLabel"];
 };
 
 function mergeLine(line: ParsedStoryScriptLine, context: MergeContext): MergeNode | null {
@@ -812,8 +817,10 @@ function mergeLine(line: ParsedStoryScriptLine, context: MergeContext): MergeNod
 
     if (snapshotShape === "opaque" || line.shape === "opaque") {
         if (snapshotShape !== line.shape) {
+            // Two codes, not one: which half survived is the whole content of the message, and the
+            // author's next move differs (re-type the prose, or leave the action alone).
             report(
-                "shapeMismatch",
+                snapshotShape === "opaque" ? "shapeMismatchAction" : "shapeMismatchText",
                 snapshotShape === "opaque"
                     ? `anchor ${line.anchor} is an action row, rewritten here as prose; the row was kept and the edit dropped`
                     : `anchor ${line.anchor} is a text row, rewritten here as a » line; the row was kept and the edit dropped`,
@@ -869,7 +876,7 @@ function applyTextEdit(
         next = slot.withSegment(segmentWithRuns(slot.segment, runs));
         markEdited();
     }
-    return applySpeakerEdit(next, line, context, markEdited);
+    return applySpeakerEdit(next, source, line, context, markEdited);
 }
 
 /**
@@ -900,8 +907,23 @@ function lineContent(line: ParsedStoryScriptLine): string {
     }
 }
 
+/**
+ * Rebind a dialogue row's speaker - but only if the author actually retyped the label.
+ *
+ * The question this asks is deliberately **not** "what does this label resolve to?". A display name is
+ * a lossy projection of a binding: a deleted character projects to `""`, two characters can project to
+ * the same string, and a temp `speakerName` can be spelled exactly like a character's name. Resolving
+ * an *unedited* label therefore rewrites three states that were correct - which made a round trip with
+ * no edits in it destroy a binding, steal another character's identity, or invent one, and report all
+ * three as `edited`.
+ *
+ * So the comparison is against the label **the snapshot row would have printed**, through the very
+ * labeller the export ran through. Equal means the author did not touch it, and an untouched label is
+ * not a statement about the binding at all.
+ */
 function applySpeakerEdit(
     block: StoryBlock,
+    source: StoryBlock,
     line: ParsedStoryScriptLine,
     context: MergeContext,
     markEdited: () => void,
@@ -914,6 +936,17 @@ function applySpeakerEdit(
         return block;
     }
     const label = line.speaker ?? "";
+    const exportedLabel = context.speakerLabel?.(context.snapshot, source.id);
+    if (exportedLabel !== undefined) {
+        if (exportedLabel === label) {
+            return block;
+        }
+    } else if (payload.characterId && label.trim().length === 0) {
+        // No labeller to compare against, so an empty label is ambiguous: it is equally what a binding
+        // to a deleted character prints and what an author types to clear a speaker. Destroying the
+        // binding is the only one of the two that cannot be undone from the file, so it is refused.
+        return block;
+    }
     if (!context.resolveSpeaker) {
         // Without the project's characters, the only label this file can recompute is a bare
         // `speakerName`. A character-bound row was exported under a display name, so a change to it is
