@@ -54,6 +54,42 @@ const CHINESE_NOVEL = [
     "灯灭了。",
 ].join("\n");
 
+/**
+ * An English script whose names carry honorifics. The `.` in `Mrs.` is part of a name, not the end of
+ * a sentence, and reading it as sentence punctuation condemned every English manuscript ever written.
+ */
+const HONORIFIC_SCRIPT = [
+    "Mrs. Hudson: Your tea is going cold.",
+    "Dr. Watson: I'll be up in a moment.",
+    "Mrs. Hudson: You said that an hour ago.",
+    "Dr. Watson: The case is nearly finished.",
+    "Mrs. Hudson: It always is.",
+    "Dr. Watson: Not this time.",
+].join("\n");
+
+/** Screenplay parentheticals: the stage direction rides along with the name and is not part of it. */
+const PARENTHETICAL_SCRIPT = [
+    "ALICE (whispering, to herself): I should never have come back here.",
+    "BOB: You came anyway.",
+    "ALICE: The door was standing open.",
+    "BOB (after a pause): It usually is.",
+    "ALICE: Then I will close it.",
+    "BOB: Suit yourself.",
+].join("\n");
+
+/**
+ * Literary prose with spaced em-dashes. Every "label" is a clause used exactly once, which is the
+ * only thing that says prose - each one is short, clean and perfectly name-shaped on its own.
+ */
+const EM_DASH_EXCERPT = [
+    "He stopped at the door — the lock had been turned from inside.",
+    "The house was colder than the street had been.",
+    "She looked at him — neither of them said anything for a while.",
+    "Somewhere above, a floorboard settled and was quiet again.",
+    "He waited — the hallway light buzzed once and went out.",
+    "Then he went up.",
+].join("\n");
+
 const LENTICULAR_MANUSCRIPT = ["【林】早上好。", "【早苗】昨晚睡得好吗？", "外面的风停了。", "【林】还行。"].join("\n");
 
 const CORNER_BRACKET_MANUSCRIPT = ["「林」走吧。", "「早苗」等一下，我去拿伞。", "他没有停下来。", "「林」快点。"].join("\n");
@@ -111,6 +147,37 @@ describe("inferPasteSeparator", () => {
     it("takes a spaced dash but never a hyphenated word", () => {
         expect(inferPasteSeparator(DASH_SCRIPT)).toEqual({ kind: "dash" });
         expect(inferPasteSeparator(HYPHENATED_PROSE)).toEqual({ kind: "none" });
+    });
+
+    /**
+     * The two directions the scorer used to get wrong, and they are the same mistake: the label rules
+     * were crude enough to condemn real names, and repetition was only a weak damping rather than the
+     * signal that actually separates a cast list from prose.
+     */
+    it("takes a script whose names carry honorifics", () => {
+        expect(inferPasteSeparator(HONORIFIC_SCRIPT)).toEqual({ kind: "colon" });
+        const split = splitPastedText(HONORIFIC_SCRIPT, inferPasteSeparator(HONORIFIC_SCRIPT));
+        expect(split.speakers.map(tally => tally.label)).toEqual(["Mrs. Hudson", "Dr. Watson"]);
+    });
+
+    it("takes a screenplay parenthetical as a stage direction rather than as part of the name", () => {
+        expect(inferPasteSeparator(PARENTHETICAL_SCRIPT)).toEqual({ kind: "colon" });
+        const split = splitPastedText(PARENTHETICAL_SCRIPT, { kind: "colon" });
+        expect(split.speakers).toEqual([
+            { label: "ALICE", count: 3, lineIndices: [0, 2, 4] },
+            { label: "BOB", count: 3, lineIndices: [1, 3, 5] },
+        ]);
+        // Folded into the line rather than dropped: nothing the author pasted may disappear silently.
+        expect(split.lines[0].text).toBe("(whispering, to herself) I should never have come back here.");
+    });
+
+    it("answers `none` for a short prose excerpt whose clause labels never repeat", () => {
+        expect(inferPasteSeparator(EM_DASH_EXCERPT)).toEqual({ kind: "none" });
+    });
+
+    /** ...but two lines are a real exchange. Repetition needs a sample before it can mean anything. */
+    it("keeps a two-line exchange, where there is nothing to repeat yet", () => {
+        expect(inferPasteSeparator("A: hi\nB: yo")).toEqual({ kind: "colon" });
     });
 
     it("rejects a separator whose labels never repeat, and keeps one whose labels do", () => {

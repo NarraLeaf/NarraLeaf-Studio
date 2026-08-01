@@ -75,6 +75,13 @@ export function useStorySceneClipboardHandlers(params: {
     /** The open insert slot's field, so a paste aimed at it can be told from any other text input. */
     insertInputRef: RefObject<HTMLTextAreaElement | null>;
     plainPasteRequestedRef: { current: boolean };
+    /**
+     * Whether this window's project data is frozen, read at the moment it is asked.
+     *
+     * A getter rather than a value: the only caller reads it on the far side of an `await`, which is
+     * exactly the window in which a freeze can land, and a captured boolean would still say "no".
+     */
+    isFrozen: () => boolean;
     recordHistory: () => boolean;
     setActiveBlockId: Dispatch<SetStateAction<StoryBlockId | null>>;
     setSelectedBlockIds: Dispatch<SetStateAction<Set<StoryBlockId>>>;
@@ -95,6 +102,15 @@ export function useStorySceneClipboardHandlers(params: {
      * vanish on blur instead of committing.
      */
     resumeInsertSlotCommit: () => void;
+    /**
+     * Shut the open insert slot's candidate popover.
+     *
+     * The popover is portalled, so it renders outside the wizard's stacking context and draws *over*
+     * it - `/bg for` leaves a "No matches." panel sitting on top of the first mapping row. The slot
+     * cannot close it by itself: the wizard takes focus, so the keystroke that normally clears the
+     * menu never arrives.
+     */
+    dismissInsertChooser: () => void;
 }) {
     /**
      * Whether the pasted rows may take the selection and close whatever is open.
@@ -198,6 +214,16 @@ export function useStorySceneClipboardHandlers(params: {
                 translateN("story.paste.bulkConfirm", plan.rows.length),
                 translate("story.paste.bulkConfirmDetail"),
             );
+            // A freeze can land while the dialog is up - the author froze the workspace on purpose,
+            // by going to look at a version. Continuing would insert into the in-memory scene, the fs
+            // boundary would refuse the save, and the thaw's re-read would drop the rows: a paste that
+            // looked like it worked right up until the workspace came back.
+            //
+            // Checked BEFORE the slot's blur-commit is given back, because the freeze deliberately
+            // latched it (see the controller's freeze effect) and restoring it here would undo that.
+            if (params.isFrozen()) {
+                return;
+            }
             params.resumeInsertSlotCommit();
             if (!confirmed) {
                 return;
@@ -277,6 +303,8 @@ export function useStorySceneClipboardHandlers(params: {
                 return true;
             case "wizard":
                 params.suspendInsertSlotCommit();
+                // Before the modal mounts, so nothing of the slot's is left drawing above it.
+                params.dismissInsertChooser();
                 params.requestPasteWizard({
                     text: route.text,
                     inferred: inferPasteSeparator(route.text),

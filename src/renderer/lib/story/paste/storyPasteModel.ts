@@ -24,7 +24,12 @@ import { STORY_SCRIPT_HEADER } from "./storyPasteTypes";
  * text, not by how many lines it hits.** Every string has a colon in it somewhere, so hit count alone
  * would confidently declare a novel excerpt to be a screenplay in which the speakers are called
  * "He remembered the rule his father taught him". What distinguishes a cast list from prose is that its
- * labels look like names - short, punctuation-free, and repeating - so that is what gets scored.
+ * labels look like names - short, punctuation-free, and above all *reused* - so that is what gets scored.
+ *
+ * Reuse is the load-bearing half. Shape rules alone cut both ways: they have to be crude enough to
+ * catch `她停下来，回头看了一眼身后的长廊` and forgiving enough to keep `Mrs. Hudson`, and any single
+ * threshold that does both is wrong somewhere. A cast list, on the other hand, comes back to its names
+ * - and prose, however name-shaped its clauses, does not.
  *
  * The other invariant worth stating once: nothing here throws on author input. The separator, the regex
  * and the mappings are all being typed live next to a preview, so every intermediate state has to
@@ -86,11 +91,27 @@ const BUILTIN_SEPARATORS: { kind: BuiltinSeparatorKind; pattern: RegExp }[] = [
 ];
 
 /**
+ * A trailing parenthetical on a label - `ALICE (whispering, to herself)`, `林（小声）`.
+ *
+ * A screenplay parenthetical is a stage direction, not part of the name: left attached it makes every
+ * delivery note its own cast member, and pushes the label past both the length and the punctuation
+ * rules, so a perfectly ordinary screenplay reads as prose.
+ *
+ * Only stripped when a name survives it: `(pause): …` is all aside and no name, and inventing an empty
+ * speaker for it would be worse than leaving it whole for the author to judge.
+ */
+const TRAILING_PARENTHETICAL = /^(.*?)[ \t　]*([(（][^)）]*[)）])$/;
+
+/**
  * A match needs both halves to be non-empty.
  *
  * `label chapter_one:` and `【第一章】` are section headers, not speakers with nothing to say, and
  * counting them as speaker lines would both invent cast members and let a file of headings out-score a
  * real separator.
+ *
+ * The aside is moved to the front of the line rather than dropped. It is the author's own text, and a
+ * paste that silently deletes words is the one failure this wizard exists to make impossible - the
+ * preview shows exactly where it went.
  */
 function toMatch(matched: RegExpMatchArray | null): SeparatorMatch | null {
     if (!matched) {
@@ -98,7 +119,12 @@ function toMatch(matched: RegExpMatchArray | null): SeparatorMatch | null {
     }
     const speaker = matched[1].trim();
     const text = matched[2].trim();
-    return speaker.length > 0 && text.length > 0 ? { speaker, text } : null;
+    if (speaker.length === 0 || text.length === 0) {
+        return null;
+    }
+    const aside = speaker.match(TRAILING_PARENTHETICAL);
+    const name = aside?.[1].trim() ?? "";
+    return aside && name.length > 0 ? { speaker: name, text: `${aside[2]} ${text}` } : { speaker, text };
 }
 
 function matchPattern(pattern: RegExp, raw: string): SeparatorMatch | null {
@@ -115,8 +141,13 @@ const MAX_PLAUSIBLE_LABEL_LENGTH = 24;
 /**
  * Sentence punctuation inside a label is the giveaway that the "separator" landed mid-sentence:
  * `她停下来，回头看了一眼身后的长廊：什么也没有。` has a perfectly short prefix, and it is still prose.
+ *
+ * `.` is deliberately NOT in the set. `Mrs.`, `Dr.`, `St.` and `Jr.` are ordinary inside names, and
+ * charging them as sentence punctuation made every English manuscript that uses an honorific score
+ * negative - the feature silently switching itself off for a whole language. Length and repetition
+ * already carry the weight a full stop was standing in for.
  */
-const LABEL_SENTENCE_PUNCTUATION = /[。！？，.!?]/;
+const LABEL_SENTENCE_PUNCTUATION = /[。！？，,!?]/;
 
 /** `00:15:03` and `12:30` are timestamps. A cast list does not have a character called 12. */
 const NUMERIC_LABEL = /^\d+$/;
@@ -124,11 +155,20 @@ const NUMERIC_LABEL = /^\d+$/;
 /** Rough shape of the glut rule: more than ~40 distinct labels in a 200-line paste is not a cast. */
 const DISTINCT_LABEL_RATIO = 0.2;
 
-/**
- * ...but only past a floor. Five lines with five speakers is an argument, not prose, and the ratio
- * alone would condemn every short paste that happens to be a group scene.
- */
+/** ...but only past a floor, so a genuine crowd scene in a short paste is not condemned by a ratio. */
 const MIN_DISTINCT_LABEL_BUDGET = 8;
+
+/**
+ * How many labelled lines it takes before "did the labels repeat?" is a question worth asking.
+ *
+ * Below it every paste answers "no" - `A: hi` / `B: yo` is two lines with two names, and it is a real
+ * exchange. This is the only exemption from the repetition rule, and it is deliberately tiny: at three
+ * labelled lines a paste that reuses nothing is already telling us what it is.
+ */
+const MIN_REPETITION_SAMPLE = 3;
+
+/** Lines per distinct label that earns full credit. A cast list clears it easily; prose sits at 1. */
+const FULL_CREDIT_LINES_PER_LABEL = 1.5;
 
 /** An implausible match costs more than a plausible one earns - see {@link scoreSeparator}. */
 const IMPLAUSIBLE_MATCH_WEIGHT = 1.5;
@@ -146,22 +186,49 @@ function isPlausibleSpeakerLabel(label: string): boolean {
 }
 
 /**
+ * How much of the paste a separator is credited with explaining, before repetition is weighed.
+ *
+ * Plausible matches earn 1 line of credit each, implausible ones *cost* {@link IMPLAUSIBLE_MATCH_WEIGHT}.
+ * This is what makes a separator matching 90% of lines with names beat one matching 100% with sentence
+ * fragments. The credit is divided by every line, matched or not, so a separator that explains four
+ * lines out of forty scores 0.1 and loses to `none`.
+ */
+function coverageOf(plausible: number, implausible: number, lineCount: number): number {
+    return (plausible - IMPLAUSIBLE_MATCH_WEIGHT * implausible) / lineCount;
+}
+
+/**
+ * How much of that credit survives the question "did these labels come back?".
+ *
+ * A cast list reuses its names; prose does not, however name-shaped its clauses are. `He stopped at
+ * the door` is short, clean, and never said again - and one-off labels used to be *free* below a
+ * budget of eight, which handed any prose excerpt under ~40 lines a cast of up to eight ghosts. So the
+ * ratio is a term in its own right rather than a damping applied at the tail:
+ *
+ *  - one line per label is prose, and scores 0 no matter how few labels there are;
+ *  - {@link FULL_CREDIT_LINES_PER_LABEL} lines per label is a conversation, and keeps everything;
+ *  - in between it scales, so a script with one walk-on part is weakened rather than condemned.
+ *
+ * The one exemption is {@link MIN_REPETITION_SAMPLE}: with two labelled lines nothing has had the
+ * chance to repeat, and `A: hi` / `B: yo` is a real exchange.
+ */
+function repetitionCreditOf(matched: number, distinct: number): number {
+    if (matched < MIN_REPETITION_SAMPLE) {
+        return 1;
+    }
+    const linesPerLabel = matched / distinct;
+    return Math.min(1, Math.max(0, (linesPerLabel - 1) / (FULL_CREDIT_LINES_PER_LABEL - 1)));
+}
+
+/**
  * How well one separator explains the paste, in roughly "share of lines accounted for" units.
  *
- * Three signals, all of them about the labels rather than the hit count:
+ * `coverage × repetition × glut`, every term about the labels rather than the hit count. The glut
+ * damping stays for the case repetition alone cannot see: a 200-line paste whose 100 labels each
+ * appear twice repeats perfectly well and is still not a cast list.
  *
- *  - plausible matches earn 1 line of credit each, implausible ones *cost*
- *    {@link IMPLAUSIBLE_MATCH_WEIGHT}. This is what makes a separator matching 90% of lines with names
- *    beat one matching 100% with sentence fragments, and what drives a prose excerpt negative;
- *  - the credit is divided by every line, matched or not, so a separator that explains four lines out
- *    of forty scores 0.1 and loses to `none`;
- *  - labels that never repeat are prose with a colon habit, not a cast. Past the budget the score is
- *    damped by `(budget / distinct)²` - squared so the penalty actually bites in the region the rule is
- *    about (200 distinct labels in 200 lines keeps 4% of its score) while a big-but-real cast of 45
- *    keeps ~79% and still wins.
- *
- * The damping is deliberately multiplicative and applied only to a positive score: it weakens a claim,
- * it never turns a bad separator into a worse-than-nothing one twice over.
+ * Both dampings are multiplicative and applied only to a positive score: they weaken a claim, they
+ * never turn a bad separator into a worse-than-nothing one twice over.
  */
 function scoreSeparator(pattern: RegExp, raws: string[]): number {
     let plausible = 0;
@@ -179,16 +246,17 @@ function scoreSeparator(pattern: RegExp, raws: string[]): number {
             implausible += 1;
         }
     }
-    if (plausible === 0 && implausible === 0) {
+    const matched = plausible + implausible;
+    if (matched === 0) {
         return 0;
     }
-    const coverage = (plausible - IMPLAUSIBLE_MATCH_WEIGHT * implausible) / raws.length;
+    const coverage = coverageOf(plausible, implausible, raws.length);
     if (coverage <= 0) {
         return coverage;
     }
     const budget = Math.max(MIN_DISTINCT_LABEL_BUDGET, Math.round(raws.length * DISTINCT_LABEL_RATIO));
     const glut = distinct.size <= budget ? 1 : (budget / distinct.size) ** 2;
-    return coverage * glut;
+    return coverage * repetitionCreditOf(matched, distinct.size) * glut;
 }
 
 /** Score the built-in separators against the text and return the one that best explains it. */
