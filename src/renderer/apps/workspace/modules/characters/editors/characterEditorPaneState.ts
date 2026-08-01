@@ -81,11 +81,15 @@ export function getCharacterEditorViewState(
         }
     }
     const focus = stored.focus;
+    // The selection's `tags` are deliberately dropped on the way back in: `previewTags` above is the
+    // authority on what is being looked at, and a selection carrying a second, stale copy of it would
+    // be a second answer to the same question the next time something read the focus.
     return {
         previewTags: tags,
         onionAxisId: typeof stored.onionAxisId === "string" ? stored.onionAxisId : null,
         focus: focus && typeof focus.id === "string"
-            && (focus.kind === "layer" || focus.kind === "axis" || focus.kind === "pose")
+            && (focus.kind === "layer" || focus.kind === "axis" || focus.kind === "pose"
+                || focus.kind === "combination")
             ? { kind: focus.kind, id: focus.id }
             : null,
     };

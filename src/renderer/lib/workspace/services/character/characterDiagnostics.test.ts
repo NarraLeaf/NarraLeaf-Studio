@@ -84,6 +84,68 @@ describe("collectCharacterDiagnostics", () => {
         const duplicate = collectCharacterDiagnostics(appearance).find(d => d.code === "duplicateTag");
         expect(duplicate).toMatchObject({ severity: "warning", target: { kind: "axis", id: axis.id } });
     });
+
+    it("reports two axes sharing a display name, which a story row cannot tell apart", () => {
+        const { appearance, layer, happy } = build();
+        appearance.setLayerOption(layer.id, happy.id, "asset-1");
+        const second = appearance.createAxis("expression")!;
+        const tag = appearance.createTag(second.id, "Neutral")!;
+        const bound = appearance.createLayer("Mouth", second.id)!;
+        appearance.setLayerOption(bound.id, tag.id, "asset-2");
+
+        const found = collectCharacterDiagnostics(appearance).find(d => d.code === "duplicateAxis");
+        expect(found).toMatchObject({ severity: "warning", target: { kind: "axis", id: second.id } });
+    });
+
+    it("reports an axis whose declared default tag is missing, which the getter papers over", () => {
+        const { appearance, axis, layer, happy } = build();
+        appearance.setLayerOption(layer.id, happy.id, "asset-1");
+        expect(codes(appearance)).not.toContain("axisDefaultMissing");
+
+        // Written by hand rather than through removeTag, which repairs the declaration itself - the
+        // dangling id is what a hand-edited or migrated store can still carry.
+        appearance.setAxisDefaultTag(axis.id, null);
+        const found = collectCharacterDiagnostics(appearance).find(d => d.code === "axisDefaultMissing");
+        expect(found).toMatchObject({ severity: "warning", values: { axis: "Expression", name: "Happy" } });
+        // And it says which look it is talking about, so clicking it can show that look.
+        expect(found?.target?.tags).toEqual({ [axis.id]: happy.id });
+    });
+
+    it("reports a look whose whole stack draws nothing, and stays quiet on an unstarted character", () => {
+        const { appearance, axis, happy, angry, layer } = build();
+        // Nothing assigned anywhere: every layer is already reported empty, and saying it again once
+        // per combination would bury the findings that name a real hole.
+        expect(codes(appearance)).not.toContain("combinationNoArt");
+
+        appearance.setLayerOption(layer.id, happy.id, "asset-1");
+        const found = collectCharacterDiagnostics(appearance).filter(d => d.code === "combinationNoArt");
+        expect(found).toHaveLength(1);
+        expect(found[0]).toMatchObject({ severity: "error", values: { name: "Angry" } });
+        expect(found[0].target).toMatchObject({ kind: "combination", tags: { [axis.id]: angry.id } });
+
+        appearance.setLayerOption(layer.id, angry.id, "asset-2");
+        expect(codes(appearance)).not.toContain("combinationNoArt");
+    });
+
+    it("names the look an empty layer can be checked in", () => {
+        const { appearance, axis, happy, layer } = build();
+        const other = appearance.createLayer("Body")!;
+        appearance.setLayerAsset(other.id, "asset-1");
+        const found = collectCharacterDiagnostics(appearance).find(d => d.code === "layerNoImage");
+        expect(found?.target).toMatchObject({ kind: "layer", id: layer.id, tags: { [axis.id]: happy.id } });
+    });
+
+    it("reports a snapshot whose tags were deleted, which resolves to a different look in silence", () => {
+        const { appearance, axis, happy, angry, layer } = build();
+        appearance.setLayerOption(layer.id, happy.id, "asset-1");
+        appearance.setLayerOption(layer.id, angry.id, "asset-2");
+        appearance.createSnapshot("Furious", { [axis.id]: angry.id });
+        expect(codes(appearance)).not.toContain("snapshotStale");
+
+        appearance.removeTag(axis.id, angry.id);
+        const found = collectCharacterDiagnostics(appearance).find(d => d.code === "snapshotStale");
+        expect(found).toMatchObject({ severity: "warning", values: { name: "Furious" } });
+    });
 });
 
 describe("preset characters", () => {

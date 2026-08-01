@@ -132,6 +132,22 @@ export interface CharacterLayer extends CharacterNamed {
 export interface CharacterAvatarEntry {
     baked?: string;
     overrideAssetId?: string | null;
+    /**
+     * How this one differential is framed, overriding the character-wide {@link
+     * CharacterEditorProfile.portrait}.
+     *
+     * It lives on the avatar entry rather than beside the art because that is the only place both
+     * image-backed kinds can address a single differential: the table is keyed by avatar key, which
+     * is a pose id for `preset` and a sorted tag combination for `layered`. A layered character has
+     * no per-combination object to hang a crop on — the combination exists only as a key — so
+     * without this a layered author could only ever frame every look at once, which is what
+     * dragging the crop box used to do to them silently.
+     *
+     * `preset` also carries {@link CharacterPose.portrait}, which predates this and is still read
+     * (the story rows frame their speaker badge from it). Resolution order is entry → pose →
+     * profile; see the baker's `portraitFor`.
+     */
+    portrait?: PortraitCrop;
 }
 
 /** Avatar entries keyed by {@link CharacterAvatarKey} — pose id (preset) or tag combination (layered). */

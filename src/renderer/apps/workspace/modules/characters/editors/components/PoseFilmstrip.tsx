@@ -1,5 +1,5 @@
-import { AlertTriangle, ImageOff } from "lucide-react";
-import { useTranslation } from "@/lib/i18n";
+import { ImageOff } from "lucide-react";
+import { cn } from "@/lib/utils/cn";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import type { CharacterPose } from "@/lib/workspace/services/character/types";
 
@@ -11,44 +11,36 @@ import type { CharacterPose } from "@/lib/workspace/services/character/types";
  * default, look, and change it back. That is a real edit to the project to answer a question about
  * it.
  *
- * The strip answers three questions at a glance that the row list only answers by reading: how many
- * poses there are, which one is the default, and which ones have no art yet. The last one is the one
- * that matters — a pose with no art is silent everywhere else in the editor.
+ * ## A picture and a name, and nothing else
+ *
+ * The cell carried two more marks: a warning triangle over a pose with no art, and a dot on the
+ * default one. Both are gone. The triangle sat on top of the `ImageOff` placeholder that already
+ * says the same thing, over a third statement of it as an error row in the problems list; and
+ * "default" is a property the author *sets*, which happens in the pose list beside this — saying it
+ * in two places is how the word ended up meaning "is default" on one surface and "make default" on
+ * the other.
  */
 function Frame(props: {
     pose: CharacterPose;
     active: boolean;
-    isDefault: boolean;
     onPick: () => void;
 }) {
-    const { t } = useTranslation();
     const { url } = useAssetObjectUrl(props.pose.assetId);
     return (
         <button
-            className={[
-                "group/pose flex w-20 shrink-0 flex-col gap-1 rounded-md border p-1 text-2xs transition-colors",
+            className={cn(
+                "flex w-20 shrink-0 flex-col gap-1 rounded-md border p-1 text-2xs transition-colors",
                 props.active ? "border-primary/60 bg-primary/10" : "border-edge hover:bg-fill-subtle",
-            ].join(" ")}
+            )}
             onClick={props.onPick}
             title={props.pose.name}
         >
-            <span className="relative grid h-16 w-full place-items-center overflow-hidden rounded-sm bg-fill">
+            <span className="grid h-16 w-full place-items-center overflow-hidden rounded-sm bg-fill">
                 {url
                     ? <img src={url} alt="" draggable={false} className="h-full w-full object-contain" />
                     : <ImageOff className="h-4 w-4 text-fg-subtle" />}
-                {!props.pose.assetId && (
-                    <AlertTriangle
-                        className="absolute right-0.5 top-0.5 h-3 w-3 text-warning"
-                        aria-label={t("characters.editor.poseNoArt")}
-                    />
-                )}
             </span>
-            <span className="flex items-center gap-1">
-                <span className="min-w-0 flex-1 truncate text-left text-fg-muted">{props.pose.name}</span>
-                {props.isDefault && (
-                    <span className="shrink-0 text-primary" aria-label={t("characters.variantsPanel.default")}>·</span>
-                )}
-            </span>
+            <span className="w-full truncate text-left text-fg-muted">{props.pose.name}</span>
         </button>
     );
 }
@@ -57,7 +49,6 @@ export function PoseFilmstrip(props: {
     poses: CharacterPose[];
     /** The pose the big preview is showing. */
     activePoseId: string | null;
-    defaultPoseId: string | null;
     /** Preview only — the default pose is set from the row list, and only there. */
     onPick: (poseId: string) => void;
 }) {
@@ -71,7 +62,6 @@ export function PoseFilmstrip(props: {
                     key={pose.id}
                     pose={pose}
                     active={pose.id === props.activePoseId}
-                    isDefault={pose.id === props.defaultPoseId}
                     onPick={() => props.onPick(pose.id)}
                 />
             ))}

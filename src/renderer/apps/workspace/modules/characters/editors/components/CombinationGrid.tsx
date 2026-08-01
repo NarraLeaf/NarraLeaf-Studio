@@ -1,5 +1,7 @@
-import { AlertTriangle, Bookmark, UserRound, X } from "lucide-react";
+import type { ReactNode } from "react";
+import { AlertTriangle, Bookmark, UserRound } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import { cn } from "@/lib/utils/cn";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import type { Combination, CombinationSet } from "@/lib/workspace/services/character/characterCombinations";
 import { useCompositedSprite } from "@/lib/workspace/hooks/useCompositedSprite";
@@ -21,10 +23,10 @@ function Cell(props: {
     const { combination } = props;
     return (
         <div
-            className={[
+            className={cn(
                 "group/cell relative flex flex-col gap-1 rounded-md border p-1.5 text-2xs transition-colors",
                 props.active ? "border-primary/60 bg-primary/10" : "border-edge hover:bg-fill-subtle",
-            ].join(" ")}
+            )}
         >
             <button className="relative block h-24 w-full" onClick={props.onPick}>
                 {url
@@ -51,10 +53,10 @@ function Cell(props: {
                     override says so without being hovered - the lit glyph is the only place the
                     override is visible at all. */}
                 <button
-                    className={[
+                    className={cn(
                         "shrink-0 rounded-md p-0.5 hover:text-fg",
                         props.overridden ? "block text-primary" : "hidden text-fg-muted group-hover/cell:block",
-                    ].join(" ")}
+                    )}
                     aria-label={t("characters.editor.avatar")}
                     title={t("characters.editor.avatar")}
                     onClick={event => props.onAvatar(event.currentTarget)}
@@ -75,6 +77,12 @@ function Cell(props: {
  *
  * The count in the header is `shown / total`, because the grid is capped — a truncated grid that did
  * not say so would read as a complete inventory.
+ *
+ * It replaces the preview rather than sitting beside it, and that is deliberate: a layered character
+ * has one look at a time and the grid is the question "what are all of them", not a second answer to
+ * "what does this one look like". What it must not do is take the toolbar with it — the button that
+ * opened it then vanished, leaving a mode with no visible switch and a private close button as the
+ * only way out. So the toolbar comes in here too, with that button lit, and the close button is gone.
  */
 export function CombinationGrid(props: {
     character: Character;
@@ -86,7 +94,8 @@ export function CombinationGrid(props: {
     onPick: (combination: Combination) => void;
     onName: (combination: Combination) => void;
     onAvatar: (combination: Combination, anchor: HTMLElement) => void;
-    onClose: () => void;
+    /** The preview's own toolbar, so the mode toggle stays where it was pressed. */
+    toolbar?: ReactNode;
 }) {
     const { t } = useTranslation();
     const { combinations, total } = props.set;
@@ -95,13 +104,7 @@ export function CombinationGrid(props: {
             <div className="flex items-center gap-3 border-b border-edge px-4 py-2 text-xs text-fg-muted">
                 <span>{combinations.length === total ? `${total}` : `${combinations.length} / ${total}`}</span>
                 <span className="truncate">{props.set.axisNames.join(" × ")}</span>
-                <button
-                    className="ml-auto rounded-md p-1 hover:bg-fill hover:text-fg"
-                    aria-label={t("common.close")}
-                    onClick={props.onClose}
-                >
-                    <X className="h-3.5 w-3.5" />
-                </button>
+                <div className="ml-auto flex items-center gap-1">{props.toolbar}</div>
             </div>
             <div className="grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2 overflow-y-auto p-3">
                 {combinations.length === 0 ? (
