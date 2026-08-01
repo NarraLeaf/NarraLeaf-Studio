@@ -3,13 +3,14 @@ import { safeStorage } from "electron";
 import { UserDataNamespace } from "@shared/types/constants";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
-import {
-    SIGNING_CREDENTIAL_MATERIAL_FIELDS,
-    type SigningCredential,
-    type SigningInspectResult,
-} from "@shared/types/signing";
+import { type SigningInspectResult } from "@shared/types/signing";
 import { listAliases } from "../../../../../buildWorker/mobile/keystoreReader";
-import { certificateContainer, inspectCertificateFile } from "../../security/certificateInspect";
+import { findMacSigningIdentities } from "../../build/macSigningIdentity";
+import {
+    certificateContainer,
+    credentialKindHasCertificate,
+    inspectCertificateFile,
+} from "../../security/certificateInspect";
 import { SigningVault, type SecretSealer } from "../../security/signingVault";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
@@ -96,9 +97,9 @@ export class SigningInspectHandler extends IPCHandler<IPCEventType.signingInspec
             if (!credential) {
                 return { available: false, reason: "unreadable" } satisfies SigningInspectResult;
             }
-            if (!certificateField(credential)) {
+            if (!credentialKindHasCertificate(credential.kind)) {
                 // Nothing to read: the certificate lives in the Windows store,
-                // in Azure, or the kind has none at all.
+                // in Azure, in the login keychain, or the kind has none at all.
                 return { available: false, reason: "no-certificate" } satisfies SigningInspectResult;
             }
             // The one place a window's question reaches an unsealed password.
@@ -139,12 +140,21 @@ export class SigningKeystoreAliasesHandler extends IPCHandler<IPCEventType.signi
 }
 
 /**
- * Which material field, if any, holds the certificate to describe. The first
- * material field is the certificate container for every kind that has one
- * (`file` for PFX and keystores, `p12File` for Apple - the provisioning profile
- * comes second and is parsed by the iOS milestone, not here).
+ * The code-signing identities this Mac holds, so the import form can offer them
+ * rather than making the author transcribe a certificate name from Keychain
+ * Access - which is exactly the kind of string a typo makes unfindable.
+ *
+ * Reads nothing but the certificate list; no key material is touched and nothing
+ * secret comes back.
  */
-function certificateField(credential: SigningCredential): string | null {
-    return SIGNING_CREDENTIAL_MATERIAL_FIELDS[credential.kind][0] ?? null;
+export class SigningMacIdentitiesHandler extends IPCHandler<IPCEventType.signingMacIdentities> {
+    readonly name = IPCEventType.signingMacIdentities;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        _window: AppWindow,
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.signingMacIdentities]["response"]>> {
+        return this.tryUse(async () => ({ identities: await findMacSigningIdentities() }));
+    }
 }
 

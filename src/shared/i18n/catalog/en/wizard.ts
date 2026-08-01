@@ -86,6 +86,11 @@ export const wizard = {
         },
         versionControl: {
             description: "Set up version control for your project.",
+            // Under the field only while Lore is selected: it describes what pressing Create will
+            // additionally do, which is the one thing this choice is not otherwise visible as.
+            loreHint: "A version history is created inside the project folder, recording it as the first version.",
+            unavailablePlatform: "Version control is not available on this machine, so the project is created without it.",
+            unavailableInstallation: "Version control is not available in this installation of Studio, so the project is created without it.",
         },
         projectLocation: "Project Location",
         projectLocationPlaceholder: "Enter project location…",

@@ -221,7 +221,7 @@ export function ErrorScreen({ error, onRetry }: ErrorScreenProps) {
                             type="button"
                             onClick={() => void handleOpenOther()}
                             disabled={busy}
-                            className="rounded px-1 py-0.5 underline-offset-2 hover:text-fg hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-edge-strong disabled:opacity-50 cursor-default"
+                            className="rounded-md px-1 py-0.5 underline-offset-2 hover:text-fg hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-edge-strong disabled:opacity-50 cursor-default"
                         >
                             {t("workspace.shell.openOtherProject")}
                         </button>
@@ -230,7 +230,7 @@ export function ErrorScreen({ error, onRetry }: ErrorScreenProps) {
                             type="button"
                             onClick={() => void handleExport()}
                             disabled={busy}
-                            className="rounded px-1 py-0.5 underline-offset-2 hover:text-fg hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-edge-strong disabled:opacity-50 cursor-default"
+                            className="rounded-md px-1 py-0.5 underline-offset-2 hover:text-fg hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-edge-strong disabled:opacity-50 cursor-default"
                         >
                             {t("workspace.shell.errorExportLogs")}
                         </button>
