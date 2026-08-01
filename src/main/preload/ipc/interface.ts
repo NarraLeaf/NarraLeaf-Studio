@@ -2,6 +2,7 @@ import { RendererInterfaceKey } from "@shared/types/constants";
 import { Namespace } from "@shared/types/ipc";
 import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "@shared/types/menu";
+import type { FsTextEncoding } from "@shared/types/textEncoding";
 import type { BlueprintPersistenceProjectRef, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import type { MissingRecentProject } from "@shared/types/state/appStateTypes";
@@ -9,7 +10,12 @@ import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, W
 import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "@shared/types/gameBuild";
-import type { SigningCredential, SigningCredentialImport, SigningInspectResult } from "@shared/types/signing";
+import type {
+    MacSigningIdentity,
+    SigningCredential,
+    SigningCredentialImport,
+    SigningInspectResult,
+} from "@shared/types/signing";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
@@ -51,11 +57,11 @@ function createPrivilegedBridge(guarded: boolean): RendererPrivilegedInterface {
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "list", path }),
             details: (actor: PrivilegedActor, path: string) =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "details", path }),
-            requestRead: (actor: PrivilegedActor, path: string, encoding: BufferEncoding) =>
+            requestRead: (actor: PrivilegedActor, path: string, encoding: FsTextEncoding) =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestRead", path, encoding, raw: false }),
             requestReadRaw: (actor: PrivilegedActor, path: string) =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestRead", path, raw: true }),
-            requestWrite: (actor: PrivilegedActor, path: string, encoding: BufferEncoding) =>
+            requestWrite: (actor: PrivilegedActor, path: string, encoding: FsTextEncoding) =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestWrite", path, encoding, raw: false }),
             requestWriteRaw: (actor: PrivilegedActor, path: string) =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestWrite", path, raw: true }),
@@ -147,10 +153,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         list: (path: string) => ipcClient.invoke(IPCEventType.fsList, { path }),
         details: (path: string) => ipcClient.invoke(IPCEventType.fsDetails, { path }),
         directorySize: (path: string) => ipcClient.invoke(IPCEventType.fsDirectorySize, { path }),
-        requestRead: (path: string, encoding: BufferEncoding) => ipcClient.invoke(IPCEventType.fsRequestRead, { path, encoding, raw: false }),
+        requestRead: (path: string, encoding: FsTextEncoding) => ipcClient.invoke(IPCEventType.fsRequestRead, { path, encoding, raw: false }),
         requestReadRaw: (path: string) => ipcClient.invoke(IPCEventType.fsRequestRead, { path, raw: true }),
         requestReadDir: (path: string) => ipcClient.invoke(IPCEventType.fsRequestReadDir, { path }),
-        requestWrite: (path: string, encoding: BufferEncoding) => ipcClient.invoke(IPCEventType.fsRequestWrite, { path, encoding, raw: false }),
+        requestWrite: (path: string, encoding: FsTextEncoding) => ipcClient.invoke(IPCEventType.fsRequestWrite, { path, encoding, raw: false }),
         requestWriteRaw: (path: string) => ipcClient.invoke(IPCEventType.fsRequestWrite, { path, raw: true }),
         ensureRegularFile: (path: string, data: string, encoding: BufferEncoding = "utf-8") => ipcClient.invoke(IPCEventType.fsEnsureRegularFile, { path, data, encoding }),
         writeFileNoFollow: (path: string, data: string, encoding: BufferEncoding = "utf-8") => ipcClient.invoke(IPCEventType.fsWriteFileNoFollow, { path, data, encoding }),
@@ -240,6 +246,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.appCheckRecentProjects, {}) as Promise<RequestStatus<{ missing: MissingRecentProject[] }>>,
         getSystemPath: (name: "desktop" | "home") =>
             ipcClient.invoke(IPCEventType.appSystemPath, { name }) as Promise<RequestStatus<{ path: string }>>,
+        exportDiagnostics: (defaultFileName: string, report: string) =>
+            ipcClient.invoke(IPCEventType.appExportDiagnostics, { defaultFileName, report }),
     },
 
     devMode: {
@@ -407,6 +415,9 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         /** `storePassword` is plain text. Do not log it or keep it after the call. */
         keystoreAliases: (file: string, storePassword: string) =>
             ipcClient.invoke(IPCEventType.signingKeystoreAliases, { file, storePassword }) as Promise<RequestStatus<{ aliases: string[] }>>,
+        /** The code-signing identities in this Mac's keychains; empty on other hosts. */
+        macIdentities: () =>
+            ipcClient.invoke(IPCEventType.signingMacIdentities, {}) as Promise<RequestStatus<{ identities: MacSigningIdentity[] }>>,
     },
 
     blueprintPersistence: {
@@ -450,6 +461,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onMessage(IPCEventType.pluginLocalesChanged, handler),
         registryFetch: () =>
             ipcClient.invoke(IPCEventType.pluginRegistryFetch, {}),
+        registryIcon: (pluginId: string) =>
+            ipcClient.invoke(IPCEventType.pluginRegistryIcon, { pluginId }),
         installFromRegistry: (pluginId: string) =>
             ipcClient.invoke(IPCEventType.pluginInstallFromRegistry, { pluginId }),
     },

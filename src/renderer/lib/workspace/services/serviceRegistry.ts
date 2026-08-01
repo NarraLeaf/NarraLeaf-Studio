@@ -20,6 +20,7 @@ import { UIBlueprintLifecycleCoordinator } from "./ui-editor/UIBlueprintLifecycl
 import { DevModeService } from "./core/DevModeService";
 import { PreviewService } from "./core/PreviewService";
 import { BuildService } from "./core/BuildService";
+import { LintService } from "./core/LintService";
 import { ConsoleService } from "./core/ConsoleService";
 import { UIEditorFontFaceService } from "./ui-editor/UIEditorFontFaceService";
 import { BlueprintNodeCatalogService } from "./ui-editor/BlueprintNodeCatalogService";
@@ -32,6 +33,7 @@ import { CommandService } from "./ui/CommandService";
 import { SearchService } from "./search/SearchService";
 import { ReferenceService } from "./references/ReferenceService";
 import { VariableRegistryService } from "./variables/VariableRegistryService";
+import { AudioTrackService } from "./audio/AudioTrackService";
 import { SaveStatusService } from "./autosave/SaveStatusService";
 import { VersionControlService } from "./core/VersionControlService";
 import { WorkspaceFreezeService } from "./core/WorkspaceFreezeService";
@@ -62,6 +64,7 @@ export class ServiceRegistry {
         [Services.DevMode]: DevModeService.getInstance(),
         [Services.Preview]: PreviewService.getInstance(),
         [Services.Build]: BuildService.getInstance(),
+        [Services.Lint]: LintService.getInstance(),
         [Services.Console]: ConsoleService.getInstance(),
         [Services.UIEditorFontFace]: UIEditorFontFaceService.getInstance(),
         [Services.BlueprintNodeCatalog]: BlueprintNodeCatalogService.getInstance(),
@@ -73,6 +76,7 @@ export class ServiceRegistry {
         [Services.Search]: SearchService.getInstance(),
         [Services.Reference]: ReferenceService.getInstance(),
         [Services.VariableRegistry]: VariableRegistryService.getInstance(),
+        [Services.AudioTracks]: AudioTrackService.getInstance(),
         [Services.SaveStatus]: SaveStatusService.getInstance(),
         [Services.VersionControl]: VersionControlService.getInstance(),
         [Services.WorkspaceFreeze]: WorkspaceFreezeService.getInstance(),

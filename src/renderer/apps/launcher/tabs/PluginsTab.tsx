@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils/cn";
 import type { PluginListItem } from "@shared/types/plugins";
 import type { PluginRegistryEntry } from "@shared/types/pluginRegistry";
 import { PluginAvatar, PluginDetailsModal, PluginStatusBadge, hasUpdate, isCompatible } from "./PluginDetailsModal";
+import { forgetStoreIcon, useStoreIcon } from "./useStoreIcon";
 
 type LauncherTab = "installed" | "store";
 
@@ -99,6 +100,10 @@ export function PluginsTab() {
         void refresh();
         setRegistry(null);
         setRegistryError(null);
+        // Main gives previously-unreachable thumbnails another chance on a
+        // registry fetch; drop our own memo so we actually ask it again.
+        plugins.forEach(plugin => forgetStoreIcon(plugin.pluginId));
+        (registry ?? []).forEach(entry => forgetStoreIcon(entry.id));
     };
 
     const installLocal = () => runTask(t("launcher.plugins.task.installing"), async () => {
@@ -167,6 +172,9 @@ export function PluginsTab() {
             setTask({ status: "idle" });
             return;
         }
+        // The installed package now carries its own icon, and main dropped the
+        // one it had cached for the version that just moved.
+        forgetStoreIcon(pluginId);
         await refresh();
         if (result.data.plugin.status !== "needsAuthorization") {
             setTask({ status: "success", message: t("launcher.plugins.task.installed") });
@@ -385,7 +393,7 @@ function InstalledRow({
                 onClick={onOpen}
                 className="flex w-full cursor-default items-center gap-3 rounded-md px-3 py-2.5 pr-36 text-left transition-colors hover:bg-fill"
             >
-                <PluginAvatar name={plugin.manifest.name} />
+                <PluginAvatar name={plugin.manifest.name} src={plugin.iconUrl} />
                 <span className="min-w-0 flex-1">
                     <span className="flex min-w-0 items-center gap-1.5">
                         <span className="truncate text-sm text-fg">{plugin.manifest.name}</span>
@@ -450,6 +458,9 @@ function StoreRow({
     // A plugin this build is too old for shows what it needs instead of a button
     // the main process would reject.
     const compatible = isCompatible(entry);
+    // An installed copy already has its icon on disk, checked at install time —
+    // prefer it over asking main to go and fetch the registry's.
+    const storeIcon = useStoreIcon(entry.id, Boolean(entry.icon) && !installed?.iconUrl);
 
     return (
         <div className="group relative">
@@ -458,7 +469,7 @@ function StoreRow({
                 onClick={onOpen}
                 className="flex w-full cursor-default items-center gap-3 rounded-md px-3 py-2.5 pr-40 text-left transition-colors hover:bg-fill"
             >
-                <PluginAvatar name={entry.name} />
+                <PluginAvatar name={entry.name} src={installed?.iconUrl ?? storeIcon} />
                 <span className="min-w-0 flex-1">
                     <span className="flex min-w-0 items-center gap-1.5">
                         <span className="truncate text-sm text-fg">{entry.name}</span>

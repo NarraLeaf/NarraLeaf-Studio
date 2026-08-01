@@ -5,6 +5,7 @@ import { BlueprintPersistenceProjectRef, RequestStatus, WorkspaceFreezeKind } fr
 import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "./menu";
 import { FsRequestResult, PlatformInfo } from "./os";
+import type { FsTextEncoding } from "./textEncoding";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults, WorkspaceViewRequest } from "./window";
 import { GlobalStateValue } from "./state/globalState";
 import { GlobalStateKeys } from "./state/globalState";
@@ -12,7 +13,12 @@ import type { MissingRecentProject } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
-import type { SigningCredential, SigningCredentialImport, SigningInspectResult } from "./signing";
+import type {
+    MacSigningIdentity,
+    SigningCredential,
+    SigningCredentialImport,
+    SigningInspectResult,
+} from "./signing";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
@@ -48,9 +54,9 @@ export interface RendererPrivilegedInterface {
         stat(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileStat>>>;
         list(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileEntry[]>>>;
         details(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileDetails>>>;
-        requestRead(actor: PrivilegedActor, path: string, encoding: BufferEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
+        requestRead(actor: PrivilegedActor, path: string, encoding: FsTextEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
         requestReadRaw(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<string>>>;
-        requestWrite(actor: PrivilegedActor, path: string, encoding: BufferEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
+        requestWrite(actor: PrivilegedActor, path: string, encoding: FsTextEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
         requestWriteRaw(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<string>>>;
         ensureRegularFile(actor: PrivilegedActor, path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
         writeFileNoFollow(actor: PrivilegedActor, path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
@@ -121,14 +127,14 @@ export interface RendererPreloadedInterface {
          * it shares the build's own measurement - see {@link Fs.directorySize}.
          */
         directorySize(path: string): Promise<RequestStatus<FsRequestResult<DirectorySizeResult>>>;
-        requestRead(path: string, encoding: BufferEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
+        requestRead(path: string, encoding: FsTextEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
         requestReadRaw(path: string): Promise<RequestStatus<FsRequestResult<string>>>;
         /**
          * Grant read access to a directory tree, served as `app://fs/{hash}/{relative/path}`.
          * Studio-internal (not on the plugin privileged surface) - see the IPC event's note.
          */
         requestReadDir(path: string): Promise<RequestStatus<FsRequestResult<string>>>;
-        requestWrite(path: string, encoding: BufferEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
+        requestWrite(path: string, encoding: FsTextEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
         requestWriteRaw(path: string): Promise<RequestStatus<FsRequestResult<string>>>;
         ensureRegularFile(path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
         writeFileNoFollow(path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
@@ -261,6 +267,16 @@ export interface RendererPreloadedInterface {
         /** Which remembered projects are no longer on disk. Reports only; removes nothing. */
         checkRecentProjects(): Promise<RequestStatus<{ missing: MissingRecentProject[] }>>;
         getSystemPath(name: "desktop" | "home"): Promise<RequestStatus<{ path: string }>>;
+        /**
+         * Write a support bundle - `report` plus the environment header and the main-process log
+         * tail - to a file the user picks. On the base surface rather than `workspace` so a window
+         * whose workspace failed to start can still call it.
+         */
+        exportDiagnostics(defaultFileName: string, report: string): Promise<RequestStatus<{
+            canceled: boolean;
+            filePath?: string;
+            byteLength?: number;
+        }>>;
     };
 
     devMode: {
@@ -433,6 +449,13 @@ export interface RendererPreloadedInterface {
          * plain text and travels the same one way `import` does.
          */
         keystoreAliases(file: string, storePassword: string): Promise<RequestStatus<{ aliases: string[] }>>;
+        /**
+         * The code-signing identities in this Mac's keychains, so the import form
+         * can offer them rather than asking for a certificate name typed out by
+         * hand. Empty on every other host. Names certificates only - no key
+         * material is read.
+         */
+        macIdentities(): Promise<RequestStatus<{ identities: MacSigningIdentity[] }>>;
     };
 
     blueprintPersistence: {
@@ -463,6 +486,8 @@ export interface RendererPreloadedInterface {
         getLocaleContributions(): Promise<RequestStatus<{ contributions: LocaleContribution[] }>>;
         onLocalesChanged(handler: (change: { version: number }) => void): AppEventToken;
         registryFetch(): Promise<RequestStatus<PluginRegistryFetchResult>>;
+        /** A store thumbnail as a `data:` URL, fetched and cached by main. Null when there is none. */
+        registryIcon(pluginId: string): Promise<RequestStatus<{ icon: string | null }>>;
         installFromRegistry(pluginId: string): Promise<RequestStatus<PluginInstallResult>>;
     };
 

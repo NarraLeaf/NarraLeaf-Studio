@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { AssetsService } from "./AssetsService";
 import { AssetsMetadataManager } from "../assets/mgr/AssetsMetadataManager";
 import { GroupAssetsManager } from "../assets/mgr/GroupAssetsManager";
-import { AssetType } from "../assets/assetTypes";
+import { AssetCategory, AssetType } from "../assets/assetTypes";
 import { AssetSource, type Asset, type AssetGroup, type AssetGroupMap, type AssetsMap } from "../assets/types";
 import { Services } from "../services";
 
@@ -31,19 +31,17 @@ function emptyAssetsMap(): AssetsMap {
 
 function emptyGroupMap(): AssetGroupMap {
     return {
-        [AssetType.Image]: {},
-        [AssetType.Audio]: {},
-        [AssetType.Video]: {},
-        [AssetType.JSON]: {},
-        [AssetType.Blueprint]: {},
-        [AssetType.Font]: {},
-        [AssetType.Model]: {},
-        [AssetType.Other]: {},
+        [AssetCategory.Image]: {},
+        [AssetCategory.Media]: {},
+        [AssetCategory.Data]: {},
+        [AssetCategory.Font]: {},
+        [AssetCategory.Model]: {},
+        [AssetCategory.Other]: {},
     };
 }
 
 function imageGroup(id: string, parentGroupId?: string): AssetGroup {
-    return { id, name: id, type: AssetType.Image, parentGroupId, createdAt: 0, updatedAt: 0 };
+    return { id, name: id, category: AssetCategory.Image, parentGroupId, createdAt: 0, updatedAt: 0 };
 }
 
 function imageAsset(id: string, overrides: Partial<Asset<AssetType.Image, AssetSource.Local>> = {}): Asset<AssetType.Image, AssetSource.Local> {
@@ -77,7 +75,7 @@ function createHarness(assets: Asset<AssetType.Image, AssetSource.Local>[], opti
     }
     const groupMap = emptyGroupMap();
     for (const group of options.groups ?? []) {
-        groupMap[AssetType.Image][group.id] = group;
+        groupMap[AssetCategory.Image][group.id] = group;
     }
 
     const referenceService = {
@@ -272,7 +270,7 @@ describe("AssetsService delete guard", () => {
             references: { "asset-2": ["First Day"] },
         });
 
-        const result = await service.deleteGroup(AssetType.Image, "group-a", true);
+        const result = await service.deleteGroup(AssetCategory.Image, "group-a", true);
 
         expect(result.success).toBe(false);
         expect(result.success === false && result.error).toContain("hall.jpg");
@@ -280,7 +278,7 @@ describe("AssetsService delete guard", () => {
         expect(calls).toEqual([]);
         expect(metadata[AssetType.Image]["asset-1"]).toBeDefined();
         expect(metadata[AssetType.Image]["asset-2"]).toBeDefined();
-        expect(groupMap[AssetType.Image]["group-a"]).toBeDefined();
+        expect(groupMap[AssetCategory.Image]["group-a"]).toBeDefined();
     });
 
     it("sees references inside nested groups the cascade would reach", async () => {
@@ -290,7 +288,7 @@ describe("AssetsService delete guard", () => {
             references: { "asset-1": ["Prologue"] },
         });
 
-        const result = await service.deleteGroup(AssetType.Image, "group-a", true);
+        const result = await service.deleteGroup(AssetCategory.Image, "group-a", true);
 
         expect(result.success).toBe(false);
         expect(metadata[AssetType.Image]["asset-1"]).toBeDefined();
@@ -304,12 +302,12 @@ describe("AssetsService delete guard", () => {
             references: { "asset-2": ["Prologue"] },
         });
 
-        const result = await service.deleteGroup(AssetType.Image, "group-a", true, { allowReferenced: true });
+        const result = await service.deleteGroup(AssetCategory.Image, "group-a", true, { allowReferenced: true });
 
         expect(result.success).toBe(true);
         expect(metadata[AssetType.Image]["asset-1"]).toBeUndefined();
         expect(metadata[AssetType.Image]["asset-2"]).toBeUndefined();
-        expect(groupMap[AssetType.Image]["group-a"]).toBeUndefined();
-        expect(groupMap[AssetType.Image]["group-b"]).toBeUndefined();
+        expect(groupMap[AssetCategory.Image]["group-a"]).toBeUndefined();
+        expect(groupMap[AssetCategory.Image]["group-b"]).toBeUndefined();
     });
 });

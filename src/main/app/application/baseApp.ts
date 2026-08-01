@@ -25,6 +25,7 @@ import { WindowManager } from "./managers/windowManager";
 import { GlobalStateManager } from "./managers/storage/globalState";
 import { PluginPermissionManager } from "./managers/pluginPermissionManager";
 import { PluginManager } from "./managers/pluginManager";
+import { PluginIconCache } from "./managers/pluginIconCache";
 import { isMainDevMode, parseMainCommandLine } from "./commandLine";
 import { applyThemeMode, getWindowBackgroundColor } from "./theme";
 import { StudioDebugServer } from "./managers/debug/studioDebugServer";
@@ -62,6 +63,7 @@ export class BaseApp {
     public readonly globalState: GlobalStateManager;
     public readonly pluginPermissionManager: PluginPermissionManager;
     public readonly pluginManager: PluginManager;
+    public readonly pluginIconCache: PluginIconCache;
 
     private initialized: boolean = false;
     private readyError: Error | null = null;
@@ -93,6 +95,7 @@ export class BaseApp {
         this.pluginManager = new PluginManager(this.getUserDataDir(), this.pluginPermissionManager, {
             builtInPluginsDir: this.getBuiltInPluginsDir(),
         });
+        this.pluginIconCache = new PluginIconCache(this.getUserDataDir());
 
         this.protocolManager = new ProtocolManager(this);
         this.windowManager = new WindowManager(this);

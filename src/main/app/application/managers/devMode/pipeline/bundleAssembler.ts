@@ -21,6 +21,8 @@ import type { GameVoiceBundle } from "@shared/types/voice";
 import { normalizeVoiceConfiguration, normalizeVoiceDocument } from "@shared/types/voice";
 import type { AudioClipRegion, GameAudioBundle } from "@shared/types/audio";
 import { normalizeAudioClipRegion } from "@shared/types/audio";
+import type { ProjectAudioTrack } from "@shared/types/audioTrack";
+import { migrateProjectAudioTrackDocument, normalizeProjectAudioTracks } from "@shared/types/audioTrack";
 import type { StoryAnimationAsset, StoryAnimationIndex, StoryDocument, StoryLibraryEntry, StoryLibraryIndex } from "@shared/types/story";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
@@ -249,32 +251,55 @@ async function loadAssetNames(projectPath: string): Promise<Record<string, strin
 }
 
 /**
- * The in/out points marked on audio assets, read from the same audio shard `loadAssetNames` walks.
+ * The audio payload: the in/out points marked on audio assets, plus the project's audio tracks.
  *
- * Only marked clips are carried, so a project whose author never opened the audio preview produces
- * `undefined` rather than a row per sound effect. A missing or broken shard degrades to "no regions",
- * which plays every clip whole - exactly the behaviour before regions existed. Exported for tests.
+ * Regions come from the same audio shard `loadAssetNames` walks; only marked clips are carried, so
+ * a project whose author never opened the audio preview contributes an empty table rather than a
+ * row per sound effect. A missing or broken shard degrades to "no regions", which plays every clip
+ * whole - exactly the behaviour before regions existed.
+ *
+ * Tracks come from `editor/audio-tracks.json`. Absent or unreadable seeds the three built-ins,
+ * which is what the renderer's `AudioTrackService` does with the same file: a project that has
+ * never opened the Audio surface must play exactly as it did before tracks existed, not silently
+ * lose every play. Never returns `undefined` any more - there is always a track list to carry, and
+ * the audio bundle is the channel it travels on. Exported for tests.
  */
-export async function loadGameAudio(projectPath: string): Promise<GameAudioBundle | undefined> {
+export async function loadGameAudio(projectPath: string): Promise<GameAudioBundle> {
     const shardPath = path.join(projectPath, "assets", "assets.metadata.audio.json");
     let record: Record<string, unknown> | undefined;
     try {
         record = await readOptionalJsonFile<Record<string, unknown>>(shardPath);
     } catch {
-        return undefined;
-    }
-    if (!record || typeof record !== "object") {
-        return undefined;
+        record = undefined;
     }
     const clips: Record<string, AudioClipRegion> = {};
-    for (const [assetId, raw] of Object.entries(record)) {
-        const extras = raw && typeof raw === "object" ? (raw as { extras?: unknown }).extras : undefined;
-        const region = normalizeAudioClipRegion(extras);
-        if (region) {
-            clips[assetId] = region;
+    if (record && typeof record === "object") {
+        for (const [assetId, raw] of Object.entries(record)) {
+            const extras = raw && typeof raw === "object" ? (raw as { extras?: unknown }).extras : undefined;
+            const region = normalizeAudioClipRegion(extras);
+            if (region) {
+                clips[assetId] = region;
+            }
         }
     }
-    return Object.keys(clips).length > 0 ? { clips } : undefined;
+    return { clips, tracks: await loadProjectAudioTracks(projectPath) };
+}
+
+/**
+ * `editor/audio-tracks.json`, normalized through the same reducer the renderer service uses.
+ *
+ * Every failure path lands on the seeded built-ins rather than propagating: a hand-corrupted track
+ * file must not be the reason a build cannot be produced or a Dev Mode session cannot start, and
+ * the built-ins are precisely the fallback every unresolved reference already takes.
+ */
+async function loadProjectAudioTracks(projectPath: string): Promise<ProjectAudioTrack[]> {
+    const tracksPath = path.join(projectPath, "editor", "audio-tracks.json");
+    try {
+        const raw = await readOptionalJsonFile<unknown>(tracksPath);
+        return migrateProjectAudioTrackDocument(raw ?? {}).tracks;
+    } catch {
+        return normalizeProjectAudioTracks([]);
+    }
 }
 
 export function resolveStoryDocumentPathForIndexEntry(projectPath: string, entry: Pick<StoryLibraryEntry, "id">): string | null {

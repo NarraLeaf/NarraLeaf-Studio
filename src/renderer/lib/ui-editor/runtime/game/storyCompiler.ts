@@ -100,6 +100,8 @@ import { resolveLocaleChain } from "@shared/types/localization";
 import type { GameVoiceBundle } from "@shared/types/voice";
 import type { AudioClipRegion } from "@shared/types/audio";
 import { audioClipRegionToSoundConfig } from "@shared/types/audio";
+import type { AudioTrackChannel, AudioTrackPlayback, ProjectAudioTrack } from "@shared/types/audioTrack";
+import { BUILTIN_AUDIO_TRACKS, resolveAudioTrack, resolveAudioTrackPlayback } from "@shared/types/audioTrack";
 import { parseTranslatedText } from "@shared/utils/localizationText";
 import {
     boolProp,
@@ -382,6 +384,8 @@ export type StagePreviewCompileInput = {
     persistence?: StoryPersistenceBridge;
     /** In/out points marked on audio assets; see {@link CompileInput.audioClips}. */
     audioClips?: Record<string, AudioClipRegion>;
+    /** The project's audio tracks; see {@link CompileInput.audioTracks}. */
+    audioTracks?: readonly ProjectAudioTrack[];
     /**
      * Fires synchronously once the pre-posed stage state has been fully applied (elements
      * registered, residual effects settled) - the first frame at which the stage is a faithful
@@ -459,6 +463,17 @@ type SceneCompileContext = {
     voiceIdMap?: Record<string, string>;
     /** Asset id → marked in/out points, folded into every `Sound` this compile builds. */
     audioClips?: Record<string, AudioClipRegion>;
+    /** The project's audio tracks; already defaulted to the built-ins by the caller. */
+    audioTracks: readonly ProjectAudioTrack[];
+    /**
+     * The track each named sound handle was created on, keyed the same way `sounds` is.
+     *
+     * Two rows may address one handle - `/sound piano` then `/vol piano 0.4` - and only the first
+     * creates it. Recording the track it was created on is what lets a later row resolve the SAME
+     * gain and fades instead of the built-in fallback, and what lets a second creating row that names
+     * a *different* track be reported rather than silently ignored (see {@link getSound}).
+     */
+    soundTrackIds: Map<string, string>;
     /** Fn declarations shared across all story-action blueprints in this scene. */
     sceneFnCatalog: StoryActionFnCatalog;
     images: Map<string, Image>;
@@ -501,6 +516,16 @@ type CompileInput = {
      * plays everything whole.
      */
     audioClips?: Record<string, AudioClipRegion>;
+    /**
+     * The project's audio tracks (`editor/audio-tracks.json`), which every audio row resolves against
+     * for its bus, its gain multiplier and its fade/loop defaults.
+     *
+     * Optional so a host that has not been wired yet still compiles: absent means
+     * {@link BUILTIN_AUDIO_TRACKS}, i.e. the three seeded tracks, which reproduce exactly what this
+     * compiler hard-coded before tracks existed. A project that never opened the Audio surface has
+     * those three and nothing else, so for it the two are the same list.
+     */
+    audioTracks?: readonly ProjectAudioTrack[];
     /**
      * Row-precise launch ("play from here" in Dev Mode). When set, the entry scene is replaced by a
      * one-shot pre-posed scene: the stage arrives at `targetBlockId`'s settled state (from the
@@ -573,7 +598,8 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     const voiceIdMap = input.voice
         ? await buildSceneVoiceMap({ voice: input.voice, resolveAssetUrl, assetUrlCache, diagnostics })
         : undefined;
-    const sceneBackgroundMusic = new Map<string, Sound>();
+    const audioTracks = input.audioTracks ?? BUILTIN_AUDIO_TRACKS;
+    const sceneBackgroundMusic = new Map<string, { sound: Sound; trackId: string }>();
     const allScenes = await createNlrScenes({
         document: input.document,
         resolveAssetUrl,
@@ -581,6 +607,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         diagnostics,
         voiceIdMap,
         audioClips: input.audioClips,
+        audioTracks,
         backgroundMusic: sceneBackgroundMusic,
     });
 
@@ -641,8 +668,10 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             vfx: new Map(),
             // Seeded with the scene's configured track under the name the sound-control family
             // defaults to, so `/vol 0.5` on a scene with music means what it looks like.
-            sounds: sceneMusic ? new Map([[BGM_SOUND_NAME, sceneMusic]]) : new Map(),
+            sounds: sceneMusic ? new Map([[BGM_SOUND_NAME, sceneMusic.sound]]) : new Map(),
+            soundTrackIds: sceneMusic ? new Map([[BGM_SOUND_NAME, sceneMusic.trackId]]) : new Map(),
             audioClips: input.audioClips,
+            audioTracks,
             animations,
             resolveAssetUrl,
             assetUrlCache,
@@ -777,9 +806,11 @@ async function buildLaunchEntryScene(params: {
             ?? await resolveSceneInitialBackground({ scene, resolveAssetUrl, assetUrlCache, diagnostics });
     // A row-precise launch replaces the scene, so it has to carry the scene's own music too -
     // otherwise "play from here" is the one way to enter a scene silently.
+    const audioTracks = input.audioTracks ?? BUILTIN_AUDIO_TRACKS;
     const launchMusic = await resolveSceneBackgroundMusic({
         scene,
         audioClips: input.audioClips,
+        audioTracks,
         resolveAssetUrl,
         assetUrlCache,
         diagnostics,
@@ -825,7 +856,9 @@ async function buildLaunchEntryScene(params: {
         videos: new Map(),
         vfx: new Map(),
         sounds: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.sound]]) : new Map(),
+        soundTrackIds: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.trackId]]) : new Map(),
         audioClips: input.audioClips,
+        audioTracks,
         animations: params.animations,
         resolveAssetUrl,
         assetUrlCache,
@@ -1029,7 +1062,9 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         videos: new Map(),
         vfx: new Map(),
         sounds: new Map(),
+        soundTrackIds: new Map(),
         audioClips: input.audioClips,
+        audioTracks: input.audioTracks ?? BUILTIN_AUDIO_TRACKS,
         animations,
         resolveAssetUrl,
         assetUrlCache,
@@ -1293,14 +1328,18 @@ async function createNlrScenes(input: {
     voiceIdMap?: Record<string, string>;
     /** Asset id → marked in/out points, so a scene's own track loops where the author marked it. */
     audioClips?: Record<string, AudioClipRegion>;
+    /** The project's audio tracks, so a scene's music resolves its bus and gain like every other row. */
+    audioTracks: readonly ProjectAudioTrack[];
     /**
      * Filled with each scene's configured track, keyed by Studio scene id.
      *
      * The caller seeds it into that scene's sound registry under the reserved name `bgm`, which is
      * what makes `/vol 0.5` and `/seek bgm 30` address the scene's own music. Without it the control
-     * family would answer "no background music is set" on precisely the scene that has some.
+     * family would answer "no background music is set" on precisely the scene that has some. The
+     * audio track rides along for the same reason: a later `/vol` on that handle has to reach the
+     * gain the scene's music was built with, not the built-in fallback's.
      */
-    backgroundMusic?: Map<string, Sound>;
+    backgroundMusic?: Map<string, { sound: Sound; trackId: string }>;
 }): Promise<Record<string, Scene>> {
     const scenes: Record<string, Scene> = {};
     const voices = input.voiceIdMap && Object.keys(input.voiceIdMap).length > 0 ? input.voiceIdMap : undefined;
@@ -1342,6 +1381,7 @@ async function createNlrScenes(input: {
         const music = await resolveSceneBackgroundMusic({
             scene,
             audioClips: input.audioClips,
+            audioTracks: input.audioTracks,
             resolveAssetUrl: input.resolveAssetUrl,
             assetUrlCache: input.assetUrlCache,
             diagnostics: input.diagnostics,
@@ -1349,7 +1389,7 @@ async function createNlrScenes(input: {
         if (music) {
             config.backgroundMusic = music.sound;
             config.backgroundMusicFade = music.fadeMs;
-            input.backgroundMusic?.set(scene.id, music.sound);
+            input.backgroundMusic?.set(scene.id, { sound: music.sound, trackId: music.trackId });
         }
         scenes[scene.id] = new Scene(
             runtimeName,
@@ -1386,16 +1426,18 @@ async function resolveSceneInitialBackground(input: {
  * `backgroundMusic` during the scene's *init* - so it is already going when the first row runs, and
  * it survives a load into the middle of the scene. A statement could do neither.
  *
- * `loop` defaults to true: a scene's track is meant to outlast the scene, and the in/out points on
- * the asset only become a loop region when the clip loops.
+ * The audio track supplies the bus, the gain multiplier and the loop/fade defaults, resolved the same
+ * way an audio row resolves them - the `music` built-in when the scene names no track, which loops
+ * over an 800ms fade, i.e. what a scene's music has always done.
  */
 async function resolveSceneBackgroundMusic(input: {
     scene: StoryScene;
     audioClips?: Record<string, AudioClipRegion>;
+    audioTracks: readonly ProjectAudioTrack[];
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
     assetUrlCache: Map<string, string | null>;
     diagnostics: NlrStoryCompileDiagnostic[];
-}): Promise<{ sound: Sound; fadeMs: number } | null> {
+}): Promise<{ sound: Sound; fadeMs: number; trackId: string } | null> {
     const bgm = input.scene.bgm;
     const assetId = bgm?.assetId?.trim();
     if (!bgm || !assetId) {
@@ -1412,15 +1454,42 @@ async function resolveSceneBackgroundMusic(input: {
     if (!url) {
         return null;
     }
+    const track = resolveAudioTrack(input.audioTracks, bgm.audioTrackId, "bgm");
+    const playback = resolveAudioTrackPlayback(track, {
+        volume: bgm.volume,
+        fadeMs: bgm.fadeMs,
+        loop: bgm.loop,
+    });
     return {
-        sound: Sound.bgm({
+        sound: createTrackSound(playback, {
             src: url,
-            loop: bgm.loop ?? true,
-            volume: bgm.volume ?? 1,
+            loop: playback.loop,
+            volume: playback.volume,
             ...audioClipRegionToSoundConfig(input.audioClips?.[assetId]),
         }),
-        fadeMs: bgm.fadeMs ?? 0,
+        // Entering a scene is a play, so the scene's cross-fade is the track's fade-IN when the row
+        // does not give one - a scene that opens on Music now eases in rather than cutting.
+        fadeMs: playback.fadeInMs,
+        trackId: track.id,
     };
+}
+
+/**
+ * The `Sound` factory the resolved bus names.
+ *
+ * One function rather than a ternary at each site, because the mapping bus → factory is the entire
+ * mechanical content of "which player slider governs this clip" and three copies of it is three
+ * chances for one of them to keep hard-coding `Sound.sound`.
+ */
+function createTrackSound(playback: Pick<AudioTrackPlayback, "channel">, config: Parameters<typeof Sound.sound>[0]): Sound {
+    switch (playback.channel) {
+        case "bgm":
+            return Sound.bgm(config);
+        case "voice":
+            return Sound.voice(config);
+        case "sound":
+            return Sound.sound(config);
+    }
 }
 
 async function compileBlockList(ctx: SceneCompileContext, blockIds: readonly string[]): Promise<NlrStatement[]> {
@@ -2345,6 +2414,46 @@ async function bindPuppetAvatar(ctx: SceneCompileContext, characterId: string | 
     }
 }
 
+/**
+ * The bus an operation lands on when its row names no track.
+ *
+ * `setBgm` is music by construction, everything else is a sound effect - which is exactly the split
+ * this compiler used to hard-code as `Sound.bgm` / `Sound.sound`. It survives as the *fallback*
+ * rather than the rule, so a project with no tracks configured compiles to what it always did.
+ * (Dialogue voice is not here: it is not an audio row, and it stays on `Sound.voice`.)
+ */
+function audioActionFallbackChannel(
+    operation: Extract<StoryActionPayload, { action: "audio" }>["operation"],
+): AudioTrackChannel {
+    return operation === "setBgm" ? "bgm" : "sound";
+}
+
+/**
+ * The track a row plays on, and the resolved playback that follows from it.
+ *
+ * `payload.audioTrackId` wins when the row names one. Otherwise the handle's OWN track is used when
+ * it has one - `/vol piano 0.4` has to scale against the gain `piano` was created with, not against
+ * the built-in fallback, or the multiplier the author can see in the inspector would not be the one
+ * the game applies. Only when neither exists does the operation's natural bus decide.
+ */
+function resolveRowPlayback(
+    ctx: SceneCompileContext,
+    payload: Extract<StoryActionPayload, { action: "audio" }>,
+    soundName: string | null,
+): { track: ProjectAudioTrack; playback: AudioTrackPlayback } {
+    const trackId = payload.audioTrackId?.trim()
+        || (soundName ? ctx.soundTrackIds.get(soundName) : undefined);
+    const track = resolveAudioTrack(ctx.audioTracks, trackId, audioActionFallbackChannel(payload.operation));
+    return {
+        track,
+        playback: resolveAudioTrackPlayback(track, {
+            volume: payload.volume,
+            fadeMs: payload.fadeMs,
+            loop: payload.loop,
+        }),
+    };
+}
+
 async function compileAudioAction(
     ctx: SceneCompileContext,
     block: StoryBlock,
@@ -2352,41 +2461,61 @@ async function compileAudioAction(
 ): Promise<NlrStatement[]> {
     if (payload.operation === "setBgm") {
         if (!payload.assetId) {
+            // Clearing addresses the music that is PLAYING, so it inherits that handle's track and
+            // an unspecified fade is that track's fade-OUT - the fade of the thing being taken away.
+            const clearing = resolveRowPlayback(ctx, payload, BGM_SOUND_NAME);
             ctx.sounds.delete(BGM_SOUND_NAME);
-            return [recordStatement(ctx, ctx.nlrScene.setBackgroundMusic(null, payload.fadeMs), block)];
+            ctx.soundTrackIds.delete(BGM_SOUND_NAME);
+            return [recordStatement(ctx, ctx.nlrScene.setBackgroundMusic(null, clearing.playback.fadeOutMs), block)];
         }
+        // A `/bgm` with an asset builds a NEW handle and replaces whatever was under `bgm`, so it
+        // resolves from its own row alone: inheriting the previous music's track would make the
+        // second `/bgm` in a scene mean something different from the first, invisibly. For the same
+        // reason there is no conflict check here - a re-point is not a dropped intent.
+        const { track, playback } = resolveRowPlayback(ctx, payload, null);
         const url = await resolveAsset(ctx, payload.assetId, "audio", block.id);
         if (!url) {
             return [];
         }
-        const sound = Sound.bgm({
+        const sound = createTrackSound(playback, {
             src: url,
-            loop: payload.loop ?? true,
-            volume: payload.volume ?? 1,
+            loop: playback.loop,
+            volume: playback.volume,
             ...clipRegionConfig(ctx, payload.assetId),
         });
         // The reserved name the sound-control family defaults to: `/vol 0.5` addresses the music
         // channel by registering the BGM handle under "bgm" (see BGM_OBJECT_NAME in the editor).
         ctx.sounds.set(BGM_SOUND_NAME, sound);
-        return [recordStatement(ctx, ctx.nlrScene.setBackgroundMusic(sound, payload.fadeMs), block)];
+        ctx.soundTrackIds.set(BGM_SOUND_NAME, track.id);
+        return [recordStatement(ctx, ctx.nlrScene.setBackgroundMusic(sound, playback.fadeInMs), block)];
     }
 
-    const sound = await getSound(ctx, payload.objectName || payload.assetId || "sound", payload.assetId, block.id, payload);
+    const name = normalizeObjectName(payload.objectName || payload.assetId || "sound");
+    const sound = await getSound(ctx, name, payload.assetId, block.id, payload);
     if (!sound) {
         return [];
     }
+    // Resolved AFTER `getSound`, so a row that just created the handle reads back the track it was
+    // created on rather than the fallback - the two must agree or `/sound piano vol=0.8` and a later
+    // `/vol piano 0.8` on the same track would produce different gains.
+    const { playback } = resolveRowPlayback(ctx, payload, name);
 
     switch (payload.operation) {
         case "playSound":
-            return [recordStatement(ctx, sound.play(payload.fadeMs), block)];
+            return [recordStatement(ctx, sound.play(playback.fadeInMs), block)];
         case "stopSound":
-            return [recordStatement(ctx, sound.stop(payload.fadeMs), block)];
+            return [recordStatement(ctx, sound.stop(playback.fadeOutMs), block)];
         case "pauseSound":
-            return [recordStatement(ctx, sound.pause(payload.fadeMs), block)];
+            // Pausing fades out and resuming fades in: the two are the same gesture in opposite
+            // directions, which is what makes a track's two fades enough for all four verbs.
+            return [recordStatement(ctx, sound.pause(playback.fadeOutMs), block)];
         case "resumeSound":
-            return [recordStatement(ctx, sound.resume(payload.fadeMs), block)];
+            return [recordStatement(ctx, sound.resume(playback.fadeInMs), block)];
         case "setVolume":
-            return [recordStatement(ctx, sound.setVolume(payload.volume ?? 1, payload.fadeMs), block)];
+            // The ramp reads as a fade-in: it is a move TO a level, and the track's fade-in is the
+            // ramp constant it was given. The volume itself carries the track's gain, so the number
+            // the inspector shows as effective is the number the engine receives.
+            return [recordStatement(ctx, sound.setVolume(playback.volume, playback.fadeInMs), block)];
         case "setRate":
             return [recordStatement(ctx, sound.setRate(payload.rate ?? 1), block)];
         case "muteSound":
@@ -2398,6 +2527,41 @@ async function compileAudioAction(
         default:
             return [];
     }
+}
+
+/**
+ * Report a row that names a track for a sound handle that already has a different one.
+ *
+ * The handle is created once, by whichever row reaches it first, and every later row addressing that
+ * name inherits its bus, gain and fades - so a second `/sound piano track=Ambience` does nothing at
+ * all. That is two expressed intents and only one outcome, which is a diagnostic rather than a silent
+ * win: the author who typed the second track name would otherwise have no way to learn it was dropped.
+ *
+ * A row that names NO track is not a conflict. Inheriting is the normal case, and complaining about
+ * it would put a mark on every `/vol` line in the story.
+ */
+function reportTrackConflict(
+    ctx: SceneCompileContext,
+    blockId: string,
+    payload: Extract<StoryActionPayload, { action: "audio" }>,
+    name: string,
+): void {
+    const requested = payload.audioTrackId?.trim();
+    if (!requested) {
+        return;
+    }
+    const existing = ctx.soundTrackIds.get(name);
+    if (!existing || existing === requested) {
+        return;
+    }
+    const nameOf = (id: string): string => ctx.audioTracks.find(track => track.id === id)?.name ?? id;
+    diagnostic(
+        ctx,
+        "warning",
+        blockId,
+        `"${name}" is already playing on the "${nameOf(existing)}" track, so this row's "${nameOf(requested)}" `
+        + "is ignored. Use a different sound name, or set the track on the row that starts it.",
+    );
 }
 
 async function compileImageAction(
@@ -2887,6 +3051,14 @@ async function getVideo(ctx: SceneCompileContext, objectName: string, assetId: s
     return video;
 }
 
+/**
+ * The named sound handle, created on first mention and reused after.
+ *
+ * **The cache is keyed by NAME, and the track rides on the handle.** A row that names an existing
+ * sound and also names a different track cannot get its track - the handle it addresses was built
+ * with the first row's bus and gain, and there is only one of it. So that case is reported rather
+ * than passed over; see {@link reportTrackConflict}.
+ */
 async function getSound(
     ctx: SceneCompileContext,
     objectName: string,
@@ -2897,6 +3069,7 @@ async function getSound(
     const name = normalizeObjectName(objectName);
     const existing = ctx.sounds.get(name);
     if (existing) {
+        reportTrackConflict(ctx, blockId, payload, name);
         return existing;
     }
     if (!assetId) {
@@ -2909,14 +3082,16 @@ async function getSound(
     if (!url) {
         return null;
     }
-    const sound = Sound.sound({
+    const { track, playback } = resolveRowPlayback(ctx, payload, null);
+    const sound = createTrackSound(playback, {
         src: url,
-        loop: payload.loop ?? false,
-        volume: payload.volume ?? 1,
+        loop: playback.loop,
+        volume: playback.volume,
         rate: payload.rate ?? 1,
         ...clipRegionConfig(ctx, assetId),
     });
     ctx.sounds.set(name, sound);
+    ctx.soundTrackIds.set(name, track.id);
     return sound;
 }
 
@@ -2926,8 +3101,14 @@ async function getSound(
  * Applied to every sound the compiler builds, not only background music: an out point trims a sound
  * effect's tail as usefully as it loops a track's body, and the author marked one region per asset -
  * asking them to mark it again per row would be a second source of truth.
+ *
+ * The return type is inferred rather than written out. It was written out once, and when
+ * `audioClipRegionToSoundConfig` grew `loopStart` the stale annotation statically widened the new key
+ * away again - every clip's intro→loop point silently dropped on its way into the `Sound` config,
+ * with nothing failing to say so. There is no second caller that needs the type named, so the fix is
+ * to stop naming it.
  */
-function clipRegionConfig(ctx: SceneCompileContext, assetId: string | undefined): { seek: number; endTime?: number } {
+function clipRegionConfig(ctx: SceneCompileContext, assetId: string | undefined) {
     return audioClipRegionToSoundConfig(assetId ? ctx.audioClips?.[assetId] : undefined);
 }
 

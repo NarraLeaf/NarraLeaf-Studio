@@ -265,7 +265,62 @@ describe("PluginManager", () => {
         );
         await expect(manager.uninstallPlugin("acme.sample-plugin")).rejects.toThrow("Built-in plugins cannot be uninstalled");
     });
+
+    it("exposes a declared icon and serves it before the plugin is authorized", async () => {
+        await writeIcon(sourceDir, "icon.png", 512);
+        await writePluginPackage(sourceDir, "1.0.0", { studio: "main.js" }, undefined, "icon.png");
+
+        const manager = new PluginManager(tempDir, permissionManager as any);
+        const result = await manager.installFromDirectory(sourceDir);
+        const iconUrl = (result as { plugin: { iconUrl?: string } }).plugin.iconUrl;
+
+        expect(iconUrl).toBe("app://plugins/acme.sample-plugin/1.0.0/icon.png");
+        // Freshly installed, so still unauthorized and disabled: the entry stays
+        // sealed, the icon does not - the list showing it is how the user decides.
+        expect(await manager.resolvePluginEntryFile(new URL(iconUrl!.replace("icon.png", "main.js")))).toBeNull();
+        expect(await manager.resolvePluginIconFile(new URL(iconUrl!)))
+            .toBe(path.join(tempDir, "plugins", "acme.sample-plugin", "icon.png"));
+    });
+
+    it("serves nothing but the declared icon path", async () => {
+        await writeIcon(sourceDir, "icon.png", 512);
+        await fs.writeFile(path.join(sourceDir, "secret.png"), "not an icon", "utf-8");
+        await writePluginPackage(sourceDir, "1.0.0", { studio: "main.js" }, undefined, "icon.png");
+
+        const manager = new PluginManager(tempDir, permissionManager as any);
+        await manager.installFromDirectory(sourceDir);
+
+        const base = "app://plugins/acme.sample-plugin/1.0.0";
+        // Any other file in the package, a stale version, an unknown plugin: the
+        // only address that resolves is the one the manifest declares.
+        expect(await manager.resolvePluginIconFile(new URL(`${base}/secret.png`))).toBeNull();
+        expect(await manager.resolvePluginIconFile(new URL(`${base}/manifest.json`))).toBeNull();
+        expect(await manager.resolvePluginIconFile(new URL("app://plugins/acme.sample-plugin/9.9.9/icon.png"))).toBeNull();
+        expect(await manager.resolvePluginIconFile(new URL("app://plugins/acme.other/1.0.0/icon.png"))).toBeNull();
+    });
+
+    it("refuses a package whose icon breaks the shipping rules", async () => {
+        const manager = new PluginManager(tempDir, permissionManager as any);
+
+        await writeIcon(sourceDir, "icon.png", 512, 256);
+        await writePluginPackage(sourceDir, "1.0.0", { studio: "main.js" }, undefined, "icon.png");
+        await expect(manager.installFromDirectory(sourceDir)).rejects.toThrow(/square/);
+
+        await fs.rm(path.join(sourceDir, "icon.png"));
+        await expect(manager.installFromDirectory(sourceDir)).rejects.toThrow(/icon file not found/);
+    });
 });
+
+/** A PNG header of the given dimensions - enough for the icon checks, which are header-only. */
+async function writeIcon(dir: string, name: string, width: number, height = width): Promise<void> {
+    const be32 = (value: number) => [(value >>> 24) & 0xff, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff];
+    await fs.writeFile(path.join(dir, name), Buffer.from([
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+        0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52,
+        ...be32(width), ...be32(height),
+        8, 6, 0, 0, 0, 0, 0, 0, 0,
+    ]));
+}
 
 /** Approve the pending install prompt for the sample plugin. */
 function approve(manager: PluginManager) {
@@ -283,6 +338,7 @@ async function writePluginPackage(
     version: string,
     entries: Record<string, string> = { studio: "main.js" },
     permissions: unknown[] = [{ kind: "api", capability: "bash.execute" }],
+    icon?: string,
 ): Promise<void> {
     await fs.mkdir(dir, { recursive: true });
     for (const entry of Object.values(entries)) {
@@ -296,5 +352,6 @@ async function writePluginPackage(
         description: "Test plugin",
         entries,
         permissions,
+        ...(icon ? { icon } : {}),
     }), "utf-8");
 }

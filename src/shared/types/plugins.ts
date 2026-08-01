@@ -162,6 +162,12 @@ export type PluginContributes = {
 export type PluginManifestV2 = Omit<PluginIdentity, "id" | "name" | "version"> & Required<Pick<PluginIdentity, "id" | "name" | "version">> & {
     manifestVersion: typeof PluginManifestVersion;
     description?: string;
+    /**
+     * Package-relative path to the thumbnail shown beside the plugin's name in
+     * the Launcher list. Square, at most 512x512, and one of the extensions in
+     * `PLUGIN_ICON_EXTENSIONS`. Plugins without one keep the name monogram.
+     */
+    icon?: string;
     entries: PluginManifestEntries;
     contributes?: PluginContributes;
     permissions?: PluginInstallPermission[];
@@ -206,6 +212,12 @@ export type PluginStatus =
 export type PluginListItem = {
     pluginId: string;
     manifest: NormalizedPluginManifestV2;
+    /**
+     * `app://` address of the declared icon, absent when the plugin ships none.
+     * Resolved here rather than in the renderer because only the main process
+     * knows where the package landed on disk.
+     */
+    iconUrl?: string;
     installPath: string;
     enabled: boolean;
     builtIn: boolean;

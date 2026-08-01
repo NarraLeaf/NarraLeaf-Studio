@@ -10,11 +10,18 @@
     // `import { X } from '@shared/types/plugins'` lines into the output —
     // specifiers no consumer outside this repo can resolve. Dropping the
     // typeRoot makes them ordinary source files, which the bundler inlines.
+    //
+    // `./ambient` is a second typeRoot holding stand-ins for untyped packages that the walked
+    // declarations import (see ambient/howler/index.d.ts for the whole story). It has to arrive
+    // this way: the bundler takes only `compilerOptions` from this file, never its `include`, and
+    // it rebuilds its real program over the entry's *emitted* declarations - so an ambient file
+    // pulled in any other way is gone before it is needed. Automatic type inclusion survives both
+    // programs because it is an option.
     "extends": "../../src/renderer/tsconfig.json",
     "compilerOptions": {
         "baseUrl": "../../src/renderer",
-        "typeRoots": ["../../node_modules/@types"],
-        "types": ["node", "react", "react-dom"],
+        "typeRoots": ["../../node_modules/@types", "./ambient"],
+        "types": ["node", "react", "react-dom", "howler"],
         "noEmit": true,
         "declaration": false,
         "emitDeclarationOnly": false

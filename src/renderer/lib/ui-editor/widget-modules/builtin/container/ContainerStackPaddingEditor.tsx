@@ -2,6 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
+import { InspectOnlyButton } from "@/lib/components/elements/InspectOnlyButton";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
 import { useTranslation } from "@/lib/i18n";
 import {
@@ -37,6 +39,11 @@ export function ContainerStackPaddingEditor({
     onPatch,
 }: ContainerStackPaddingEditorProps) {
     const { t } = useTranslation();
+    /**
+     * Read here rather than taken as a prop: this editor is mounted from an `inlineRow` render
+     * callback, whose context carries no `readOnly` for the caller to pass on.
+     */
+    const freeze = useFreezeGuard();
     const [sidesOpen, setSidesOpen] = useState(false);
     const [popoverPos, setPopoverPos] = useState({ left: 0, top: 0, width: 280 });
     const anchorRef = useRef<HTMLDivElement | null>(null);
@@ -198,27 +205,37 @@ export function ContainerStackPaddingEditor({
                       onMouseDown={e => e.stopPropagation()}
                   >
                       <p className="mb-2 text-xs font-medium text-fg-muted">{t("widgets.perSidePx")}</p>
-                      <div className="grid grid-cols-2 gap-2 min-w-0">
-                          {sideKeys.map(({ key, label }) => (
-                              <div key={key} className="flex min-w-0 flex-col gap-1">
-                                  <span className="text-2xs font-medium text-fg-subtle">{label}</span>
-                                  <NumericDraftEnhancedInput
-                                      committedDisplay={String(current[key])}
-                                      draftResetKey={`${draftResetKey}-pad-${key}`}
-                                      onFiniteNumber={n => handleSideNumber(key, n)}
-                                      inputMode="numeric"
-                                      type="number"
-                                      min={-CONTAINER_STACK_SPACING_ABS_MAX_PX}
-                                      max={CONTAINER_STACK_SPACING_ABS_MAX_PX}
-                                      unit="px"
-                                      aria-label={t("widgets.container.paddingSide", { side: label })}
-                                      title={t("widgets.container.paddingSide", { side: label })}
-                                      className="w-full min-w-0"
-                                      selectAllOnFocus
-                                  />
-                              </div>
-                          ))}
-                      </div>
+                      {/* The popover's own clamp, because it is a portal into `document.body` and so
+                          escapes the `<fieldset disabled>` the inspector wraps this field in. The
+                          four boxes all write, and there is nothing in here to exempt. */}
+                      <fieldset
+                          disabled={freeze.frozen}
+                          aria-readonly={freeze.frozen || undefined}
+                          title={freeze.frozen ? freeze.reason : undefined}
+                          style={{ display: "contents" }}
+                      >
+                          <div className="grid grid-cols-2 gap-2 min-w-0">
+                              {sideKeys.map(({ key, label }) => (
+                                  <div key={key} className="flex min-w-0 flex-col gap-1">
+                                      <span className="text-2xs font-medium text-fg-subtle">{label}</span>
+                                      <NumericDraftEnhancedInput
+                                          committedDisplay={String(current[key])}
+                                          draftResetKey={`${draftResetKey}-pad-${key}`}
+                                          onFiniteNumber={n => handleSideNumber(key, n)}
+                                          inputMode="numeric"
+                                          type="number"
+                                          min={-CONTAINER_STACK_SPACING_ABS_MAX_PX}
+                                          max={CONTAINER_STACK_SPACING_ABS_MAX_PX}
+                                          unit="px"
+                                          aria-label={t("widgets.container.paddingSide", { side: label })}
+                                          title={t("widgets.container.paddingSide", { side: label })}
+                                          className="w-full min-w-0"
+                                          selectAllOnFocus
+                                      />
+                                  </div>
+                              ))}
+                          </div>
+                      </fieldset>
                   </div>,
                   document.body
               )
@@ -246,17 +263,20 @@ export function ContainerStackPaddingEditor({
                             selectAllOnFocus
                         />
                     </div>
-                    <button
-                        type="button"
+                    {/* Opening the popover only shows what the four edges are set to - the writing
+                        happens in the boxes inside it, which have their own clamp above. As a
+                        `<button>` the inspector's `<fieldset disabled>` caught this chevron, so on a
+                        frozen project a container with uneven padding showed "-" in the all-sides
+                        box and there was no way to find out the four numbers behind it. */}
+                    <InspectOnlyButton
                         onClick={toggleSides}
                         aria-expanded={sidesOpen}
-                        aria-haspopup="dialog"
                         aria-label={sidesOpen ? t("widgets.container.perSidePaddingClose") : t("widgets.container.perSidePaddingEdit")}
-                        className={controlButtonClass(sidesOpen)}
+                        className={`${controlButtonClass(sidesOpen)} cursor-default`}
                         title={t("widgets.container.perSidePadding")}
                     >
                         {sidesOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                    </button>
+                    </InspectOnlyButton>
                 </div>
             </div>
             {popover}

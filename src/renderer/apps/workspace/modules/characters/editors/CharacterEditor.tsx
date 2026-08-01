@@ -139,6 +139,13 @@ function DefaultStar(props: {
     /** The hover-group variant that reveals the action arm, e.g. `group-hover/tag:opacity-100`. */
     reveal: string;
     label: string;
+    /**
+     * The action arm's accessible name. Separate from {@link label} because the two arms say
+     * opposite things — one reports that this *is* the default, the other offers to make it one —
+     * and `writes.title` cannot stand in for it: on a frozen project that title is the freeze
+     * reason, which would rename the control instead of describing it.
+     */
+    actionLabel: string;
 }) {
     if (props.isDefault) {
         return <Star className="h-3 w-3 shrink-0 fill-current text-primary" aria-label={props.label} />;
@@ -147,6 +154,7 @@ function DefaultStar(props: {
         <button
             className={cn(ICON_BTN, "shrink-0 opacity-0 focus-visible:opacity-100", props.reveal)}
             onClick={props.onSet}
+            aria-label={props.actionLabel}
             {...props.writes}
         >
             <Star className="h-3 w-3" />
@@ -652,9 +660,14 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                         ) : null}
                         toolbar={kind === "layered" ? (
                             <>
+                                {/* Declaring the canvas from the largest measured layer writes the
+                                    appearance, and so does the PSD import below it. Onion skin and
+                                    the combination grid only change what is drawn on screen, so
+                                    they stay live for a reader of a past version. */}
                                 <button
                                     className={ICON_BTN}
                                     onClick={setCanvasFromLargest}
+                                    aria-label={t("characters.editor.setCanvas")}
                                     {...freeze.writes(false, t("characters.editor.setCanvas"))}
                                 >
                                     <Crop className="w-3.5 h-3.5" />
@@ -672,6 +685,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                 <button
                                     className={ICON_BTN}
                                     onClick={() => setPsdOpen(true)}
+                                    aria-label={t("characters.editor.psd.title")}
                                     {...freeze.writes(false, t("characters.editor.psd.title"))}
                                 >
                                     <FileImage className="w-3.5 h-3.5" />
@@ -796,10 +810,12 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                         writes={freeze.writes(false, t("characters.editor.makeDefault"))}
                                         reveal="group-hover:opacity-100"
                                         label={t("characters.editor.isDefault")}
+                                        actionLabel={t("characters.editor.makeDefault")}
                                     />
                                     <button
                                         className={ICON_BTN}
                                         onClick={event => { event.stopPropagation(); openSlot({ kind: "pose", poseId: pose.id }, event.currentTarget); }}
+                                        aria-label={t("characters.editor.changeImage")}
                                         {...freeze.writes(false, t("characters.editor.changeImage"))}
                                     >
                                         <ImagePlus className="w-3.5 h-3.5" />
@@ -810,6 +826,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                             event.stopPropagation();
                                             if (await confirmDelete(pose.name, "pose")) appearance.removePose(pose.id);
                                         }}
+                                        aria-label={t("characters.editor.removePose")}
                                         {...freeze.writes(false, t("characters.editor.removePose"))}
                                     >
                                         <Trash2 className="w-3.5 h-3.5" />
@@ -848,6 +865,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                         axis.tags,
                                                     ));
                                                 }}
+                                                aria-label={t("characters.editor.newTag")}
                                                 {...freeze.writes(false, t("characters.editor.newTag"))}
                                             >
                                                 <Plus className="w-3.5 h-3.5" />
@@ -855,6 +873,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                             <button
                                                 className={avatarAxisIds.includes(axis.id) ? ICON_BTN_ON : ICON_BTN}
                                                 onClick={event => { event.stopPropagation(); toggleAvatarAxis(axis.id); }}
+                                                aria-label={t("characters.editor.avatarAxis")}
                                                 {...freeze.writes(false, t("characters.editor.avatarAxis"))}
                                             >
                                                 <UserRound className="w-3.5 h-3.5" />
@@ -865,6 +884,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                     event.stopPropagation();
                                                     if (await confirmDelete(axis.name, "axis")) appearance.removeAxis(axis.id);
                                                 }}
+                                                aria-label={t("characters.editor.removeAxis")}
                                                 {...freeze.writes(false, t("characters.editor.removeAxis"))}
                                             >
                                                 <Trash2 className="w-3.5 h-3.5" />
@@ -901,6 +921,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                         writes={freeze.writes(false, t("characters.editor.makeDefault"))}
                                                         reveal="group-hover/tag:opacity-100"
                                                         label={t("characters.editor.isDefault")}
+                                                        actionLabel={t("characters.editor.makeDefault")}
                                                     />
                                                     <button
                                                         className={cn(ICON_BTN, "shrink-0 opacity-0 focus-visible:opacity-100 group-hover/tag:opacity-100")}
@@ -908,6 +929,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                             event.stopPropagation();
                                                             if (await confirmDelete(tag.name, "tag")) appearance.removeTag(axis.id, tag.id);
                                                         }}
+                                                        aria-label={t("characters.editor.removeTag")}
                                                         {...freeze.writes(false, t("characters.editor.removeTag"))}
                                                     >
                                                         <Trash2 className="w-3 h-3" />
@@ -1011,6 +1033,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                         event.stopPropagation();
                                                         if (await confirmDelete(layer.name, "layer")) appearance.removeLayer(layer.id);
                                                     }}
+                                                    aria-label={t("characters.editor.removeLayer")}
                                                     {...freeze.writes(locked[layer.id], t("characters.editor.removeLayer"))}
                                                 >
                                                     <Trash2 className="w-3.5 h-3.5" />
@@ -1029,6 +1052,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                             <button
                                                                 className={ICON_BTN}
                                                                 onClick={event => { event.stopPropagation(); openSlot({ kind: "option", layerId: layer.id, tagId: tag.id }, event.currentTarget); }}
+                                                                aria-label={t("characters.editor.changeImage")}
                                                                 {...freeze.writes(locked[layer.id], t("characters.editor.changeImage"))}
                                                             >
                                                                 <ImagePlus className="w-3 h-3" />
@@ -1044,6 +1068,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                     <button
                                                         className={ICON_BTN}
                                                         onClick={event => { event.stopPropagation(); openSlot({ kind: "layer", layerId: layer.id }, event.currentTarget); }}
+                                                        aria-label={t("characters.editor.changeImage")}
                                                         {...freeze.writes(locked[layer.id], t("characters.editor.changeImage"))}
                                                     >
                                                         <ImagePlus className="w-3 h-3" />
@@ -1082,6 +1107,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                 event.stopPropagation();
                                                 if (await confirmDelete(snapshot.name, "snapshot")) appearance.removeSnapshot(snapshot.id);
                                             }}
+                                            aria-label={t("common.delete")}
                                             {...freeze.writes(false, t("common.delete"))}
                                         >
                                             <Trash2 className="w-3.5 h-3.5" />

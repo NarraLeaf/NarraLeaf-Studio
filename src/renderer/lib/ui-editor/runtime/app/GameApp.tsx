@@ -103,6 +103,7 @@ import {
     restoreLiveGameToHistory,
 } from "./gameUiSlots";
 import { audioClipRegionToSoundConfig } from "@shared/types/audio";
+import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import { createSoundTransport } from "./soundTransport";
 
 /**
@@ -395,6 +396,19 @@ export function GameApp(props: GameAppProps): ReactNode {
     const dispatchPreferenceChangeRef = useRef<
         ((key: string, value: unknown, previousValue: unknown) => void) | null
     >(null);
+    /**
+     * Host-side listeners on the preference stream, kept beside the blueprint `gamePreferenceChanged`
+     * dispatch rather than folded into it: a widget that has to re-read a volume is not an authored
+     * event and must not show up in the blueprint debug stream. Backs
+     * `hostApi.sound.subscribeMixerChanges`, which is how the video widget follows a slider drag.
+     */
+    const preferenceListenersRef = useRef<Set<() => void>>(new Set());
+    const subscribeGamePreferences = useCallback((listener: () => void) => {
+        preferenceListenersRef.current.add(listener);
+        return () => {
+            preferenceListenersRef.current.delete(listener);
+        };
+    }, []);
     const currentDialogNametagRef = useRef<string | null>(null);
     const choiceRuntimeRef = useRef<ChoiceSlotRuntime | null>(null);
     const prefersReducedMotion = useReducedMotion();
@@ -741,6 +755,9 @@ export function GameApp(props: GameAppProps): ReactNode {
     const soundTransport = useMemo(() => createSoundTransport({
         getLiveGame: () => nlrLiveGameRef.current,
         resolveAssetUrl: (assetId, assetType) => host.resolveStoryAssetUrl(assetId, assetType),
+        // The bus, the gain and the fade/loop defaults a play inherits. Absent on a bundle that
+        // predates tracks, which the transport reads as the built-ins.
+        getAudioTracks: () => bundle.audio?.tracks,
         // The in/out points the author marked on the asset apply here exactly as they do in a story
         // row, so a music page loops a track's body rather than the whole file.
         createSound: ({ src, channel, loop, volume, assetId }) => new Sound({
@@ -1122,7 +1139,12 @@ export function GameApp(props: GameAppProps): ReactNode {
                 }
             }
         }
-        const compiled = await compileStudioStoryToNlr({
+        // Built as a typed local rather than inline so the two audio fields travel as ordinary
+        // properties, not as excess ones on a fresh object literal: `audioTracks` is added to
+        // `CompileInput` by the story milestone, and this half has to compile before and after that
+        // lands. Once it has, the intersection below is a no-op.
+        const compileInput: Parameters<typeof compileStudioStoryToNlr>[0]
+            & { audioTracks?: readonly ProjectAudioTrack[] } = {
             document: storyDocument,
             sceneId,
             launch,
@@ -1161,7 +1183,14 @@ export function GameApp(props: GameAppProps): ReactNode {
                       },
                   }
                 : undefined,
-        });
+            // The in/out/loop points the author marked and the project's audio tracks. Only the
+            // in-editor scene preview used to pass these, so every marked loop point and every
+            // track was silently dropped in Dev Mode *and* in the packaged build - the two places
+            // the feature actually has to work. Both runtimes reach the compiler through this call.
+            audioClips: bundle.audio?.clips,
+            audioTracks: bundle.audio?.tracks,
+        };
+        const compiled = await compileStudioStoryToNlr(compileInput);
         if (compiled.diagnostics.length > 0) {
             for (const diagnostic of compiled.diagnostics) {
                 host.log(diagnostic.level === "error" ? "error" : "warning", diagnostic.message);
@@ -1232,6 +1261,12 @@ export function GameApp(props: GameAppProps): ReactNode {
             setSentenceSpeedInGame,
             getGamePreferenceInGame,
             setGamePreferenceInGame,
+            // The sound family. A slot surface builds its own host API, and it used to build one
+            // with none of these - so a button-click sound inside a dialogue box, a choice or an NVL
+            // surface did nothing at all, with no diagnostic anywhere.
+            soundTransport,
+            audioTracks: bundle.audio?.tracks,
+            subscribeGamePreferences,
             setWidgetPatchesByScope,
             widgetPatchesByScopeRef,
             widgetRuntimeStore,
@@ -1492,6 +1527,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             onSetSoundVolume: soundTransport.setVolume,
             onSeekSound: soundTransport.seek,
             onIsSoundPlaying: soundTransport.isPlaying,
+            audioTracks: bundle.audio?.tracks,
+            onSubscribeGamePreferences: subscribeGamePreferences,
             onWidgetPatch: (elementId, patch) => {
                 applyWidgetRuntimePatch({
                     setWidgetPatchesByScope,
@@ -1741,6 +1778,8 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onSetSoundVolume: soundTransport.setVolume,
                     onSeekSound: soundTransport.seek,
                     onIsSoundPlaying: soundTransport.isPlaying,
+                    audioTracks: bundle.audio?.tracks,
+                    onSubscribeGamePreferences: subscribeGamePreferences,
                     onWidgetPatch: (elementId, patch) => {
                         applyWidgetRuntimePatch({
                             setWidgetPatchesByScope,
@@ -2253,7 +2292,10 @@ export function GameApp(props: GameAppProps): ReactNode {
                 nlrPreferenceTokenRef.current = subscribeGamePreferenceChanges(
                     liveGame,
                     preferenceSnapshotRef,
-                    (key, value, previousValue) => dispatchPreferenceChangeRef.current?.(key, value, previousValue),
+                    (key, value, previousValue) => {
+                        dispatchPreferenceChangeRef.current?.(key, value, previousValue);
+                        preferenceListenersRef.current.forEach(listener => listener());
+                    },
                 );
                 detachTextReadTracker();
                 const dialogGameState = liveGame.getGameState();

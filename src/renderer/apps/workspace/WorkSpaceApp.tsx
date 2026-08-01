@@ -37,7 +37,7 @@ function WorkspaceContent() {
 }
 
 function InitializedWorkspace({ children }: { children: React.ReactNode }) {
-    const { isInitialized, error } = useWorkspace();
+    const { isInitialized, error, retry } = useWorkspace();
 
     // Show loading screen while initializing
     if (!isInitialized && !error) {
@@ -50,7 +50,7 @@ function InitializedWorkspace({ children }: { children: React.ReactNode }) {
         if (isWorkspaceStartupError(error) && error.kind === WorkspaceStartupErrorKind.MissingProjectConfig) {
             return <MissingProjectConfigScreen projectPath={error.projectPath} />;
         }
-        return <ErrorScreen error={error} />;
+        return <ErrorScreen error={error} onRetry={retry} />;
     }
 
     return (<>{children}</>);

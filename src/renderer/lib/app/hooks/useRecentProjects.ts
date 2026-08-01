@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { getInterface } from "@/lib/app/bridge";
 import type { MissingRecentProject, RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
-import { normalizeProjectPath } from "@shared/utils/recentProject";
+import { normalizeProjectPath, withRecentProjectNames } from "@shared/utils/recentProject";
 
 const RECENT_PROJECTS_KEY = "app.recentProjects";
 
@@ -13,6 +13,12 @@ const RECENT_PROJECTS_KEY = "app.recentProjects";
  * app: the history is global, so any window can change it at any time - another window opening a
  * project, or the launcher removing one. A surface that only read it at mount would keep offering
  * projects that are gone and miss ones that were just added.
+ *
+ * Both paths in run through `withRecentProjectNames`. The stored value is not this window's to
+ * trust: it comes straight out of `app.recentProjects` without passing the main process's own
+ * `RecentlyOpened.list`, and a record whose name never got written used to throw in the launcher's
+ * avatar helper and take the whole app down with it. This is the single seam every renderer
+ * consumer of the history goes through, so repairing it here repairs all of them.
  */
 export function useRecentProjects(): RecentlyOpenedProject[] {
     const [recentProjects, setRecentProjects] = useState<RecentlyOpenedProject[]>([]);
@@ -24,7 +30,7 @@ export function useRecentProjects(): RecentlyOpenedProject[] {
             try {
                 const result = await getInterface().app.state.getGlobalState(RECENT_PROJECTS_KEY);
                 if (!cancelled && result.success) {
-                    setRecentProjects(result.data.value ?? []);
+                    setRecentProjects(withRecentProjectNames(result.data.value ?? []));
                 }
             } catch (error) {
                 console.error("[recent] Failed to load recent projects:", error);
@@ -33,7 +39,7 @@ export function useRecentProjects(): RecentlyOpenedProject[] {
 
         const token = getInterface().app.state.onGlobalStateChanged((change) => {
             if (change.key === RECENT_PROJECTS_KEY) {
-                setRecentProjects((change.value as RecentlyOpenedProject[] | null) ?? []);
+                setRecentProjects(withRecentProjectNames((change.value as RecentlyOpenedProject[] | null) ?? []));
             }
         });
 

@@ -3,6 +3,7 @@ import { BlurDissolve, Darkness, DevTools, Push, Reveal, ThroughColor, Transitio
 import type { CharacterAppearanceSummary, DevModeCharacterSummary } from "@shared/types/devMode";
 import type { StoryActionPayload, StoryAnimationAsset, StoryBlock, StoryDocument, StoryTransitionRef } from "@shared/types/story";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
+import { BUILTIN_AUDIO_TRACKS } from "@shared/types/audioTrack";
 import { compileStudioStoryToNlr, resolveBundleEntry } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
 
@@ -2964,6 +2965,161 @@ describe("story audio", () => {
         });
 
         expect(compiled.diagnostics.some(entry => /No background music is set/.test(entry.message))).toBe(true);
+    });
+
+    /**
+     * Audio tracks: the bus, the multiplier and the fade/loop defaults a row inherits.
+     *
+     * The failure these guard is the one the whole track model exists to end - a per-row `volume`
+     * multiplying with something invisible. Here the multiplier is a project value, so "0.8 on a 0.6
+     * track is 0.48" has to be a fact the compiler can be held to, not a convention.
+     */
+    describe("audio tracks", () => {
+        const AMBIENCE = {
+            id: "t_amb", name: "Ambience", channel: "bgm" as const,
+            gain: 0.6, fadeInMs: 1200, fadeOutMs: 400, loop: true,
+        };
+        const TRACKS = [...BUILTIN_AUDIO_TRACKS, AMBIENCE];
+
+        function soundRow(id: string, name: string, assetId: string, extra: Record<string, unknown> = {}): StoryBlock {
+            return {
+                id,
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "audio", operation: "playSound", objectName: name, assetId, ...extra } as StoryActionPayload,
+            };
+        }
+
+        it("a track moves an ordinary sound row onto another bus and scales its volume by the gain", async () => {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument({
+                    rain: soundRow("rain", "rain", "asset-rain", { audioTrackId: "t_amb", volume: 0.8 }),
+                }, ["rain"]),
+                sceneId: "scene-1",
+                audioTracks: TRACKS,
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            expect(compiled.diagnostics).toEqual([]);
+            const sound = compiled.sceneElements?.["scene-1"].sounds.get("rain") as any;
+            // The bus decides which player slider governs it - the reason a track is worth naming.
+            expect(sound.config.type).toBe("bgm");
+            // 0.8 × 0.6. Clamped on the PRODUCT, so a quiet source can be lifted past unity by gain.
+            expect(sound.state.volume).toBeCloseTo(0.48, 5);
+            // Loop comes from the track when the row does not say - Ambience loops, SFX does not.
+            expect(sound.config.loop).toBe(true);
+        });
+
+        it("with no audioTracks at all, every row compiles exactly as it did before tracks existed", async () => {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument({
+                    ...bgmRow("music", "asset-theme"),
+                    hit: soundRow("hit", "impact", "asset-hit"),
+                }, ["music", "hit"]),
+                sceneId: "scene-1",
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            expect(compiled.diagnostics).toEqual([]);
+            const elements = compiled.sceneElements?.["scene-1"];
+            expect((elements?.sounds.get("bgm") as any).config.type).toBe("bgm");
+            expect((elements?.sounds.get("bgm") as any).config.loop).toBe(true);
+            expect((elements?.sounds.get("impact") as any).config.type).toBe("sound");
+            expect((elements?.sounds.get("impact") as any).config.loop).toBe(false);
+        });
+
+        it("a dangling track id falls back to the built-in for the operation's own bus", async () => {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument({
+                    hit: soundRow("hit", "impact", "asset-hit", { audioTrackId: "deleted-track" }),
+                }, ["hit"]),
+                sceneId: "scene-1",
+                audioTracks: TRACKS,
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            // Deleting a track must not break a story that pointed at it - references are NOT
+            // rewritten, they resolve to the bus's built-in and go on making a sound.
+            expect(compiled.diagnostics).toEqual([]);
+            expect((compiled.sceneElements?.["scene-1"].sounds.get("impact") as any).config.type).toBe("sound");
+        });
+
+        it("reports a second row that names a different track for a handle that already has one", async () => {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument({
+                    first: soundRow("first", "rain", "asset-rain", { audioTrackId: "t_amb" }),
+                    second: soundRow("second", "rain", "asset-rain", { audioTrackId: "sfx" }),
+                }, ["first", "second"]),
+                sceneId: "scene-1",
+                audioTracks: TRACKS,
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            // The handle is created once and holds the first row's bus and gain, so the second row's
+            // track cannot be honoured. Two intents, one outcome - said out loud rather than dropped.
+            expect(compiled.diagnostics.some(entry => /already playing on the "Ambience" track/.test(entry.message))).toBe(true);
+            expect((compiled.sceneElements?.["scene-1"].sounds.get("rain") as any).config.type).toBe("bgm");
+        });
+
+        it("a control row inherits the creating row's track rather than the fallback", async () => {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument({
+                    rain: soundRow("rain", "rain", "asset-rain", { audioTrackId: "t_amb" }),
+                    quieter: {
+                        id: "quieter",
+                        kind: "action",
+                        parentId: null,
+                        childrenIds: [],
+                        payload: { action: "audio", operation: "setVolume", objectName: "rain", volume: 0.5 } as StoryActionPayload,
+                    },
+                }, ["rain", "quieter"]),
+                sceneId: "scene-1",
+                audioTracks: TRACKS,
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            // No conflict: the row names no track, it inherits one. Complaining here would mark every
+            // /vol line in the story.
+            expect(compiled.diagnostics).toEqual([]);
+        });
+
+        it("a second /bgm answers from its own row, never from the music it replaces", async () => {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument({
+                    ...bgmRow("first", "asset-theme", { audioTrackId: "t_amb" }),
+                    ...bgmRow("second", "asset-other"),
+                }, ["first", "second"]),
+                sceneId: "scene-1",
+                audioTracks: TRACKS,
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            // `setBgm` builds a NEW handle each time, so inheriting would make the second row mean
+            // something different from an identical row written into an empty scene - invisibly.
+            expect(compiled.diagnostics).toEqual([]);
+            const sound = compiled.sceneElements?.["scene-1"].sounds.get("bgm") as any;
+            expect(sound.config.src).toBe("nlr://asset-other");
+            expect(sound.state.volume).toBe(1);
+        });
+
+        it("the scene's own music takes its bus, gain, loop and fade from its track", async () => {
+            const document = baseDocument({ say: narrationBlock("say", "text-say", "Quiet.") }, ["say"]);
+            document.scenes["scene-1"].bgm = { assetId: "asset-theme", audioTrackId: "t_amb", volume: 0.5 };
+
+            const compiled = await compileStudioStoryToNlr({
+                document,
+                sceneId: "scene-1",
+                audioTracks: TRACKS,
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            const music = (compiled.scene as any).state.backgroundMusic;
+            expect(music.config.type).toBe("bgm");
+            expect(music.state.volume).toBeCloseTo(0.3, 5);
+            // Entering a scene is a play, so an unstated fade is the track's fade-IN.
+            expect((compiled.scene as any).config.backgroundMusicFade).toBe(1200);
+        });
     });
 
     it("compiles /seek on a sound as a play-head move in seconds", async () => {

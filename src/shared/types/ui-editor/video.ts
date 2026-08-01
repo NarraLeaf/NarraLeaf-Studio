@@ -27,10 +27,20 @@ export type UIVideoWidgetProps = {
     /** Runtime only. The editor canvas never autoplays - see `videoPreviewPlayback.ts`. */
     autoplay: boolean;
     /**
-     * 0-1. Phase 2 drives this from a blueprint `volume` input pin so an author can wire
-     * `Get BGM Volume` (etc.) into it; the widget deliberately does not read settings itself.
+     * 0-1, as authored. Not what the `<video>` element ends up at: the widget multiplies this by
+     * the track's gain and by the player's channel and master volumes, which is the only reason
+     * muting the game now silences a video. See `videoMixer.ts`.
      */
     volume: number;
+    /**
+     * The project audio track this clip's sound lands on.
+     *
+     * `null` resolves to the built-in SFX track, which is what an unqualified video sound has always
+     * effectively been. A video that *is* the scene (an OP movie) usually wants the Music track, so
+     * that lowering BGM lowers it - which was not expressible before, because the element bypassed
+     * the mixer entirely and answered to no slider at all.
+     */
+    audioTrackId: string | null;
     playbackRate: number;
     /** Browser-native control strip. Off by default: most titles skin their own. */
     controls: boolean;
@@ -45,6 +55,7 @@ export const defaultVideoWidgetProps: UIVideoWidgetProps = {
     muted: false,
     autoplay: false,
     volume: 1,
+    audioTrackId: null,
     playbackRate: 1,
     controls: false,
     preload: "metadata",
@@ -60,7 +71,7 @@ const PRELOAD_VALUES: readonly UIVideoPreload[] = ["none", "metadata", "auto"];
 export const UI_VIDEO_MIN_PLAYBACK_RATE = 0.0625;
 export const UI_VIDEO_MAX_PLAYBACK_RATE = 16;
 
-function readAssetId(value: unknown): string | null {
+function readTrimmedId(value: unknown): string | null {
     if (typeof value !== "string") {
         return null;
     }
@@ -85,13 +96,14 @@ export function normalizeVideoProps(raw: Record<string, unknown> | undefined): U
     const objectFit = OBJECT_FIT_VALUES.find(value => value === raw?.objectFit) ?? base.objectFit;
     const preload = PRELOAD_VALUES.find(value => value === raw?.preload) ?? base.preload;
     return {
-        assetId: readAssetId(raw?.assetId),
-        posterAssetId: readAssetId(raw?.posterAssetId),
+        assetId: readTrimmedId(raw?.assetId),
+        posterAssetId: readTrimmedId(raw?.posterAssetId),
         objectFit,
         loop: readBoolean(raw?.loop, base.loop),
         muted: readBoolean(raw?.muted, base.muted),
         autoplay: readBoolean(raw?.autoplay, base.autoplay),
         volume: clampFinite(raw?.volume, 0, 1, base.volume),
+        audioTrackId: readTrimmedId(raw?.audioTrackId),
         playbackRate: clampFinite(
             raw?.playbackRate,
             UI_VIDEO_MIN_PLAYBACK_RATE,
