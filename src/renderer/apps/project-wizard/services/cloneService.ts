@@ -1,7 +1,7 @@
 import { getInterface } from "@/lib/app/bridge";
 import { translate } from "@/lib/i18n";
-import { findProjectConfigFileName } from "@shared/utils/nlproj";
 import { parseVcsRemoteUrl } from "@shared/types/vcs";
+import { isStudioProject } from "./projectVerification";
 
 /**
  * What a clone ended as.
@@ -29,16 +29,9 @@ export class CloneService {
     /**
      * Copy the repository at `url` into `destination`, then decide whether Studio can open it.
      *
-     * **The verification is the point of this method.** A Lore server holds repositories, not
-     * Studio projects: the address the author was handed can be a repository someone made with
-     * the `lore` CLI, a project from a different tool, or simply the wrong name on the right
-     * server. Every one of those clones perfectly. Without the check the wizard would report
-     * success, close, and hand the launcher a folder that fails to open - with the failure
-     * surfacing somewhere that knows nothing about where the folder came from.
-     *
-     * Checked the same way `relocateRecentProject` checks a folder the author points at, and the
-     * same way the workspace decides what it is opening: a `.nlproj` (or the legacy
-     * `project.json`) in the root. Anything that passes this passes what opens it next.
+     * **The verification is the point of this method** - see {@link isStudioProject} for what a
+     * server can hand over that is not a project and why that has to be caught here rather than
+     * by whatever opens the folder next.
      *
      * **Nothing is deleted on a bad verdict.** Those bytes came off someone's server and Studio
      * is the wrong judge of whether they matter; the destination is reported instead, so the
@@ -57,26 +50,11 @@ export class CloneService {
             }
 
             const root = cloned.data.root;
-            return (await this.isStudioProject(root))
+            return (await isStudioProject(root))
                 ? { status: "cloned", root, fileCount: cloned.data.fileCount }
                 : { status: "notAProject", root };
         } catch (error) {
             return { status: "failed", error: error instanceof Error ? error.message : String(error) };
         }
-    }
-
-    /**
-     * Whether this folder holds something Studio can open.
-     *
-     * A listing that cannot be read answers false rather than throwing: the wizard's job at that
-     * point is to stop, and "we could not confirm this is a project" and "it is not a project"
-     * lead the author to the same next step.
-     */
-    private static async isStudioProject(root: string): Promise<boolean> {
-        const listed = await getInterface().fs.list(root);
-        if (!listed.success || !listed.data.ok) {
-            return false;
-        }
-        return findProjectConfigFileName(listed.data.data) !== null;
     }
 }

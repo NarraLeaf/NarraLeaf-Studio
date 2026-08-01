@@ -43,9 +43,14 @@ export function WizardNavigation({
     const currentStepIndex = steps.findIndex(step => step.key === currentStep);
     const isLastStep = currentStepIndex === steps.length - 1;
 
-    const finishLabel = flow === "clone"
-        ? (isBusy ? t("wizard.nav.cloning") : t("wizard.nav.cloneProject"))
-        : (isBusy ? t("wizard.nav.creating") : t("wizard.nav.createProject"));
+    // Each flow's last page does a different thing, and the button is the only place that says
+    // which - "Create Project" over a page that is about to open a file dialog would be a lie.
+    const finishLabels: Record<ProjectFlow, { idle: string; busy: string }> = {
+        create: { idle: t("wizard.nav.createProject"), busy: t("wizard.nav.creating") },
+        import: { idle: t("wizard.nav.importProject"), busy: t("wizard.nav.importing") },
+        clone: { idle: t("wizard.nav.cloneProject"), busy: t("wizard.nav.cloning") },
+    };
+    const finishLabel = isBusy ? finishLabels[flow].busy : finishLabels[flow].idle;
 
     return (
         <div className="flex items-center justify-between p-6 border-t border-edge">

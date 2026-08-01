@@ -8,33 +8,12 @@ export const launcher = {
     },
     projects: {
         title: "Projects",
-        newProject: "New Project",
+        // "Add", not "New": the wizard behind this button also unpacks a package and clones from
+        // a server, and neither of those creates anything.
+        addProject: "Add Project",
         openProject: "Open Project",
-        import: "Import",
         recentTitle: "Recent Projects",
         openFolder: "Open Folder",
-        importProject: "Import Project",
-        // Getting a project off a version-control server, which is how a second person
-        // joins one. In the launcher because at the moment it is needed there is no
-        // project open to reach a workspace panel from.
-        clone: {
-            title: "Get a project from a server",
-            // The whole address, name included: that name is what the server knows the
-            // repository by, and it is the string the project's owner hands out.
-            addressLabel: "Project address",
-            addressHint: "Ask whoever set up the project for this address.",
-            folderLabel: "Where to put it",
-            folderPlaceholder: "Choose an empty folder",
-            // Said before they choose, not after: the check happens in the main process
-            // and a refusal at that point is a refusal after they had committed to it.
-            folderHint: "Must be a new or empty folder.",
-            confirm: "Get project",
-            cancel: "Cancel",
-            // No percentage: the backend reports a clone's progress only once it has
-            // finished, so a bar here would sit at zero and then disappear.
-            working: "Copying the project from the server. This can take a while.",
-            error: "Could not get the project from the server.",
-        },
         openNamed: "Open {name}",
         search: {
             placeholder: "Search projects",
@@ -45,9 +24,8 @@ export const launcher = {
         moreActions: "More actions",
         moreActionsNamed: "More actions for {name}",
         removeNamedFromRecent: "Remove {name} from recent projects",
-        errorCreate: "Failed to create project.",
+        errorCreate: "Failed to add project.",
         errorOpenFolder: "Failed to open folder.",
-        errorImport: "Failed to import project.",
         // Startup sweep over the recent list - see useMissingRecentProjects.
         missing: {
             reasonFolderMissing: "This project folder was deleted or moved",
