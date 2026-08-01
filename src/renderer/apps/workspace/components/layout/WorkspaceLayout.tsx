@@ -19,6 +19,7 @@ import { CommandPalette } from "./CommandPalette";
 import { EditorCommands } from "./EditorCommands";
 import { WorkspaceFreezeCommands } from "./WorkspaceFreezeCommands";
 import { LintCommands } from "../../modules/lint/LintCommands";
+import { StoryScriptCommands } from "../../modules/story/script/StoryScriptCommands";
 import { WorkspaceCommands } from "./WorkspaceCommands";
 import { KeybindingCheatSheet } from "./KeybindingCheatSheet";
 import { TitleBarSearchBox } from "./TitleBarSearchBox";
@@ -855,6 +856,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             <WorkspaceCommands />
             <WorkspaceFreezeCommands />
             <LintCommands />
+            <StoryScriptCommands />
             <KeybindingCheatSheet />
             <EditorClosedTabsKeybinding />
             <NotificationContainer />

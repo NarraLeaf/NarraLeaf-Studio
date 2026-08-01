@@ -2238,7 +2238,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         selectionRootIds, toggleDisableSelection,
         extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateBlockPayloads, updateSceneMetadata,
         setDialogueSpeaker, setDialogueGroupPosition, createCharacterFromSpeaker, commitTextEdit, handleInsertValueChange,
-        undoEdit, redoEdit,
+        // Exposed for the writes that arrive from OUTSIDE this tab (a script import, driven from the
+        // story panel or the palette) and must still land as one undo step here.
+        recordHistory, undoEdit, redoEdit,
         startInsertAfterSelection, indentSelection, selectAllRows, moveActiveRowSelection,
         insertContinuationAfterCurrentTextEdit, commitNarrationFromInsert, handleInsertBackspaceEmpty, chooseCommand, chooseCharacterForInsert,
         dismissInsertChooser, discardInsertSlot, resolveInsertLine, commitInvalidFromInsert, chooseTempSpeakerForInsert, tempSpeakers,
