@@ -5,7 +5,7 @@
  * that ships no CSS at all:
  *
  *   - which files count      → shipped renderer sources, not tests
- *   - which bytes count      → code, not comments
+ *   - which bytes count      → string literals, not comments and not identifiers
  *
  * The second one is not pedantry. The design-system components document the
  * hand-rolled patterns they replaced in their own JSDoc — e.g. Badge.tsx says
@@ -14,6 +14,13 @@
  * only way to make the gate green would be to delete the documentation.
  * Comments are blanked (not removed) so byte offsets stay valid for callers
  * that rewrite files in place.
+ *
+ * Identifiers are out for the same reason: a class name only reaches the DOM as
+ * part of a string, so a *declaration* named after one ships no CSS.
+ * `PluginInstallPermissions.tsx` has a `rounded?: boolean` prop that toggles
+ * `rounded-md`, and charging its every mention as bare-`rounded` debt made the
+ * gate demand the prop be renamed to satisfy a regex. Restricting the count to
+ * literal bodies cannot hide real debt — nothing outside one can style anything.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -148,8 +155,27 @@ export function blankComments(src) {
     return out.join("");
 }
 
-/** Read a file and return { src, code } where `code` has comments blanked. */
+/**
+ * Blank everything *outside* a string/template literal, preserving length and
+ * newlines. Interpolations inside a template literal stay in — they sit within
+ * the literal's range — which, like an un-blanked comment, can only hold a count
+ * too high.
+ */
+export function keepLiterals(src) {
+    const out = src.split("").map((c) => (c === "\n" ? "\n" : " "));
+    for (const [start, end] of literalRanges(src)) {
+        for (let i = start; i <= end && i < src.length; i++) out[i] = src[i];
+    }
+    return out.join("");
+}
+
+/**
+ * Read a file and return { src, code, styles }: `code` has comments blanked,
+ * `styles` narrows that further to literal bodies — the only bytes that can
+ * carry a class name. Metrics are counted against `styles`.
+ */
 export function readCode(file) {
     const src = readFileSync(file, "utf8");
-    return { src, code: blankComments(src) };
+    const code = blankComments(src);
+    return { src, code, styles: keepLiterals(code) };
 }

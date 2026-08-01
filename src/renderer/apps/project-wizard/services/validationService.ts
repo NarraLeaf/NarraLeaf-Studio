@@ -212,9 +212,10 @@ export class ValidationService {
                        projectData.appId.trim() !== "" &&
                        this.validateAppId(projectData.appId);
             case "settings":
+                // No check on `versionControl`: it is a closed union with a default, so unlike the
+                // free-form string it used to be there is no "not chosen yet" state to guard.
                 return projectData.location !== undefined &&
-                       projectData.location.trim() !== "" &&
-                       projectData.versionControl !== "";
+                       projectData.location.trim() !== "";
             case "review":
                 return projectData.name.trim() !== "" &&
                        projectData.resolution !== "" &&

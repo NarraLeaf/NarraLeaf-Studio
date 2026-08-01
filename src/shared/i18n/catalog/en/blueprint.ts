@@ -461,6 +461,8 @@ export const blueprint = {
         loop: "Loop",
         playing: "Playing",
         fadeS: "Fade (s)",
+        fadeInS: "Fade In (s)",
+        audioTrack: "Track",
         timeS: "Time (s)",
         max: "Max",
         maxOffset: "Max Offset",

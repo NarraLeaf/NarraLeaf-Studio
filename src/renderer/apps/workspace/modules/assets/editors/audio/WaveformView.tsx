@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useRef } from "react";
 import { computePeaks, type AudioClip, type SampleRange } from "./audioClip";
-import type { LoopPoints } from "./loopHistory";
+import type { LoopMarker, LoopPoints } from "./loopHistory";
 
-/** Which end of the loop region a gesture is about. */
-export type LoopEnd = "in" | "out";
+/** Which marker of the loop region a gesture is about. */
+export type LoopEnd = LoopMarker;
 
 interface WaveformViewProps {
     clip: AudioClip;
     /** Visible sample window - the zoom/scroll state, owned by the editor. */
     view: SampleRange;
     selection: SampleRange | null;
-    /** The authored loop region, in milliseconds; either end may be unmarked. */
+    /** The authored loop region, in milliseconds; any marker may be unmarked. */
     loop: LoopPoints;
     /** Playhead position in samples, or null when stopped at the start. */
     playhead: number | null;
@@ -35,6 +35,16 @@ const RULER_HEIGHT = 16;
  */
 const MARKER_STRIP_HEIGHT = 13;
 const WAVE_TOP = RULER_HEIGHT + MARKER_STRIP_HEIGHT;
+/**
+ * Tint of the segment that repeats, and of the intro that plays once before it.
+ *
+ * Both over the waveform, never under it: a loud master draws near-solid bars across the full lane
+ * height, and a band painted underneath disappears behind exactly the clips that most need reading.
+ * The repeating segment carries the same weight the selection band uses; the intro is deliberately
+ * half of it, so the step at the loop point reads as "this part comes back" without a legend.
+ */
+const LOOP_BAND_ALPHA = 0.28;
+const INTRO_BAND_ALPHA = 0.12;
 /** Drags shorter than this are a click, not a drag. */
 const DRAG_THRESHOLD_PX = 3;
 /** How close the pointer must get to grab a marker or a selection edge. */
@@ -222,6 +232,32 @@ export function WaveformView({
             }
         });
 
+        // Intro and loop segments, over the waveform - but only once a loop point exists.
+        //
+        // Without one there is nothing here the strip's own bar does not already say, and a second
+        // band in the waveform body would compete with the selection for the same pixels. With one,
+        // the strip cannot carry it: "which half repeats" is a property of the samples, and it has
+        // to be readable against them. Drawn before the selection so a selection still wins.
+        const bandFrom = loop.inMs ?? (view.start / clip.sampleRate) * 1000;
+        const bandTo = loop.outMs ?? (view.end / clip.sampleRate) * 1000;
+        const bandsDrawn = loop.loopStartMs !== null;
+        if (loop.loopStartMs !== null && loop.loopStartMs > bandFrom) {
+            context.fillStyle = primaryColor;
+            context.globalAlpha = INTRO_BAND_ALPHA;
+            const from = msToX(bandFrom);
+            const to = msToX(loop.loopStartMs);
+            context.fillRect(from, WAVE_TOP, Math.max(1, to - from), waveHeight);
+            context.globalAlpha = 1;
+        }
+        if (loop.loopStartMs !== null && bandTo > loop.loopStartMs) {
+            context.fillStyle = primaryColor;
+            context.globalAlpha = LOOP_BAND_ALPHA;
+            const from = msToX(loop.loopStartMs);
+            const to = msToX(bandTo);
+            context.fillRect(from, WAVE_TOP, Math.max(1, to - from), waveHeight);
+            context.globalAlpha = 1;
+        }
+
         // Selection band, painted *over* the waveform rather than under it.
         //
         // Underneath is where it started, on the theory that the samples should stay unobscured -
@@ -240,20 +276,31 @@ export function WaveformView({
             context.fillRect(to - 1, WAVE_TOP, 2, waveHeight);
         }
 
-        // The loop region as a bar inside the strip, the way Premiere shows its work area. Kept
-        // out of the waveform body so it never competes with the selection band for the same
-        // pixels - one says "what plays", the other says "what is marked".
+        // The loop region as a bar inside the strip, the way Premiere shows its work area. Until a
+        // loop point exists this is the *only* place it is drawn, so it never competes with the
+        // selection band for the waveform's pixels - one says "what plays", the other says "what is
+        // marked".
         if (loop.inMs !== null && loop.outMs !== null) {
             const from = msToX(loop.inMs);
             const to = msToX(loop.outMs);
+            // Split at the loop point when there is one, so the strip says which half repeats too -
+            // the same weights the bands over the waveform use, one glance apart.
+            const split = loop.loopStartMs !== null && loop.loopStartMs > loop.inMs && loop.loopStartMs < loop.outMs
+                ? msToX(loop.loopStartMs)
+                : null;
             context.fillStyle = primaryColor;
-            context.globalAlpha = 0.85;
-            context.fillRect(from, RULER_HEIGHT + 2, Math.max(1, to - from), MARKER_STRIP_HEIGHT - 4);
+            context.globalAlpha = split === null ? 0.85 : 0.35;
+            context.fillRect(from, RULER_HEIGHT + 2, Math.max(1, (split ?? to) - from), MARKER_STRIP_HEIGHT - 4);
+            if (split !== null) {
+                context.globalAlpha = 0.85;
+                context.fillRect(split, RULER_HEIGHT + 2, Math.max(1, to - split), MARKER_STRIP_HEIGHT - 4);
+            }
             context.globalAlpha = 1;
         }
 
-        // In and out points: a flag facing into the region it opens or closes, plus a faint line
-        // down the waveform to read against.
+        // The markers: a flag facing into the region it opens or closes, a pennant centred on the
+        // loop point (it faces neither way - playback arrives at it and returns to it), plus an
+        // opaque edge down the waveform so the bands have a handle to read against.
         const hoveredEnd = hover?.inStrip && gestureRef.current === null
             ? loopEndAt(loop, clip, hover.sample, visibleSamples / width)
             : null;
@@ -263,15 +310,26 @@ export function WaveformView({
                 return;
             }
             context.fillStyle = primaryColor;
-            context.globalAlpha = 0.4;
-            context.fillRect(x, WAVE_TOP, 1, waveHeight);
+            // Where a band ends, its edge is a handle and has to be opaque - the same treatment the
+            // selection band gets, and for the same reason: a low-alpha tint has no readable border
+            // of its own over a dense waveform. With no bands drawn the markers are back to being
+            // guides against the samples, and stand down to a hairline so they do not read as edges
+            // of a region that is not there.
+            context.globalAlpha = bandsDrawn ? 1 : 0.4;
+            context.fillRect(x - (bandsDrawn ? 1 : 0), WAVE_TOP, bandsDrawn ? 2 : 1, waveHeight);
             context.globalAlpha = end === hoveredEnd ? 1 : 0.9;
-            const direction = end === "in" ? 1 : -1;
             context.beginPath();
-            context.moveTo(x, RULER_HEIGHT + 1);
-            context.lineTo(x + 7 * direction, RULER_HEIGHT + 1);
-            context.lineTo(x + 7 * direction, RULER_HEIGHT + 6);
-            context.lineTo(x, RULER_HEIGHT + 10);
+            if (end === "loop") {
+                context.moveTo(x - 5, RULER_HEIGHT + 1);
+                context.lineTo(x + 5, RULER_HEIGHT + 1);
+                context.lineTo(x, RULER_HEIGHT + 8);
+            } else {
+                const direction = end === "in" ? 1 : -1;
+                context.moveTo(x, RULER_HEIGHT + 1);
+                context.lineTo(x + 7 * direction, RULER_HEIGHT + 1);
+                context.lineTo(x + 7 * direction, RULER_HEIGHT + 6);
+                context.lineTo(x, RULER_HEIGHT + 10);
+            }
             context.closePath();
             context.fill();
             context.fillRect(x - (end === "in" ? 1 : 0), RULER_HEIGHT + 1, 1, MARKER_STRIP_HEIGHT - 2);
@@ -280,8 +338,12 @@ export function WaveformView({
         if (loop.inMs !== null) {
             drawPoint("in", loop.inMs);
         }
+        // After in and out, so a loop point sharing a pixel with either draws on top of it.
         if (loop.outMs !== null) {
             drawPoint("out", loop.outMs);
+        }
+        if (loop.loopStartMs !== null) {
+            drawPoint("loop", loop.loopStartMs);
         }
 
         // Hover guide: a faint line plus the time under the pointer, so a click lands where the
@@ -507,7 +569,14 @@ export function WaveformView({
     );
 }
 
-/** Whichever loop point is within grabbing distance of `sample`, preferring the closer one. */
+/**
+ * Whichever marker is within grabbing distance of `sample`, preferring the closer one.
+ *
+ * Considered in time order, and ties go to the first considered - so a loop point parked exactly on
+ * the in point (a legal state, and the same playback as no loop point at all) leaves the in point
+ * grabbable. The loop point is still reachable from the keyboard, which is what a coincident pair
+ * needs; two markers on one pixel cannot both answer a click.
+ */
 function loopEndAt(loop: LoopPoints, clip: AudioClip, sample: number, samplesPerPixel: number): LoopEnd | null {
     const tolerance = GRAB_TOLERANCE_PX * samplesPerPixel;
     let best: LoopEnd | null = null;
@@ -523,6 +592,7 @@ function loopEndAt(loop: LoopPoints, clip: AudioClip, sample: number, samplesPer
         }
     };
     consider("in", loop.inMs);
+    consider("loop", loop.loopStartMs);
     consider("out", loop.outMs);
     return best;
 }
