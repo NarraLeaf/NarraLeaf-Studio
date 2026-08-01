@@ -371,10 +371,15 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                         onMeasured={onMeasured}
                         toolbar={kind === "layered" ? (
                             <>
+                                {/* Declaring the canvas from the largest measured layer writes the
+                                    appearance, and so does the PSD import below it. Onion skin and
+                                    the combination grid only change what is drawn on screen, so
+                                    they stay live for a reader of a past version. */}
                                 <button
                                     className={ICON_BTN}
                                     aria-label={t("characters.editor.setCanvas")}
                                     onClick={setCanvasFromLargest}
+                                    {...freeze.writes(false, t("characters.editor.setCanvas"))}
                                 >
                                     <Crop className="w-3.5 h-3.5" />
                                 </button>
@@ -398,6 +403,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                     className={ICON_BTN}
                                     aria-label={t("characters.editor.psd.title")}
                                     onClick={() => setPsdOpen(true)}
+                                    {...freeze.writes(false, t("characters.editor.psd.title"))}
                                 >
                                     <FileImage className="w-3.5 h-3.5" />
                                 </button>
@@ -439,10 +445,15 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                     {appearance.getDefaultPoseId() === pose.id && (
                                         <span className="text-2xs text-primary">{t("characters.variantsPanel.default")}</span>
                                     )}
+                                    {/* Every action on a row edits the appearance - the rename dialog and
+                                        the two image pickers included, since what they open exists only
+                                        to write back. Guarded at the button rather than at the callback
+                                        so the freeze is visible before the author fills a dialog in. */}
                                     <button
                                         className={ICON_BTN}
                                         aria-label={t("common.rename")}
                                         onClick={() => void rename(pose, "pose")}
+                                        {...freeze.writes(false, t("common.rename"))}
                                     >
                                         <Pencil className="w-3.5 h-3.5" />
                                     </button>
@@ -450,6 +461,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                         className={ICON_BTN}
                                         aria-label={t("characters.variantsPanel.changeImage")}
                                         onClick={event => openSlot({ kind: "pose", poseId: pose.id }, event.currentTarget)}
+                                        {...freeze.writes(false, t("characters.variantsPanel.changeImage"))}
                                     >
                                         <ImagePlus className="w-3.5 h-3.5" />
                                     </button>
@@ -457,6 +469,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                         className={appearance.getAvatar(pose.id)?.overrideAssetId ? ICON_BTN_ON : ICON_BTN}
                                         aria-label={t("characters.editor.avatar")}
                                         onClick={event => openSlot({ kind: "avatar", avatarKey: pose.id }, event.currentTarget)}
+                                        {...freeze.writes(false, t("characters.editor.avatar"))}
                                     >
                                         <UserRound className="w-3.5 h-3.5" />
                                     </button>
@@ -464,6 +477,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                         className={ICON_BTN}
                                         aria-label={t("characters.editor.removePose")}
                                         onClick={() => appearance.removePose(pose.id)}
+                                        {...freeze.writes(false, t("characters.editor.removePose"))}
                                     >
                                         <Trash2 className="w-3.5 h-3.5" />
                                     </button>
@@ -484,10 +498,16 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                     >
                                         <div className="flex items-center gap-2">
                                             <span className="min-w-0 flex-1 truncate text-xs">{axis.name}</span>
+                                            {/* Selecting the card to look at it is left alone; the four
+                                                buttons on it all rewrite the axis. The avatar toggle
+                                                especially: it declares which axes the dialog avatar
+                                                varies with, and on a frozen project it used to light up
+                                                and then go back on the next reconcile. */}
                                             <button
                                                 className={ICON_BTN}
                                                 aria-label={t("common.rename")}
                                                 onClick={() => void rename(axis, "axis")}
+                                                {...freeze.writes(false, t("common.rename"))}
                                             >
                                                 <Pencil className="w-3.5 h-3.5" />
                                             </button>
@@ -495,6 +515,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                 className={ICON_BTN}
                                                 aria-label={t("characters.editor.newTag")}
                                                 onClick={() => appearance.createTag(axis.id, t("characters.editor.newTag"))}
+                                                {...freeze.writes(false, t("characters.editor.newTag"))}
                                             >
                                                 <Plus className="w-3.5 h-3.5" />
                                             </button>
@@ -502,6 +523,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                 className={avatarAxisIds.includes(axis.id) ? ICON_BTN_ON : ICON_BTN}
                                                 aria-label={t("characters.editor.avatarAxis")}
                                                 onClick={() => toggleAvatarAxis(axis.id)}
+                                                {...freeze.writes(false, t("characters.editor.avatarAxis"))}
                                             >
                                                 <UserRound className="w-3.5 h-3.5" />
                                             </button>
@@ -509,6 +531,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                 className={ICON_BTN}
                                                 aria-label={t("characters.editor.removeAxis")}
                                                 onClick={() => appearance.removeAxis(axis.id)}
+                                                {...freeze.writes(false, t("characters.editor.removeAxis"))}
                                             >
                                                 <Trash2 className="w-3.5 h-3.5" />
                                             </button>
@@ -530,11 +553,15 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                         {tag.name}
                                                     </button>
                                                     {axis.defaultTagId === tag.id && <span className="text-primary">·</span>}
+                                                    {/* The chip itself only moves the preview onto that tag,
+                                                        which is reading; the three actions it reveals on
+                                                        hover all rewrite the axis. */}
                                                     <span className="hidden items-center group-hover/tag:flex">
                                                         <button
                                                             className={ICON_BTN}
                                                             aria-label={t("common.rename")}
                                                             onClick={() => void rename(tag, "tag")}
+                                                            {...freeze.writes(false, t("common.rename"))}
                                                         >
                                                             <Pencil className="w-3 h-3" />
                                                         </button>
@@ -542,6 +569,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                             className={ICON_BTN}
                                                             aria-label={t("characters.editor.makeDefault")}
                                                             onClick={() => appearance.setAxisDefaultTag(axis.id, tag.id)}
+                                                            {...freeze.writes(false, t("characters.editor.makeDefault"))}
                                                         >
                                                             <Eye className="w-3 h-3" />
                                                         </button>
@@ -549,6 +577,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                             className={ICON_BTN}
                                                             aria-label={t("characters.editor.removeTag")}
                                                             onClick={() => appearance.removeTag(axis.id, tag.id)}
+                                                            {...freeze.writes(false, t("characters.editor.removeTag"))}
                                                         >
                                                             <Trash2 className="w-3 h-3" />
                                                         </button>
@@ -623,18 +652,23 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                 >
                                                     {locked[layer.id] ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
                                                 </button>
+                                                {/* Hiding and locking above are editor state and stay live.
+                                                    From here down the row writes: the rename, which axis
+                                                    drives the layer, and the removal. A layer the author
+                                                    locked keeps its own reason for being off. */}
                                                 <button
                                                     className={ICON_BTN}
                                                     aria-label={t("common.rename")}
                                                     onClick={() => void rename(layer, "layer")}
+                                                    {...freeze.writes(false, t("common.rename"))}
                                                 >
                                                     <Pencil className="w-3.5 h-3.5" />
                                                 </button>
                                                 <select
                                                     className="bg-surface border border-edge rounded-md text-2xs px-1 py-0.5"
                                                     value={layer.axisId ?? ""}
-                                                    disabled={locked[layer.id]}
                                                     onChange={event => appearance.setLayerAxis(layer.id, event.target.value || null)}
+                                                    {...freeze.writes(locked[layer.id])}
                                                 >
                                                     <option value="">{t("characters.editor.constantLayer")}</option>
                                                     {axes.map(axis => (
@@ -644,8 +678,8 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                 <button
                                                     className={ICON_BTN}
                                                     aria-label={t("characters.editor.removeLayer")}
-                                                    disabled={locked[layer.id]}
                                                     onClick={() => appearance.removeLayer(layer.id)}
+                                                    {...freeze.writes(locked[layer.id], t("characters.editor.removeLayer"))}
                                                 >
                                                     <Trash2 className="w-3.5 h-3.5" />
                                                 </button>
@@ -663,8 +697,8 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                             <button
                                                                 className={ICON_BTN}
                                                                 aria-label={t("characters.variantsPanel.changeImage")}
-                                                                disabled={locked[layer.id]}
                                                                 onClick={event => openSlot({ kind: "option", layerId: layer.id, tagId: tag.id }, event.currentTarget)}
+                                                                {...freeze.writes(locked[layer.id], t("characters.variantsPanel.changeImage"))}
                                                             >
                                                                 <ImagePlus className="w-3 h-3" />
                                                             </button>
@@ -679,8 +713,8 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                     <button
                                                         className={ICON_BTN}
                                                         aria-label={t("characters.variantsPanel.changeImage")}
-                                                        disabled={locked[layer.id]}
                                                         onClick={event => openSlot({ kind: "layer", layerId: layer.id }, event.currentTarget)}
+                                                        {...freeze.writes(locked[layer.id], t("characters.variantsPanel.changeImage"))}
                                                     >
                                                         <ImagePlus className="w-3 h-3" />
                                                     </button>
@@ -705,10 +739,13 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                             >
                                                 {snapshot.name}
                                             </button>
+                                            {/* Jumping the preview to a named look is reading and stays
+                                                live; renaming or deleting the snapshot rewrites it. */}
                                             <button
                                                 className={ICON_BTN}
                                                 aria-label={t("common.rename")}
                                                 onClick={() => void rename(snapshot, "item")}
+                                                {...freeze.writes(false, t("common.rename"))}
                                             >
                                                 <Pencil className="w-3.5 h-3.5" />
                                             </button>
@@ -716,6 +753,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                 className={ICON_BTN}
                                                 aria-label={t("common.delete")}
                                                 onClick={() => appearance.removeSnapshot(snapshot.id)}
+                                                {...freeze.writes(false, t("common.delete"))}
                                             >
                                                 <Trash2 className="w-3.5 h-3.5" />
                                             </button>

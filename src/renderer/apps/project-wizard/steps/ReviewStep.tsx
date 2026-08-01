@@ -110,7 +110,7 @@ export function ReviewStep({ projectData }: ReviewStepProps) {
                                 <div className="space-y-1">
                                     <label className="font-medium text-fg-muted">{t("wizard.fields.versionControl")}</label>
                                     <p className="text-fg">
-                                        {projectData.versionControl === "none" ? t("common.none") : "Git"}
+                                        {projectData.versionControl === "none" ? t("common.none") : "Lore"}
                                     </p>
                                 </div>
                                 <div className="space-y-1">

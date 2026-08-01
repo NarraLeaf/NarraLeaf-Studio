@@ -192,7 +192,7 @@ function SceneBackgroundMusicField({ data }: CustomFieldProps<StorySceneEditorCo
 
             {bgm ? (
                 <div className="mt-2 space-y-2">
-                    <div className="text-[11px] tabular-nums text-fg-subtle">
+                    <div className="text-2xs tabular-nums text-fg-subtle">
                         {[
                             regionHint,
                             track.name,
@@ -221,7 +221,7 @@ function SceneBackgroundMusicField({ data }: CustomFieldProps<StorySceneEditorCo
                             className="h-9 min-w-0 flex-1"
                             onChange={event => patch({ volume: Number(event.target.value) })}
                         />
-                        <span className="w-8 shrink-0 text-right text-[11px] tabular-nums text-fg-subtle">
+                        <span className="w-8 shrink-0 text-right text-2xs tabular-nums text-fg-subtle">
                             {Math.round((bgm.volume ?? 1) * 100)}
                         </span>
                     </div>

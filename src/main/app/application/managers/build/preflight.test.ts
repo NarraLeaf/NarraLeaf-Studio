@@ -8,6 +8,7 @@ import type {
     PluginSidecarContribution,
     PluginSidecarTargetContribution,
 } from "@shared/types/plugins";
+import type { SigningCredential, SigningCredentialKind } from "@shared/types/signing";
 import {
     checkIcon,
     collectSidecarRequirements,
@@ -248,8 +249,10 @@ describe("readProjectSigningIds", () => {
     it("drops blanks, non-strings and platforms it does not know", () => {
         // "absent" is the meaningful state - it means "build this one unsigned" -
         // so a malformed entry must land there rather than become an id of "".
+        // "web" is the unknown one: it is a real build target with no signing
+        // slot, so a hand-edited or newer-Studio config could name it.
         expect(readProjectSigningIds(config({
-            signing: { windows: "  ", linux: 42, macos: "cred-mac", ios: " cred-ios " },
+            signing: { windows: "  ", linux: 42, web: "cred-web", ios: " cred-ios " },
         }))).toEqual({ ios: "cred-ios" });
     });
 
@@ -261,15 +264,15 @@ describe("readProjectSigningIds", () => {
 describe("signingPlatformForTarget", () => {
     it("maps each build target onto the slot it signs from", () => {
         expect(signingPlatformForTarget("windows")).toBe("windows");
+        expect(signingPlatformForTarget("macos")).toBe("macos");
         expect(signingPlatformForTarget("linux")).toBe("linux");
         expect(signingPlatformForTarget("android")).toBe("android");
         expect(signingPlatformForTarget("ios")).toBe("ios");
     });
 
-    it("gives web and macOS no slot", () => {
-        // macOS is not "forgotten": signing a Mac build needs Apple tooling that
-        // only runs on a Mac, so there is nothing for a project to select here.
-        expect(signingPlatformForTarget("macos")).toBeNull();
+    it("gives the web export no slot", () => {
+        // Not "forgotten": a web export is files on a server, with nothing to
+        // sign and nothing that would check a signature.
         expect(signingPlatformForTarget("web")).toBeNull();
     });
 });
@@ -283,6 +286,17 @@ describe("signingCredentialSupportedOnHost", () => {
         expect(signingCredentialSupportedOnHost("windows-store", "linux")).toBe(false);
     });
 
+    it("confines both macOS kinds to macOS hosts", () => {
+        // Not just the keychain one: signing with a .p12 still goes through
+        // Apple's codesign, which exists nowhere else. app-builder-lib's
+        // isSignAllowed returns false off darwin and skips signing silently.
+        for (const kind of ["macos-keychain", "macos-apple"] as const) {
+            expect(signingCredentialSupportedOnHost(kind, "macos")).toBe(true);
+            expect(signingCredentialSupportedOnHost(kind, "windows")).toBe(false);
+            expect(signingCredentialSupportedOnHost(kind, "linux")).toBe(false);
+        }
+    });
+
     it("lets every other kind sign from any host", () => {
         for (const kind of ["windows-pfx", "windows-azure", "android-keystore", "ios-apple", "linux-gpg"] as const) {
             for (const host of ["windows", "macos", "linux"] as const) {
@@ -293,18 +307,46 @@ describe("signingCredentialSupportedOnHost", () => {
 });
 
 describe("signingReachesNetwork", () => {
+    const credential = (kind: SigningCredentialKind, extra: Record<string, string> = {}): SigningCredential =>
+        ({ id: "x", label: "x", createdAt: "2026-01-01T00:00:00.000Z", kind, ...extra }) as SigningCredential;
+
     it("flags the Windows paths, which timestamp or sign remotely", () => {
-        expect(signingReachesNetwork("windows-pfx")).toBe(true);
-        expect(signingReachesNetwork("windows-store")).toBe(true);
-        expect(signingReachesNetwork("windows-azure")).toBe(true);
+        expect(signingReachesNetwork(credential("windows-pfx"))).toBe(true);
+        expect(signingReachesNetwork(credential("windows-store"))).toBe(true);
+        expect(signingReachesNetwork(credential("windows-azure"))).toBe(true);
     });
 
     it("keeps the local paths offline", () => {
         // The mobile repack and gpg never leave the machine; the offline
         // guarantee the build pipeline makes still holds for them.
-        expect(signingReachesNetwork("android-keystore")).toBe(false);
-        expect(signingReachesNetwork("ios-apple")).toBe(false);
-        expect(signingReachesNetwork("linux-gpg")).toBe(false);
+        expect(signingReachesNetwork(credential("android-keystore"))).toBe(false);
+        expect(signingReachesNetwork(credential("ios-apple"))).toBe(false);
+        expect(signingReachesNetwork(credential("linux-gpg"))).toBe(false);
+    });
+
+    it("flags a macOS credential only when it actually notarizes", () => {
+        // The distinction this function was widened for: codesign is local, and
+        // notarization uploads the app to Apple. Two credentials of the same
+        // kind can differ, which is why the whole credential comes in.
+        expect(signingReachesNetwork(credential("macos-keychain", { identity: "Developer ID Application: X" })))
+            .toBe(false);
+        expect(signingReachesNetwork(credential("macos-apple", { p12File: "cert.p12" }))).toBe(false);
+        expect(signingReachesNetwork(credential("macos-apple", {
+            p12File: "cert.p12",
+            notaryKeyFile: "key.p8",
+            notaryKeyId: "ABC123",
+            notaryIssuerId: "11111111-2222-3333-4444-555555555555",
+        }))).toBe(true);
+    });
+
+    it("does not treat a half-filled notary set as notarizing", () => {
+        // The vault refuses such an import, but credentials.json is a file on
+        // the author's disk: a hand-edited one must not be read as "notarizes"
+        // and warned about, nor silently as "does not" if it were complete.
+        expect(signingReachesNetwork(credential("macos-apple", {
+            p12File: "cert.p12",
+            notaryKeyId: "ABC123",
+        }))).toBe(false);
     });
 });
 

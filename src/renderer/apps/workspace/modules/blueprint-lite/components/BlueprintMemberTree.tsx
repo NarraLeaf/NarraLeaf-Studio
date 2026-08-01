@@ -13,7 +13,7 @@ import type { BlueprintGraphEditorDiagnostic } from "@/lib/workspace/services/ui
 import { ContextMenu, type ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { BlueprintLiteralValueControl } from "./BlueprintLiteralValueControl";
 import { useWorkspace } from "@/apps/workspace/context";
-import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { useFreezeGuard, type FreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/ui";
 import { createInputDialog } from "@/lib/components/dialogs";
@@ -129,6 +129,7 @@ function BlueprintVariableRow({
     uiService,
     scopeLabel,
     accentClass,
+    freeze,
 }: {
     v: BlueprintVariable;
     blueprintId: string;
@@ -136,6 +137,8 @@ function BlueprintVariableRow({
     uiService: UIService | null;
     scopeLabel: string;
     accentClass: string;
+    /** The tree's guard, threaded down: everything a row offers rewrites the blueprint document. */
+    freeze: FreezeGuard;
 }) {
     const { t } = useTranslation();
     const [draftName, setDraftName] = useState(v.name);
@@ -168,9 +171,11 @@ function BlueprintVariableRow({
                 </div>
                 <button
                     type="button"
-                    title={t("blueprint.memberTree.deleteVariableLabel", { name: v.name })}
                     aria-label={t("blueprint.memberTree.deleteVariableLabel", { name: v.name })}
-                    className="-m-0.5 rounded-md p-1 text-danger/90 opacity-0 transition-opacity hover:bg-danger/15 hover:text-danger group-hover:opacity-100"
+                    className="-m-0.5 rounded-md p-1 text-danger/90 opacity-0 transition-opacity hover:bg-danger/15 hover:text-danger group-hover:opacity-100 disabled:cursor-not-allowed disabled:group-hover:opacity-40"
+                    // Deleting a variable rewrites the blueprint; on a frozen project the confirm
+                    // dialog still appeared and the variable was still there afterwards.
+                    {...freeze.writes(false, t("blueprint.memberTree.deleteVariableLabel", { name: v.name }))}
                     onClick={() => {
                         if (!uiService) {
                             return;
@@ -189,9 +194,16 @@ function BlueprintVariableRow({
                     <Trash2 className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
                 </button>
             </div>
+            {/*
+                Read-only rather than disabled while frozen: the name IS what the author opened an
+                old revision to read, and a disabled input dims it past the point of reading. Typing
+                into it renamed the variable and the rename was discarded on thaw.
+            */}
             <input
                 className={`${FIELD_INPUT} font-mono`}
                 value={draftName}
+                readOnly={freeze.frozen}
+                title={freeze.frozen ? freeze.reason : undefined}
                 onChange={e => setDraftName(e.target.value)}
                 onBlur={commitName}
                 onKeyDown={e => {
@@ -208,15 +220,42 @@ function BlueprintVariableRow({
             />
             <div>
                 <div className="mb-0.5 text-2xs text-fg-subtle">{t("blueprint.memberTree.default")}</div>
-                <BlueprintLiteralValueControl
-                    variant="inspector"
-                    value={v.defaultValue ?? null}
-                    onChange={next =>
-                        localBp.setBlueprintVariableDefault(blueprintId, v.id, normalizeVariableDefault(next))
-                    }
-                />
+                {/*
+                    The clamp is around the default editor rather than inside it: the literal control
+                    is a dumb type dropdown plus a value box with no notion of a freeze, and every
+                    control in it writes. A `disabled` fieldset with `display: contents` takes no part
+                    in layout and disables the lot per HTML, so a value type added later is covered
+                    without anyone remembering this.
+                */}
+                <FreezeClamp frozen={freeze.frozen}>
+                    <BlueprintLiteralValueControl
+                        variant="inspector"
+                        value={v.defaultValue ?? null}
+                        onChange={next =>
+                            localBp.setBlueprintVariableDefault(blueprintId, v.id, normalizeVariableDefault(next))
+                        }
+                    />
+                </FreezeClamp>
             </div>
         </div>
+    );
+}
+
+/**
+ * The read-only clamp a frozen workspace puts around a default-value editor.
+ *
+ * `display: contents` so it is invisible to layout, and the browser's own `disabled` fieldset rather
+ * than a prop on each control, for the reason `FieldRenderer` and `BlueprintFlowNode` give: a
+ * subtree of writing controls stays covered no matter what is added to it later.
+ */
+function FreezeClamp({ frozen, children }: { frozen: boolean; children: ReactNode }) {
+    if (!frozen) {
+        return <>{children}</>;
+    }
+    return (
+        <fieldset disabled aria-readonly style={{ display: "contents" }}>
+            {children}
+        </fieldset>
     );
 }
 
@@ -225,11 +264,14 @@ function BlueprintPersistentVariableRow({
     historyBlueprintId,
     localBp,
     uiService,
+    freeze,
 }: {
     v: VariableRegistryEntry;
     historyBlueprintId: string;
     localBp: LocalBlueprintService;
     uiService: UIService | null;
+    /** The tree's guard: a persistent variable is registry state, and the registry is project data. */
+    freeze: FreezeGuard;
 }) {
     const { t } = useTranslation();
     const [draftName, setDraftName] = useState(v.name);
@@ -257,9 +299,14 @@ function BlueprintPersistentVariableRow({
                 </label>
                 <button
                     type="button"
-                    title={t("blueprint.memberTree.deletePersistentVariableLabel", { name: v.name })}
                     aria-label={t("blueprint.memberTree.deletePersistentVariableLabel", { name: v.name })}
-                    className="-m-0.5 rounded-md p-1 text-danger/90 opacity-0 transition-opacity hover:bg-danger/15 hover:text-danger group-hover:opacity-100"
+                    className="-m-0.5 rounded-md p-1 text-danger/90 opacity-0 transition-opacity hover:bg-danger/15 hover:text-danger group-hover:opacity-100 disabled:cursor-not-allowed disabled:group-hover:opacity-40"
+                    // Deleting rewrites the variable registry, so it is refused while frozen -
+                    // otherwise the confirm dialog ran and the entry survived it.
+                    {...freeze.writes(
+                        false,
+                        t("blueprint.memberTree.deletePersistentVariableLabel", { name: v.name }),
+                    )}
                     onClick={() => {
                         if (!uiService) {
                             return;
@@ -278,10 +325,14 @@ function BlueprintPersistentVariableRow({
                     <Trash2 className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
                 </button>
             </div>
+            {/* Read-only, not disabled, for the reason the page/global row gives: the name is here
+                to be read, and typing into it renamed the entry and lost the rename on thaw. */}
             <input
                 id={`persistent-variable-name-${v.id}`}
                 className={`${FIELD_INPUT} font-mono`}
                 value={draftName}
+                readOnly={freeze.frozen}
+                title={freeze.frozen ? freeze.reason : undefined}
                 onChange={e => setDraftName(e.target.value)}
                 onBlur={commitName}
                 onKeyDown={e => {
@@ -298,17 +349,19 @@ function BlueprintPersistentVariableRow({
             />
             <div>
                 <div className="mb-0.5 text-2xs text-fg-subtle">{t("blueprint.memberTree.default")}</div>
-                <BlueprintLiteralValueControl
-                    variant="inspector"
-                    value={v.defaultValue ?? null}
-                    onChange={next =>
-                        localBp.setPersistentVariableDefault(
-                            historyBlueprintId,
-                            v.id,
-                            normalizeVariableDefault(next),
-                        )
-                    }
-                />
+                <FreezeClamp frozen={freeze.frozen}>
+                    <BlueprintLiteralValueControl
+                        variant="inspector"
+                        value={v.defaultValue ?? null}
+                        onChange={next =>
+                            localBp.setPersistentVariableDefault(
+                                historyBlueprintId,
+                                v.id,
+                                normalizeVariableDefault(next),
+                            )
+                        }
+                    />
+                </FreezeClamp>
             </div>
         </div>
     );
@@ -805,6 +858,7 @@ export function BlueprintMemberTree({
                                         uiService={uiService}
                                         scopeLabel={group.scopeLabel}
                                         accentClass={group.accentClass}
+                                        freeze={freeze}
                                     />
                                 ))}
                             </div>
@@ -839,6 +893,7 @@ export function BlueprintMemberTree({
                                 historyBlueprintId={blueprintId}
                                 localBp={localBp}
                                 uiService={uiService}
+                                freeze={freeze}
                             />
                         ))}
                     </div>
