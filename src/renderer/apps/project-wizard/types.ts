@@ -19,6 +19,16 @@ export interface ProjectTemplate {
 }
 
 /**
+ * Which version-control backend to put the new project under.
+ *
+ * A closed union rather than a string, because this field is now ACTED ON: `lore` calls
+ * `initRepository` at creation time. While it was inert a typo was invisible; now a third
+ * spelling would silently mean "none" and the author would get an unversioned project after
+ * asking for a versioned one.
+ */
+export type VersionControlChoice = "lore" | "none";
+
+/**
  * Project data structure
  */
 export interface ProjectData {
@@ -31,7 +41,7 @@ export interface ProjectData {
     licenseCustom?: string;
     resolution: string;
     appId: string;
-    versionControl: string;
+    versionControl: VersionControlChoice;
 }
 
 /**
@@ -88,7 +98,7 @@ export interface ResolutionOption {
  * Version control option
  */
 export interface VersionControlOption {
-    value: string;
+    value: VersionControlChoice;
     label: string;
     /** i18n key; when set, overrides `label` at render time (falls back to `label`). */
     labelKey?: TranslationKey;

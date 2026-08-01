@@ -57,10 +57,18 @@ export const resolutionOptions: ResolutionOption[] = [
 ];
 
 /**
- * Version control options
+ * Version control options.
+ *
+ * **Lore, not Git.** Studio has exactly one version-control backend and it is Lore
+ * (`VcsManager`); the "Git" this used to offer was never wired to anything - the field was read
+ * by nothing at all, so both options created the same unversioned project. An option that does
+ * not do what it says is worse than no option, which is why picking Lore now actually calls
+ * `initRepository` (see `ProjectService.createProject`).
+ *
+ * Not localized: "Lore" is the backend's name, not a word. `none` keeps `common.none`.
  */
 export const versionControlOptions: VersionControlOption[] = [
-    { value: "git", label: "Git" },
+    { value: "lore", label: "Lore" },
     { value: "none", label: "None", labelKey: "common.none" },
 ];
 
@@ -87,5 +95,10 @@ export const defaultProjectData = {
     licenseCustom: "",
     resolution: "1920x1080",
     appId: "",
-    versionControl: "git"
+    // Pre-selected, the way "git" was: a new project is the one moment where turning version
+    // control on costs nothing and turning it on later means the work before that point is
+    // unrecorded. It is still a choice the author sees twice - on this step and on the review -
+    // before anything is written, and the Settings step falls back to `none` on a host with no
+    // Lore build rather than offering something that cannot happen.
+    versionControl: "lore"
 } as const;
