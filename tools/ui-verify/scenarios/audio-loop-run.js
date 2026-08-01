@@ -52,6 +52,30 @@ const READ = `JSON.stringify({
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+/**
+ * A connection held across the dev-mode reload stops answering `Runtime.evaluate` — it does not
+ * error, it just never replies, so the run hangs with no output. Every read therefore gets a fresh
+ * connection, and every await gets a deadline: a probe that can hang silently is worse than one
+ * that fails, because a hang looks identical to "still measuring".
+ */
+function withTimeout(promise, ms, label) {
+    return Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error(`timed out after ${ms}ms: ${label}`)), ms)),
+    ]);
+}
+
+async function readFresh(expression, label) {
+    const d = await withTimeout(connect({ target: 'dev-mode', port: PORT }), 15000, `connect (${label})`);
+    try {
+        const path = await withTimeout(d.evaluate('location.pathname'), 15000, `path (${label})`);
+        if (!String(path).includes('dev-mode')) throw new Error(`read hit the wrong window: ${path}`);
+        return await withTimeout(d.evaluate(expression), 15000, label);
+    } finally {
+        d.close();
+    }
+}
+
 const stamp = () => new Date().toISOString().slice(11, 19);
 const log = (...a) => { console.log(stamp(), ...a); };
 
@@ -72,10 +96,23 @@ const log = (...a) => { console.log(stamp(), ...a); };
         await dev.client.send('Page.addScriptToEvaluateOnNewDocument', { source: PROBE });
         log('probe armed for next navigation');
 
+        // The row's action buttons are hover-revealed: without a real pointer over the row they are
+        // not in the DOM at all, and the lookup reports "button missing" on a row that is right there.
+        const box = await ws.evaluate(`(() => {
+            const row = document.querySelector('[data-story-row-block-id="${BLOCK}"]');
+            if (!row) return null;
+            row.scrollIntoView({ block: 'center' });
+            const r = row.getBoundingClientRect();
+            return JSON.stringify({ x: r.x + r.width - 60, y: r.y + r.height / 2 });
+        })()`);
+        if (!box) throw new Error('story row not in the DOM — is its editor tab active?');
+        const { x, y } = JSON.parse(box);
+        await ws.hover(x, y);
+        await sleep(600);
+
         const hit = await ws.evaluate(`(() => {
             const row = document.querySelector('[data-story-row-block-id="${BLOCK}"]');
             if (!row) return 'row missing';
-            row.scrollIntoView({ block: 'center' });
             const b = [...row.querySelectorAll('button')].find(x => /play from this row/i.test(x.getAttribute('aria-label') || ''));
             if (!b) return 'button missing';
             b.click();
@@ -87,23 +124,28 @@ const log = (...a) => { console.log(stamp(), ...a); };
         // Poll for the probe to reappear rather than guessing a reload duration — a fixed sleep
         // either races the reload or wastes time, and both look like "no audio" from here.
         let armed = false;
-        for (let i = 0; i < 40; i += 1) {
-            await sleep(1000);
-            if (await dev.evaluate('typeof window.__audioProbe !== "undefined"')) { armed = true; break; }
+        for (let i = 0; i < 30; i += 1) {
+            await sleep(2000);
+            const seen = await readFresh('typeof window.__audioProbe !== "undefined"', 'arm-poll')
+                .catch(() => false);
+            if (seen === true) { armed = true; break; }
+            log(`  waiting for reload (${i + 1})`);
         }
         if (!armed) throw new Error('probe never reappeared after the reload');
         log('probe live on the reloaded document');
 
-        // A real mouse press: a CDP keyboard event alone leaves the AudioContext suspended.
-        await dev.click(700, 450);
+        // A real mouse press: a CDP keyboard event alone leaves the AudioContext suspended, the
+        // playhead sits frozen, and it reads as a broken feature.
+        const clicker = await withTimeout(connect({ target: 'dev-mode', port: PORT }), 15000, 'connect (click)');
+        try { await withTimeout(clicker.click(700, 450), 15000, 'stage click'); } finally { clicker.close(); }
         await sleep(2500);
 
         log('--- first read ---');
-        console.log(JSON.stringify(JSON.parse(await dev.evaluate(READ)), null, 1));
+        console.log(JSON.stringify(JSON.parse(await readFresh(READ, 'first read')), null, 1));
 
         await sleep(9000);
         log('--- second read (out point was 5.987s) ---');
-        console.log(JSON.stringify(JSON.parse(await dev.evaluate(READ)), null, 1));
+        console.log(JSON.stringify(JSON.parse(await readFresh(READ, 'second read')), null, 1));
     } finally {
         dev.close();
         ws.close();
