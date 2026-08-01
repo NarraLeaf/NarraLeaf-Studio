@@ -1,3 +1,5 @@
+import type { LocaleNamespace } from "../types";
+
 export const storyExpr = {
     issue: {
         unexpectedToken: "此处不应出现「{text}」",
@@ -42,4 +44,4 @@ export const storyExpr = {
         unsupportedOption: "「{value}」不适用于此处，可用：{allowed}",
         missingCore: "/{token} 还缺少{slot}",
     },
-};
+} satisfies LocaleNamespace<"storyExpr">;
