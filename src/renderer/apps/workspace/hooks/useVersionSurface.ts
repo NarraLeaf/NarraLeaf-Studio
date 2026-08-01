@@ -5,7 +5,7 @@ import { VersionControlService } from "@/lib/workspace/services/core/VersionCont
 import { WorkspaceFreezeService } from "@/lib/workspace/services/core/WorkspaceFreezeService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { NotificationType } from "@/lib/workspace/services/ui/types";
-import type { RevisionId, VcsAvailability, VcsStatus } from "@shared/types/vcs";
+import type { RevisionId, VcsAvailability, VcsStatus, VcsSyncState } from "@shared/types/vcs";
 import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
 import {
     collapseCheckpoints,
@@ -59,7 +59,23 @@ export type VersionBusyKind =
      * tree, a second commit, and then the same re-read a return does. The longest thing this surface
      * can start, and the only one that changes the author's files.
      */
-    | "restore";
+    | "restore"
+    /**
+     * Reading where this branch stands against its server, or writing the server address.
+     *
+     * The read waits on a network and is measured at up to ~2s against a host that does
+     * not answer, which is exactly why it has a spinner of its own rather than happening
+     * quietly: two silent seconds reads as a dead button.
+     */
+    | "remote"
+    /** Sending revisions to the server. Nothing local changes, so a failure is harmless. */
+    | "push"
+    /**
+     * Bringing the server's revisions down. Writes the working tree and re-reads every
+     * document, so it is in the same class as a restore rather than in the same class as
+     * a push.
+     */
+    | "sync";
 
 /**
  * How much further back each read of the history reaches.
@@ -163,6 +179,42 @@ export interface VersionSurface {
     returnToCurrent: () => void;
     /** Put this project under version control. The author's explicit act, never ours. */
     enableVersionControl: () => void;
+
+    // -- server ---------------------------------------------------------------
+
+    /**
+     * The server this project synchronises with, or null when it has none.
+     *
+     * Read on open, because reading it is LOCAL - it does not contact anything. That is
+     * the whole reason it is a separate value from {@link syncState}: the panel can know
+     * a server is configured, and draw the controls for it, without having waited on the
+     * network to find out whether it answers.
+     */
+    remote: string | null;
+    /**
+     * How this branch stands against that server, or null when nobody has looked.
+     *
+     * **Null is not "no server" and not "unreachable"** - it is "not asked", and it is the
+     * state the panel opens in. Finding out costs up to ~2s against a host that does not
+     * answer (measured), so it happens when the author asks and after an operation that
+     * changed the answer, never on open and never on a timer.
+     */
+    syncState: VcsSyncState | null;
+    /** Paths the last sync could not merge. Non-empty means the author is blocked. */
+    conflicts: string[];
+    /** Ask the server where things stand. The only thing here that waits on a network by itself. */
+    checkRemote: () => void;
+    /**
+     * Point the project at a server, or disconnect it with null.
+     *
+     * Does not contact it - see the service. Answers whether it was written, so the form
+     * knows whether to close.
+     */
+    setRemote: (url: string | null) => Promise<boolean>;
+    /** Send local revisions up. Answers whether it happened. */
+    pushToRemote: () => Promise<boolean>;
+    /** Bring the server's revisions down; re-reads every document. Answers whether it happened. */
+    syncFromRemote: () => Promise<boolean>;
 }
 
 export function useVersionSurface(): VersionSurface {
@@ -183,6 +235,9 @@ export function useVersionSurface(): VersionSurface {
     const [status, setStatus] = useState<VcsStatus | null>(null);
     const [busy, setBusy] = useState<VersionBusyKind | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [remote, setRemoteUrl] = useState<string | null>(null);
+    const [syncState, setSyncState] = useState<VcsSyncState | null>(null);
+    const [conflicts, setConflicts] = useState<string[]>([]);
     // Guards every setState behind an await: a project switch unmounts this while reads are still in
     // flight, and the slowest of them (a revision load over the network) can land long afterwards.
     const alive = useRef(true);
@@ -226,8 +281,15 @@ export function useVersionSurface(): VersionSurface {
             setHead(null);
             setHeadNumber(null);
             setBranch(null);
+            setRemoteUrl(null);
             return;
         }
+        // LOCAL, and that is the only reason it belongs in this function: it reads the
+        // repository's own config and opens no socket. Whether that server answers is
+        // `checkRemote`, which costs seconds and is never called from here.
+        const configured = await services.versionControl.getRemote();
+        if (!alive.current) return;
+        setRemoteUrl(configured);
         // The whole identity in one pure read: the revision, the number `#4` is made of, and the
         // branch. A one-entry history read answered the first two just as cheaply and cannot answer
         // the third at all - the revision graph does not carry a branch name.
@@ -543,6 +605,121 @@ export function useVersionSurface(): VersionSurface {
         })();
     }, [services, readIdentity]);
 
+    /**
+     * Ask the server where things stand.
+     *
+     * The one call on this surface that waits on a network of its own accord, which is
+     * why it always shows a spinner: it is measured at ~2s against a host that does not
+     * answer, and two silent seconds look like a button that did nothing.
+     *
+     * A failure is left in `error` AND clears the snapshot, because a stale "up to date"
+     * beside a failed check is the one thing this row must never show.
+     */
+    const checkRemote = useCallback(() => {
+        if (!services || busy !== null) {
+            return;
+        }
+        setBusy("remote");
+        setError(null);
+        void services.versionControl.getSyncState()
+            .then(next => {
+                if (alive.current) setSyncState(next);
+            })
+            .catch(thrown => {
+                if (!alive.current) return;
+                setSyncState(null);
+                setError(messageOf(thrown));
+            })
+            .finally(() => {
+                if (alive.current) setBusy(null);
+            });
+    }, [services, busy]);
+
+    const setRemote = useCallback(async (url: string | null): Promise<boolean> => {
+        if (!services) {
+            return false;
+        }
+        setBusy("remote");
+        setError(null);
+        try {
+            const written = await services.versionControl.setRemote(url);
+            if (!alive.current) return true;
+            setRemoteUrl(written);
+            // Whatever was known about the OLD server describes a server this project is
+            // no longer pointed at. Left in place, disconnecting would leave the row
+            // reporting "2 versions ahead" of nothing.
+            setSyncState(null);
+            setConflicts([]);
+            return true;
+        } catch (thrown) {
+            if (alive.current) setError(messageOf(thrown));
+            return false;
+        } finally {
+            if (alive.current) setBusy(null);
+        }
+    }, [services]);
+
+    const pushToRemote = useCallback(async (): Promise<boolean> => {
+        if (!services || busy !== null) {
+            return false;
+        }
+        setBusy("push");
+        setError(null);
+        try {
+            await services.versionControl.push();
+            if (!alive.current) return true;
+            // The push moved what the server holds, so the snapshot beside the button is
+            // now wrong in the direction that matters - it would still offer to push.
+            setSyncState(await services.versionControl.getSyncState());
+            return true;
+        } catch (thrown) {
+            if (alive.current) setError(messageOf(thrown));
+            return false;
+        } finally {
+            if (alive.current) setBusy(null);
+        }
+    }, [services, busy]);
+
+    /**
+     * Bring the server's revisions down.
+     *
+     * The service re-reads every document, so nothing here needs to - what this owns is
+     * the two answers a sync can give that a caller must not confuse: nothing arrived,
+     * and something arrived that Studio cannot merge. The second is a SUCCESS with a file
+     * list, and it is reported as a sticky notice for the same reason a failed restore
+     * record is: the sync leaves the revision view on its way out, and the rail's own
+     * effect clears `error` before anyone could read it.
+     */
+    const syncFromRemote = useCallback(async (): Promise<boolean> => {
+        if (!services || busy !== null) {
+            return false;
+        }
+        setBusy("sync");
+        setError(null);
+        try {
+            const result = await services.versionControl.sync();
+            if (!alive.current) return true;
+            setConflicts(result.conflicts);
+            if (result.conflicts.length > 0) {
+                services.ui.notifications.showSticky({
+                    type: NotificationType.Error,
+                    message: translate("workspace.shell.versionControl.syncConflictTitle"),
+                    detail: translate("workspace.shell.versionControl.syncConflictDetail", {
+                        count: String(result.conflicts.length),
+                        files: result.conflicts.slice(0, 5).join("\n"),
+                    }),
+                });
+            }
+            setSyncState(await services.versionControl.getSyncState());
+            return true;
+        } catch (thrown) {
+            if (alive.current) setError(messageOf(thrown));
+            return false;
+        } finally {
+            if (alive.current) setBusy(null);
+        }
+    }, [services, busy]);
+
     const state = useMemo(
         () => resolveVersionSurfaceState({
             availability,
@@ -600,6 +777,13 @@ export function useVersionSurface(): VersionSurface {
         restoreRevision,
         returnToCurrent,
         enableVersionControl,
+        remote,
+        syncState,
+        conflicts,
+        checkRemote,
+        setRemote,
+        pushToRemote,
+        syncFromRemote,
     };
 }
 

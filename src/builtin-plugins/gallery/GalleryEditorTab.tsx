@@ -6,6 +6,14 @@
  * (chips), image-identified kinds get a grid and audio-identified kinds get a
  * list, the inspector column is always mounted so the content never reflows, and
  * its idle state is where the blueprint contract is taught.
+ *
+ * Every component that writes calls `ui.useFreezeGuard()` rather than taking the
+ * guard as a prop: it is what Studio's own panels do, and threading one more
+ * argument through eight components is how a control gets missed. What the guard
+ * must NOT touch is as load-bearing as what it does - switching columns,
+ * filtering by group, selecting an entry, auditioning a clip and reading the
+ * inspector all stay live, because a frozen project is one the author opened to
+ * look at.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -129,6 +137,7 @@ export function GalleryEditorTab({ app, store }: { app: PluginApp; store: Galler
     const [voicePickerFor, setVoicePickerFor] = useState<string | null>(null);
     const anchorRef = useRef<HTMLDivElement | null>(null);
     const audition = useAudioAudition(app);
+    const freeze = ui.useFreezeGuard();
 
     useEffect(() => store.subscribe(() => setData({ ...store.getData() })), [store]);
 
@@ -274,7 +283,12 @@ export function GalleryEditorTab({ app, store }: { app: PluginApp; store: Galler
                             value={query}
                             onChange={event => setQuery(event.target.value)}
                         />
-                        <ui.Button size="sm" variant="primary" disabled={busy} onClick={primaryAction}>
+                        <ui.Button
+                            size="sm"
+                            variant="primary"
+                            onClick={primaryAction}
+                            {...freeze.writes(busy)}
+                        >
                             <Plus size={13} />
                             {meta.createLabel}
                         </ui.Button>
@@ -483,6 +497,7 @@ function pickerTitle(target: PickerTarget | null): string {
  */
 function EmptyPane({ meta, filtered, onCreate }: { meta: KindMeta; filtered: boolean; onCreate: () => void }) {
     const Icon = filtered ? Search : meta.icon;
+    const freeze = ui.useFreezeGuard();
     return (
         <div className="grid h-full place-items-center">
             <div className="flex flex-col items-center gap-3 text-center">
@@ -490,8 +505,11 @@ function EmptyPane({ meta, filtered, onCreate }: { meta: KindMeta; filtered: boo
                 <div className="text-sm text-fg-muted">
                     {filtered ? "Nothing matches" : `No ${meta.noun} entries yet`}
                 </div>
+                {/* Still rendered while frozen, greyed: the empty column's whole
+                    job is to say what this column is for, and a missing button
+                    reads as a broken editor rather than as a frozen project. */}
                 {!filtered && (
-                    <ui.Button size="sm" variant="secondary" onClick={onCreate}>
+                    <ui.Button size="sm" variant="secondary" onClick={onCreate} {...freeze.writes()}>
                         <Plus size={13} />
                         {meta.createLabel}
                     </ui.Button>
@@ -527,6 +545,7 @@ function GroupChips({
     onDropEntry: (entryId: string, groupId: string | null) => void;
 }) {
     const [renamingId, setRenamingId] = useState<string | null>(null);
+    const freeze = ui.useFreezeGuard();
 
     const countFor = (groupId: string): number => {
         if (groupId === GROUP_ALL) {
@@ -560,8 +579,10 @@ function GroupChips({
         <div
             key={key}
             className="group/chip flex items-center"
-            onDragOver={options.droppable ? allowDrop : undefined}
-            onDrop={options.droppable ? dropTo(options.groupId ?? null) : undefined}
+            // Drop targets go through `gesture`, so a frozen project never starts a
+            // drag it would refuse to finish.
+            onDragOver={options.droppable ? freeze.gesture(allowDrop) : undefined}
+            onDrop={options.droppable ? freeze.gesture(dropTo(options.groupId ?? null)) : undefined}
         >
             <button
                 type="button"
@@ -570,19 +591,30 @@ function GroupChips({
                         ? "border-primary/60 bg-primary/15 text-fg"
                         : "border-edge text-fg-muted hover:border-edge-strong hover:text-fg"
                 }`}
+                // Filtering by group is navigation - the freeze never touches it.
                 onClick={() => onSelect(key)}
-                onDoubleClick={options.groupId ? () => setRenamingId(options.groupId!) : undefined}
+                onDoubleClick={options.groupId ? freeze.gesture(() => setRenamingId(options.groupId!)) : undefined}
             >
                 {label}
                 <span className="tabular-nums text-fg-subtle">{count}</span>
+                {/* Greyed rather than dropped, like every other write here: it is
+                    already a hover-reveal, and removing it on hover would leave the
+                    author hunting for a control that is simply switched off. */}
                 {options.groupId && (
                     <span
                         role="button"
                         tabIndex={-1}
                         aria-label={`Delete group ${label}`}
-                        className="hidden text-fg-subtle hover:text-danger group-hover/chip:inline"
+                        aria-disabled={freeze.frozen || undefined}
+                        title={freeze.frozen ? freeze.reason : undefined}
+                        className={`hidden text-fg-subtle group-hover/chip:inline ${
+                            freeze.frozen ? "opacity-40" : "hover:text-danger"
+                        }`}
                         onClick={event => {
                             event.stopPropagation();
+                            if (freeze.frozen) {
+                                return;
+                            }
                             onRemove(options.groupId!);
                         }}
                     >
@@ -615,11 +647,10 @@ function GroupChips({
                 && chip(GROUP_UNGROUPED, "Ungrouped", ungrouped, { droppable: true })}
             <button
                 type="button"
-                disabled={busy}
-                title="New group"
                 aria-label="New group"
-                className="rounded-full border border-dashed border-edge px-1.5 py-0.5 text-fg-subtle hover:border-edge-strong hover:text-fg"
+                className="rounded-full border border-dashed border-edge px-1.5 py-0.5 text-fg-subtle hover:border-edge-strong hover:text-fg disabled:opacity-40"
                 onClick={onCreate}
+                {...freeze.writes(busy, "New group")}
             >
                 <Plus size={10} />
             </button>
@@ -631,32 +662,39 @@ function GroupChips({
 // Grid + list presenters
 // ---------------------------------------------------------------------------
 
-/** Shared drag wiring: reorder within the pane, or drop onto a group chip. */
+/**
+ * Shared drag wiring: reorder within the pane, or drop onto a group chip.
+ *
+ * Reordering and regrouping both write, so a frozen project gets the whole set
+ * unattached - `draggable` included. Half of it would be worse than none: a card
+ * that lifts and then refuses to land reads as a broken editor.
+ */
 function useEntryDrag(entryId: string, onDropBefore: (draggedId: string) => void) {
     const [over, setOver] = useState(false);
+    const freeze = ui.useFreezeGuard();
     return {
         over,
         props: {
-            draggable: true,
-            onDragStart: (event: React.DragEvent) => {
+            draggable: !freeze.frozen,
+            onDragStart: freeze.gesture((event: React.DragEvent) => {
                 event.dataTransfer.setData(DRAG_ENTRY_MIME, entryId);
                 event.dataTransfer.effectAllowed = "move";
-            },
-            onDragOver: (event: React.DragEvent) => {
+            }),
+            onDragOver: freeze.gesture((event: React.DragEvent) => {
                 if (event.dataTransfer.types.includes(DRAG_ENTRY_MIME)) {
                     event.preventDefault();
                     setOver(true);
                 }
-            },
-            onDragLeave: () => setOver(false),
-            onDrop: (event: React.DragEvent) => {
+            }),
+            onDragLeave: freeze.gesture(() => setOver(false)),
+            onDrop: freeze.gesture((event: React.DragEvent) => {
                 setOver(false);
                 const draggedId = event.dataTransfer.getData(DRAG_ENTRY_MIME);
                 if (draggedId && draggedId !== entryId) {
                     event.preventDefault();
                     onDropBefore(draggedId);
                 }
-            },
+            }),
         },
     };
 }
@@ -809,12 +847,24 @@ function EntryRow({
 // Inspector
 // ---------------------------------------------------------------------------
 
+/**
+ * A labelled inspector row.
+ *
+ * The label is a **sibling** of the control, not a `<label>` wrapped around it,
+ * which is how every other inspector in Studio spells this. Wrapping was the
+ * cause of a real defect: `<label>` forwards a stray click to its labeled
+ * control, and a `Select` inside one re-opened its menu the instant you picked
+ * something - the pick closed the menu, the label then forwarded the same click
+ * to the trigger, and the trigger toggled it back open. `Select` is hardened
+ * against that ancestor now, but the wrapping bought nothing to begin with:
+ * these controls are not form controls, so there is no focus to forward.
+ */
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
     return (
-        <label className="block space-y-1">
-            <span className="text-2xs text-fg-subtle">{label}</span>
+        <div className="block space-y-1">
+            <span className="block text-2xs text-fg-subtle">{label}</span>
             {children}
-        </label>
+        </div>
     );
 }
 
@@ -883,6 +933,7 @@ function EntryInspector({
     const MetaIcon = meta.icon;
     const cover = resolveCoverVariant(entry);
     const audio = isAudioGalleryKind(entry.kind);
+    const freeze = ui.useFreezeGuard();
 
     return (
         <div className="flex flex-col gap-3 p-3">
@@ -899,13 +950,12 @@ function EntryInspector({
                 <button
                     type="button"
                     className="block w-full"
-                    disabled={busy}
-                    title={entry.variants.length === 0 ? "Pick an image" : undefined}
                     onClick={() => {
                         if (entry.variants.length === 0) {
                             onPick({ kind: "coverImage", artworkId: entry.id });
                         }
                     }}
+                    {...freeze.writes(busy, entry.variants.length === 0 ? "Pick an image" : undefined)}
                 >
                     <GalleryThumb
                         app={app}
@@ -919,20 +969,25 @@ function EntryInspector({
             <Field label="Name">
                 <InlineNameInput
                     value={entry.name}
+                    readOnly={freeze.frozen}
                     onCommit={name => void onRun(() => store.patchArtworkFields(entry.id, { name }))}
                 />
             </Field>
 
             <Field label="Description">
+                {/* `readOnly`, never `disabled`: the description is prose the author
+                    came to read, and a disabled textarea dims it and refuses to be
+                    selected or copied. */}
                 <ui.TextArea
                     size="sm"
                     fullWidth
                     rows={2}
+                    readOnly={freeze.frozen}
                     placeholder="Shown in the viewer once unlocked"
                     key={`${entry.id}:description`}
                     defaultValue={entry.description}
                     onBlur={event => {
-                        if (event.target.value !== entry.description) {
+                        if (!freeze.frozen && event.target.value !== entry.description) {
                             void onRun(() => store.patchArtworkFields(entry.id, {
                                 description: event.target.value,
                             }));
@@ -946,9 +1001,13 @@ function EntryInspector({
             )}
 
             <Field label="Group">
+                {/* `readOnly` rather than `disabled`, which is `Select`'s own
+                    frozen mode: the list of groups is project data the author came
+                    to look at, and a dropdown that will not open hides it. */}
                 <ui.Select
                     size="sm"
                     fullWidth
+                    readOnly={freeze.frozen}
                     value={entry.groupId ?? ""}
                     options={[
                         { value: "", label: "Ungrouped" },
@@ -962,9 +1021,9 @@ function EntryInspector({
 
             <button
                 type="button"
-                disabled={busy}
-                className="flex items-center gap-2 rounded px-1 py-1 text-2xs text-fg-muted hover:bg-fill-subtle hover:text-fg"
+                className="flex items-center gap-2 rounded px-1 py-1 text-2xs text-fg-muted hover:bg-fill-subtle hover:text-fg disabled:opacity-50 disabled:hover:bg-transparent"
                 onClick={() => void onRun(() => store.patchArtworkFields(entry.id, { hidden: !entry.hidden }))}
+                {...freeze.writes(busy)}
             >
                 {entry.hidden ? <EyeOff size={12} /> : <Eye size={12} />}
                 {entry.hidden ? "Hidden until unlocked" : "Shown as a locked slot"}
@@ -991,8 +1050,8 @@ function EntryInspector({
                     <ui.Button
                         size="sm"
                         variant="secondary"
-                        disabled={busy}
                         onClick={() => onPick({ kind: "lockedImage", artworkId: entry.id })}
+                        {...freeze.writes(busy)}
                     >
                         Pick
                     </ui.Button>
@@ -1001,12 +1060,11 @@ function EntryInspector({
                             size="sm"
                             variant="ghost"
                             aria-label="Use the catalog default"
-                            title="Use the catalog default"
-                            disabled={busy}
                             onClick={() => void onRun(() => store.patchArtworkFields(entry.id, {
                                 lockedImageAssetId: null,
                                 lockedImageAssetName: null,
                             }))}
+                            {...freeze.writes(busy, "Use the catalog default")}
                         >
                             <X size={12} />
                         </ui.IconButton>
@@ -1017,11 +1075,11 @@ function EntryInspector({
             <ui.Button
                 size="sm"
                 variant="danger"
-                disabled={busy}
                 onClick={() => void onRun(async () => {
                     await store.removeArtworks([entry.id]);
                     onClose();
                 })}
+                {...freeze.writes(busy)}
             >
                 <Trash2 size={12} />
                 Delete entry
@@ -1044,6 +1102,7 @@ function ScenePickerFields({
 }) {
     const [stories, setStories] = useState<PluginStoryEntry[]>([]);
     const [scenes, setScenes] = useState<PluginSceneEntry[]>([]);
+    const freeze = ui.useFreezeGuard();
     const storyId = entry.scene?.storyId ?? "";
     const sceneId = entry.scene?.sceneId ?? "";
 
@@ -1086,6 +1145,7 @@ function ScenePickerFields({
                 <ui.Select
                     size="sm"
                     fullWidth
+                    readOnly={freeze.frozen}
                     value={storyId}
                     options={[
                         { value: "", label: "Pick a story" },
@@ -1104,6 +1164,7 @@ function ScenePickerFields({
                     size="sm"
                     fullWidth
                     disabled={!storyId}
+                    readOnly={freeze.frozen}
                     value={sceneId}
                     options={[
                         { value: "", label: storyId ? "Pick a scene" : "Pick a story first" },
@@ -1143,6 +1204,7 @@ function MemberList({
     onPickVoiceLines: () => void;
 }) {
     const cover = resolveCoverVariant(entry);
+    const freeze = ui.useFreezeGuard();
     const many = entry.variants.length > 1;
     const label = entry.kind === "music"
         ? many ? `Tracks (${entry.variants.length})` : "Track"
@@ -1167,7 +1229,7 @@ function MemberList({
         <div className="space-y-1">
             <div className="flex items-center gap-1">
                 <span className="flex-1 text-2xs text-fg-subtle">{label}</span>
-                <ui.Button size="sm" variant="secondary" disabled={busy} onClick={add}>
+                <ui.Button size="sm" variant="secondary" onClick={add} {...freeze.writes(busy)}>
                     <Plus size={11} />
                     Add
                 </ui.Button>
@@ -1239,9 +1301,11 @@ function MemberRow({
     const audio = isAudioGalleryKind(entry.kind);
     const key = `${entry.id}:${variant.id}`;
     const playing = audition.playingKey === key;
+    const freeze = ui.useFreezeGuard();
 
     return (
         <div className="flex items-start gap-1.5 rounded border border-edge bg-fill-subtle p-1">
+            {/* Auditioning is reading, so the play button is untouched by a freeze. */}
             {audio ? (
                 <button
                     type="button"
@@ -1257,16 +1321,15 @@ function MemberRow({
                 <button
                     type="button"
                     aria-label="Change image"
-                    title={variant.imageAssetName ?? "Pick an image"}
                     className="shrink-0"
-                    disabled={busy}
                     onClick={onPickImage}
+                    {...freeze.writes(busy, variant.imageAssetName ?? "Pick an image")}
                 >
                     <GalleryThumb app={app} assetId={variant.imageAssetId} className="h-8 w-12 rounded" />
                 </button>
             )}
             <div className="min-w-0 flex-1 space-y-0.5">
-                <InlineNameInput value={variant.name} onCommit={onRename} />
+                <InlineNameInput value={variant.name} readOnly={freeze.frozen} onCommit={onRename} />
                 {/* The label starts out as the line text, so echoing it below
                     would just print it twice; show it only once the author has
                     renamed the row to something else. */}
@@ -1286,10 +1349,12 @@ function MemberRow({
                     size="sm"
                     variant="ghost"
                     aria-label={isExplicitCover ? "Clear cover" : "Use as cover"}
-                    title={isExplicitCover ? "Clear cover" : isCover ? "Default cover (first)" : "Use as cover"}
-                    disabled={busy}
                     className={isCover ? "text-primary" : ""}
                     onClick={onSetCover}
+                    {...freeze.writes(
+                        busy,
+                        isExplicitCover ? "Clear cover" : isCover ? "Default cover (first)" : "Use as cover",
+                    )}
                 >
                     <Star size={12} fill={isExplicitCover ? "currentColor" : "none"} />
                 </ui.IconButton>
@@ -1298,10 +1363,9 @@ function MemberRow({
                 size="sm"
                 variant="ghost"
                 aria-label="Delete"
-                title="Delete"
-                disabled={busy}
                 className="text-fg-subtle hover:text-danger"
                 onClick={onRemove}
+                {...freeze.writes(busy, "Delete")}
             >
                 <Trash2 size={12} />
             </ui.IconButton>
@@ -1324,6 +1388,8 @@ function BulkInspector({
     onRun: (action: () => Promise<unknown>) => Promise<void>;
     onClear: () => void;
 }) {
+    const freeze = ui.useFreezeGuard();
+
     return (
         <div className="flex flex-col gap-3 p-3">
             <div className="flex items-center gap-1">
@@ -1337,6 +1403,7 @@ function BulkInspector({
                 <ui.Select
                     size="sm"
                     fullWidth
+                    readOnly={freeze.frozen}
                     value=""
                     options={[
                         { value: "", label: "Pick a group" },
@@ -1361,11 +1428,11 @@ function BulkInspector({
             <ui.Button
                 size="sm"
                 variant="danger"
-                disabled={busy}
                 onClick={() => void onRun(async () => {
                     await store.removeArtworks(selection);
                     onClear();
                 })}
+                {...freeze.writes(busy)}
             >
                 <Trash2 size={12} />
                 Delete {selection.length}
@@ -1399,6 +1466,10 @@ function VoiceUnitPicker({
     const [units, setUnits] = useState<PluginVoiceUnitEntry[] | null>(null);
     const [query, setQuery] = useState("");
     const [picked, setPicked] = useState<Set<string>>(() => new Set());
+    // Reachable only from a control the freeze already switches off - unless the
+    // author froze the workspace with this dialog open, which the version rail
+    // lets them do.
+    const freeze = ui.useFreezeGuard();
     const taken = useMemo(
         () => new Set(existing.map(variant => variant.voiceUnitId).filter((id): id is string => Boolean(id))),
         [existing],
@@ -1499,7 +1570,7 @@ function VoiceUnitPicker({
                 <ui.Button
                     size="sm"
                     variant="primary"
-                    disabled={picked.size === 0}
+                    {...freeze.writes(picked.size === 0)}
                     onClick={() => onConfirm((units ?? [])
                         .filter(unit => picked.has(unit.unitId))
                         .map(unit => ({
@@ -1535,8 +1606,11 @@ function LockedLookModal({
     onRun: (action: () => Promise<unknown>) => Promise<void>;
 }) {
     const settings = store.getSettings();
+    const freeze = ui.useFreezeGuard();
 
     return (
+        // The modal still opens while frozen: what it shows - the placeholder and
+        // the mask - is catalog data, and it is the only place to read it.
         <ui.Modal isOpen title="How locked entries look in game" onClose={onClose}>
             <ui.ModalBody>
                 <div className="space-y-4">
@@ -1547,7 +1621,12 @@ function LockedLookModal({
                                 assetId={settings.lockedImageAssetId}
                                 className="h-16 w-24 shrink-0 rounded border border-edge"
                             />
-                            <ui.Button size="sm" variant="secondary" disabled={busy} onClick={onPickPlaceholder}>
+                            <ui.Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={onPickPlaceholder}
+                                {...freeze.writes(busy)}
+                            >
                                 Pick
                             </ui.Button>
                             {settings.lockedImageAssetId && (
@@ -1555,12 +1634,11 @@ function LockedLookModal({
                                     size="sm"
                                     variant="ghost"
                                     aria-label="Clear placeholder"
-                                    title="Clear placeholder"
-                                    disabled={busy}
                                     onClick={() => void onRun(() => store.patchSettings({
                                         lockedImageAssetId: null,
                                         lockedImageAssetName: null,
                                     }))}
+                                    {...freeze.writes(busy, "Clear placeholder")}
                                 >
                                     <X size={12} />
                                 </ui.IconButton>
@@ -1571,6 +1649,7 @@ function LockedLookModal({
                         <InlineNameInput
                             value={settings.lockedNameMask}
                             allowEmpty
+                            readOnly={freeze.frozen}
                             placeholder={DEFAULT_LOCKED_NAME_MASK}
                             onCommit={lockedNameMask => void onRun(() => store.patchSettings({ lockedNameMask }))}
                         />

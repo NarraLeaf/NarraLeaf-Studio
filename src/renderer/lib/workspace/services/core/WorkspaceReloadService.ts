@@ -49,8 +49,8 @@ export type WorkspaceReloadResult = {
     origin: DocumentSource["origin"];
     /** Participant ids that re-read successfully. */
     reloaded: string[];
-    /** Participants that did not, each keeping whatever it already held. */
-    failures: { id: string; labelKey: TranslationKey; error: unknown }[];
+    /** Participants that did not, each keeping whatever it already held. Labels are already translated. */
+    failures: { id: string; label: string; error: unknown }[];
 };
 
 type ReloadParticipant = {
@@ -61,6 +61,23 @@ type ReloadParticipant = {
      * has to leave the service with what it had, never with half a document.
      */
     reload: (ctx: WorkspaceContext) => Promise<void>;
+};
+
+/**
+ * A participant that is not in Studio's source tree, so it cannot be in the table below.
+ *
+ * The only registrations today are plugin stores, through `app.services.workspace.registerReloader`.
+ * A plugin keeps project data in memory exactly like a document service does - the Gallery's catalog
+ * is a versioned file under `editor/services/` - and a plugin that never re-read would hit the very
+ * failure this module exists to prevent: its pre-reload memory written over a restored working tree
+ * by the next edit the author makes.
+ *
+ * `label` is already translated, because a plugin has no Studio translation key.
+ */
+export type ExternalReloadParticipant = {
+    id: string;
+    label: string;
+    reload: () => Promise<void> | void;
 };
 
 /**
@@ -81,6 +98,9 @@ type ReloadParticipant = {
  * Absent on purpose: `PanelStateService`, `RecentColorsService`, the console and the notification
  * history. They live under `.nlstudio/`, are excluded from the repository by `isVersioned`, and are
  * not frozen either - the editor's own state is not the author's project.
+ *
+ * Plugin stores are absent for a different reason - they are not in this source tree at all - and are
+ * handled by {@link ExternalReloadParticipant}, which runs after everything here.
  */
 const RELOAD_PARTICIPANTS: readonly ReloadParticipant[] = [
     {
@@ -188,6 +208,8 @@ export class WorkspaceReloadService extends Service<WorkspaceReloadService> impl
     /** Which version the in-flight pass is reading. What decides coalesce vs queue; see {@link reload}. */
     private inFlightOrigin: DocumentSource["origin"] | null = null;
     private generation = 0;
+    /** Participants from outside this source tree; see {@link ExternalReloadParticipant}. */
+    private readonly external = new Map<string, ExternalReloadParticipant>();
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         // The debt-dropping step goes through the saver registry, so it has to be up first.
@@ -197,7 +219,25 @@ export class WorkspaceReloadService extends Service<WorkspaceReloadService> impl
     public override dispose(_ctx: WorkspaceContext): void {
         this.inFlight = null;
         this.inFlightOrigin = null;
+        this.external.clear();
         this.events.clear();
+    }
+
+    /**
+     * Add a participant that lives outside Studio's source tree, and get its removal back.
+     *
+     * Registering by id and replacing on a repeat keeps a plugin that reloads mid-session from
+     * accumulating dead readers - the reload would then run against a store the plugin no longer
+     * owns. The returned disposer only removes the registration it made, so a stale cleanup running
+     * after a re-register cannot unhook the live one.
+     */
+    public registerReloader(participant: ExternalReloadParticipant): () => void {
+        this.external.set(participant.id, participant);
+        return () => {
+            if (this.external.get(participant.id) === participant) {
+                this.external.delete(participant.id);
+            }
+        };
     }
 
     /**
@@ -300,14 +340,26 @@ export class WorkspaceReloadService extends Service<WorkspaceReloadService> impl
             await ctx.services.get<SaveStatusService>(Services.SaveStatus).prepareForReload();
             this.dropUndoHistories(ctx);
 
-            for (const participant of RELOAD_PARTICIPANTS) {
+            // Studio's own documents first, then anything a plugin owns: a plugin store may name a
+            // scene or an asset, so it re-reads against a tree that has already been replaced rather
+            // than against half of one.
+            const participants: { id: string; label: string; reload: () => Promise<void> | void }[] = [
+                ...RELOAD_PARTICIPANTS.map(participant => ({
+                    id: participant.id,
+                    label: translate(participant.labelKey),
+                    reload: () => participant.reload(ctx),
+                })),
+                ...this.external.values(),
+            ];
+
+            for (const participant of participants) {
                 try {
-                    await participant.reload(ctx);
+                    await participant.reload();
                     reloaded.push(participant.id);
                 } catch (error) {
-                    failures.push({ id: participant.id, labelKey: participant.labelKey, error });
+                    failures.push({ id: participant.id, label: participant.label, error });
                     this.logStorage("error", translate("workspace.shell.reload.consoleFailed", {
-                        label: translate(participant.labelKey),
+                        label: participant.label,
                         error: String((error as Error)?.message ?? error),
                     }));
                 }
@@ -373,7 +425,7 @@ export class WorkspaceReloadService extends Service<WorkspaceReloadService> impl
             type: NotificationType.Error,
             message: translate("workspace.shell.reload.failedTitle"),
             detail: translate("workspace.shell.reload.failedDetail", {
-                stores: failures.map(failure => translate(failure.labelKey)).join(", "),
+                stores: failures.map(failure => failure.label).join(", "),
             }),
         });
     }
