@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { StoryBlock } from "@shared/types/story";
+import { BUILTIN_AUDIO_TRACKS, resolveAudioTrack } from "@shared/types/audioTrack";
 import { parseCommandLine } from "../../storyCommandParser";
 import { resolveCommandLine, type StoryCommandContext } from "../../storyCommandResolution";
 import { getCommandSpec, listCommandSpecs } from "../registry";
@@ -21,11 +22,12 @@ const CONTEXT: StoryCommandContext = {
     characters: [{ id: "c1", name: "Alice" }, { id: "c2", name: "Doll" }],
     tempSpeakers: ["Zoe"],
     scenes: [{ id: "s1", name: "Chapter 2" }],
-    // The three built-ins plus one custom track, so a line can be written against a track that is
-    // NOT the fallback for its bus - which is the only way `track=` is observable in a payload.
+    // The three seeded buses under the ids the engine's channels have always had, plus one bus of
+    // the author's own - a line written against a track that is NOT the fallback for its shape is
+    // the only way `track=` is observable in a payload at all.
     audioTracks: [
-        { id: "music", name: "Music" },
-        { id: "sfx", name: "SFX" },
+        { id: "bgm", name: "Music" },
+        { id: "sound", name: "SFX" },
         { id: "voice", name: "Voice" },
         { id: "t_amb", name: "Ambience" },
     ],
@@ -317,9 +319,35 @@ describe("sound (bible B4: target defaults to bgm)", () => {
         expect(build("/bgm theme track=Ambience")).toMatchObject({
             payload: { action: "audio", operation: "setBgm", assetId: "a1", audioTrackId: "t_amb" },
         });
+        // The seeded buses carry the engine's own channel names as ids now, so naming "SFX" stores
+        // `sound` - the bus id, which is what `Sound.config.type` receives.
         expect(build("/sound hit track=SFX")).toMatchObject({
-            payload: { action: "audio", operation: "playSound", audioTrackId: "sfx" },
+            payload: { action: "audio", operation: "playSound", audioTrackId: "sound" },
         });
+    });
+
+    it("the id a line stores resolves to a bus, and a v1 id still resolves through the alias", () => {
+        // The full chain the round is about: line -> payload id -> bus. `track=` writes an id, and
+        // that id is what the compiler routes to, so the resolution has to be pinned here rather
+        // than only where the payload is read.
+        const tracks = [
+            ...BUILTIN_AUDIO_TRACKS,
+            { id: "t_amb", name: "Ambience", parentId: "bgm", volume: 0.6, loop: true },
+        ];
+        const stored = build("/sound hit track=SFX");
+        const trackId = stored.kind === "action" && stored.payload.action === "audio"
+            ? stored.payload.audioTrackId
+            : undefined;
+        expect(resolveAudioTrack(tracks, trackId, "sound").id).toBe("sound");
+
+        // v1 seeded its tracks under `music` / `sfx`, and stories written then still hold those ids.
+        // They are never rewritten - resolution knows the old spellings instead.
+        expect(resolveAudioTrack(tracks, "sfx", "bgm").id).toBe("sound");
+        expect(resolveAudioTrack(tracks, "music", "sound").id).toBe("bgm");
+        // A live track always wins over an alias: an author who really made a track called `music`
+        // gets theirs, not the seeded bus the old id used to mean.
+        const withOwnMusic = [...tracks, { id: "music", name: "My Music", parentId: null, volume: 1, loop: false }];
+        expect(resolveAudioTrack(withOwnMusic, "music", "sound").name).toBe("My Music");
     });
 
     it("a track nobody has is reported rather than silently landing on the fallback", () => {

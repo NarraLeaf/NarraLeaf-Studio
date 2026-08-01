@@ -42,6 +42,14 @@ export interface SelectProps {
     /** Optional z-index override for the dropdown menu panel. */
     menuZIndex?: number;
     /**
+     * Accessible name for the trigger.
+     *
+     * The trigger's own text is the *selected value*, not what the value means, so a select whose
+     * visible label lives in a row header beside it reaches assistive tech announcing "Voice" with
+     * no clue that the question was "routes into". Pass the row's title.
+     */
+    ariaLabel?: string;
+    /**
      * This select changes what is SHOWN and writes nothing.
      *
      * The trigger and the option rows are then rendered through {@link InspectOnlyButton}, so an
@@ -103,6 +111,7 @@ export function Select({
     menuZIndex,
     inspectOnly = false,
     readOnly = false,
+    ariaLabel,
 }: SelectProps) {
     // Both modes render the trigger as a span so an ancestor read-only clamp cannot reach it; only
     // `inspectOnly` leaves the rows live.
@@ -382,6 +391,7 @@ export function Select({
                 <InspectOnlyButton
                     disabled={disabled}
                     aria-expanded={isOpen}
+                    aria-label={ariaLabel}
                     className={cn(
                         "inline-flex items-center justify-center gap-2 rounded-md font-medium",
                         "transition-all duration-150 ease-out focus:outline-none cursor-default",
@@ -400,6 +410,8 @@ export function Select({
                     size={size}
                     fullWidth={fullWidth}
                     disabled={disabled}
+                    aria-label={ariaLabel}
+                    aria-expanded={isOpen}
                     className={triggerClass}
                     onClick={() => !disabled && setIsOpen(!isOpen)}
                 >

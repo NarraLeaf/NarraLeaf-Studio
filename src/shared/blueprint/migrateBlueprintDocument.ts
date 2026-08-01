@@ -20,7 +20,7 @@ import {
     BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
     BLUEPRINT_NODE_TYPE_SOUND_PLAY,
 } from "@shared/types/blueprint/graph";
-import { AUDIO_TRACK_ID_MUSIC, AUDIO_TRACK_ID_SFX, AUDIO_TRACK_ID_VOICE } from "@shared/types/audioTrack";
+import { AUDIO_TRACK_ID_BGM, AUDIO_TRACK_ID_SOUND, AUDIO_TRACK_ID_VOICE } from "@shared/types/audioTrack";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { seedRegistryEntriesFromBlueprintPersistent } from "@shared/variables/variableRegistryModel";
 import { captureBlueprintDocumentEventOrder, captureBlueprintDocumentFunctionOrder } from "./blueprintEventOrder";
@@ -55,10 +55,14 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 const LEGACY_SOUND_CHANNEL_PARAM = "soundChannel";
 const SOUND_TRACK_PARAM = "audioTrackId";
 
-/** One built-in track per engine bus - the seeded defaults reproduce the pre-track behaviour. */
+/**
+ * One seeded bus per legacy channel. Identity since the seeded tracks took the engine's channel
+ * names, but kept as a map because the *meaning* is "the bus a legacy `soundChannel` param lands
+ * on", which the seeded ids happen to spell the same way rather than by definition.
+ */
 const LEGACY_CHANNEL_TO_TRACK_ID: Record<string, string> = {
-    bgm: AUDIO_TRACK_ID_MUSIC,
-    sound: AUDIO_TRACK_ID_SFX,
+    bgm: AUDIO_TRACK_ID_BGM,
+    sound: AUDIO_TRACK_ID_SOUND,
     voice: AUDIO_TRACK_ID_VOICE,
 };
 

@@ -32,9 +32,10 @@ import {
     sceneLabelNames,
     sceneVariableDefs,
 } from "@shared/types/story";
-import { formatStorySecondsLabel, formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
+import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
 import type { AudioTrackChannel, ProjectAudioTrack } from "@shared/types/audioTrack";
-import { resolveAudioTrack, resolveAudioTrackPlayback } from "@shared/types/audioTrack";
+import { resolveAudioTrack } from "@shared/types/audioTrack";
+import { audioBusStatusLine } from "@/lib/story/audioBusStatus";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
 import { BGM_OBJECT_NAME } from "./storyCommandValues";
 import { useTranslation } from "@/lib/i18n";
@@ -1149,13 +1150,6 @@ const AUDIO_OPERATION_FIELDS: Record<AudioActionPayload["operation"], readonly A
     seekSound: ["name", "seekTime"],
 };
 
-/** The player's own volume slider for each bus - what the status line names the row's track by. */
-const AUDIO_SLIDER_LABEL_KEYS: Record<AudioTrackChannel, TranslationKey> = {
-    bgm: "project.audio.slider.bgm",
-    sound: "project.audio.slider.sound",
-    voice: "project.audio.slider.voice",
-};
-
 /** The bus an operation falls back to - the same split the compiler applies (`setBgm` is music). */
 function audioRowFallbackChannel(operation: AudioActionPayload["operation"]): AudioTrackChannel {
     return operation === "setBgm" ? "bgm" : "sound";
@@ -1181,15 +1175,15 @@ function* sceneBlocksInOrder(scene: StoryScene, blockIds: readonly StoryBlockId[
 }
 
 /**
- * The track this row's sound actually plays on - resolved by the compiler's own rule, so the number
- * shown is the number the game gets.
+ * The track this row's sound actually plays on - resolved by the compiler's own rule, so the bus
+ * shown is the bus the game routes to.
  *
  * The rule has two arms because the compiler has two. A `/bgm` row builds a NEW handle and replaces
  * whatever was under the reserved name, so it answers from itself alone. Every other row addresses a
- * handle *by name*, and that handle is created once by whichever row reaches it first - carrying that
- * row's bus and gain. So a later row inherits, and a later row that names a *different* track still
+ * handle *by name*, and that handle is created once by whichever row reaches it first - routed to
+ * that row's bus. So a later row inherits, and a later row that names a *different* track still
  * inherits (the compiler reports that as a conflict rather than honouring it). Showing the requested
- * track there would put a number on screen that no playback ever produces.
+ * track there would name a bus no playback ever uses.
  *
  * The scan is this scene only, first mention in document order - which is exactly the order the
  * compiler walks. A handle created in another scene is out of reach of any static scan, and falls
@@ -1227,19 +1221,14 @@ function resolveAudioRowTrack(
     return resolveAudioTrack(tracks, payload.audioTrackId, "sound");
 }
 
-/** At most two decimals, and no trailing zeroes - `0.48`, `1`, `0.5`. */
-function formatEffectiveVolume(value: number): string {
-    return String(Math.round(value * 100) / 100);
-}
-
 /**
  * The audio row's editor.
  *
  * Two things it carries rather than explains. The field grid shows only what the chosen operation
- * consumes, from {@link AUDIO_OPERATION_FIELDS}. And the status line under it answers the question
- * this whole round exists for - "why is this quieter than 0.8?" - by printing the row's track, the
- * player slider that governs it, and the volume and fade the engine will actually receive after the
- * track's gain and defaults are folded in. Values only, one line, no labels.
+ * consumes, from {@link AUDIO_OPERATION_FIELDS}. And the status line under it says where this row's
+ * sound goes - the bus chain, then the player slider that governs it - which is the one thing about
+ * the row that no field on screen can show. See {@link audioBusStatusLine}. Values only, one line,
+ * no labels.
  */
 function AudioActionEditor(props: {
     payload: AudioActionPayload;
@@ -1254,15 +1243,6 @@ function AudioActionEditor(props: {
     const has = (field: AudioField): boolean => fields.includes(field);
 
     const track = resolveAudioRowTrack(tracks, props.scene, payload, props.blockId);
-    const playback = resolveAudioTrackPlayback(track, {
-        volume: payload.volume,
-        fadeMs: payload.fadeMs,
-        loop: payload.loop,
-    });
-    // A stop / pause reads its fade from the track's fade-OUT, a play from its fade-IN. The status
-    // line has to print the one this row will use, or it would contradict the compiler on the two
-    // operations most likely to be tuned by ear.
-    const fadesOut = payload.operation === "stopSound" || payload.operation === "pauseSound";
     const trackOptions: SelectOption[] = [
         {
             value: "",
@@ -1272,12 +1252,7 @@ function AudioActionEditor(props: {
         },
         ...tracks.map(entry => ({ value: entry.id, label: entry.name })),
     ];
-    const status = [
-        track.name,
-        t(AUDIO_SLIDER_LABEL_KEYS[playback.channel]),
-        ...(has("volume") ? [formatEffectiveVolume(playback.volume)] : []),
-        ...(has("fade") ? [formatStorySecondsLabel(fadesOut ? playback.fadeOutMs : playback.fadeInMs)] : []),
-    ].join(" · ");
+    const status = audioBusStatusLine(t, tracks, track.id, audioRowFallbackChannel(payload.operation));
 
     return (
         <div className="grid grid-cols-1 gap-3">
@@ -1330,8 +1305,8 @@ function AudioActionEditor(props: {
                         label={t("storyInspector.audio.volume")}
                         value={payload.volume}
                         // Clamped on commit: a gain node takes 0..1, and an authored 3 used to be
-                        // stored, shown back, and silently floored by the engine. Headroom above unity
-                        // belongs to the TRACK's gain, which is the knob that has a range for it.
+                        // stored, shown back, and silently floored by the engine. Nothing in the mixer
+                        // amplifies either - a bus attenuates - so 1 is the loudest a clip can be.
                         onChange={volume => props.onChange({ ...payload, volume: volume === undefined ? undefined : Math.min(1, Math.max(0, volume)) })}
                     />
                 ) : null}
@@ -1345,7 +1320,9 @@ function AudioActionEditor(props: {
                 {has("loop") ? (
                     <CheckboxField
                         label={t("storyInspector.audio.loop")}
-                        checked={playback.loop}
+                        // The resolved answer, not the raw field: a row on a non-looping track whose
+                        // box read "on" because the field is empty would be lying about the game.
+                        checked={payload.loop ?? track.loop}
                         onChange={loop => props.onChange({ ...payload, loop })}
                     />
                 ) : null}

@@ -52,6 +52,8 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_SKIP,
     BLUEPRINT_NODE_TYPE_GAME_START_STORY,
     BLUEPRINT_NODE_TYPE_GAME_TOGGLE_DIALOG_DISPLAY,
+    BLUEPRINT_NODE_TYPE_GAME_GET_TRACK_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_SET_TRACK_VOLUME,
 } from "@shared/types/blueprint/graph";
 import {
     BLUEPRINT_VALUE_TYPE_ARRAY,
@@ -67,6 +69,11 @@ import type {
 } from "../../blueprint-runtime/BlueprintHostApiBridge";
 import { resolveDataPinValue } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
+import {
+    BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE,
+    BLUEPRINT_SOUND_PARAM_TRACK,
+    readBlueprintAudioTrackParam,
+} from "./audioTrackParams";
 
 const execIn: BlueprintNodePinDef = { id: "in", kind: "input", semantic: "exec", label: "In" };
 const execNext: BlueprintNodePinDef = { id: "next", kind: "output", semantic: "exec", label: "Next" };
@@ -247,14 +254,20 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         key: "soundVolume",
         getterType: BLUEPRINT_NODE_TYPE_GAME_GET_SOUND_VOLUME,
         setterType: BLUEPRINT_NODE_TYPE_GAME_SET_SOUND_VOLUME,
-        getterDisplayName: "Get Sound Volume",
-        setterDisplayName: "Set Sound Volume",
+        // "SFX", not "Sound". `Set Sound Volume` was two different nodes: this one, which moves the
+        // player's SFX slider, and the sound-transport node, which changes one playing clip by
+        // handle. An author building a settings page met both in the palette under one name with
+        // nothing to tell them apart. The *type ids* are untouched (`blueprint.game.getSoundVolume`
+        // / `setSoundVolume`), so every graph that already uses them still loads; only the label
+        // moved, and "SFX" is what the seeded bus is called on the project Audio surface anyway.
+        getterDisplayName: "Get SFX Volume",
+        setterDisplayName: "Set SFX Volume",
         pinId: "soundVolume",
-        pinLabel: "Sound Volume",
+        pinLabel: "SFX Volume",
         valueType: "float",
         defaultValue: 1,
         min: 0,
-        keywords: ["game", "preference", "sound", "sfx", "volume", "audio", "nlr"],
+        keywords: ["game", "preference", "sound", "sfx", "effects", "volume", "audio", "nlr"],
     },
     {
         key: "globalVolume",
@@ -484,6 +497,103 @@ const gamePreferenceBlueprintNodes: BlueprintNodeDef[] = GAME_PREFERENCE_NODE_ME
     const setterNode = createPreferenceSetterNode(meta);
     return setterNode ? [createPreferenceGetterNode(meta), setterNode] : [createPreferenceGetterNode(meta)];
 });
+
+/**
+ * Per-track volume - the general form of the four fixed volume nodes above.
+ *
+ * Those four address the engine's three seeded buses (plus master) and nothing else, so the moment
+ * an author creates a track the mixer has a strip no settings page can bind to. The motivating case
+ * is per-character voice: `voice/alice` is a real bus with a real gain, and "turn Alice down" is a
+ * slider the player expects to find. These two nodes are that slider's two halves.
+ *
+ * Deliberately **not** a replacement: the four keep their node types, their pins and their
+ * behaviour, because every existing settings page is built on them and because the engine still
+ * carries them as preferences aliased onto the seeded buses. An author who picks `bgm` here and an
+ * author who uses `Set BGM Volume` are moving the same fader.
+ *
+ * The picker is dynamic (the same `AudioTrackService`-backed source the sound nodes' Track select
+ * uses), so a track the author adds appears without a node-catalog change. It shares the param key
+ * `audioTrackId` with those nodes on purpose - that is the key the project's "what references this
+ * track" sweep looks for, so a graph binding a slider counts as a reference.
+ */
+const trackVolumeParam = {
+    key: BLUEPRINT_SOUND_PARAM_TRACK,
+    label: "Track",
+    kind: "select" as const,
+    dynamicOptionsSource: BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE,
+};
+
+const trackVolumeKeywords = [
+    "game", "preference", "track", "bus", "volume", "audio", "mixer", "channel", "character", "voice", "nlr",
+];
+
+const trackVolumeBlueprintNodes: BlueprintNodeDef[] = [
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_GET_TRACK_VOLUME,
+        displayName: "Get Track Volume",
+        category: "Game",
+        keywords: trackVolumeKeywords,
+        graphKinds: [...PURE_GRAPH_KINDS],
+        // Pure, like the four fixed getters, so it can drive a slider's value in a Blueprint Value
+        // graph. That also means `execute` is never called on the data path - the pin is served by
+        // `graphParamResolvers`, and the node type has to be registered there or it reads undefined.
+        isPure: true,
+        isLatent: false,
+        pins: [{ id: "volume", kind: "output", semantic: "data", valueType: "float", label: "Volume" }],
+        inspectorParams: [trackVolumeParam],
+        execute(ctx) {
+            const trackId = readBlueprintAudioTrackParam(ctx.params);
+            return {
+                outputValues: {
+                    volume: trackId ? requireHostApi(ctx).sound.getTrackVolume(trackId) : 1,
+                },
+            };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_SET_TRACK_VOLUME,
+        displayName: "Set Track Volume",
+        category: "Game",
+        keywords: trackVolumeKeywords,
+        graphKinds: [...GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            execIn,
+            execNext,
+            {
+                id: "volume",
+                kind: "input",
+                semantic: "data",
+                valueType: "float",
+                label: "Volume",
+                allowInlineLiteral: true,
+            },
+        ],
+        inspectorParams: [trackVolumeParam],
+        async execute(ctx) {
+            const trackId = readBlueprintAudioTrackParam(ctx.params);
+            if (!trackId) {
+                throw new BlueprintGraphExecutionError("Set Track Volume: pick a track", ctx.node.id);
+            }
+            const raw = resolveDataPinValue(ctx.graph, ctx.node.id, "volume", ctx.params, ctx.blueprintLocals, 1, {
+                hostAdapter: ctx.hostAdapter,
+                eventPayload: ctx.eventPayload,
+                listItemScope: ctx.listItemScope,
+                instanceKey: ctx.instanceKey,
+                executionOwner: ctx.executionOwner,
+            });
+            const volume = typeof raw === "number" ? raw : Number(raw);
+            if (!Number.isFinite(volume)) {
+                throw new BlueprintGraphExecutionError("Volume must be a finite number", ctx.node.id);
+            }
+            // Clamping rather than rejecting is the host's job (and the engine's) - a slider bound
+            // to 0..100 asking for 100 means "as loud as it goes", not "fail the graph".
+            await requireHostApi(ctx).sound.setTrackVolume(trackId, volume);
+            return { nextPort: "next" };
+        },
+    },
+];
 
 /**
  * Automatic saving. Studio writes these on a timer (project → Game), into a
@@ -1135,6 +1245,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         },
     },
     ...gamePreferenceBlueprintNodes,
+    ...trackVolumeBlueprintNodes,
     {
         type: BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
         displayName: "Save Game",

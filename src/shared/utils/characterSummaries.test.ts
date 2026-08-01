@@ -12,6 +12,29 @@ describe("mapCharacterStoreEntriesToSummaries", () => {
         expect(summaries).toEqual([{ id: "char-alice", name: "Alice", appearance: { kind: "preset", poses: [], defaultPoseId: null } }]);
     });
 
+    // The per-character voice bus. Carried unresolved, and absent rather than empty when unset -
+    // the compiler reads "no key" as "the seeded voice bus", which is where every character was
+    // before this field existed, so an empty string would be a reference to a track nobody can name.
+    it.each([
+        ["a set bus", "t_alice", "t_alice"],
+        ["a padded bus", "  t_alice  ", "t_alice"],
+    ])("forwards %s", (_label, voiceTrackId, expected) => {
+        const [summary] = mapCharacterStoreEntriesToSummaries([entry({ id: "char-alice", name: "Alice", voiceTrackId })]);
+
+        expect(summary.voiceTrackId).toBe(expected);
+    });
+
+    it.each([
+        ["unset", undefined],
+        ["empty", ""],
+        ["whitespace-only", "  "],
+        ["non-string", 7],
+    ])("omits the voice bus key entirely when it is %s", (_label, voiceTrackId) => {
+        const [summary] = mapCharacterStoreEntriesToSummaries([entry({ id: "char-alice", name: "Alice", voiceTrackId })]);
+
+        expect(summary).not.toHaveProperty("voiceTrackId");
+    });
+
     it("trims the name", () => {
         const [summary] = mapCharacterStoreEntriesToSummaries([entry({ id: "char-alice", name: "  Alice  " })]);
 

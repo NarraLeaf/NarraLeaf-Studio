@@ -1,5 +1,5 @@
 import type { MutableRefObject, ReactNode } from "react";
-import { Game, KeyBindingType, type LiveGame } from "narraleaf-react";
+import { Game, KeyBindingType, type AudioBusDeclaration, type LiveGame } from "narraleaf-react";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type {
     BlueprintGameHistoryEntry,
@@ -83,10 +83,20 @@ export function createNlrGameWithGameUi(input: {
     slots: GameUiSlots;
     /** Override NLR's minimum stage size (default 800×450) — needed for small embedded viewports. */
     minStageSize?: { width: number; height: number };
+    /**
+     * The project's mixer, as the engine's boot-time bus declaration (see `audioBusRuntime`).
+     *
+     * Read **once**, here: the engine realizes the tree into gain nodes when the audio subsystem
+     * starts and never re-shapes it, so a host that wants the author's buses has exactly this one
+     * opportunity to say so. Omitted (the story preview, which has no bundle) leaves the engine's
+     * three seeded buses, which is what every game had before buses existed.
+     */
+    audioBuses?: readonly AudioBusDeclaration[];
 }): Game {
-    const { width, height, contentContainerId, slots, minStageSize } = input;
+    const { width, height, contentContainerId, slots, minStageSize, audioBuses } = input;
     const game = new Game({
         app: { debug: false },
+        ...(audioBuses && audioBuses.length > 0 ? { audioBuses: [...audioBuses] } : {}),
         width,
         height,
         aspectRatio: width / height,

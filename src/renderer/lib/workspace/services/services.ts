@@ -455,8 +455,8 @@ interface IVariableRegistryService extends IService {
 }
 
 /**
- * The project's audio tracks - one row per authoring-time mix preset, resolving to (bus, multiplier,
- * fade/loop defaults). See `@shared/types/audioTrack` for the model and the resolution formula.
+ * The project's audio buses - a tree of mixer strips, each with a parent, its own live gain and a
+ * default loop policy. See `@shared/types/audioTrack` for the model.
  */
 interface IAudioTrackService extends IService {
     load(): Promise<ProjectAudioTrack[]>;
@@ -472,8 +472,12 @@ interface IAudioTrackService extends IService {
     applyTrackMutation(mutator: (tracks: ProjectAudioTrack[]) => ProjectAudioTrack[]): void;
     createTrack(input?: Partial<Omit<ProjectAudioTrack, "id" | "builtin">>): ProjectAudioTrack;
     duplicateTrack(id: string): ProjectAudioTrack | null;
-    updateTrack(id: string, patch: Partial<Omit<ProjectAudioTrack, "id" | "builtin">>): void;
-    /** Refuses the three built-ins; they are the per-bus fallbacks. */
+    updateTrack(id: string, patch: Partial<Omit<ProjectAudioTrack, "id" | "builtin" | "parentId">>): void;
+    renameTrack(id: string, name: string): boolean;
+    /** False for itself, for one of its own descendants, and for a parent that is not there. */
+    canReparentTrack(id: string, parentId: string | null): boolean;
+    reparentTrack(id: string, parentId: string | null): boolean;
+    /** Refuses the three seeded buses; promotes the children of whatever it does delete. */
     deleteTrack(id: string): boolean;
     moveTrack(id: string, beforeId: string | null): void;
 }

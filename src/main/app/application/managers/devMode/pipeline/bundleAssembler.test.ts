@@ -223,19 +223,20 @@ describe("bundleAssembler audio payload", () => {
         expect(await clipsOf(broken)).toEqual({});
     });
 
-    it("seeds the built-in tracks when the project has no track document", async () => {
+    it("seeds the built-in buses when the project has no track document", async () => {
         // A project that has never opened the Audio surface must behave exactly the way Studio
         // behaved before tracks existed, not lose every play that references one.
         const tracks = (await loadGameAudio(await createProject(undefined))).tracks;
-        expect(tracks?.map(track => track.id)).toEqual(["music", "sfx", "voice"]);
-        expect(tracks?.find(track => track.id === "music")).toMatchObject({
-            channel: "bgm",
-            fadeInMs: 800,
+        expect(tracks?.map(track => track.id)).toEqual(["bgm", "sound", "voice"]);
+        expect(tracks?.find(track => track.id === "bgm")).toMatchObject({
+            name: "Music",
+            parentId: null,
+            volume: 1,
             loop: true,
         });
     });
 
-    it("carries the authored tracks, built-ins first then the author's own", async () => {
+    it("migrates a v1 document: channel becomes the parent, gain becomes the bus volume", async () => {
         const projectPath = await createProject(undefined, JSON.stringify({
             schemaVersion: 1,
             tracks: [
@@ -260,16 +261,60 @@ describe("bundleAssembler audio payload", () => {
             ],
         }));
         const tracks = (await loadGameAudio(projectPath)).tracks;
-        expect(tracks?.map(track => track.id)).toEqual(["music", "sfx", "voice", "ambience"]);
-        // A renamed / re-tuned built-in keeps the author's values.
-        expect(tracks?.[0]).toMatchObject({ name: "Score", gain: 0.8, fadeInMs: 400 });
-        expect(tracks?.[3]).toMatchObject({ name: "Ambience", channel: "sound", gain: 0.6 });
+        // v1's `music` seed is renamed onto the engine's channel id; `sfx` and `voice` are re-seeded
+        // because the document never had them.
+        expect(tracks?.map(track => track.id)).toEqual(["sound", "voice", "ambience", "bgm"]);
+        // A renamed / re-tuned seed keeps the author's values, and its v1 `channel` is not turned
+        // into a parent pointing at itself.
+        expect(tracks?.find(track => track.id === "bgm"))
+            .toMatchObject({ name: "Score", volume: 0.8, parentId: null, loop: true });
+        // An author's own track: its old channel is exactly the bus it now hangs off.
+        expect(tracks?.find(track => track.id === "ambience"))
+            .toMatchObject({ name: "Ambience", parentId: "sound", volume: 0.6 });
+        // The fades are gone rather than carried; a fade belongs to the moment, not the category.
+        expect(tracks?.every(track => !("fadeInMs" in track) && !("fadeOutMs" in track))).toBe(true);
+    });
+
+    it("carries a v2 tree as authored, nesting and all", async () => {
+        const projectPath = await createProject(undefined, JSON.stringify({
+            schemaVersion: 2,
+            tracks: [
+                { id: "bgm", name: "Music", parentId: null, volume: 1, loop: true },
+                { id: "sound", name: "SFX", parentId: null, volume: 1, loop: false },
+                { id: "voice", name: "Voice", parentId: null, volume: 1, loop: false },
+                { id: "alice", name: "Alice", parentId: "voice", volume: 0.7, loop: false },
+            ],
+        }));
+        const tracks = (await loadGameAudio(projectPath)).tracks;
+        expect(tracks?.map(track => track.id)).toEqual(["bgm", "sound", "voice", "alice"]);
+        // The motivating case: a per-character bus reaches the runtime with its parent intact.
+        expect(tracks?.find(track => track.id === "alice"))
+            .toMatchObject({ parentId: "voice", volume: 0.7 });
+    });
+
+    it("repairs a tree the engine would refuse rather than shipping it", async () => {
+        // `AudioBusTree.resolve` throws on a cycle or an unknown parent, and it throws lazily - the
+        // first time something plays. A hand-corrupted file must not turn into "the game boots and
+        // then goes silent forever with an exception nobody sees".
+        const projectPath = await createProject(undefined, JSON.stringify({
+            schemaVersion: 2,
+            tracks: [
+                { id: "a", name: "A", parentId: "b", volume: 1, loop: false },
+                { id: "b", name: "B", parentId: "a", volume: 1, loop: false },
+                { id: "orphan", name: "Orphan", parentId: "nowhere", volume: 1, loop: false },
+            ],
+        }));
+        const tracks = (await loadGameAudio(projectPath)).tracks;
+        const byId = Object.fromEntries((tracks ?? []).map(track => [track.id, track]));
+        expect(byId.orphan.parentId).toBeNull();
+        // The ring is cut at one member, so the other keeps the parent the author gave it.
+        expect([byId.a.parentId, byId.b.parentId].filter(parent => parent === null)).toHaveLength(1);
     });
 
     it("falls back to the built-ins rather than throwing on an unreadable track document", async () => {
         // A hand-corrupted track file must not be the reason a build cannot be produced.
         const projectPath = await createProject(undefined, "{not json");
         const tracks = (await loadGameAudio(projectPath)).tracks;
-        expect(tracks?.map(track => track.id)).toEqual(["music", "sfx", "voice"]);
+        expect(tracks?.map(track => track.id)).toEqual(["bgm", "sound", "voice"]);
     });
 });

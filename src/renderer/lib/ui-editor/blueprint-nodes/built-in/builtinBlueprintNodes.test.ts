@@ -236,6 +236,8 @@ import {
     BLUEPRINT_NODE_TYPE_SOUND_PLAY,
     BLUEPRINT_NODE_TYPE_SOUND_SEEK,
     BLUEPRINT_NODE_TYPE_SOUND_SET_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_TRACK_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_SET_TRACK_VOLUME,
     BLUEPRINT_NODE_TYPE_STRING_LENGTH,
     BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT,
     BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT_COLOR,
@@ -306,6 +308,8 @@ const SILENT_SOUND_HOST: BlueprintHostApiRuntime["sound"] = {
     isPlaying: () => false,
     resolveElementVolume: input => input.volume ?? 1,
     subscribeMixerChanges: () => () => undefined,
+    getTrackVolume: () => 1,
+    setTrackVolume: async () => undefined,
 };
 
 function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAdapter {
@@ -2657,12 +2661,15 @@ describe("built-in blueprint nodes", () => {
                 valueType: "float",
             },
             {
+                // Labelled "SFX", not "Sound": `Set Sound Volume` used to be this node *and* the
+                // sound-transport one. The type id and the pin id are untouched, which is what
+                // keeps every graph that already uses it loading.
                 getterType: BLUEPRINT_NODE_TYPE_GAME_GET_SOUND_VOLUME,
                 setterType: BLUEPRINT_NODE_TYPE_GAME_SET_SOUND_VOLUME,
-                getterName: "Get Sound Volume",
-                setterName: "Set Sound Volume",
+                getterName: "Get SFX Volume",
+                setterName: "Set SFX Volume",
                 pinId: "soundVolume",
-                pinLabel: "Sound Volume",
+                pinLabel: "SFX Volume",
                 valueType: "float",
             },
             {
@@ -7232,6 +7239,8 @@ describe("sound node transport", () => {
             isPlaying: () => true,
             resolveElementVolume: input => input.volume ?? 1,
             subscribeMixerChanges: () => () => undefined,
+            getTrackVolume: trackId => (trackId === "alice" ? 0.3 : 1),
+            setTrackVolume: async (trackId, volume) => void log.ops.push({ op: "setTrackVolume", trackId, volume }),
         };
         return adapter;
     }
@@ -7270,11 +7279,11 @@ describe("sound node transport", () => {
         });
 
         // The node stores the pre-track "soundChannel"; resolveTrackId maps it to that channel's
-        // built-in track so a graph written before tracks existed still plays on the BGM bus. Every
+        // seeded bus so a graph written before tracks existed still plays on the BGM bus. Every
         // unwired override travels as undefined, which is what lets the track supply the default.
         expect(log.play).toEqual([{
             assetId: "asset-theme",
-            audioTrackId: "music",
+            audioTrackId: "bgm",
             loop: undefined,
             volume: undefined,
             fadeInMs: undefined,
@@ -7284,6 +7293,106 @@ describe("sound node transport", () => {
             { op: "setVolume", handle, volume: 0.25, fadeMs: 800 },
             { op: "seek", handle, timeMs: 30000 },
         ]);
+    });
+});
+
+/**
+ * The player-facing mixer: `Get / Set Track Volume`.
+ *
+ * These are the general form of the four fixed volume nodes, which can only address the three buses
+ * the engine seeds - so before them a project that added `voice/alice` had a fader no settings page
+ * could bind to. The getter is PURE, which means `execute()` is never called on the data path: the
+ * pin is served by `graphParamResolvers`, and the node type has to be registered there or it reads
+ * `undefined` with no error at all. That is what the first test here is really guarding.
+ */
+describe("track volume nodes", () => {
+    function mixerHostAdapter(ops: unknown[]): UIHostAdapter {
+        const adapter = createPersistenceHostAdapter({});
+        const hostApi = adapter.blueprintRuntime!.hostApi!;
+        hostApi.sound = {
+            ...SILENT_SOUND_HOST,
+            getTrackVolume: trackId => (trackId === "alice" ? 0.3 : 1),
+            setTrackVolume: async (trackId, volume) => void ops.push({ trackId, volume }),
+        };
+        return adapter;
+    }
+
+    it("serves Get Track Volume's pin through the resolver, keyed by the picked track", () => {
+        registerCoreBlueprintNodes();
+        const read = (params: Record<string, unknown>): unknown => resolveDataPinValue(
+            { nodes: { get: { type: BLUEPRINT_NODE_TYPE_GAME_GET_TRACK_VOLUME, params } }, edges: [] },
+            "get",
+            "volume",
+            params,
+            undefined,
+            0,
+            { hostAdapter: mixerHostAdapter([]) },
+        );
+
+        expect(read({ audioTrackId: "alice" })).toBeCloseTo(0.3);
+        // Nothing picked yet, and a track that was deleted: both read as unity rather than as
+        // undefined or zero, so a slider bound to it sits at the top instead of reading as muted.
+        expect(read({})).toBe(1);
+        expect(read({ audioTrackId: "gone" })).toBe(1);
+    });
+
+    it("writes the picked track through Set Track Volume", async () => {
+        const ops: unknown[] = [];
+        await executeGraph({
+            graph: {
+                id: "mixer",
+                entries: { main: { start: { nodeId: "set", port: "in" } } },
+                nodes: {
+                    set: {
+                        id: "set",
+                        type: BLUEPRINT_NODE_TYPE_GAME_SET_TRACK_VOLUME,
+                        params: { audioTrackId: "alice", volume: 0.25 },
+                    },
+                },
+                edges: [],
+            },
+            entry: { start: { nodeId: "set", port: "in" } },
+            hostAdapter: mixerHostAdapter(ops),
+            blueprintLocals: {},
+        });
+
+        expect(ops).toEqual([{ trackId: "alice", volume: 0.25 }]);
+    });
+
+    it("no longer offers two different nodes called Set Sound Volume", () => {
+        // The collision: the sound-transport node changes one playing clip by handle, the
+        // preference node moves the player's SFX slider, and both were labelled `Set Sound Volume`.
+        // An author building a settings page met the pair in one palette with nothing to tell them
+        // apart. The sweep is over one palette listing rather than the whole registry because the
+        // registry legitimately holds same-named pairs that can never appear together - every
+        // widget node has a self-scoped and an addressable form (`Set Image Flip X`), and the
+        // palette is exactly what decides which one an author is offered.
+        registerCoreBlueprintNodes();
+        const entries = listBlueprintNodePaletteEntries({
+            graphKind: "event",
+            owner: { kind: "globalMain" },
+        });
+        const byName = new Map<string, string[]>();
+        for (const entry of entries) {
+            byName.set(entry.displayName, [...(byName.get(entry.displayName) ?? []), entry.type]);
+        }
+        expect([...byName].filter(([, types]) => types.length > 1)).toEqual([]);
+        expect(byName.get("Set Sound Volume")).toEqual([BLUEPRINT_NODE_TYPE_SOUND_SET_VOLUME]);
+        expect(byName.get("Set SFX Volume")).toEqual([BLUEPRINT_NODE_TYPE_GAME_SET_SOUND_VOLUME]);
+        // And the new pair is reachable from the same page an author builds their settings on.
+        expect(byName.get("Set Track Volume")).toEqual([BLUEPRINT_NODE_TYPE_GAME_SET_TRACK_VOLUME]);
+        expect(byName.get("Get Track Volume")).toEqual([BLUEPRINT_NODE_TYPE_GAME_GET_TRACK_VOLUME]);
+    });
+
+    it("keeps the SFX preference node's type id while renaming its label", () => {
+        // The rename must not cost an existing graph its node: type ids are what a saved document
+        // stores, display names are not.
+        registerCoreBlueprintNodes();
+        const sfx = blueprintNodeRegistry.get(BLUEPRINT_NODE_TYPE_GAME_SET_SOUND_VOLUME);
+        expect(sfx?.displayName).toBe("Set SFX Volume");
+        // Still findable by what an author would type.
+        expect(sfx?.keywords).toContain("sound");
+        expect(sfx?.keywords).toContain("sfx");
     });
 });
 

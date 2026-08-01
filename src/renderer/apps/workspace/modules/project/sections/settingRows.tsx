@@ -39,6 +39,47 @@ export function SettingShell({
     );
 }
 
+/**
+ * {@link SettingShell}, but with the control on its own line underneath the label.
+ *
+ * The side-by-side shell is right for a switch or a two-digit number, and wrong for anything that
+ * wants the width - a text field, a select whose options are track names. In a 318px panel those
+ * end up at their min-content width beside the label and read as broken. Same frame, same title and
+ * description, so a stacked row and a beside row still read as one surface.
+ *
+ * `[&>*]:min-w-0` is load-bearing rather than defensive: a grid item's `min-width` defaults to
+ * min-content, and an `<input>` contributes its intrinsic `size` attribute width (~258px) to that -
+ * which `min-w-0` on the input itself does NOT remove from its parent's contribution. Without the
+ * clamp that number propagates up through every ungated grid to the panel, which is how this
+ * surface once came to be 512px wide inside a 318px panel.
+ */
+export function SettingStack({
+    title,
+    description,
+    hint,
+    titleAttr,
+    children,
+}: {
+    title: string;
+    description: string;
+    hint?: string;
+    titleAttr?: string;
+    children: React.ReactNode;
+}) {
+    return (
+        <section className="grid gap-2 rounded-md border border-edge bg-fill-subtle p-3 [&>*]:min-w-0" title={titleAttr}>
+            <div className="min-w-0">
+                <div className="flex items-center gap-1.5 text-sm font-medium text-fg">
+                    <span>{title}</span>
+                    {hint && <HintPopover text={hint} />}
+                </div>
+                <div className="mt-1 text-2xs leading-relaxed text-fg-subtle">{description}</div>
+            </div>
+            {children}
+        </section>
+    );
+}
+
 export function SettingRow({
     title,
     description,

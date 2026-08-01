@@ -220,6 +220,13 @@ export const characters = {
         thumbnail: "Thumbnail",
         preview: "Preview",
         defaultAvatar: "Dialog avatar",
+        // The bus this character's voice lines play on. Only the voice bus and buses beneath it are
+        // offered - the engine refuses a voice clip anywhere else.
+        voiceTrack: "Voice bus",
+        voiceTrackMissing: "Missing bus",
+        // Shown only while there is nothing under Voice to pick, i.e. exactly when the select cannot
+        // help and the author has to go and make a bus first.
+        voiceTrackEmpty: "Add a bus under Voice in Project → Audio to give this character its own volume.",
         select: "Select",
         thumbnailAlt: "thumbnail",
         color: "Color",

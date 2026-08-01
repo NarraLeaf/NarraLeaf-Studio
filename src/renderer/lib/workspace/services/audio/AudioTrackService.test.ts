@@ -2,17 +2,18 @@ import { describe, expect, it, vi } from "vitest";
 import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
 import { join } from "@shared/utils/path";
 import {
-    AUDIO_TRACK_ID_MUSIC,
-    AUDIO_TRACK_ID_SFX,
+    AUDIO_TRACK_ID_BGM,
+    AUDIO_TRACK_ID_SOUND,
     AUDIO_TRACK_ID_VOICE,
+    AUDIO_TRACK_SCHEMA_VERSION,
 } from "@shared/types/audioTrack";
 import { Services, type WorkspaceContext } from "../services";
 import { AudioTrackService } from "./AudioTrackService";
 
 /**
- * The service end of the track document: reads through `loadDocument`, writes through
- * `saveDocument`, seeded from absence rather than migrated, and the same "refuse to write over a
- * file we could not read" latch every adopted document service carries.
+ * The service end of the bus tree: reads through `loadDocument`, writes through `saveDocument`,
+ * seeded from absence, migrated from v1, and the same "refuse to write over a file we could not
+ * read" latch every adopted document service carries.
  */
 
 const ROOT = join("D:/projects", "my-game");
@@ -75,12 +76,14 @@ async function createHarness(seed?: string, reuse?: AudioTrackService): Promise<
     return { service, files, unreadable };
 }
 
+const ids = (service: AudioTrackService): string[] => service.listTracks().map(track => track.id);
+
 describe("AudioTrackService document adoption", () => {
-    it("seeds the three built-ins on a project that has never had one", async () => {
+    it("seeds the three buses on a project that has never had one", async () => {
         const { service, files } = await createHarness();
 
-        expect(service.listTracks().map(track => track.id))
-            .toEqual([AUDIO_TRACK_ID_MUSIC, AUDIO_TRACK_ID_SFX, AUDIO_TRACK_ID_VOICE]);
+        expect(ids(service)).toEqual([AUDIO_TRACK_ID_BGM, AUDIO_TRACK_ID_SOUND, AUDIO_TRACK_ID_VOICE]);
+        expect(service.listTracks().every(track => track.parentId === null)).toBe(true);
         // Written on first open, not on first edit: version control has to see the document from the
         // moment the project is opened.
         expect(files.get(DOCUMENT)).toContain("\"tracks\"");
@@ -88,35 +91,58 @@ describe("AudioTrackService document adoption", () => {
     });
 
     it("seeds an empty track list rather than leaving the project with no fallbacks", async () => {
-        const { service } = await createHarness("{\n  \"schemaVersion\": 1,\n  \"tracks\": []\n}\n");
+        const { service } = await createHarness(
+            `{\n  "schemaVersion": ${AUDIO_TRACK_SCHEMA_VERSION},\n  "tracks": []\n}\n`,
+        );
 
         expect(service.listTracks()).toHaveLength(3);
     });
 
-    it("reads a stored custom track back after the built-ins", async () => {
+    it("reads a stored child bus back with its parent intact", async () => {
         const stored = JSON.stringify({
-            schemaVersion: 1,
-            tracks: [{ id: "ambience", name: "Ambience", channel: "bgm", gain: 0.5, fadeInMs: 1500, fadeOutMs: 1500, loop: true }],
+            schemaVersion: AUDIO_TRACK_SCHEMA_VERSION,
+            tracks: [{ id: "alice", name: "Alice", parentId: AUDIO_TRACK_ID_VOICE, volume: 0.5, loop: false }],
         });
         const { service } = await createHarness(stored);
 
-        expect(service.listTracks().map(track => track.id)).toEqual([
-            AUDIO_TRACK_ID_MUSIC, AUDIO_TRACK_ID_SFX, AUDIO_TRACK_ID_VOICE, "ambience",
-        ]);
-        expect(service.getTrack("ambience")).toMatchObject({ channel: "bgm", gain: 0.5, loop: true });
+        expect(ids(service)).toEqual([AUDIO_TRACK_ID_BGM, AUDIO_TRACK_ID_SOUND, AUDIO_TRACK_ID_VOICE, "alice"]);
+        expect(service.getTrack("alice")).toMatchObject({ parentId: AUDIO_TRACK_ID_VOICE, volume: 0.5 });
     });
 
-    it("writes canonical bytes", async () => {
+    /** The v1 preset list, as an existing project on disk would have it. */
+    it("migrates a v1 document into buses on load", async () => {
+        const stored = JSON.stringify({
+            schemaVersion: 1,
+            tracks: [
+                { id: "music", name: "Score", channel: "bgm", gain: 1.6, fadeInMs: 800, fadeOutMs: 800, loop: true },
+                { id: "sfx", name: "SFX", channel: "sound", gain: 1, fadeInMs: 0, fadeOutMs: 0, loop: false },
+                { id: "voice", name: "Voice", channel: "voice", gain: 1, fadeInMs: 0, fadeOutMs: 0, loop: false },
+                { id: "ambience", name: "Ambience", channel: "bgm", gain: 0.4, fadeInMs: 1500, fadeOutMs: 0, loop: true },
+            ],
+        });
+        const { service } = await createHarness(stored);
+
+        expect(ids(service)).toEqual([AUDIO_TRACK_ID_BGM, AUDIO_TRACK_ID_SOUND, AUDIO_TRACK_ID_VOICE, "ambience"]);
+        // The author's rename survives; the >1 gain is clamped where the runtime clamps.
+        expect(service.getTrack(AUDIO_TRACK_ID_BGM)).toMatchObject({ name: "Score", volume: 1, loop: true });
+        expect(service.getTrack("ambience")).toMatchObject({ parentId: AUDIO_TRACK_ID_BGM, volume: 0.4 });
+        // References written under v1 still answer, without any document being rewritten.
+        expect(service.resolveTrack("music").id).toBe(AUDIO_TRACK_ID_BGM);
+        expect(service.resolveTrack("sfx").id).toBe(AUDIO_TRACK_ID_SOUND);
+    });
+
+    it("writes canonical bytes at the new schema version", async () => {
         const { service, files } = await createHarness();
 
-        service.createTrack({ name: "Ambience", channel: "bgm" });
+        service.createTrack({ name: "Ambience", parentId: AUDIO_TRACK_ID_BGM });
         await service.flushPendingChanges();
 
         const text = files.get(DOCUMENT) ?? "";
+        expect(text).toContain(`"schemaVersion": ${AUDIO_TRACK_SCHEMA_VERSION}`);
         expect(text).toContain("\"name\": \"Ambience\"");
-        // Key order is the encoder's, not the literal's: `channel` before `fadeInMs` before `gain`.
-        const track = text.slice(text.indexOf("\"Ambience\"") - 200);
-        expect(track.indexOf("\"channel\"")).toBeLessThan(track.indexOf("\"fadeInMs\""));
+        expect(text).toContain("\"parentId\": null");
+        expect(text).not.toContain("fade");
+        expect(text).not.toContain("\"channel\"");
     });
 
     /** The canonical encoder refuses an explicit `undefined` by name. A custom track has no `builtin`. */
@@ -136,51 +162,127 @@ describe("AudioTrackService mutations", () => {
     it("clamps whatever a caller asks for, so the invariants hold between saves too", async () => {
         const { service } = await createHarness();
 
-        const track = service.createTrack({ name: "Loud", gain: 99, fadeInMs: -10 });
+        const track = service.createTrack({ name: "Loud", volume: 99 });
 
-        expect(service.getTrack(track.id)).toMatchObject({ gain: 2, fadeInMs: 0 });
+        expect(service.getTrack(track.id)).toMatchObject({ volume: 1 });
     });
 
-    it("renames and re-tunes a built-in but holds it to its own bus", async () => {
+    it("roots a new track whose requested parent is not there", async () => {
         const { service } = await createHarness();
 
-        service.updateTrack(AUDIO_TRACK_ID_MUSIC, { name: "Score", gain: 0.4, channel: "voice" });
+        const track = service.createTrack({ name: "Orphan", parentId: "nope" });
 
-        expect(service.getTrack(AUDIO_TRACK_ID_MUSIC)).toMatchObject({
-            name: "Score", gain: 0.4, channel: "bgm", builtin: true,
+        expect(service.getTrack(track.id)!.parentId).toBeNull();
+    });
+
+    it("renames and re-tunes a seeded bus, and re-parents it like any other", async () => {
+        const { service } = await createHarness();
+        const submix = service.createTrack({ name: "Submix" });
+
+        service.renameTrack(AUDIO_TRACK_ID_BGM, "Score");
+        service.updateTrack(AUDIO_TRACK_ID_BGM, { volume: 0.4, loop: false });
+        expect(service.reparentTrack(AUDIO_TRACK_ID_BGM, submix.id)).toBe(true);
+
+        expect(service.getTrack(AUDIO_TRACK_ID_BGM)).toEqual({
+            id: AUDIO_TRACK_ID_BGM, name: "Score", parentId: submix.id, volume: 0.4, loop: false, builtin: true,
         });
     });
 
-    it("refuses to delete a built-in and deletes a custom track", async () => {
+    it("refuses a blank rename rather than falling the name back to the id", async () => {
         const { service } = await createHarness();
-        const track = service.createTrack({ name: "Ambience" });
 
-        expect(service.deleteTrack(AUDIO_TRACK_ID_MUSIC)).toBe(false);
-        expect(service.getTrack(AUDIO_TRACK_ID_MUSIC)).toBeDefined();
-        expect(service.deleteTrack(track.id)).toBe(true);
-        expect(service.getTrack(track.id)).toBeUndefined();
-        expect(service.deleteTrack(track.id)).toBe(false);
+        expect(service.renameTrack(AUDIO_TRACK_ID_BGM, "   ")).toBe(false);
+        expect(service.renameTrack("nope", "Anything")).toBe(false);
+        expect(service.getTrack(AUDIO_TRACK_ID_BGM)!.name).toBe("Music");
     });
 
-    it("places a duplicate directly after its source", async () => {
+    it("refuses a re-parent that would make a cycle, and leaves the tree alone", async () => {
         const { service } = await createHarness();
-        const first = service.createTrack({ name: "Ambience", gain: 0.5, loop: true });
+        const alice = service.createTrack({ name: "Alice", parentId: AUDIO_TRACK_ID_VOICE });
+        const whisper = service.createTrack({ name: "Whisper", parentId: alice.id });
+
+        expect(service.canReparentTrack(alice.id, alice.id)).toBe(false);
+        expect(service.canReparentTrack(alice.id, whisper.id)).toBe(false);
+        expect(service.reparentTrack(alice.id, whisper.id)).toBe(false);
+        expect(service.reparentTrack(alice.id, "nope")).toBe(false);
+        expect(service.reparentTrack("nope", null)).toBe(false);
+
+        expect(service.getTrack(alice.id)!.parentId).toBe(AUDIO_TRACK_ID_VOICE);
+        expect(service.canReparentTrack(alice.id, null)).toBe(true);
+        expect(service.reparentTrack(alice.id, null)).toBe(true);
+        expect(service.getTrack(alice.id)!.parentId).toBeNull();
+    });
+
+    it("places a duplicate directly after its source, under the same parent", async () => {
+        const { service } = await createHarness();
+        const first = service.createTrack({ name: "Ambience", parentId: AUDIO_TRACK_ID_BGM, volume: 0.5, loop: true });
         service.createTrack({ name: "UI" });
 
         const copy = service.duplicateTrack(first.id)!;
 
         expect(service.listTracks().map(track => track.name).slice(3)).toEqual(["Ambience", "Ambience 2", "UI"]);
-        expect(copy).toMatchObject({ gain: 0.5, loop: true });
+        expect(copy).toMatchObject({ parentId: AUDIO_TRACK_ID_BGM, volume: 0.5, loop: true });
         expect(copy.id).not.toBe(first.id);
     });
 
-    it("resolves a live id, and falls a dangling one back onto the built-in for its channel", async () => {
+    it("leaves the children on the original when a bus is duplicated", async () => {
         const { service } = await createHarness();
-        const track = service.createTrack({ name: "Ambience", channel: "bgm" });
+        const alice = service.createTrack({ name: "Alice", parentId: AUDIO_TRACK_ID_VOICE });
+        const whisper = service.createTrack({ name: "Whisper", parentId: alice.id });
+
+        const copy = service.duplicateTrack(alice.id)!;
+
+        expect(service.getTrack(whisper.id)!.parentId).toBe(alice.id);
+        expect(service.listTracks().filter(track => track.parentId === copy.id)).toEqual([]);
+    });
+
+    it("refuses to delete a seeded bus and deletes a custom one", async () => {
+        const { service } = await createHarness();
+        const track = service.createTrack({ name: "Ambience" });
+
+        expect(service.deleteTrack(AUDIO_TRACK_ID_BGM)).toBe(false);
+        expect(service.getTrack(AUDIO_TRACK_ID_BGM)).toBeDefined();
+        expect(service.deleteTrack(track.id)).toBe(true);
+        expect(service.getTrack(track.id)).toBeUndefined();
+        expect(service.deleteTrack(track.id)).toBe(false);
+    });
+
+    /**
+     * The non-destructive answer: a cascade would take out an arbitrary amount of the author's
+     * mixer behind one confirm, and refusing outright would make them hand-move every child first.
+     */
+    it("promotes the children of a deleted bus to its own parent", async () => {
+        const { service } = await createHarness();
+        const party = service.createTrack({ name: "Party", parentId: AUDIO_TRACK_ID_VOICE });
+        const alice = service.createTrack({ name: "Alice", parentId: party.id });
+        const bob = service.createTrack({ name: "Bob", parentId: party.id });
+        const whisper = service.createTrack({ name: "Whisper", parentId: alice.id });
+
+        expect(service.deleteTrack(party.id)).toBe(true);
+
+        expect(service.getTrack(alice.id)!.parentId).toBe(AUDIO_TRACK_ID_VOICE);
+        expect(service.getTrack(bob.id)!.parentId).toBe(AUDIO_TRACK_ID_VOICE);
+        // Only one level moves: the grandchild keeps the parent it always had.
+        expect(service.getTrack(whisper.id)!.parentId).toBe(alice.id);
+    });
+
+    it("promotes a deleted root bus's children to the root", async () => {
+        const { service } = await createHarness();
+        const submix = service.createTrack({ name: "Submix" });
+        const child = service.createTrack({ name: "Child", parentId: submix.id });
+
+        service.deleteTrack(submix.id);
+
+        expect(service.getTrack(child.id)!.parentId).toBeNull();
+    });
+
+    it("resolves a live id, and falls a dangling one back onto the seeded bus for its shape", async () => {
+        const { service } = await createHarness();
+        const track = service.createTrack({ name: "Ambience", parentId: AUDIO_TRACK_ID_BGM });
 
         expect(service.resolveTrack(track.id).id).toBe(track.id);
         service.deleteTrack(track.id);
-        expect(service.resolveTrack(track.id, "bgm").id).toBe(AUDIO_TRACK_ID_MUSIC);
+        expect(service.resolveTrack(track.id, "bgm").id).toBe(AUDIO_TRACK_ID_BGM);
         expect(service.resolveTrack(undefined, "voice").id).toBe(AUDIO_TRACK_ID_VOICE);
     });
 
@@ -205,7 +307,7 @@ describe("AudioTrackService mutations", () => {
         const unsubscribe = service.onTracksChanged(tracks => seen.push(tracks.length));
 
         const track = service.createTrack({ name: "Ambience" });
-        service.updateTrack(track.id, { gain: 0.5 });
+        service.updateTrack(track.id, { volume: 0.5 });
         service.deleteTrack(track.id);
         unsubscribe();
         service.createTrack({ name: "UI" });
@@ -213,7 +315,8 @@ describe("AudioTrackService mutations", () => {
         expect(seen).toEqual([4, 4, 3]);
     });
 
-    it("never lets a custom track be dragged in front of a built-in", async () => {
+    /** Order is sibling order; the tree comes from `parentId`, so anything may move anywhere. */
+    it("reorders any track, seeded buses included", async () => {
         const { service } = await createHarness();
         const ambience = service.createTrack({ name: "Ambience" });
         const ui = service.createTrack({ name: "UI" });
@@ -221,9 +324,11 @@ describe("AudioTrackService mutations", () => {
         service.moveTrack(ui.id, ambience.id);
         expect(service.listTracks().map(track => track.name).slice(3)).toEqual(["UI", "Ambience"]);
 
-        service.moveTrack(ui.id, AUDIO_TRACK_ID_MUSIC);
-        expect(service.listTracks().map(track => track.id).slice(0, 3))
-            .toEqual([AUDIO_TRACK_ID_MUSIC, AUDIO_TRACK_ID_SFX, AUDIO_TRACK_ID_VOICE]);
+        service.moveTrack(ui.id, AUDIO_TRACK_ID_BGM);
+        expect(ids(service)[0]).toBe(ui.id);
+
+        service.moveTrack(ui.id, null);
+        expect(ids(service).at(-1)).toBe(ui.id);
     });
 });
 
@@ -265,5 +370,23 @@ describe("AudioTrackService when the file on disk cannot be read", () => {
         expect(healthy.files.get(DOCUMENT)).toContain("\"tracks\"");
         healthy.service.createTrack({ name: "Ambience" });
         await expect(healthy.service.flushPendingChanges()).resolves.toBeUndefined();
+    });
+
+    /** A document with a cycle in it is a bad document, not an unopenable project. */
+    it("opens a project whose document has a cycle, with the cycle broken", async () => {
+        const cyclic = JSON.stringify({
+            schemaVersion: AUDIO_TRACK_SCHEMA_VERSION,
+            tracks: [
+                { id: "a", name: "A", parentId: "b", volume: 1, loop: false },
+                { id: "b", name: "B", parentId: "a", volume: 1, loop: false },
+            ],
+        });
+        const { service, unreadable } = await createHarness(cyclic);
+
+        expect(unreadable).not.toHaveBeenCalled();
+        expect(ids(service)).toContain("a");
+        expect(ids(service)).toContain("b");
+        const roots = service.listTracks().filter(track => track.parentId === null);
+        expect(roots.map(track => track.id)).toContain("a");
     });
 });

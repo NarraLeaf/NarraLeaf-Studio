@@ -22,10 +22,15 @@
  *    leaves a dangling source node and a silent video. That is a latent bug that would surface as
  *    "the OP movie is silent sometimes", which is worse than the defect being fixed.
  *
- * So: read the same four numbers the engine's gain nodes are set from and write the product to
- * `element.volume`. The product is exact - `AudioManager` chains master → channel → token
- * multiplicatively, which is what {@link resolveMixedElementVolume} reproduces - and the
- * subscription below is what keeps it honest while the player is dragging a slider.
+ * So: compute the same product the engine's gain nodes would have produced and write it to
+ * `element.volume`. With a bus tree that is a **chain walk**, not one channel lookup: the clip's
+ * authored volume, times every bus between its track and the master output, times the player's
+ * slider for whichever seeded bus the chain runs through, times master. A clip on `voice/alice` is
+ * therefore governed by both the Alice fader and Voice Volume without this module naming either.
+ * The host does the walk (`resolveMixedElementVolume`, behind `hostApi.sound.resolveElementVolume`)
+ * because it is the side that holds the track list; the subscription below is what keeps the result
+ * honest while the player is dragging a slider - including a bus slider, which fans in through the
+ * same listener set as the preferences.
  *
  * Comments in English per project convention.
  */

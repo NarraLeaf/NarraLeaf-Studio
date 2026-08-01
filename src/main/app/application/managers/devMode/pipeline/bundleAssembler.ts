@@ -258,11 +258,16 @@ async function loadAssetNames(projectPath: string): Promise<Record<string, strin
  * row per sound effect. A missing or broken shard degrades to "no regions", which plays every clip
  * whole - exactly the behaviour before regions existed.
  *
- * Tracks come from `editor/audio-tracks.json`. Absent or unreadable seeds the three built-ins,
- * which is what the renderer's `AudioTrackService` does with the same file: a project that has
- * never opened the Audio surface must play exactly as it did before tracks existed, not silently
- * lose every play. Never returns `undefined` any more - there is always a track list to carry, and
- * the audio bundle is the channel it travels on. Exported for tests.
+ * Tracks come from `editor/audio-tracks.json`, and since v2 they are a **tree**: each one carries a
+ * `parentId` and its own live gain, and the game app hands the whole shape to the engine as
+ * `GameConfig.audioBuses` at boot. So this is not a lookup table the runtime consults per play - it
+ * is the mixer, and losing it means losing every bus the author invented.
+ *
+ * Absent or unreadable seeds the three built-ins, which is what the renderer's `AudioTrackService`
+ * does with the same file: a project that has never opened the Audio surface must play exactly as it
+ * did before tracks existed, not silently lose every play. Never returns `undefined` any more -
+ * there is always a track list to carry, and the audio bundle is the channel it travels on.
+ * Exported for tests.
  */
 export async function loadGameAudio(projectPath: string): Promise<GameAudioBundle> {
     const shardPath = path.join(projectPath, "assets", "assets.metadata.audio.json");
@@ -286,7 +291,13 @@ export async function loadGameAudio(projectPath: string): Promise<GameAudioBundl
 }
 
 /**
- * `editor/audio-tracks.json`, normalized through the same reducer the renderer service uses.
+ * `editor/audio-tracks.json`, migrated to v2 and normalized through the same reducer the renderer
+ * service uses.
+ *
+ * The normalizer is load-bearing here rather than cosmetic: the engine's `AudioBusTree.resolve`
+ * **throws** on an unknown parent, a duplicate id or a cycle, and it throws lazily - the first time
+ * something plays. Repairing the tree on the way in is what keeps a hand-edited file from becoming
+ * a game that boots and then goes silent.
  *
  * Every failure path lands on the seeded built-ins rather than propagating: a hand-corrupted track
  * file must not be the reason a build cannot be produced or a Dev Mode session cannot start, and

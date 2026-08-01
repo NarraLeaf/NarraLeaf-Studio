@@ -30,6 +30,10 @@ import {
 } from "@shared/types/blueprint/valueTypes";
 import { normalizeBlueprintSoundChannel } from "../../blueprint-runtime/BlueprintHostApiBridge";
 import { DEFAULT_AUDIO_TRACK_ID } from "@shared/types/audioTrack";
+import {
+    BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE as AUDIO_TRACK_OPTIONS_SOURCE,
+    BLUEPRINT_SOUND_PARAM_TRACK as SOUND_PARAM_TRACK,
+} from "./audioTrackParams";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { resolveDataPinValue } from "./graphParamResolvers";
@@ -44,12 +48,16 @@ const SOUND_GRAPH_KINDS = ["event", "macro"] as const;
 export const BLUEPRINT_SOUND_PARAM_ASSET = "soundAssetId";
 
 /**
- * The project audio track this play lands on.
+ * The project audio track this play lands on, and the picker that offers it.
  *
- * Spelled `audioTrackId`, not `trackId`: story motion already keys its timeline rows on `trackId`
- * and the two would collide in any structural sweep over a document.
+ * Re-exported rather than declared here: `Get/Set Track Volume` in the game family reads the same
+ * key, and `graphParamResolvers` reads it on the data path, so the constant has to live somewhere
+ * neither node module owns.
  */
-export const BLUEPRINT_SOUND_PARAM_TRACK = "audioTrackId";
+export {
+    BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE,
+    BLUEPRINT_SOUND_PARAM_TRACK,
+} from "./audioTrackParams";
 
 /**
  * The pre-track channel select. Kept as a constant, not as a control: a graph written before tracks
@@ -57,9 +65,6 @@ export const BLUEPRINT_SOUND_PARAM_TRACK = "audioTrackId";
  * spelling to read it back. Nothing writes it any more.
  */
 export const BLUEPRINT_SOUND_PARAM_CHANNEL = "soundChannel";
-
-/** The dynamic select source the flow projection populates from `AudioTrackService`. */
-export const BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE = "audioTracks";
 
 const handleIn: BlueprintNodePinDef = {
     id: "handle",
@@ -134,8 +139,8 @@ const fadeIn: BlueprintNodePinDef = {
  *
  * Its own pin rather than the shared `Fade (s)` above, because a play has only one direction to
  * fade and reusing the neutral label on a node that cannot fade out reads as the wrong control.
- * Unset falls back to the track's `fadeInMs`, which is what makes a Music track cross-fade by
- * default without the author wiring anything.
+ * Unset means a hard start: a fade belongs to the moment, not to the track, so there is no
+ * category-level default for it to inherit.
  */
 const fadeInIn: BlueprintNodePinDef = {
     id: "fadeIn",
@@ -186,9 +191,9 @@ function readSecondsAsMs(ctx: SoundExecuteCtx, portId: string): number {
 /**
  * The same conversion, but keeping "unset" distinguishable from "zero".
  *
- * A play's fade-in needs the distinction the transport ones do not: unset means "use the track's
- * fade", while an explicit 0 means "start at full volume now" and must not be overwritten by a
- * Music track's 800ms.
+ * Both currently mean a hard start, so the distinction buys nothing at the host today. It is kept
+ * because it costs one branch and because collapsing it here is what would make a future
+ * "fade-in defaults to X" impossible to add without touching every call site.
  */
 function readOptionalSecondsAsMs(ctx: SoundExecuteCtx, portId: string): number | undefined {
     const seconds = readOptionalNumber(readPin(ctx, portId));
@@ -231,7 +236,7 @@ function resolveAssetId(ctx: SoundExecuteCtx): string {
  * for that channel, which reproduces the old behaviour exactly.
  */
 function resolveTrackId(ctx: SoundExecuteCtx): string | null {
-    const stored = ctx.params[BLUEPRINT_SOUND_PARAM_TRACK];
+    const stored = ctx.params[SOUND_PARAM_TRACK];
     const trackId = typeof stored === "string" ? stored.trim() : "";
     if (trackId) {
         return trackId;
@@ -262,10 +267,10 @@ function requireHandle(ctx: SoundExecuteCtx, nodeLabel: string) {
  * without a node-catalog change. An empty selection resolves to the built-in SFX track.
  */
 const audioTrackParam = {
-    key: BLUEPRINT_SOUND_PARAM_TRACK,
+    key: SOUND_PARAM_TRACK,
     label: "Track",
     kind: "select" as const,
-    dynamicOptionsSource: BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE,
+    dynamicOptionsSource: AUDIO_TRACK_OPTIONS_SOURCE,
 };
 
 export const soundBlueprintNodes: BlueprintNodeDef[] = [
@@ -360,6 +365,10 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
         // Volume and fade in one node, so this is also the fade: "duck the music over a second" and
         // "set it to 0.3" are the same request with a different duration, and a separate Fade Sound
         // would just be this node with one pin pre-filled.
+        //
+        // This addresses one **playing clip** by handle, and dies with it. Its counterpart for the
+        // player's mixer is `Set Track Volume` in the Game category, which moves a whole bus. The
+        // game family's SFX-slider node used to share this display name and no longer does.
         pins: [execIn, handleIn, volumeIn, fadeIn, execNext],
         async execute(ctx) {
             await requireHostApi(ctx).sound.setVolume(
