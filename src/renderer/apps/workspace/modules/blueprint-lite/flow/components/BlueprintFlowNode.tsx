@@ -230,7 +230,7 @@ function AudioAssetPickerRow({
                         : t("blueprint.image.select")}
                 </span>
                 {marked && (
-                    <span className="shrink-0 rounded bg-fill-subtle px-1 text-2xs text-fg-subtle">
+                    <span className="shrink-0 rounded-md bg-fill-subtle px-1 text-2xs text-fg-subtle">
                         {t("blueprint.audio.marked")}
                     </span>
                 )}
