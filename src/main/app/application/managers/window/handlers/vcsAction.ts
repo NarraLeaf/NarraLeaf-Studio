@@ -8,10 +8,12 @@ import type {
     VcsPushResult,
     VcsRepositoryInfo,
     VcsRestoreResult,
+    VcsRevisionDiffResult,
     VcsStatus,
     VcsSyncResult,
     VcsSyncState,
     VcsThreeWayResult,
+    VcsWorkingTreeDiffResult,
 } from "@shared/types/vcs";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
@@ -252,6 +254,50 @@ export class VcsGetChangedPathsHandler extends IPCHandler<IPCEventType.vcsGetCha
         return this.tryUse(async () => ({
             paths: await window.app.getVcsManager().getChangedPaths(projectPath, from, to),
         }));
+    }
+}
+
+/**
+ * What changed between two revisions, document by document.
+ *
+ * The expensive half of this is bounded rather than paged: at most 200 changes per document,
+ * documents over 8MiB reported by size alone, and past 2000 changed paths nothing is read at all.
+ * Every one of those shows up in the answer as `complete: false`, which a caller must draw - a
+ * truncated list presented as a whole one is worse than no list, because the author acts on it.
+ *
+ * Answered from a per-session cache when the same pair has been asked before. Sound only because
+ * revisions are immutable; the working-tree comparison below shares none of it.
+ */
+export class VcsDiffRevisionsHandler extends IPCHandler<IPCEventType.vcsDiffRevisions> {
+    readonly name = IPCEventType.vcsDiffRevisions;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath, from, to }: IPCEvents[IPCEventType.vcsDiffRevisions]["data"],
+    ): Promise<RequestStatus<VcsRevisionDiffResult>> {
+        return this.tryUse(() => window.app.getVcsManager().diffRevisions(projectPath, from, to));
+    }
+}
+
+/**
+ * What the author has changed since the last version.
+ *
+ * Two properties the caller has to respect, both of them the same rule from opposite sides:
+ * **nothing caches this** - the working tree is different by the time the answer arrives - and
+ * **nothing may poll it**, because the status read underneath scans, and a scan that discovers a
+ * new directory records it into staged state, after which removing that directory reads as a
+ * deletion for the rest of the session (docs §4.17).
+ */
+export class VcsDiffWorkingTreeHandler extends IPCHandler<IPCEventType.vcsDiffWorkingTree> {
+    readonly name = IPCEventType.vcsDiffWorkingTree;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath }: IPCEvents[IPCEventType.vcsDiffWorkingTree]["data"],
+    ): Promise<RequestStatus<VcsWorkingTreeDiffResult>> {
+        return this.tryUse(() => window.app.getVcsManager().diffWorkingTree(projectPath));
     }
 }
 

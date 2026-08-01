@@ -7,6 +7,11 @@
  * See docs/version-control.md.
  */
 
+// Type-only: the document model is where a change is defined, and a diff result is that
+// model with two revisions named around it. Re-declaring the shape here would be a second
+// definition of a change for the same renderer to draw.
+import type { DocumentDiffEntry } from "../documents/diff";
+
 /** A revision identifier. Opaque to the renderer; hex at the transport layer. */
 export type RevisionId = string;
 
@@ -532,4 +537,53 @@ export interface VcsThreeWayResult {
     base?: string;
     mine: string;
     theirs: string;
+}
+
+/**
+ * What one comparison found, whichever two sides it compared.
+ *
+ * The two results below differ only in what they are anchored to, and that is on purpose:
+ * a revision comparison and a working-tree comparison are the same list rendered by the
+ * same component, so anything that is true of one shape has to be true of the other.
+ *
+ * Three fields carry the honesty of the answer and none of them is optional:
+ *
+ *  - `pathCount` is what really differs, whether or not it is in `documents`;
+ *  - `complete` is false the moment a budget stopped the comparison short, and a surface
+ *    that ignores it shows a truncated list as a whole one;
+ *  - `readFailure` separates "nothing changed" from "the bytes could not be fetched",
+ *    which are the same empty list and opposite facts. It is not hypothetical: a revision
+ *    can list a file, its size and its address and still refuse to hand over the bytes -
+ *    measured for content written by an online commit, which the process that wrote it
+ *    cannot read back (docs/version-control.md §4.29).
+ */
+export interface VcsRevisionDiffResult {
+    from: RevisionId;
+    to: RevisionId;
+    documents: DocumentDiffEntry[];
+    /**
+     * Changed paths this result stands for, including any `documents` does not carry.
+     *
+     * Equal to `documents.length` whenever `complete` is true. Directories are excluded
+     * where they can be told apart from files, which is everywhere except a comparison
+     * that was cut short before anything was read.
+     */
+    pathCount: number;
+    complete: boolean;
+    readFailure: string | null;
+}
+
+export interface VcsWorkingTreeDiffResult {
+    /**
+     * The revision the working tree was compared against.
+     *
+     * Absent in a repository with no revisions yet, where every file is an addition and
+     * nothing was read out of history.
+     */
+    head?: RevisionId;
+    documents: DocumentDiffEntry[];
+    /** Changed files this result stands for. Directories are never counted. */
+    pathCount: number;
+    complete: boolean;
+    readFailure: string | null;
 }

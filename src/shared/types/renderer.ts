@@ -44,7 +44,7 @@ import type {
 } from "./privileged";
 import { AppEventToken } from "./app";
 import type { LocaleContribution } from "@shared/i18n";
-import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsHistoryEntry, VcsInitOptions, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult } from "./vcs";
+import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsHistoryEntry, VcsInitOptions, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -408,6 +408,27 @@ export interface RendererPreloadedInterface {
          */
         readRevisionDocuments(projectPath: string, revision: RevisionId, paths?: string[]): Promise<RequestStatus<{ documents: { path: string; contentBase64: string | null }[] }>>;
         getChangedPaths(projectPath: string, from: RevisionId, to: RevisionId): Promise<RequestStatus<{ paths: string[] }>>;
+        /**
+         * What changed between two revisions, as changes rather than as bytes.
+         *
+         * Answered from a cache in the main process when the same pair was asked before, which is
+         * sound because revisions are immutable. Read `tier` on every diff before deciding how to
+         * draw it: a `structural` diff is the JSON paths whose values differ, with nothing in the
+         * picture that knows what they mean, and drawing it like a `semantic` one tells the author
+         * a generated id changing is a change they made. `complete: false` and `readFailure` both
+         * have to be shown - the first is a truncated list, the second is an empty one that means
+         * the opposite of "nothing changed".
+         */
+        diffRevisions(projectPath: string, from: RevisionId, to: RevisionId): Promise<RequestStatus<VcsRevisionDiffResult>>;
+        /**
+         * What the author has changed since the last version.
+         *
+         * **Never cache the result, and never poll this.** The working tree has already moved on by
+         * the time it resolves, and the status read underneath scans - a scan that finds a new
+         * directory records it into staged state, so polling manufactures deletions of things that
+         * never existed (docs/version-control.md §4.17).
+         */
+        diffWorkingTree(projectPath: string): Promise<RequestStatus<VcsWorkingTreeDiffResult>>;
         /** base/mine/theirs for a merge. A missing `base` is an add/add, not an empty file. */
         getThreeWay(projectPath: string, mine: RevisionId, theirs: RevisionId, path: string): Promise<RequestStatus<VcsThreeWayResult>>;
         getMergeBase(projectPath: string, a: RevisionId, b: RevisionId): Promise<RequestStatus<{ base?: RevisionId }>>;

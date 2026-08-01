@@ -619,134 +619,18 @@ describe.skipIf(!supported)("E2 - conflicted working-tree bytes", () => {
 });
 
 // ===========================================================================
-// E3 - does branchMergeResolve accept bytes we wrote?
+// E3 and E4 lived here, and were REPLACED rather than fixed.
+//
+// Both deadlocked: they opened a second store on the repository E2 was still holding,
+// and Lore's repository lock blocks WITHIN one process as well as across processes
+// (docs/version-control.md §4.28) - so the second `openStore` never returned and the
+// answers arrived as two timeouts. Worse, E3 called all three resolve verbs in a row
+// before committing, which made the outcome unattributable even when it did run.
+//
+// `mergeSpike2.integration.test.ts` asks both questions properly: L1/L2/L3 give each
+// resolve verb its own repository and its own single call, and every experiment there
+// opens at most one store at a time. Answers are §4.25 and §4.26.
 // ===========================================================================
-
-describe.skipIf(!supported)("E3 - resolving with hand-written bytes", () => {
-    it("writes a third answer, resolves, commits, and reads it back from a fresh session", async () => {
-        const observations: Record<string, unknown> = {};
-        const fixture = conflicted;
-        if (!fixture || fixture.setupError) {
-            report("E3 HAND-WRITTEN RESOLUTION", { skipped: "E1b left no conflicted repository" });
-            expect(true).toBe(true);
-            return;
-        }
-
-        // Neither side wrote this. If it survives the round trip, per-change merging is
-        // possible at all; if it does not, D6 can only ever offer "take one side".
-        fs.writeFileSync(fixture.document, HAND_RESOLVED, "utf-8");
-        observations.wrote = { sha256: sha256(Buffer.from(HAND_RESOLVED, "utf-8")), byteLength: Buffer.byteLength(HAND_RESOLVED) };
-
-        observations.resolve = await observe(() => branchMergeResolve(fixture.globals, [fixture.document]));
-
-        // The plan's §4.4 pipeline, minus the metadata write: confirm there is something
-        // to commit with the pure-read status form (§4.17), commit, flush (§4.11).
-        const confirm = await observe(() => repositoryStatus(fixture.globals, { scan: false, revisionOnly: true }));
-        observations.beforeCommit = failed(confirm) ? confirm : {
-            revision: confirm.revision?.revision,
-            revisionNumber: confirm.revision?.revisionNumber,
-            revisionStaged: confirm.revision?.revisionStaged,
-            revisionMerged: confirm.revision?.revisionMerged,
-        };
-
-        // Deliberately WITHOUT fileStageMerge first. Whether a merge commit needs its own
-        // staging step is unknown, and which of the two attempts works is the finding.
-        const firstCommit = await observe(() => commit(fixture.globals, "resolved by hand"));
-        observations.commitWithoutStageMerge = failed(firstCommit)
-            ? firstCommit
-            : { revision: firstCommit.revision, revisionNumber: firstCommit.revisionNumber, parents: firstCommit.parents };
-
-        let committed = failed(firstCommit) ? null : firstCommit;
-        if (failed(firstCommit)) {
-            observations.stageMerge = await observe(() => stageMerge(fixture.globals, [fixture.document]));
-            const retry = await observe(() => commit(fixture.globals, "resolved by hand"));
-            observations.commitAfterStageMerge = failed(retry)
-                ? retry
-                : { revision: retry.revision, revisionNumber: retry.revisionNumber, parents: retry.parents };
-            committed = failed(retry) ? null : retry;
-        }
-
-        observations.flush = await observe(async () => {
-            await flushRepository(fixture.globals);
-            return "flushed";
-        });
-        observations.release = await observe(async () => {
-            await releaseRepository(fixture.globals);
-            return "released";
-        });
-
-        if (!committed) {
-            report("E3 HAND-WRITTEN RESOLUTION", observations);
-            expect(Object.keys(observations).length).toBeGreaterThan(0);
-            return;
-        }
-        resolvedRevision = committed.revision;
-
-        // A fresh session against the same directory - a new process is what §4.11's
-        // measurement needed and is out of reach here, but re-opening after a release is
-        // what a reader of this revision will actually do next.
-        const freshGlobals = offline(fixture.root);
-        const store = await observe(() => openStore(freshGlobals, fixture.root));
-        if (failed(store)) {
-            observations.reopen = store;
-        } else {
-            reopened = track({ root: fixture.root, globals: freshGlobals, store });
-            observations.readBack = await observe(async () => {
-                const bytes = await blobAt(freshGlobals, store, fixture.repositoryId, committed.revision, DOCUMENT);
-                return {
-                    byteLength: bytes.byteLength,
-                    sha256: sha256(bytes),
-                    identicalToWhatWeWrote: bytes.equals(Buffer.from(HAND_RESOLVED, "utf-8")),
-                    text: bytes.toString("utf-8"),
-                };
-            });
-        }
-
-        report("E3 HAND-WRITTEN RESOLUTION", observations);
-        expect(Object.keys(observations).length).toBeGreaterThan(0);
-    }, 240_000);
-});
-
-// ===========================================================================
-// E4 - does a merge revision have two parents?
-// ===========================================================================
-
-describe.skipIf(!supported)("E4 - merge revision parents", () => {
-    it("reads the graph around the revision E3 committed", async () => {
-        const observations: Record<string, unknown> = {};
-        const fixture = conflicted;
-        if (!fixture || !resolvedRevision) {
-            report("E4 MERGE PARENTS", { skipped: "E3 committed no revision" });
-            expect(true).toBe(true);
-            return;
-        }
-
-        const globals = reopened?.globals ?? fixture.globals;
-        const graph = await observe(() => readRevisionGraph(globals));
-        if (failed(graph)) {
-            report("E4 MERGE PARENTS", { readRevisionGraph: graph });
-            expect(true).toBe(true);
-            return;
-        }
-
-        const node = graph.get(resolvedRevision);
-        observations.revision = resolvedRevision;
-        observations.foundInGraph = Boolean(node);
-        observations.parentCount = node?.parents.length ?? null;
-        observations.parents = node?.parents ?? null;
-        observations.preMergeTips = { mine: fixture.mineRevision, theirs: fixture.theirsRevision };
-        observations.parentsIncludeMine = Boolean(fixture.mineRevision && node?.parents.includes(fixture.mineRevision));
-        observations.parentsIncludeTheirs = Boolean(fixture.theirsRevision && node?.parents.includes(fixture.theirsRevision));
-        // The whole DAG, so a parent that is neither tip can be placed rather than guessed at.
-        observations.graph = [...graph.values()]
-            .sort((a, b) => a.number - b.number)
-            .map((entry) => ({ number: entry.number, revision: entry.revision, parents: entry.parents }));
-
-        report("E4 MERGE PARENTS", observations);
-        expect(Object.keys(observations).length).toBeGreaterThan(0);
-    }, 120_000);
-});
-
 // ===========================================================================
 // E5 - does branchMergeAbort fully roll the working tree back?
 // ===========================================================================

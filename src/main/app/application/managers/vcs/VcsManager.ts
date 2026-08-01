@@ -1,3 +1,4 @@
+import fs from "fs/promises";
 import path from "path";
 import type {
     VcsAvailability,
@@ -10,11 +11,13 @@ import type {
     VcsPushResult,
     VcsRestoreOptions,
     VcsRestoreResult,
+    VcsRevisionDiffResult,
     VcsRevisionKind,
     VcsStatus,
     VcsSyncResult,
     VcsSyncState,
     VcsThreeWayResult,
+    VcsWorkingTreeDiffResult,
 } from "@shared/types/vcs";
 import { composeVcsIdentity } from "@shared/types/vcs";
 import { BaseApp } from "../../baseApp";
@@ -24,6 +27,11 @@ import { getVcsAvailability, requireVcsBackend, type VcsBackend } from "./backen
 // at load time. See backend.ts for why that matters.
 import type { LoreGlobals, LoreHex, StoreHandle } from "./lore";
 import type { InitRepositoryOptions } from "./repository";
+// Value imports, and safe to be ones for the same reason as the two below: pure policy over bytes,
+// with the reader imported for types alone. `documentDiff` is also where the main process picks up
+// `@shared/documents/specs`, so this edge is what populates the document registry in this process.
+import { diffRevisions } from "./diff/revisionDiff";
+import { diffWorkingTree } from "./diff/workingTreeDiff";
 // Value import, and safe to be one: this module only touches `fs` and the working-set predicate,
 // and imports the reader for types alone.
 import { materializeRevisionSnapshot, type RevisionSnapshotResult } from "./revisionSnapshot";
@@ -77,6 +85,19 @@ interface VcsSession {
      * {@link VcsManager.closeProject}.
      */
     details: Map<LoreHex, RevisionDetails>;
+    /**
+     * Comparisons between two revisions, keyed `from..to`.
+     *
+     * Cacheable for exactly the reason {@link details} is: **both revisions are immutable**, so
+     * the answer cannot go stale. The line this draws is the same one that keeps the graph out of
+     * {@link details} - anything anchored to the working tree or to a moving head must not be here,
+     * and {@link VcsManager.diffWorkingTree} therefore has no cache at all.
+     *
+     * Bounded, unlike {@link details}, because an entry is not a handful of metadata: it is up to
+     * 200 changes for each of up to 2000 documents, and an author stepping through a long history
+     * would otherwise accumulate all of it for the life of the window.
+     */
+    diffs: Map<string, VcsRevisionDiffResult>;
 }
 
 /**
@@ -181,6 +202,16 @@ function projectKey(projectPath: string): string {
  * this presents to an author - a spinner that never stops - so the wait announces itself.
  */
 const SLOW_STORE_OPEN_MS = 5_000;
+
+/**
+ * How many revision comparisons one session keeps.
+ *
+ * Not a measurement, a bound: a comparison is orders of magnitude larger than the revision
+ * metadata cached beside it, and stepping through a hundred versions must not turn into a hundred
+ * change lists held for the life of the window. Twenty-four covers going back and forth across a
+ * page of history, which is the pattern the cache exists for.
+ */
+const MAX_CACHED_REVISION_DIFFS = 24;
 
 export class VcsManager extends Manager {
     private readonly sessions = new Map<string, VcsSession>();
@@ -370,7 +401,9 @@ export class VcsManager extends Manager {
                 throw error;
             }
 
-            const session: VcsSession = { root, store, repositoryId, globals, details: new Map() };
+            const session: VcsSession = {
+                root, store, repositoryId, globals, details: new Map(), diffs: new Map(),
+            };
             this.sessions.set(key, session);
             this.app.logger.info("[Vcs] Opened session", root, repositoryId);
             return session;
@@ -995,6 +1028,101 @@ export class VcsManager extends Manager {
                 theirs: result.theirs.toString("base64"),
             };
         });
+    }
+
+    /**
+     * What changed between two revisions, as changes rather than as bytes.
+     *
+     * **Cached per session, and that is safe because revisions are immutable** - the same pair can
+     * never answer differently, which is the identical argument {@link VcsSession.details} rests
+     * on. A failed read is deliberately NOT cached: it is a fact about this process rather than
+     * about the revisions - the measured case is a process that cannot read back what it wrote
+     * with an online commit (docs/version-control.md §4.29) - and caching it would leave a session
+     * answering with a failure that has already passed.
+     *
+     * Inside the per-project queue like every other verb, so a comparison and a commit cannot
+     * interleave on one store handle.
+     */
+    public async diffRevisions(projectPath: string, from: string, to: string): Promise<VcsRevisionDiffResult> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            const key = `${from}..${to}`;
+            const cached = session.diffs.get(key);
+            if (cached) return cached;
+
+            const result = await diffRevisions(
+                {
+                    changedPaths: (a, b) => backend.changedPaths(session.globals, a, b),
+                    documentsAt: (revision, paths) => backend.documentsAt(
+                        session.globals,
+                        session.store,
+                        session.repositoryId,
+                        revision,
+                        { paths },
+                    ),
+                },
+                { from, to, onDegrade: (reason) => this.app.logger.info("[Vcs] Diff degraded:", reason) },
+            );
+
+            if (!result.readFailure) {
+                this.rememberDiff(session, key, result);
+            }
+            return result;
+        });
+    }
+
+    /**
+     * What the author has changed since the last version.
+     *
+     * **Never cached, and the rule has no exceptions.** The working tree changes under Studio
+     * between any two calls - by the author's own editing, by an auto-save, by their other tools -
+     * so a remembered answer is a list of changes that may no longer exist, shown beside files that
+     * no longer match it. It is also the input to the resolve flow, where a stale row means taking a
+     * side on a change that is not there.
+     *
+     * The status read underneath scans, which is not a pure operation (§4.17), so this must be
+     * called because someone asked and never on a timer.
+     */
+    public async diffWorkingTree(projectPath: string): Promise<VcsWorkingTreeDiffResult> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            return diffWorkingTree(
+                {
+                    status: () => backend.getStatus(session.globals),
+                    documentsAt: (revision, paths) => backend.documentsAt(
+                        session.globals,
+                        session.store,
+                        session.repositoryId,
+                        revision,
+                        { paths },
+                    ),
+                    readWorking: async (relative) => {
+                        // Through the backend's own guard rather than a `path.join`: a status entry
+                        // is repository-relative text and this is the line that would otherwise read
+                        // any file on the disk (§4.16 - the compiler cannot tell the two directions
+                        // of path apart).
+                        const absolute = backend.repositoryPath(session.root, relative);
+                        return fs.readFile(absolute).catch(() => null);
+                    },
+                },
+                { onDegrade: (reason) => this.app.logger.info("[Vcs] Diff degraded:", reason) },
+            );
+        });
+    }
+
+    /**
+     * Remember one comparison, dropping the oldest once the cap is reached.
+     *
+     * Insertion order rather than recency: `Map` preserves it for free, and the access pattern this
+     * bounds is walking a history rail, where the oldest entry is also the one furthest from where
+     * the author is looking.
+     */
+    private rememberDiff(session: VcsSession, key: string, result: VcsRevisionDiffResult): void {
+        if (session.diffs.size >= MAX_CACHED_REVISION_DIFFS) {
+            const oldest = session.diffs.keys().next();
+            if (!oldest.done) session.diffs.delete(oldest.value);
+        }
+        session.diffs.set(key, result);
     }
 
     /** Common ancestor of two revisions. Computed locally; Lore exposes no such API. */
