@@ -779,7 +779,7 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
                             aria-pressed={previewId === preview.id}
                             title={contributionTitle(preview)}
                             data-text-editor-preview-id={preview.id}
-                            className={`flex items-center gap-1 rounded px-1 -mx-1 transition-colors hover:bg-fill hover:text-fg focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/50${
+                            className={`flex items-center gap-1 rounded-md px-1 -mx-1 transition-colors hover:bg-fill hover:text-fg focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/50${
                                 previewId === preview.id ? " bg-fill text-fg" : ""
                             }`}
                         >
@@ -793,7 +793,7 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
                             onClick={() => runAction(action)}
                             {...freeze.writes(false, contributionTitle(action))}
                             data-text-editor-action-id={action.id}
-                            className="flex items-center gap-1 rounded px-1 -mx-1 transition-colors hover:bg-fill hover:text-fg focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-subtle"
+                            className="flex items-center gap-1 rounded-md px-1 -mx-1 transition-colors hover:bg-fill hover:text-fg focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-subtle"
                         >
                             {action.icon ?? contributionTitle(action)}
                         </button>

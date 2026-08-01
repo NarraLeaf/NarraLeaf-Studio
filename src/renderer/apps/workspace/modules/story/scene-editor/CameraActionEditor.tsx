@@ -314,7 +314,7 @@ function CameraViewfinder(props: {
             </div>
             {/* Fixed by the camera, so fixed here. */}
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/5 border-t border-white/15 bg-black/45" />
-            <div className="pointer-events-none absolute left-1.5 top-1.5 rounded bg-black/45 px-1 py-0.5 text-2xs text-white/70">
+            <div className="pointer-events-none absolute left-1.5 top-1.5 rounded-md bg-black/45 px-1 py-0.5 text-2xs text-white/70">
                 {t(`storyInspector.cameraOperationShort.${operation}`)}
             </div>
         </div>
