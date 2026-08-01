@@ -56,7 +56,10 @@ import type {
     VcsRepositoryInfo,
     VcsRestoreOptions,
     VcsRestoreResult,
+    VcsPushResult,
     VcsStatus,
+    VcsSyncResult,
+    VcsSyncState,
     VcsThreeWayResult,
 } from "./vcs";
 
@@ -233,6 +236,12 @@ export enum IPCEventType {
     vcsGetChangedPaths = "vcs.getChangedPaths",
     vcsGetThreeWay = "vcs.getThreeWay",
     vcsGetMergeBase = "vcs.getMergeBase",
+    vcsGetRemote = "vcs.getRemote",
+    vcsSetRemote = "vcs.setRemote",
+    vcsGetSyncState = "vcs.getSyncState",
+    vcsPush = "vcs.push",
+    vcsSync = "vcs.sync",
+    vcsClone = "vcs.clone",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -678,6 +687,47 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { projectPath: string; a: RevisionId; b: RevisionId },
         response: { base?: RevisionId };
+    };
+    /** Local read: the configured server, or null. Opens no socket. */
+    [IPCEventType.vcsGetRemote]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: { url: string | null };
+    };
+    /** Local write: `null` disconnects. Does not contact the server. */
+    [IPCEventType.vcsSetRemote]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; url: string | null },
+        response: { url: string | null };
+    };
+    /** **Goes to the network** - up to ~2s when nothing answers. On demand only. */
+    [IPCEventType.vcsGetSyncState]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: VcsSyncState;
+    };
+    [IPCEventType.vcsPush]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: VcsPushResult;
+    };
+    /** **Writes the working tree.** The caller must re-read every document afterwards. */
+    [IPCEventType.vcsSync]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: VcsSyncResult;
+    };
+    /** No project session: there is no repository at `destination` until this finishes. */
+    [IPCEventType.vcsClone]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { url: string; destination: string },
+        response: { root: string; branch: string; fileCount: number };
     };
 };
 

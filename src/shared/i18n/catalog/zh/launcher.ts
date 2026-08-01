@@ -15,6 +15,26 @@ export const launcher = {
         recentTitle: "最近项目",
         openFolder: "打开文件夹",
         importProject: "导入项目",
+        // 从版本控制服务器上把工程取下来——第二个人就是这样加入一个工程的。
+        // 放在启动器里，因为需要它的那一刻手边根本没有打开的工程。
+        clone: {
+            title: "从服务器获取工程",
+            // 完整地址，含末尾的名字：那个名字才是服务器认得的仓库名，
+            // 也正是工程的建立者发给你的那串东西。
+            addressLabel: "工程地址",
+            addressHint: "向建立这个工程的人要这个地址。",
+            folderLabel: "放到哪里",
+            folderPlaceholder: "选一个空文件夹",
+            // 在选之前就说，而不是选完之后：这个判据在主进程里，
+            // 到那时候才拒绝，是在作者已经认定要这么做之后才拒绝。
+            folderHint: "必须是新建的或者空的文件夹。",
+            confirm: "获取工程",
+            cancel: "取消",
+            // 没有百分比：后端要等整个 clone 结束才把进度事件交出来，
+            // 画一根进度条只会停在 0 然后消失。
+            working: "正在从服务器复制工程，可能需要一会儿。",
+            error: "没能从服务器获取这个工程。",
+        },
         openNamed: "打开 {name}",
         search: {
             placeholder: "搜索项目",

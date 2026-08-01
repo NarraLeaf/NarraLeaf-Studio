@@ -63,6 +63,81 @@ export interface LoreStatusFilePayload {
 }
 
 export interface LoreStatusSummaryPayload { adds: number; deletes: number; modifies: number; moves: number; copies: number }
+
+/** One repository config key, as `repository_config_get` answers it. */
+export interface LoreConfigPayload { key: string; value: string }
+
+/** Byte and file counters shared by clone's begin/progress/end events. */
+export interface LoreCloneCountPayload {
+    fileComplete: number;
+    fileCount: number;
+    bytesTransferred: number;
+    bytesTotal: number;
+    /** Until this is true, the totals are still growing and a percentage would go backwards. */
+    discoveryComplete: boolean;
+}
+
+export interface LoreCloneBeginPayload { repository: LoreHex; branch: string; revision?: LoreHex; path: string }
+export interface LoreCloneProgressPayload { count: LoreCloneCountPayload }
+export interface LoreCloneEndPayload { branch: string; revision?: LoreHex; count: LoreCloneCountPayload }
+
+/** Where a sync is going: the branch, and the two revisions it moves between. */
+export interface LoreSyncTargetPayload {
+    remote: string;
+    branchName: string;
+    sourceRevision?: LoreHex;
+    sourceRevisionNumber: number;
+    targetRevision?: LoreHex;
+    targetRevisionNumber: number;
+    isLatest: boolean;
+    /** The target was found locally; nothing had to be fetched. */
+    local: boolean;
+}
+
+export interface LoreSyncProgressPayload {
+    fileUpdate: number;
+    fileUpdateTotal: number;
+    fileDelete: number;
+    fileDeleteTotal: number;
+    fileAutomerge: number;
+    /** Non-zero means the working tree now holds unresolved conflicts. */
+    fileConflict: number;
+    bytesUpdate: number;
+    bytesUpdateTotal: number;
+    discoveryComplete: boolean;
+}
+
+export interface LoreSyncRevisionPayload {
+    revision: LoreHex;
+    revisionNumber: number;
+    merge: boolean;
+    conflict: boolean;
+}
+
+/**
+ * What a push did, or found it did not have to do.
+ *
+ * `alreadyPushed` is a SUCCESS: the remote already holds this branch tip. Reading it
+ * as a failure would make "push twice" look broken.
+ */
+export interface LoreBranchPushPayload {
+    remote: string;
+    branchName: string;
+    remoteRevision?: LoreHex;
+    localRevision?: LoreHex;
+    remoteHistory: number;
+    localHistory: number;
+    alreadyPushed: boolean;
+}
+
+/** The identity a token login established, as the remote reported it back. */
+export interface LoreAuthIdentityPayload {
+    authUrl: string;
+    resource: string;
+    userId: string;
+    /** Epoch seconds; 0 when the remote did not say. */
+    expires: number;
+}
 export interface LoreStageFilePayload { path: string; fromPath: string; action: number }
 export interface LoreStageEndPayload { totalCount: number; fileAddCount: number; fileModifyCount: number; fileDeleteCount: number; fileMoveCount: number }
 
@@ -510,6 +585,103 @@ function decoderTable(library: LoreLibrary): Map<number, Decoder> {
         isCommit: bool(raw.isCommit),
     }));
 
+    // -- remote ---------------------------------------------------------------
+
+    table.set(LoreTag.REPOSITORY_CONFIG_GET, (raw): LoreConfigPayload => ({
+        key: decodeString(nested(raw, "key")),
+        value: decodeString(nested(raw, "value")),
+    }));
+
+    const cloneCount = (raw: Record<string, unknown>): LoreCloneCountPayload => ({
+        fileComplete: decodeCount(raw.fileComplete),
+        fileCount: decodeCount(raw.fileCount),
+        bytesTransferred: decodeCount(raw.bytesTransferred),
+        bytesTotal: decodeCount(raw.bytesTotal),
+        discoveryComplete: bool(raw.discoveryComplete),
+    });
+
+    table.set(LoreTag.REPOSITORY_CLONE_BEGIN, (raw): LoreCloneBeginPayload => ({
+        repository: decodeHash(nested(raw, "repository")),
+        branch: decodeString(nested(raw, "branch")),
+        revision: decodeOptionalHash(nested(raw, "revision")),
+        path: decodeString(nested(raw, "path")),
+    }));
+
+    table.set(LoreTag.REPOSITORY_CLONE_PROGRESS, (raw): LoreCloneProgressPayload => ({
+        count: cloneCount(nested(raw, "count")),
+    }));
+
+    table.set(LoreTag.REPOSITORY_CLONE_END, (raw): LoreCloneEndPayload => ({
+        branch: decodeString(nested(raw, "branch")),
+        revision: decodeOptionalHash(nested(raw, "revision")),
+        count: cloneCount(nested(raw, "count")),
+    }));
+
+    table.set(LoreTag.REVISION_SYNC_TARGET, (raw): LoreSyncTargetPayload => ({
+        remote: decodeString(nested(raw, "remote")),
+        branchName: decodeString(nested(raw, "branchName")),
+        sourceRevision: decodeOptionalHash(nested(raw, "sourceRevision")),
+        sourceRevisionNumber: decodeCount(raw.sourceRevisionNumber),
+        targetRevision: decodeOptionalHash(nested(raw, "targetRevision")),
+        targetRevisionNumber: decodeCount(raw.targetRevisionNumber),
+        isLatest: bool(raw.isLatest),
+        local: bool(raw.local),
+    }));
+
+    table.set(LoreTag.REVISION_SYNC_PROGRESS, (raw): LoreSyncProgressPayload => ({
+        fileUpdate: decodeCount(raw.fileUpdate),
+        fileUpdateTotal: decodeCount(raw.fileUpdateTotal),
+        fileDelete: decodeCount(raw.fileDelete),
+        fileDeleteTotal: decodeCount(raw.fileDeleteTotal),
+        fileAutomerge: decodeCount(raw.fileAutomerge),
+        fileConflict: decodeCount(raw.fileConflict),
+        bytesUpdate: decodeCount(raw.bytesUpdate),
+        bytesUpdateTotal: decodeCount(raw.bytesUpdateTotal),
+        discoveryComplete: bool(raw.discoveryComplete),
+    }));
+
+    table.set(LoreTag.REVISION_SYNC_FILE, (raw): LoreStatusFilePayload => ({
+        path: decodeString(nested(raw, "path")),
+        size: decodeCount(raw.size),
+        action: decodeCount(raw.action),
+        // The sync event has no node-type field, only a "this is a file" flag, so the
+        // type is reconstructed rather than read: DIRECTORY is 0 and FILE is 1.
+        type: bool(raw.flagFile) ? 1 : 0,
+        staged: false,
+        merged: false,
+        conflict: false,
+        conflictUnresolved: false,
+        dirty: false,
+        fromPath: "",
+    }));
+
+    table.set(LoreTag.REVISION_SYNC_REVISION, (raw): LoreSyncRevisionPayload => ({
+        revision: decodeHash(nested(raw, "revision")),
+        revisionNumber: decodeCount(raw.revisionNumber),
+        merge: bool(raw.flagMerge),
+        conflict: bool(raw.flagConflict),
+    }));
+
+    table.set(LoreTag.BRANCH_PUSH, (raw): LoreBranchPushPayload => ({
+        remote: decodeString(nested(raw, "remote")),
+        branchName: decodeString(nested(raw, "branchName")),
+        remoteRevision: decodeOptionalHash(nested(raw, "remoteRevision")),
+        localRevision: decodeOptionalHash(nested(raw, "localRevision")),
+        remoteHistory: decodeCount(raw.remoteHistory),
+        localHistory: decodeCount(raw.localHistory),
+        alreadyPushed: bool(raw.flagAlreadyPushed),
+    }));
+
+    table.set(LoreTag.AUTH_IDENTITY, (raw): LoreAuthIdentityPayload => ({
+        authUrl: decodeString(nested(raw, "authUrl")),
+        resource: decodeString(nested(raw, "resource")),
+        userId: decodeString(nested(raw, "userId")),
+        expires: decodeCount(raw.expires),
+        // The token itself is deliberately NOT decoded. It is a credential, it is
+        // already in the caller's hand (it is what was just sent), and everything this
+        // binding decodes ends up in logs and IPC payloads sooner or later.
+    }));
+
     tables.set(library, table);
     return table;
 }
@@ -549,6 +721,16 @@ const PAYLOAD_STRUCTS: Readonly<Record<number, string>> = {
     [LoreTag.BRANCH_LIST_ENTRY]: "LoreBranchListEntryEventData",
     [LoreTag.BRANCH_INFO]: "LoreBranchInfoEventData",
     [LoreTag.BRANCH_CREATE]: "LoreBranchCreateEventData",
+    [LoreTag.REPOSITORY_CLONE_BEGIN]: "LoreRepositoryCloneBeginEventData",
+    [LoreTag.REPOSITORY_CLONE_PROGRESS]: "LoreRepositoryCloneProgressEventData",
+    [LoreTag.REPOSITORY_CLONE_END]: "LoreRepositoryCloneEndEventData",
+    [LoreTag.REPOSITORY_CONFIG_GET]: "LoreRepositoryConfigGetEventData",
+    [LoreTag.REVISION_SYNC_TARGET]: "LoreRevisionSyncTargetEventData",
+    [LoreTag.REVISION_SYNC_FILE]: "LoreRevisionSyncFileEventData",
+    [LoreTag.REVISION_SYNC_PROGRESS]: "LoreRevisionSyncProgressEventData",
+    [LoreTag.REVISION_SYNC_REVISION]: "LoreRevisionSyncRevisionEventData",
+    [LoreTag.BRANCH_PUSH]: "LoreBranchPushEventData",
+    [LoreTag.AUTH_IDENTITY]: "LoreAuthIdentityEventData",
 };
 
 /**
