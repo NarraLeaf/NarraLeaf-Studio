@@ -9,6 +9,7 @@ import {
     materializeRevisionSnapshot,
     partitionSnapshotEntries,
     removeRevisionSnapshots,
+    resolveSnapshotEntryTarget,
     revisionSnapshotDirectory,
     type RevisionSnapshotSource,
 } from "./revisionSnapshot";
@@ -157,16 +158,32 @@ describe("materialising", () => {
 
         expect(result.files).toBe(1);
         expect(fs.existsSync(outside)).toBe(false);
+    });
 
-        // An absolute name is contained by `path.join` rather than rejected by the predicate, so the
-        // guard inside the writer is what stops it - and a failure here refuses the launch, which is the
-        // right direction: nothing runs rather than something wrong running.
-        const absolute: RevisionSnapshotSource = {
-            list: async () => [{ ...entry("editor/ok.json"), path: `${path.parse(project).root.replace(/\\/g, "/")}absolute.json` }],
-            read: async () => Buffer.from("x"),
-        };
-        await expect(materializeRevisionSnapshot({ projectPath: project, revision: REVISION, source: absolute }))
-            .rejects.toThrow();
+    /**
+     * The writer's own guard, exercised directly.
+     *
+     * It cannot be reached through `materializeRevisionSnapshot` - `isVersioned` drops every `..`
+     * first - so driving it through the public API tests the predicate a second time and the guard
+     * not at all. This previously went through the API with an absolute path built from
+     * `path.parse(project).root`, which proved neither: on Windows `C:/absolute.json` lands at
+     * `<snapshot>\C:\absolute.json`, INSIDE the directory, and the rejection came from the OS
+     * refusing a name containing a colon; on Linux the same path is perfectly legal and it was
+     * written without complaint.
+     */
+    it("refuses an entry that would resolve outside the snapshot", () => {
+        const directory = path.resolve(revisionSnapshotDirectory(project, REVISION));
+
+        expect(() => resolveSnapshotEntryTarget(directory, "../escape.json")).toThrow(/escapes the snapshot/);
+        expect(() => resolveSnapshotEntryTarget(directory, "editor/../../escape.json")).toThrow(/escapes the snapshot/);
+
+        // An absolute entry path is NOT an escape: `path.join` only concatenates, so the leading
+        // separator is neutralised and the file lands inside. Asserted so the distinction stays
+        // deliberate rather than looking like a case nobody thought about.
+        expect(resolveSnapshotEntryTarget(directory, "/absolute.json"))
+            .toBe(path.join(directory, "absolute.json"));
+        expect(resolveSnapshotEntryTarget(directory, "editor/a.json"))
+            .toBe(path.join(directory, "editor", "a.json"));
     });
 
     it("reports what it cost, because the launch has to say so", async () => {

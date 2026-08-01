@@ -20,9 +20,13 @@ const RESERVED_FILE_NAME_CHARS = "<>:\"/\\|?*";
  * The renderer proposes the name, and a renderer is never trusted with a path: a separator or a
  * `..` in there would steer the dialog somewhere the user did not choose. Only the basename
  * survives, and only its printable characters.
+ *
+ * Both separators are cut on every host, so `path.basename` is deliberately not used: it honours
+ * only the host's own, which would let `C:\…\report.log` through whole on Linux. Untrusted input
+ * does not become trustworthy by arriving on a platform that cannot parse it.
  */
 export function sanitizeBundleFileName(candidate: string, fallback: string): string {
-    const base = path.basename(candidate.trim());
+    const base = candidate.trim().split(/[\\/]/).pop() ?? "";
     const kept = Array.from(base)
         .filter(char => char >= " " && !RESERVED_FILE_NAME_CHARS.includes(char))
         .join("");
