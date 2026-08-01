@@ -15,6 +15,7 @@ import { ProjectAssetsSection } from "./sections/ProjectAssetsSection";
 import { ProjectSettingsSection } from "./sections/ProjectSettingsSection";
 import { ProjectDependenciesSection } from "./sections/ProjectDependenciesSection";
 import { ProjectRuntimesSection } from "./sections/ProjectRuntimesSection";
+import { ProjectLintingSection } from "./sections/ProjectLintingSection";
 import type { ProjectSectionProps } from "./sections/types";
 
 /** Deep-link payload: open the panel already showing a sub-page. */
@@ -119,6 +120,7 @@ export function ProjectPanel({ panelId, payload }: PanelComponentProps<ProjectPa
                             {activeItem.id === "assets" ? <ProjectAssetsSection {...sectionProps} /> : null}
                             {activeItem.id === "dependencies" ? <ProjectDependenciesSection {...sectionProps} /> : null}
                             {activeItem.id === "runtimes" ? <ProjectRuntimesSection {...sectionProps} /> : null}
+                            {activeItem.id === "linting" ? <ProjectLintingSection {...sectionProps} /> : null}
                             {activeItem.id === "settings" ? <ProjectSettingsSection {...sectionProps} /> : null}
                         </ProjectSubPage>
                     </motion.div>

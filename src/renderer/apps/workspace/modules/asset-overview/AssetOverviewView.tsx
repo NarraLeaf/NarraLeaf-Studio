@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, Copy } from "lucide-react";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { AssetCategory, AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { AssetSource, type Asset } from "@/lib/workspace/services/assets/types";
 import { Button } from "@/lib/components/elements";
 import { cn } from "@/lib/utils/cn";
@@ -98,13 +98,13 @@ export function AssetOverviewView({
                 </div>
             </DashboardSection>
 
-            <DashboardSection title={t("assets.overview.section.byType")}>
+            <DashboardSection title={t("assets.overview.section.byCategory")}>
                 <ul className="flex flex-col gap-2.5">
-                    {snapshot.byType.map(bucket => (
-                        <li key={bucket.type} className="flex flex-col gap-1">
+                    {snapshot.byCategory.map(bucket => (
+                        <li key={bucket.category} className="flex flex-col gap-1">
                             <div className="flex items-baseline justify-between gap-3">
                                 <span className="min-w-0 truncate text-xs text-fg-muted">
-                                    {t(`assets.types.${bucket.type}` as `assets.types.${AssetType}`)}
+                                    {t(`assets.categories.${bucket.category}` as `assets.categories.${AssetCategory}`)}
                                 </span>
                                 <span className="shrink-0 text-2xs tabular-nums text-fg-subtle">
                                     {tn("assets.itemCount", bucket.count)}

@@ -137,7 +137,6 @@ export const workspace = {
     shell: {
         errorTitle: "Failed to initialize workspace",
         showStackTrace: "Show stack trace",
-        errorConsoleHint: "If the problem persists, export the logs and include them in your report.",
         retry: "Retry",
         openOtherProject: "Open another project",
         errorCopyDetails: "Copy details",
@@ -306,6 +305,12 @@ export const workspace = {
                 theme: "Theme switcher",
                 zoom: "Zoom level",
                 version: "Version",
+                // The text-document cells. Named for what they report rather than for the editor
+                // they come from, because that is what the author is deciding to hide.
+                textFileName: "Text file name",
+                textEncoding: "Text encoding",
+                textLineEnding: "Line ending",
+                textSelection: "Cursor position",
             },
         },
         // Save reporting: the sticky toast raised when a file cannot be written, and the lines the

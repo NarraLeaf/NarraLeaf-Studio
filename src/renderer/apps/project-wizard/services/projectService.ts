@@ -9,7 +9,7 @@ import { join } from "@shared/utils/path";
 import { WindowAppType } from "@shared/types/window";
 import { throwException } from "@shared/utils/error";
 import { EMPTY_ASSET_ORDER_TEXT } from "@/lib/workspace/services/assets/assetOrder";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { ASSET_CATEGORY_ORDER, AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import {
     DEFAULT_APP_SURFACE_NAME,
     DEFAULT_UI_DOCUMENT_NAME,
@@ -84,13 +84,16 @@ export class ProjectService {
             for (const type of Object.values(AssetType)) {
                 const metadataPath = this.resolve(basePath, ProjectNameConvention.AssetsMetadataShard(type));
                 throwException(await BaseFileSystemService.write(metadataPath, JSON.stringify({}), "utf-8"));
+            }
 
-                const groupsPath = this.resolve(basePath, ProjectNameConvention.AssetsGroupsShard(type));
+            // Folders and row order are sharded one level up, by sidebar section.
+            for (const category of ASSET_CATEGORY_ORDER) {
+                const groupsPath = this.resolve(basePath, ProjectNameConvention.AssetsGroupsShard(category));
                 throwException(await BaseFileSystemService.write(groupsPath, JSON.stringify({}), "utf-8"));
 
                 // Created here as well as on open, so a new project's first commit already has the
                 // file rather than growing one in the second.
-                const orderPath = this.resolve(basePath, ProjectNameConvention.AssetsOrderShard(type));
+                const orderPath = this.resolve(basePath, ProjectNameConvention.AssetsOrderShard(category));
                 throwException(await BaseFileSystemService.write(orderPath, EMPTY_ASSET_ORDER_TEXT, "utf-8"));
             }
 

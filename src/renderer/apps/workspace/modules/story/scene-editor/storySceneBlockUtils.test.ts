@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
 import { deleteBlockFromScene, insertBlockInScene } from "@/lib/workspace/services/story/storyModel";
-import { annotateDialogueGroups, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isNarrativeRow, isReadableAccentColor, nextSelectionAfterDelete, planRowBackspaceReplacement } from "./storySceneBlockUtils";
+import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isNarrativeRow, isReadableAccentColor, nextSelectionAfterDelete, planRowBackspaceReplacement } from "./storySceneBlockUtils";
+import type { VisibleStoryRow } from "./storySceneEditorTypes";
 
 function control(payload: Extract<StoryBlock, { kind: "control" }>["payload"]): StoryBlock {
     return { id: "b", kind: "control", parentId: null, childrenIds: [], payload };
@@ -113,6 +114,25 @@ describe("nextSelectionAfterDelete", () => {
     });
 });
 
+/**
+ * The nesting connector needs the same fact the dialogue rail does — where the line it draws stops —
+ * and gets it from one lookahead over the flattened preorder list: a branch at level L ends at a row
+ * exactly when the next row sits at depth L or shallower.
+ */
+describe("annotateNestingBranches", () => {
+    const depthsAndNext = (rows: VisibleStoryRow[]) =>
+        annotateNestingBranches(rows).map(row => `${row.depth}->${row.nextRowDepth}`);
+
+    it("records the following row's depth, and 0 for the last row", () => {
+        const rows = [{ depth: 0 }, { depth: 1 }, { depth: 2 }, { depth: 1 }, { depth: 0 }] as VisibleStoryRow[];
+        expect(depthsAndNext(rows)).toEqual(["0->1", "1->2", "2->1", "1->0", "0->0"]);
+    });
+
+    it("leaves an empty list alone", () => {
+        expect(annotateNestingBranches([])).toEqual([]);
+    });
+});
+
 describe("annotateDialogueGroups", () => {
     const rolesOf = (blocks: StoryBlock[]) =>
         annotateDialogueGroups(buildVisibleRows(scene(blocks, blocks.map(b => b.id)), new Set())).map(row => row.groupRole);
@@ -124,6 +144,24 @@ describe("annotateDialogueGroups", () => {
 
     it("starts a new group when the speaker changes", () => {
         expect(rolesOf([dialogue("a", { characterId: "c1" }), dialogue("b", { characterId: "c2" })])).toEqual(["head", "head"]);
+    });
+
+    /**
+     * The connector is drawn per row but must read as one line, so every row of a run needs to know
+     * whether another member follows it: the last one is the only segment that ends, and therefore the
+     * only one that rounds and turns. Marking heads alone (the original rule) left the last member
+     * indistinguishable from the middle ones, so the line ran off the bottom of the run.
+     */
+    const continuesOf = (blocks: StoryBlock[]) =>
+        annotateDialogueGroups(buildVisibleRows(scene(blocks, blocks.map(b => b.id)), new Set())).map(row => row.groupContinues ?? false);
+
+    it("marks every row of a run except its last as continuing", () => {
+        expect(continuesOf([dialogue("a", { characterId: "c1" }), dialogue("b", { characterId: "c1" }), dialogue("c", { characterId: "c1" })]))
+            .toEqual([true, true, false]);
+    });
+
+    it("leaves a run of one, and the row after a run, with nothing to continue", () => {
+        expect(continuesOf([dialogue("a", { characterId: "c1" }), narration("n")])).toEqual([false, false]);
     });
 
     it("folds a same-character expression into the run without breaking it", () => {
