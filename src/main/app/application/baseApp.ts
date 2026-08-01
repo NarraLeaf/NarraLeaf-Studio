@@ -44,6 +44,9 @@ export type AppEvents = {
     "ready-failed": [error: Error];
 };
 
+/** What a dev-server reload broadcast asks for. Mirrors dev-electron.js. */
+type DevReloadTarget = "all" | "workspace" | "builtin-plugins";
+
 export class BaseApp {
     public static Events = {
         Ready: "ready",
@@ -542,24 +545,7 @@ export class BaseApp {
                 this.logger.warn(`[Dev] Reload server on port ${port} not reachable; auto-reload disabled.`, event.message);
             };
             ws.onmessage = (event) => {
-                const target = this.parseDevReloadTarget(event.data);
-                this.windowManager.getWindows().forEach((w) => {
-                    if (w.isClosed()) {
-                        return;
-                    }
-                    if (target === "workspace" && w.getWindowType() !== WindowAppType.Workspace) {
-                        return;
-                    }
-                    // Avoid interrupting an in-flight navigation which causes ERR_ABORTED
-                    try {
-                        const wc = w.getWebContents();
-                        if (!wc.isLoadingMainFrame()) {
-                            w.reload();
-                        }
-                    } catch (_e) {
-                        // Window might be destroyed; ignore
-                    }
-                });
+                void this.handleDevReload(this.parseDevReloadTarget(event.data));
             };
         } catch (error) {
             this.logger.warn("[Dev] Failed to set up reload socket:", error);
@@ -582,7 +568,45 @@ export class BaseApp {
         }
     }
 
-    private parseDevReloadTarget(data: unknown): "all" | "workspace" {
+    /**
+     * Apply one dev reload broadcast.
+     *
+     * `builtin-plugins` is the rebuild of `dist/builtin-plugins`. Reloading the
+     * windows alone would show the same code again: the packages the renderer
+     * loads are the copies the main process synced into userData at start-up, so
+     * the sync has to run again *before* the reload, or a dev edit to a built-in
+     * plugin would only appear after restarting Studio.
+     */
+    private async handleDevReload(target: DevReloadTarget): Promise<void> {
+        if (target === "builtin-plugins") {
+            try {
+                await this.pluginManager.refreshBuiltInPlugins();
+            } catch (error) {
+                this.logger.warn("[Dev] Failed to re-sync built-in plugins:", error);
+            }
+        }
+
+        const workspaceOnly = target !== "all";
+        this.windowManager.getWindows().forEach((w) => {
+            if (w.isClosed()) {
+                return;
+            }
+            if (workspaceOnly && w.getWindowType() !== WindowAppType.Workspace) {
+                return;
+            }
+            // Avoid interrupting an in-flight navigation which causes ERR_ABORTED
+            try {
+                const wc = w.getWebContents();
+                if (!wc.isLoadingMainFrame()) {
+                    w.reload();
+                }
+            } catch (_e) {
+                // Window might be destroyed; ignore
+            }
+        });
+    }
+
+    private parseDevReloadTarget(data: unknown): DevReloadTarget {
         const text = typeof data === "string"
             ? data
             : Buffer.isBuffer(data)
@@ -594,7 +618,9 @@ export class BaseApp {
 
         try {
             const parsed = JSON.parse(text) as { target?: unknown };
-            return parsed.target === "workspace" ? "workspace" : "all";
+            return parsed.target === "workspace" || parsed.target === "builtin-plugins"
+                ? parsed.target
+                : "all";
         } catch {
             return "all";
         }
