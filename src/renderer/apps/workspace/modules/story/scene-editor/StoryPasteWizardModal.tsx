@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { Modal, dialogFooterButtonClass } from "@/lib/components/elements/Modal";
 import { Input } from "@/lib/components/elements/Input";
@@ -58,11 +58,16 @@ export function StoryPasteWizardModal(props: {
     inferred: PasteSeparatorChoice;
     characters: Character[];
     memory: StoryPasteMemory;
-    busy: boolean;
     onSaveSeparator: (name: string, choice: PasteSeparatorChoice) => void;
     onForgetSeparator: (name: string) => void;
     onCancel: () => void;
-    onConfirm: (plan: PastePlan, mappings: Record<string, SpeakerMappingTarget>) => void;
+    /**
+     * The rows to create, and - separately - the speaker decisions **the author actually made**.
+     *
+     * The second argument is not the mapping table: it is the subset that differs from what the wizard
+     * computed, and it is what gets remembered. See {@link authoredMappings}.
+     */
+    onConfirm: (plan: PastePlan, authoredMappings: Record<string, SpeakerMappingTarget>) => void;
 }) {
     const { t, tn } = useTranslation();
     const [choice, setChoice] = useState<PasteSeparatorChoice>(props.inferred);
@@ -87,16 +92,65 @@ export function StoryPasteWizardModal(props: {
         setPresetName("");
     }
 
+    /**
+     * Focus lands in the dialog when it opens.
+     *
+     * Not (only) an a11y nicety: `Modal`'s Escape listener sits on `document` and bubbles, so whatever
+     * held the caret when the paste arrived answers the key FIRST. Over an insert slot Escape discards
+     * the draft line; over a row being edited it *commits* - a `recordHistory` plus an `updateBlock` -
+     * so cancelling the wizard wrote to the document. Taking the caret is what makes Escape mean
+     * "close this dialog" and nothing else, and it is done here rather than in `Modal` so no other
+     * caller's focus behaviour changes.
+     */
+    const surfaceRef = useRef<HTMLDivElement | null>(null);
+    useEffect(() => {
+        if (props.open) {
+            surfaceRef.current?.focus();
+        }
+    }, [props.open]);
+
     const split = useMemo(() => splitPastedText(props.text, choice), [props.text, choice]);
 
-    const mappings = useMemo(() => {
+    /** What each label maps to before the author touches it - the row the table opens showing. */
+    const defaults = useMemo(() => {
         const next: Record<string, SpeakerMappingTarget> = {};
         for (const tally of split.speakers) {
-            const key = speakerMemoryKey(tally.label);
-            next[key] = overrides[key] ?? defaultTargetFor(tally.label, props.characters, props.memory);
+            next[speakerMemoryKey(tally.label)] = defaultTargetFor(tally.label, props.characters, props.memory);
         }
         return next;
-    }, [split.speakers, overrides, props.characters, props.memory]);
+    }, [split.speakers, props.characters, props.memory]);
+
+    const mappings = useMemo(() => {
+        const next = { ...defaults };
+        for (const [key, target] of Object.entries(overrides)) {
+            // Only for labels this split still has: changing the separator must not strand a decision
+            // made about a label that no longer exists.
+            if (key in next) {
+                next[key] = target;
+            }
+        }
+        return next;
+    }, [defaults, overrides]);
+
+    /**
+     * The decisions, as opposed to the table.
+     *
+     * A computed default is a guess the author never looked at, and writing guesses to the project's
+     * paste memory had two consequences that never expired: a label the inference invented was
+     * remembered forever, and - because memory is consulted ahead of the name match - a character
+     * created later was permanently shadowed by the "Name only" that had been guessed in its place,
+     * with nothing in the UI able to clear it. Re-picking the value already shown is not a decision
+     * either; it says nothing the wizard did not already know.
+     */
+    const authoredMappings = useMemo(() => {
+        const next: Record<string, SpeakerMappingTarget> = {};
+        for (const [key, target] of Object.entries(mappings)) {
+            if (!sameTarget(target, defaults[key])) {
+                next[key] = target;
+            }
+        }
+        return next;
+    }, [defaults, mappings]);
 
     const plan = useMemo(() => planPastedRows({ split, mappings }), [split, mappings]);
 
@@ -131,7 +185,6 @@ export function StoryPasteWizardModal(props: {
             onClose={props.onCancel}
             title={t("story.paste.title")}
             size="xl"
-            closeOnOverlayClick={!props.busy}
             footer={
                 <div className="flex w-full items-center gap-2">
                     <span className="min-w-0 flex-1 truncate text-2xs text-fg-subtle">
@@ -143,24 +196,25 @@ export function StoryPasteWizardModal(props: {
                     </span>
                     <button
                         type="button"
-                        className={dialogFooterButtonClass({ variant: "secondary", disabled: props.busy })}
+                        className={dialogFooterButtonClass({ variant: "secondary" })}
                         onClick={props.onCancel}
-                        disabled={props.busy}
                     >
                         {t("common.cancel")}
                     </button>
                     <button
                         type="button"
-                        className={dialogFooterButtonClass({ variant: "primary", disabled: props.busy || plan.rows.length === 0 })}
-                        onClick={() => props.onConfirm(plan, mappings)}
-                        disabled={props.busy || plan.rows.length === 0}
+                        className={dialogFooterButtonClass({ variant: "primary", disabled: plan.rows.length === 0 })}
+                        onClick={() => props.onConfirm(plan, authoredMappings)}
+                        disabled={plan.rows.length === 0}
                     >
                         {t("story.paste.action")}
                     </button>
                 </div>
             }
         >
-            <div className="flex flex-col gap-3">
+            {/* `tabIndex={-1}` so the dialog itself can hold the caret: it is not a control, it just
+                has to be somewhere focus can land that is not the editor underneath. */}
+            <div ref={surfaceRef} tabIndex={-1} className="flex flex-col gap-3 outline-none">
                 {/* Separator: compact, at the top, above the thing it changes. */}
                 <div className="flex flex-col gap-1.5">
                     <div className="flex flex-wrap items-center gap-1">
@@ -345,6 +399,10 @@ function PreviewRow(props: { row: PastePlanRow; characterNames: Map<string, stri
  * deleted falls through rather than pointing at nothing, and a remembered `createCharacter` is
  * downgraded - the character it named exists by now, or the author changed their mind, and either way
  * silently creating one is what this default must never do.
+ *
+ * Memory only ever holds decisions the author made (see {@link authoredMappings}), which is what makes
+ * "memory first" safe: a guess can no longer get in front of the name match and shadow a character
+ * created in a later chapter.
  */
 function defaultTargetFor(label: string, characters: Character[], memory: StoryPasteMemory): SpeakerMappingTarget {
     const remembered = memory.speakers[speakerMemoryKey(label)];
@@ -363,6 +421,14 @@ function defaultTargetFor(label: string, characters: Character[], memory: StoryP
             || profile.getNicknames().some(nickname => speakerMemoryKey(nickname) === normalized);
     });
     return match ? { kind: "character", characterId: match.profile.getId() } : { kind: "tempSpeaker" };
+}
+
+/** Two targets are the same decision when they name the same thing, character id included. */
+function sameTarget(a: SpeakerMappingTarget | undefined, b: SpeakerMappingTarget | undefined): boolean {
+    if (!a || !b) {
+        return a === b;
+    }
+    return a.kind === b.kind && (a.kind !== "character" || a.characterId === (b as { characterId?: string }).characterId);
 }
 
 function targetToValue(target: SpeakerMappingTarget | undefined): string {
