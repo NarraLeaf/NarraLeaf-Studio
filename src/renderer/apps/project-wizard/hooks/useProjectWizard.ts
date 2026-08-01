@@ -3,12 +3,13 @@ import { getInterface } from "@/lib/app/bridge";
 import { translate } from "@/lib/i18n";
 import { parseVcsRemoteUrl } from "@shared/types/vcs";
 import { WindowAppType } from "@shared/types/window";
-import { CloneFailure, CloneStatus, ProjectData, ProjectFlow, WizardStep, ValidationErrors, DirectoryValidationResult } from "../types";
+import { CloneFailure, CloneStatus, ImportFailure, ImportStatus, ProjectData, ProjectFlow, WizardStep, ValidationErrors, DirectoryValidationResult } from "../types";
 import { defaultProjectData, projectTemplates, WIZARD_FLOW_STEPS } from "../constants";
 import { ValidationService } from "../services/validationService";
 import { DirectoryService } from "../services/directoryService";
 import { ProjectService } from "../services/projectService";
 import { CloneService } from "../services/cloneService";
+import { ImportService } from "../services/importService";
 import { join } from "@shared/utils/path";
 
 /**
@@ -42,6 +43,8 @@ export function useProjectWizard() {
     const [locationManuallyEdited, setLocationManuallyEdited] = useState(false);
     const [cloneStatus, setCloneStatus] = useState<CloneStatus>("idle");
     const [cloneFailure, setCloneFailure] = useState<CloneFailure | null>(null);
+    const [importStatus, setImportStatus] = useState<ImportStatus>("idle");
+    const [importFailure, setImportFailure] = useState<ImportFailure | null>(null);
 
     const [projectData, setProjectData] = useState<ProjectData>(defaultProjectData);
 
@@ -412,6 +415,38 @@ export function useProjectWizard() {
         }
     }, [projectData.remoteUrl, projectData.location]);
 
+    /**
+     * Unpack a project from a package, and only then hand it on.
+     *
+     * Same contract as {@link cloneProject}: the window closes on a verified project and on
+     * nothing else. Cancelling is silent - backing out of a file dialog is not an error, and a
+     * red panel for someone who changed their mind is worse than saying nothing.
+     */
+    const importProject = useCallback(async (): Promise<void> => {
+        setImportFailure(null);
+        setImportStatus("picking");
+        try {
+            const outcome = await ImportService.importProject();
+            if (outcome.status === "cancelled") {
+                return;
+            }
+            if (outcome.status === "failed") {
+                setImportFailure({ kind: "failed", message: outcome.error });
+                return;
+            }
+            if (outcome.status === "notAProject") {
+                setImportFailure({ kind: "notAProject", destination: outcome.root });
+                return;
+            }
+            getInterface().window.closeWith<WindowAppType.ProjectWizard>({
+                created: true,
+                projectPath: outcome.root,
+            });
+        } finally {
+            setImportStatus("idle");
+        }
+    }, []);
+
     return {
         // State
         currentStep,
@@ -427,6 +462,8 @@ export function useProjectWizard() {
         creationError,
         cloneStatus,
         cloneFailure,
+        importStatus,
+        importFailure,
         locationInputDirty,
         locationInputFocused,
         appIdManuallyEdited,
@@ -441,6 +478,7 @@ export function useProjectWizard() {
         handleLocationFocus,
         handleSelectDirectory,
         cloneProject,
+        importProject,
         nextStep,
         prevStep,
         createProject,

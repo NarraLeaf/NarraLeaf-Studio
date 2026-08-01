@@ -1,9 +1,9 @@
 import type { LocaleNamespace } from "../types";
 
 export const wizard = {
-    appTitle: "新建项目",
+    appTitle: "添加项目",
     header: {
-        title: "创建新项目",
+        title: "添加项目",
         stepIndicator: "第 {current} 步，共 {total} 步",
     },
     steps: {
@@ -31,12 +31,18 @@ export const wizard = {
             label: "获取项目",
             description: "复制到本机",
         },
+        import: {
+            label: "导入",
+            description: "解包到本机",
+        },
     },
     nav: {
         createProject: "创建项目",
         creating: "正在创建…",
         cloneProject: "获取项目",
         cloning: "正在获取…",
+        importProject: "选择安装包…",
+        importing: "正在导入…",
     },
     error: {
         createFailedTitle: "创建项目失败",
@@ -51,13 +57,18 @@ export const wizard = {
         appId: "应用 ID",
     },
     template: {
-        title: "选择项目模板",
-        subtitle: "选择一个项目模板，借助预配置的结构和设置快速开始",
+        title: "这个项目从哪里来？",
+        subtitle: "新建一个，或者把已经存在的项目拿进来",
         options: {
             empty: {
                 name: "空白",
                 description: "从空白项目开始，从零构建",
                 category: "自定义",
+            },
+            import: {
+                name: "来自安装包",
+                description: "解包别人导出的 .nlspkg 文件",
+                category: "已有项目",
             },
             clone: {
                 name: "来自服务器",
@@ -117,6 +128,23 @@ export const wizard = {
             hourly: "每小时",
             daily: "每天",
             weekly: "每周",
+        },
+    },
+    import: {
+        title: "导入项目安装包",
+        subtitle: "把一个 .nlspkg 文件解包到本机的文件夹里",
+        steps: {
+            title: "接下来会发生什么",
+            description: "会依次弹出两个对话框，然后开始解包",
+            pickPackage: "第一步：选择要解包的 .nlspkg 文件",
+            pickFolder: "第二步：选择解包到哪个文件夹",
+        },
+        working: "等待你选择安装包和目标文件夹，两个都选好之后才开始解包",
+        error: {
+            failedTitle: "无法导入项目",
+            generic: "无法导入该项目安装包",
+            notAProjectTitle: "这不是 NarraLeaf Studio 项目",
+            notAProject: "安装包已解包，但其中没有 Studio 项目文件，Studio 无法打开。已解包的内容位于 {path}。请确认拿到的文件是否正确，然后重试",
         },
     },
     source: {
