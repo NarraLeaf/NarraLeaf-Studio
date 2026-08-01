@@ -256,15 +256,30 @@ export async function removeRevisionSnapshots(projectPath: string): Promise<bool
     return !fsSync.existsSync(root);
 }
 
-async function writeEntry(directory: string, entry: RevisionFileEntry, bytes: Buffer): Promise<Buffer> {
-    const target = path.join(directory, ...entry.path.split("/"));
-    // Belt to `isVersioned`'s braces. That predicate already rejects a `..` segment, but this is the
-    // line that would let a crafted tree write anywhere on the disk, so it does not depend on another
-    // function having been called first.
-    const resolved = path.resolve(target);
+/**
+ * Where one entry lands inside the snapshot, or a throw if it would land outside.
+ *
+ * Belt to `isVersioned`'s braces. That predicate already rejects a `..` segment, but this is the
+ * line that would let a crafted tree write anywhere on the disk, so it does not depend on another
+ * function having been called first - and therefore is exported and tested on its own, since
+ * through {@link materializeRevisionSnapshot} the predicate always runs first and nothing crafted
+ * ever reaches here.
+ *
+ * Worth being precise about what escapes, because the obvious candidate does not: an ABSOLUTE entry
+ * path cannot get out, on either platform. `path.join` only concatenates, so a leading separator is
+ * neutralised and `/absolute.json` becomes a file directly inside the snapshot. A `..` segment is
+ * the only escape, which is why that is what this rejects.
+ */
+export function resolveSnapshotEntryTarget(directory: string, entryPath: string): string {
+    const resolved = path.resolve(path.join(directory, ...entryPath.split("/")));
     if (resolved !== directory && !resolved.startsWith(directory + path.sep)) {
-        throw new Error(`Revision entry escapes the snapshot directory: ${entry.path}`);
+        throw new Error(`Revision entry escapes the snapshot directory: ${entryPath}`);
     }
+    return resolved;
+}
+
+async function writeEntry(directory: string, entry: RevisionFileEntry, bytes: Buffer): Promise<Buffer> {
+    const resolved = resolveSnapshotEntryTarget(directory, entry.path);
     await fs.mkdir(path.dirname(resolved), { recursive: true });
     // Plain write, not `Fs.writeRaw`: that one is the atomic writer (temp sibling, rename, directory
     // fsync), which for a few hundred files costs more than the read and litters the snapshot with
