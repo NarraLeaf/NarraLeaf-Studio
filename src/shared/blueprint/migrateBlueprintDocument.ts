@@ -18,7 +18,9 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED,
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
+    BLUEPRINT_NODE_TYPE_SOUND_PLAY,
 } from "@shared/types/blueprint/graph";
+import { AUDIO_TRACK_ID_MUSIC, AUDIO_TRACK_ID_SFX, AUDIO_TRACK_ID_VOICE } from "@shared/types/audioTrack";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { seedRegistryEntriesFromBlueprintPersistent } from "@shared/variables/variableRegistryModel";
 import { captureBlueprintDocumentEventOrder, captureBlueprintDocumentFunctionOrder } from "./blueprintEventOrder";
@@ -43,6 +45,22 @@ type LegacyDeclarationBindingSource = {
 function isRecord(v: unknown): v is Record<string, unknown> {
     return typeof v === "object" && v !== null && !Array.isArray(v);
 }
+
+/**
+ * `Play Sound`'s param keys, spelled here rather than imported from the node module: this file is
+ * shared and the node definitions are renderer-only (the main process reads blueprint documents
+ * too). The renderer's `soundNodes.ts` exports the same two strings, and
+ * `migrateBlueprintDocument.soundTrack.test.ts` asserts the two spellings agree.
+ */
+const LEGACY_SOUND_CHANNEL_PARAM = "soundChannel";
+const SOUND_TRACK_PARAM = "audioTrackId";
+
+/** One built-in track per engine bus - the seeded defaults reproduce the pre-track behaviour. */
+const LEGACY_CHANNEL_TO_TRACK_ID: Record<string, string> = {
+    bgm: AUDIO_TRACK_ID_MUSIC,
+    sound: AUDIO_TRACK_ID_SFX,
+    voice: AUDIO_TRACK_ID_VOICE,
+};
 
 /**
  * Merge legacy `members.declarations` into `members.fields`, rewrite binding sources, normalize member shape.
@@ -252,9 +270,70 @@ function migrateBlueprintSentenceSpeedToCps(doc: BlueprintDocument): BlueprintDo
     return doc;
 }
 
+/**
+ * `Play Sound`'s old three-value `soundChannel` select becomes an audio track reference.
+ *
+ * The channel vocabulary and the track vocabulary described the same thing twice, so the select is
+ * gone; what a graph stored still has to keep working, and each channel has exactly one built-in
+ * track (`bgm`→Music, `sound`→SFX, `voice`→Voice) whose seeded defaults reproduce the old
+ * behaviour. Applied on every read, including documents already on the current schema version:
+ * this is a param rename inside a node, not a document shape change, so there is no version to
+ * gate it on and a graph saved by an older Studio must migrate whenever it is opened.
+ *
+ * Idempotent - a node that already carries `audioTrackId` is left alone, so re-reading a migrated
+ * document (or one where the author has since picked a custom track) cannot clobber the choice.
+ */
+function migrateSoundChannelParamsForNode(node: BlueprintGraphNode): void {
+    if (node.type !== BLUEPRINT_NODE_TYPE_SOUND_PLAY || !node.params) {
+        return;
+    }
+    const params = node.params;
+    if (!Object.prototype.hasOwnProperty.call(params, LEGACY_SOUND_CHANNEL_PARAM)) {
+        return;
+    }
+    if (!Object.prototype.hasOwnProperty.call(params, SOUND_TRACK_PARAM)) {
+        const channel = params[LEGACY_SOUND_CHANNEL_PARAM];
+        params[SOUND_TRACK_PARAM] = LEGACY_CHANNEL_TO_TRACK_ID[String(channel)]
+            // An unreadable channel meant "sound" to `normalizeBlueprintSoundChannel`, so it means
+            // the SFX track here. Dropping the param instead would silently re-point the node.
+            ?? LEGACY_CHANNEL_TO_TRACK_ID.sound;
+    }
+    delete params[LEGACY_SOUND_CHANNEL_PARAM];
+}
+
+function migrateSoundChannelParamsForGraph(graph: BlueprintGraphIr | undefined): void {
+    if (!graph?.nodes) {
+        return;
+    }
+    for (const node of Object.values(graph.nodes)) {
+        migrateSoundChannelParamsForNode(node);
+    }
+}
+
+function migrateBlueprintSoundChannelToTrack(doc: BlueprintDocument): BlueprintDocument {
+    for (const bp of Object.values(doc.blueprints)) {
+        if (bp.program.kind !== "graph") {
+            continue;
+        }
+        const graphs = bp.program.graphs;
+        for (const eventGraph of Object.values(graphs.events ?? {})) {
+            migrateSoundChannelParamsForGraph(eventGraph.graph);
+        }
+        for (const functionGraph of Object.values(graphs.functions ?? {})) {
+            migrateSoundChannelParamsForGraph(functionGraph.graph);
+        }
+        for (const macroGraph of Object.values(graphs.macros ?? {})) {
+            migrateSoundChannelParamsForGraph(macroGraph.graph);
+        }
+    }
+    return doc;
+}
+
 function finalizeLegacyBlueprintDocument(doc: BlueprintDocument): BlueprintDocument {
-    return migrateBlueprintSentenceSpeedToCps(
-        migrateBlueprintTimingUnitsToSeconds(stripPersistentVariables(migrateLegacyDeclarationsToFields(doc))),
+    return migrateBlueprintSoundChannelToTrack(
+        migrateBlueprintSentenceSpeedToCps(
+            migrateBlueprintTimingUnitsToSeconds(stripPersistentVariables(migrateLegacyDeclarationsToFields(doc))),
+        ),
     );
 }
 
@@ -274,8 +353,10 @@ export function migrateBlueprintDocumentToLatest(raw: unknown): BlueprintDocumen
     captureBlueprintDocumentFunctionOrder(raw);
     const sv = raw.schemaVersion;
     if (sv === BLUEPRINT_DOCUMENT_SCHEMA_VERSION) {
-        return migrateBlueprintSentenceSpeedToCps(
-            stripPersistentVariables(migrateLegacyDeclarationsToFields(raw as BlueprintDocument)),
+        return migrateBlueprintSoundChannelToTrack(
+            migrateBlueprintSentenceSpeedToCps(
+                stripPersistentVariables(migrateLegacyDeclarationsToFields(raw as BlueprintDocument)),
+            ),
         );
     }
     if ((sv === 5 || sv === 6 || sv === 7 || sv === 8 || sv === 9) && isRecord(raw.blueprints)) {

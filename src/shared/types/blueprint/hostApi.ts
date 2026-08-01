@@ -1,5 +1,5 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 29 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 30 as const;
 
 /** Global runtime state key mirrored from the active NarraLeaf dialog hook. */
 export const BLUEPRINT_GAME_NAMETAG_STATE_KEY = "game.dialog.nametag" as const;
@@ -529,7 +529,10 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             purity: "effectful",
             callableFromBinding: false,
             async: true,
-            input: { assetId: "", channel: "sound", loop: false, volume: 1 },
+            // `audioTrackId` replaced the old `channel`: the track names the bus *and* supplies the
+            // gain and the fade/loop defaults, so the three overrides below are all nullable - unset
+            // means "whatever the track says", which is not the same request as an explicit 0.
+            input: { assetId: "", audioTrackId: null, loop: null, volume: null, fadeInMs: null },
             output: { kind: "soundHandle", id: "" },
         },
         stop: {
@@ -579,6 +582,27 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             async: false,
             input: { handle: null },
             output: false,
+        },
+        /**
+         * For host-owned media elements (the `nl.video` widget's `<video>`), which sit outside the
+         * engine's audio graph and would otherwise obey no player volume at all. Pure reads, so
+         * both are callable from a binding.
+         */
+        resolveElementVolume: {
+            capabilityId: "sound.resolveElementVolume",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: { audioTrackId: null, volume: null },
+            output: 1,
+        },
+        subscribeMixerChanges: {
+            capabilityId: "sound.subscribeMixerChanges",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: {},
+            output: null,
         },
     },
     devtools: {

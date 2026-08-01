@@ -9,6 +9,7 @@ import type {
     StoryDocument,
     StoryDisplayableTargetKind,
     StoryLiteralValue,
+    StoryScene,
     StorySceneId,
     StoryTransitionRef,
     StoryTransformRef,
@@ -24,13 +25,18 @@ import {
     isStoryExpressionEvaluable,
     layerActionTargetRef,
     listScenesInDocumentOrder,
+    normalizeStageObjectName,
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
     savedVariableDefs,
     sceneLabelNames,
     sceneVariableDefs,
 } from "@shared/types/story";
-import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
+import { formatStorySecondsLabel, formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
+import type { AudioTrackChannel, ProjectAudioTrack } from "@shared/types/audioTrack";
+import { resolveAudioTrack, resolveAudioTrackPlayback } from "@shared/types/audioTrack";
+import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
+import { BGM_OBJECT_NAME } from "./storyCommandValues";
 import { useTranslation } from "@/lib/i18n";
 import type { Translator, TranslationKey } from "@shared/i18n";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -834,29 +840,12 @@ function ActionPayloadFields(props: {
     }
     if (payload.action === "audio") {
         return (
-            <div className="grid grid-cols-1 gap-3">
-                <div className="nl-field-grid">
-                    <SelectField
-                        label={t("storyInspector.field.operation")}
-                        options={audioOperationOptions(t)}
-                        value={payload.operation}
-                        onChange={operation => props.onChange({ ...payload, operation: operation as Extract<StoryActionPayload, { action: "audio" }>["operation"] })}
-                    />
-                    <TextField label={t("storyInspector.audio.soundName")} value={payload.objectName ?? ""} onChange={objectName => props.onChange({ ...payload, objectName })} />
-                    <AssetField
-                        label={payload.operation === "setBgm" ? t("storyInspector.audio.bgmAsset") : t("storyInspector.audio.soundAsset")}
-                        assetType={AssetType.Audio}
-                        assetId={payload.assetId}
-                        onChange={assetId => props.onChange({ ...payload, assetId })}
-                    />
-                    <SecondsField label={t("storyInspector.audio.fade")} value={payload.fadeMs} onChange={fadeMs => props.onChange({ ...payload, fadeMs })} />
-                    <SecondsField label={t("storyInspector.audio.seekTime")} value={payload.timeMs} onChange={timeMs => props.onChange({ ...payload, timeMs })} />
-                    <NumberField label={t("storyInspector.audio.volume")} value={payload.volume} onChange={volume => props.onChange({ ...payload, volume })} />
-                    <NumberField label={t("storyInspector.audio.rate")} value={payload.rate} onChange={rate => props.onChange({ ...payload, rate })} />
-                    <CheckboxField label={t("storyInspector.audio.loop")} checked={Boolean(payload.loop)} onChange={loop => props.onChange({ ...payload, loop })} />
-                    <CheckboxField label={t("storyInspector.field.muted")} checked={Boolean(payload.muted)} onChange={muted => props.onChange({ ...payload, muted })} />
-                </div>
-            </div>
+            <AudioActionEditor
+                payload={payload}
+                scene={props.document.scenes[props.sceneId] ?? null}
+                blockId={props.block.id}
+                onChange={props.onChange}
+            />
         );
     }
     if (payload.action === "setVariable") {
@@ -1127,6 +1116,250 @@ function ActionPayloadFields(props: {
         );
     }
     return null;
+}
+
+type AudioActionPayload = Extract<StoryActionPayload, { action: "audio" }>;
+
+/** The knobs an audio row can carry. Names, not components - the table below is data, not layout. */
+type AudioField = "track" | "name" | "asset" | "fade" | "volume" | "rate" | "loop" | "muted" | "seekTime";
+
+/**
+ * Which fields each audio operation actually consumes.
+ *
+ * **One table, because the alternative was nine fields on all nine operations.** Picking "Stop sound"
+ * used to show Seek Time, Volume, Rate, Loop and Muted - five controls the compiler never reads on
+ * that row, so editing them looked like an edit and changed nothing. A declarative table is what
+ * keeps this honest as the compiler moves: `compileAudioAction`'s switch and these rows are the same
+ * list written twice, and a divergence is visible here rather than buried in inline ternaries.
+ *
+ * `track` sits only on the two operations that CREATE a handle. A later `/vol piano` addresses a
+ * sound that already has a track, and the compiler reports a second, different one as a conflict
+ * rather than honouring it - so offering the select there would be a control that cannot work.
+ * `asset` follows the same rule for the same reason: the control family addresses by name.
+ */
+const AUDIO_OPERATION_FIELDS: Record<AudioActionPayload["operation"], readonly AudioField[]> = {
+    setBgm: ["track", "asset", "fade", "volume", "loop"],
+    playSound: ["track", "name", "asset", "fade", "volume", "rate", "loop"],
+    stopSound: ["name", "fade"],
+    pauseSound: ["name", "fade"],
+    resumeSound: ["name", "fade"],
+    setVolume: ["name", "volume", "fade"],
+    setRate: ["name", "rate"],
+    muteSound: ["name", "muted"],
+    seekSound: ["name", "seekTime"],
+};
+
+/** The player's own volume slider for each bus - what the status line names the row's track by. */
+const AUDIO_SLIDER_LABEL_KEYS: Record<AudioTrackChannel, TranslationKey> = {
+    bgm: "project.audio.slider.bgm",
+    sound: "project.audio.slider.sound",
+    voice: "project.audio.slider.voice",
+};
+
+/** The bus an operation falls back to - the same split the compiler applies (`setBgm` is music). */
+function audioRowFallbackChannel(operation: AudioActionPayload["operation"]): AudioTrackChannel {
+    return operation === "setBgm" ? "bgm" : "sound";
+}
+
+/** The registry name a row addresses: `bgm` is reserved for the music channel (see BGM_OBJECT_NAME). */
+function audioRowSoundName(payload: AudioActionPayload): string {
+    return payload.operation === "setBgm"
+        ? BGM_OBJECT_NAME
+        : normalizeStageObjectName(payload.objectName || payload.assetId);
+}
+
+/** Every block of a scene in document order - the order the compiler walks, so first-match agrees. */
+function* sceneBlocksInOrder(scene: StoryScene, blockIds: readonly StoryBlockId[]): Generator<StoryBlock> {
+    for (const blockId of blockIds) {
+        const block = scene.blocks[blockId];
+        if (!block) {
+            continue;
+        }
+        yield block;
+        yield* sceneBlocksInOrder(scene, block.childrenIds);
+    }
+}
+
+/**
+ * The track this row's sound actually plays on - resolved by the compiler's own rule, so the number
+ * shown is the number the game gets.
+ *
+ * The rule has two arms because the compiler has two. A `/bgm` row builds a NEW handle and replaces
+ * whatever was under the reserved name, so it answers from itself alone. Every other row addresses a
+ * handle *by name*, and that handle is created once by whichever row reaches it first - carrying that
+ * row's bus and gain. So a later row inherits, and a later row that names a *different* track still
+ * inherits (the compiler reports that as a conflict rather than honouring it). Showing the requested
+ * track there would put a number on screen that no playback ever produces.
+ *
+ * The scan is this scene only, first mention in document order - which is exactly the order the
+ * compiler walks. A handle created in another scene is out of reach of any static scan, and falls
+ * back to the operation's bus here for the same reason it does there.
+ */
+function resolveAudioRowTrack(
+    tracks: readonly ProjectAudioTrack[],
+    scene: StoryScene | null,
+    payload: AudioActionPayload,
+    blockId: StoryBlockId,
+): ProjectAudioTrack {
+    if (payload.operation === "setBgm") {
+        return resolveAudioTrack(tracks, payload.audioTrackId, "bgm");
+    }
+    if (scene) {
+        const name = audioRowSoundName(payload);
+        for (const block of sceneBlocksInOrder(scene, scene.rootBlockIds)) {
+            if (block.disabled || block.kind !== "action" || block.payload.action !== "audio") {
+                continue;
+            }
+            const creator = block.payload;
+            if (creator.operation !== "setBgm" && creator.operation !== "playSound") {
+                continue;
+            }
+            if (audioRowSoundName(creator) !== name) {
+                continue;
+            }
+            // This row IS the creator - fall through and answer from its own field, so an edit to the
+            // select updates the readout instead of reading back the value it just replaced.
+            return block.id === blockId
+                ? resolveAudioTrack(tracks, payload.audioTrackId, "sound")
+                : resolveAudioTrack(tracks, creator.audioTrackId, audioRowFallbackChannel(creator.operation));
+        }
+    }
+    return resolveAudioTrack(tracks, payload.audioTrackId, "sound");
+}
+
+/** At most two decimals, and no trailing zeroes - `0.48`, `1`, `0.5`. */
+function formatEffectiveVolume(value: number): string {
+    return String(Math.round(value * 100) / 100);
+}
+
+/**
+ * The audio row's editor.
+ *
+ * Two things it carries rather than explains. The field grid shows only what the chosen operation
+ * consumes, from {@link AUDIO_OPERATION_FIELDS}. And the status line under it answers the question
+ * this whole round exists for - "why is this quieter than 0.8?" - by printing the row's track, the
+ * player slider that governs it, and the volume and fade the engine will actually receive after the
+ * track's gain and defaults are folded in. Values only, one line, no labels.
+ */
+function AudioActionEditor(props: {
+    payload: AudioActionPayload;
+    scene: StoryScene | null;
+    blockId: StoryBlockId;
+    onChange: (payload: StoryBlock["payload"]) => void;
+}) {
+    const { t } = useTranslation();
+    const payload = props.payload;
+    const tracks = useProjectAudioTracks();
+    const fields = AUDIO_OPERATION_FIELDS[payload.operation] ?? [];
+    const has = (field: AudioField): boolean => fields.includes(field);
+
+    const track = resolveAudioRowTrack(tracks, props.scene, payload, props.blockId);
+    const playback = resolveAudioTrackPlayback(track, {
+        volume: payload.volume,
+        fadeMs: payload.fadeMs,
+        loop: payload.loop,
+    });
+    // A stop / pause reads its fade from the track's fade-OUT, a play from its fade-IN. The status
+    // line has to print the one this row will use, or it would contradict the compiler on the two
+    // operations most likely to be tuned by ear.
+    const fadesOut = payload.operation === "stopSound" || payload.operation === "pauseSound";
+    const trackOptions: SelectOption[] = [
+        {
+            value: "",
+            label: t("storyInspector.audio.trackDefault", {
+                name: resolveAudioTrack(tracks, undefined, audioRowFallbackChannel(payload.operation)).name,
+            }),
+        },
+        ...tracks.map(entry => ({ value: entry.id, label: entry.name })),
+    ];
+    const status = [
+        track.name,
+        t(AUDIO_SLIDER_LABEL_KEYS[playback.channel]),
+        ...(has("volume") ? [formatEffectiveVolume(playback.volume)] : []),
+        ...(has("fade") ? [formatStorySecondsLabel(fadesOut ? playback.fadeOutMs : playback.fadeInMs)] : []),
+    ].join(" · ");
+
+    return (
+        <div className="grid grid-cols-1 gap-3">
+            <div className="nl-field-grid">
+                <SelectField
+                    label={t("storyInspector.field.operation")}
+                    options={audioOperationOptions(t)}
+                    value={payload.operation}
+                    onChange={operation => props.onChange({ ...payload, operation: operation as AudioActionPayload["operation"] })}
+                />
+                {has("track") ? (
+                    <SelectField
+                        label={t("storyInspector.audio.track")}
+                        options={trackOptions}
+                        value={payload.audioTrackId ?? ""}
+                        onChange={value => props.onChange({ ...payload, audioTrackId: String(value) || undefined })}
+                    />
+                ) : null}
+                {has("name") ? (
+                    <TextField
+                        label={t("storyInspector.audio.soundName")}
+                        value={payload.objectName ?? ""}
+                        onChange={objectName => props.onChange({ ...payload, objectName })}
+                    />
+                ) : null}
+                {has("asset") ? (
+                    <AssetField
+                        label={payload.operation === "setBgm" ? t("storyInspector.audio.bgmAsset") : t("storyInspector.audio.soundAsset")}
+                        assetType={AssetType.Audio}
+                        assetId={payload.assetId}
+                        onChange={assetId => props.onChange({ ...payload, assetId })}
+                    />
+                ) : null}
+                {has("fade") ? (
+                    <SecondsField
+                        label={t("storyInspector.audio.fade")}
+                        value={payload.fadeMs}
+                        onChange={fadeMs => props.onChange({ ...payload, fadeMs: fadeMs === undefined ? undefined : Math.max(0, fadeMs) })}
+                    />
+                ) : null}
+                {has("seekTime") ? (
+                    <SecondsField
+                        label={t("storyInspector.audio.seekTime")}
+                        value={payload.timeMs}
+                        onChange={timeMs => props.onChange({ ...payload, timeMs: timeMs === undefined ? undefined : Math.max(0, timeMs) })}
+                    />
+                ) : null}
+                {has("volume") ? (
+                    <NumberField
+                        label={t("storyInspector.audio.volume")}
+                        value={payload.volume}
+                        // Clamped on commit: a gain node takes 0..1, and an authored 3 used to be
+                        // stored, shown back, and silently floored by the engine. Headroom above unity
+                        // belongs to the TRACK's gain, which is the knob that has a range for it.
+                        onChange={volume => props.onChange({ ...payload, volume: volume === undefined ? undefined : Math.min(1, Math.max(0, volume)) })}
+                    />
+                ) : null}
+                {has("rate") ? (
+                    <NumberField
+                        label={t("storyInspector.audio.rate")}
+                        value={payload.rate}
+                        onChange={rate => props.onChange({ ...payload, rate: rate === undefined ? undefined : Math.max(0, rate) })}
+                    />
+                ) : null}
+                {has("loop") ? (
+                    <CheckboxField
+                        label={t("storyInspector.audio.loop")}
+                        checked={playback.loop}
+                        onChange={loop => props.onChange({ ...payload, loop })}
+                    />
+                ) : null}
+                {has("muted") ? (
+                    <CheckboxField
+                        label={t("storyInspector.field.muted")}
+                        checked={Boolean(payload.muted)}
+                        onChange={muted => props.onChange({ ...payload, muted })}
+                    />
+                ) : null}
+            </div>
+            <div className="text-[11px] tabular-nums text-fg-subtle">{status}</div>
+        </div>
+    );
 }
 
 type VfxActionPayload = Extract<StoryActionPayload, { action: "vfx" }>;
