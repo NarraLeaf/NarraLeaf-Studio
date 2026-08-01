@@ -70,6 +70,10 @@ function ChoiceField(props: {
     onChange: (value: string | null) => void;
 }) {
     const { available, value } = props;
+    // Both arms write the character's default state, so both go off while frozen - the dropdown dead
+    // rather than merely inert, because picking is the only thing it is for. The free-text arm is
+    // `readOnly` instead: the name the author typed is part of what a past version says.
+    const freeze = useFreezeGuard();
     const options = puppetChoiceOptions(available, value);
     if (options.length === 0) {
         return (
@@ -80,6 +84,8 @@ function ChoiceField(props: {
                     value={value ?? ""}
                     placeholder={props.placeholder}
                     onChange={event => props.onChange(event.target.value)}
+                    readOnly={freeze.frozen}
+                    title={freeze.frozen ? freeze.reason : undefined}
                 />
             </Field>
         );
@@ -87,6 +93,7 @@ function ChoiceField(props: {
     return (
         <Field label={props.label}>
             <Select
+                disabled={freeze.frozen}
                 options={[
                     // The empty option is the engine's `null`, which is a real state - the model
                     // rests with nothing applied - and not the absence of a choice.
@@ -319,6 +326,9 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
                     {t("characters.editor.puppet.noBackendInstalled")}
                 </span>
             ) : (
+                // Which runtime draws this character is written onto the appearance, so the dropdown
+                // is dead while frozen rather than open-but-inert: the list is the project's runtime
+                // folders, not project data, and there is nothing in it to read.
                 <Select
                     options={backendOptions}
                     value={puppet.backend}
@@ -326,6 +336,7 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
                     size="sm"
                     fullWidth
                     portalMenu
+                    disabled={freeze.frozen}
                     onChange={value => appearance.setPuppetBackend(String(value))}
                 />
             )}
@@ -367,6 +378,9 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
                     className={ICON_BTN}
                     aria-label={t("characters.editor.puppet.selectModel")}
                     onClick={event => { anchorRef.current = event.currentTarget; setPicking(true); }}
+                    // The picker it opens exists only to set the model on the appearance, so it is
+                    // guarded like its two siblings rather than opened onto a confirm that is refused.
+                    {...freeze.writes(false, t("characters.editor.puppet.selectModel"))}
                 >
                     <FolderOpen className="w-3.5 h-3.5" />
                 </button>
@@ -430,16 +444,24 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
 
             <Field label={t("characters.editor.puppet.entry")}>
                 {/* Free text: which files a bundle holds is only knowable after parsing the one
-                    it declares as its entry, which is the model runtime's job and not Studio's. */}
+                    it declares as its entry, which is the model runtime's job and not Studio's.
+                    It writes the appearance on every keystroke, so a frozen workspace makes it
+                    `readOnly` - the path stays legible and selectable, and no edit is taken. */}
                 <Input
                     size="sm"
                     fullWidth
                     value={puppet.entry ?? ""}
                     placeholder={t("characters.editor.puppet.entryDefault")}
                     onChange={event => appearance.setPuppetEntry(event.target.value)}
+                    readOnly={freeze.frozen}
+                    title={freeze.frozen ? freeze.reason : undefined}
                 />
             </Field>
 
+            {/* Half a size has no meaning, so emptying either box rewrites the whole box - which on a
+                frozen project meant a stray keystroke wiped the declared size on screen and lost it
+                again on thaw. `readOnly` for the same reason as the entry above: the numbers are what
+                a reader of a past version came to check. */}
             <Field label={t("characters.editor.puppet.size")}>
                 <Input
                     size="sm"
@@ -449,6 +471,8 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
                     value={puppet.size?.width ?? ""}
                     placeholder={t("characters.editor.puppet.sizeStage")}
                     onChange={event => setDimension("width", event.target.value)}
+                    readOnly={freeze.frozen}
+                    title={freeze.frozen ? freeze.reason : undefined}
                 />
                 <Box className="w-3 h-3 shrink-0 text-fg-subtle" />
                 <Input
@@ -459,6 +483,8 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
                     value={puppet.size?.height ?? ""}
                     placeholder={t("characters.editor.puppet.sizeStage")}
                     onChange={event => setDimension("height", event.target.value)}
+                    readOnly={freeze.frozen}
+                    title={freeze.frozen ? freeze.reason : undefined}
                 />
             </Field>
 
