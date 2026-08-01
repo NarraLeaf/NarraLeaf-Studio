@@ -26,6 +26,7 @@ import { voicePanelModule } from "./voice";
 import { dashboardPanelModule } from "./dashboard";
 import { searchPanelModule } from "./search";
 import { notificationsPanelModule } from "./notifications";
+import { testReportModule } from "./testing";
 
 /**
  * Built-in panel modules
@@ -60,6 +61,7 @@ export const builtInEditors: EditorModule[] = [
     videoPreviewModule,
     fontPreviewModule,
     jsonPreviewModule,
+    testReportModule,
 ];
 
 /**
@@ -90,4 +92,5 @@ export { storyMotionPanelModule } from "./story-motion";
 export { localizationPanelModule } from "./localization";
 export { voicePanelModule } from "./voice";
 export { dashboardPanelModule } from "./dashboard";
+export { testReportModule, openTestDialog, openTestReportTab } from "./testing";
 export { builtInStatusBarEntries } from "./status-bar";

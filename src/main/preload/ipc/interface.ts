@@ -9,6 +9,7 @@ import type { MissingRecentProject } from "@shared/types/state/appStateTypes";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, WorkspaceViewRequest } from "@shared/types/window";
 import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
+import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "@shared/types/gameTest";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "@shared/types/gameBuild";
 import type {
     MacSigningIdentity,
@@ -328,6 +329,24 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.previewStop, { projectPath }) as Promise<RequestStatus<{ status: PreviewStatus }>>,
         getStatus: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.previewGetStatus, { projectPath }) as Promise<RequestStatus<{ status: PreviewStatus }>>,
+    },
+
+    /**
+     * Game processes owned by a test run.
+     *
+     * No `getStatus`, unlike `preview`: everything a test needs to know arrives on `onEvent`, in
+     * order. A polled status cannot tell the two exits a test cares about apart - the author closing
+     * the window and the process dying - which is the reason this namespace exists next to `preview`
+     * rather than inside it. A launch that is refused (frozen workspace, a session already running,
+     * a failed compile) still resolves successfully, carrying `{ok:false, reason}`.
+     */
+    gameTest: {
+        launch: (request: GameTestLaunchRequest) =>
+            ipcClient.invoke(IPCEventType.gameTestLaunch, request) as Promise<RequestStatus<GameTestLaunchResult>>,
+        stop: (projectPath: string, sessionId: string) =>
+            ipcClient.invoke(IPCEventType.gameTestStop, { projectPath, sessionId }) as Promise<RequestStatus<void>>,
+        onEvent: (handler: (payload: GameTestEventPayload) => void) =>
+            ipcClient.onMessage(IPCEventType.workspaceGameTestEvent, handler),
     },
 
     /**
