@@ -169,10 +169,23 @@ describe.skipIf(!supported)("commit pipeline", () => {
         // Deliberately not the OS account name: an identity written into revisions that
         // travel to collaborators is not something to fill in on the author's behalf.
         settings["versionControl.authorName"] = "";
+        settings["versionControl.authorEmail"] = "";
         write(STORY, JSON.stringify({ version: 9, scenes: ["prologue", "unnamed"] }));
 
         const result = await manager.commit(root);
         await expect(authorOf(result.revision)).resolves.toBe(UNCONFIGURED_IDENTITY);
+    }, 120_000);
+
+    it("folds a configured email into the identity the revision actually carries", async () => {
+        // The unit test next to `composeVcsIdentity` pins the shape; this pins that the shape
+        // survives the trip through Lore, which stores the identity verbatim and is the only
+        // thing that can prove the second Sync setting reaches a revision at all.
+        settings["versionControl.authorName"] = "Aria";
+        settings["versionControl.authorEmail"] = "aria@example.com";
+        write(STORY, JSON.stringify({ version: 9, scenes: ["prologue", "with-email"] }));
+
+        const result = await manager.commit(root);
+        await expect(authorOf(result.revision)).resolves.toBe("Aria <aria@example.com>");
     }, 120_000);
 
     it("raises for a path outside the repository instead of quietly skipping it", async () => {

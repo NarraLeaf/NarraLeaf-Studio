@@ -13,7 +13,12 @@ import type { MissingRecentProject } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
-import type { SigningCredential, SigningCredentialImport, SigningInspectResult } from "./signing";
+import type {
+    MacSigningIdentity,
+    SigningCredential,
+    SigningCredentialImport,
+    SigningInspectResult,
+} from "./signing";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
@@ -444,6 +449,13 @@ export interface RendererPreloadedInterface {
          * plain text and travels the same one way `import` does.
          */
         keystoreAliases(file: string, storePassword: string): Promise<RequestStatus<{ aliases: string[] }>>;
+        /**
+         * The code-signing identities in this Mac's keychains, so the import form
+         * can offer them rather than asking for a certificate name typed out by
+         * hand. Empty on every other host. Names certificates only - no key
+         * material is read.
+         */
+        macIdentities(): Promise<RequestStatus<{ identities: MacSigningIdentity[] }>>;
     };
 
     blueprintPersistence: {

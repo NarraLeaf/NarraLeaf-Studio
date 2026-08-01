@@ -15,6 +15,7 @@ import type { ImageFillFieldDefinition } from "../types";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { computeCoverCropPlacement } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
+import { isDeferredWriteAllowed, useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 
 const PANEL_WIDTH = 360;
 const PANEL_SPACING = 12;
@@ -39,6 +40,7 @@ export function ImageFillField<TData extends UIInspectorData>({
 }: ImageFillFieldProps<TData>) {
     const { t } = useTranslation();
     const { context } = useWorkspace();
+    const { frozen } = useFreezeGuard();
     const MODE_OPTIONS = useMemo<{ value: ImageFillMode; label: string }[]>(
         () => [
             { value: "cover", label: t("properties.imageFill.mode.cover") },
@@ -136,7 +138,20 @@ export function ImageFillField<TData extends UIInspectorData>({
         });
     }, [layout.height, layout.width, metadata]);
 
+    /**
+     * Bake a starting crop placement for an image that has none, so the crop handles have something
+     * to grab. Nobody asked for this write - it fires because the element was shown in the inspector -
+     * so a freeze DEFERS it rather than refusing it: merely selecting a cropped element on a frozen
+     * project raised the "nothing is being saved" complaint about the freeze's own bookkeeping.
+     *
+     * `frozen` is an input of the effect, so the bake lands the moment the workspace is writable
+     * again; the placement is derived from the image and the element box, so whatever was missing
+     * still is.
+     */
     useEffect(() => {
+        if (!isDeferredWriteAllowed(frozen)) {
+            return;
+        }
         if (normalizedFill.mode !== "crop" || !normalizedFill.assetId || normalizedFill.cropPlacement) {
             return;
         }
@@ -151,6 +166,7 @@ export function ImageFillField<TData extends UIInspectorData>({
     }, [
         applyValue,
         computeCropPlacement,
+        frozen,
         layout.height,
         layout.width,
         metadata,

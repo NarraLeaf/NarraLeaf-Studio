@@ -33,6 +33,8 @@ import {
     SIGNING_CREDENTIAL_MATERIAL_FIELDS,
     SIGNING_CREDENTIAL_PLATFORM,
     SIGNING_CREDENTIAL_SECRET_FIELDS,
+    signingNotarizes,
+    type ResolvedAppleNotarization,
     type ResolvedSigningMaterial,
     type SigningCredential,
     type SigningPlatform,
@@ -63,6 +65,7 @@ import {
     signingPlatformForTarget,
     signingReachesNetwork,
 } from "./preflight";
+import { findMacSigningIdentities, macIdentityPresent } from "./macSigningIdentity";
 import { findSigntool } from "./signtoolDiscovery";
 import { readIconSlotSizes, writeScaledIcons } from "./mobileIcons";
 import { loadMobileShellTemplateForApp } from "./mobileShellTemplate";
@@ -92,6 +95,7 @@ import type {
     GameBuildWorkerFuses,
     GameBuildWorkerGpgSigning,
     GameBuildWorkerIosSigning,
+    GameBuildWorkerMacSigning,
     GameBuildWorkerMobileJob,
     GameBuildWorkerOutboundMessage,
     GameBuildWorkerWindowsSigning,
@@ -173,16 +177,23 @@ export type ResolvedBuildSigning = Partial<Record<SigningPlatform, ResolvedSigni
  * Whether a desktop target ships with a real code signature, which is what
  * `gameFusesForPlatform` turns asar integrity validation on for.
  *
- * Only Windows can answer yes today. macOS signing needs Apple tooling that runs
- * on a Mac and is a separate batch; Linux "signing" is detached GPG signatures
- * over the artifacts - distribution integrity, not an OS-enforced signature over
- * the binary - and Electron has no asar-integrity support there regardless.
+ * Windows and macOS can both answer yes; Linux never can. Its "signing" is
+ * detached GPG signatures over the artifacts - distribution integrity, not an
+ * OS-enforced signature over the binary - and Electron has no asar-integrity
+ * support there regardless.
  */
 export function hasSigningIdentityForPlatform(
     platform: GameBuildDesktopPlatform,
     signing: ResolvedBuildSigning,
 ): boolean {
-    return platform === "windows" && Boolean(signing.windows);
+    switch (platform) {
+        case "windows":
+            return Boolean(signing.windows);
+        case "macos":
+            return Boolean(signing.macos);
+        case "linux":
+            return false;
+    }
 }
 
 /**
@@ -201,9 +212,11 @@ export function signingSecretsResolved(material: ResolvedSigningMaterial): boole
         case "android-keystore":
             return material.storePassword !== null && material.keyPassword !== null;
         case "ios-apple":
+        case "macos-apple":
             return material.p12Password !== null;
         case "windows-store":
         case "windows-azure":
+        case "macos-keychain":
         case "linux-gpg":
             return true;
     }
@@ -243,6 +256,44 @@ export function toWorkerWindowsSigning(
                 certificateProfileName: material.certificateProfileName,
                 publisherName: material.publisherName,
             };
+        default:
+            return null;
+    }
+}
+
+/**
+ * Map an unsealed credential onto what electron-builder needs to sign a macOS
+ * build, and to notarize it when the credential carries the key for that.
+ *
+ * Returns null for a credential that is not a macOS one, or whose .p12 password
+ * never came back - callers check `signingSecretsResolved` first so they can say
+ * which of the two happened.
+ */
+export function toWorkerMacSigning(material: ResolvedSigningMaterial): GameBuildWorkerMacSigning | null {
+    // The vault refuses a partial set at import, so all three fields are here or
+    // none are; this re-reads them rather than trusting that, because the index
+    // is a file on the author's disk.
+    const notarization = signingNotarizes(material as Partial<ResolvedAppleNotarization>)
+        ? {
+            notarization: {
+                keyFile: (material as ResolvedAppleNotarization).notaryKeyFile as string,
+                keyId: (material as ResolvedAppleNotarization).notaryKeyId as string,
+                issuerId: (material as ResolvedAppleNotarization).notaryIssuerId as string,
+            },
+        }
+        : {};
+    switch (material.kind) {
+        case "macos-keychain":
+            return { source: "keychain", identity: material.identity, ...notarization };
+        case "macos-apple":
+            return material.p12Password === null
+                ? null
+                : {
+                    source: "p12",
+                    certificateFile: material.p12File,
+                    certificatePassword: material.p12Password,
+                    ...notarization,
+                };
         default:
             return null;
     }
@@ -995,37 +1046,57 @@ export class GameBuildManager {
 
     /**
      * The signing block a desktop target carries into electron-builder. Windows
-     * only: the other two desktop platforms are covered on
-     * `hasSigningIdentityForPlatform`.
+     * and macOS; Linux has no OS-level signature to carry, as
+     * `hasSigningIdentityForPlatform` sets out.
      *
      * Throws rather than dropping the block if the material will not map - by
      * this point resolveSigningForBuild has already matched the credential to
-     * the platform, so a null here means the two disagree about what a Windows
-     * credential is, and silently shipping unsigned is the one outcome an author
-     * who configured signing must never get.
+     * the platform, so a null here means the two disagree about what a
+     * credential for it is, and silently shipping unsigned is the one outcome an
+     * author who configured signing must never get.
      */
     private async resolveDesktopTargetSigning(
         session: BuildSession,
         platform: GameBuildDesktopPlatform,
         signing: ResolvedBuildSigning,
-    ): Promise<{ signing?: GameBuildWorkerWindowsSigning }> {
-        if (platform !== "windows" || !signing.windows) {
-            return {};
+    ): Promise<{ signing?: GameBuildWorkerWindowsSigning | GameBuildWorkerMacSigning }> {
+        if (platform === "windows" && signing.windows) {
+            // The host probe belongs here rather than in the worker: which
+            // signtool exists is a fact about this machine, and the worker is
+            // handed answers.
+            const signtoolPath = await findSigntool();
+            const material = toWorkerWindowsSigning(signing.windows, { ...(signtoolPath ? { signtoolPath } : {}) });
+            if (!material) {
+                throw new Error("The Windows signing credential could not be prepared for this build.");
+            }
+            this.emit(session, {
+                level: "info",
+                source: "Build",
+                message: "the Windows build is code signed, so asar integrity validation is enabled; "
+                    + "signing contacts a timestamp server",
+            });
+            return { signing: material };
         }
-        // The host probe belongs here rather than in the worker: which signtool
-        // exists is a fact about this machine, and the worker is handed answers.
-        const signtoolPath = await findSigntool();
-        const material = toWorkerWindowsSigning(signing.windows, { ...(signtoolPath ? { signtoolPath } : {}) });
-        if (!material) {
-            throw new Error("The Windows signing credential could not be prepared for this build.");
+        if (platform === "macos" && signing.macos) {
+            const material = toWorkerMacSigning(signing.macos);
+            if (!material) {
+                throw new Error("The macOS signing credential could not be prepared for this build.");
+            }
+            this.emit(session, {
+                level: "info",
+                source: "Build",
+                message: "the macOS build is code signed, so asar integrity validation is enabled"
+                    + (material.notarization
+                        // Said before the build rather than after: notarization
+                        // is a round trip to Apple that routinely takes minutes,
+                        // and a packaging step that appears to have hung is the
+                        // thing an author reaches for the cancel button over.
+                        ? "; it will also be notarized, which uploads the app to Apple and can take several minutes"
+                        : "; it will not be notarized, so Gatekeeper still warns on first launch"),
+            });
+            return { signing: material };
         }
-        this.emit(session, {
-            level: "info",
-            source: "Build",
-            message: "the Windows build is code signed, so asar integrity validation is enabled; "
-                + "signing contacts a timestamp server",
-        });
-        return { signing: material };
+        return {};
     }
 
     /**
@@ -1156,7 +1227,7 @@ export class GameBuildManager {
                     detail: { platform },
                 });
             }
-            if (signingReachesNetwork(credential.kind)) {
+            if (signingReachesNetwork(credential)) {
                 findings.push({
                     code: "signing-needs-network",
                     severity: "warning",
@@ -1172,6 +1243,9 @@ export class GameBuildManager {
                     section: "signing",
                     detail: { platform, tool: "gpg" },
                 });
+            }
+            if (credential.kind === "macos-keychain" && hostPlatform === "macos") {
+                findings.push(...await this.macIdentityPreflight(credential.identity));
             }
             findings.push(...await this.signingExpiryPreflight(vault, credential, platform));
             if (platform === "android") {
@@ -1224,6 +1298,50 @@ export class GameBuildManager {
             section: "signing",
             detail: { bundleId, profileAppId: profile.applicationIdentifier },
         }];
+    }
+
+    /**
+     * Whether the keychain identity a macOS credential names is on this machine,
+     * and whether it is the kind that produces a distributable app.
+     *
+     * Only reachable on a macOS host - `security` exists nowhere else, and the
+     * host check upstream has already reported that as its own finding, so this
+     * would otherwise report "your certificate is missing" on a machine that
+     * simply cannot look.
+     */
+    private async macIdentityPreflight(identity: string): Promise<BuildPreflightFinding[]> {
+        const identities = await findMacSigningIdentities();
+        if (!macIdentityPresent(identities, identity)) {
+            // Ask the wider question before blaming the author for a missing
+            // file: `-v` also hides a certificate that *is* installed but has
+            // expired or whose chain is broken, and sending someone to look for
+            // something they already have is the worse of the two wrong answers.
+            const all = await findMacSigningIdentities({ validOnly: false });
+            return [{
+                code: macIdentityPresent(all, identity)
+                    ? "signing-macos-identity-unusable"
+                    : "signing-macos-identity-missing",
+                severity: "error",
+                section: "signing",
+                detail: { identity },
+            }];
+        }
+        // A warning rather than an error: the build genuinely succeeds and the
+        // .app genuinely runs on the machine that made it. What it will not do is
+        // pass Gatekeeper anywhere else, and an author testing locally may know
+        // that and mean it.
+        const matched = identities.filter(candidate => candidate.name === identity
+            || candidate.sha1 === identity.trim().toUpperCase()
+            || candidate.name.includes(identity.trim()));
+        if (matched.length > 0 && !matched.some(candidate => candidate.developerId)) {
+            return [{
+                code: "signing-macos-not-developer-id",
+                severity: "warning",
+                section: "signing",
+                detail: { identity: matched[0].name },
+            }];
+        }
+        return [];
     }
 
     /** Where the vendored iOS signing tool lives on this machine. */

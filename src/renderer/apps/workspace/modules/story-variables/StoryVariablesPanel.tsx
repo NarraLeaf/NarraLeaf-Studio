@@ -78,10 +78,18 @@ function VariableRowEditor(props: {
     );
     return (
         <div className="flex items-center gap-1.5">
+            {/* All three of these rewrite the story document, and until this pass only the delete
+                button beside them knew about the freeze: on a frozen project the author could rename
+                a variable, retype it and edit its default, watch the row update, and lose all of it
+                on thaw. `readOnly` rather than `disabled` on the two text boxes, matching what the
+                inspector framework does with its own text fields - the name and the default are
+                what the author came to READ, and a disabled input is dimmed past reading. */}
             <input
                 className={INPUT_CLASS}
                 value={props.row.name}
                 onChange={event => props.onRename(event.target.value)}
+                readOnly={freeze.frozen}
+                title={freeze.frozen ? freeze.reason : undefined}
                 aria-label={t("storyVars.row.nameAria")}
             />
             <Select
@@ -90,6 +98,7 @@ function VariableRowEditor(props: {
                 onChange={value => props.onRetype(String(value) as StoryVariableValueType)}
                 size="sm"
                 portalMenu
+                disabled={freeze.frozen}
                 className="w-24 shrink-0"
             />
             <input
@@ -97,6 +106,8 @@ function VariableRowEditor(props: {
                 value={formatDefault(props.row.defaultValue, props.row.valueType)}
                 placeholder={t("storyVars.row.defaultPlaceholder")}
                 onChange={event => props.onDefault(parseDefault(event.target.value, props.row.valueType))}
+                readOnly={freeze.frozen}
+                title={freeze.frozen ? freeze.reason : undefined}
                 aria-label={t("storyVars.row.defaultAria")}
             />
             <button

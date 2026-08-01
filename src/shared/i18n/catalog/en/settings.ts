@@ -132,10 +132,20 @@ export const settings = {
             description:
                 "How long to wait before recording a checkpoint in a project's version history. Only ever records when something has changed. Set to 0 to turn automatic checkpoints off.",
         },
+        checkpointOnClose: {
+            label: "Record a checkpoint when a workspace closes",
+            description:
+                "Record a checkpoint in the project's version history when you close its workspace window, so an unrecorded session is not lost. Independent of the interval above.",
+        },
         versionControlAuthor: {
             label: "Author name",
             description:
                 "Recorded as the author of commits and checkpoints. Leave empty to record NarraLeaf Studio instead.",
+        },
+        versionControlAuthorEmail: {
+            label: "Author email",
+            description:
+                "Recorded next to the author name on commits and checkpoints, as \"Name <email>\". Leave empty to record no address.",
         },
         confirmBeforeClose: {
             label: "Confirm before closing a workspace",
