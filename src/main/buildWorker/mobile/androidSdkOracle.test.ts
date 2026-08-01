@@ -211,8 +211,16 @@ describe.skipIf(!buildTools)("Google's tools on a Studio-built APK", () => {
         ]);
         expect(output).toContain("Verifies");
         expect(output).toMatch(/Verified using v2 scheme \(APK Signature Scheme v2\): true/);
+        // Exactly one identity signed it, whichever scheme carried the signature.
+        expect(output).toMatch(/Number of signers: 1/);
+        // apksigner labels the certificate after the scheme it came from: "Signer #1 certificate
+        // SHA-256 digest:" when a v1/JAR signature is present, "v2 signer: certificate SHA-256
+        // digest:" when the APK is v2-only. At MIN_SDK 26 there is no reason to JAR-sign - v1 is
+        // only needed below API 24 - so apksigner is right to skip it and the label follows. That
+        // is a fact about the signature format, not about whose certificate it is, so match the
+        // digest wherever it appears rather than pinning the v1-era wording.
         expect(output.toLowerCase())
-            .toContain(`signer #1 certificate sha-256 digest: ${ANDROID_RELEASE_P12_SHA256.replace(/:/g, "").toLowerCase()}`);
+            .toContain(`certificate sha-256 digest: ${ANDROID_RELEASE_P12_SHA256.replace(/:/g, "").toLowerCase()}`);
         expect(output).toContain(ANDROID_RELEASE_P12_SUBJECT);
     });
 

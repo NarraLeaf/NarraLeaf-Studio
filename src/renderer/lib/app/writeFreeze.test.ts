@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { sep } from "@shared/utils/path";
 import {
     freezeProjectWrites,
     getProjectWriteFreeze,
@@ -79,7 +80,11 @@ describe("writeFreeze scope", () => {
         // Locating the root is the one place case may be folded: Windows hands the same directory
         // out under several spellings, and a project opened as `d:\projects\...` must still be
         // recognised when a caller holds the drive letter capitalised.
-        expect(isFrozenProjectData("d:/projects/My-Game", `${PROJECT}/project.json`)).toBe(true);
+        //
+        // Follows the host, because `FOLD_CASE` does: on a case-SENSITIVE filesystem those really
+        // are two directories and answering "same project" would be the wrong answer, not a missing
+        // feature. Pinning the Windows arm unconditionally is what made this fail on Linux.
+        expect(isFrozenProjectData("d:/projects/My-Game", `${PROJECT}/project.json`)).toBe(sep === "\\");
     });
 });
 
