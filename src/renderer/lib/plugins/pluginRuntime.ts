@@ -37,6 +37,8 @@ import { listSceneIdsInDocumentOrder } from "@shared/types/story/order";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
+import { WorkspaceFreezeService } from "@/lib/workspace/services/core/WorkspaceFreezeService";
+import { WorkspaceReloadService } from "@/lib/workspace/services/core/WorkspaceReloadService";
 import { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
 import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
@@ -403,6 +405,8 @@ export function createPluginApp(
     const storage = ctx.services.get<ServiceAssetsService>(Services.ServiceAssets);
     const blueprintNodes = ctx.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
     const story = ctx.services.get<StoryService>(Services.Story);
+    const freeze = ctx.services.get<WorkspaceFreezeService>(Services.WorkspaceFreeze);
+    const workspaceReload = ctx.services.get<WorkspaceReloadService>(Services.WorkspaceReload);
     // One per plugin, shared by every node it registers - the runtime loader
     // hands a node's execute the same `game` object `setup(app)` received.
     const nodeGame = createEditorRuntimePluginGame(descriptor);
@@ -496,6 +500,24 @@ export function createPluginApp(
                         URL.revokeObjectURL(url);
                     }
                 },
+            },
+            workspace: {
+                get frozen() {
+                    return freeze.isFrozen();
+                },
+                get freezeReason() {
+                    return freeze.getReason()?.kind ?? null;
+                },
+                onFreezeChange: listener => trackReturn(
+                    freeze.onChanged(reason => listener(reason !== null, reason?.kind ?? null)),
+                ),
+                // Keyed by plugin id, so a plugin that re-registers replaces its own reader rather
+                // than stacking a second one that reads into a store nobody owns any more.
+                registerReloader: reload => trackReturn(workspaceReload.registerReloader({
+                    id: `plugin:${descriptor.plugin.id}`,
+                    label: descriptor.manifest.name || descriptor.plugin.id,
+                    reload,
+                })),
             },
             i18n: {
                 get locale() {

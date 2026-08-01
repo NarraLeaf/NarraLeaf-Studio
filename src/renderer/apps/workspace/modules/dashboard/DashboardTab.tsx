@@ -378,11 +378,8 @@ export function DashboardTab({ active }: EditorTabComponentProps) {
                             <StatRow label={t("dashboard.scale.characters")} value={formatNumber(scale.characters)} />
                             <StatRow label={t("dashboard.scale.assets")} value={formatNumber(scale.assets)} />
                             <StatRow
-                                label={t("dashboard.scale.blueprints")}
-                                value={formatNumber(scale.blueprints)}
-                                hint={tn("dashboard.units.nodes", scale.blueprintNodes, {
-                                    count: scale.blueprintNodes,
-                                })}
+                                label={t("dashboard.scale.blueprintNodes")}
+                                value={formatNumber(scale.blueprintNodes)}
                             />
                             <StatRow label={t("dashboard.scale.uiSurfaces")} value={formatNumber(scale.uiSurfaces)} />
                             <StatRow label={t("dashboard.scale.variables")} value={formatNumber(variableCount)} />

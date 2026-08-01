@@ -112,8 +112,8 @@ export const story = {
             openFlow: "打开场景流程",
         },
         empty: {
-            noStory: "没有可展示的故事。",
-            noScenes: "该故事还没有场景。",
+            noStory: "没有可展示的故事",
+            noScenes: "该故事还没有场景",
         },
     },
     stage: {
@@ -141,8 +141,8 @@ export const story = {
         createNew: "新建图层",
     },
     appearance: {
-        noPoses: "该角色还没有姿态。",
-        noAxes: "该角色还没有分层轴。",
+        noPoses: "该角色还没有姿态",
+        noAxes: "该角色还没有分层轴",
         unchanged: "不改动",
         appearance: "外观",
         default: "默认",
@@ -184,7 +184,7 @@ export const story = {
     },
     inlineEvent: {
         title: "行内事件",
-        noCharacter: "该行没有角色。",
+        noCharacter: "该行没有角色",
         sound: "音效",
     },
     actionCreator: {
@@ -261,8 +261,8 @@ export const story = {
         "density.comfortable": "舒适",
     },
     diagnostics: {
-        missingAsset: "这一行指向的资源已经不在项目里了。",
-        unknownPuppetName: "这个角色的模型里没有这个名字。",
+        missingAsset: "这一行指向的资源已经不在项目里了",
+        unknownPuppetName: "这个角色的模型里没有这个名字",
     },
     find: {
         placeholder: "在场景中查找",
@@ -286,12 +286,12 @@ export const story = {
         title: "指令",
         searchPlaceholder: "搜索指令",
         empty: "没有匹配的指令",
-        pick: "选一条指令，看它做什么。",
+        pick: "选一条指令，看它做什么",
         back: "全部指令",
         insert: "插入到场景",
         aliases: "也可以写作",
         parameters: "参数",
-        noParameters: "不接受参数。",
+        noParameters: "不接受参数",
         examples: "示例",
         required: "必填",
         optional: "可选",
@@ -398,7 +398,7 @@ export const story = {
         loadingScene: "正在加载故事场景…",
         notFound: "未找到故事或场景",
         addRow: "点击或输入以添加一行…",
-        emptyHint: "这个场景是空的。在新行里输入 {trigger} 挑一条指令，或者直接写一句旁白。",
+        emptyHint: "这个场景是空的。在新行里输入 {trigger} 挑一条指令，或者直接写一句旁白",
         emptyExampleBg: "设置背景",
         emptyExampleShow: "让角色登场",
         emptyExampleSay: "给他一句台词",

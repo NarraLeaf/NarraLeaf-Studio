@@ -194,6 +194,7 @@ export function InlineNameInput({
     allowEmpty = false,
     className,
     size = "sm",
+    readOnly = false,
 }: {
     value: string;
     onCommit: (next: string) => void;
@@ -202,6 +203,12 @@ export function InlineNameInput({
     allowEmpty?: boolean;
     className?: string;
     size?: "sm" | "md";
+    /**
+     * Readable, not editable - what a frozen project needs. `readOnly` rather than
+     * `disabled` on purpose: a disabled input dims its text and cannot be selected,
+     * and the text is the thing the author opened a past version to read.
+     */
+    readOnly?: boolean;
 }) {
     const [draft, setDraft] = useState(value);
 
@@ -210,6 +217,9 @@ export function InlineNameInput({
     }, [value]);
 
     const commit = () => {
+        if (readOnly) {
+            return;
+        }
         const next = draft.trim();
         if (next === value) {
             return;
@@ -225,10 +235,11 @@ export function InlineNameInput({
         <ui.Input
             size={size}
             fullWidth
+            readOnly={readOnly}
             className={className}
             placeholder={placeholder}
             value={draft}
-            onChange={event => setDraft(event.target.value)}
+            onChange={event => !readOnly && setDraft(event.target.value)}
             onBlur={commit}
             onKeyDown={event => {
                 if (event.key === "Enter") {

@@ -129,6 +129,10 @@ export type {
     PluginUiKit,
 } from "./ui";
 export type {
+    FreezeGuard,
+    FrozenControlProps,
+} from "@/apps/workspace/components/ui/freezeGuard";
+export type {
     StoryPluginActionCreateInput,
     StoryPluginActionRegistration,
 };
@@ -226,9 +230,60 @@ export type PluginTextEditorService = {
     registerAction(def: PluginTextEditorActionDef): PluginCleanup;
 };
 
+/**
+ * Anything a plugin writes through {@link PluginStorageService} is **project content**: it lands in
+ * `editor/services/`, inside the versioned working tree, alongside the story and the assets. Two
+ * consequences follow, and this service is how a plugin answers both of them.
+ */
 export type PluginStorageService = {
     readJson<T extends Record<string, any>>(namespace: string): Promise<T | null>;
+    /**
+     * Writes are **silently discarded while the project is frozen** ({@link PluginWorkspaceService}).
+     * That is deliberate at the boundary - it is what keeps a version the author is only *looking* at
+     * from being written over - but it means a plugin that mutates its own memory first and writes
+     * second ends up with memory the disk does not have. Check `workspace.frozen` before you mutate,
+     * not after.
+     */
     writeJson<T extends Record<string, any>>(namespace: string, data: T): Promise<void>;
+};
+
+/** Why project data is currently read-only: an older version is on screen, or the author froze it. */
+export type PluginFreezeReason = "revision" | "manual";
+
+/**
+ * The state of the project a plugin's data lives in.
+ *
+ * Studio's version control moves the whole working tree under the editors' feet - restoring a past
+ * version, or displaying one read-only while the author browses history - and a plugin store is part
+ * of that tree. So there are exactly two things a plugin has to do to be version-controlled, and both
+ * are here:
+ *
+ *  - **Do not offer a write that cannot happen.** While `frozen`, project writes are refused at the
+ *    boundary; a plugin that keeps its buttons live lets the author edit and then throws the edit
+ *    away. Grey them out (`ui.useFreezeGuard()` renders exactly what Studio's own panels render) and
+ *    make every mutation bail before it touches memory.
+ *  - **Re-read when Studio does.** {@link registerReloader} enrols your store in the pass Studio runs
+ *    after a restore, a thaw, or entering a version view. Skipping it is not a cosmetic staleness
+ *    bug: your pre-restore memory is still in RAM, and the author's next edit writes it back over the
+ *    version they just restored.
+ */
+export type PluginWorkspaceService = {
+    /** Whether project data may be written right now. Read at call time; never cached. */
+    readonly frozen: boolean;
+    /** Why, or `null` when the project is writable. */
+    readonly freezeReason: PluginFreezeReason | null;
+    /** Fires on every change, with the new state. */
+    onFreezeChange(listener: (frozen: boolean, reason: PluginFreezeReason | null) => void): PluginCleanup;
+    /**
+     * Re-read everything this plugin holds in memory, because the project's documents have been
+     * replaced.
+     *
+     * Called with project writes held off and the new version already installed at the read
+     * boundary, so a plain `storage.readJson` inside it returns the right bytes. Read before you drop
+     * what you have: throwing must leave the plugin with its old data rather than with half of a
+     * document. Register once per store, at `setup`.
+     */
+    registerReloader(reload: () => Promise<void> | void): PluginCleanup;
 };
 
 export type PluginAssetsService = {
@@ -319,6 +374,8 @@ export type PluginServices = {
     storage: PluginStorageService;
     assets: PluginAssetsService;
     i18n: PluginI18n;
+    /** The state of the project your data lives in; see {@link PluginWorkspaceService}. */
+    workspace: PluginWorkspaceService;
     /** Extend Studio's built-in text editor; see {@link PluginTextEditorService}. */
     textEditor: PluginTextEditorService;
     ui: {
