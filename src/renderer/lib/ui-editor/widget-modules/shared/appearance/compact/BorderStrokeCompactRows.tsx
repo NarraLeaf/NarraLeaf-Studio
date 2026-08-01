@@ -7,6 +7,7 @@ import { parseColorValue } from "@/apps/workspace/modules/properties/framework/u
 import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { Select } from "@/lib/components/elements/Select";
+import { InspectOnlyButton } from "@/lib/components/elements/InspectOnlyButton";
 import type { AppearanceFieldTransition, AppearancePropertyKey, AppearanceVariant } from "@shared/types/ui-editor/appearance";
 import { ChevronsDownUp, Droplets, Square } from "lucide-react";
 import { BORDER_STYLE_OPTIONS, STROKE_SIDE_OPTIONS, controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
@@ -123,16 +124,20 @@ export function BorderStrokeCompactRows({
                         ) : null}
                     </div>
                 </div>
-                <button
-                    type="button"
+                {/* Expanding the per-side row only reveals which edges the stroke is drawn on; the
+                    revealed segments write, this chevron does not. An {@link InspectOnlyButton} for
+                    the same reason as `CollapsibleMiniSection`: as a `<button>` the `<fieldset
+                    disabled>` a frozen workspace puts around an inspector field caught it, and the
+                    author could not find out that a stroke was, say, top-only. */}
+                <InspectOnlyButton
                     title={t("widgetAppearance.border.sidesTitle")}
                     aria-label={t("widgetAppearance.border.sidesExpandAria")}
-                    aria-pressed={sidesExpanded}
+                    aria-expanded={sidesExpanded}
                     onClick={toggleSidesExpanded}
-                    className={controlButtonClass(sidesExpanded)}
+                    className={`${controlButtonClass(sidesExpanded)} cursor-default`}
                 >
                     <ChevronsDownUp className="w-4 h-4" />
-                </button>
+                </InspectOnlyButton>
             </div>
 
             {sidesExpanded ? (
