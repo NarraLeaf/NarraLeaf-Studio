@@ -1,5 +1,4 @@
 import type { StoryBlock, StoryBlockId, StoryCharacterTagSelection, StoryRichRun } from "@shared/types/story";
-import type { StoryLensRowTrack } from "./storyStagingLens";
 
 export type StoryBlockTarget = {
     parentId: StoryBlockId | null;
@@ -58,17 +57,19 @@ export type VisibleStoryRow = {
      */
     groupContinues?: boolean;
     /**
+     * The depth of the row that follows this one in the visible list, or 0 when nothing does.
+     *
+     * The other fact a row cannot see about itself, and the one the nesting connector needs: a branch
+     * at level L ends at this row exactly when `nextRowDepth <= L`. Without it every guide ran the full
+     * height of every row it passed, so a block's lines had no ends — the same thing that was wrong
+     * with the dialogue rail before it learned which of its rows was last.
+     */
+    nextRowDepth?: number;
+    /**
      * The row is compiled out (WI-3 / schema v7): disabled itself or nested in a disabled container.
      * Rendered muted at reduced opacity; the runtime behaves as if it were not there.
      */
     disabled?: boolean;
-    /**
-     * Staging lens (M7): present on the direct-child rows of a parallel/race container whose lens is on.
-     * The row still renders as a full row (selection, drag, inspector, context menu, `d=` quick-edit),
-     * but its content column shows the child's bar-timeline track instead of the plain summary + hover
-     * actions. Absent on every other row, including the container header itself.
-     */
-    lensTrack?: StoryLensRowTrack;
 };
 
 export type InsertSlot = {

@@ -3,6 +3,7 @@ import {
     type PluginInstallPermission,
     type PluginRuntimeCapability,
 } from "../types/pluginPermissions";
+import { pluginIconExtension, pluginIconExtensionList } from "./pluginIcon";
 import {
     PluginManifestVersion,
     type NormalizedPluginManifestV2,
@@ -72,6 +73,11 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
         }
     }
 
+    const icon = validateIcon(value.icon);
+    if (typeof icon === "object") {
+        return invalid(icon.error);
+    }
+
     const description = readOptionalString(value, "description");
     const publisher = readOptionalString(value, "publisher");
     const declared = value.permissions === undefined
@@ -99,9 +105,31 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
         permissions,
         ...(description ? { description } : {}),
         ...(publisher ? { publisher } : {}),
+        ...(icon ? { icon } : {}),
     };
 
     return { ok: true, manifest };
+}
+
+/**
+ * The declared icon path, `undefined` when none, or `{ error }`.
+ *
+ * Only the shape is decidable here — this validator is pure and the icon is a
+ * file. Whether those bytes are a square image within the size limits is checked
+ * where the package is on disk (see `validatePluginIconBytes`).
+ */
+function validateIcon(value: unknown): string | undefined | { error: string } {
+    if (value === undefined) {
+        return undefined;
+    }
+    const icon = typeof value === "string" ? value.trim() : "";
+    if (!icon || !isSafeRelativeEntry(icon)) {
+        return { error: "Plugin icon must be a relative image path inside the plugin package" };
+    }
+    if (!pluginIconExtension(icon)) {
+        return { error: `Plugin icon must be one of: ${pluginIconExtensionList()}` };
+    }
+    return icon;
 }
 
 /**

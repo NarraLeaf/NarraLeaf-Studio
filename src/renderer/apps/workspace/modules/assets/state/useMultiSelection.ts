@@ -1,10 +1,10 @@
 import { useState, useCallback } from 'react';
 import { Asset, AssetGroup } from '@/lib/workspace/services/assets/types';
-import { AssetType } from '@/lib/workspace/services/assets/assetTypes';
+import { ASSET_CATEGORY_ORDER, AssetCategory } from '@/lib/workspace/services/assets/assetTypes';
 
 export interface UseMultiSelectionParams {
-    assets: Record<AssetType, Asset[]>;
-    groups: Record<AssetType, AssetGroup[]>;
+    assets: Record<AssetCategory, Asset[]>;
+    groups: Record<AssetCategory, AssetGroup[]>;
     onSelectionChange?: (selectedItems: Set<string>) => void;
 }
 
@@ -43,8 +43,8 @@ export function useMultiSelection({ assets, groups, onSelectionChange }: UseMult
                 });
             };
 
-            Object.values(AssetType).forEach(t => {
-                traverseGroups(groups[t], assets[t]);
+            ASSET_CATEGORY_ORDER.forEach(category => {
+                traverseGroups(groups[category], assets[category]);
             });
 
             const start = orderedKeys.indexOf(lastSelectedItem);

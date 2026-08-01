@@ -6,9 +6,13 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
+import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
+import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { createStorySceneEditorTab } from "../story/scene-editor/openStorySceneEditorTab";
 import { createBlueprintEntryEditorTab } from "../blueprint-lite/openBlueprintEditorTab";
 import { openAssetPreviewTabsInEditor } from "../assets/dnd/openDraggedAssetsInEditor";
+import { createSurfaceEditorTab } from "../ui-editor/UISurfacesPanel";
+import { openSceneFlowTab } from "../story-flow/openSceneFlowTab";
 
 export interface SearchJumpDeps {
     openEditorTab: (tab: EditorTabDefinition<any>) => void;
@@ -19,6 +23,7 @@ export interface SearchJumpDeps {
 
 const LOCALIZATION_PANEL_ID = "narraleaf-studio:localization";
 const ASSETS_PANEL_ID = "narraleaf-studio:assets";
+const CHARACTERS_PANEL_ID = "narraleaf-studio:characters";
 
 /**
  * Navigate to a search hit. Shared by the search panel and the command palette's search mode.
@@ -46,6 +51,46 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
                 ),
             );
             return true;
+        case "storyFlow": {
+            // A story has no single editor; its flow map is the view OF a story rather than of one
+            // of its scenes, which is what makes it the right landing place for the story's name.
+            if (!deps.context) {
+                return false;
+            }
+            openSceneFlowTab(deps.context, target.storyId, target.storyName);
+            return true;
+        }
+        case "character": {
+            const context = deps.context;
+            if (!context) {
+                return false;
+            }
+            const character = context.services
+                .get<CharacterService>(Services.Character)
+                .getCharacter(target.characterId);
+            if (!character) {
+                return false;
+            }
+            // Characters have no editor tab — the panel selection IS how one is opened.
+            deps.setPanelVisibility(CHARACTERS_PANEL_ID, true);
+            context.services.get<UIService>(Services.UI).getStore().setSelection({ type: "character", data: character });
+            return true;
+        }
+        case "uiSurface": {
+            const context = deps.context;
+            if (!context) {
+                return false;
+            }
+            const surface = context.services
+                .get<UIDocumentService>(Services.UIDocument)
+                .getDocument()
+                .surfaces.find(candidate => candidate.id === target.surfaceId);
+            if (!surface) {
+                return false;
+            }
+            deps.openEditorTab(createSurfaceEditorTab(surface));
+            return true;
+        }
         case "blueprint": {
             const owner = parseBlueprintOwnerKey(target.ownerKey);
             if (!owner) {

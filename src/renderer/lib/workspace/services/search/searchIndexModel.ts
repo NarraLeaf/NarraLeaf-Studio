@@ -28,18 +28,53 @@ import { richRunsToPlain, segmentToRuns } from "@/apps/workspace/modules/story/s
  * phrase, and `key:value` pairs narrow by facet. Terms match three haystacks at descending weight:
  * `text` (the result title), `detail` (the context line), and `aux` (searchable but never shown -
  * tags, object names, translations).
+ *
+ * **Entities are indexed here too, and they sort first.** Content search and navigation used to be
+ * strictly separate surfaces - names to quick open, prose to this index - and the split failed the
+ * most basic expectation there is: typing a scene's name returned the lines inside that scene and
+ * not the scene. One box the author types into has to answer "the thing called X" as well as
+ * "the line that says X", so the entity groups lead {@link SEARCH_GROUP_ORDER}. The *matchers* stay
+ * apart, which is what that split was really protecting: quick open still ranks names with
+ * `fuzzyListModel`, and nothing fuzzy ever runs over prose.
  */
 
-export type SearchGroup = "story" | "asset" | "variable" | "uiTextKey" | "blueprintNode";
+export type SearchGroup =
+    // Entities - "open the thing called X".
+    | "scene"
+    | "story"
+    | "character"
+    | "uiSurface"
+    | "blueprint"
+    | "asset"
+    // Content - "find the line I wrote".
+    | "storyText"
+    | "variable"
+    | "uiTextKey"
+    | "blueprintNode";
 
-/** Fixed presentation order of result groups. */
-export const SEARCH_GROUP_ORDER: readonly SearchGroup[] = ["story", "asset", "variable", "uiTextKey", "blueprintNode"];
+/** Fixed presentation order of result groups: entities first, then content. */
+export const SEARCH_GROUP_ORDER: readonly SearchGroup[] = [
+    "scene",
+    "story",
+    "character",
+    "uiSurface",
+    "blueprint",
+    "asset",
+    "storyText",
+    "variable",
+    "uiTextKey",
+    "blueprintNode",
+];
 
 const GROUP_SET: ReadonlySet<string> = new Set(SEARCH_GROUP_ORDER);
 
 export type SearchJumpTarget =
     | { kind: "storyBlock"; storyId: string; sceneId: string; blockId: string; storyName: string; sceneName: string }
     | { kind: "storyScene"; storyId: string; sceneId: string; storyName: string; sceneName: string }
+    /** A whole story: its flow map is the view of a story rather than of one scene. */
+    | { kind: "storyFlow"; storyId: string; storyName: string }
+    | { kind: "character"; characterId: string }
+    | { kind: "uiSurface"; surfaceId: string }
     | { kind: "asset"; assetId: string; assetType: string }
     | {
           kind: "blueprint";
@@ -89,6 +124,16 @@ export interface SearchIndexEntry {
      */
     aux?: string;
     fields?: SearchEntryFields;
+    /**
+     * How many indistinguishable things this row stands for (absent or 1 = just itself).
+     *
+     * Set by extractors that collapse duplicates. A graph holding eight `Set Image Asset` nodes with
+     * nothing to tell them apart produced eight identical rows; one row that says there are eight is
+     * the honest rendering of the same fact, and the only one the author can act on. The jump goes to
+     * the first of them - which is also all a picker could have offered, since the eight were
+     * indistinguishable in the list by construction.
+     */
+    count?: number;
     target: SearchJumpTarget;
 }
 
@@ -127,13 +172,28 @@ export function indexEntries(entries: readonly SearchIndexEntry[]): IndexedSearc
 // ---------------------------------------------------------------------------
 
 /**
- * Story slice: every block's prose (dialogue/narration/choice/note text) plus the story's variable
- * declarations. Blocks land in "story"; declaration rows land in "variable" (v6: the row IS the
- * variable, whatever its scope, so every entry jumps straight to its declaring row).
+ * Story slice: the story and its scenes as navigable entities, every block's prose
+ * (dialogue/narration/choice/note text), and the story's variable declarations. Scenes land in
+ * "scene" and the story itself in "story"; blocks land in "storyText"; declaration rows land in
+ * "variable" (v6: the row IS the variable, whatever its scope, so every entry jumps straight to its
+ * declaring row).
+ *
+ * The scene entry is what makes typing a scene name go to that scene instead of listing its lines:
+ * it is a `scene`-group entry, and that group sorts above `storyText`.
  */
 export function extractStoryEntries(document: StoryDocument): SearchIndexEntry[] {
     const entries: SearchIndexEntry[] = [];
     const storyName = document.name;
+
+    if (storyName) {
+        entries.push({
+            id: `storydoc:${document.id}`,
+            group: "story",
+            text: storyName,
+            fields: { storyId: document.id, storyName },
+            target: { kind: "storyFlow", storyId: document.id, storyName },
+        });
+    }
 
     // Ranking only reorders matches; everything that ties keeps index order, which is why both loops
     // walk the authored order rather than the records.
@@ -145,6 +205,25 @@ export function extractStoryEntries(document: StoryDocument): SearchIndexEntry[]
             sceneId: scene.id,
             sceneName: scene.name,
         };
+
+        if (scene.name) {
+            entries.push({
+                id: `sceneref:${document.id}:${scene.id}`,
+                group: "scene",
+                text: scene.name,
+                detail: storyName,
+                // The runtime name is what a `/jump` writes, so authors do search for it.
+                aux: scene.runtimeName && scene.runtimeName !== scene.name ? scene.runtimeName : undefined,
+                fields: sceneFields,
+                target: {
+                    kind: "storyScene",
+                    storyId: document.id,
+                    sceneId: scene.id,
+                    storyName,
+                    sceneName: scene.name,
+                },
+            });
+        }
 
         for (const block of listSceneBlocksInDocumentOrder(scene)) {
             if (isStoryDeclarationBlock(block)) {
@@ -178,7 +257,7 @@ export function extractStoryEntries(document: StoryDocument): SearchIndexEntry[]
             }
             entries.push({
                 id: `story:${document.id}:${scene.id}:${block.id}`,
-                group: "story",
+                group: "storyText",
                 text,
                 detail: context,
                 fields: { ...sceneFields, ...(segment.textId ? { textId: segment.textId } : {}) },
@@ -197,16 +276,86 @@ export function extractStoryEntries(document: StoryDocument): SearchIndexEntry[]
     return entries;
 }
 
+/** Longest literal kept from a node's params; anything longer is a payload, not a name. */
+const MAX_NODE_LITERAL_LENGTH = 80;
+/** How many literals one node contributes before the walker gives up on it. */
+const MAX_NODE_LITERALS = 6;
+/** Depth the walker descends into nested param objects/arrays. */
+const MAX_NODE_LITERAL_DEPTH = 2;
+
+const UUID_SHAPED = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
- * Blueprint slice: member variable names + persistent variable names ("variable") and graph node
- * display titles ("blueprintNode"). Only blueprints reachable through an owner record are indexed -
- * an unowned blueprint has no editor surface to jump to.
+ * The authored strings inside a node's params, in declaration order - a comment's text, a variable
+ * name, a literal line of dialogue.
+ *
+ * Deliberately narrow: numbers and booleans carry no identity, and ids (UUID-shaped strings) are
+ * the thing the author never types. What is left is what one `Set Image Asset` node has that the
+ * seven beside it do not, which is the entire point of collecting them.
+ */
+function collectNodeLiterals(params: Record<string, unknown> | undefined): string[] {
+    const out: string[] = [];
+    const visit = (value: unknown, depth: number): void => {
+        if (out.length >= MAX_NODE_LITERALS) {
+            return;
+        }
+        if (typeof value === "string") {
+            const trimmed = value.trim();
+            if (trimmed && trimmed.length <= MAX_NODE_LITERAL_LENGTH && !UUID_SHAPED.test(trimmed)) {
+                out.push(trimmed);
+            }
+            return;
+        }
+        if (depth >= MAX_NODE_LITERAL_DEPTH || !value || typeof value !== "object") {
+            return;
+        }
+        for (const child of Array.isArray(value) ? value : Object.values(value)) {
+            visit(child, depth + 1);
+        }
+    };
+    visit(params, 0);
+    return out;
+}
+
+/** Localized names for the parts of a blueprint the index cannot name for itself. */
+export interface BlueprintEntryLabels {
+    /** Shown for an event graph the author never named. */
+    unnamedEvent: string;
+    /** Shown for a function graph the author never named. */
+    unnamedFunction: string;
+}
+
+export interface BlueprintExtractionOptions {
+    /** Catalog display name for a node type (`Set Image Asset`), falling back to the raw type. */
+    resolveNodeLabel: (nodeType: string) => string | undefined;
+    /**
+     * Human name for an owner slot key - the surface or element the blueprint hangs on. Without it a
+     * node hit says only which blueprint it is in, and blueprints are named after their element
+     * ("Image"), which is exactly as much provenance as no provenance.
+     */
+    resolveOwnerLabel?: (ownerKey: string) => string | undefined;
+    persistentVariables?: VariableRegistryEntry[];
+    labels: BlueprintEntryLabels;
+}
+
+/**
+ * Blueprint slice: the blueprints themselves ("blueprint"), member + persistent variable names
+ * ("variable"), and graph nodes ("blueprintNode"). Only blueprints reachable through an owner record
+ * are indexed - an unowned blueprint has no editor surface to jump to.
+ *
+ * **Node rows carry where they are and what they say.** Indexing bare node *type* names produced a
+ * result list of clones - eight `Set Image Asset` rows, identical down to the detail line, none of
+ * them telling the author which one to pick. So a node's detail line is now its own literal params
+ * followed by `owner › graph`, and nodes that still come out identical after that are collapsed to
+ * one row carrying {@link SearchIndexEntry.count}. Type names stay searchable (they are still the
+ * row title), because "where do I set image assets" is a real question - it just needs an answer
+ * the author can read.
  */
 export function extractBlueprintEntries(
     document: BlueprintDocument,
-    resolveNodeLabel: (nodeType: string) => string | undefined,
-    persistentVariables: VariableRegistryEntry[] = [],
+    options: BlueprintExtractionOptions,
 ): SearchIndexEntry[] {
+    const { resolveNodeLabel, resolveOwnerLabel, persistentVariables = [], labels } = options;
     const entries: SearchIndexEntry[] = [];
 
     // blueprintId → ownerKey (active blueprint first so it wins over historical siblings).
@@ -239,10 +388,31 @@ export function extractBlueprintEntries(
         }
     }
 
+    /**
+     * Node rows keyed by exactly what the row shows, across the WHOLE document.
+     *
+     * Document-wide rather than per-graph on purpose. Sibling event layers are commonly all called
+     * "Layer 1", and sibling widgets all called "Image", so a per-graph map still let four rows
+     * through that were identical on screen — which is the complaint, not the data model. Two rows
+     * survive as two exactly when a person could tell them apart.
+     */
+    const nodeRows = new Map<string, SearchIndexEntry>();
+
     for (const blueprint of Object.values(document.blueprints)) {
         const ownerKey = ownerKeyByBlueprintId.get(blueprint.id);
         if (!ownerKey) {
             continue;
+        }
+        const ownerLabel = resolveOwnerLabel?.(ownerKey);
+
+        if (blueprint.name) {
+            entries.push({
+                id: `bp:${blueprint.id}`,
+                group: "blueprint",
+                text: blueprint.name,
+                detail: ownerLabel,
+                target: { kind: "blueprint", blueprintId: blueprint.id, ownerKey },
+            });
         }
 
         for (const variable of Object.values(blueprint.members?.variables ?? {})) {
@@ -253,7 +423,7 @@ export function extractBlueprintEntries(
                 id: `bpvar:${blueprint.id}:${variable.id}`,
                 group: "variable",
                 text: variable.name,
-                detail: blueprint.name,
+                detail: ownerLabel ? `${blueprint.name} › ${ownerLabel}` : blueprint.name,
                 target: { kind: "blueprint", blueprintId: blueprint.id, ownerKey },
             });
         }
@@ -261,30 +431,49 @@ export function extractBlueprintEntries(
         if (blueprint.program.kind !== "graph") {
             continue;
         }
-        const graphSlots: Array<{ focus: "event" | "function"; graphId: string; ir: { nodes?: Record<string, { id: string; type: string }> } | undefined }> = [
+        type GraphSlot = {
+            focus: "event" | "function";
+            graphId: string;
+            name: string;
+            ir: { nodes?: Record<string, { id: string; type: string; params?: Record<string, unknown> }> } | undefined;
+        };
+        const graphSlots: GraphSlot[] = [
             ...Object.entries(blueprint.program.graphs.events).map(([graphId, slot]) => ({
                 focus: "event" as const,
                 graphId,
+                name: slot.name || labels.unnamedEvent,
                 ir: slot.graph,
             })),
             ...Object.entries(blueprint.program.graphs.functions).map(([graphId, slot]) => ({
                 focus: "function" as const,
                 graphId,
+                name: slot.name || labels.unnamedFunction,
                 ir: slot.graph,
             })),
         ];
 
-        for (const { focus, graphId, ir } of graphSlots) {
+        for (const { focus, graphId, name: graphName, ir } of graphSlots) {
+            const where = ownerLabel ? `${ownerLabel} › ${graphName}` : `${blueprint.name} › ${graphName}`;
             for (const node of Object.values(ir?.nodes ?? {})) {
                 const label = resolveNodeLabel(node.type) ?? node.type;
                 if (!label) {
                     continue;
                 }
-                entries.push({
+                const literals = collectNodeLiterals(node.params);
+                const [distinguishing, ...rest] = literals;
+                const detail = distinguishing ? `${distinguishing} · ${where}` : where;
+                const key = `${label}\u0000${detail}`;
+                const existing = nodeRows.get(key);
+                if (existing) {
+                    existing.count = (existing.count ?? 1) + 1;
+                    continue;
+                }
+                nodeRows.set(key, {
                     id: `bpnode:${blueprint.id}:${graphId}:${node.id}`,
                     group: "blueprintNode",
                     text: label,
-                    detail: blueprint.name,
+                    detail,
+                    aux: rest.length > 0 ? rest.join(" ") : undefined,
                     target: {
                         kind: "blueprint",
                         blueprintId: blueprint.id,
@@ -297,6 +486,7 @@ export function extractBlueprintEntries(
         }
     }
 
+    entries.push(...nodeRows.values());
     return entries;
 }
 
@@ -331,6 +521,51 @@ export function extractAssetEntries(assets: readonly SearchableAsset[]): SearchI
                 target: { kind: "asset" as const, assetId: asset.id, assetType: asset.type },
             };
         });
+}
+
+/** The slice of a character the index needs; matches the character profile structurally. */
+export interface SearchableCharacter {
+    id: string;
+    name: string;
+    /** Group the character was filed under, shown as its context line. */
+    groupName?: string;
+    /** Cast/voice-actor note and any alias, searchable but not shown. */
+    aux?: string;
+}
+
+/** Character slice: the cast, by name. Jumping reveals them selected in the characters panel. */
+export function extractCharacterEntries(characters: readonly SearchableCharacter[]): SearchIndexEntry[] {
+    return characters
+        .filter(character => character.name)
+        .map(character => ({
+            id: `character:${character.id}`,
+            group: "character" as const,
+            text: character.name,
+            detail: character.groupName || undefined,
+            aux: character.aux || undefined,
+            target: { kind: "character" as const, characterId: character.id },
+        }));
+}
+
+/** The slice of a UI surface the index needs. */
+export interface SearchableSurface {
+    id: string;
+    name: string;
+    /** `appSurface` / `stageSurface`, shown as the context line once localized by the caller. */
+    kindLabel?: string;
+}
+
+/** UI surface slice: every screen/layer by name, opening its editor tab. */
+export function extractSurfaceEntries(surfaces: readonly SearchableSurface[]): SearchIndexEntry[] {
+    return surfaces
+        .filter(surface => surface.name)
+        .map(surface => ({
+            id: `surface:${surface.id}`,
+            group: "uiSurface" as const,
+            text: surface.name,
+            detail: surface.kindLabel || undefined,
+            target: { kind: "uiSurface" as const, surfaceId: surface.id },
+        }));
 }
 
 /** Named UI text keys: searchable by key name (title) and by source text (detail). */

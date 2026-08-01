@@ -26,6 +26,7 @@ export type DocumentKind =
     | "ui-document"
     | "ui-graphs"
     | "variables"
+    | "audio-tracks"
     | "localization"
     | "localization-keys"
     | "voice"

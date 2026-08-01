@@ -3,7 +3,7 @@ import { AssetOrderManager } from "./AssetOrderManager";
 import { AssetsMetadataManager } from "./AssetsMetadataManager";
 import { GroupAssetsManager } from "./GroupAssetsManager";
 import { AssetsService } from "../../core/AssetsService";
-import { AssetType } from "../assetTypes";
+import { AssetCategory, AssetType } from "../assetTypes";
 import { Services } from "../../services";
 
 /**
@@ -143,8 +143,8 @@ async function initAssets(harness: ReturnType<typeof createHarness>) {
     const groupManager = await new GroupAssetsManager(harness.service, harness.context as any).init();
     (harness.service as any).groupAssetsManager = groupManager;
 
-    for (const type of orderManager.listMissingTypes()) {
-        (harness.service as any).dirtyOrderTypes.add(type);
+    for (const category of orderManager.listMissingCategories()) {
+        (harness.service as any).dirtyOrderCategories.add(category);
     }
     await harness.service["flushPendingWrites"]();
 
@@ -167,7 +167,7 @@ describe("asset order, for a project that predates the order file", () => {
         const { metadataManager, groupManager } = await initAssets(harness);
 
         expect(metadataManager.getOrderedAssets(AssetType.Image).map(asset => asset.id)).toEqual([C, A, B]);
-        expect(groupManager.getGroups(AssetType.Image).map(group => group.id)).toEqual(["group_2", "group_1"]);
+        expect(groupManager.getGroups(AssetCategory.Image).map(group => group.id)).toEqual(["group_2", "group_1"]);
         expect(lastWrite(harness.writes, IMAGE_METADATA)).toBeUndefined();
         expect(lastWrite(harness.writes, IMAGE_GROUPS)).toBeUndefined();
     });
@@ -291,15 +291,15 @@ describe("group order", () => {
         });
         const { groupManager } = await initAssets(harness);
 
-        expect(groupManager.getGroups(AssetType.Image).map(group => group.id)).toEqual(["group_2", "group_1"]);
+        expect(groupManager.getGroups(AssetCategory.Image).map(group => group.id)).toEqual(["group_2", "group_1"]);
 
         let createdId = "";
         await harness.service.transaction(async () => {
-            const created = await groupManager.createGroup(AssetType.Image, "new");
+            const created = await groupManager.createGroup(AssetCategory.Image, "new");
             createdId = created.success ? created.data!.id : "";
         });
 
-        expect(groupManager.getGroups(AssetType.Image).map(group => group.id)).toEqual(["group_2", "group_1", createdId]);
+        expect(groupManager.getGroups(AssetCategory.Image).map(group => group.id)).toEqual(["group_2", "group_1", createdId]);
         expect(JSON.parse(lastWrite(harness.writes, IMAGE_ORDER)!).groupIds).toEqual(["group_2", "group_1", createdId]);
     });
 
@@ -308,7 +308,7 @@ describe("group order", () => {
         const { groupManager } = await initAssets(harness);
 
         await harness.service.transaction(async () => {
-            await groupManager.createGroup(AssetType.Image, "new");
+            await groupManager.createGroup(AssetCategory.Image, "new");
         });
 
         const shard = JSON.parse(lastWrite(harness.writes, IMAGE_GROUPS)!);

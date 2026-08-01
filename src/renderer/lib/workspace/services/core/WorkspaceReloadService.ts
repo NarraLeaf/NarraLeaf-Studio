@@ -24,6 +24,7 @@ import type { UIGraphService } from "../ui-editor/UIGraphService";
 import type { UIEditorHistoryService } from "../ui-editor/UIEditorHistoryService";
 import type { LocalBlueprintService } from "../ui-editor/LocalBlueprintService";
 import type { VariableRegistryService } from "../variables/VariableRegistryService";
+import type { AudioTrackService } from "../audio/AudioTrackService";
 import { EventEmitter } from "../ui/EventEmitter";
 
 /**
@@ -128,6 +129,16 @@ const RELOAD_PARTICIPANTS: readonly ReloadParticipant[] = [
         // project open instead of throwing through the reload.
         reload: async ctx => {
             await ctx.services.get<VariableRegistryService>(Services.VariableRegistry).load();
+        },
+    },
+    {
+        id: "audioTracks",
+        labelKey: "workspace.shell.save.stores.audioTracks",
+        // Same shape as `variables`: `load()` clears the corrupt latch at its start, so a track list
+        // that is unreadable at reload time lands in the same "not loaded, refuses to save" state as
+        // at project open rather than throwing through the reload.
+        reload: async ctx => {
+            await ctx.services.get<AudioTrackService>(Services.AudioTracks).load();
         },
     },
     {

@@ -378,6 +378,8 @@ export function EditorGroup({ group }: EditorGroupProps) {
     // Close shortcut: tab strip closes multi-selection (or active if none selected)
     useKeybinding({
         id: `editor-group-${group.id}-close-tabs-strip`,
+        // Registration is per group; the catalog id is what the palette and any rebind key on.
+        catalogId: "editor.close-selected-tabs",
         key: closeTabShortcut,
         description: "Close selected editor tabs",
         handler: handleCloseTabStripSelection,
@@ -388,6 +390,7 @@ export function EditorGroup({ group }: EditorGroupProps) {
     // Close shortcut: editor body closes active tab only
     useKeybinding({
         id: `editor-group-${group.id}-close-tab-editor-body`,
+        catalogId: "editor.close-active-tab",
         key: closeTabShortcut,
         description: "Close active editor tab",
         handler: handleCloseActiveTab,

@@ -1,5 +1,5 @@
 import type { AudioClipRegion } from "@shared/types/audio";
-import { AssetType } from "./assetTypes";
+import { AssetCategory, AssetType } from "./assetTypes";
 
 export enum AssetSource {
     Local = "local",
@@ -47,11 +47,12 @@ export interface Asset<Type extends AssetType = AssetType, Source extends AssetS
 }
 
 /**
- * The in/out points the author marked on an audio asset - where a BGM's loop begins and ends.
+ * The points the author marked on an audio asset - where a BGM starts, where it ends, and where
+ * each repeat returns to.
  *
- * One pair per asset, not a list of markers: a clip has exactly one region worth naming, and the
+ * One region per asset, not a list of markers: a clip has exactly one region worth naming, and the
  * thing downstream wants to ask is "where does this loop", which a bag of markers cannot answer.
- * Either end may stand alone while the author is still deciding.
+ * Any marker may stand alone while the author is still deciding.
  *
  * The same shape the game bundle carries ({@link AudioClipRegion}) - deliberately one type, because
  * the region an author marks here is the region the engine plays. `@shared/types/audio` owns the
@@ -75,6 +76,29 @@ export interface AssetExtras {
      */
     modelEntry?: string;
     /**
+     * Text assets only: the encoding the author said this file is in.
+     *
+     * A property of the *file*, not of the window, which is why it rides the record into version
+     * control rather than sitting in session state: the point of a shared plan file is that the
+     * colleague who opens the GBK spreadsheet next gets it right without having to know. Outranks
+     * the byte-order-mark sniff on open, because an author who said so has said more than a
+     * heuristic can.
+     *
+     * Written only when the author explicitly reopens or saves under an encoding. Absent - the
+     * normal state - means "sniff the BOM, then UTF-8", so merely reading a file never produces a
+     * change to commit.
+     */
+    textEncoding?: import("@shared/types/textEncoding").TextEncodingId;
+    /**
+     * Text assets only: the line ending this file uses.
+     *
+     * Recorded for the same reason as {@link textEncoding}, and needed at all because a *new* text
+     * file is zero bytes: there is nothing in the content to detect, so the platform that created it
+     * is the only thing that can answer. For a file that has content, the content wins - see
+     * `resolveLineEnding` - and this is only the fallback.
+     */
+    textEol?: import("@shared/types/textEncoding").PersistedTextEol;
+    /**
      * Superseded by {@link audioLoop}, which replaced a free list of markers with the one in/out
      * pair a clip actually has. Read only so records written by the short-lived cue-point model
      * still open with their points intact - the editor rewrites them as `audioLoop` on the next
@@ -90,20 +114,31 @@ export type AssetsMap = {
 };
 
 /**
- * Asset group for organizing assets
+ * A folder in the asset browser.
+ *
+ * Filed under a {@link AssetCategory}, not an {@link AssetType}: the sidebar's sections are
+ * categories, and a folder under "Media" has to be able to hold an mp3 next to an mp4. Records
+ * written before this carried `type: AssetType` instead and are folded up on read; the id never
+ * changed, so no asset's `groupId` had to be rewritten.
  */
 export interface AssetGroup {
     id: string;
     name: string;
-    type: AssetType;
+    category: AssetCategory;
     parentGroupId?: string;
     createdAt: number;
     updatedAt: number;
 }
 
+/** A group record as it may still exist on disk, from before groups moved up to categories. */
+export interface LegacyTypedAssetGroup extends Omit<AssetGroup, "category"> {
+    category?: AssetCategory;
+    type?: AssetType;
+}
+
 /**
- * Group map organized by asset type
+ * Group map organized by asset category
  */
 export type AssetGroupMap = {
-    [K in AssetType]: Record<string, AssetGroup>;
+    [K in AssetCategory]: Record<string, AssetGroup>;
 };
