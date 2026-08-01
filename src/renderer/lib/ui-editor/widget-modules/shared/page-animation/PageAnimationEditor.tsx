@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Play, RotateCw } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
+import { InspectOnlyButton } from "@/lib/components/elements/InspectOnlyButton";
 import { Select } from "@/lib/components/elements/Select";
 import { Switch } from "@/lib/components/elements/Switch";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
@@ -52,18 +53,26 @@ function visibleDirection(
     return direction === "auto" ? fallback : direction;
 }
 
+/**
+ * Replay the little box beside it. It restarts a local animation and touches no settings at all,
+ * which makes it the plainest kind of looking there is.
+ *
+ * An {@link InspectOnlyButton} because this editor is mounted inside inspector fields, and a frozen
+ * workspace clamps those in a `disabled` `<fieldset>`: as a `<button>` both replay buttons went
+ * dead, so an author reading a past version could see which preset an animation used but could not
+ * watch it once.
+ */
 function PreviewButton({ label, ariaLabel, onClick }: { label: string; ariaLabel: string; onClick: () => void }) {
     return (
-        <button
-            type="button"
-            className="inline-flex h-7 min-w-0 items-center justify-center gap-1 rounded-md border border-edge bg-fill-subtle px-2 text-2xs text-fg-muted transition hover:bg-fill hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+        <InspectOnlyButton
+            className="inline-flex h-7 min-w-0 items-center justify-center gap-1 rounded-md border border-edge bg-fill-subtle px-2 text-2xs text-fg-muted transition hover:bg-fill hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 cursor-default"
             onClick={onClick}
             title={ariaLabel}
             aria-label={ariaLabel}
         >
             <Play className="h-3.5 w-3.5" />
             <span className="truncate">{label}</span>
-        </button>
+        </InspectOnlyButton>
     );
 }
 
