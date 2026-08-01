@@ -47,7 +47,6 @@ export type ProjectStatsSnapshot = {
         characters: number;
         assets: number;
         assetsByType: Record<string, number>;
-        blueprints: number;
         blueprintNodes: number;
         uiSurfaces: number;
         variables: { scene: number; saved: number; persistent: number };
@@ -189,16 +188,18 @@ function countAssets(ctx: WorkspaceContext): { total: number; byType: Record<str
     return { total, byType };
 }
 
+/**
+ * Blueprint weight is reported as a NODE count, not a count of blueprint entities: most entities are
+ * implicit (one per story action, inline interpolation, condition, widget, bound property), so their
+ * number says more about how the document is structured than about how much logic the project holds.
+ */
 function countBlueprints(ctx: WorkspaceContext): {
-    blueprints: number;
     nodes: number;
     persistentVariables: number;
 } {
     const document = ctx.services.get<LocalBlueprintService>(Services.LocalBlueprint).getBlueprintDocument();
-    let blueprints = 0;
     let nodes = 0;
     for (const blueprint of Object.values(document.blueprints ?? {})) {
-        blueprints += 1;
         if (blueprint.program.kind !== "graph") {
             continue;
         }
@@ -211,7 +212,6 @@ function countBlueprints(ctx: WorkspaceContext): {
         }
     }
     return {
-        blueprints,
         nodes,
         // M-VAR: persistent variables live in the project-level registry now, not the blueprint document.
         persistentVariables: ctx.services.get<VariableRegistryService>(Services.VariableRegistry).listEntries().length,
@@ -292,11 +292,11 @@ export async function computeProjectStatsSnapshot(ctx: WorkspaceContext): Promis
         assets = { total: 0, byType: {} };
     }
 
-    let blueprints = { blueprints: 0, nodes: 0, persistentVariables: 0 };
+    let blueprints = { nodes: 0, persistentVariables: 0 };
     try {
         blueprints = countBlueprints(ctx);
     } catch {
-        blueprints = { blueprints: 0, nodes: 0, persistentVariables: 0 };
+        blueprints = { nodes: 0, persistentVariables: 0 };
     }
 
     let uiSurfaces = 0;
@@ -332,7 +332,6 @@ export async function computeProjectStatsSnapshot(ctx: WorkspaceContext): Promis
             characters,
             assets: assets.total,
             assetsByType: assets.byType,
-            blueprints: blueprints.blueprints,
             blueprintNodes: blueprints.nodes,
             uiSurfaces,
             variables: {
