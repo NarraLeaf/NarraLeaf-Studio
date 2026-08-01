@@ -42,9 +42,29 @@ const DEFAULT_STATE: PluginRegistryState = {
     "plugin.records": {},
 };
 
+/**
+ * Where package swaps are assembled. It lives inside the plugins root (so the
+ * final rename never crosses a volume) but is dot-prefixed, and the scan skips
+ * dot-prefixed entries - a half-finished copy can therefore never be mistaken
+ * for an installed package.
+ */
+const STAGING_DIR_NAME = ".staging";
+
+/**
+ * Names older builds staged next to the install path (`<id>.builtin-tmp-<ts>`,
+ * `<id>.tmp-<ts>`, and the dev script's `<id>.builtin-dev-tmp-<ts>`). A swap
+ * interrupted by a locked file left one behind for good, and because it carries
+ * the *same* manifest id and sorts after the real directory, the scan built its
+ * record from the leftover instead - pinning that plugin to a stale version on
+ * every launch, rebuild after rebuild. They are garbage: recognise and delete.
+ */
+const LEGACY_STAGING_DIR = /\.(?:builtin-tmp|builtin-dev-tmp|tmp)-\d{13}(?:-[a-z0-9]+)?$/;
+
 export class PluginManager {
     private readonly state: PersistentState<PluginRegistryState>;
     private readonly pluginsDir: string;
+    /** Staged copies a swap is filling right now, so cleanup leaves them alone. */
+    private readonly stagingInFlight = new Set<string>();
     private initialized: Promise<void> | null = null;
 
     constructor(
@@ -66,6 +86,24 @@ export class PluginManager {
             this.initialized = this.scanInstalledPlugins();
         }
         return this.initialized;
+    }
+
+    /**
+     * Re-sync the shipping built-in packages and rebuild the registry from disk.
+     *
+     * Start-up is the only other time this runs, which is fine for a packaged
+     * app but not in development: `yarn dev` rebuilds built-in plugins into
+     * `dist/builtin-plugins` while Studio is running, and without a re-sync the
+     * app would keep serving the copy it took at launch until the next restart.
+     */
+    public async refreshBuiltInPlugins(): Promise<void> {
+        const scan = this.initialize()
+            .catch(() => undefined)
+            .then(() => this.scanInstalledPlugins());
+        // A failed refresh must not poison the memo - the records from the last
+        // good scan stay serviceable, and the caller still sees the error.
+        this.initialized = scan.catch(() => undefined);
+        return scan;
     }
 
     public async listPlugins(): Promise<PluginListItem[]> {
@@ -190,11 +228,7 @@ export class PluginManager {
         await fs.mkdir(this.pluginsDir, { recursive: true });
         const samePath = path.resolve(sourceDir) === path.resolve(installPath);
         if (!samePath) {
-            const tempPath = `${installPath}.tmp-${Date.now()}`;
-            await fs.rm(tempPath, { recursive: true, force: true });
-            await fs.cp(sourceDir, tempPath, { recursive: true });
-            await fs.rm(installPath, { recursive: true, force: true });
-            await fs.rename(tempPath, installPath);
+            await this.swapPluginDirectory(installPath, staged => fs.cp(sourceDir, staged, { recursive: true }));
         }
 
         const manifest = samePath ? sourceManifest : await this.readManifest(installPath);
@@ -383,6 +417,7 @@ export class PluginManager {
 
     private async scanInstalledPlugins(): Promise<void> {
         await fs.mkdir(this.pluginsDir, { recursive: true });
+        await this.discardStagingLeftovers();
         const records = this.getRecords();
         const builtInSources = await this.syncBuiltInPlugins(records);
         const nextRecords: Record<string, PluginInstallRecord> = {};
@@ -390,7 +425,7 @@ export class PluginManager {
         const now = Date.now();
 
         for (const entry of entries) {
-            if (!entry.isDirectory()) {
+            if (!entry.isDirectory() || entry.name.startsWith(".") || LEGACY_STAGING_DIR.test(entry.name)) {
                 continue;
             }
             const installPath = path.join(this.pluginsDir, entry.name);
@@ -482,12 +517,67 @@ export class PluginManager {
     }
 
     private async replacePluginDirectory(sourcePath: string, installPath: string): Promise<void> {
-        await fs.mkdir(this.pluginsDir, { recursive: true });
-        const tempPath = `${installPath}.builtin-tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        await fs.rm(tempPath, { recursive: true, force: true });
-        await this.copyDirectoryFromAsar(sourcePath, tempPath);
-        await fs.rm(installPath, { recursive: true, force: true });
-        await fs.rename(tempPath, installPath);
+        await this.swapPluginDirectory(installPath, staged => this.copyDirectoryFromAsar(sourcePath, staged));
+    }
+
+    /**
+     * Replace a package directory by assembling the new copy under
+     * `plugins/.staging` and renaming it into place.
+     *
+     * The staged copy used to sit *next to* the install path, which turned a
+     * failed rename (a locked file, a crash mid-swap) into a permanent shadow:
+     * the leftover declared the same plugin id, the scan read it like any other
+     * package, and whichever of the two `readdir` returned last won. Staging out
+     * of the scan's sight keeps a failure loud and local - the swap throws, the
+     * caller logs it, and the previously installed package is what remains.
+     */
+    private async swapPluginDirectory(
+        installPath: string,
+        assemble: (stagedPath: string) => Promise<unknown>,
+    ): Promise<void> {
+        const stagingRoot = path.join(this.pluginsDir, STAGING_DIR_NAME);
+        await fs.mkdir(stagingRoot, { recursive: true });
+        const stagedPath = path.join(
+            stagingRoot,
+            `${path.basename(installPath)}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        );
+        this.stagingInFlight.add(stagedPath);
+        try {
+            await assemble(stagedPath);
+            await fs.rm(installPath, { recursive: true, force: true });
+            await fs.rename(stagedPath, installPath);
+        } finally {
+            this.stagingInFlight.delete(stagedPath);
+            // A no-op once the rename lands; the point is the failure path.
+            await fs.rm(stagedPath, { recursive: true, force: true }).catch(() => undefined);
+        }
+    }
+
+    /** Drop staged copies nobody is filling, plus any pre-fix sibling leftovers. */
+    private async discardStagingLeftovers(): Promise<void> {
+        const entries = await fs.readdir(this.pluginsDir, { withFileTypes: true }).catch(() => []);
+        for (const entry of entries) {
+            if (!entry.isDirectory()) {
+                continue;
+            }
+            const target = path.join(this.pluginsDir, entry.name);
+            if (entry.name === STAGING_DIR_NAME) {
+                for (const staged of await fs.readdir(target).catch(() => [])) {
+                    const stagedPath = path.join(target, staged);
+                    // An install running alongside this scan owns its staged copy.
+                    if (!this.stagingInFlight.has(stagedPath)) {
+                        await this.discard(stagedPath);
+                    }
+                }
+            } else if (LEGACY_STAGING_DIR.test(entry.name)) {
+                await this.discard(target);
+            }
+        }
+    }
+
+    private async discard(target: string): Promise<void> {
+        await fs.rm(target, { recursive: true, force: true })
+            .catch(error => console.warn(`[PluginManager] Failed to remove stale staging directory ${target}:`, error));
     }
 
     /**
