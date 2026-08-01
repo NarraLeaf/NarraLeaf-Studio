@@ -220,10 +220,17 @@ export class App extends BaseApp {
     /**
      * Record a checkpoint for a project that is about to be closed.
      *
-     * One of the three unconditional checkpoints: after this returns, nothing is
-     * watching the working tree, so an author who edited for an hour without committing
-     * would otherwise have that hour recorded nowhere. Runs after the pending-save
-     * flush so the checkpoint describes what they actually left behind.
+     * The point of it: after this returns, nothing is watching the working tree, so an
+     * author who edited for an hour without committing would otherwise have that hour
+     * recorded nowhere. Runs after the pending-save flush so the checkpoint describes
+     * what they actually left behind.
+     *
+     * **Its own setting, not the interval's.** `versionControl.checkpointOnClose` is a
+     * different question from how often to record while working - an author who turned
+     * the interval off to stop being interrupted has said nothing about the one moment
+     * where losing the session is possible - so a 0 interval does not silence this and
+     * this does not silence the interval. Defaults on, which is what it did before it
+     * was a choice.
      *
      * Never throws and never blocks the close. A project with no repository, a host
      * with no backend, and a tree that has not changed all answer "nothing to do"
@@ -236,6 +243,11 @@ export class App extends BaseApp {
      * window comes through here first, which is the exit an author takes deliberately.
      */
     private async checkpointBeforeClose(window: AppWindow<WindowAppType.Workspace>): Promise<void> {
+        // Only an explicit `false` skips it. A missing or non-boolean value means the author never
+        // answered, and the answer they never gave must not be the one that loses their session.
+        if (this.globalState.get("versionControl.checkpointOnClose") === false) {
+            return;
+        }
         const projectPath = window.getProps().projectPath;
         if (typeof projectPath !== "string" || projectPath.length === 0) {
             return;

@@ -56,6 +56,41 @@ export function isVcsPlatformSupported(
 }
 
 /**
+ * Fold a configured name and email into the one string Lore stores.
+ *
+ * Lore's `identity` is a single per-call global recorded verbatim (see `LoreGlobals`), so an
+ * email is not a second field it knows about - it is part of that string or it is nowhere. The
+ * `Name <email>` shape is the one every other version-control tool writes and every reader of a
+ * history already parses, which is the whole reason to compose rather than invent a separator.
+ *
+ * Pure and dependency-free, next to {@link isVcsPlatformSupported}, so main can record with it and
+ * the renderer can show what will be recorded without either owning the rule.
+ *
+ * Four cases, and none of them is a defensive branch - all four are reachable from the two Sync
+ * settings being independently empty:
+ *
+ * - both set     -> `Ada Lovelace <ada@example.com>`
+ * - name only    -> `Ada Lovelace`
+ * - email only   -> `<ada@example.com>`, because dropping the one thing they configured to print
+ *                   a name they did not would attribute their revisions to a stranger. Angle
+ *                   brackets with nothing before them is exactly how git records the same case.
+ * - neither      -> `""`, left for the CALLER to replace with its own unconfigured identity. This
+ *                   function does not know what that should be and must not guess: it is the
+ *                   difference between "nobody said" and a name.
+ */
+export function composeVcsIdentity(name: string | undefined, email: string | undefined): string {
+    const cleanName = (name ?? "").trim();
+    // Angle brackets would nest inside the ones added below and produce an identity no reader can
+    // split. Stripped rather than rejected: this runs on every write, and refusing to record
+    // because of a stray character in a setting would block committing rather than fix anything.
+    const cleanEmail = (email ?? "").trim().replace(/[<>]/g, "");
+    if (!cleanEmail) {
+        return cleanName;
+    }
+    return cleanName ? `${cleanName} <${cleanEmail}>` : `<${cleanEmail}>`;
+}
+
+/**
  * The branch a repository created by Studio starts on.
  *
  * The backend's choice, not Studio's - nothing here asks for a branch name at init - which is why

@@ -97,13 +97,52 @@ export class ProjectService {
                 throwException(await BaseFileSystemService.write(orderPath, EMPTY_ASSET_ORDER_TEXT, "utf-8"));
             }
 
+            // LAST, and only after every file above is on disk: the first revision is a snapshot of
+            // the working tree, so a repository created earlier would record a project that is
+            // half-written. Nothing is committed twice - `initRepository` stages the whole root.
+            if (projectData.versionControl === "lore") {
+                await this.enableVersionControl(basePath);
+            }
+
             getInterface().window.closeWith<WindowAppType.ProjectWizard>({ created: true, projectPath: basePath });
-            
+
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
             console.error("Failed to create project:", errorMessage);
             return { success: false, error: errorMessage };
+        }
+    }
+
+    /**
+     * Put the freshly written project under version control, because the author asked for it on
+     * the Settings step.
+     *
+     * **A failure here does not fail the project.** Everything the project IS has already been
+     * written and is correct; refusing to finish would leave the author looking at a wizard they
+     * cannot re-run - the directory is no longer empty - holding a project that exists on disk and
+     * nowhere in Studio. So this logs and returns, and they land in a workspace whose version rail
+     * says "Not versioned" over an Enable button. That is the same recovery the rail already
+     * offers, reached in one click, with the state visible rather than assumed.
+     *
+     * The window has no notification surface of its own and closes moments later, which is why the
+     * console is where this goes. `initRepository` is otherwise the very same call the rail's
+     * Enable button makes, including the identity resolution, so a project versioned here is
+     * indistinguishable from one versioned a minute later by hand.
+     */
+    private static async enableVersionControl(projectPath: string): Promise<void> {
+        try {
+            // Its own message rather than the backend's "Enable version control", which describes
+            // an act this author never performed - they made a project and it was versioned from
+            // the start. This is the last row of the history forever, so it should say what
+            // happened. Not localized: a revision message is repository DATA, read by other
+            // clients and by this project's collaborators, not this window's chrome.
+            const result = await getInterface().vcs.initRepository(projectPath, { message: "Create project" });
+            if (!result.success) {
+                console.warn("[Wizard] Project created, but version control could not be enabled:", result.error);
+            }
+        } catch (error) {
+            console.warn("[Wizard] Project created, but version control could not be enabled:", error);
         }
     }
 
