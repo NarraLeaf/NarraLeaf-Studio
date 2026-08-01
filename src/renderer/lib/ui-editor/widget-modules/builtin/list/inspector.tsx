@@ -12,6 +12,7 @@ import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 import { defaultContainerWidgetProps } from "@shared/types/ui-editor/container";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { Button } from "@/lib/components/elements/Button";
+import { InspectOnlyButton } from "@/lib/components/elements/InspectOnlyButton";
 import { Select } from "@/lib/components/elements/Select";
 import type { UIInspectorData, InspectorContext } from "@/lib/ui-editor/widget-modules/types";
 import { getListProps } from "./helpers";
@@ -170,10 +171,16 @@ function ListContentPaddingEditor({
     current,
     draftResetKey,
     onPatch,
+    readOnly = false,
 }: {
     current: ListWidgetProps;
     draftResetKey: string;
     onPatch: (partial: Partial<ListWidgetProps>) => void;
+    /**
+     * Threaded down from the field, because the per-side popover is a portal and so is outside
+     * whatever the properties framework has clamped around this field's subtree.
+     */
+    readOnly?: boolean;
 }) {
     const { t } = useTranslation();
     const [sidesOpen, setSidesOpen] = useState(false);
@@ -325,27 +332,36 @@ function ListContentPaddingEditor({
                       onMouseDown={event => event.stopPropagation()}
                   >
                       <p className="mb-2 text-xs font-medium text-fg-muted">{t("widgets.perSidePx")}</p>
-                      <div className="grid grid-cols-2 gap-2 min-w-0">
-                          {sides.map(({ key, label }) => (
-                              <div key={key} className="flex min-w-0 flex-col gap-1">
-                                  <span className="text-2xs font-medium text-fg-subtle">{label}</span>
-                                  <NumericDraftEnhancedInput
-                                      committedDisplay={String(current[key])}
-                                      draftResetKey={`${draftResetKey}-pad-${key}`}
-                                      onFiniteNumber={value => setSidePadding(key, value)}
-                                      inputMode="numeric"
-                                      type="number"
-                                      min={0}
-                                      max={LIST_SPACING_MAX_PX}
-                                      unit="px"
-                                      aria-label={t("widgets.list.contentPaddingSide", { side: label })}
-                                      title={t("widgets.list.contentPaddingSide", { side: label })}
-                                      className="w-full min-w-0"
-                                      selectAllOnFocus
-                                  />
-                              </div>
-                          ))}
-                      </div>
+                      {/* The popover's own clamp: it is a portal into `document.body`, so the
+                          `<fieldset disabled>` the properties framework puts around this field never
+                          reaches it. All four boxes write, and there is nothing here to exempt. */}
+                      <fieldset
+                          disabled={readOnly}
+                          aria-readonly={readOnly || undefined}
+                          style={{ display: "contents" }}
+                      >
+                          <div className="grid grid-cols-2 gap-2 min-w-0">
+                              {sides.map(({ key, label }) => (
+                                  <div key={key} className="flex min-w-0 flex-col gap-1">
+                                      <span className="text-2xs font-medium text-fg-subtle">{label}</span>
+                                      <NumericDraftEnhancedInput
+                                          committedDisplay={String(current[key])}
+                                          draftResetKey={`${draftResetKey}-pad-${key}`}
+                                          onFiniteNumber={value => setSidePadding(key, value)}
+                                          inputMode="numeric"
+                                          type="number"
+                                          min={0}
+                                          max={LIST_SPACING_MAX_PX}
+                                          unit="px"
+                                          aria-label={t("widgets.list.contentPaddingSide", { side: label })}
+                                          title={t("widgets.list.contentPaddingSide", { side: label })}
+                                          className="w-full min-w-0"
+                                          selectAllOnFocus
+                                      />
+                                  </div>
+                              ))}
+                          </div>
+                      </fieldset>
                   </div>,
                   globalThis.document.body,
               )
@@ -373,17 +389,20 @@ function ListContentPaddingEditor({
                             selectAllOnFocus
                         />
                     </div>
-                    <button
-                        type="button"
+                    {/* Opening the popover only shows what the four edges are set to - the writing is
+                        done by the boxes inside it, which carry their own clamp above. As a
+                        `<button>` the field's `<fieldset disabled>` caught this chevron, so on a
+                        frozen project a list with uneven padding showed "-" in the all-sides box and
+                        the four numbers behind it could not be reached at all. */}
+                    <InspectOnlyButton
                         onClick={() => setSidesOpen(open => !open)}
                         aria-expanded={sidesOpen}
-                        aria-haspopup="dialog"
                         aria-label={sidesOpen ? t("widgets.list.contentPaddingPerSideClose") : t("widgets.list.contentPaddingPerSideEdit")}
-                        className={controlButtonClass(sidesOpen)}
+                        className={`${controlButtonClass(sidesOpen)} cursor-default`}
                         title={t("widgets.list.contentPaddingPerSide")}
                     >
                         {sidesOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                    </button>
+                    </InspectOnlyButton>
                 </div>
             </div>
             {popover}
@@ -550,6 +569,7 @@ function ListLayoutField(props: CustomFieldProps<UIInspectorData>) {
                         current={current}
                         draftResetKey={draftResetKey}
                         onPatch={patch}
+                        readOnly={props.readOnly}
                     />
                 </div>
                 <div className="mt-2">

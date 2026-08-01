@@ -283,12 +283,16 @@ export function ComponentLibraryPanel({
             ref={panelRef}
             className="shrink-0 border-t border-edge bg-surface-sunken"
             tabIndex={0}
-            onKeyDown={event => {
+            // The Delete key is a third route to the same deletion the toolbar button and the
+            // context-menu row both refuse while frozen; a keystroke has no control to grey out,
+            // so `freeze.run` is what stops it. Measured before this: selecting a component and
+            // pressing Delete ran the confirm dialog and left the component where it was.
+            onKeyDown={freeze.run(event => {
                 if (event.key === "Delete" && selectedIds.size > 0) {
                     event.preventDefault();
                     void handleDelete([...selectedIds]);
                 }
-            }}
+            })}
         >
             <button
                 type="button"
@@ -400,12 +404,18 @@ export function ComponentLibraryPanel({
                                             </div>
                                             <button
                                                 type="button"
-                                                className="grid h-6 w-6 place-items-center rounded-md text-fg-muted opacity-0 hover:bg-fill hover:text-fg group-hover:opacity-100"
+                                                className="grid h-6 w-6 place-items-center rounded-md text-fg-muted opacity-0 hover:bg-fill hover:text-fg group-hover:opacity-100 disabled:cursor-not-allowed disabled:group-hover:opacity-40"
                                                 onClick={event => {
                                                     event.stopPropagation();
                                                     void handleRename(component);
                                                 }}
-                                                title={t("common.rename")}
+                                                // Renaming writes the component library, so it is
+                                                // refused while frozen - as the create, duplicate
+                                                // and delete buttons above already are, and as the
+                                                // context menu's own Rename row is. This one card
+                                                // shortcut was the way round all three: the dialog
+                                                // opened, took a new name and kept the old one.
+                                                {...freeze.writes(false, t("common.rename"))}
                                                 aria-label={t("common.rename")}
                                             >
                                                 <Edit3 className="h-3.5 w-3.5" />
