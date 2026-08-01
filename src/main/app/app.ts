@@ -14,6 +14,17 @@ import { normalizeProjectPath } from "@shared/utils/recentProject";
 export interface AppConfig extends BaseAppConfig {
 }
 
+/**
+ * How long the close-time checkpoint may take before the window closes without it.
+ *
+ * Generous, because a commit's duration is a function of how much the author changed and giving up
+ * early loses the revision. Bounded, because the alternative is a window that cannot be closed:
+ * every Lore call queues per project, and one that is waiting on the repository lock - another
+ * process holding it, or Studio's own handle from earlier in the session - waits without a deadline
+ * of its own. A close is not the moment to find that out.
+ */
+const CLOSE_CHECKPOINT_TIMEOUT_MS = 30_000;
+
 export class App extends BaseApp {
     public static create(config: AppConfig): App {
         return new App(config);
@@ -225,9 +236,11 @@ export class App extends BaseApp {
      * would otherwise have that hour recorded nowhere. Runs after the pending-save
      * flush so the checkpoint describes what they actually left behind.
      *
-     * Never throws and never blocks the close. A project with no repository, a host
-     * with no backend, and a tree that has not changed all answer "nothing to do"
-     * rather than failing - see VcsManager.checkpoint.
+     * Never throws and never blocks the close - the second half enforced by
+     * {@link CLOSE_CHECKPOINT_TIMEOUT_MS} rather than assumed. A project with no repository, a host
+     * with no backend, and a tree that has not changed all answer "nothing to do" rather than
+     * failing (see VcsManager.checkpoint); a repository somebody else has locked answers nothing at
+     * all, and used to leave the window unclosable.
      *
      * Deliberately NOT wired into the app-quit flush as well. That path runs under a
      * hard deadline whose purpose is a bounded teardown, and a commit's duration is a
@@ -241,7 +254,15 @@ export class App extends BaseApp {
             return;
         }
         try {
-            await this.vcsManager.checkpoint(projectPath, "project-close");
+            // The checkpoint keeps running if it outlasts this; what the deadline ends is the
+            // close waiting on it. Abandoning a commit half-way would be worse than a late one.
+            await Promise.race([
+                this.vcsManager.checkpoint(projectPath, "project-close"),
+                new Promise<void>((_, reject) => setTimeout(
+                    () => reject(new Error(`the checkpoint did not finish within ${CLOSE_CHECKPOINT_TIMEOUT_MS}ms`)),
+                    CLOSE_CHECKPOINT_TIMEOUT_MS,
+                ).unref?.()),
+            ]);
         } catch (error) {
             this.logger.warn(`[Vcs] Could not check point before closing the project: ${String(error)}`);
         }
