@@ -19,6 +19,14 @@ import {
     toBlueprintSoundHandle,
     type BlueprintSoundHandle,
 } from "@shared/types/blueprint/valueTypes";
+import {
+    BUILTIN_AUDIO_TRACKS,
+    DEFAULT_AUDIO_TRACK_ID,
+    resolveAudioTrack,
+    resolveAudioTrackPlayback,
+    type AudioTrackPlayback,
+    type ProjectAudioTrack,
+} from "@shared/types/audioTrack";
 import type { BlueprintSoundPlayInput } from "../../blueprint-runtime/BlueprintHostApiBridge";
 import type { StoryAssetKind } from "@/lib/ui-editor/runtime/game/storyCompiler";
 
@@ -48,13 +56,19 @@ export type SoundTransportOptions = {
         assetType?: StoryAssetKind,
     ) => Promise<string | null | undefined> | string | null | undefined;
     /**
+     * The project's audio tracks. A function rather than a value because the bundle can be replaced
+     * by a hot reload under a transport whose identity is deliberately stable across relaunches.
+     * Omitted (or empty) resolves to the built-ins, which is what a host with no track file has.
+     */
+    getAudioTracks?: () => readonly ProjectAudioTrack[] | undefined;
+    /**
      * Builds the engine Sound element for a url + channel. Injected rather than
      * imported so this module stays free of a hard engine dependency and can be
      * unit-tested without one.
      */
     createSound: (input: {
         src: string;
-        channel: BlueprintSoundPlayInput["channel"];
+        channel: AudioTrackPlayback["channel"];
         loop: boolean;
         volume: number;
         /** So the host can fold in the in/out points marked on this asset. */
@@ -62,6 +76,33 @@ export type SoundTransportOptions = {
     }) => unknown;
     log: (level: "info" | "warning" | "error", message: string) => void;
 };
+
+/**
+ * What a `Play Sound` request resolves to once its track has been folded in.
+ *
+ * Exported so the migration from the old `soundChannel` select is testable without a live game:
+ * the whole point of the track model is that this function, not the node, decides the bus.
+ */
+export function resolveSoundPlayback(
+    input: BlueprintSoundPlayInput,
+    tracks: readonly ProjectAudioTrack[] | undefined,
+): AudioTrackPlayback {
+    const list = tracks && tracks.length > 0 ? tracks : BUILTIN_AUDIO_TRACKS;
+    // A graph written before tracks existed carries `channel` and no `audioTrackId`. Mapping it to
+    // that channel's built-in reproduces the old behaviour exactly, which is why the fallback lives
+    // here rather than in a document migration alone - a graph can reach the runtime unmigrated
+    // (an older project opened by a plugin, a hand-written host call) and must still make a sound.
+    const legacyTrackId = input.channel ? DEFAULT_AUDIO_TRACK_ID[input.channel] : null;
+    const track = resolveAudioTrack(list, input.audioTrackId ?? legacyTrackId, input.channel ?? "sound");
+    const playback = resolveAudioTrackPlayback(track, { volume: input.volume, loop: input.loop });
+    // A play carries only a fade-in, so it overrides that one field rather than going through the
+    // shared `fadeMs` override (which sets both directions): the track's fade-out has to stay
+    // authoritative for the eventual stop, which this call knows nothing about.
+    const fadeInMs = typeof input.fadeInMs === "number" && Number.isFinite(input.fadeInMs)
+        ? Math.max(0, input.fadeInMs)
+        : playback.fadeInMs;
+    return { ...playback, fadeInMs };
+}
 
 export type SoundTransport = {
     play: (input: BlueprintSoundPlayInput) => Promise<BlueprintSoundHandle | null>;
@@ -76,7 +117,7 @@ export type SoundTransport = {
 };
 
 export function createSoundTransport(options: SoundTransportOptions): SoundTransport {
-    const { getLiveGame, resolveAssetUrl, createSound, log } = options;
+    const { getLiveGame, resolveAssetUrl, getAudioTracks, createSound, log } = options;
     const tokens = new Map<string, EngineSoundToken>();
     let nextId = 0;
 
@@ -115,16 +156,28 @@ export function createSoundTransport(options: SoundTransportOptions): SoundTrans
                 log("warning", `Play Sound: audio asset ${input.assetId} could not be resolved.`);
                 return null;
             }
+            const playback = resolveSoundPlayback(input, getAudioTracks?.());
             const sound = createSound({
                 src: url,
-                channel: input.channel,
-                loop: input.loop,
-                volume: input.volume,
+                channel: playback.channel,
+                loop: playback.loop,
+                volume: playback.volume,
                 assetId: input.assetId,
             });
             const token = await host.playSound(sound);
             if (!token) {
                 return null;
+            }
+            // `LiveGame.playSound` forwards to `AudioManager.playSoundToken` with its default
+            // `{end: 1}`, which sets the token to full volume *regardless of the Sound's configured
+            // volume*. So the resolved level has to be written onto the token afterwards - without
+            // this both the track gain and the node's Volume pin are silently discarded. The
+            // fade-in is the same write with a ramp: start at silence, arrive at the resolved level.
+            if (playback.fadeInMs > 0 && token.fade) {
+                token.setVolume?.(0);
+                token.fade(0, playback.volume, playback.fadeInMs);
+            } else {
+                token.setVolume?.(playback.volume);
             }
             const handle = toBlueprintSoundHandle(`sound:${nextId++}`);
             if (!handle) {

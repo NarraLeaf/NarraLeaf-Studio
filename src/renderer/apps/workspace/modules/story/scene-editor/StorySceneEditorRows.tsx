@@ -702,7 +702,15 @@ function TextEditBox(props: {
             ref={containerRef}
             // The nametag is the ROW's, not the field's (it lives in the name column), so opening a
             // dialogue for editing swaps the words and nothing else — not one glyph moves.
-            className="relative flex min-w-0 flex-1 items-center overflow-visible"
+            //
+            // `self-stretch` + the row box are what make that true, and they are not decoration. The
+            // read-only body (`TextClickTarget`) stretches to the row's single-line box and centres its
+            // glyphs in it; this field had neither, so under the row's `items-start` it collapsed to its
+            // own content — measured at 21px against the body's 28 — and the same line sat 3.5px HIGHER
+            // the instant the caret arrived, then dropped back on Escape. Identical on all six rows
+            // measured, and it is the one motion an editing surface may never make: the words move away
+            // from the click that was aiming at them.
+            className="relative flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center self-stretch overflow-visible"
         >
             <RichTextToolbar editor={props.editorRef} anchorRef={containerRef} commitGuard={commitGuardRef} active={activeMarks} hasVariables={variableOptions.scene.length + variableOptions.saved.length + variableOptions.persistent.length > 0} canInsertEvent={Boolean(dialoguePayload?.characterId)} onInsertEvent={insertEvent} />
             <RichTextInput

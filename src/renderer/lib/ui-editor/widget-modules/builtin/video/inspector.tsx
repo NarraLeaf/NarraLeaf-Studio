@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { Film, Image as ImageIcon } from "lucide-react";
 import type { UIVideoObjectFit, UIVideoPreload, UIVideoWidgetProps } from "@shared/types/ui-editor/video";
 import type { ColorValue, CustomFieldProps } from "@/apps/workspace/modules/properties/framework/types";
@@ -9,6 +9,9 @@ import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
+import type { AudioTrackService } from "@/lib/workspace/services/audio/AudioTrackService";
+import { BUILTIN_AUDIO_TRACKS } from "@shared/types/audioTrack";
+import { Select } from "@/lib/components/elements/Select";
 import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
 import { getRectangleLikeProps } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
@@ -144,6 +147,48 @@ function AssetRow({
     );
 }
 
+/**
+ * Which project audio track the clip's sound lands on.
+ *
+ * A custom field rather than a `select` with static options because the list is project data an
+ * author can add to: an "Ambience" track created on the project Audio surface has to appear here
+ * without the schema being rebuilt. Falls back to the built-in ids when there is no service to ask
+ * (a component canvas outside a workspace), so the control is never empty and never dead.
+ */
+function VideoAudioTrackField(props: CustomFieldProps<UIInspectorData>) {
+    const { t } = useTranslation();
+    const { context } = useWorkspace();
+    const [revision, setRevision] = useState(0);
+    const trackService = useMemo(
+        () => (context ? context.services.get<AudioTrackService>(Services.AudioTracks) : null),
+        [context],
+    );
+
+    useEffect(() => trackService?.onTracksChanged(() => setRevision(value => value + 1)), [trackService]);
+
+    const tracks = useMemo(
+        () => trackService?.listTracks() ?? [...BUILTIN_AUDIO_TRACKS],
+        // `revision` is the subscription's only job: the service mutates its list in place.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [trackService, revision],
+    );
+
+    const current = getLiveVideoProps(props.data);
+    return (
+        <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-fg-muted">{t("widgets.video.audioTrack")}</span>
+            <Select
+                size="sm"
+                fullWidth
+                value={current.audioTrackId ?? ""}
+                options={tracks.map(track => ({ value: track.id, label: track.name }))}
+                placeholder={t("widgets.video.audioTrackDefault")}
+                onChange={value => patchVideo(props.data, { audioTrackId: value ? String(value) : null })}
+            />
+        </div>
+    );
+}
+
 function VideoSourceField(props: CustomFieldProps<UIInspectorData>) {
     const { t } = useTranslation();
     const current = getLiveVideoProps(props.data);
@@ -250,6 +295,11 @@ export function createVideoInspector(ctx: InspectorContext) {
                                 decimalPlaces: 2,
                                 getValue: (d: D) => getLiveVideoProps(d).volume,
                                 setValue: (d: D, value: number) => patchVideo(d, { volume: value }),
+                            }),
+                            defineField<D, any>({
+                                id: "video.audioTrack",
+                                type: "custom",
+                                component: VideoAudioTrackField,
                             }),
                             defineField<D, any>({
                                 id: "video.playbackRate",

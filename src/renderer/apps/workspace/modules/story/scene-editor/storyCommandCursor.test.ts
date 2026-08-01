@@ -13,6 +13,7 @@ const CONTEXT: StoryCommandContext = {
     characters: [{ id: "c1", name: "Alice" }, { id: "c2", name: "Bob" }, { id: "c3", name: "Doll" }, { id: "c4", name: "Ghost" }],
     tempSpeakers: ["Zoe"],
     scenes: [{ id: "s1", name: "Chapter 2" }],
+    audioTracks: [{ id: "music", name: "Music" }, { id: "sfx", name: "SFX" }, { id: "t_amb", name: "Ambience" }],
     labels: ["intro", "retry"],
     variables: [{ name: "gold", ref: { scope: "scene", variableId: "v1" }, valueType: "number" }],
     appearanceByCharacterId: { c1: [{ id: "t1", name: "smile" }, { id: "t2", name: "angry" }] },
