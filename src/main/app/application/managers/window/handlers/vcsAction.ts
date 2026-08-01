@@ -5,9 +5,12 @@ import type {
     VcsAvailability,
     VcsCommitResult,
     VcsHistoryEntry,
+    VcsPushResult,
     VcsRepositoryInfo,
     VcsRestoreResult,
     VcsStatus,
+    VcsSyncResult,
+    VcsSyncState,
     VcsThreeWayResult,
 } from "@shared/types/vcs";
 import { AppWindow } from "../appWindow";
@@ -261,6 +264,131 @@ export class VcsGetThreeWayHandler extends IPCHandler<IPCEventType.vcsGetThreeWa
         { projectPath, mine, theirs, path }: IPCEvents[IPCEventType.vcsGetThreeWay]["data"],
     ): Promise<RequestStatus<VcsThreeWayResult>> {
         return this.tryUse(() => window.app.getVcsManager().getThreeWay(projectPath, mine, theirs, path));
+    }
+}
+
+/**
+ * The configured server, or null.
+ *
+ * A LOCAL read - it reads the repository's own config and opens no socket - which is
+ * what makes it safe for a panel to ask on open. {@link VcsGetSyncStateHandler}, which
+ * answers whether that server can be reached, is the one that costs time.
+ */
+export class VcsGetRemoteHandler extends IPCHandler<IPCEventType.vcsGetRemote> {
+    readonly name = IPCEventType.vcsGetRemote;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath }: IPCEvents[IPCEventType.vcsGetRemote]["data"],
+    ): Promise<RequestStatus<{ url: string | null }>> {
+        return this.tryUse(async () => ({
+            url: await window.app.getVcsManager().getRemote(projectPath),
+        }));
+    }
+}
+
+/**
+ * Point the project at a server, or disconnect it with `null`.
+ *
+ * Deliberately does NOT contact the server: configuring and reaching are separate acts,
+ * so this works offline and answers instantly. Whether anyone is there is what
+ * {@link VcsGetSyncStateHandler} answers.
+ */
+export class VcsSetRemoteHandler extends IPCHandler<IPCEventType.vcsSetRemote> {
+    readonly name = IPCEventType.vcsSetRemote;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath, url }: IPCEvents[IPCEventType.vcsSetRemote]["data"],
+    ): Promise<RequestStatus<{ url: string | null }>> {
+        return this.tryUse(async () => {
+            await window.app.getVcsManager().setRemote(projectPath, url);
+            return { url: await window.app.getVcsManager().getRemote(projectPath) };
+        });
+    }
+}
+
+/**
+ * Where this branch stands against its server.
+ *
+ * **The only read on this surface that goes to the network**, and it takes up to ~2s
+ * when nothing answers (measured). It must therefore never be called on project open or
+ * on a timer - only because the author asked, or right after an operation that changed
+ * the answer. An unreachable server is `remoteAvailable: false`, not a failure.
+ */
+export class VcsGetSyncStateHandler extends IPCHandler<IPCEventType.vcsGetSyncState> {
+    readonly name = IPCEventType.vcsGetSyncState;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath }: IPCEvents[IPCEventType.vcsGetSyncState]["data"],
+    ): Promise<RequestStatus<VcsSyncState>> {
+        return this.tryUse(() => window.app.getVcsManager().getSyncState(projectPath));
+    }
+}
+
+/**
+ * Send this branch's revisions to the server.
+ *
+ * Writes nothing locally, so a failure leaves the project untouched. A diverged branch
+ * comes back as a failure carrying the backend's own sentence - which names the remedy
+ * (sync first) and is more useful than anything this layer could substitute.
+ */
+export class VcsPushHandler extends IPCHandler<IPCEventType.vcsPush> {
+    readonly name = IPCEventType.vcsPush;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath }: IPCEvents[IPCEventType.vcsPush]["data"],
+    ): Promise<RequestStatus<VcsPushResult>> {
+        return this.tryUse(() => window.app.getVcsManager().push(projectPath));
+    }
+}
+
+/**
+ * Bring the server's revisions down into the working tree.
+ *
+ * **Writes the author's files**, so it carries the same obligation a restore does: the
+ * renderer must re-read every document once this resolves, or an editor holding the
+ * pre-sync version will write it straight back over what was synced.
+ *
+ * Refused outright when the working tree is dirty - syncing a diverged branch merges,
+ * and a merge must not land on top of uncommitted work. Conflicts come back as a
+ * SUCCESS carrying `conflicts`, because by then most of the tree is already written;
+ * a caller that read that as a failure would leave the author believing nothing changed.
+ */
+export class VcsSyncHandler extends IPCHandler<IPCEventType.vcsSync> {
+    readonly name = IPCEventType.vcsSync;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath }: IPCEvents[IPCEventType.vcsSync]["data"],
+    ): Promise<RequestStatus<VcsSyncResult>> {
+        return this.tryUse(() => window.app.getVcsManager().sync(projectPath));
+    }
+}
+
+/**
+ * Copy a repository from a server into a local folder.
+ *
+ * The one handler here that takes no `projectPath`: there is no project at the
+ * destination until it finishes. The folder must be empty, and that is enforced before
+ * a byte is fetched - the backend writes into whatever it is pointed at without asking.
+ */
+export class VcsCloneHandler extends IPCHandler<IPCEventType.vcsClone> {
+    readonly name = IPCEventType.vcsClone;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { url, destination }: IPCEvents[IPCEventType.vcsClone]["data"],
+    ): Promise<RequestStatus<{ root: string; branch: string; fileCount: number }>> {
+        return this.tryUse(() => window.app.getVcsManager().cloneRepository(url, destination));
     }
 }
 
