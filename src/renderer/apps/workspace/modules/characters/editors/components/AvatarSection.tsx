@@ -13,8 +13,36 @@ import type { PortraitCrop } from "@/lib/workspace/services/character/types";
 import { HeadThumbnail } from "./HeadThumbnail";
 import { ICON_BTN, ICON_BTN_ON } from "./iconButton";
 
-/** The box a dialog gives an avatar, at the size it is baked at. */
+/** The CSS box this preview draws into. */
 const AVATAR_PREVIEW_PX = 256;
+
+/**
+ * How many source pixels the compositor must produce so the *cropped* region fills this box.
+ *
+ * {@link HeadThumbnail} frames by positioning the whole sprite and clipping, which keeps it sharp at
+ * any pixel density — but only if the sprite it is handed has the pixels. Asking for the box size
+ * was the bug: a head crop is roughly a quarter of a full-body sprite in each axis, so a composite
+ * capped at 256 on its longest edge left about 62×61 real pixels to fill a 256px box on a 1.25×
+ * display. Five-fold upscaling, in the one place whose whole job is to show whether the framing is
+ * good.
+ *
+ * So work backwards from the crop: the region occupies `crop.w`/`crop.h` of the composite, and the
+ * box wants `AVATAR_PREVIEW_PX × devicePixelRatio` device pixels. Taking the smaller fraction is
+ * deliberately conservative — `maxSize` is the composite's *longest* edge, and the narrow axis of a
+ * portrait sprite is shorter than that, so the generous estimate is the safe one.
+ *
+ * The cap exists because the divisor is author-controlled: a crop of a fingernail would otherwise
+ * ask for a bitmap in the tens of thousands of pixels.
+ */
+const AVATAR_COMPOSITE_CAP_PX = 2048;
+/** Used before the automatic head crop has resolved, so the first paint is not soft either. */
+const ASSUMED_CROP_FRACTION = 0.25;
+
+function compositeSizeFor(crop: PortraitCrop | undefined, devicePixelRatio: number): number {
+    const fraction = crop ? Math.min(crop.w, crop.h) : ASSUMED_CROP_FRACTION;
+    const wanted = (AVATAR_PREVIEW_PX * Math.max(1, devicePixelRatio)) / Math.max(fraction, 0.01);
+    return Math.min(AVATAR_COMPOSITE_CAP_PX, Math.ceil(wanted));
+}
 
 /** Which of the four answers the resolver gives for this differential. */
 export type AvatarSource = "override" | "baked" | "characterDefault" | "none";
@@ -90,7 +118,11 @@ export function AvatarSection(props: {
     // All three unconditionally: which one is shown is a branch, and a hook is not.
     const overrideImage = useAssetObjectUrl(override);
     const fallbackImage = useAssetObjectUrl(characterDefault);
-    const composite = useCompositedSprite(props.character, props.selection, AVATAR_PREVIEW_PX);
+    const composite = useCompositedSprite(
+        props.character,
+        props.selection,
+        compositeSizeFor(props.crop, typeof window === "undefined" ? 1 : window.devicePixelRatio),
+    );
 
     const writes = (ownDisabled: boolean, ownTitle: string) => ({
         disabled: ownDisabled || props.frozen,
