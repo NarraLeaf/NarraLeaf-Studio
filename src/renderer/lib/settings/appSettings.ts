@@ -529,6 +529,22 @@ export const AppSettings: AppSettingDefinition[] = [
         unit: "min",
     },
     {
+        // Directly under the interval because the pair is read together, and separate from it
+        // because they answer different questions: the interval is how often to record WHILE
+        // working, this is the one moment after which nothing is watching the working tree at
+        // all. Read by the main process (App.checkpointBeforeClose) at close time, so a change
+        // here applies to the next window closed without a restart.
+        key: "versionControl.checkpointOnClose",
+        category: "sync",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Record a checkpoint when a workspace closes",
+        labelKey: "settings.items.checkpointOnClose.label",
+        description: "Record a checkpoint in the project's version history when you close its workspace window, so an unrecorded session is not lost. Independent of the interval above.",
+        descriptionKey: "settings.items.checkpointOnClose.description",
+        defaultValue: true,
+    },
+    {
         // Read by the main process (VcsManager.resolveIdentity) for every commit and
         // checkpoint. Empty records UNCONFIGURED_IDENTITY; deliberately not the OS
         // account name, which is not Studio's to publish on the author's behalf.
@@ -540,6 +556,22 @@ export const AppSettings: AppSettingDefinition[] = [
         labelKey: "settings.items.versionControlAuthor.label",
         description: "Recorded as the author of commits and checkpoints. Leave empty to record NarraLeaf Studio instead.",
         descriptionKey: "settings.items.versionControlAuthor.description",
+        defaultValue: "",
+    },
+    {
+        // Folded into the name by `composeVcsIdentity` before it reaches Lore, which stores ONE
+        // identity string - so this is not a field the repository keeps apart, it is the
+        // `Name <email>` half every other version-control tool writes. Not validated: an address
+        // that is wrong in a way a regex would catch is still the author's to fix, and refusing
+        // to record because of it would block committing rather than help.
+        key: "versionControl.authorEmail",
+        category: "sync",
+        scope: SettingScope.Global,
+        type: SettingValueType.String,
+        label: "Author email",
+        labelKey: "settings.items.versionControlAuthorEmail.label",
+        description: "Recorded next to the author name on commits and checkpoints, as \"Name <email>\". Leave empty to record no address.",
+        descriptionKey: "settings.items.versionControlAuthorEmail.description",
         defaultValue: "",
     },
 ];

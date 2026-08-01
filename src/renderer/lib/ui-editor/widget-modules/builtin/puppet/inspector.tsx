@@ -147,7 +147,7 @@ function PuppetModelField(props: CustomFieldProps<UIInspectorData>) {
                             role="button"
                             tabIndex={-1}
                             onClick={clear}
-                            className="shrink-0 rounded px-1.5 py-0.5 text-2xs tracking-wider text-fg-subtle hover:bg-fill hover:text-fg-muted"
+                            className="shrink-0 rounded-md px-1.5 py-0.5 text-2xs tracking-wider text-fg-subtle hover:bg-fill hover:text-fg-muted"
                         >
                             {t("common.clear")}
                         </span>
@@ -352,7 +352,7 @@ function PuppetStateField(props: CustomFieldProps<UIInspectorData>) {
                         this went with it - which left the author of a past version staring at a
                         stale or failed description with no way to take it again. */}
                     <InspectOnlyButton
-                        className="shrink-0 rounded px-1.5 py-0.5 tracking-wider text-fg-subtle hover:bg-fill hover:text-fg-muted cursor-default"
+                        className="shrink-0 rounded-md px-1.5 py-0.5 tracking-wider text-fg-subtle hover:bg-fill hover:text-fg-muted cursor-default"
                         onClick={refresh}
                     >
                         {t("widgets.puppet.redescribe")}
