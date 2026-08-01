@@ -10,6 +10,7 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { createStorySceneEditorTab } from "../story/scene-editor/openStorySceneEditorTab";
 import { useWorkspace } from "../../context";
+import { useFreezeGuard } from "../../components/ui/freezeGuard";
 import { EditorComponentProps } from "../types";
 
 const ASSETS_PANEL_ID = "narraleaf-studio:assets";
@@ -25,6 +26,9 @@ const TUTORIAL_URL = "https://www.narraleaf.com/docs/studio";
 export function WelcomeEditor({ tabId, payload }: EditorComponentProps) {
     const { t } = useTranslation();
     const { context } = useWorkspace();
+    // Only the first card writes anything. The other two reveal a panel and open a web page, and
+    // both are exactly what a frozen workspace is for.
+    const freeze = useFreezeGuard();
 
     const uiService = useMemo(() => context?.services.get<UIService>(Services.UI) ?? null, [context]);
     const storyService = useMemo(() => context?.services.get<StoryService>(Services.Story) ?? null, [context]);
@@ -86,7 +90,9 @@ export function WelcomeEditor({ tabId, payload }: EditorComponentProps) {
                         label={t("welcome.quickActions.newScene.label")}
                         description={t("welcome.quickActions.newScene.description")}
                         onClick={() => void handleNewScene()}
-                        disabled={!storyService}
+                        // Creating a scene writes the story document: on a frozen project this
+                        // card asked for a name, took it, and dropped the scene on the floor.
+                        {...freeze.writes(!storyService)}
                     />
                     <QuickAction
                         icon={FolderOpen}
@@ -152,18 +158,21 @@ interface QuickActionProps {
     description: string;
     onClick: () => void;
     disabled?: boolean;
+    /** Why the card is off, when it is - a frozen workspace says so on hover rather than in the card. */
+    title?: string;
 }
 
 /**
  * Quick action card
  * A single entry point out of the welcome screen and into real work
  */
-function QuickAction({ icon: Icon, label, description, onClick, disabled = false }: QuickActionProps) {
+function QuickAction({ icon: Icon, label, description, onClick, disabled = false, title }: QuickActionProps) {
     return (
         <button
             type="button"
             onClick={onClick}
             disabled={disabled}
+            title={title}
             className={cn(
                 "flex flex-col items-start gap-1 text-left rounded-lg p-4",
                 "bg-surface-raised border border-edge",

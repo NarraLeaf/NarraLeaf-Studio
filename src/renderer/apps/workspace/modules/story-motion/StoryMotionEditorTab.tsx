@@ -1204,12 +1204,17 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                 portalMenu
                                 menuZIndex={80}
                             />
+                            {/* Adding a track writes the animation asset. On a frozen project this
+                                still added the property, drew the lane, and lost it on thaw - so it
+                                is refused here, while the dropdown beside it (local state only)
+                                stays live so the list can be read. A motion with every property
+                                already animated keeps its own reason for being off. */}
                             <Button
                                 variant="secondary"
                                 size="md"
                                 type="button"
                                 onClick={() => updateTimeline(current => ensureStoryMotionTrack(current, selectedAddProperty, playheadMs))}
-                                disabled={addPropertyOptions.length === 0}
+                                {...freeze.writes(addPropertyOptions.length === 0)}
                                 className="shrink-0"
                             >
                                 <Plus className="h-3.5 w-3.5" />

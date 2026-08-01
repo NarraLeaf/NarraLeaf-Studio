@@ -50,6 +50,20 @@ export interface SelectProps {
      * getting it wrong offers a write inside a frozen project.
      */
     inspectOnly?: boolean;
+    /**
+     * This select normally writes, but right now it may only be read.
+     *
+     * **Open, not shut.** `disabled` is the obvious treatment and it is the wrong one here: a
+     * dropdown that cannot be opened hides its option list, and on a frozen project that list is
+     * project data the author came to look at - which keys exist, which states this element has,
+     * what the choices even were. So the trigger still opens (through {@link InspectOnlyButton}, so
+     * an ancestor clamp cannot reach it either), the menu still renders with the current value
+     * marked, and every row is inert.
+     *
+     * Different from {@link inspectOnly}, which is for a select whose `onChange` never writes at
+     * all and whose rows therefore stay live.
+     */
+    readOnly?: boolean;
 }
 
 const sizeStyles = {
@@ -88,7 +102,11 @@ export function Select({
     menuDataAttributes,
     menuZIndex,
     inspectOnly = false,
+    readOnly = false,
 }: SelectProps) {
+    // Both modes render the trigger as a span so an ancestor read-only clamp cannot reach it; only
+    // `inspectOnly` leaves the rows live.
+    const spanTrigger = inspectOnly || readOnly;
     const { t } = useTranslation();
     const resolvedPlaceholder = placeholder ?? t("dialogs.select.placeholder");
     const optionLabel = (o: SelectOption) => (o.labelKey ? t(o.labelKey) : o.label ?? "");
@@ -224,6 +242,12 @@ export function Select({
 
     const handleOptionClick = (option: SelectOption) => {
         if (option.disabled) return;
+        if (readOnly) {
+            // The menu is open so the list can be READ; picking is what read-only withholds. Closed
+            // rather than left standing, so the click still has the one effect it is allowed.
+            setIsOpen(false);
+            return;
+        }
 
         if (multiple) {
             // Multiple selection logic would go here
@@ -264,7 +288,11 @@ export function Select({
                     "transition-colors duration-150",
                     option.disabled
                         ? "text-fg-subtle cursor-not-allowed"
-                        : "text-fg hover:bg-fill cursor-default",
+                        : readOnly
+                            // Readable, and visibly not pickable: no hover response, and the muted
+                            // tone the rest of Studio uses for text that is there to be read.
+                            ? "text-fg-muted cursor-default"
+                            : "text-fg hover:bg-fill cursor-default",
                     option.value === value && "bg-fill text-fg",
                 );
                 const optionBody = (
@@ -285,12 +313,13 @@ export function Select({
                         </span>
                     </>
                 );
-                return inspectOnly ? (
+                return spanTrigger ? (
                     <InspectOnlyButton
                         key={option.value}
                         className={optionClass}
                         onClick={() => handleOptionClick(option)}
                         disabled={option.disabled}
+                        aria-current={option.value === value ? "true" : undefined}
                     >
                         {optionBody}
                     </InspectOnlyButton>
@@ -345,11 +374,11 @@ export function Select({
 
     return (
         <div ref={selectRef} className={cn("relative", fullWidth && "w-full min-w-0", className)}>
-            {inspectOnly ? (
+            {spanTrigger ? (
                 // `Button`'s own classes, spelled out: `Button` renders a `<button>`, and the whole
-                // point of `inspectOnly` is to not be one. Kept in the order it applies them so the
-                // two triggers are indistinguishable; the dimming is computed rather than left to
-                // `disabled:`, which a span never matches.
+                // point of the span trigger is to not be one. Kept in the order it applies them so
+                // the two triggers are indistinguishable; the dimming is computed rather than left
+                // to `disabled:`, which a span never matches.
                 <InspectOnlyButton
                     disabled={disabled}
                     aria-expanded={isOpen}
