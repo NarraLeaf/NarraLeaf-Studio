@@ -12,6 +12,11 @@ import {
     type GameRuntimeSidecarMessage,
 } from "@shared/types/gameRuntime";
 import { readGameRuntimeAssetVersionArg } from "@shared/utils/gameRuntimeAssetUrl";
+import {
+    GAME_RUNTIME_TEST_SIGNAL_CHANNEL,
+    type GameRuntimeTestSignal,
+    type GameRuntimeTestSignalBridge,
+} from "../gameTestSignal";
 
 // Version tag for asset URLs, injected by the main process at window creation
 // so immutable HTTP cache entries are keyed per pack. The fallback is
@@ -139,7 +144,15 @@ const sidecar: GameRuntimeSidecarBridge = {
     },
 };
 
-const bridge: GameRuntimePreloadBridge = {
+/**
+ * The desktop bridge is the shared contract plus the test-observation channel.
+ *
+ * Intersected rather than added to `GameRuntimePreloadBridge`, because this half genuinely does not
+ * exist everywhere: the web export has no main process to report to. Callers read it through
+ * `readRuntimeTestSignalReporter`, which turns that absence into "no hooks" instead of a method
+ * that exists and does nothing.
+ */
+const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge = {
     readPack: () => ipcRenderer.invoke("runtime:read-pack") as Promise<GameRuntimePackV1>,
     // Encoded per segment, not as a whole: a model bundle addresses its files by the manifest key
     // `{assetId}/{pathInsideBundle}`, and escaping the separators would collapse that into one
@@ -151,6 +164,11 @@ const bridge: GameRuntimePreloadBridge = {
         `${GAME_RUNTIME_PROTOCOL}://runtime/${entryRelativePath}`,
     log: (level, message) => {
         ipcRenderer.send("runtime:log", { level, message });
+    },
+    // Fire-and-forget, exactly like `log` above: an observation channel must not make the game wait
+    // on the observer, and there is nothing useful to hear back.
+    reportTestSignal: (signal: GameRuntimeTestSignal) => {
+        ipcRenderer.send(GAME_RUNTIME_TEST_SIGNAL_CHANNEL, signal);
     },
     close: () => ipcRenderer.invoke("runtime:close") as Promise<void>,
     getFullscreen: () => ipcRenderer.invoke("runtime:fullscreen:get") as Promise<boolean>,

@@ -13,6 +13,7 @@ import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFra
 import { loadRuntimePlugins } from "@/lib/ui-editor/runtime/plugins/loadRuntimePlugins";
 import { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
 import { RuntimeSidecarBackend } from "./runtimeSidecarBackend";
+import { readRuntimeTestSignalReporter } from "../gameTestSignal";
 import { listPackPuppetBackendSources, resolvePackModelBundleUrl } from "@/lib/ui-editor/runtime/game/puppetPackRuntimes";
 import {
     preloadRuntimePackAssets,
@@ -300,6 +301,28 @@ export function GameRuntimeApp() {
         [bridge, sidecarBackend],
     );
     useEffect(() => pluginHost.bindShellEvents(), [pluginHost]);
+    /**
+     * The engine reaching an ending, on its way out of the process.
+     *
+     * `event:state.end` is already observed - the plugin host maps it to `gameEnd` and re-binds it
+     * for every relaunch and hot reload - but it had no exit from this renderer, so "does this game
+     * reach an ending" was unanswerable from outside. Riding the existing hub rather than binding
+     * the engine event a second time keeps one subscription per session and means a relaunch does
+     * not need remembering here.
+     *
+     * Inert unless a test is watching: the reporter is absent on the web export and on any pack
+     * with no control server, which is every shipped game.
+     */
+    useEffect(() => {
+        const report = readRuntimeTestSignalReporter(bridge);
+        const events = pluginHost.host.events;
+        if (!report || !events) {
+            return;
+        }
+        return events.on("gameEnd", () => {
+            report({ kind: "game-end" });
+        });
+    }, [bridge, pluginHost]);
     // Before useRuntimePlugins' effect, which is what makes `available()` a real
     // answer by the time any plugin's setup() can ask: effects run in the order
     // their hooks were called, and this hook is declared above that one.

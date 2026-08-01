@@ -138,6 +138,15 @@ function validateIcon(value: unknown): string | undefined | { error: string } {
  * This is the only producer of the derived kinds — `validatePermissions` rejects
  * them in hand-written `permissions[]` — which is what stops "what the prompt
  * said" from drifting away from "what the plugin can do".
+ *
+ * `contributes.tests` is deliberately absent from this function, and its absence
+ * is a decision rather than an omission: every other code-backed contribution
+ * here gains a power the moment the plugin loads, but a test only ever runs
+ * because the author opened Run > Test, picked it out of the dialog and pressed
+ * Start. There is no ambient capability to consent to at install time, and what
+ * a test may reach while running is gated separately by its own `requires`
+ * (see `src/renderer/lib/testing/types.ts`). Adding a permission here would ask
+ * the author to approve something that cannot happen without them asking for it.
  */
 function derivePermissionsFromContributes(
     contributes: Required<PluginContributes>,
@@ -175,7 +184,7 @@ function hostnameOf(url: string): string | null {
 }
 
 /** Contribution kinds whose value is an array of `<pluginId>.`-prefixed type strings. */
-const CONTRIBUTES_TYPE_KEYS = ["blueprintNodes", "widgets", "runtimeData"] as const;
+const CONTRIBUTES_TYPE_KEYS = ["blueprintNodes", "widgets", "runtimeData", "tests"] as const;
 
 /** Every recognized `contributes` key, including the object-shaped ones. */
 const CONTRIBUTES_KEYS = [
@@ -230,6 +239,7 @@ const CONTRIBUTES_KIND_LABEL: Record<(typeof CONTRIBUTES_TYPE_KEYS)[number], str
     blueprintNodes: "blueprint node",
     widgets: "widget",
     runtimeData: "storage namespace",
+    tests: "test",
 };
 
 /** BCP-47-ish locale code: primary subtag plus optional hyphen-joined subtags. */
@@ -240,6 +250,7 @@ function validateContributes(value: unknown, pluginId: string): Required<PluginC
         blueprintNodes: [],
         widgets: [],
         runtimeData: [],
+        tests: [],
         locales: [],
         runtimeCapabilities: [],
         sidecars: [],
