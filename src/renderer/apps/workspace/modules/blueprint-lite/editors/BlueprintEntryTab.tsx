@@ -16,6 +16,8 @@ import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import type { UIRuntimeBridgeService } from "@/lib/workspace/services/ui-editor/UIRuntimeBridgeService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
+import type { AudioTrackService } from "@/lib/workspace/services/audio/AudioTrackService";
+import { BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/soundNodes";
 import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
@@ -502,9 +504,17 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     const runtimeBridge = context.services.get<UIRuntimeBridgeService>(Services.RuntimeBridge);
     const storyService = context.services.get<StoryService>(Services.Story);
     const variableRegistry = context.services.get<VariableRegistryService>(Services.VariableRegistry);
+    const audioTrackService = context.services.get<AudioTrackService>(Services.AudioTracks);
     // Persistent variables live in the M-VAR registry; its edits do not bump the blueprint revision.
     const [registryRevision, setRegistryRevision] = useState(0);
     useEffect(() => variableRegistry.onRegistryChanged(() => setRegistryRevision(r => r + 1)), [variableRegistry]);
+    // Audio tracks are a project document of their own, so renaming or adding one has to reach the
+    // `Play Sound` picker without anything touching the blueprint.
+    const [audioTrackRevision, setAudioTrackRevision] = useState(0);
+    useEffect(
+        () => audioTrackService.onTracksChanged(() => setAudioTrackRevision(r => r + 1)),
+        [audioTrackService],
+    );
     const [uiDocumentRevision, setUiDocumentRevision] = useState(() => uidoc.getRevision());
     const [storyDocumentsById, setStoryDocumentsById] = useState<Record<string, StoryDocument>>({});
     const [storyLibraryRevision, setStoryLibraryRevision] = useState(0);
@@ -1436,6 +1446,11 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             stories: storyOptions,
             storyScenes: storySceneOptions,
             localizationKeys: localizationKeyOptions,
+            // The `Play Sound` Track picker. Author order, built-ins first - the same order the
+            // project Audio surface shows, so the first row here is the one an author looks for.
+            [BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE]: audioTrackService
+                .listTracks()
+                .map(track => ({ value: track.id, label: track.name })),
             callableFns: listCallableBlueprintFnOptions({
                 blueprintDocument: doc,
                 uiDocument,
@@ -1474,6 +1489,8 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         storyService,
         storyDocumentsById,
         storyLibraryRevision,
+        audioTrackService,
+        audioTrackRevision,
         nodeCatalog,
         dynamicSelectOptionsRevision,
         doc,

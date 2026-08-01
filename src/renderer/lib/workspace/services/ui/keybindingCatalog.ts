@@ -106,6 +106,14 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     entry("story-motion.redo", "mod+shift+z", "workspace.shell.keybindings.catalog.storyMotion.redo", CATEGORY.storyMotion),
     entry("story-motion.delete", "delete", "workspace.shell.keybindings.catalog.storyMotion.delete", CATEGORY.storyMotion),
     entry("story-motion.backspace", "backspace", "workspace.shell.keybindings.catalog.storyMotion.delete", CATEGORY.storyMotion),
+    // These six registered without catalog entries, so they were unrebindable and invisible in the
+    // settings table and cheat sheet - found by `keybindingCatalog.test.ts`, not by hand.
+    entry("story-motion.prev-frame", "arrowleft", "workspace.shell.keybindings.catalog.storyMotion.prevFrame", CATEGORY.storyMotion),
+    entry("story-motion.next-frame", "arrowright", "workspace.shell.keybindings.catalog.storyMotion.nextFrame", CATEGORY.storyMotion),
+    entry("story-motion.prev-frames", "shift+arrowleft", "workspace.shell.keybindings.catalog.storyMotion.prevFrames", CATEGORY.storyMotion),
+    entry("story-motion.next-frames", "shift+arrowright", "workspace.shell.keybindings.catalog.storyMotion.nextFrames", CATEGORY.storyMotion),
+    entry("story-motion.playhead-start", "home", "workspace.shell.keybindings.catalog.storyMotion.playheadStart", CATEGORY.storyMotion),
+    entry("story-motion.playhead-end", "end", "workspace.shell.keybindings.catalog.storyMotion.playheadEnd", CATEGORY.storyMotion),
 
     // --- Assets panel --------------------------------------------------------
     entry("assets.copy", "mod+c", "assets.shortcuts.copy", CATEGORY.assets),
@@ -121,12 +129,17 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     entry("assets.audio.nudge-forward", "arrowright", "assets.audio.keybindings.nudgeForward", CATEGORY.assets),
     entry("assets.audio.nudge-back-coarse", "shift+arrowleft", "assets.audio.keybindings.nudgeBackCoarse", CATEGORY.assets),
     entry("assets.audio.nudge-forward-coarse", "shift+arrowright", "assets.audio.keybindings.nudgeForwardCoarse", CATEGORY.assets),
-    entry("assets.audio.loop", "l", "assets.audio.keybindings.loop", CATEGORY.assets),
+    // The transport's repeat toggle sits on `r` so the three markers can own I, L and O - one
+    // letter each, bare to set, shift to jump, mod+shift to clear.
+    entry("assets.audio.loop", "r", "assets.audio.keybindings.loop", CATEGORY.assets),
     entry("assets.audio.mark-in", "i", "assets.audio.keybindings.markIn", CATEGORY.assets),
+    entry("assets.audio.mark-loop", "l", "assets.audio.keybindings.markLoop", CATEGORY.assets),
     entry("assets.audio.mark-out", "o", "assets.audio.keybindings.markOut", CATEGORY.assets),
     entry("assets.audio.go-to-in", "shift+i", "assets.audio.keybindings.goToIn", CATEGORY.assets),
+    entry("assets.audio.go-to-loop", "shift+l", "assets.audio.keybindings.goToLoop", CATEGORY.assets),
     entry("assets.audio.go-to-out", "shift+o", "assets.audio.keybindings.goToOut", CATEGORY.assets),
     entry("assets.audio.clear-in", "mod+shift+i", "assets.audio.keybindings.clearIn", CATEGORY.assets),
+    entry("assets.audio.clear-loop", "mod+shift+l", "assets.audio.keybindings.clearLoop", CATEGORY.assets),
     entry("assets.audio.clear-out", "mod+shift+o", "assets.audio.keybindings.clearOut", CATEGORY.assets),
     entry("assets.audio.undo", "mod+z", "assets.audio.keybindings.undo", CATEGORY.assets),
     entry("assets.audio.redo", "mod+shift+z", "assets.audio.keybindings.redo", CATEGORY.assets),

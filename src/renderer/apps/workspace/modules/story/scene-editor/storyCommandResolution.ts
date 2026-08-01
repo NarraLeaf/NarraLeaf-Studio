@@ -261,6 +261,15 @@ function resolveAgainstType(
             }
             return found ? { value: { kind: "scene", sceneId: found.id } } : { issue: { code: "unknownScene", span, value } };
         }
+        case "audioTrack": {
+            const found = findByName(context.audioTracks, value);
+            if (found === "ambiguous") {
+                return { issue: { code: "ambiguousName", span, value } };
+            }
+            return found
+                ? { value: { kind: "audioTrack", trackId: found.id } }
+                : { issue: { code: "unknownAudioTrack", span, value } };
+        }
         case "label": {
             // The engine matches labels exactly, so an exact hit always wins - with both `start` and
             // `Start` declared (which the engine allows), folding first would silently aim the jump at
@@ -462,6 +471,8 @@ function issueForUnresolvable(type: StoryCommandParamType, value: string, span: 
             return { code: "unknownAsset", span, value, assetType: type.assetType };
         case "scene":
             return { code: "unknownScene", span, value };
+        case "audioTrack":
+            return { code: "unknownAudioTrack", span, value };
         case "label":
             return { code: "unknownLabel", span, value };
         case "variable":

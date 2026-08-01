@@ -2,13 +2,17 @@ import { useMemo, useRef, useState } from "react";
 import { Image as ImageIcon, Trash2 } from "lucide-react";
 import type { StoryScene, StorySceneBgm, StorySceneUpdate } from "@shared/types/story";
 import { normalizeAudioClipRegion } from "@shared/types/audio";
-import type { Translator } from "@shared/i18n";
+import type { AudioTrackChannel } from "@shared/types/audioTrack";
+import { resolveAudioTrack, resolveAudioTrackPlayback } from "@shared/types/audioTrack";
+import type { Translator, TranslationKey } from "@shared/i18n";
 import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
+import { Select } from "@/lib/components/elements";
+import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { createPropertyEditorSchema, defineField } from "../framework";
@@ -21,6 +25,13 @@ import type {
 
 /** Translator function, threaded into schema builders since they run outside React. */
 type TranslateFn = Translator["t"];
+
+/** The player slider the scene's music lands under - the same naming the Project → Audio rows use. */
+const SCENE_MUSIC_SLIDER_KEYS: Record<AudioTrackChannel, TranslationKey> = {
+    bgm: "project.audio.slider.bgm",
+    sound: "project.audio.slider.sound",
+    voice: "project.audio.slider.voice",
+};
 
 /**
  * What the right rail edits when a story scene tab is in front and no row is focused.
@@ -117,10 +128,13 @@ function SceneDefaultBackgroundField({ data }: CustomFieldProps<StorySceneEditor
 /**
  * The scene's opening music.
  *
- * One control rather than four fields, because volume / loop / fade only mean anything once a track
- * is picked — an empty picker with three dead knobs under it reads as broken. The marked in/out
- * points are shown next to the name: they are the answer to "will my loop region apply here", and
- * the author would otherwise have to open the audio preview to find out.
+ * One control rather than a column of fields, because track / volume / loop / fade only mean anything
+ * once a clip is picked — an empty picker with four dead knobs under it reads as broken.
+ *
+ * The status line is where the two invisible things are said out loud: what the asset's markers do to
+ * this scene (whole clip / loop region / intro→loop) and what the audio track does to it (which player
+ * slider governs it, and the volume the engine actually receives after the track's gain). Both were
+ * previously answerable only by opening two other surfaces and multiplying by hand.
  */
 function SceneBackgroundMusicField({ data }: CustomFieldProps<StorySceneEditorContext>) {
     const { t } = useTranslation();
@@ -135,15 +149,13 @@ function SceneBackgroundMusicField({ data }: CustomFieldProps<StorySceneEditorCo
     const asset = bgm?.assetId ? assetsService?.getAssets()[AssetType.Audio]?.[bgm.assetId] ?? null : null;
     const label = asset?.name ?? (bgm?.assetId ? t("story.music.missingAudio") : t("story.music.none"));
     const region = normalizeAudioClipRegion(asset?.extras);
-    const loops = bgm?.loop ?? true;
-    const regionHint = !region
-        ? t("story.sceneEditor.sceneMusicWholeClip")
-        : region.outMs !== undefined && loops
-            ? t("story.sceneEditor.sceneMusicLoopRegion", {
-                from: formatSeconds(region.inMs ?? 0),
-                to: formatSeconds(region.outMs),
-            })
-            : t("story.sceneEditor.sceneMusicFromIn", { from: formatSeconds(region.inMs ?? 0) });
+    const tracks = useProjectAudioTracks();
+    const track = resolveAudioTrack(tracks, bgm?.audioTrackId, "bgm");
+    // The track supplies the loop default now, so the checkbox has to show the resolved answer -
+    // a scene on a non-looping track whose box read "on" would be lying about what the game does.
+    const loops = bgm?.loop ?? track.loop;
+    const regionHint = buildRegionHint(t, region, loops);
+    const playback = resolveAudioTrackPlayback(track, { volume: bgm?.volume, fadeMs: bgm?.fadeMs, loop: bgm?.loop });
 
     const patch = (next: Partial<StorySceneBgm>): void => {
         if (!bgm) {
@@ -151,6 +163,10 @@ function SceneBackgroundMusicField({ data }: CustomFieldProps<StorySceneEditorCo
         }
         data.onUpdateScene({ bgm: { ...bgm, ...next } });
     };
+    const trackOptions = [
+        { value: "", label: t("storyInspector.audio.trackDefault", { name: resolveAudioTrack(tracks, undefined, "bgm").name }) },
+        ...tracks.map(entry => ({ value: entry.id, label: entry.name })),
+    ];
 
     return (
         <div>
@@ -176,7 +192,24 @@ function SceneBackgroundMusicField({ data }: CustomFieldProps<StorySceneEditorCo
 
             {bgm ? (
                 <div className="mt-2 space-y-2">
-                    <div className="text-[11px] text-fg-subtle">{regionHint}</div>
+                    <div className="text-[11px] tabular-nums text-fg-subtle">
+                        {[
+                            regionHint,
+                            track.name,
+                            t(SCENE_MUSIC_SLIDER_KEYS[playback.channel]),
+                            // The number the engine gets, after the track's gain - the slider below
+                            // shows what was authored, and the two differ on any track but unity.
+                            String(Math.round(playback.volume * 100) / 100),
+                        ].join(" · ")}
+                    </div>
+                    <Select
+                        fullWidth
+                        portalMenu
+                        className="[&>button]:h-9 [&>button]:min-h-[34px] [&>button]:py-0"
+                        options={trackOptions}
+                        value={bgm.audioTrackId ?? ""}
+                        onChange={value => patch({ audioTrackId: String(value) || undefined })}
+                    />
                     <div className="flex items-center gap-2">
                         <input
                             type="range"
@@ -240,6 +273,38 @@ function SceneBackgroundMusicField({ data }: CustomFieldProps<StorySceneEditorCo
 function formatSeconds(ms: number): string {
     const seconds = ms / 1000;
     return Number.isInteger(seconds) ? String(seconds) : seconds.toFixed(1);
+}
+
+/**
+ * What the asset's marked region does to THIS scene's music, in one line of values.
+ *
+ * Three markers now, not two: an intro→loop clip plays `in..loop` once and then repeats `loop..out`
+ * forever, which is a materially different thing from looping the whole marked region and the author
+ * has no other way to see it from here. Still one line - the standing rule is that thin bars never
+ * stack, so the third marker joins the sentence rather than adding a row under it.
+ *
+ * The loop arms are shown only when the music actually loops: a one-shot ignores every marker past
+ * the in point, and printing a loop point on it would describe playback that never happens.
+ */
+function buildRegionHint(
+    t: TranslateFn,
+    region: ReturnType<typeof normalizeAudioClipRegion>,
+    loops: boolean,
+): string {
+    if (!region) {
+        return t("story.sceneEditor.sceneMusicWholeClip");
+    }
+    const from = formatSeconds(region.inMs ?? 0);
+    if (region.outMs === undefined || !loops) {
+        return t("story.sceneEditor.sceneMusicFromIn", { from });
+    }
+    const to = formatSeconds(region.outMs);
+    // `loopStartMs` equal to the in point is the plain loop the two-marker line already describes,
+    // and `normalizeAudioClipRegion` only keeps a point inside the window, so this is the intro case.
+    if (region.loopStartMs !== undefined && region.loopStartMs !== (region.inMs ?? 0)) {
+        return t("story.sceneEditor.sceneMusicIntroLoop", { from, loop: formatSeconds(region.loopStartMs), to });
+    }
+    return t("story.sceneEditor.sceneMusicLoopRegion", { from, to });
 }
 
 /**
