@@ -129,7 +129,13 @@ export function toReadOnlyMoveableProps(props: Partial<MoveableProps>): Partial<
  * Widget modules contribute their own rows through `createFloatingToolbarItems`, so - exactly as with
  * the top bar's plugin actions - a row this file has never heard of is disabled, not trusted.
  */
-const READ_ONLY_FLOATING_TOOLBAR_IDS: ReadonlySet<string> = new Set(["open-linked-component"]);
+const READ_ONLY_FLOATING_TOOLBAR_IDS: ReadonlySet<string> = new Set([
+    "open-linked-component",
+    // The Frame's "Open <page>" arrow opens the page the frame points at in another tab. On a frozen
+    // project it was greyed out, so the one way to follow a frame to its target - reading, and the
+    // whole point of looking at a past version - was gone. Opening a tab writes nothing.
+    "frame.open-target-page",
+]);
 
 /** Grey out every floating-toolbar row that edits, with `reason` on hover. */
 export function toReadOnlyFloatingToolbarItems(
@@ -148,17 +154,37 @@ export function toReadOnlyFloatingToolbarItems(
 }
 
 /**
+ * The docker bar rows that keep working: the ones that drive a preview rather than the document.
+ *
+ * The same shape as {@link READ_ONLY_FLOATING_TOOLBAR_IDS}, and for the same reason - a row nobody
+ * remembered to name here is disabled, not trusted.
+ *
+ * The video widget's transport is the case that made this necessary. Play/Pause and Back-to-start
+ * move a preview clock that lives in editor state; nothing about them reaches the document. On a
+ * frozen project both were greyed out, which left the author looking at a still frame with no way to
+ * watch the video they had opened the past version to see.
+ */
+const READ_ONLY_DOCKER_BAR_IDS: ReadonlySet<string> = new Set([
+    "docker-video-preview-toggle",
+    "docker-video-preview-restart",
+]);
+
+/**
  * Grey out the docker bar's element controls - align, order, size, and whatever a widget module adds.
  *
- * Every one of them writes the document, so there is no allow-list to keep here; unlike the palette
- * the rows are data, not JSX, which is why this is a mapper and not a prop on each button. Separators
- * pass through so the bar does not visibly rearrange itself when a workspace freezes.
+ * Almost every one of them writes the document, so the exemptions are named above rather than
+ * derived; unlike the palette the rows are data, not JSX, which is why this is a mapper and not a
+ * prop on each button. Separators pass through so the bar does not visibly rearrange itself when a
+ * workspace freezes.
  */
 export function toReadOnlyDockerBarItems(items: DockerBarItem[], readOnly: UIEditorReadOnly): DockerBarItem[] {
     if (!readOnly.active) {
         return items;
     }
     return items.map(item => {
+        if (READ_ONLY_DOCKER_BAR_IDS.has(item.id)) {
+            return item;
+        }
         switch (item.kind) {
             case "separator":
                 return item;

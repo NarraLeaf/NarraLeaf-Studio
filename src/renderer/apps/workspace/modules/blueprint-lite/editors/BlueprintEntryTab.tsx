@@ -5,6 +5,7 @@ import { EditorComponentProps } from "../../types";
 import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
 import { useKeybindings, whenEditorFocused } from "@/apps/workspace/hooks";
+import { isDeferredWriteAllowed, useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useRegistry } from "@/apps/workspace/registry";
 import type { EditorLayout } from "@/apps/workspace/registry/types";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
@@ -476,6 +477,9 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
     const revision = useBlueprintDocumentRevision();
+    // The canvas and its cards carry their own clamp (`BlueprintFlowCanvas`, `BlueprintFlowNode`);
+    // what is left in this file is the keyboard, the empty state and one on-open normalisation.
+    const freeze = useFreezeGuard();
 
     if (!isInitialized || !context || !payload?.blueprintId) {
         return (
@@ -743,6 +747,10 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         editor.setSelectedNodeIds(pasted.newNodeIds);
     }, [commitIr, editor, uuid, payload.blueprintId]);
 
+    // A keystroke has no button to grey out, so `freeze.run` is how these are refused: undo, redo,
+    // cut and paste all rewrite the graph, and on a frozen project they moved nodes about on screen
+    // and threw the result away on thaw - a graph that visibly edits itself and then does not.
+    // Copy is left alone: it only fills the clipboard, which is the author's, not the project's.
     const blueprintKeybindings = useMemo(
         () => [
             // `mod` resolves to ⌘/Ctrl per platform, replacing the ctrl/meta twin
@@ -750,20 +758,20 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             {
                 id: "undo",
                 key: "mod+z",
-                handler: () => {
+                handler: freeze.run(() => {
                     if (!isTypingInField()) {
                         localBp.undoBlueprint(payload.blueprintId);
                     }
-                },
+                }),
             },
             {
                 id: "redo",
                 key: "mod+shift+z",
-                handler: () => {
+                handler: freeze.run(() => {
                     if (!isTypingInField()) {
                         localBp.redoBlueprint(payload.blueprintId);
                     }
-                },
+                }),
             },
             {
                 id: "copy",
@@ -773,17 +781,18 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             {
                 id: "cut",
                 key: "mod+x",
-                handler: cutSelectedGraphNodes,
+                handler: freeze.run(cutSelectedGraphNodes),
             },
             {
                 id: "paste",
                 key: "mod+v",
-                handler: pasteGraphNodes,
+                handler: freeze.run(pasteGraphNodes),
             },
         ],
         [
             copySelectedGraphNodes,
             cutSelectedGraphNodes,
+            freeze,
             localBp,
             pasteGraphNodes,
             payload.blueprintId,
@@ -1496,7 +1505,15 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     // Heal stale Call Fn signature snapshots when this blueprint is opened. Cross-blueprint
     // signature changes are pull-based: same-graph edits sync on commit, other graphs are
     // covered by the fn.call_signature_stale diagnostic until reopened or re-picked.
+    //
+    // Deferred, not refused, while the workspace is frozen: nobody asked for this write, so merely
+    // opening a blueprint on a frozen project raised "Nothing is being saved right now" about the
+    // editor's own bookkeeping. `frozen` is an input of the effect, so the heal runs the moment the
+    // workspace is writable again - sound because whatever snapshot was stale still is.
     useEffect(() => {
+        if (!isDeferredWriteAllowed(freeze.frozen)) {
+            return;
+        }
         const currentDoc = localBp.getBlueprintDocument();
         const currentBp = currentDoc.blueprints[payload.blueprintId];
         if (!currentBp || currentBp.program.kind !== "graph") {
@@ -1534,7 +1551,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 }
             });
         }
-    }, [localBp, payload.blueprintId]);
+    }, [freeze.frozen, localBp, payload.blueprintId]);
 
     const [memberPanelFocusContained, setMemberPanelFocusContained] = useState(false);
 
@@ -1670,8 +1687,12 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 px-4 py-8">
                 <button
                     type="button"
-                    className="rounded-md border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20"
+                    className="rounded-md border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-primary/10"
                     onClick={onAddEvent}
+                    // Declaring a layer writes the blueprint, the same as the member panel's New
+                    // button beside it - which was already refused while this one was not, so an
+                    // empty frozen blueprint offered a layer it could not keep.
+                    {...freeze.writes()}
                 >
                     {t("blueprint.canvas.addLayer")}
                 </button>
