@@ -195,7 +195,6 @@ export const story = {
         removeStarred: "从收藏中移除",
         hint: {
             move: "选择",
-            cross: "切换分栏",
             insert: "插入",
             dismiss: "关闭",
         },
