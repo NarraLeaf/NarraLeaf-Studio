@@ -1,0 +1,38 @@
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mD:/Temp/nls-vcsdiff[39m
+
+[90mstdout[2m | src/main/app/application/managers/vcs/mergeSpike3.integration.test.ts[2m > [22m[2mR3 - does a fresh process recover after a sync[2m > [22m[2mbuilds a synced repository, or reads one a previous process left behind
+[22m[39m
+### R3 FRESH PROCESS AFTER SYNC
+{
+  "persistRoot": "D:/Temp/nls-spike-persist2",
+  "phase": "build",
+  "build": {
+    "repositoryId": "019fbf8746407922942180280434152b",
+    "revision": "ea95f5f4cd86a965e5438c4cdf4f8ac15aa89e8f959e3a4c4c601265067a906e",
+    "conflicts": 0,
+    "readInTheProcessThatSynced": {
+      "immediately": {
+        "error": "LoreCallError: storageGet: 1/1 get items failed"
+      },
+      "secondCycleNoDelay": {
+        "error": "LoreCallError: storageGet: 1/1 get items failed"
+      },
+      "afterFifteenSeconds": {
+        "error": "LoreCallError: storageGet: 1/1 get items failed"
+      },
+      "afterFortyFiveSeconds": {
+        "error": "LoreCallError: storageGet: 1/1 get items failed"
+      }
+    }
+  }
+}
+
+ [32m✓[39m src/main/app/application/managers/vcs/mergeSpike3.integration.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 45911[2mms[22m[39m
+   [33m[2m✓[22m[39m R3 - does a fresh process recover after a sync[2m > [22mbuilds a synced repository, or reads one a previous process left behind [33m 45910[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m   Start at [22m 15:52:20
+[2m   Duration [22m 46.63s[2m (transform 123ms, setup 0ms, collect 262ms, tests 45.91s, environment 0ms, prepare 190ms)[22m
+
