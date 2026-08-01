@@ -2,8 +2,9 @@
  * `Play Sound`'s `soundChannel` select became an audio track reference.
  *
  * The whole promise of that change is that an existing graph keeps making the same sound: a node
- * that named the `bgm` channel has to end up on the Music track, whose seeded defaults are the
- * behaviour it had. These guard that promise, plus the two ways it could quietly break - a
+ * that named the `bgm` channel has to end up on the Music bus, whose seeded defaults are the
+ * behaviour it had. The seeded ids are now the engine's own channel names, so the mapping is
+ * identity - which is exactly why it is worth asserting rather than assuming. These guard that promise, plus the two ways it could quietly break - a
  * re-migration clobbering a track the author has since chosen, and the shared migration drifting
  * from the param keys the renderer's node definition actually reads.
  */
@@ -59,10 +60,10 @@ function playParamsOf(document: BlueprintDocument): Record<string, unknown> {
 
 describe("Play Sound soundChannel -> audioTrackId", () => {
     it.each([
-        ["bgm", "music"],
-        ["sound", "sfx"],
+        ["bgm", "bgm"],
+        ["sound", "sound"],
         ["voice", "voice"],
-    ])("maps the %s channel to the %s built-in track", (channel, trackId) => {
+    ])("maps the %s channel to the %s seeded bus", (channel, trackId) => {
         const migrated = migrateBlueprintDocumentToLatest(
             documentWithPlayParams({ soundAssetId: "a1", [BLUEPRINT_SOUND_PARAM_CHANNEL]: channel }),
         );
@@ -81,7 +82,7 @@ describe("Play Sound soundChannel -> audioTrackId", () => {
         );
 
         expect(migrated.schemaVersion).toBe(BLUEPRINT_DOCUMENT_SCHEMA_VERSION);
-        expect(playParamsOf(migrated)[BLUEPRINT_SOUND_PARAM_TRACK]).toBe("music");
+        expect(playParamsOf(migrated)[BLUEPRINT_SOUND_PARAM_TRACK]).toBe("bgm");
     });
 
     it("keeps a track the author already picked", () => {
@@ -103,7 +104,7 @@ describe("Play Sound soundChannel -> audioTrackId", () => {
             documentWithPlayParams({ [BLUEPRINT_SOUND_PARAM_CHANNEL]: "whatever" }),
         );
 
-        expect(playParamsOf(migrated)[BLUEPRINT_SOUND_PARAM_TRACK]).toBe("sfx");
+        expect(playParamsOf(migrated)[BLUEPRINT_SOUND_PARAM_TRACK]).toBe("sound");
     });
 
     it("leaves a node that never had a channel alone", () => {

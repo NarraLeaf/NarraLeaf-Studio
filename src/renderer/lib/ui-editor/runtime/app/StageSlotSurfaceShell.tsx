@@ -221,7 +221,7 @@ export function useStageSlotSurfaceRuntime(input: {
             onSetSentenceSpeed: options.setSentenceSpeedInGame,
             onGetGamePreference: options.getGamePreferenceInGame,
             onSetGamePreference: options.setGamePreferenceInGame,
-            // Same seven callbacks the top-level surfaces pass. Left off, `sound.play` returns null
+            // The same sound callbacks the top-level surfaces pass. Left off, `sound.play` returns null
             // and every transport node is a silent no-op, so an authored click sound inside a
             // dialogue box just never happens.
             onPlaySound: options.soundTransport?.play,
@@ -231,6 +231,8 @@ export function useStageSlotSurfaceRuntime(input: {
             onSetSoundVolume: options.soundTransport?.setVolume,
             onSeekSound: options.soundTransport?.seek,
             onIsSoundPlaying: options.soundTransport?.isPlaying,
+            onGetTrackVolume: options.soundTransport?.getTrackVolume,
+            onSetTrackVolume: options.soundTransport?.setTrackVolume,
             audioTracks: options.audioTracks,
             onSubscribeGamePreferences: options.subscribeGamePreferences,
             onWidgetPatch: (elementId, patch) => {

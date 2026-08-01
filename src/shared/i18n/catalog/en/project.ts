@@ -11,7 +11,7 @@ export const project = {
         },
         audio: {
             title: "Audio",
-            description: "Tracks, and the player volume each one follows",
+            description: "The mixer: which bus feeds which, and how loud each one is",
         },
         assets: {
             title: "Assets",
@@ -81,41 +81,45 @@ export const project = {
         autoSaveSlotsTitle: "Autosaves kept",
         autoSaveSlotsDescription: "Autosaves rotate through this many slots, oldest overwritten first. They stay out of the player's own save slots and are read with the List Auto Saves node.",
     },
-    // The Audio sub-page. Deliberately label-free: the controls carry aria names for assistive
-    // technology, and everything visible on a row is a value.
+    // The Audio sub-page: the project's mixer, as a tree of buses. Labelled rows with descriptions,
+    // exactly like Details / Game / Runtimes / Linting - in project settings the control IS the
+    // content, so it needs a title that says what the number means.
     audio: {
-        add: "Track",
+        add: "Add track",
         newTrackName: "New Track",
-        nameAria: "Track name",
-        gainAria: "Gain",
-        fadeInAria: "Default fade in, milliseconds",
-        fadeOutAria: "Default fade out, milliseconds",
-        loopAria: "Loop by default",
+        nameTitle: "Name",
+        nameDescription: "What this bus is called across Studio. References are stored by id, so renaming one is safe.",
+        parentTitle: "Routes into",
+        parentDescription: "The bus this one feeds. Every bus between here and the master output multiplies its volume in.",
+        parentMaster: "Master output",
+        volumeTitle: "Volume",
+        volumeDescription: "This bus's own level, applied live to everything playing on it or below it. A bus can quieten, never amplify.",
+        volumeUnit: "%",
+        loopTitle: "Loop by default",
+        loopDescription: "Clips played on this track repeat unless the action that plays them says otherwise.",
         duplicate: "Duplicate",
         delete: "Delete",
         deleteConfirm: "Delete \"{name}\"?",
         // The honest consequence: nothing pointing at this track is rewritten, so those references
-        // resolve to the built-in for its bus from now on.
+        // resolve to the seeded bus for their own shape from now on - which one depends on what is
+        // playing, so naming a single track here would be a guess.
         deleteDetail: {
-            one: "{count} reference falls back to {track}.",
-            other: "{count} references fall back to {track}.",
+            one: "{count} reference falls back to its default bus.",
+            other: "{count} references fall back to their default bus.",
         },
-        referencesAria: {
-            one: "Used {count} time",
-            other: "Used {count} times",
+        // Children are promoted rather than deleted, and the author is told where they land.
+        deleteChildren: {
+            one: "{count} track under it moves to {parent}.",
+            other: "{count} tracks under it move to {parent}.",
         },
-        // The engine's mixer buses, short enough to share a line with two other controls.
-        channel: {
-            bgm: "BGM",
-            sound: "Sound",
-            voice: "Voice",
-        },
-        // The player's own volume sliders - what the status line names, because that is the
-        // question this whole surface exists to answer.
+        // The player's own volume sliders, which alias onto the three seeded buses.
         slider: {
             bgm: "BGM Volume",
             sound: "Sound Volume",
             voice: "Voice Volume",
+            // A bus hanging off master through none of the three has no alias of its own, so the
+            // only player control over it is the one that governs everything.
+            global: "Global Volume",
         },
     },
     settings: {

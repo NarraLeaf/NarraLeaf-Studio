@@ -58,6 +58,22 @@ export interface CharacterEditorProfile extends CharacterBaseProfile {
      * Unlike {@link thumbnail} (an editor asset, editor-only) this one *is* consumed by the runtime.
      */
     defaultAvatarAssetId?: string | null;
+    /**
+     * The audio bus this character's dialogue voice plays on — a project audio track id.
+     *
+     * Absent (the ordinary case) means the seeded `voice` bus, which is where every voice line has
+     * always played. Setting it to a track *beneath* `voice` is the whole point: the player then has
+     * a slider for this character alone, which is how a VN lets someone turn one member of the cast
+     * down or off without touching the rest.
+     *
+     * A plain id rather than a resolved track, and never rewritten when a track is deleted: the id
+     * resolves through `resolveAudioTrack`, which falls back to `voice`, so a dangling reference is a
+     * character who is merely no longer separately adjustable rather than a character who is silent.
+     *
+     * On the profile rather than the appearance for the same reason `defaultAvatarAssetId` is: it
+     * survives a kind switch, which discards everything the kinds do not share.
+     */
+    voiceTrackId?: string | null;
 }
 
 /**

@@ -112,6 +112,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_GLOBAL_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
     BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS,
+    BLUEPRINT_NODE_TYPE_GAME_GET_TRACK_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR,
     BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR,
     BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED,
@@ -260,6 +261,7 @@ import {
     normalizeBlueprintElementRefValue,
     readBlueprintElementRefParams,
 } from "./elementRefUtils";
+import { readBlueprintAudioTrackParam } from "./audioTrackParams";
 import {
     BLUEPRINT_FLOW_DELAY_TOKEN_PIN_ID,
     createDelayTimerToken,
@@ -1427,6 +1429,33 @@ function resolveGameNodeOutput(
 }
 
 /**
+ * `Get Track Volume` - the addressable one, like `Get Character` below.
+ *
+ * Its own resolver rather than a row in {@link GAME_PREFERENCE_OUTPUT_KEYS} because it is not a
+ * preference: the value comes off the engine's bus mixer and is keyed by the track the node points
+ * at, so it needs `params`, which the preference table's port-id lookup never sees.
+ *
+ * Nothing picked reads as unity rather than as `undefined` - the pin is a non-nullable float, and a
+ * slider bound to it must sit at the top rather than collapse to zero while the author is still
+ * wiring the page.
+ */
+function resolveGetTrackVolumeNodeOutput(
+    nodeType: string,
+    portId: string,
+    params: Record<string, unknown>,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    if (nodeType !== BLUEPRINT_NODE_TYPE_GAME_GET_TRACK_VOLUME || portId !== "volume") {
+        return undefined;
+    }
+    const trackId = readBlueprintAudioTrackParam(params);
+    if (!trackId) {
+        return 1;
+    }
+    return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.sound.getTrackVolume(trackId) ?? 1;
+}
+
+/**
  * `Get Character` - the addressable one. Kept out of {@link resolveGameNodeOutput} and dispatched
  * ahead of it because that function matches on bare port ids across the whole game family, and this
  * node's outputs would otherwise be captured by the speaker-scoped branches.
@@ -2523,6 +2552,15 @@ function resolveSelfOutput(
     );
     if (getCharacterOutput !== undefined) {
         return getCharacterOutput;
+    }
+    const trackVolumeOutput = resolveGetTrackVolumeNodeOutput(
+        selfNode.type,
+        portId,
+        selfNode.params ?? {},
+        runtime,
+    );
+    if (trackVolumeOutput !== undefined) {
+        return trackVolumeOutput;
     }
     if (
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG ||

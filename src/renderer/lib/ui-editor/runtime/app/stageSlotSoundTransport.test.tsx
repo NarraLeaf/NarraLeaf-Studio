@@ -37,7 +37,7 @@ vi.mock("@/lib/ui-editor/runtime/hostAdapters/devModeBlueprintHostAdapter", () =
 }));
 
 const TRACKS: ProjectAudioTrack[] = [
-    { id: "sfx", name: "SFX", channel: "sound", gain: 1, fadeInMs: 0, fadeOutMs: 0, loop: false, builtin: true },
+    { id: "sound", name: "SFX", parentId: null, volume: 1, loop: false, builtin: true },
 ];
 
 function createSoundTransportStub(): SoundTransport {
@@ -49,6 +49,8 @@ function createSoundTransportStub(): SoundTransport {
         setVolume: vi.fn(async () => undefined),
         seek: vi.fn(async () => undefined),
         isPlaying: vi.fn(() => false),
+        getTrackVolume: vi.fn(() => 1),
+        setTrackVolume: vi.fn(async () => undefined),
         dispose: vi.fn(),
     };
 }
@@ -130,6 +132,10 @@ const SOUND_CALLBACKS = [
     "onSetSoundVolume",
     "onSeekSound",
     "onIsSoundPlaying",
+    // The mixer half. Left off, a settings page opened as a Game UI overlay would read every
+    // track at unity and write nowhere - a slider that visibly does nothing.
+    "onGetTrackVolume",
+    "onSetTrackVolume",
 ] as const;
 
 describe("stage slot surface sound transport", () => {
@@ -154,10 +160,10 @@ describe("stage slot surface sound transport", () => {
         const options = renderShell({ soundTransport, audioTracks: TRACKS });
         const hostApi = (await import("@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge"))
             .createDevModeBlueprintHostApi(options);
-        await hostApi.sound.play({ assetId: "click", audioTrackId: "sfx" });
+        await hostApi.sound.play({ assetId: "click", audioTrackId: "sound" });
 
         // Before the fix this resolved to null without ever reaching a transport.
-        expect(soundTransport.play).toHaveBeenCalledWith({ assetId: "click", audioTrackId: "sfx" });
+        expect(soundTransport.play).toHaveBeenCalledWith({ assetId: "click", audioTrackId: "sound" });
     });
 
     it("carries the project's tracks so the slot's video widgets obey the mixer", () => {

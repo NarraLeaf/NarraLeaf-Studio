@@ -27,7 +27,9 @@ import {
     createLiveGameUiCallbacks,
     createNlrGameWithGameUi,
 } from "@/lib/ui-editor/runtime/app/gameUiSlots";
+import { audioTracksToBusDeclarations } from "@/lib/ui-editor/runtime/app/audioBusRuntime";
 import { readNlrCharacterName } from "@/lib/ui-editor/runtime/app/nlrDialogReaders";
+import type { AudioTrackService } from "@/lib/workspace/services/audio/AudioTrackService";
 import type { StoryPersistenceBridge } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import { mapCharacterStoreEntriesToSummaries } from "@shared/utils/characterSummaries";
 import { Services, WorkspaceContext } from "@/lib/workspace/services/services";
@@ -284,6 +286,14 @@ export function useStoryPreviewGameUi(input: {
             // The preview pane can be far smaller than NLR's 800×450 minimum stage; without this
             // the stage overflows and crops instead of letterboxing down.
             minStageSize: { width: 1, height: 1 },
+            // The preview has to declare the project's buses for the same reason Dev Mode does: a
+            // clip on an undeclared bus falls back to a seeded one, so a per-character voice would
+            // preview through the plain Voice fader and sound right while proving nothing.
+            audioBuses: context
+                ? audioTracksToBusDeclarations(
+                    context.services.get<AudioTrackService>(Services.AudioTracks).listTracks(),
+                )
+                : undefined,
         });
 
         const wireLiveGame = (liveGame: LiveGame): (() => void) => {

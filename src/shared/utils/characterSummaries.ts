@@ -195,12 +195,16 @@ export function mapCharacterStoreEntriesToSummaries(entries: readonly unknown[])
             appearance?: unknown;
             defaultAvatarAssetId?: unknown;
             color?: unknown;
+            voiceTrackId?: unknown;
         };
         const id = trimmed(raw.id);
         if (!id) {
             return [];
         }
         const defaultAvatarAssetId = trimmed(raw.defaultAvatarAssetId);
+        // Dropped when empty rather than forwarded as "": absent is what the compiler reads as "the
+        // seeded voice bus", and an empty string would be a reference to a track nobody can name.
+        const voiceTrackId = trimmed(raw.voiceTrackId);
         // Trimmed, not parsed. Whether a colour is *usable* is a per-surface question — Studio chrome
         // applies a readability band to it, the runtime nametag does not — and a mapper that
         // pre-judged it would take that decision away from both.
@@ -214,6 +218,7 @@ export function mapCharacterStoreEntriesToSummaries(entries: readonly unknown[])
             appearance: mapAppearance(raw.appearance),
             ...(defaultAvatarAssetId ? { defaultAvatarAssetId } : {}),
             ...(color ? { color } : {}),
+            ...(voiceTrackId ? { voiceTrackId } : {}),
         }];
     });
 }

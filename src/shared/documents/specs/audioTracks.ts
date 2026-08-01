@@ -7,11 +7,14 @@ import {defineDocumentSpec} from "../registry";
 import {rejectNewerSchema, requireDocumentObject} from "./parseHelpers";
 
 /**
- * `editor/audio-tracks.json` - the project's audio tracks (M1 of the audio round).
+ * `editor/audio-tracks.json` - the project's mixer, as a tree of buses.
  *
  * Owned by `AudioTrackService`. A first-class document rather than a corner of `.nlproj` because a
  * track is authored content that references point at: version control has to be able to show a
- * renamed track or a re-tuned fade as its own change, and a diff of the whole project file cannot.
+ * renamed track or a re-routed bus as its own change, and a diff of the whole project file cannot.
+ *
+ * v1 documents (a flat list of `{channel, gain, fadeInMs, fadeOutMs}` presets) are migrated on load
+ * by `migrateProjectAudioTrackDocument`; see `@shared/types/audioTrack` for what maps onto what.
  *
  * The path is `ProjectNameConvention.EditorAudioTracks` spelled as a pattern; the two are kept in
  * step by the renderer's `services/core/documentSpecs.test.ts`, which is the only place that can see

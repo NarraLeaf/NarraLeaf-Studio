@@ -1,59 +1,63 @@
 /**
- * Project → Audio: the tracks every audio-producing surface points at.
+ * Project → Audio: the mixer, as a tree of buses.
  *
- * A track is an authoring-time mix preset - a bus, a multiplier and the fade/loop defaults a play on
- * it inherits. The bus is the whole reason this surface exists: before it, a per-action `volume`
- * multiplied silently with the player's preference sliders and nothing in Studio said which slider
- * that was. Each row's status line answers it by name.
+ * A track **is** a bus. It feeds into another bus (or straight into the master output), carries its
+ * own live gain, and lends its default loop policy to the clips played on it. The three seeded ones
+ * - Music, SFX, Voice - cannot be deleted, because they are where an unresolvable reference lands
+ * and what the player's four volume sliders alias onto; everything else about them is the author's.
  *
- * The three built-ins cannot be deleted, because they are where an unresolvable reference lands -
- * one per bus, at all times. Deleting a custom track does NOT rewrite the things pointing at it;
- * they fall back to the built-in for their channel at resolve time, which is why the row carries the
- * number of them and the confirm says so.
+ * **This surface is built on the same `SettingShell`/`SettingStack`/`SettingRow` its neighbours use,
+ * and that is the point.** The first version of this panel was bare inputs and icon buttons whose
+ * only label was an invisible `aria-label`, so nothing on screen said what a number meant - a review
+ * called it unreadable, correctly. In an *editing* surface (a story canvas, a waveform) unlabelled
+ * controls are right, because the content is the label. In project settings the control IS the
+ * content, and Details / Game / Runtimes / Linting all answer that with a visible title and
+ * description per control. So does this.
+ *
+ * Deleting a bus with children promotes them to its own parent rather than taking them with it -
+ * see `AudioTrackService.deleteTrack` for why - and does not rewrite the things that pointed at it,
+ * which is what the confirmation says out loud before the author commits.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowDownRight, ArrowUpRight, Copy, Link2, Plus, Repeat, Trash2 } from "lucide-react";
+import { CornerDownRight, Plus } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
-import { Select } from "@/lib/components/elements";
-import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
-import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
-import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
+import { Button, Input, Select, type SelectOption } from "@/lib/components/elements";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import type { AudioTrackService } from "@/lib/workspace/services/audio/AudioTrackService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
 import {
-    AUDIO_TRACK_CHANNELS,
-    AUDIO_TRACK_GAIN_MAX,
-    AUDIO_TRACK_GAIN_MIN,
+    audioTrackDescendantIds,
     countAudioTrackReferences,
-    type AudioTrackChannel,
+    flattenAudioTrackTree,
     type ProjectAudioTrack,
 } from "@shared/types/audioTrack";
-import type { TranslationKey } from "@shared/i18n";
 import { useWorkspace } from "../../../context";
+import { NumberField } from "./NumberField";
+import { SettingRow, SettingShell, SettingStack } from "./settingRows";
 import type { ProjectSectionProps } from "./types";
 
-/** The bus, as the engine names it. Short, because it shares a line with two other controls. */
-const CHANNEL_LABEL_KEYS: Record<AudioTrackChannel, TranslationKey> = {
-    bgm: "project.audio.channel.bgm",
-    sound: "project.audio.channel.sound",
-    voice: "project.audio.channel.voice",
-};
+/**
+ * Indent per level, and the level at which the indent stops growing.
+ *
+ * A tree in a 318px panel cannot spend 20px a level; four levels of 10px is 40px, which is enough
+ * for the eye to group a child under its parent while leaving the rows readable. Past that the
+ * "routes into" row is what says where a bus sits, and it says it in words.
+ */
+const TRACK_INDENT_PX = 10;
+const TRACK_INDENT_MAX_LEVEL = 4;
 
-/** The player's own volume slider for that bus - the thing the status line is there to name. */
-const SLIDER_LABEL_KEYS: Record<AudioTrackChannel, TranslationKey> = {
-    bgm: "project.audio.slider.bgm",
-    sound: "project.audio.slider.sound",
-    voice: "project.audio.slider.voice",
-};
+/** Volume is stored 0..1 and edited 0..100, because a mixer strip reads in percent. */
+const VOLUME_PERCENT_MIN = 0;
+const VOLUME_PERCENT_MAX = 100;
 
 export function ProjectAudioSection({ uiService }: ProjectSectionProps) {
     const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
+    const freeze = useFreezeGuard();
 
     const trackService = useMemo(() => {
         if (!context || !isInitialized) {
@@ -74,23 +78,27 @@ export function ProjectAudioSection({ uiService }: ProjectSectionProps) {
         return trackService.onTracksChanged(setTracks);
     }, [trackService]);
 
-    // Recomputed when the id set changes rather than on every keystroke: renaming a track or nudging
-    // its gain cannot change how many things point at it, and re-reading every story document for
+    // Recomputed when the id set changes rather than on every keystroke: renaming a bus or nudging
+    // its volume cannot change how many things point at it, and re-reading every story document for
     // each character typed into the name field would be a scan per frame.
-    const trackIdKey = tracks.map(track => track.id).join("\u0000");
+    // JSON rather than a delimiter join: an id is only trimmed, not restricted, so any
+    // separator could in principle appear inside one and split a single track into two.
+    const trackIdKey = JSON.stringify(tracks.map(track => track.id));
     useEffect(() => {
-        if (!context || !isInitialized || !trackIdKey) {
+        if (!context || !isInitialized) {
             return;
         }
         let active = true;
         void (async () => {
-            const counts = await countReferences(context, trackIdKey.split("\u0000"));
+            const counts = await countReferences(context, JSON.parse(trackIdKey) as string[]);
             if (active) {
                 setReferences(counts);
             }
         })();
         return () => { active = false; };
     }, [context, isInitialized, trackIdKey]);
+
+    const rows = useMemo(() => flattenAudioTrackTree(tracks), [tracks]);
 
     const addTrack = useCallback(() => {
         trackService?.createTrack({ name: t("project.audio.newTrackName") });
@@ -101,217 +109,174 @@ export function ProjectAudioSection({ uiService }: ProjectSectionProps) {
             return;
         }
         const uses = references[track.id] ?? 0;
-        const fallback = trackService.resolveTrack(null, track.channel);
+        const children = tracks.filter(entry => entry.parentId === track.id).length;
+        const parent = track.parentId === null
+            ? t("project.audio.parentMaster")
+            : trackService.getTrack(track.parentId)?.name ?? t("project.audio.parentMaster");
+        const detail = [
+            tn("project.audio.deleteDetail", uses),
+            children > 0 ? tn("project.audio.deleteChildren", children, { parent }) : null,
+        ].filter(Boolean).join("\n");
         const confirmed = await uiService?.showDestructiveConfirm(
             t("project.audio.deleteConfirm", { name: track.name }),
-            tn("project.audio.deleteDetail", uses, { track: fallback.name }),
+            detail,
             t("project.audio.delete"),
         );
         if (confirmed) {
             trackService.deleteTrack(track.id);
         }
-    }, [references, t, trackService, uiService]);
+    }, [references, t, tn, trackService, tracks, uiService]);
 
     return (
-        // `[&>*]:min-w-0` on every grid in this subtree, and it is load-bearing rather than
-        // defensive. A grid item's `min-width` defaults to `auto`, i.e. min-content - and an
-        // `<input>` carries an intrinsic width from its default `size=20` (~258px here, once the
-        // field's icon and unit padding are counted) that `min-w-0` on the input itself does NOT
-        // remove from its parent's min-content contribution. Without these clamps that number
-        // propagates through every ungated grid item up to the section's single column, which is
-        // how this surface came to be 206px wider than the 294px panel it lives in.
+        // `[&>*]:min-w-0` on every grid in this subtree; see the note on `SettingStack`.
         <div className="grid gap-3 [&>*]:min-w-0">
             <div className="flex justify-end">
-                <AddTrackButton onClick={addTrack} disabled={!trackService} />
+                <Button
+                    size="sm"
+                    onClick={addTrack}
+                    {...freeze.writes(!trackService)}
+                    className="shrink-0"
+                >
+                    <Plus className="h-3.5 w-3.5" />
+                    {t("project.audio.add")}
+                </Button>
             </div>
 
-            <div className="grid gap-2 [&>*]:min-w-0">
-                {tracks.map(track => (
-                    <TrackRow
-                        key={track.id}
-                        track={track}
-                        references={references[track.id] ?? 0}
-                        onPatch={patch => trackService?.updateTrack(track.id, patch)}
-                        onDuplicate={() => trackService?.duplicateTrack(track.id)}
-                        onDelete={() => void removeTrack(track)}
-                    />
-                ))}
-            </div>
+            {rows.map(({ track, depth }) => (
+                <TrackGroup
+                    key={track.id}
+                    track={track}
+                    depth={depth}
+                    tracks={tracks}
+                    service={trackService}
+                    onDelete={() => void removeTrack(track)}
+                />
+            ))}
         </div>
     );
 }
 
-function AddTrackButton({ onClick, disabled }: { onClick: () => void; disabled: boolean }) {
-    const { t } = useTranslation();
-    const freeze = useFreezeGuard();
-    return (
-        <button
-            type="button"
-            onClick={onClick}
-            {...freeze.writes(disabled)}
-            className="flex shrink-0 items-center gap-1.5 rounded-md border border-edge bg-fill-subtle px-2 py-1 text-2xs font-medium text-fg-muted transition hover:bg-fill disabled:opacity-50"
-        >
-            <Plus className="h-3.5 w-3.5" />
-            {t("project.audio.add")}
-        </button>
-    );
-}
-
-function TrackRow({
+/**
+ * One bus: a heading that places it in the tree, then its four controls as ordinary setting rows.
+ *
+ * Indented by depth and hung off a left rule, so a child bus visibly belongs to its parent without
+ * the rows themselves getting narrower than the panel can show.
+ */
+function TrackGroup({
     track,
-    references,
-    onPatch,
-    onDuplicate,
+    depth,
+    tracks,
+    service,
     onDelete,
 }: {
     track: ProjectAudioTrack;
-    references: number;
-    onPatch: (patch: Partial<Omit<ProjectAudioTrack, "id" | "builtin">>) => void;
-    onDuplicate: () => void;
+    depth: number;
+    tracks: readonly ProjectAudioTrack[];
+    service: AudioTrackService | null;
     onDelete: () => void;
 }) {
-    const { t, tn } = useTranslation();
-    // Every control here writes `editor/audio-tracks.json`, so the row goes read-only as one. The
-    // freeze reason rides the container's title the way `settingRows` does it: a disabled `Select`
-    // does not report a hover of its own on every platform.
+    const { t } = useTranslation();
     const freeze = useFreezeGuard();
-    const frozen = freeze.writes();
+    const frozen = freeze.writes(!service);
 
-    const channelOptions = useMemo(
-        () => AUDIO_TRACK_CHANNELS.map(channel => ({ value: channel, labelKey: CHANNEL_LABEL_KEYS[channel] })),
-        [],
-    );
+    const parentOptions = useMemo<SelectOption[]>(() => {
+        // Itself and its own descendants are excluded rather than offered and refused: a select that
+        // lets the author pick a cycle and then silently re-roots the bus teaches them the control
+        // is broken.
+        const forbidden = audioTrackDescendantIds(tracks, track.id);
+        return [
+            { value: "", label: t("project.audio.parentMaster") },
+            ...tracks
+                .filter(entry => entry.id !== track.id && !forbidden.has(entry.id))
+                .map(entry => ({ value: entry.id, label: entry.name })),
+        ];
+    }, [t, track.id, tracks]);
 
     return (
         <div
-            className="group grid min-w-0 gap-1.5 rounded-md border border-edge bg-fill-subtle p-2 [&>*]:min-w-0"
-            title={frozen.title}
+            className="grid gap-2 [&>*]:min-w-0"
+            style={{ paddingLeft: Math.min(depth, TRACK_INDENT_MAX_LEVEL) * TRACK_INDENT_PX }}
         >
-            <TrackNameInput
-                name={track.name}
-                disabled={frozen.disabled}
-                onCommit={name => onPatch({ name })}
-            />
-
-            <div className="flex items-center gap-1.5">
-                <Select
-                    size="md"
-                    fullWidth
-                    className="min-w-0 flex-1"
-                    portalMenu
-                    options={channelOptions}
-                    value={track.channel}
-                    // A built-in's bus is its identity: `music` is where a bgm play with no track
-                    // lands, so re-pointing it would silently break every such play elsewhere.
-                    disabled={frozen.disabled || Boolean(track.builtin)}
-                    onChange={value => onPatch({ channel: value as AudioTrackChannel })}
-                />
-                <NumericDraftEnhancedInput
-                    committedDisplay={formatGain(track.gain)}
-                    draftResetKey={`${track.id}-gain`}
-                    // Rounded on the way in, so the number the field shows after a blur is the
-                    // number that is stored - and the status line's `× 1.25` is not a summary of a
-                    // 1.2487 nobody can see.
-                    onFiniteNumber={gain => onPatch({ gain: Math.round(gain * 100) / 100 })}
-                    disabled={frozen.disabled}
-                    inputMode="decimal"
-                    type="number"
-                    min={AUDIO_TRACK_GAIN_MIN}
-                    max={AUDIO_TRACK_GAIN_MAX}
-                    step={0.05}
-                    aria-label={t("project.audio.gainAria")}
-                    popoverWhenNarrow={false}
-                    selectAllOnFocus
-                    className="w-16 shrink-0"
-                />
-                <button
-                    type="button"
-                    onClick={() => onPatch({ loop: !track.loop })}
-                    aria-pressed={track.loop}
-                    aria-label={t("project.audio.loopAria")}
-                    // `writes()` with no own title, here and on the two row actions: the accessible
-                    // name is the `aria-label`, so the only hover text this surface ever shows is
-                    // the freeze reason.
-                    {...freeze.writes()}
-                    className={`${controlButtonClass(track.loop)} shrink-0 disabled:opacity-50`}
+            <div className="flex min-w-0 items-center gap-1.5 border-l-2 border-primary/40 pl-2">
+                {depth > 0 && <CornerDownRight className="h-3 w-3 shrink-0 text-fg-subtle" aria-hidden="true" />}
+                <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-fg">{track.name}</h3>
+                <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => service?.duplicateTrack(track.id)}
+                    {...freeze.writes(!service)}
+                    className="shrink-0 px-1.5"
                 >
-                    <Repeat className="h-4 w-4" />
-                </button>
+                    {t("project.audio.duplicate")}
+                </Button>
+                {track.builtin ? null : (
+                    <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={onDelete}
+                        {...freeze.writes(!service)}
+                        className="shrink-0 px-1.5 hover:text-danger"
+                    >
+                        {t("project.audio.delete")}
+                    </Button>
+                )}
             </div>
 
-            {/* One fade per line, the way Details stacks its fields. Sharing a line put two
-                fields carrying 80px of icon-and-unit chrome into 294px, leaving 64px of each for
-                digits - and at the 240px panel minimum they could not fit at all. */}
-            <NumericDraftEnhancedInput
-                committedDisplay={String(Math.round(track.fadeInMs))}
-                draftResetKey={`${track.id}-fade-in`}
-                onFiniteNumber={fadeInMs => onPatch({ fadeInMs })}
-                disabled={frozen.disabled}
-                inputMode="numeric"
-                type="number"
-                min={0}
-                unit="ms"
-                leftIcon={<ArrowUpRight className="h-3.5 w-3.5" />}
-                aria-label={t("project.audio.fadeInAria")}
-                popoverWhenNarrow={false}
-                selectAllOnFocus
-                className="w-full"
-            />
-            <NumericDraftEnhancedInput
-                committedDisplay={String(Math.round(track.fadeOutMs))}
-                draftResetKey={`${track.id}-fade-out`}
-                onFiniteNumber={fadeOutMs => onPatch({ fadeOutMs })}
-                disabled={frozen.disabled}
-                inputMode="numeric"
-                type="number"
-                min={0}
-                unit="ms"
-                leftIcon={<ArrowDownRight className="h-3.5 w-3.5" />}
-                aria-label={t("project.audio.fadeOutAria")}
-                popoverWhenNarrow={false}
-                selectAllOnFocus
-                className="w-full"
-            />
+            <SettingStack
+                title={t("project.audio.nameTitle")}
+                description={t("project.audio.nameDescription")}
+                titleAttr={frozen.title}
+            >
+                <TrackNameField
+                    name={track.name}
+                    disabled={frozen.disabled}
+                    label={t("project.audio.nameTitle")}
+                    onCommit={name => service?.renameTrack(track.id, name)}
+                />
+            </SettingStack>
 
-            <div className="flex items-center gap-2 text-2xs text-fg-subtle">
-                {/* The point of the whole feature, stated as values: the player slider this track
-                    lands on, and the multiplier that used to be invisible. */}
-                <span className="min-w-0 truncate">
-                    {t(SLIDER_LABEL_KEYS[track.channel])} × {formatGain(track.gain)}
-                </span>
-                {references > 0 ? (
-                    <span
-                        className="flex shrink-0 items-center gap-0.5"
-                        aria-label={tn("project.audio.referencesAria", references)}
-                    >
-                        <Link2 className="h-3 w-3" />
-                        {references}
-                    </span>
-                ) : null}
-                <span className="flex-1" />
-                <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-                    <button
-                        type="button"
-                        onClick={onDuplicate}
-                        aria-label={t("project.audio.duplicate")}
-                        {...freeze.writes()}
-                        className="grid h-6 w-6 place-items-center rounded-md text-fg-muted transition-colors hover:bg-fill hover:text-fg disabled:opacity-40"
-                    >
-                        <Copy className="h-3.5 w-3.5" />
-                    </button>
-                    {track.builtin ? null : (
-                        <button
-                            type="button"
-                            onClick={onDelete}
-                            aria-label={t("project.audio.delete")}
-                            {...freeze.writes()}
-                            className="grid h-6 w-6 place-items-center rounded-md text-fg-muted transition-colors hover:bg-fill hover:text-danger disabled:opacity-40"
-                        >
-                            <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                    )}
-                </div>
-            </div>
+            <SettingStack
+                title={t("project.audio.parentTitle")}
+                description={t("project.audio.parentDescription")}
+                titleAttr={frozen.title}
+            >
+                <Select
+                    size="sm"
+                    fullWidth
+                    portalMenu
+                    className="min-w-0"
+                    options={parentOptions}
+                    value={track.parentId ?? ""}
+                    disabled={frozen.disabled}
+                    ariaLabel={t("project.audio.parentTitle")}
+                    onChange={value => service?.reparentTrack(track.id, String(value) || null)}
+                />
+            </SettingStack>
+
+            <SettingShell
+                title={t("project.audio.volumeTitle")}
+                description={t("project.audio.volumeDescription")}
+                titleAttr={frozen.title}
+            >
+                <NumberField
+                    value={Math.round(track.volume * 100)}
+                    min={VOLUME_PERCENT_MIN}
+                    max={VOLUME_PERCENT_MAX}
+                    unit={t("project.audio.volumeUnit")}
+                    disabled={frozen.disabled}
+                    ariaLabel={t("project.audio.volumeTitle")}
+                    onCommit={percent => service?.updateTrack(track.id, { volume: percent / 100 })}
+                />
+            </SettingShell>
+
+            <SettingRow
+                title={t("project.audio.loopTitle")}
+                description={t("project.audio.loopDescription")}
+                checked={track.loop}
+                loading={false}
+                disabled={!service}
+                onChange={loop => service?.updateTrack(track.id, { loop })}
+            />
         </div>
     );
 }
@@ -319,21 +284,22 @@ function TrackRow({
 /**
  * The name, committed on blur or Enter rather than per keystroke.
  *
- * Not a convenience: the normalizer trims the name and falls an empty one back to the id, so a
- * per-keystroke commit would eat the space the author typed in the middle of "New Track" and would
- * replace a cleared field with a uuid while they were still deleting. Same shape as `DetailField`
- * on the Details sub-page, for the same reason.
+ * Not a convenience: the service trims the name and refuses a blank one, so a per-keystroke commit
+ * would eat the space the author typed in the middle of "New Track" and would reject the field the
+ * moment they cleared it to retype. Same shape as `NumberField` on the Game sub-page, for the same
+ * reason.
  */
-function TrackNameInput({
+function TrackNameField({
     name,
     disabled,
+    label,
     onCommit,
 }: {
     name: string;
     disabled: boolean;
+    label: string;
     onCommit: (name: string) => void;
 }) {
-    const { t } = useTranslation();
     const [draft, setDraft] = useState(name);
 
     useEffect(() => {
@@ -350,34 +316,28 @@ function TrackNameInput({
     }, [draft, name, onCommit]);
 
     return (
-        <EnhancedInput
+        <Input
+            size="sm"
             value={draft}
-            onChange={setDraft}
+            disabled={disabled}
+            aria-label={label}
+            className="w-full min-w-0"
+            onChange={event => setDraft(event.target.value)}
             onBlur={commit}
             onKeyDown={event => {
                 if (event.key === "Enter") {
                     event.currentTarget.blur();
-                }
-                if (event.key === "Escape") {
+                } else if (event.key === "Escape") {
                     setDraft(name);
                     event.currentTarget.blur();
                 }
             }}
-            disabled={disabled}
-            aria-label={t("project.audio.nameAria")}
-            popoverWhenNarrow={false}
-            className="w-full"
         />
     );
 }
 
-/** Two decimals, trailing zeros trimmed: `1`, `0.5`, `1.25` - never `1.00` next to `0.50`. */
-function formatGain(gain: number): string {
-    return String(Math.round(gain * 100) / 100);
-}
-
 /**
- * How many stored references each track has, read from the documents that can hold one.
+ * How many stored references each bus has, read from the documents that can hold one.
  *
  * Reads the in-memory documents rather than the files, so the count reflects unsaved edits - the
  * same reason `ReferenceService` is renderer-side. A story that has never been opened is loaded
