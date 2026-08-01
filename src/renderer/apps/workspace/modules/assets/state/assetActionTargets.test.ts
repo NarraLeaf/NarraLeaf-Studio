@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { AssetCategory, AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup, AssetSource } from "@/lib/workspace/services/assets/types";
 import {
     contextMenuActsOnSelection,
@@ -22,7 +22,7 @@ function asset(id: string, name: string, groupId?: string): Asset {
 }
 
 function group(id: string, name: string, parentGroupId?: string): AssetGroup {
-    return { id, name, type: AssetType.Image, parentGroupId, createdAt: 0, updatedAt: 0 };
+    return { id, name, category: AssetCategory.Image, parentGroupId, createdAt: 0, updatedAt: 0 };
 }
 
 const room = asset("a1", "room.jpg");
@@ -30,29 +30,25 @@ const outside = asset("a2", "outside.jpg");
 const backdrops = group("g1", "backdrops");
 
 const assets = {
-    [AssetType.Image]: [room, outside],
-    [AssetType.Audio]: [],
-    [AssetType.Video]: [],
-    [AssetType.JSON]: [],
-    [AssetType.Blueprint]: [],
-    [AssetType.Font]: [],
-    [AssetType.Model]: [],
-    [AssetType.Other]: [],
-} as Record<AssetType, Asset[]>;
+    [AssetCategory.Image]: [room, outside],
+    [AssetCategory.Media]: [],
+    [AssetCategory.Data]: [],
+    [AssetCategory.Font]: [],
+    [AssetCategory.Model]: [],
+    [AssetCategory.Other]: [],
+} as Record<AssetCategory, Asset[]>;
 
 const groups = {
-    [AssetType.Image]: [backdrops],
-    [AssetType.Audio]: [],
-    [AssetType.Video]: [],
-    [AssetType.JSON]: [],
-    [AssetType.Blueprint]: [],
-    [AssetType.Font]: [],
-    [AssetType.Model]: [],
-    [AssetType.Other]: [],
-} as Record<AssetType, AssetGroup[]>;
+    [AssetCategory.Image]: [backdrops],
+    [AssetCategory.Media]: [],
+    [AssetCategory.Data]: [],
+    [AssetCategory.Font]: [],
+    [AssetCategory.Model]: [],
+    [AssetCategory.Other]: [],
+} as Record<AssetCategory, AssetGroup[]>;
 
 function menuOn(item: Asset | AssetGroup | null, isGroup = false): ContextMenuTargetState {
-    return { type: AssetType.Image, item, isGroup };
+    return { category: AssetCategory.Image, item, isGroup };
 }
 
 function resolve(params: {
@@ -76,7 +72,7 @@ describe("resolveAssetActionTargets", () => {
             contextMenuTarget: menuOn(outside),
         });
 
-        expect(targets).toEqual([{ isGroup: false, type: AssetType.Image, item: outside }]);
+        expect(targets).toEqual([{ isGroup: false, category: AssetCategory.Image, item: outside }]);
     });
 
     it("acts on the whole selection when the right-clicked row is part of it", () => {
@@ -95,16 +91,16 @@ describe("resolveAssetActionTargets", () => {
             contextMenuTarget: menuOn(sameId, true),
             focusedItemId: null,
             assets,
-            groups: { ...groups, [AssetType.Image]: [sameId] },
+            groups: { ...groups, [AssetCategory.Image]: [sameId] },
         });
 
-        expect(targets).toEqual([{ isGroup: true, type: AssetType.Image, item: sameId }]);
+        expect(targets).toEqual([{ isGroup: true, category: AssetCategory.Image, item: sameId }]);
     });
 
     it("acts on the right-clicked row when nothing is selected", () => {
         const targets = resolve({ contextMenuTarget: menuOn(backdrops, true) });
 
-        expect(targets).toEqual([{ isGroup: true, type: AssetType.Image, item: backdrops }]);
+        expect(targets).toEqual([{ isGroup: true, category: AssetCategory.Image, item: backdrops }]);
     });
 
     it("acts on the selection when no context menu is open", () => {

@@ -13,6 +13,11 @@ import { UISurfaceEditorTab } from "@/apps/workspace/modules/ui-editor/editors/U
 import { CharacterEditor } from "@/apps/workspace/modules/characters/editors/CharacterEditor";
 import { ImagePreviewEditor } from "@/apps/workspace/modules/assets/editors/ImagePreviewEditor";
 import { AudioPreviewEditor } from "@/apps/workspace/modules/assets/editors/AudioPreviewEditor";
+import { TextEditor } from "@/apps/workspace/modules/assets/editors/text/TextEditor";
+import { isTextEditableAsset } from "@/apps/workspace/modules/assets/editors/text/textEditableFiles";
+// The id prefix lives apart from the component so `trySerializeTab` can recognise a text tab
+// without the session module depending on Monaco to do it.
+import { TEXT_EDITOR_TAB_PREFIX, getTextEditorTabId } from "@/apps/workspace/modules/assets/editors/text/textEditorTabId";
 import { StorySceneEditorTab } from "@/apps/workspace/modules/story/scene-editor/StorySceneEditorTab";
 import {
     getStorySceneEditorTabId,
@@ -63,6 +68,7 @@ export type SerializedTab =
     | { kind: "character"; characterId: string }
     | { kind: "assetImage"; assetId: string; title: string }
     | { kind: "assetAudio"; assetId: string; title: string }
+    | { kind: "assetText"; assetId: string; title: string }
     | { kind: "storyScene"; title: string; payload: StorySceneEditorTabPayload }
     | { kind: "storyMotion"; title: string; payload: StoryMotionEditorPayload };
 
@@ -234,6 +240,13 @@ export function trySerializeTab(tab: EditorTabDefinition): SerializedTab | null 
         }
         return { kind: "assetAudio", assetId, title: tab.title };
     }
+    if (tab.id.startsWith(TEXT_EDITOR_TAB_PREFIX)) {
+        const assetId = tab.id.slice(TEXT_EDITOR_TAB_PREFIX.length);
+        if (!assetId) {
+            return null;
+        }
+        return { kind: "assetText", assetId, title: tab.title };
+    }
     if (tab.id.startsWith(STORY_SCENE_TAB_PREFIX) && isStorySceneEditorPayload(tab.payload)) {
         return { kind: "storyScene", title: tab.title, payload: tab.payload };
     }
@@ -319,6 +332,14 @@ function isSerializedTab(value: unknown): value is SerializedTab {
     }
     if (
         kind === "assetAudio" &&
+        typeof o.assetId === "string" &&
+        o.assetId.length > 0 &&
+        typeof o.title === "string"
+    ) {
+        return true;
+    }
+    if (
+        kind === "assetText" &&
         typeof o.assetId === "string" &&
         o.assetId.length > 0 &&
         typeof o.title === "string"
@@ -464,6 +485,11 @@ function storyIcon(): ReactNode {
     return createElement(FileText, { className: "w-4 h-4" });
 }
 
+/** Same glyph the open path gives a text tab, so a restored tab is indistinguishable. */
+function textIcon(): ReactNode {
+    return createElement(FileText, { className: "w-4 h-4" });
+}
+
 /**
  * Rebuild a live tab definition from its serialized form. Null when the tab's
  * resource no longer exists (deleted scene/asset/…) - callers drop the entry.
@@ -579,6 +605,23 @@ export function buildTabDefinition(ctx: WorkspaceContext, entry: SerializedTab):
             title: entry.title,
             icon: audioIcon(),
             component: AudioPreviewEditor,
+            closable: true,
+            payload: { asset },
+        };
+    }
+    if (entry.kind === "assetText") {
+        const assetsService = ctx.services.get<AssetsService>(Services.Assets);
+        const asset = assetsService.getAssets()[AssetType.Other][entry.assetId] as Asset<AssetType.Other> | undefined;
+        // The extension check runs again on restore, not just on open: an asset renamed from
+        // `plan.md` to `plan.psd` between sessions must not come back in a text editor.
+        if (!asset || !isTextEditableAsset(asset)) {
+            return null;
+        }
+        return {
+            id: getTextEditorTabId(entry.assetId),
+            title: entry.title,
+            icon: textIcon(),
+            component: TextEditor,
             closable: true,
             payload: { asset },
         };

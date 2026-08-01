@@ -17,6 +17,8 @@ import {
     BlueprintLayerPreview,
     resolveFirstBlueprintLayerPreview,
 } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintLayerPreview";
+import { InspectOnlyButton } from "@/lib/components/elements/InspectOnlyButton";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 
 export function StoryActionBlueprintPreviewCard(props: {
     /** Owner blueprint id; may be empty (the card stays clickable so `onOpen` can create it). */
@@ -35,6 +37,7 @@ export function StoryActionBlueprintPreviewCard(props: {
 }) {
     const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
+    const { frozen, reason } = useFreezeGuard();
     const blueprintRevision = useBlueprintDocumentRevision();
     const localBp =
         isInitialized && context ? context.services.get<LocalBlueprintService>(Services.LocalBlueprint) : null;
@@ -47,14 +50,23 @@ export function StoryActionBlueprintPreviewCard(props: {
 
     return (
         <div className="space-y-2 rounded-lg border border-edge bg-surface px-3 py-3">
-            <button
-                type="button"
-                className="block w-full rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/70"
+            {/* An `InspectOnlyButton` because the story action inspector clamps its whole field body
+                in a `disabled` `<fieldset>` while the workspace is frozen, and reaching a blueprint
+                to read it is not a write - the blueprint editor enforces the freeze itself.
+
+                **Except when there is nothing to open yet**: this card doubles as the create
+                affordance (`ensureStoryActionBlueprint` runs on the way in and the block's payload
+                is patched with the new id), so with no `blueprintId` the click is a write and the
+                card is disabled for exactly as long as the freeze lasts. */}
+            <InspectOnlyButton
+                disabled={frozen && !props.blueprintId}
+                title={frozen && !props.blueprintId ? reason : undefined}
+                className="block w-full rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/70 cursor-default"
                 onClick={props.onOpen}
                 aria-label={props.ariaLabel ?? (props.blueprintId ? t("story.blueprintCard.openAria") : t("story.blueprintCard.createAria"))}
             >
                 <BlueprintLayerPreview model={previewModel} heightClassName={props.heightClassName} variant={props.variant ?? "mini"} />
-            </button>
+            </InspectOnlyButton>
         </div>
     );
 }

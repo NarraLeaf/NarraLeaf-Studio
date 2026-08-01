@@ -2,7 +2,7 @@ import { ProjectNameConvention, isValidAssetStorageId } from "@/lib/workspace/pr
 import { RendererError } from "@shared/utils/error";
 import { FileSystemService } from "../../core/FileSystem";
 import { Services, WorkspaceContext } from "../../services";
-import { AssetType, isBundleAssetType } from "../assetTypes";
+import { AssetType, categoryOfAssetType, isBundleAssetType } from "../assetTypes";
 import { Asset, AssetExtras, AssetSource, AssetsMap } from "../types";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { AssetsService } from "../../core/AssetsService";
@@ -47,9 +47,16 @@ export class AssetsMetadataManager {
      *
      * Reconciled on every call rather than cached: the stored order is a hint that is always one
      * write behind the record, and an asset the hint has not heard of has to appear regardless.
+     *
+     * The order file is per *category*, so its `assetIds` may name assets of a sibling type (audio
+     * and video share one). Reconciliation drops ids the record does not hold, so asking it for one
+     * type's slice of a shared list is exactly what it already does.
      */
     public listOrdered<T extends AssetType>(type: T): string[] {
-        return reconcileAssetOrder(this.assetsService.getAssetOrderManager().getAssetIds(type), this.getAssets()[type]);
+        return reconcileAssetOrder(
+            this.assetsService.getAssetOrderManager().getAssetIds(categoryOfAssetType(type)),
+            this.getAssets()[type],
+        );
     }
 
     public getOrderedAssets<T extends AssetType>(type: T): Asset<T, AssetSource>[] {

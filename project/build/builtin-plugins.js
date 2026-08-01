@@ -105,6 +105,19 @@ async function buildBuiltInPlugin(pluginDir, options = {}) {
     }
 
     fs.copyFileSync(path.join(pluginDir, 'manifest.json'), path.join(outDir, 'manifest.json'));
+    // A declared icon is part of the package: PluginManager refuses a manifest
+    // whose icon file is missing, so leaving it behind here would break the
+    // built-in at install time rather than at build time.
+    if (typeof manifest.icon === 'string' && manifest.icon.trim()) {
+        const relative = manifest.icon.trim().split(/[\\/]+/);
+        const source = path.join(pluginDir, ...relative);
+        if (!fs.existsSync(source)) {
+            throw new Error(`Built-in plugin ${manifest.id || pluginName} declares a missing icon: ${manifest.icon}`);
+        }
+        const target = path.join(outDir, ...relative);
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        fs.copyFileSync(source, target);
+    }
     return {
         id: manifest.id || pluginName,
         sourceDir: pluginDir,

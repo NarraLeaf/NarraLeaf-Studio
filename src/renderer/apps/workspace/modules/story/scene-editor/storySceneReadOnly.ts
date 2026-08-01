@@ -31,7 +31,6 @@ const READ_ONLY_STORY_ROW_ACTIONS: ReadonlySet<keyof StoryRowActions> = new Set<
     // Folding a container and its staging lens are view state. They live in `PanelStateService`, which
     // `shared/vcs/serviceStores` classifies as Studio state and keeps out of the repository entirely.
     "toggleCollapsed",
-    "toggleLens",
     // Caret bookkeeping for vertical arrow navigation; touches nothing but the goal column.
     "goalColumnInvalidated",
     // Reading a row's fields is the entire point of a frozen workspace. The write branches inside

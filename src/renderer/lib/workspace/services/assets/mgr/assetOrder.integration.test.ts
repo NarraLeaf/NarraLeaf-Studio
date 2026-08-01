@@ -8,7 +8,7 @@ import { AssetOrderManager } from "./AssetOrderManager";
 import { AssetsMetadataManager } from "./AssetsMetadataManager";
 import { GroupAssetsManager } from "./GroupAssetsManager";
 import { AssetsService } from "../../core/AssetsService";
-import { AssetType } from "../assetTypes";
+import { ASSET_CATEGORY_ORDER, AssetCategory, AssetType } from "../assetTypes";
 import { EMPTY_ASSET_ORDER_TEXT } from "../assetOrder";
 import { Services } from "../../services";
 
@@ -112,16 +112,16 @@ async function openProject() {
     const groupManager = await new GroupAssetsManager(service, context as any).init();
     (service as any).groupAssetsManager = groupManager;
 
-    for (const type of orderManager.listMissingTypes()) {
-        (service as any).dirtyOrderTypes.add(type);
+    for (const category of orderManager.listMissingCategories()) {
+        (service as any).dirtyOrderCategories.add(category);
     }
     await service["flushPendingWrites"]();
 
     return { service, metadataManager, groupManager, orderManager };
 }
 
-function orderFilePath(type: AssetType): string {
-    return path.join(projectPath, "assets", `assets.order.${type}.json`);
+function orderFilePath(category: AssetCategory): string {
+    return path.join(projectPath, "assets", `assets.order.${category}.json`);
 }
 
 function readJsonFile(filePath: string): unknown {
@@ -144,7 +144,9 @@ beforeEach(() => {
 
     for (const type of Object.values(AssetType)) {
         fs.writeFileSync(path.join(projectPath, "assets", `assets.metadata.${type}.json`), "{}", "utf-8");
-        fs.writeFileSync(path.join(projectPath, "assets", `assets.groups.${type}.json`), "{}", "utf-8");
+    }
+    for (const category of ASSET_CATEGORY_ORDER) {
+        fs.writeFileSync(path.join(projectPath, "assets", `assets.groups.${category}.json`), "{}", "utf-8");
     }
 
     // An old-shape project: both shards populated, no order file anywhere.
@@ -162,22 +164,22 @@ beforeEach(() => {
 
 describe("migrating a real project that has no order file", () => {
     it("creates the order file on disk, holding the order recovered from key order", async () => {
-        expect(fs.existsSync(orderFilePath(AssetType.Image))).toBe(false);
+        expect(fs.existsSync(orderFilePath(AssetCategory.Image))).toBe(false);
 
         await openProject();
 
-        expect(fs.existsSync(orderFilePath(AssetType.Image))).toBe(true);
-        expect(readJsonFile(orderFilePath(AssetType.Image))).toEqual({
+        expect(fs.existsSync(orderFilePath(AssetCategory.Image))).toBe(true);
+        expect(readJsonFile(orderFilePath(AssetCategory.Image))).toEqual({
             assetIds: [IMAGE_C, IMAGE_A, IMAGE_B],
             groupIds: ["group_2", "group_1"],
         });
     });
 
-    it("creates one for every asset type, not just the populated one", async () => {
+    it("creates one for every sidebar section, not just the populated one", async () => {
         await openProject();
 
-        for (const type of Object.values(AssetType)) {
-            expect(fs.existsSync(orderFilePath(type)), `missing order file for ${type}`).toBe(true);
+        for (const category of ASSET_CATEGORY_ORDER) {
+            expect(fs.existsSync(orderFilePath(category)), `missing order file for ${category}`).toBe(true);
         }
     });
 
@@ -193,13 +195,13 @@ describe("migrating a real project that has no order file", () => {
 
     it("survives the second open: the order is read back, and nothing is rewritten", async () => {
         await openProject();
-        const afterMigration = fs.statSync(orderFilePath(AssetType.Image)).mtimeMs;
+        const afterMigration = fs.statSync(orderFilePath(AssetCategory.Image)).mtimeMs;
 
         const reopened = await openProject();
 
         expect(reopened.metadataManager.listOrdered(AssetType.Image)).toEqual([IMAGE_C, IMAGE_A, IMAGE_B]);
-        expect(reopened.groupManager.getGroups(AssetType.Image).map(group => group.id)).toEqual(["group_2", "group_1"]);
-        expect(fs.statSync(orderFilePath(AssetType.Image)).mtimeMs).toBe(afterMigration);
+        expect(reopened.groupManager.getGroups(AssetCategory.Image).map(group => group.id)).toEqual(["group_2", "group_1"]);
+        expect(fs.statSync(orderFilePath(AssetCategory.Image)).mtimeMs).toBe(afterMigration);
     });
 
     it("uses a writer that creates an absent file — the no-follow one cannot", async () => {
@@ -225,7 +227,7 @@ describe("migrating a real project that has no order file", () => {
             service.markDirty(AssetType.Image);
         });
 
-        expect((readJsonFile(orderFilePath(AssetType.Image)) as { assetIds: string[] }).assetIds)
+        expect((readJsonFile(orderFilePath(AssetCategory.Image)) as { assetIds: string[] }).assetIds)
             .toEqual([IMAGE_C, IMAGE_A, IMAGE_B]);
     });
 });
@@ -235,9 +237,11 @@ describe("a project created the way the wizard creates one", () => {
     function layDownWizardProject(): void {
         for (const type of Object.values(AssetType)) {
             fs.writeFileSync(path.join(projectPath, "assets", `assets.metadata.${type}.json`), "{}", "utf-8");
-            fs.writeFileSync(path.join(projectPath, "assets", `assets.groups.${type}.json`), "{}", "utf-8");
+        }
+        for (const category of ASSET_CATEGORY_ORDER) {
+            fs.writeFileSync(path.join(projectPath, "assets", `assets.groups.${category}.json`), "{}", "utf-8");
             fs.writeFileSync(
-                path.join(projectPath, "assets", `assets.order.${type}.json`),
+                path.join(projectPath, "assets", `assets.order.${category}.json`),
                 EMPTY_ASSET_ORDER_TEXT,
                 "utf-8",
             );
@@ -246,14 +250,14 @@ describe("a project created the way the wizard creates one", () => {
 
     it("opens with nothing to migrate and nothing rewritten", async () => {
         layDownWizardProject();
-        const before = Object.values(AssetType).map(type => fs.statSync(orderFilePath(type)).mtimeMs);
+        const before = ASSET_CATEGORY_ORDER.map(category => fs.statSync(orderFilePath(category)).mtimeMs);
 
         const { metadataManager, groupManager, orderManager } = await openProject();
 
-        expect(orderManager.listMissingTypes()).toEqual([]);
+        expect(orderManager.listMissingCategories()).toEqual([]);
         expect(metadataManager.listOrdered(AssetType.Image)).toEqual([]);
-        expect(groupManager.getGroups(AssetType.Image)).toEqual([]);
-        expect(Object.values(AssetType).map(type => fs.statSync(orderFilePath(type)).mtimeMs)).toEqual(before);
+        expect(groupManager.getGroups(AssetCategory.Image)).toEqual([]);
+        expect(ASSET_CATEGORY_ORDER.map(category => fs.statSync(orderFilePath(category)).mtimeMs)).toEqual(before);
     });
 
     it("records the order of the first assets imported into it", async () => {
@@ -267,6 +271,6 @@ describe("a project created the way the wizard creates one", () => {
             service.markDirty(AssetType.Image);
         });
 
-        expect(readJsonFile(orderFilePath(AssetType.Image))).toEqual({ assetIds: [IMAGE_B, IMAGE_C], groupIds: [] });
+        expect(readJsonFile(orderFilePath(AssetCategory.Image))).toEqual({ assetIds: [IMAGE_B, IMAGE_C], groupIds: [] });
     });
 });
