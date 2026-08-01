@@ -266,6 +266,58 @@ describe("PluginManager", () => {
         await expect(manager.uninstallPlugin("acme.sample-plugin")).rejects.toThrow("Built-in plugins cannot be uninstalled");
     });
 
+    it("ignores staging leftovers instead of letting them shadow the installed package", async () => {
+        const builtInPluginsDir = path.join(tempDir, "dist", "builtin-plugins");
+        await writePluginPackage(path.join(builtInPluginsDir, "sample"), "2.0.0");
+        // What an interrupted swap used to leave behind: same manifest id, older
+        // version, sorted after the real directory - so the scan built the record
+        // from it and the plugin stayed pinned to 1.0.0 no matter how often it
+        // was rebuilt.
+        const leftover = path.join(tempDir, "plugins", "acme.sample-plugin.builtin-tmp-1785024220689-kookjitrca");
+        const staged = path.join(tempDir, "plugins", ".staging", "acme.sample-plugin-1785024220689-abc");
+        await writePluginPackage(leftover, "1.0.0");
+        await writePluginPackage(staged, "0.9.0");
+
+        const manager = new PluginManager(tempDir, permissionManager as any, { builtInPluginsDir });
+        const plugins = await manager.listPlugins();
+
+        expect(plugins).toHaveLength(1);
+        expect(plugins[0]).toMatchObject({
+            pluginId: "acme.sample-plugin",
+            manifest: { version: "2.0.0" },
+            builtIn: true,
+            installPath: path.join(tempDir, "plugins", "acme.sample-plugin"),
+        });
+        // Both leftovers are gone; the staging root itself is a working
+        // directory and may survive, empty, between swaps.
+        await expect(fs.stat(leftover)).rejects.toBeTruthy();
+        await expect(fs.stat(staged)).rejects.toBeTruthy();
+    });
+
+    it("re-syncs built-in plugins that were rebuilt while Studio is running", async () => {
+        const builtInPluginsDir = path.join(tempDir, "dist", "builtin-plugins");
+        const packageDir = path.join(builtInPluginsDir, "sample");
+        await writePluginPackage(packageDir, "1.0.0");
+
+        const manager = new PluginManager(tempDir, permissionManager as any, { builtInPluginsDir });
+        await expect(manager.listPlugins()).resolves.toMatchObject([{ manifest: { version: "1.0.0" } }]);
+
+        // `yarn dev` rebuilding a built-in plugin under the running app.
+        await writePluginPackage(packageDir, "1.1.0");
+        await manager.refreshBuiltInPlugins();
+
+        await expect(manager.listPlugins()).resolves.toMatchObject([{
+            pluginId: "acme.sample-plugin",
+            manifest: { version: "1.1.0" },
+            enabled: true,
+            grantedManifestVersion: "1.1.0",
+        }]);
+        const installed = JSON.parse(
+            await fs.readFile(path.join(tempDir, "plugins", "acme.sample-plugin", "manifest.json"), "utf-8"),
+        );
+        expect(installed.version).toBe("1.1.0");
+    });
+
     it("exposes a declared icon and serves it before the plugin is authorized", async () => {
         await writeIcon(sourceDir, "icon.png", 512);
         await writePluginPackage(sourceDir, "1.0.0", { studio: "main.js" }, undefined, "icon.png");

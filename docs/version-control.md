@@ -19,7 +19,7 @@ Studio 的版本控制以 [Epic Games Lore](https://github.com/EpicGames/lore) �
 | 三路合并的 base 能拿到吗 | **Lore 不提供**，但 DAG 完整；LCA 已在 §9 的封装层里实现 |
 | 能纯离线吗 | **单机能**，已验证；团队场景首次读远端历史要联网 |
 | 原生库能进 Electron 吗 | **能**，Electron 38 直接可用，无需重编 |
-| 需要写服务端包装吗 | **P0 不需要**，见 §5 |
+| 需要写服务端包装吗 | **P0 不需要**，见 §5。局域网协作已实现，连接流程见 §5.3.1 |
 | Intel Mac 怎么办 | **VCS 做成可插拔可降级**，Studio 照常全平台分发，见 §7 |
 
 ## 1. Lore 架构（够用的最小认知）
@@ -442,6 +442,48 @@ loreserver --config /opt/loreserver/config
 - 顺带做项目发现/列表
 
 loreserver 本身不动，它只负责验签。这是个几百行的服务，不是一个平台。
+
+### 5.3.1 把一个**已有的本地工程**连到服务器（已实现，2026-07-31）
+
+这是最常见的起点：作者先在本机启用了版本控制（离线建库），后来才有服务器。**它能连上，不需要重新
+clone**，但**连接是两件事，只做第一件会静默地半成功**。
+
+作者面的三步：
+
+1. 打开工程 → 版本轨道 → **连接服务器**；
+2. 填**一个字段**，形如 `lore://studio.example.lan:41337/my-game`。
+   **末尾那一段是工程在服务器上的名字**，也就是队友 clone 时要用的那一串（见下面第 2 条）；
+3. **上传到服务器**（push）。之后队友在启动器里用**从服务器获取工程**加同一个地址就能拿到。
+
+底下实际发生的（`VcsManager.setRemote` → `remote.ts`）：
+
+```
+写 .lore/config.toml 的 remote_url          # 纯本地，只改这一行
+  → 在一个临时空目录里 repositoryCreate(online, {repositoryUrl, id: 本工程的 repositoryId})
+                                            # ← 登记，没有它就是下面第 1 条
+  → 失败则把 remote_url 回滚               # 要么两件都成，要么一件都不留
+```
+
+**三条实测坑，每条都会让上面这段看起来可以省掉：**
+
+1. **只写 `remote_url` 会得到一个「推得上去、clone 不下来」的工程。**
+   push 返回成功、`repositoryStatus` 报 `remoteBranchExists: true`——而 `repositoryClone`
+   **按名字、按仓库 id、按仓库自己的 `name` 全部答 `Not found`**。
+   **只有 `repositoryCreate` 会在服务器上登记仓库，push 不会**，而 `repositoryCreate` 拒绝在已经是
+   仓库的目录里跑——所以才要那个临时目录 + 显式 `id`。
+   这条最危险的地方在于：**从设置它的那台机器上看，一切都是对的**。
+2. **URL 必须带一个非空路径段，而那一段就是仓库在服务器上的名字。**
+   `lore://host:41337` 和 `lore://host:41337/` 都报 `parsing repository URL: Invalid URL`。
+   存进 config 时路径段会被**剥掉只留源**，所以配置文件里看到的和填进去的不是同一个字符串。
+3. **建库必须离线。** `repositoryCreate` 在 `offline:false` 下会**连服务器建库**，同名不同 id 直接报错。
+   所以 `initRepository` 永远走 `offline: true`，连服务器是之后一个独立的、作者显式发起的动作。
+
+**断开**（`setRemote(null)`）是纯本地的：写回未配置占位符，服务器上的东西一概不动。
+
+> **占位符的历史包袱**：旧占位符是 `lore://127.0.0.1:41337/local`，剥掉路径之后就是
+> **loreserver 的默认地址**，而它写进了**每一个 Studio 建过的工程**。今天已换成
+> `lore://unconfigured.invalid/none`（RFC 2606，永远解析不了），并且
+> `isVcsRemoteConfigured` **把新旧两个占位符都当作「没配」**——老工程不迁移也不会被误判成已连接。
 
 ### 5.4 命名
 

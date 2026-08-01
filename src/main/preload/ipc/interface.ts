@@ -21,7 +21,7 @@ import type { DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/dev
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import type { PrivilegedActor } from "@shared/types/privileged";
-import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsHistoryEntry, VcsInitOptions, VcsRepositoryInfo, VcsRestoreOptions, VcsRestoreResult, VcsStatus, VcsThreeWayResult } from "@shared/types/vcs";
+import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsHistoryEntry, VcsInitOptions, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
@@ -382,6 +382,23 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.vcsGetThreeWay, { projectPath, mine, theirs, path }) as Promise<RequestStatus<VcsThreeWayResult>>,
         getMergeBase: (projectPath: string, a: RevisionId, b: RevisionId) =>
             ipcClient.invoke(IPCEventType.vcsGetMergeBase, { projectPath, a, b }) as Promise<RequestStatus<{ base?: RevisionId }>>,
+        /** Local read - no socket. Null means the project has no server. */
+        getRemote: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsGetRemote, { projectPath }) as Promise<RequestStatus<{ url: string | null }>>,
+        /** Local write - does NOT contact the server. `null` disconnects. */
+        setRemote: (projectPath: string, url: string | null) =>
+            ipcClient.invoke(IPCEventType.vcsSetRemote, { projectPath, url }) as Promise<RequestStatus<{ url: string | null }>>,
+        /** Goes to the network; ~2s when nothing answers. On demand only, never on a timer. */
+        getSyncState: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsGetSyncState, { projectPath }) as Promise<RequestStatus<VcsSyncState>>,
+        push: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsPush, { projectPath }) as Promise<RequestStatus<VcsPushResult>>,
+        /** Writes the working tree: re-read every document once this resolves. */
+        sync: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsSync, { projectPath }) as Promise<RequestStatus<VcsSyncResult>>,
+        /** Destination must be an empty (or missing) folder. */
+        clone: (url: string, destination: string) =>
+            ipcClient.invoke(IPCEventType.vcsClone, { url, destination }) as Promise<RequestStatus<{ root: string; branch: string; fileCount: number }>>,
     },
 
     gameBuild: {

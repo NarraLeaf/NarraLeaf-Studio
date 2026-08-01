@@ -44,7 +44,7 @@ import type {
 } from "./privileged";
 import { AppEventToken } from "./app";
 import type { LocaleContribution } from "@shared/i18n";
-import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsHistoryEntry, VcsInitOptions, VcsRepositoryInfo, VcsRestoreOptions, VcsRestoreResult, VcsStatus, VcsThreeWayResult } from "./vcs";
+import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsHistoryEntry, VcsInitOptions, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -411,6 +411,58 @@ export interface RendererPreloadedInterface {
         /** base/mine/theirs for a merge. A missing `base` is an add/add, not an empty file. */
         getThreeWay(projectPath: string, mine: RevisionId, theirs: RevisionId, path: string): Promise<RequestStatus<VcsThreeWayResult>>;
         getMergeBase(projectPath: string, a: RevisionId, b: RevisionId): Promise<RequestStatus<{ base?: RevisionId }>>;
+        /**
+         * The server this project synchronises with, or null when it has none.
+         *
+         * A LOCAL read: it reads the repository's own config and opens no socket, so it
+         * is safe to ask whenever a panel needs to know which controls to offer. Whether
+         * that server can be reached is a different, slower question - `getSyncState`.
+         */
+        getRemote(projectPath: string): Promise<RequestStatus<{ url: string | null }>>;
+        /**
+         * Point the project at a server, or disconnect it by passing null.
+         *
+         * Deliberately does not contact it. Configuring and reaching are separate acts,
+         * so this works with the network down and answers immediately.
+         */
+        setRemote(projectPath: string, url: string | null): Promise<RequestStatus<{ url: string | null }>>;
+        /**
+         * Where this branch stands against its server.
+         *
+         * **The one call on this surface that waits on a network**: up to ~2s when
+         * nothing answers, which is measured rather than estimated. Only ever call it
+         * because someone asked, or right after an operation that changed the answer -
+         * never on project open and never on a timer. An unreachable server answers
+         * `remoteAvailable: false`; that is information, not an error.
+         */
+        getSyncState(projectPath: string): Promise<RequestStatus<VcsSyncState>>;
+        /**
+         * Send this branch's revisions to the server. Writes nothing locally, so a
+         * failure leaves the project exactly as it was.
+         *
+         * A diverged branch fails with the backend's own sentence, which names the
+         * remedy: sync first, then push again. `alreadyPushed` is a SUCCESS.
+         */
+        push(projectPath: string): Promise<RequestStatus<VcsPushResult>>;
+        /**
+         * Bring the server's revisions down into the working tree.
+         *
+         * **Changes the author's files**, with the same obligation a restore carries:
+         * re-read every document once it resolves, or an editor still holding the
+         * pre-sync version will write it back over what arrived.
+         *
+         * Refused when the working tree is dirty - a sync of a diverged branch merges,
+         * and a merge must not land on uncommitted work. `conflicts` non-empty is a
+         * SUCCESS that must stop the caller: the tree is already written and Studio has
+         * no way to resolve them yet.
+         */
+        sync(projectPath: string): Promise<RequestStatus<VcsSyncResult>>;
+        /**
+         * Copy a repository from a server into a local folder, which must be empty or
+         * absent. The only call here with no `projectPath`: there is no project at the
+         * destination until it finishes.
+         */
+        clone(url: string, destination: string): Promise<RequestStatus<{ root: string; branch: string; fileCount: number }>>;
     };
 
     gameBuild: {

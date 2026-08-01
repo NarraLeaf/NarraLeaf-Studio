@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import {
     ArchiveRestore,
     ChevronDown,
+    Cloud,
+    CloudDownload,
+    CloudUpload,
     ChevronsLeft,
     Clock,
     Copy,
@@ -19,10 +22,11 @@ import {
     TriangleAlert,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { VcsChangeKind, VcsFileChange } from "@shared/types/vcs";
+import type { VcsChangeKind, VcsFileChange, VcsSyncState } from "@shared/types/vcs";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
-import { TextArea } from "@/lib/components/elements/Input";
+import type { TranslationKey } from "@shared/i18n";
+import { Input, TextArea } from "@/lib/components/elements/Input";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
 import {
     VERSION_RAIL_COLLAPSED_WIDTH,
@@ -222,6 +226,16 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
 
             <div className="flex-1 min-h-0 overflow-y-auto">
                 <FocusedVersion surface={surface} />
+
+                {/* Between the version block and the commit form, which is where it belongs in the
+                    hierarchy rather than where it is most eye-catching: a server is a property of
+                    the REPOSITORY, a sibling of the branch and the head above it - not of the
+                    working tree the two sections below describe. Reading down the panel therefore
+                    goes "which version am I on -> where does that live -> what have I changed",
+                    which is also the order in which the answers stop being true. */}
+                {state.kind !== "not-a-repository" && state.kind !== "probing" && (
+                    <ServerSection surface={surface} />
+                )}
 
                 {/* Above the change list, which is the opposite of a review-then-act reading order and
                     is deliberate: this is a 320px column with ONE scroller, and the list can be fifty
@@ -649,6 +663,261 @@ function CommitForm({ surface }: { surface: VersionSurface }) {
 }
 
 /**
+ * The server this project synchronises with: whether there is one, where it stands, and the two
+ * buttons that move versions between here and there.
+ *
+ * **Nothing here contacts the server until the author asks.** Whether a server is CONFIGURED is a
+ * local read and is known on open; whether it ANSWERS costs up to two seconds against a host that
+ * is not there (measured), so the section opens on "not checked" and `checkRemote` is the only
+ * thing that reaches out. A row that phoned home on mount would put those two seconds on the path
+ * of opening the panel, and would do it again on every project.
+ *
+ * **The credential fields are absent until the server refuses us.** Lore's token login needs both a
+ * token and an https auth endpoint, and a bare server on a LAN has neither and needs neither -
+ * measured. Asking for them up front would put two mandatory-looking boxes in front of every author
+ * for a case most will never hit; asking at the moment of refusal puts them exactly where the
+ * question arises. That is also why the common setup is genuinely one field: the backend keeps only
+ * the ORIGIN of the URL it is given and identifies the repository by its own id, so a per-project
+ * address is not a thing that exists.
+ */
+function ServerSection({ surface }: { surface: VersionSurface }) {
+    const { t } = useTranslation();
+    const { remote, syncState, busy } = surface;
+    const [editing, setEditing] = useState(false);
+    const [draft, setDraft] = useState("");
+    const running = busy !== null;
+
+    const open = () => {
+        // Seeded with the current address so that CHANGING a server is an edit rather than a
+        // retype - the two differ by a port far more often than by the whole string.
+        setDraft(remote ?? "");
+        setEditing(true);
+    };
+
+    const submit = () => {
+        const url = draft.trim();
+        if (!url) {
+            return;
+        }
+        void surface.setRemote(url).then(saved => {
+            if (saved) setEditing(false);
+        });
+    };
+
+    if (editing) {
+        return (
+            <div data-vcs-seam="server-form" className="border-b border-edge px-3 py-2">
+                <label className="block text-2xs tracking-wide text-fg-subtle">
+                    {t("workspace.shell.versionControl.server.addressLabel")}
+                </label>
+                <Input
+                    size="sm"
+                    autoFocus
+                    value={draft}
+                    onChange={event => setDraft(event.target.value)}
+                    onKeyDown={event => {
+                        if (event.key === "Enter") {
+                            event.preventDefault();
+                            submit();
+                        }
+                        if (event.key === "Escape") {
+                            event.preventDefault();
+                            setEditing(false);
+                        }
+                    }}
+                    disabled={busy === "remote"}
+                    placeholder={t("workspace.shell.versionControl.server.addressPlaceholder")}
+                    className="mt-1 text-2xs"
+                />
+                <div className="mt-2 flex items-center gap-1.5">
+                    <button
+                        type="button"
+                        onClick={submit}
+                        disabled={running || draft.trim() === ""}
+                        className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md bg-primary px-2 text-2xs text-on-primary transition-opacity cursor-default hover:opacity-90 disabled:opacity-50"
+                    >
+                        {busy === "remote"
+                            ? <Loader2 className="h-3 w-3 animate-spin" />
+                            : <Cloud className="h-3 w-3" />}
+                        {t("workspace.shell.versionControl.server.save")}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setEditing(false)}
+                        disabled={busy === "remote"}
+                        className="flex h-7 items-center justify-center rounded-md border border-edge px-2 text-2xs text-fg-muted transition-colors cursor-default hover:bg-fill hover:text-fg disabled:opacity-50"
+                    >
+                        {t("workspace.shell.versionControl.server.cancel")}
+                    </button>
+                </div>
+                {/* Only while a server is already configured: this is the way to undo the
+                    connection, and offering it during first setup would be a control for
+                    leaving a state the author has not entered. */}
+                {remote !== null && (
+                    <button
+                        type="button"
+                        onClick={() => {
+                            void surface.setRemote(null).then(saved => {
+                                if (saved) setEditing(false);
+                            });
+                        }}
+                        disabled={running}
+                        className="mt-1.5 text-2xs text-fg-subtle transition-colors cursor-default hover:text-danger disabled:opacity-50"
+                    >
+                        {t("workspace.shell.versionControl.server.disconnect")}
+                    </button>
+                )}
+            </div>
+        );
+    }
+
+    if (remote === null) {
+        return (
+            <div data-vcs-seam="server" className="border-b border-edge px-3 py-2">
+                <p className="text-2xs text-fg-subtle">
+                    {t("workspace.shell.versionControl.server.none")}
+                </p>
+                <button
+                    type="button"
+                    onClick={open}
+                    disabled={running}
+                    className="mt-1.5 flex items-center gap-1.5 text-2xs text-fg-muted transition-colors cursor-default hover:text-fg disabled:opacity-50"
+                >
+                    <Cloud className="h-3 w-3" />
+                    {t("workspace.shell.versionControl.server.connect")}
+                </button>
+            </div>
+        );
+    }
+
+    const face = serverFace(syncState);
+
+    return (
+        <div data-vcs-seam="server" className="border-b border-edge px-3 py-2">
+            <div className="flex items-center justify-between gap-2">
+                <span className="text-2xs tracking-wide text-fg-subtle">
+                    {t("workspace.shell.versionControl.server.title")}
+                </span>
+                {/* Editing the address is reachable from the host line itself rather than from a
+                    button of its own: it is a once-per-project act, and a 320px row has no space
+                    for a control that is pressed twice a year. */}
+                <button
+                    type="button"
+                    onClick={open}
+                    disabled={running}
+                    title={remote}
+                    className="min-w-0 truncate text-2xs text-fg-muted transition-colors cursor-default hover:text-fg disabled:opacity-50"
+                >
+                    {serverHost(remote)}
+                </button>
+            </div>
+
+            <div className="mt-1 flex items-center gap-1.5">
+                <span className={cn("text-2xs", face.tone)}>{t(face.key)}</span>
+                <button
+                    type="button"
+                    onClick={surface.checkRemote}
+                    disabled={running}
+                    title={t("workspace.shell.versionControl.server.check")}
+                    aria-label={t("workspace.shell.versionControl.server.check")}
+                    className="ml-auto flex h-5 w-5 items-center justify-center rounded-md text-fg-subtle transition-colors cursor-default hover:bg-fill hover:text-fg disabled:opacity-50"
+                >
+                    {busy === "remote"
+                        ? <Loader2 className="h-3 w-3 animate-spin" />
+                        : <RotateCcw className="h-3 w-3" />}
+                </button>
+            </div>
+
+            {/* Both buttons are always present once a server is configured, and neither is hidden
+                by what the last check happened to say. The check is optional - the author may
+                never press it - so a Send button that only appeared when a stale snapshot said
+                "ahead" would be a button that vanished exactly when it was needed. The backend is
+                the authority on whether either is possible, and it refuses with a sentence that
+                names the remedy. */}
+            <div className="mt-2 flex items-center gap-1.5">
+                <button
+                    type="button"
+                    onClick={() => void surface.pushToRemote()}
+                    disabled={running}
+                    className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md border border-edge px-2 text-2xs text-fg transition-colors cursor-default hover:bg-fill disabled:opacity-50"
+                >
+                    {busy === "push"
+                        ? <Loader2 className="h-3 w-3 animate-spin" />
+                        : <CloudUpload className="h-3 w-3" />}
+                    {t("workspace.shell.versionControl.server.push")}
+                </button>
+                <button
+                    type="button"
+                    onClick={() => void surface.syncFromRemote()}
+                    disabled={running}
+                    className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md border border-edge px-2 text-2xs text-fg transition-colors cursor-default hover:bg-fill disabled:opacity-50"
+                >
+                    {busy === "sync"
+                        ? <Loader2 className="h-3 w-3 animate-spin" />
+                        : <CloudDownload className="h-3 w-3" />}
+                    {t("workspace.shell.versionControl.server.sync")}
+                </button>
+            </div>
+
+            {/* The files the last sync could not merge. Kept on screen rather than left to the
+                notification, because it is a state the project is IN until someone deals with it -
+                a notification the author dismissed would take the only record of it away. */}
+            {surface.conflicts.length > 0 && (
+                <p className="mt-1.5 text-2xs text-danger">
+                    {t("workspace.shell.versionControl.syncConflictTitle")}
+                </p>
+            )}
+        </div>
+    );
+}
+
+/**
+ * What the last check said, as one line.
+ *
+ * Six states and they are NOT collapsible into "ok / not ok": the remedy differs for every one of
+ * them. Unreachable is the author's network, unauthorized is their credentials, diverged needs a
+ * sync before a push will work, and "not checked" is the honest answer to a question nobody has
+ * asked - which is where this section spends most of its life, because checking costs two seconds
+ * and never happens on its own.
+ *
+ * Ordered by which fact dominates: a server that cannot be reached has no opinion about whether
+ * anyone is ahead, and one that refuses us cannot be trusted about that either.
+ */
+function serverFace(sync: VcsSyncState | null): { key: TranslationKey; tone: string } {
+    if (sync === null) {
+        return { key: "workspace.shell.versionControl.server.notChecked", tone: "text-fg-subtle" };
+    }
+    if (!sync.remoteAvailable) {
+        return { key: "workspace.shell.versionControl.server.unreachable", tone: "text-danger" };
+    }
+    if (!sync.remoteAuthorized) {
+        return { key: "workspace.shell.versionControl.server.unauthorized", tone: "text-danger" };
+    }
+    if (sync.localAhead && sync.remoteAhead) {
+        return { key: "workspace.shell.versionControl.server.diverged", tone: "text-warning" };
+    }
+    if (sync.localAhead) {
+        return { key: "workspace.shell.versionControl.server.localAhead", tone: "text-fg-muted" };
+    }
+    if (sync.remoteAhead) {
+        return { key: "workspace.shell.versionControl.server.remoteAhead", tone: "text-fg-muted" };
+    }
+    return { key: "workspace.shell.versionControl.server.upToDate", tone: "text-success" };
+}
+
+/**
+ * The part of a server address worth showing in a 320px column.
+ *
+ * The scheme is always `lore://` and says nothing; the host is what tells two servers apart. Falls
+ * back to the whole string rather than to nothing when it does not parse - the author typed it, so
+ * showing it back verbatim is more useful than showing a blank where their server should be.
+ */
+function serverHost(url: string): string {
+    const match = /^[a-z][a-z0-9+.-]*:\/\/([^/?#]+)/i.exec(url.trim());
+    return match ? match[1] : url.trim();
+}
+
+/**
  * The offer for a project that is not a repository yet.
  *
  * A button and one line, because enabling is irreversible in the way that matters: it writes `.lore/`
@@ -830,5 +1099,11 @@ function busyKey(busy: NonNullable<VersionSurface["busy"]>) {
             return "workspace.shell.versionControl.returning" as const;
         case "restore":
             return "workspace.shell.versionControl.restoring" as const;
+        case "remote":
+            return "workspace.shell.versionControl.server.checking" as const;
+        case "push":
+            return "workspace.shell.versionControl.server.pushing" as const;
+        case "sync":
+            return "workspace.shell.versionControl.server.syncing" as const;
     }
 }
