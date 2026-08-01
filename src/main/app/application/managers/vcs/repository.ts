@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import {
     VCS_REVISION_KIND_KEY,
+    VCS_UNCONFIGURED_REMOTE_URL,
     type VcsChangeKind,
     type VcsCommitResult,
     type VcsFileChange,
@@ -47,10 +48,23 @@ const REPOSITORY_DIRECTORY = ".lore";
 
 /**
  * `repositoryCreate` fails outright without a URL even for a repository that will
- * never see a network (`lore-revision/src/repository/create.rs`). Nothing dials it
- * until a remote is actually configured, and collaboration rewrites it then.
+ * never see a network (`lore-revision/src/repository/create.rs`), so a repository with
+ * no server still has to name one. Connecting a server later rewrites it
+ * (`remote.ts`), and `isVcsRemoteConfigured` is what reads this back as "none".
+ *
+ * **This used to be `lore://127.0.0.1:41337/local`, and that was a live hazard.**
+ * Measured: the backend keeps only the ORIGIN of the URL it is given, so the `/local`
+ * segment was dropped and every project Studio has ever created carries
+ * `remote_url = "lore://127.0.0.1:41337"` - the default loreserver address. Nothing
+ * dialled it while every call was offline, but a host running a local server would have
+ * had its projects find it the moment one was not. `.invalid` is reserved by RFC 2606
+ * and can never resolve, so the same mistake now fails to look up a name instead.
+ *
+ * Creating a repository must also stay OFFLINE: measured, `repositoryCreate` with
+ * `offline: false` creates the repository ON THE SERVER named by this URL, and refuses
+ * when one of that name already exists with a different id.
  */
-const PLACEHOLDER_REPOSITORY_URL = "lore://127.0.0.1:41337/local";
+const PLACEHOLDER_REPOSITORY_URL = VCS_UNCONFIGURED_REMOTE_URL;
 
 const DEFAULT_INITIAL_MESSAGE = "Enable version control";
 

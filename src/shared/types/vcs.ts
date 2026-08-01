@@ -405,6 +405,105 @@ export interface VcsSyncState {
     remoteRevision?: RevisionId;
 }
 
+/**
+ * The server a project synchronises with, as the author configured it.
+ *
+ * **A server address, not a per-project URL.** Measured: the backend records only the
+ * ORIGIN of whatever URL it is given (`lore://host:41337/anything` is stored as
+ * `lore://host:41337`), and identifies the repository by the id in `.lore/id`. So there
+ * is exactly one thing for an author to type, which is the whole reason the setup form
+ * is one field.
+ */
+export interface VcsRemote {
+    /** Server origin, e.g. `lore://vcs.example.lan:41337`. */
+    url: string;
+}
+
+/**
+ * The URL handed to the backend when creating a repository that has no server.
+ *
+ * The backend REFUSES to create a repository without a URL, even one that will never see
+ * a network (docs §4.7), so "no remote" cannot be represented by absence - something has
+ * to be in the file. `.invalid` is reserved by RFC 2606 and can never resolve, which is
+ * the point: if a bug ever lets an online call through on an unconfigured project, it
+ * fails to look up a name rather than talking to whoever answers.
+ *
+ * **The `/none` is not decoration.** Measured: the backend rejects a repository URL with
+ * no path segment outright - `lore://unconfigured.invalid` and `lore://unconfigured.invalid/`
+ * both fail with `parsing repository URL: Invalid URL`, while `lore://unconfigured.invalid/none`
+ * is accepted. It then discards the segment and stores only the origin, which is why what
+ * is written here and what comes back out are two different strings - see
+ * {@link VCS_UNCONFIGURED_REMOTE}.
+ */
+export const VCS_UNCONFIGURED_REMOTE_URL = "lore://unconfigured.invalid/none";
+
+/**
+ * What {@link VCS_UNCONFIGURED_REMOTE_URL} looks like once the backend has stored it.
+ *
+ * The path segment is dropped on the way in (measured), so this - not the URL above - is
+ * what a read of the config answers and what "no server" has to be recognised by.
+ */
+export const VCS_UNCONFIGURED_REMOTE = "lore://unconfigured.invalid";
+
+/**
+ * The placeholder Studio wrote before {@link VCS_UNCONFIGURED_REMOTE} existed.
+ *
+ * **This is the default loreserver address**, and it is in the config of every project
+ * Studio has ever created: the backend stripped the `/local` path segment off
+ * `lore://127.0.0.1:41337/local` and kept the origin. Nothing dialled it because every
+ * call was offline - but the moment any call is not, a machine running a local server
+ * would find its projects talking to it. Recognised here so those projects read as
+ * unconfigured rather than as connected to whatever answers on that port.
+ */
+export const VCS_LEGACY_PLACEHOLDER_REMOTE = "lore://127.0.0.1:41337";
+
+/**
+ * Whether this URL names a server the author chose.
+ *
+ * Both placeholders answer false, so an existing project needs no migration to be
+ * correctly reported as having no server.
+ */
+export function isVcsRemoteConfigured(url: string | null | undefined): boolean {
+    const trimmed = (url ?? "").trim().replace(/\/+$/, "");
+    if (!trimmed) return false;
+    return trimmed !== VCS_UNCONFIGURED_REMOTE.replace(/\/+$/, "")
+        && trimmed !== VCS_LEGACY_PLACEHOLDER_REMOTE;
+}
+
+/** What a push did. */
+export interface VcsPushResult {
+    branch: string;
+    /**
+     * The server already had this branch tip, so nothing was transferred.
+     *
+     * A SUCCESS. Pressing Push twice is ordinary and the second press has to read as
+     * "already there" rather than as a failure.
+     */
+    alreadyPushed: boolean;
+}
+
+/**
+ * What a sync brought down - and whether it left conflicts behind.
+ *
+ * Measured: syncing a diverged branch MERGES automatically and records a new revision,
+ * so divergence is not a dead end. Only edits to the same file produce {@link conflicts}.
+ */
+export interface VcsSyncResult {
+    /** Files written or removed in the working tree. Non-zero means editors must re-read. */
+    filesChanged: number;
+    /** Revisions brought down from the server. */
+    revisionsReceived: number;
+    /**
+     * Paths the merge could not settle, which the author must resolve before committing.
+     *
+     * Empty in the ordinary case. Studio has no resolve interface yet, so a non-empty
+     * list is reported and the operation stops rather than pretending it can be handled.
+     */
+    conflicts: string[];
+    /** True when nothing was behind: the working tree already matched the server. */
+    alreadyCurrent: boolean;
+}
+
 export interface VcsStatus {
     /** Branch name as the author sees it, e.g. `main`. */
     branch: string;
