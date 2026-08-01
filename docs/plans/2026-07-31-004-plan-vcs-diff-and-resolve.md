@@ -30,7 +30,7 @@ diff）**，加上 **V5 的后半（冲突解决）**。远端卡
 | 没有 spec 的文档怎么办 | **通用 JSON 结构 diff**，并且在界面上**标记为「结构级」**，不冒充语义级。二进制只报增删改 + 字节数 +（图像）缩略图 |
 | diff 在哪个进程跑 | **主进程。** blob 只有主进程够得着（docs §2.3），且 `readRevisionDocuments` 已经是「一次树遍历、一批读」 |
 | Lore 有合并 API 吗 | **有，而且很全**：`branch_merge_start / _into / _resolve / _resolve_mine / _resolve_theirs / _abort / _unresolve / _restart`、`file_stage_merge`、`file_reset_to_last_merged` 全在导出表里。**一个都还没绑** |
-| Lore 的 automerge 对 JSON 做什么 | **未知，必须先测。** 实验见 §7，这是 D5–D8 的硬前置 |
+| Lore 的 automerge 对 JSON 做什么 | ~~未知~~ **已实测（2026-08-01，见 `version-control.md` §4.23–§4.30）**：写 diff3 冲突标记，文档不再可 parse——**但同一次合并在旁边留下三份干净可解析的副本**，写回不需要重建。**另外测出 §4.29：同步之后该进程再也读不出任何内容**，这一条现在就在损坏已发布的 V5a |
 | 冲突能自动解决吗 | **不能，也不假装能。** 第一档永远是「整份取一边」；逐变更是第二档；两边都重构了同一棵场景树时**明说无法合并**并退回第一档 |
 | 变更行能点了吗 | 能。`ChangeRow` 自己的注释说「一个高亮之后点开什么都没有的行，正是这个面板一直小心不去做的承诺」。本卡就是让它做得出这个承诺 |
 
@@ -103,7 +103,13 @@ Studio 现在**造不出一个冲突**：`syncRevision` 传 `forwardChanges: 0`�
 所以本卡是**第一次**让 Studio 有两边。在 D5 落地之前，`VcsFileChange.conflictUnresolved` 在真实使用
 中永远是 false。
 
-### 1.6 五个未测量的事实
+### 1.6 五个未测量的事实 —— **已于 2026-08-01 全部测完**
+
+> 五条的答案与另外三条计划没问到的，全部写在
+> [`version-control.md` §4.23–§4.30](../version-control.md)。**动 D5–D8 之前先读那八条**，
+> 其中三条推翻了本卡下文的写法：附属文件让 §6 的「重建」备案作废（§4.23）、冲突路径只能从
+> tag 29 拿（§4.24）、以及 §4.29 这个必须先修掉才谈得上 diff 的阻塞缺陷。下面保留原始问题
+> 陈述，因为它解释了每条实验为什么值得做。
 
 以下每一条都**不知道**，并且每一条都能改变设计。§7 给出 settle 它们的脚本。
 
@@ -311,7 +317,7 @@ spec.serialize(合并结果) → 原子写进工作树
 
 | # | 里程碑 | 依赖 | 产出 |
 |---|---|---|---|
-| **D0** | 实测：§1.6 的五个未知 | — | 五个脚本（§7）+ 结论写回 `version-control.md` §4 |
+| **D0** | 实测：§1.6 的五个未知 | — | ✅ **完成 2026-08-01**。`mergeSpike*.integration.test.ts` + 结论写回 `version-control.md` **§4.23–§4.30**（八条，多出来的三条比原来的五条更重要） |
 | **D1** | diff 的地基 | H1 | `shared/documents/diff.ts`、通用 JSON 结构 diff、`vcs/diff/`、两个 IPC、**主进程 import specs 并断言注册表非空**。**没有任何界面** |
 | **D2** | 变更行可点 | D1 | 就地展开 8 行摘要 + loading 态 |
 | **D3** | `vcs-changes` tab | D2 | `working-tree` 与 `between` 两种模式 |
