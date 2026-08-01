@@ -448,7 +448,7 @@ function ChangesSection({ surface }: { surface: VersionSurface }) {
                     onClick={surface.refreshChanges}
                     title={t("workspace.shell.versionControl.refreshChanges")}
                     aria-label={t("workspace.shell.versionControl.refreshChanges")}
-                    className="flex h-5 w-5 items-center justify-center rounded text-fg-subtle transition-colors cursor-default hover:bg-fill hover:text-fg"
+                    className="flex h-5 w-5 items-center justify-center rounded-md text-fg-subtle transition-colors cursor-default hover:bg-fill hover:text-fg"
                 >
                     <RotateCcw className="h-3 w-3" />
                 </button>
@@ -509,7 +509,7 @@ function ChangeRow({ file }: { file: VcsFileChange }) {
     return (
         <div
             title={title}
-            className="flex items-center gap-1.5 overflow-hidden rounded px-1 py-0.5 hover:bg-fill"
+            className="flex items-center gap-1.5 overflow-hidden rounded-md px-1 py-0.5 hover:bg-fill"
         >
             {/* `role="img"` beside the label: an <svg> carrying only aria-label is announced by nothing,
                 and the kind is the one thing about this row that is not in the text. */}
@@ -771,7 +771,7 @@ function HistoryList({ surface, rows }: { surface: VersionSurface; rows: FlatHis
                             </span>
                         </span>
                         {row.merge && (
-                            <span className="mt-0.5 shrink-0 rounded border border-edge px-1 text-2xs text-fg-subtle">
+                            <span className="mt-0.5 shrink-0 rounded-md border border-edge px-1 text-2xs text-fg-subtle">
                                 {t("workspace.shell.versionControl.merge")}
                             </span>
                         )}
