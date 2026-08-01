@@ -21,6 +21,14 @@ const CONTEXT: StoryCommandContext = {
     characters: [{ id: "c1", name: "Alice" }, { id: "c2", name: "Doll" }],
     tempSpeakers: ["Zoe"],
     scenes: [{ id: "s1", name: "Chapter 2" }],
+    // The three built-ins plus one custom track, so a line can be written against a track that is
+    // NOT the fallback for its bus - which is the only way `track=` is observable in a payload.
+    audioTracks: [
+        { id: "music", name: "Music" },
+        { id: "sfx", name: "SFX" },
+        { id: "voice", name: "Voice" },
+        { id: "t_amb", name: "Ambience" },
+    ],
     labels: ["intro", "after refusal"],
     variables: [
         { name: "gold", ref: { scope: "scene", variableId: "var_gold" }, valueType: "number", defaultValue: 10 },
@@ -302,6 +310,42 @@ describe("sound (bible B4: target defaults to bgm)", () => {
     it("/sound auto-names from the file so /stop can address it", () => {
         expect(build("/sound hit vol=0.5")).toMatchObject({
             payload: { action: "audio", operation: "playSound", objectName: "hit", assetId: "a2", volume: 0.5 },
+        });
+    });
+
+    it("track= resolves a track NAME to the id the payload stores", () => {
+        expect(build("/bgm theme track=Ambience")).toMatchObject({
+            payload: { action: "audio", operation: "setBgm", assetId: "a1", audioTrackId: "t_amb" },
+        });
+        expect(build("/sound hit track=SFX")).toMatchObject({
+            payload: { action: "audio", operation: "playSound", audioTrackId: "sfx" },
+        });
+    });
+
+    it("a track nobody has is reported rather than silently landing on the fallback", () => {
+        // The line would still compile - `resolveAudioTrack` always answers - but it would answer with
+        // a different mix from the one written down, which is exactly the silence this round ends.
+        expect(issuesOf("/bgm theme track=Nope")).toEqual(["unknownAudioTrack"]);
+    });
+
+    it("an omitted track writes no key at all, so the built-in for the bus answers", () => {
+        // Not merely "undefined": an absent key is what makes a row written before tracks existed and
+        // a row written today byte-identical, which is why there is no migration to arrange.
+        for (const line of ["/bgm theme", "/sound hit"]) {
+            const block = build(line);
+            expect(block.kind === "action" && block.payload).not.toHaveProperty("audioTrackId");
+        }
+    });
+
+    it("fade reaches /sound, /pause and /resume - the compiler always honoured it", () => {
+        expect(build("/sound hit fade=0.25")).toMatchObject({
+            payload: { action: "audio", operation: "playSound", fadeMs: 250 },
+        });
+        expect(build("/pause music fade=0.5")).toMatchObject({
+            payload: { action: "audio", operation: "pauseSound", objectName: "music", fadeMs: 500 },
+        });
+        expect(build("/resume music fade=1.5")).toMatchObject({
+            payload: { action: "audio", operation: "resumeSound", objectName: "music", fadeMs: 1500 },
         });
     });
 

@@ -51,6 +51,65 @@ export const story = {
                 other: "{count} jumps with no valid target",
             },
         },
+        // Option-level branch rows drawn inside an expanded scene node. A "fork" is the question
+        // (a choice, an if-group); a "branch" is one arm answering it.
+        branch: {
+            forkChoice: "Choice",
+            forkCondition: "Condition",
+            // Deliberately not "dead end": an arm whose own nested fork does the jumping falls
+            // through too, and so does one that simply plays a line and rejoins the scene.
+            fallsThrough: "continues",
+            fallsThroughTitle: "No jump of its own — the scene continues past the fork",
+            forkCount: {
+                one: "{count} branch",
+                other: "{count} branches",
+            },
+            expand: "Show branches",
+            collapse: "Hide branches",
+        },
+        // The route rail: endings derived from the graph (a scene the story cannot leave) and
+        // every decision path that reaches one.
+        route: {
+            title: "Routes",
+            show: "Show routes",
+            hide: "Hide routes",
+            count: {
+                one: "{count} route",
+                other: "{count} routes",
+            },
+            // The header count once the walk hit the cap - the "+" is the whole point of the key.
+            countTruncated: "{count}+ routes",
+            // Says the list is capped AND that every number under it is about the capped list,
+            // because a rail that shows 200 of 4000 routes silently reads as "these are all of them".
+            truncated: "Capped at {count} routes. Counts and notes below cover only those.",
+            noEntryScene: "No entry scene, so no routes.",
+            noRoutes: "No routes.",
+            noDecisions: "No decisions",
+            // A path can stop in a scene that is not an ending, and calling that an ending is a lie.
+            stopsHere: "stops here",
+            stopsHereTitle: "A path stops here without this being an ending — it looped back, or an option ran out of continuations",
+            diagnostics: {
+                unreachableEndings: {
+                    one: "{count} ending no route reaches",
+                    other: "{count} endings no route reaches",
+                },
+                deadBranches: {
+                    one: "{count} option on no route",
+                    other: "{count} options on no route",
+                },
+            },
+        },
+        // Variable focus (好感度分歧线). A scene's chip is the value on ARRIVAL - before that
+        // scene's own writes - so every string here has to avoid reading as a final value.
+        variable: {
+            none: "No variable focus",
+            hintArrival: "Scene chips show the value on arrival",
+            arrivalTitle: "Value on arrival, before this scene's own changes",
+            finalTitle: "Value at the end of this route",
+            rangeChip: "{name} {min}–{max}",
+            valueChip: "{name} {value}",
+            unknownChip: "{name} ?",
+        },
         summary: {
             scenes: {
                 one: "{count} scene",
@@ -203,6 +262,7 @@ export const story = {
         lineText: "Text",
         labelName: "Label",
         scene: "Scene",
+        track: "Audio Track",
         displayName: "Display Name",
         seekTime: "Seconds",
         // Camera
@@ -289,6 +349,7 @@ export const story = {
                 param: "A numeric parameter of its model, by id",
             },
             scene: "Scene",
+            audioTrack: "Audio track",
             label: "Label in this scene",
             variable: "Variable",
             content: "New content, typed by the target",
@@ -372,6 +433,8 @@ export const story = {
         sceneMusicLoop: "Loop",
         sceneMusicFade: "Fade in (s)",
         sceneMusicLoopRegion: "Loops {from}s – {to}s",
+        // Intro→loop: the head plays once, then the body repeats. Three markers, still one line.
+        sceneMusicIntroLoop: "Plays {from}s, loops {loop}s – {to}s",
         sceneMusicFromIn: "Starts at {from}s",
         sceneMusicWholeClip: "Whole clip",
         backgroundResolveError: "Image asset could not be resolved: {error}",

@@ -2,6 +2,7 @@ import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/u
 import { AppInfo } from "./app";
 import { IPCMessageType, IPCType } from "./ipc";
 import { FsRequestResult, PlatformInfo } from "./os";
+import type { FsTextEncoding } from "./textEncoding";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults, WorkspaceViewRequest } from "./window";
 import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
 import type { MissingRecentProject } from "./state/appStateTypes";
@@ -39,6 +40,7 @@ import type {
 import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
 import type {
     SigningCredential,
+    MacSigningIdentity,
     SigningCredentialImport,
     SigningInspectResult,
 } from "./signing";
@@ -86,6 +88,7 @@ export enum IPCEventType {
     appRemoveRecentProject = "app.removeRecentProject",
     appCheckRecentProjects = "app.checkRecentProjects",
     appSystemPath = "app.systemPath",
+    appExportDiagnostics = "app.exportDiagnostics",
 
     fsStat = "fs.stat",
     fsList = "fs.list",
@@ -176,6 +179,7 @@ export enum IPCEventType {
     signingRemove = "signing.remove",
     signingInspect = "signing.inspect",
     signingKeystoreAliases = "signing.keystoreAliases",
+    signingMacIdentities = "signing.macIdentities",
 
     blueprintPersistenceGetAll = "blueprintPersistence.getAll",
     blueprintPersistenceGetValue = "blueprintPersistence.getValue",
@@ -196,6 +200,7 @@ export enum IPCEventType {
     pluginLocaleList = "plugin.localeList",
     pluginLocalesChanged = "plugin.localesChanged",
     pluginRegistryFetch = "plugin.registryFetch",
+    pluginRegistryIcon = "plugin.registryIcon",
     pluginInstallFromRegistry = "plugin.installFromRegistry",
 
     uiTemplateRegistryFetch = "uiTemplate.registryFetch",
@@ -490,6 +495,31 @@ export type IPCEvents = {
             path: string;
         };
     };
+    /**
+     * Write a support bundle - the caller's own report plus the main-process log tail - to a file
+     * the user picks.
+     *
+     * The renderer supplies only the half it can see (what went wrong, what it had loaded, its own
+     * recent console lines); the environment header and the log tail are read here, because
+     * `<userData>/logs` is Studio storage that no renderer is granted. Exists on the base surface
+     * rather than the workspace one on purpose: the window that most needs it is the one whose
+     * workspace failed to start, and that window has no services to route a workspace call through.
+     */
+    [IPCEventType.appExportDiagnostics]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            /** Suggested file name, without a directory. Sanitized before use. */
+            defaultFileName: string;
+            /** The renderer's section of the bundle, already formatted. */
+            report: string;
+        },
+        response: {
+            canceled: boolean;
+            filePath?: string;
+            byteLength?: number;
+        };
+    };
 } & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameBuildEvents & IPCSigningEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCPrivilegedEvents & IPCVcsEvents;
 
 /**
@@ -690,7 +720,7 @@ export type IPCFsEvents = {
         data: {
             path: string;
             raw: boolean;
-            encoding?: BufferEncoding;
+            encoding?: FsTextEncoding;
         },
         response: FsRequestResult<string>; // a hash that can be used to fetch the file later
     };
@@ -716,7 +746,7 @@ export type IPCFsEvents = {
         data: {
             path: string;
             raw: boolean;
-            encoding?: BufferEncoding;
+            encoding?: FsTextEncoding;
         },
         response: FsRequestResult<string>;
     };
@@ -1488,6 +1518,19 @@ export type IPCSigningEvents = {
             aliases: string[];
         };
     };
+    /**
+     * The code-signing identities in this Mac's keychains, so the import form can
+     * offer them rather than asking for a certificate name typed from memory.
+     * Empty on every other host, and on a Mac that holds none.
+     */
+    [IPCEventType.signingMacIdentities]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>,
+        response: {
+            identities: MacSigningIdentity[];
+        };
+    };
 };
 
 export type IPCBlueprintPersistenceEvents = {
@@ -1649,6 +1692,21 @@ export type IPCPluginManagerEvents = {
         consumer: IPCType.Host,
         data: {},
         response: PluginRegistryFetchResult;
+    };
+    /**
+     * Store: the plugin's thumbnail, as a `data:` URL, or null when it has none.
+     *
+     * The renderer sends an id, never a URL, and never fetches the image itself:
+     * renderers do not talk to the network, so main resolves the address from
+     * the index it trusts, checks the bytes, and caches them by version.
+     */
+    [IPCEventType.pluginRegistryIcon]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            pluginId: string;
+        },
+        response: { icon: string | null };
     };
     // Store: download + extract + install a registry plugin by id. The download
     // URL is taken from the freshly fetched index, never from the renderer. Lands

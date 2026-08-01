@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { AlertTriangle, Bookmark, UserRound } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import type { Combination, CombinationSet } from "@/lib/workspace/services/character/characterCombinations";
 import { useCompositedSprite } from "@/lib/workspace/hooks/useCompositedSprite";
@@ -19,6 +20,10 @@ function Cell(props: {
     onAvatar: (anchor: HTMLElement) => void;
 }) {
     const { t } = useTranslation();
+    // Picking a cell only moves the preview onto that look, so the tile stays clickable while frozen -
+    // browsing the grid is what a past version is opened for. Naming the look stores a snapshot on the
+    // appearance and giving it an avatar opens a picker that writes one, so both are off.
+    const freeze = useFreezeGuard();
     const { url } = useCompositedSprite(props.character, { tags: props.combination.tags }, CELL_PX);
     const { combination } = props;
     return (
@@ -44,8 +49,8 @@ function Cell(props: {
                 <button
                     className="hidden shrink-0 rounded-md p-0.5 text-fg-muted hover:text-fg group-hover/cell:block"
                     aria-label={t("characters.editor.combinations.name")}
-                    title={t("characters.editor.combinations.name")}
                     onClick={props.onName}
+                    {...freeze.writes(false, t("characters.editor.combinations.name"))}
                 >
                     <Bookmark className="h-3 w-3" />
                 </button>
@@ -58,8 +63,8 @@ function Cell(props: {
                         props.overridden ? "block text-primary" : "hidden text-fg-muted group-hover/cell:block",
                     )}
                     aria-label={t("characters.editor.avatar")}
-                    title={t("characters.editor.avatar")}
                     onClick={event => props.onAvatar(event.currentTarget)}
+                    {...freeze.writes(false, t("characters.editor.avatar"))}
                 >
                     <UserRound className="h-3 w-3" />
                 </button>

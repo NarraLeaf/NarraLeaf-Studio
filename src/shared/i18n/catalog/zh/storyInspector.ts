@@ -323,6 +323,8 @@ export const storyInspector = {
         storyActionTitle: "故事动作",
     },
     audio: {
+        track: "音轨",
+        trackDefault: "默认（{name}）",
         soundName: "音效名称",
         bgmAsset: "背景音乐资源",
         soundAsset: "音效资源",

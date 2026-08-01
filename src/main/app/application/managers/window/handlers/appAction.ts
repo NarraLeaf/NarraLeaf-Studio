@@ -7,7 +7,14 @@ import { WindowControlAbility } from "@shared/types/window";
 import { app as electronApp, dialog, shell } from "electron";
 import type { Dirent } from "fs";
 import { promises as fs } from "fs";
+import os from "os";
 import path from "path";
+import {
+    composeDiagnosticsBundle,
+    readMainLogTail,
+    sanitizeBundleFileName,
+    type DiagnosticsEnvironment,
+} from "../../../logging/diagnosticsBundle";
 import type { MissingRecentProject, RecentProjectMissingReason } from "@shared/types/state/appStateTypes";
 import { DirEntry, findProjectConfigFileName } from "@shared/utils/nlproj";
 import { backgroundCacheDirectory, cacheBackgroundImage, pruneBackgroundCache } from "../../storage/backgroundCache";
@@ -368,6 +375,64 @@ export class AppSystemPathHandler extends IPCHandler<IPCEventType.appSystemPath>
         data: IPCEvents[IPCEventType.appSystemPath]["data"],
     ): RequestStatus<{ path: string }> {
         return this.success({ path: electronApp.getPath(data.name) });
+    }
+}
+
+/**
+ * Write a support bundle to a file the user picks.
+ *
+ * Deliberately reachable from any window, including one whose workspace never finished starting:
+ * that window has no services, so it cannot route this through the workspace surface, and it is
+ * exactly the window whose user most needs a log to hand over. Nothing here touches the project,
+ * so there is no grant to check - the only path involved is the one the save dialog returned.
+ */
+export class AppExportDiagnosticsHandler extends IPCHandler<IPCEventType.appExportDiagnostics> {
+    readonly name = IPCEventType.appExportDiagnostics;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { defaultFileName, report }: IPCEvents[IPCEventType.appExportDiagnostics]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.appExportDiagnostics]["response"]>> {
+        try {
+            const logsDir = electronApp.getPath("logs");
+            const environment: DiagnosticsEnvironment = {
+                appVersion: window.app.getAppInfo().version,
+                electronVersion: process.versions.electron ?? "unknown",
+                chromeVersion: process.versions.chrome ?? "unknown",
+                nodeVersion: process.versions.node ?? "unknown",
+                platform: process.platform,
+                osRelease: os.release(),
+                arch: process.arch,
+                packaged: window.app.isPackaged(),
+                locale: String(window.app.globalState.get("app.language") ?? "unknown"),
+                userDataDir: window.app.getUserDataDir(),
+                logsDir,
+                generatedAt: new Date().toISOString(),
+            };
+            const content = composeDiagnosticsBundle(environment, report, await readMainLogTail(logsDir));
+
+            const selection = await dialog.showSaveDialog(window.win, {
+                title: "Export Studio Logs",
+                defaultPath: sanitizeBundleFileName(defaultFileName, "narraleaf-studio-diagnostics.log"),
+                filters: [
+                    { name: "Log", extensions: ["log"] },
+                    { name: "Text", extensions: ["txt"] },
+                ],
+            });
+            if (selection.canceled || !selection.filePath) {
+                return this.success({ canceled: true });
+            }
+
+            await fs.writeFile(selection.filePath, content, { encoding: "utf8" });
+            return this.success({
+                canceled: false,
+                filePath: selection.filePath,
+                byteLength: Buffer.byteLength(content, "utf8"),
+            });
+        } catch (error) {
+            return this.failed(error);
+        }
     }
 }
 

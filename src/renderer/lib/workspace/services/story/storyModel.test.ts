@@ -470,6 +470,34 @@ describe("storyModel", () => {
         expect((normalizedScene.blocks.fx.payload as any).durationMs).toBe(500);
     });
 
+    it("keeps a scene's audio track through normalization, even one no track list has", () => {
+        const now = "2026-06-08T00:00:00.000Z";
+        const document = createEmptyStoryDocument({ id: STORY_ID_1, name: "Story", now, generateId: idFactory() });
+        const scene = document.scenes[document.entrySceneId!];
+        // A deleted track's id, which is the case that matters: references are NOT rewritten when a
+        // track goes away, they resolve to the bus's built-in - so dropping the id here would erase
+        // the author's choice the moment they deleted a track they meant to re-create.
+        scene.bgm = { assetId: "asset-theme", audioTrackId: "  t_gone  ", volume: 0.5 };
+
+        const normalized = normalizeStoryDocument(document, now);
+
+        expect(normalized.scenes[document.entrySceneId!].bgm).toMatchObject({
+            assetId: "asset-theme",
+            audioTrackId: "t_gone",
+            volume: 0.5,
+        });
+    });
+
+    it("writes no audio track key when the scene names none", () => {
+        const now = "2026-06-08T00:00:00.000Z";
+        const document = createEmptyStoryDocument({ id: STORY_ID_1, name: "Story", now, generateId: idFactory() });
+        document.scenes[document.entrySceneId!].bgm = { assetId: "asset-theme" };
+
+        const normalized = normalizeStoryDocument(document, now);
+
+        expect(normalized.scenes[document.entrySceneId!].bgm).not.toHaveProperty("audioTrackId");
+    });
+
     it("migrates legacy image/text layerName strings to stable layer refs (v2 → v3)", () => {
         const now = "2026-06-08T00:00:00.000Z";
         const document = createEmptyStoryDocument({

@@ -178,6 +178,11 @@ export function asPuppetName(value: StoryCommandValue | undefined): string | und
     return value?.kind === "puppetName" ? value.name : undefined;
 }
 
+/** A resolved project audio track's id, or undefined - which means "leave the row's default". */
+export function asAudioTrackId(value: StoryCommandValue | undefined): string | undefined {
+    return value?.kind === "audioTrack" ? value.trackId : undefined;
+}
+
 /** The resolved target of a generic verb (`/show poster`), or undefined while unresolved. */
 export function asTarget(value: StoryCommandValue | undefined): Extract<StoryCommandValue, { kind: "target" }>["target"] | undefined {
     return value?.kind === "target" ? value.target : undefined;
@@ -204,6 +209,17 @@ export const PLACEMENT_OPTIONS = [{ value: "left" }, { value: "center" }, { valu
  */
 export function puppetNameParam(channel: StoryPuppetChannel, dependsOn: string, hint: string): StoryCommandParamSpec {
     return { hint, type: { kind: "puppetName", channel, dependsOn }, positional: true };
+}
+
+/**
+ * `track=` - the project audio track a play lands on.
+ *
+ * Only on the two commands that CREATE a sound (`/bgm`, `/sound`). A `/vol piano 0.4` addresses a
+ * handle that already has a track and cannot be given a second one, so offering the key there would
+ * be a control that reads as an edit and compiles to a diagnostic.
+ */
+export function audioTrackParam(): StoryCommandParamSpec {
+    return { hint: "track", type: { kind: "audioTrack" } };
 }
 
 /** `at=` - a placement. */

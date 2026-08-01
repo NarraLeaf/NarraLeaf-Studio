@@ -129,7 +129,7 @@ Phase 2 新增(用来替换各处手写模式):
 
 [scripts/style-ratchet.mjs](../scripts/style-ratchet.mjs) 统计任意 hex、裸调色板、任意 px 字号、裸圆角等"债务"计数,基线存在 `scripts/style-ratchet.baseline.json`。**CI 的 `verify` job 会跑 `yarn style:ratchet`**（[.github/workflows/ci.yml](../.github/workflows/ci.yml)),本地同样命令——计数只准降不准升。修完一批后跑 `yarn style:ratchet --save` 收紧基线。
 
-扫描范围见 [scripts/style-scan.mjs](../scripts/style-scan.mjs)：**跳过测试文件与注释内容**。这不是图省事——组件库的 JSDoc 里写着它取代的手写模式（`Badge` 的注释就含 `rounded px-1.5 …`）,把注释算进债务等于让组件库为它消灭的债务背锅,唯一"修法"是删文档。
+扫描范围见 [scripts/style-scan.mjs](../scripts/style-scan.mjs)：**只数字符串字面量,跳过测试文件、注释内容与标识符**。这不是图省事——组件库的 JSDoc 里写着它取代的手写模式（`Badge` 的注释就含 `rounded px-1.5 …`）,把注释算进债务等于让组件库为它消灭的债务背锅,唯一"修法"是删文档。标识符同理：类名只有进了字符串才到得了 DOM,所以一个**以类名命名的声明**不输出任何 CSS。`PluginInstallPermissions` 有个开关 `rounded-md` 的 `rounded?: boolean` prop,把它的每次出现都算成裸圆角债务,等于让门禁要求为迁就正则而改 prop 名。
 
 **三个指标有"合法地板",不可能降到 0**,升了要按 §0 逐条核对是不是真的属于这些豁免：
 

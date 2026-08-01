@@ -524,6 +524,61 @@ describe("validatePluginManifest — capability/permission alignment", () => {
         expect(result).toMatchObject({ ok: false, error: expect.stringContaining("must use https") });
     });
 
+    it("carries a declared icon through normalization", () => {
+        const result = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.sample-plugin",
+            name: "Sample Plugin",
+            version: "1.0.0",
+            entries: { studio: "main.js" },
+            icon: "assets/icon.png",
+        });
+
+        expect(result).toMatchObject({ ok: true, manifest: { icon: "assets/icon.png" } });
+    });
+
+    it("leaves icon absent when the manifest declares none", () => {
+        const result = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.sample-plugin",
+            name: "Sample Plugin",
+            version: "1.0.0",
+            entries: { studio: "main.js" },
+        });
+
+        expect(result.ok).toBe(true);
+        expect((result as { manifest: { icon?: string } }).manifest.icon).toBeUndefined();
+    });
+
+    it("refuses an icon outside the extension allowlist", () => {
+        const result = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.sample-plugin",
+            name: "Sample Plugin",
+            version: "1.0.0",
+            entries: { studio: "main.js" },
+            icon: "icon.svg",
+        });
+
+        expect(result).toMatchObject({ ok: false, error: expect.stringContaining("must be one of") });
+    });
+
+    it("refuses an icon that escapes the package", () => {
+        const result = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.sample-plugin",
+            name: "Sample Plugin",
+            version: "1.0.0",
+            entries: { studio: "main.js" },
+            icon: "../../../Users/someone/.ssh/id_rsa.png",
+        });
+
+        expect(result).toMatchObject({
+            ok: false,
+            error: expect.stringContaining("relative image path inside the plugin package"),
+        });
+    });
+
     it("refuses a platform key no build can ever match", () => {
         const result = validatePluginManifest(fullManifest({
             contributes: {

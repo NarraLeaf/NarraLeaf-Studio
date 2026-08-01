@@ -1,21 +1,21 @@
 import { Dispatch, SetStateAction, DragEvent, useMemo, useState, useEffect, useLayoutEffect, useCallback } from "react";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { ASSET_CATEGORY_ORDER, AssetCategory, AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
 import { FolderPlus, Folder, Link, Upload, ChevronLeft } from "lucide-react";
 import { useAssetsPanelContext } from "../AssetsPanelContext";
-import { ASSET_TYPE_ICONS } from "../constants";
+import { ASSET_CATEGORY_ICONS, ASSET_TYPE_ICONS } from "../constants";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { AssetThumbnail } from "../components/AssetThumbnail";
 
 interface AssetsIconViewProps {
     dropTargetId: string | null;
-    handleRootDrop: (event: DragEvent, type: AssetType, contextualGroup?: AssetGroup | null) => Promise<void>;
+    handleRootDrop: (event: DragEvent, category: AssetCategory, contextualGroup?: AssetGroup | null) => Promise<void>;
     actionLoading: boolean;
     setDropTargetId: Dispatch<SetStateAction<string | null>>;
-    handleImport: (type: AssetType) => void;
-    handleImportRemote: (type: AssetType) => void;
-    handleCreateGroup: (type: AssetType) => void;
+    handleImport: (category: AssetCategory) => void;
+    handleImportRemote: (category: AssetCategory) => void;
+    handleCreateGroup: (category: AssetCategory) => void;
     iconSize: number;
     onIconSizeChange: (nextSize: number) => void;
     groupPathIds: string[];
@@ -80,6 +80,7 @@ export function AssetsIconView({
         filteredGroups,
         draggedItem,
         handleGroupFocus,
+        showContextMenu,
         compactToolbar,
         setAssetsIconToolbarCenter,
         isNarrowed,
@@ -88,11 +89,11 @@ export function AssetsIconView({
     const groupStack = useMemo(() => {
         const groupById = new Map<string, AssetGroup>();
         Object.values(groups).flat().forEach(group => groupById.set(group.id, group));
-        const stack: Array<{ group: AssetGroup; type: AssetType }> = [];
+        const stack: Array<{ group: AssetGroup; category: AssetCategory }> = [];
         groupPathIds.forEach(groupId => {
             const group = groupById.get(groupId);
             if (group) {
-                stack.push({ group, type: group.type });
+                stack.push({ group, category: group.category });
             }
         });
         return stack;
@@ -105,7 +106,7 @@ export function AssetsIconView({
         [activeGroup, isNarrowed],
     );
 
-    const handleEnterGroup = useCallback((group: AssetGroup, type: AssetType) => {
+    const handleEnterGroup = useCallback((group: AssetGroup) => {
         onGroupPathChange([...groupPathIds, group.id]);
     }, [groupPathIds, onGroupPathChange]);
 
@@ -132,7 +133,7 @@ export function AssetsIconView({
         return () => setAssetsIconToolbarCenter(null);
     }, [setAssetsIconToolbarCenter]);
 
-    const displayTypes = activeGroup && !isNarrowed ? [activeGroup.type] : Object.values(AssetType);
+    const displayCategories = activeGroup && !isNarrowed ? [activeGroup.category] : ASSET_CATEGORY_ORDER;
     const minIconSize = 120;
     const maxIconSize = 240;
     const step = 10;
@@ -169,42 +170,48 @@ export function AssetsIconView({
                 </div>
             )}
             <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
-                {displayTypes.map((type) => {
-                    const TypeIcon = ASSET_TYPE_ICONS[type];
+                {displayCategories.map((category) => {
+                    const CategoryIcon = ASSET_CATEGORY_ICONS[category];
                     // Narrowed, the grid is a result set: only groups that matched by name are hits.
                     // The rest of `filteredGroups` is the ancestor scaffolding a tree needs.
-                    const typeGroups = isNarrowed
-                        ? filteredGroups[type].filter((group) => matchedGroupIds.has(group.id))
-                        : filteredGroups[type].filter((group) => parentPredicate(group.parentGroupId));
-                    const typeAssets = filteredAssets[type].filter((asset) => parentPredicate(asset.groupId));
+                    const categoryGroups = isNarrowed
+                        ? filteredGroups[category].filter((group) => matchedGroupIds.has(group.id))
+                        : filteredGroups[category].filter((group) => parentPredicate(group.parentGroupId));
+                    const categoryAssets = filteredAssets[category].filter((asset) => parentPredicate(asset.groupId));
                     // What this section stands for, not what happens to be loose in it.
                     const scopedAssets = isNarrowed
-                        ? typeAssets
-                        : assetsInSubtree(filteredAssets[type], filteredGroups[type], activeGroup?.group.id ?? null);
-                    const hasItems = typeGroups.length > 0 || typeAssets.length > 0;
+                        ? categoryAssets
+                        : assetsInSubtree(filteredAssets[category], filteredGroups[category], activeGroup?.group.id ?? null);
+                    const hasItems = categoryGroups.length > 0 || categoryAssets.length > 0;
 
                     return (
                         <section
-                            key={type}
-                            className={`border rounded-lg p-3 bg-fill-subtle ${dropTargetId === "root:" + type ? "border-primary" : "border-transparent"}`}
-                            onDrop={(e) => handleRootDrop(e, type, activeGroup?.group ?? undefined)}
+                            key={category}
+                            className={`border rounded-lg p-3 bg-fill-subtle ${dropTargetId === "root:" + category ? "border-primary" : "border-transparent"}`}
+                            onDrop={(e) => handleRootDrop(e, category, activeGroup?.group ?? undefined)}
                             onDragOver={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                if (draggedItem?.type === type || e.dataTransfer.types.includes("Files")) {
-                                    setDropTargetId("root:" + type);
+                                if (draggedItem?.category === category || e.dataTransfer.types.includes("Files")) {
+                                    setDropTargetId("root:" + category);
                                 }
                             }}
                             onDragLeave={(e) => {
                                 e.stopPropagation();
-                                setDropTargetId((prev) => (prev === "root:" + type ? null : prev));
+                                setDropTargetId((prev) => (prev === "root:" + category ? null : prev));
                             }}
                         >
-                            <header className="flex items-center justify-between gap-3">
+                            <header
+                                className="flex items-center justify-between gap-3"
+                                // Same handle and same menu as the list view's accordion header:
+                                // one section, two renderings, one way to find and command it.
+                                data-asset-category={category}
+                                onContextMenu={(e) => showContextMenu(e, category, null, false)}
+                            >
                                 <div className="flex items-center gap-2">
-                                    <TypeIcon className="w-5 h-5 text-fg" />
+                                    <CategoryIcon className="w-5 h-5 text-fg" />
                                     <div>
-                                        <p className="text-sm font-medium">{t(`assets.types.${type}`)}</p>
+                                        <p className="text-sm font-medium">{t(`assets.categories.${category}`)}</p>
                                         <p className="text-xs text-fg-subtle">{tn("assets.iconView.assetCount", scopedAssets.length)}</p>
                                     </div>
                                 </div>
@@ -216,7 +223,7 @@ export function AssetsIconView({
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    handleImport(type);
+                                                    handleImport(category);
                                                 }}
                                                 className="p-1 rounded-md hover:bg-fill disabled:cursor-not-allowed disabled:opacity-40"
                                                 {...freeze.writes(false, t("common.import"))}
@@ -226,7 +233,7 @@ export function AssetsIconView({
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    handleImportRemote(type);
+                                                    handleImportRemote(category);
                                                 }}
                                                 className="p-1 rounded-md hover:bg-fill disabled:cursor-not-allowed disabled:opacity-40"
                                                 {...freeze.writes(false, t("assets.importRemote"))}
@@ -236,7 +243,7 @@ export function AssetsIconView({
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    handleCreateGroup(type);
+                                                    handleCreateGroup(category);
                                                 }}
                                                 className="p-1 rounded-md hover:bg-fill disabled:cursor-not-allowed disabled:opacity-40"
                                                 {...freeze.writes(false, t("assets.menu.newGroup"))}
@@ -256,14 +263,14 @@ export function AssetsIconView({
                                     className="mt-3 grid gap-3"
                                     style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${iconSize}px, 1fr))` }}
                                 >
-                                    {typeGroups.map((group) => {
-                                        const childGroups = filteredGroups[type].filter((g) => g.parentGroupId === group.id);
-                                        const childAssets = filteredAssets[type].filter((a) => a.groupId === group.id);
+                                    {categoryGroups.map((group) => {
+                                        const childGroups = filteredGroups[category].filter((g) => g.parentGroupId === group.id);
+                                        const childAssets = filteredAssets[category].filter((a) => a.groupId === group.id);
                                         const childCount = childGroups.length + childAssets.length;
                                         // Nested groups count as content: `UI` holds four subgroups and
                                         // no loose file, and a card for it that showed nothing would be
                                         // the blank card this replaces.
-                                        const preview = assetsInSubtree(filteredAssets[type], filteredGroups[type], group.id)
+                                        const preview = assetsInSubtree(filteredAssets[category], filteredGroups[category], group.id)
                                             .filter((asset) => asset.type === AssetType.Image)
                                             .slice(0, GROUP_PREVIEW_LIMIT);
 
@@ -271,18 +278,18 @@ export function AssetsIconView({
                                             <GroupIconTile
                                                 key={group.id}
                                                 group={group}
-                                                type={type}
+                                                category={category}
                                                 childCount={childCount}
                                                 preview={preview}
                                                 onNavigate={() => {
                                                     handleGroupFocus(group.id);
-                                                    handleEnterGroup(group, type);
+                                                    handleEnterGroup(group);
                                                 }}
                                             />
                                         );
                                     })}
-                                    {typeAssets.map((asset) => (
-                                        <AssetIconTile key={asset.id} asset={asset} type={type} />
+                                    {categoryAssets.map((asset) => (
+                                        <AssetIconTile key={asset.id} asset={asset} category={category} />
                                     ))}
                                 </div>
                             )}
@@ -296,13 +303,13 @@ export function AssetsIconView({
 
 function GroupIconTile({
     group,
-    type,
+    category,
     childCount,
     preview,
     onNavigate,
 }: {
     group: AssetGroup;
-    type: AssetType;
+    category: AssetCategory;
     childCount: number;
     /** Up to {@link GROUP_PREVIEW_LIMIT} images from anywhere in the group, deepest included. */
     preview: Asset[];
@@ -330,6 +337,7 @@ function GroupIconTile({
     return (
         <div
             draggable
+            data-asset-group-id={group.id}
             className={`nl-drag-source border rounded-lg p-2 bg-fill-subtle flex flex-col gap-2 cursor-pointer hover:border-edge-strong ${
                 isSelected ? "border-primary/80 bg-primary/10" : "border-transparent"
             } ${isDragging ? "opacity-50" : ""} ${isCut ? "opacity-40" : ""} ${isDragOverLocal ? "ring-1 ring-primary/50 bg-primary/10" : ""}`}
@@ -341,14 +349,14 @@ function GroupIconTile({
                     onNavigate?.();
                 }
             }}
-            onContextMenu={(e) => showContextMenu(e, type, group, true)}
-            onDragStart={(e) => handleDragStart?.(e, type, group, true)}
+            onContextMenu={(e) => showContextMenu(e, category, group, true)}
+            onDragStart={(e) => handleDragStart?.(e, category, group, true)}
             onDragEnd={() => handleDragEnd?.()}
             onDragOver={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 const files = e.dataTransfer.types.includes("Files");
-                const internal = draggedItem && draggedItem.type === type;
+                const internal = draggedItem && draggedItem.category === category;
                 // A frozen library never lights up as a drop target: the move and the import are both
                 // refused, and a folder that glows and then keeps its old contents reads as a bug.
                 if (freeze.frozen || (!internal && !files)) {
@@ -366,9 +374,9 @@ function GroupIconTile({
                 e.stopPropagation();
                 setDragOverLocal(false);
                 if (draggedItem && handleDropOnItem) {
-                    handleDropOnItem(e, type, group);
+                    handleDropOnItem(e, category, group);
                 } else {
-                    handleImportToGroup(type, group.id, e.dataTransfer.files, e.dataTransfer);
+                    handleImportToGroup(category, group.id, e.dataTransfer.files, e.dataTransfer);
                 }
             }}
         >
@@ -391,7 +399,7 @@ function GroupIconTile({
                         title={t("common.import")}
                         onClick={(e) => {
                             e.stopPropagation();
-                            handleImportToGroup(type, group.id);
+                            handleImportToGroup(category, group.id);
                         }}
                         className="flex h-full w-full items-center justify-center rounded-md border border-dashed border-edge-strong text-fg-muted hover:bg-fill hover:text-fg"
                     >
@@ -410,7 +418,7 @@ function GroupIconTile({
     );
 }
 
-function AssetIconTile({ asset, type }: { asset: Asset; type: AssetType }) {
+function AssetIconTile({ asset, category }: { asset: Asset; category: AssetCategory }) {
     const { tn } = useTranslation();
     const {
         selectedItems,
@@ -441,8 +449,8 @@ function AssetIconTile({ asset, type }: { asset: Asset; type: AssetType }) {
                 handleItemSelect(asset.id, false, e);
                 handleAssetClick(asset, isMultiSelectIntent || isMultiSelectMode);
             }}
-            onContextMenu={(e) => showContextMenu(e, type, asset, false)}
-            onDragStart={(e) => handleDragStart?.(e, type, asset, false)}
+            onContextMenu={(e) => showContextMenu(e, category, asset, false)}
+            onDragStart={(e) => handleDragStart?.(e, category, asset, false)}
             onDragEnd={() => handleDragEnd?.()}
         >
             {isImage ? (

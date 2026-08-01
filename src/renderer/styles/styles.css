@@ -33,6 +33,13 @@
     --nl-story-row-box: 28px;
 
     /*
+     * Story editor speaker-name column. The scene editor root overrides it with a width measured from
+     * that scene's own cast; this baseline is the floor, so a row rendered outside that root still has
+     * a column to hang its nametag in instead of collapsing onto the words.
+     */
+    --nl-story-name: 56px;
+
+    /*
      * Alpha of the editor's reading surfaces (`.nl-editor-surface` below). Studio windows override
      * it on the root element from the `editor.surfaceOpacity` setting (src/renderer/lib/appearance);
      * 1 here is that setting's default and what a surface rendered outside the bootstrap gets.
@@ -302,6 +309,26 @@ button:focus,
 select:focus {
     outline: none !important;
     box-shadow: none !important;
+}
+
+/*
+ * Opt back in to a VISIBLE focus indicator.
+ *
+ * The rule immediately above is `!important`, so on a `<button>` nothing short of another
+ * `!important` can put a focus indicator back — Tailwind's own `focus:ring-*` included. That failure
+ * is silent and convincing: every ring custom property resolves correctly, `:focus` matches, the
+ * utility is in the stylesheet, and only the composed `box-shadow` is discarded. It looks like it
+ * works right up until you photograph it.
+ *
+ * Needed by any control that is reachable by keyboard but deliberately NOT focusable by pointer —
+ * the story editor's rich-text strip, whose `mousedown` is prevented so the caret stays in the line.
+ * There, focus arrives only from the keyboard, and an invisible focus position is the whole feature
+ * missing. `outline` rather than `box-shadow` so the indicator costs no layout and cannot be clipped
+ * by an overflow ancestor.
+ */
+.nl-focus-ring:focus {
+    outline: 2px solid rgb(var(--nl-primary)) !important;
+    outline-offset: 1px !important;
 }
 
 /*

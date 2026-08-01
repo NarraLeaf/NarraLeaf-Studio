@@ -144,9 +144,15 @@ export const blueprint = {
         layerName: "Layer name",
         defaultName: "Layer {index}",
     },
+    // Names the thing a blueprint hangs on, for search results that have to say where a node lives.
+    owner: {
+        global: "Global",
+        storyAction: "Story Action",
+    },
     memberTree: {
         layers: "Layers",
         unnamedEvent: "Unnamed event",
+        unnamedFunction: "Unnamed function",
         errorBadge: "- {count} err",
         warningBadge: "- {count} warn",
         default: "Default",
@@ -462,6 +468,8 @@ export const blueprint = {
         loop: "Loop",
         playing: "Playing",
         fadeS: "Fade (s)",
+        fadeInS: "Fade In (s)",
+        audioTrack: "Track",
         timeS: "Time (s)",
         max: "Max",
         maxOffset: "Max Offset",

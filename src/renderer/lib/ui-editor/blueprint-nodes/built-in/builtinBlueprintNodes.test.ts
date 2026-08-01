@@ -304,6 +304,8 @@ const SILENT_SOUND_HOST: BlueprintHostApiRuntime["sound"] = {
     setVolume: async () => undefined,
     seek: async () => undefined,
     isPlaying: () => false,
+    resolveElementVolume: input => input.volume ?? 1,
+    subscribeMixerChanges: () => () => undefined,
 };
 
 function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAdapter {
@@ -7228,6 +7230,8 @@ describe("sound node transport", () => {
             setVolume: async (handle, volume, fadeMs) => void log.ops.push({ op: "setVolume", handle, volume, fadeMs }),
             seek: async (handle, timeMs) => void log.ops.push({ op: "seek", handle, timeMs }),
             isPlaying: () => true,
+            resolveElementVolume: input => input.volume ?? 1,
+            subscribeMixerChanges: () => () => undefined,
         };
         return adapter;
     }
@@ -7265,7 +7269,16 @@ describe("sound node transport", () => {
             blueprintLocals: {},
         });
 
-        expect(log.play).toEqual([{ assetId: "asset-theme", channel: "bgm", loop: false, volume: 1 }]);
+        // The node stores the pre-track "soundChannel"; resolveTrackId maps it to that channel's
+        // built-in track so a graph written before tracks existed still plays on the BGM bus. Every
+        // unwired override travels as undefined, which is what lets the track supply the default.
+        expect(log.play).toEqual([{
+            assetId: "asset-theme",
+            audioTrackId: "music",
+            loop: undefined,
+            volume: undefined,
+            fadeInMs: undefined,
+        }]);
         const handle = { kind: "soundHandle", id: "sound:0" };
         expect(log.ops).toEqual([
             { op: "setVolume", handle, volume: 0.25, fadeMs: 800 },

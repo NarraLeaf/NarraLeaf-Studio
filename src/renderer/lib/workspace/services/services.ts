@@ -1,8 +1,12 @@
 import { FsRequestResult } from "@shared/types/os";
+import type { FsTextEncoding } from "@shared/types/textEncoding";
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { Porject, ProjectConfig, ProjectMetadata } from "../project/project";
 import type { ProjectIconSet, ProjectIconSource } from "@shared/types/projectIcons";
-import type { MobileConfiguration, NetworkConfiguration, SecurityConfiguration } from "../project/configuration";
+import type { LintingConfiguration, MobileConfiguration, NetworkConfiguration, SecurityConfiguration } from "../project/configuration";
+import type { LintContext } from "@/lib/lint/context";
+import type { LintReport } from "@/lib/lint/types";
+import type { LintRunOptions } from "@/lib/lint/engine";
 import type {
     LocalizationConfiguration,
     LocalizationDocument,
@@ -64,6 +68,7 @@ import type {
     Blueprint,
 } from "@shared/types/blueprint/document";
 import type { VariableRegistry, VariableRegistryEntry } from "@shared/types/variables/registry";
+import type { AudioTrackChannel, ProjectAudioTrack, ProjectAudioTrackDocument } from "@shared/types/audioTrack";
 import type {
     ReadonlyBlueprintSurfaceSummary,
     ReadonlyBlueprintWidgetSummary,
@@ -147,6 +152,8 @@ enum Services {
     DevMode = "devMode",
     Preview = "preview",
     Build = "build",
+    /** Project-wide lint: context assembly, the rule sweep, and the last report */
+    Lint = "lint",
     Console = "console",
     /** Ref-counted FontFace + blob URLs for UI editor widgets */
     UIEditorFontFace = "uiEditorFontFace",
@@ -172,6 +179,8 @@ enum Services {
     ProjectStats = "projectStats",
     /** Project-level persistent variable registry (blueprint-declared persistent vars); M-VAR */
     VariableRegistry = "variableRegistry",
+    /** Project-level audio tracks: the authoring-time mix presets every audio surface points at */
+    AudioTracks = "audioTracks",
     /** Aggregate "is my work on disk?" state: auto-saver states + the table of files that failed */
     SaveStatus = "saveStatus",
     // Texture = "texture",
@@ -203,6 +212,8 @@ interface IProjectService extends IService {
     updateNetworkConfiguration(patch: Partial<NetworkConfiguration>): Promise<ProjectConfig>;
     getSecurityConfiguration(): SecurityConfiguration;
     updateSecurityConfiguration(patch: Partial<SecurityConfiguration>): Promise<ProjectConfig>;
+    getLintingConfiguration(): LintingConfiguration;
+    updateLintingConfiguration(patch: Partial<LintingConfiguration>): Promise<ProjectConfig>;
     updateMobileConfiguration(patch: Partial<MobileConfiguration>): Promise<ProjectConfig>;
     getProjectIconSet(): ProjectIconSet;
     updateProjectIconSet(updater: (set: ProjectIconSet) => ProjectIconSet): Promise<ProjectIconSet>;
@@ -224,9 +235,9 @@ interface IFileSystemService extends IService {
     list(path: string): Promise<FsRequestResult<FileEntry[]>>;
     details(path: string): Promise<FsRequestResult<FileDetails>>;
     directorySize(path: string): Promise<FsRequestResult<DirectorySizeResult>>;
-    read(path: string, encoding: BufferEncoding): Promise<FsRequestResult<string>>;
+    read(path: string, encoding: FsTextEncoding): Promise<FsRequestResult<string>>;
     readRaw(path: string): Promise<FsRequestResult<Uint8Array>>;
-    write(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
+    write(path: string, data: string, encoding: FsTextEncoding): Promise<FsRequestResult<void>>;
     writeRaw(path: string, data: Uint8Array): Promise<FsRequestResult<void>>;
     ensureRegularFile(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
     writeFileNoFollow(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
@@ -441,6 +452,30 @@ interface IVariableRegistryService extends IService {
     setEntryDescription(id: string, description: string | undefined): void;
     deleteEntry(id: string): void;
     replaceRegistry(registry: VariableRegistry): void;
+}
+
+/**
+ * The project's audio tracks - one row per authoring-time mix preset, resolving to (bus, multiplier,
+ * fade/loop defaults). See `@shared/types/audioTrack` for the model and the resolution formula.
+ */
+interface IAudioTrackService extends IService {
+    load(): Promise<ProjectAudioTrack[]>;
+    save(document: ProjectAudioTrackDocument): Promise<void>;
+    getDocument(): ProjectAudioTrackDocument;
+    listTracks(): ProjectAudioTrack[];
+    getTrack(id: string): ProjectAudioTrack | undefined;
+    resolveTrack(trackId: string | null | undefined, fallbackChannel?: AudioTrackChannel): ProjectAudioTrack;
+    onTracksChanged(handler: (tracks: ProjectAudioTrack[]) => void): () => void;
+    onDirtyChanged(handler: (dirty: boolean) => void): () => void;
+    isDirty(): boolean;
+    getRevision(): number;
+    applyTrackMutation(mutator: (tracks: ProjectAudioTrack[]) => ProjectAudioTrack[]): void;
+    createTrack(input?: Partial<Omit<ProjectAudioTrack, "id" | "builtin">>): ProjectAudioTrack;
+    duplicateTrack(id: string): ProjectAudioTrack | null;
+    updateTrack(id: string, patch: Partial<Omit<ProjectAudioTrack, "id" | "builtin">>): void;
+    /** Refuses the three built-ins; they are the per-bus fallbacks. */
+    deleteTrack(id: string): boolean;
+    moveTrack(id: string, beforeId: string | null): void;
 }
 
 interface ILocalBlueprintService extends IService {
@@ -926,6 +961,18 @@ interface IBuildService extends IService {
     onStateChanged(handler: (state: GameBuildStateSnapshot) => void): () => void;
 }
 
+/**
+ * Project-wide lint. `run()` is a read-only sweep, so it stays available while the workspace is
+ * frozen (ruling R3) - see LintService.
+ */
+interface ILintService extends IService {
+    buildContext(): Promise<LintContext>;
+    run(options?: LintRunOptions): Promise<LintReport>;
+    isRunning(): boolean;
+    getLastReport(): LintReport | null;
+    onReportChanged(handler: (report: LintReport | null) => void): () => void;
+}
+
 interface IDebugService extends IService { }
 
 // Helper Services
@@ -1064,7 +1111,7 @@ interface IProjectDependencyService extends IService {
 }
 
 export {
-    IAssetService, IAudioService, IBlueprintNodeCatalogService, IBuildService, ICommandService, IDebugService,
+    IAssetService, IAudioService, IBlueprintNodeCatalogService, IBuildService, ICommandService, IDebugService, ILintService,
     IEditorService, IFileSystemService, IFontService, ILocalizationService, ILoggerService,
     IGlobalSettingsService, IPluginService, IPreviewService, IProjectService, IRuntimeService,
     IService, IServiceAssetsService, IPanelStateService, IStorageService, IStoryService,
@@ -1072,7 +1119,7 @@ export {
     IWorkspaceReloadService, IVideoService,
     ICharacterService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, IConsoleService, UIEditorStateEvents,
-    IProjectDependencyService, IVoiceService, IVariableRegistryService, IPuppetDescriptionService,
+    IProjectDependencyService, IVoiceService, IVariableRegistryService, IAudioTrackService, IPuppetDescriptionService,
     Services, WorkspaceContext
 };
 

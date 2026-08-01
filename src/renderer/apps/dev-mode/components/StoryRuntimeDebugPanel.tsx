@@ -11,16 +11,31 @@ import { SceneFlowCanvas } from "@/apps/workspace/modules/story-flow/SceneFlowCa
 // accent that the editor refuses to draw cannot quietly reappear here (both are Studio chrome, both
 // render on the light and the dark surface).
 import { isReadableAccentColor } from "@/apps/workspace/modules/story/scene-editor/storySceneBlockUtils";
+import {
+    branchDeltaFor,
+    collectBranchEffects,
+    computeVariableRanges,
+    listNumericStoryVariables,
+    type SceneFlowNumericVariable,
+} from "@/apps/workspace/modules/story-flow/sceneFlowVariables";
 import { getStorySceneName, storyRowSentence, type StoryRowLookups } from "@/lib/story/storyRowProjection";
 import { DevModePanelModeToggle, type DevModePanelChrome } from "./DevModePanelChrome";
 import {
+    advanceStoryRunTrail,
     blockIdForActionId,
+    buildStorySceneBlockIndex,
+    formatStoryVariableDeltaChip,
+    formatStoryVariableRangeChip,
     listDeclaredStoryVariables,
     projectExecutionContext,
     projectSceneTimeline,
+    projectStoryTrailHighlight,
+    seedStoryRunTrail,
     type DeclaredStoryVariable,
     type StackViewLike,
     type StoryRuntimeVariableScope,
+    type StoryRunTrail,
+    type StorySceneBlockIndex,
     type StoryTimelineRow,
 } from "./storyRuntimeDebugModel";
 
@@ -203,6 +218,98 @@ function useCurrentBlockId(storyRuntime: GameAppStoryRuntimeBridge): StoryBlockI
     return blockId;
 }
 
+const EMPTY_SCENE_BLOCK_INDEX: StorySceneBlockIndex = {
+    sceneIdByBlockId: new Map(),
+    jumpBlockIds: new Set(),
+};
+
+/**
+ * The trail of a run, kept alive across the panel closing.
+ *
+ * Keyed by the run's own action↔block binding table, which is exactly the right key: every relaunch
+ * (snapshot switch, cold jump, hot reload) recompiles the story and mints a new one, so a resumed
+ * trail can only ever be this run's, and a relaunched run always starts from an empty one. Weak, so
+ * a finished run's trail goes when its compiled story does.
+ *
+ * It is a module-level cache rather than state because the debug drawer is closed and reopened
+ * constantly and unmounts this panel every time; without it, watching the game for ten seconds would
+ * erase the record of the ten minutes before.
+ */
+const trailByRun = new WeakMap<object, StoryRunTrail>();
+
+/**
+ * Where this run has been — the half of the scene map only Dev Mode can draw.
+ *
+ * Folded out of the play-head stream because nothing else keeps it (see {@link StoryRunTrail}), and
+ * folded INSIDE the subscription rather than at flush time for the reason {@link useCurrentBlockId}
+ * records: the id stream is not replayable, and a jump that shares a frame with the target scene's
+ * first action would otherwise never be seen — which is precisely the action the arm attribution
+ * needs. Renders are still coalesced to one per frame.
+ *
+ * What it cannot know is stated where it is drawn: a scene entered before this panel was ever opened
+ * leaves no step, and a timeline restore rewinds the run without rewinding the trail.
+ */
+function useStoryRunTrail(
+    storyRuntime: GameAppStoryRuntimeBridge,
+    document: StoryDocument | undefined,
+    entrySceneId: StorySceneId | null,
+): StoryRunTrail {
+    const index = useMemo(
+        () => (document ? buildStorySceneBlockIndex(document) : EMPTY_SCENE_BLOCK_INDEX),
+        [document],
+    );
+    const [trail, setTrail] = useState<StoryRunTrail>(
+        () => trailByRun.get(storyRuntime.getActionIdBindings()) ?? seedStoryRunTrail(entrySceneId),
+    );
+
+    useEffect(() => {
+        let raf = 0;
+        let bindings: object = storyRuntime.getActionIdBindings();
+        let next = trailByRun.get(bindings) ?? seedStoryRunTrail(
+            storyRuntime.getStoryContext()?.sceneId ?? entrySceneId,
+        );
+        trailByRun.set(bindings, next);
+        setTrail(next);
+
+        const flush = (): void => {
+            raf = 0;
+            setTrail(next);
+        };
+        const unsubscribe = storyRuntime.subscribeCurrentAction(actionId => {
+            const current = storyRuntime.getActionIdBindings();
+            if (current !== bindings) {
+                // A relaunch recompiles the story and hands back a new binding table. Whatever was
+                // walked belonged to the run that table replaced, so the trail starts over — which
+                // is also why no "reset trail" button is needed.
+                bindings = current;
+                next = seedStoryRunTrail(storyRuntime.getStoryContext()?.sceneId ?? entrySceneId);
+            }
+            const blockId = blockIdForActionId(current, actionId);
+            const advanced = advanceStoryRunTrail(next, {
+                sceneId: blockId ? index.sceneIdByBlockId.get(blockId) ?? null : null,
+                blockId,
+                isJump: blockId !== null && index.jumpBlockIds.has(blockId),
+            });
+            trailByRun.set(bindings, advanced);
+            if (advanced === next) {
+                return;
+            }
+            next = advanced;
+            if (!raf) {
+                raf = requestAnimationFrame(flush);
+            }
+        });
+        return () => {
+            if (raf) {
+                cancelAnimationFrame(raf);
+            }
+            unsubscribe();
+        };
+    }, [storyRuntime, index, entrySceneId]);
+
+    return trail;
+}
+
 export function StoryRuntimeDebugPanel(props: StoryRuntimeDebugPanelProps): ReactNode {
     const { storyRuntime, scopeBridge, bundle, className, chrome } = props;
     const { t } = useTranslation();
@@ -214,6 +321,10 @@ export function StoryRuntimeDebugPanel(props: StoryRuntimeDebugPanelProps): Reac
     const document: StoryDocument | undefined = context
         ? bundle.storyLibrary?.documents[context.storyId]
         : undefined;
+
+    // Subscribed at the panel, not inside the Scene tab: the trail is a record of the run, and a
+    // record that only accrues while one of four tabs happens to be open is not one.
+    const trail = useStoryRunTrail(storyRuntime, document, context?.sceneId ?? null);
 
     // `.nl-editor-surface` rather than `bg-surface-sunken`: the same paint, at the
     // `editor.surfaceOpacity` the author chose for the editor's reading surfaces. Identical at the
@@ -346,7 +457,13 @@ export function StoryRuntimeDebugPanel(props: StoryRuntimeDebugPanelProps): Reac
                 ) : tab === "timeline" ? (
                     <TimelineTab storyRuntime={storyRuntime} document={document} sceneId={context.sceneId} bundle={bundle} />
                 ) : (
-                    <SceneTab storyRuntime={storyRuntime} document={document} entrySceneId={context.sceneId} />
+                    <SceneTab
+                        storyRuntime={storyRuntime}
+                        scopeBridge={scopeBridge}
+                        document={document}
+                        entrySceneId={context.sceneId}
+                        trail={trail}
+                    />
                 )}
             </div>
         </div>
@@ -854,21 +971,190 @@ function TimelineTab(props: {
 
 // --- Scene graph (L1) --------------------------------------------------------------------------
 
+/**
+ * The focused counter's value in the run that is happening.
+ *
+ * Read exactly the way `VariablesTab` reads its rows — and refusing exactly the fallback that tab
+ * makes: a declared default is NOT a live value. A number on this strip is read as "the run is
+ * here", so a variable the namespace has not written yet, a scope with no namespace, or a value that
+ * is not a finite number all report nothing. A wrong live number is worse than no number, because
+ * the static range beside it is right and the author would trust the pair.
+ */
+function readLiveNumericValue(
+    storyRuntime: GameAppStoryRuntimeBridge,
+    scopeBridge: ScopeStoreBridge,
+    document: StoryDocument,
+    sceneId: StorySceneId,
+    variable: SceneFlowNumericVariable,
+): number | null {
+    // Matched on scope + id rather than re-deriving the storage key: `listDeclaredStoryVariables` is
+    // what the Variables tab reads, and two derivations of one key is how a panel starts showing a
+    // value that belongs to nothing.
+    const declared = listDeclaredStoryVariables(document, sceneId).find(
+        candidate => candidate.scope === variable.scope && candidate.id === variable.variableId,
+    );
+    if (!declared) {
+        return null;
+    }
+    let raw: unknown;
+    if (declared.scope === "persistent") {
+        raw = scopeBridge.persistenceGet(declared.storageKey);
+    } else {
+        const namespaces = storyRuntime.getVariableNamespaces();
+        const name = declared.scope === "scene" ? namespaces.sceneLocal[sceneId] ?? null : namespaces.saved;
+        const values = name ? storyRuntime.readStorableNamespace(name) : null;
+        if (!values || !(declared.storageKey in values)) {
+            return null;
+        }
+        raw = values[declared.storageKey];
+    }
+    return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+}
+
 function SceneTab(props: {
     storyRuntime: GameAppStoryRuntimeBridge;
+    scopeBridge: ScopeStoreBridge;
     document: StoryDocument;
     entrySceneId: StorySceneId;
+    trail: StoryRunTrail;
 }): ReactNode {
-    const { storyRuntime, document, entrySceneId } = props;
+    const { storyRuntime, scopeBridge, document, entrySceneId, trail } = props;
+    const { t } = useTranslation();
     const currentActionId = useCurrentActionId(storyRuntime);
 
+    // Ephemeral by construction, like the positions beside them: this embed restores no viewport and
+    // persists no layout, so an expansion that outlived the panel would be the only thing that did.
+    const [expandedSceneIds, setExpandedSceneIds] = useState<ReadonlySet<StorySceneId>>(() => new Set());
+    /**
+     * Scenes the author closed by hand.
+     *
+     * Tracked explicitly rather than left to effect ordering: auto-expansion follows the play head
+     * and fires again on the very next action, so without a record of the manual close the author
+     * would be re-opening a box the panel re-opens under them. Expanding it again by hand hands it
+     * back to the play head.
+     */
+    const collapsedByHandRef = useRef<Set<StorySceneId>>(new Set());
+    /** `storyVariableRefKey` of the focused counter; empty means no focus (chips off). */
+    const [focusKey, setFocusKey] = useState("");
+    const [persistTick, setPersistTick] = useState(0);
+
     // Reuse the workspace scene-flow projection (no second node graph — see the M5 card WI-5 / §8).
-    const graph = useMemo(() => buildSceneFlowGraph(document), [document]);
+    // The SAME set goes to the builder and to the canvas: the builder packs the column against the
+    // taller boxes, and a canvas drawing rows the layout did not budget for overlaps its neighbours.
+    const graph = useMemo(
+        () => buildSceneFlowGraph(document, { expandedSceneIds }),
+        [document, expandedSceneIds],
+    );
 
     // The running scene follows the play head across jumps (see resolveRunningSceneId).
     const currentSceneId = useMemo(
         () => resolveRunningSceneId(storyRuntime, document, currentActionId, entrySceneId),
         [storyRuntime, document, currentActionId, entrySceneId],
+    );
+
+    const scenesWithArms = useMemo(
+        () => new Set(graph.branches.map(branch => branch.sceneId)),
+        [graph],
+    );
+
+    // The scene the run is in opens itself: it is the one the author is looking at, and at 380px
+    // hunting for a chevron on a graph zoomed to fit is most of the interaction budget.
+    useEffect(() => {
+        if (!scenesWithArms.has(currentSceneId) || collapsedByHandRef.current.has(currentSceneId)) {
+            return;
+        }
+        setExpandedSceneIds(current => {
+            if (current.has(currentSceneId)) {
+                return current;
+            }
+            const next = new Set(current);
+            next.add(currentSceneId);
+            return next;
+        });
+    }, [currentSceneId, scenesWithArms]);
+
+    const toggleSceneExpanded = useCallback((sceneId: StorySceneId) => {
+        setExpandedSceneIds(current => {
+            const next = new Set(current);
+            if (next.delete(sceneId)) {
+                collapsedByHandRef.current.add(sceneId);
+            } else {
+                next.add(sceneId);
+                collapsedByHandRef.current.delete(sceneId);
+            }
+            return next;
+        });
+    }, []);
+
+    useEffect(() => {
+        return scopeBridge.subscribePersistence(() => setPersistTick(value => value + 1));
+    }, [scopeBridge]);
+
+    const numericVariables = useMemo(() => listNumericStoryVariables(document), [document]);
+    const focused = useMemo(
+        () => numericVariables.find(variable => variable.key === focusKey) ?? null,
+        [numericVariables, focusKey],
+    );
+
+    const focusOptions = useMemo(
+        () => [
+            { value: "", label: t("devMode.runtime.focusNone") },
+            ...numericVariables.map(variable => ({ value: variable.key, label: variable.name })),
+        ],
+        [numericVariables, t],
+    );
+
+    /** What each arm does to the counter — the same arithmetic the workspace map labels its lines with. */
+    const branchChips = useMemo(() => {
+        if (!focused) {
+            return undefined;
+        }
+        const effects = collectBranchEffects(graph, document);
+        const chips: Record<string, string> = {};
+        for (const branch of graph.branches) {
+            const delta = branchDeltaFor(effects.get(branch.id) ?? [], focused.key);
+            // Arms that never touch it carry no chip at all — absent and `?` are different answers.
+            if (delta) {
+                chips[branch.id] = formatStoryVariableDeltaChip(delta);
+            }
+        }
+        return chips;
+    }, [focused, graph, document]);
+
+    /**
+     * The counter's range ON ARRIVAL at each scene — what the author could be holding when they get
+     * there, over every path, before that scene's own writes. Not a current value and not a final
+     * one; the live number on the strip above is the only thing here that is either.
+     */
+    const sceneChips = useMemo(() => {
+        if (!focused) {
+            return undefined;
+        }
+        const chips: Record<StorySceneId, string> = {};
+        for (const [sceneId, range] of computeVariableRanges(graph, document, focused.key)) {
+            chips[sceneId] = formatStoryVariableRangeChip(range);
+        }
+        return chips;
+    }, [focused, graph, document]);
+
+    const liveValue = useMemo(() => {
+        void currentActionId;
+        void persistTick;
+        return focused
+            ? readLiveNumericValue(storyRuntime, scopeBridge, document, currentSceneId, focused)
+            : null;
+    }, [focused, storyRuntime, scopeBridge, document, currentSceneId, currentActionId, persistTick]);
+
+    /**
+     * The path this run has walked, dimming what it did not.
+     *
+     * Masked only once the run has actually gone somewhere: one scene is a position, not a path, and
+     * masking on it would drop the whole map to 30% the instant the game starts to say something the
+     * current-scene ring already says.
+     */
+    const highlight = useMemo(
+        () => (trail.steps.length > 1 ? projectStoryTrailHighlight(trail, graph) : null),
+        [trail, graph],
     );
 
     const openScene = useCallback(
@@ -881,19 +1167,53 @@ function SceneTab(props: {
     );
 
     return (
-        <div className="min-h-0 flex-1">
-            <SceneFlowCanvas
-                graph={graph}
-                positionOverrides={{}}
-                currentSceneId={currentSceneId}
-                onOpenScene={openScene}
-                // Positions are ephemeral in the read-only Dev Mode embed; drags just move the picture.
-                onMoveScene={() => undefined}
-                // A 380px panel fits the graph at a zoom that shrinks the titles below legibility, so
-                // the embed asks for a floor and buys the rest back with a tighter frame.
-                minTitleRenderedPx={SCENE_GRAPH_MIN_TITLE_PX}
-                fitPadding={0.06}
-            />
+        <div className="flex min-h-0 flex-1 flex-col">
+            {/* The picker lives here rather than in the title bar, which belongs to the snapshot
+                select and the dock toggle — both of which act on the panel, not on this tab. */}
+            {numericVariables.length > 0 ? (
+                <div className="flex shrink-0 items-center gap-2 border-b border-edge px-2 py-1">
+                    <Select
+                        className="min-w-0 flex-1"
+                        size="sm"
+                        fullWidth
+                        portalMenu
+                        // Changes what is shown and writes nothing, so a frozen project must not
+                        // clamp it shut.
+                        inspectOnly
+                        options={focusOptions}
+                        value={focusKey}
+                        onChange={value => setFocusKey(String(value))}
+                    />
+                    {focused && liveValue !== null ? (
+                        <span
+                            className="shrink-0 tabular-nums text-fg"
+                            title={t("devMode.runtime.focusLive")}
+                        >
+                            {`${focused.name} = ${liveValue}`}
+                        </span>
+                    ) : null}
+                </div>
+            ) : null}
+
+            <div className="min-h-0 flex-1">
+                <SceneFlowCanvas
+                    graph={graph}
+                    positionOverrides={{}}
+                    currentSceneId={currentSceneId}
+                    onOpenScene={openScene}
+                    // Positions are ephemeral in the read-only Dev Mode embed; drags just move the picture.
+                    onMoveScene={() => undefined}
+                    expandedSceneIds={expandedSceneIds}
+                    onToggleSceneExpanded={toggleSceneExpanded}
+                    branchChips={branchChips}
+                    sceneChips={sceneChips}
+                    highlight={highlight}
+                    // A 380px panel fits the graph at a zoom that shrinks the titles below legibility, so
+                    // the embed asks for a floor and buys the rest back with a tighter frame.
+                    minTitleRenderedPx={SCENE_GRAPH_MIN_TITLE_PX}
+                    fitPadding={0.06}
+                />
+            </div>
         </div>
     );
 }

@@ -129,6 +129,32 @@ async function download(url, expectedSha256) {
 }
 
 /**
+ * Make sure the bundled 7za can actually be executed.
+ *
+ * Same failure as the zsign chmod below, one layer up: the exec bit on
+ * `7zip-bin`'s binaries does not reliably survive being installed into
+ * node_modules, and CI installs fresh on every run. It costs nothing on a tree
+ * that is already correct, and it is the difference between working and
+ * `spawnSync .../7za EACCES` on Linux - where the only symptom is this script
+ * failing to unpack an archive it downloaded perfectly well.
+ *
+ * Guarded on the HOST platform, not the target being staged: 7za runs here and
+ * now. Windows has no exec bit, and a chmod failure is left to surface as the
+ * spawn's own error rather than being reported as a permissions problem when it
+ * might be something else.
+ */
+let ensuredExecutable = false;
+function ensure7zaExecutable() {
+    if (ensuredExecutable || process.platform === 'win32') return;
+    ensuredExecutable = true;
+    try {
+        fs.chmodSync(path7za, 0o755);
+    } catch {
+        // Deliberately ignored - see above.
+    }
+}
+
+/**
  * Unpack one named entry out of a .zip or .tar.gz into `outDir`.
  *
  * 7za (already a dependency, and already used this way by winCodeSignCache)
@@ -136,6 +162,7 @@ async function download(url, expectedSha256) {
  * we never have to guess what 7za would name its intermediate file.
  */
 function extractEntry(archive, assetName, entry, outDir) {
+    ensure7zaExecutable();
     let archivePath;
     if (assetName.endsWith('.zip')) {
         archivePath = path.join(outDir, '.payload.zip');

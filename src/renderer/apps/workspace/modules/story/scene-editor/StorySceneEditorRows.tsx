@@ -46,6 +46,7 @@ import { resolveCommandLine, type StoryCommandContext } from "./storyCommandReso
 import { StoryCommandCandidateMenu, useStoryCandidateMenuState, type StoryCandidateItem } from "./StoryCommandCandidateMenu";
 import { RichTextInput, type ActiveMarks, type EventClickInfo, type InterpolationClickInfo, type PauseClickInfo, type RichTextInputHandle } from "./RichTextInput";
 import { RichTextToolbar } from "./RichTextToolbar";
+import type { RichTextToolbarHandle } from "./RichTextToolbar";
 import { InterpolationPopover } from "./InterpolationPopover";
 import { ExpressionPopover } from "./ExpressionPopover";
 import { collectStoryVariableOptions, resolveInterpolationName, type PersistentVariableOption } from "./storyInterpolation";
@@ -71,7 +72,6 @@ import {
 } from "./storySceneBlockUtils";
 import { ConditionPopover } from "./ConditionPopover";
 import { BlockOverview, getQuickParams, QuickParamsInline, type QuickParam } from "./storyQuickParams";
-import { lensTrackRendersBar, type StoryLensRowTrack } from "./storyStagingLens";
 import { actionTrigger, ACTION_TRIGGER, insertChooserType, toCanonicalCommandLine } from "./commandTrigger";
 import { useStoryRowActions } from "./storyRowActions";
 import { diagnoseRow, type StoryRowDiagnosticCode } from "./storyRowDiagnostics";
@@ -103,13 +103,18 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
     editInitialCaret?: StoryCaretTarget;
     textInputRef: RefObject<RichTextInputHandle | null>;
     tempSpeakers: TempSpeakerRef[];
-    /** This row is a parallel/race container currently showing its staging lens (M7). */
-    lensActive: boolean;
-    /** Reading density (U1). Only `comfortable` differs structurally — see `stackedDialogue` below. */
+    /**
+     * Reading density (U1). The row itself reads nothing from it any more — every length it needs
+     * arrives as a CSS variable on the editor root — but it stays a prop so a density switch still
+     * crosses the memo boundary and re-renders the rows at the new metrics.
+     */
     density: StoryEditorDensity;
 }) {
     const { t } = useTranslation();
     const { row, scene, document, characters, selected, active, collapsed, editing, textInputRef } = props;
+    // The name column carries the editor's body type, so the nametag and the words it introduces are
+    // the same size — the column, not a smaller type, is what makes the name read as a label.
+    const textStyle = useStoryEditorTextStyle();
     const actions = useStoryRowActions();
     const blockId = row.block.id;
     /**
@@ -146,30 +151,17 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
         onAddInside: actions.addInside,
         onAddBranch: actions.addBranch,
         onPlayFromRow: actions.playFromRow,
-        onToggleLens: () => actions.toggleLens(blockId),
     };
 
     const block = row.block;
     const container = isContainerBlock(block);
     const containerInfo = container ? getContainerHeaderInfo(block) : null;
-    // Staging lens (M7). `lensTrack` marks a direct child of a lensed container — it renders as a
-    // bar-timeline track. `lensMode` marks a parallel/race container header itself (all/allAsync/any),
-    // which carries the mode badge (WI-3) and the list⇄lens toggle.
-    const lensTrack = row.lensTrack;
-    // Only a staging track swaps its content column for a bar. A prose child (narration / dialogue /
-    // note — reachable through the lens's own tail "+") stays on the ordinary row path, because that is
-    // where the in-place text editor, the voice indicator and the row actions live: swapping the whole
-    // column would leave a row that click / double-click / Enter put into text-edit mode with no editor
-    // to type into (interaction model §"Editing in place"; WI-2 "Enter/Escape 照常").
-    const lensBarTrack = lensTrack && lensTrackRendersBar(lensTrack) ? lensTrack : null;
     const lensMode: "all" | "allAsync" | "any" | null = block.kind === "control" && block.payload.control === "race"
         ? "any"
         : block.kind === "control" && block.payload.control === "parallel"
             ? (block.payload.mode === "allAsync" ? "allAsync" : "all")
             : null;
-    // A lensed container is inherently expanded (its children are the tracks), so its collapse chevron
-    // would be a no-op — hide it while the lens is on.
-    const canFold = block.childrenIds.length > 0 && canAcceptChildren(block) && !(lensMode && props.lensActive);
+    const canFold = block.childrenIds.length > 0 && canAcceptChildren(block);
     const textSegment = getTextSegment(block);
     // Plain narration and studio notes hide their badge icon (but keep its slot, for alignment).
     const hideBadge = (block.kind === "nodeAction" && block.payload.action === "narration") || block.kind === "note";
@@ -191,34 +183,41 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
     // chrome.
     const categoryColor = !isDialogue && !hideBadge && row.groupRole !== "member" ? getBlockBadgeInfo(block).iconColor : null;
     /**
-     * A dialogue opens a block: the speaker's name heads the run on its own line, the words follow
-     * underneath, and the portrait stays out in the gutter beside them (U1 WI-3).
-     *
-     * The name used to sit inline in front of the first line, which is what made the run impossible to
-     * read as one thing: the body text started after the name, so it started at a different x on the
-     * head than on every continuation — and, because the name's width is the name's *length*, at a
-     * different x for every speaker. Five distinct left edges on one screen, four of them accidental.
-     * On its own line the name lands on the same baseline as the words it introduces, and every line
-     * of every run by every speaker starts at exactly one x.
+     * A run of dialogue is named once, at its head. The continuations are joined to it by a connector
+     * dropped from under the head's plate — the run reads as one block with one attribution, which a
+     * repeated name cannot do however quietly it is printed.
      */
-    const stackedDialogue = isDialogue && !dialogueMember;
+    const namesSpeaker = isDialogue && !dialogueMember && !containerInfo;
     /**
-     * The group's attribution rail (U1 WI-1), drawn on the ROW rather than inside the badge slot.
+     * The group connector: one line hanging from the head's plate, down past every continuation, and
+     * turning right into the last line of the run.
      *
-     * It used to be a 1px hairline inside a 24px box: `rgba(255,255,255,0.1)` at rest, i.e. 1.27:1 on
-     * the editor's backdrop, which is invisible in the literal sense, and it only lit up on hover. Two
-     * same-speaker continuations and a narration line therefore rendered identically — grouping was
-     * subtracting information. On the row it can span the full height, so consecutive members join
-     * into one unbroken line back to the speaker, and it is `fg-subtle` (4.1:1) at rest.
+     * It is drawn per row but must not LOOK drawn per row. Two rules follow from that, and both were
+     * got wrong first time round: every segment butts square against the next (a radius on each one
+     * pinched the line at every row boundary — a seam per row, which is exactly what a single line
+     * must not have), and only the very last segment is rounded, because it is the only end there is.
+     *
+     * That last segment is an elbow rather than a stub: a line that simply stops is ambiguous about
+     * whether the run ended or the list did, while one that turns toward the words it is attributing
+     * says "this is the last of them" and points at the thing it means.
      */
-    const groupRail = row.groupRole === "member" || row.groupContinues
+    const railContinues = Boolean(row.groupContinues);
+    const groupRail = isDialogue && (dialogueMember || railContinues)
         ? {
-            // Centre of the portrait column, plus this row's nesting indent and the two chrome columns.
-            left: `calc(var(--nl-story-gutter) + var(--nl-story-handle,20px) + ${row.depth * RAIL_STEP + STORY_DENSITY_METRICS[props.density].avatar / 2 - 1}px)`,
-            // A head hands the rail off from under its own portrait; a member carries it edge to edge.
-            top: row.groupRole === "member" ? 0 : ROW_CONTENT_PAD_PX + STORY_DENSITY_METRICS[props.density].avatar,
+            // Measured from the ROW, so the line-number gutter counts too — the nesting connector lives
+            // inside the content column and starts after it. Both land on the same x, which is the
+            // point: a run's line and a block's line are the same line at the same place.
+            left: `calc(var(--nl-story-gutter) + ${ROW_INDENT_STEP} * ${row.depth} + (var(--nl-story-avatar,28px) / 2))`,
+            // A head hands the connector off from under its own plate; a continuation carries it in
+            // from its own top edge, so consecutive rows join into one unbroken drop.
+            top: dialogueMember ? 0 : ROW_CONTENT_PAD_PX + STORY_DENSITY_METRICS[props.density].avatar,
         }
         : null;
+    /** The run's last line: the segment that ends, and therefore the only one that turns and rounds. */
+    const railEnds = groupRail !== null && dialogueMember && !railContinues;
+    /** Where a connector that ends on this row stops, and where one that opens a block leaves from. */
+    const rowTextCentre = ROW_CONTENT_PAD_PX + STORY_DENSITY_METRICS[props.density].rowBox / 2;
+    const rowPlateBottom = ROW_CONTENT_PAD_PX + STORY_DENSITY_METRICS[props.density].avatar;
     /**
      * Whether the pointer is on this row, kept local so a hover re-renders one row and nothing else.
      *
@@ -233,8 +232,11 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
      */
     const diagnostic = diagnoseRow({ block, context: props.commandContext });
     const [hovered, setHovered] = useState(false);
+    const [gripFocused, setGripFocused] = useState(false);
     const reduceMotion = useReduceMotion();
     const showRowActions = hovered || active;
+    // The grip and the line number occupy one box, so exactly one of them is visible at a time.
+    const showGrip = hovered || gripFocused;
     // Reordering a row writes the scene. Everything else this row does - selecting, folding, reading
     // its text, hovering its portrait - does not, and is left alone.
     const freeze = useFreezeGuard();
@@ -267,7 +269,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                 // Height comes from the density's single-line box plus the content column's `py-1`, so
                 // every column can centre inside the same box (see STORY_DENSITY_METRICS). `items-start`
                 // is load-bearing: a wrapped line keeps its first line aligned with the badge.
-                "group relative grid min-h-[calc(var(--nl-story-row-box)+0.5rem)] grid-cols-[var(--nl-story-gutter)_var(--nl-story-handle,20px)_1fr] items-start border-l-2 pr-3",
+                "group relative grid min-h-[calc(var(--nl-story-row-box)+0.5rem)] grid-cols-[var(--nl-story-gutter)_1fr] items-start border-l-2 pr-3",
                 selected ? "border-primary bg-primary/20" : active ? "border-primary bg-fill-subtle" : "border-transparent hover:bg-fill-subtle",
                 // A disabled row (WI-3) dims whole — muted content, kept line number — but no invented
                 // chrome; the runtime treats it as absent.
@@ -319,16 +321,20 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                 />
             ) : null}
             {groupRail ? (
-                <span
-                    aria-hidden
-                    className={[
-                        "pointer-events-none absolute bottom-0 w-0.5 rounded-full",
-                        selected || active ? "bg-primary" : "bg-fg-subtle",
-                    ].join(" ")}
-                    style={groupRail}
+                <ConnectorSegment
+                    left={groupRail.left}
+                    top={groupRail.top}
+                    ends={railEnds}
+                    elbow={railEnds}
+                    stopAt={rowTextCentre}
+                    highlight={selected || active}
                 />
             ) : null}
-            <div className="relative flex h-full items-start justify-end pt-1 text-2xs tabular-nums text-fg-subtle/60 transition-colors group-hover:text-fg-subtle">
+            {/* Line number and drag grip share one box: they are both "this row, as a thing to point
+                at", they are never both wanted, and giving each its own column cost 20px of every row
+                to show one of them at a time. The number yields on hover (and to a focused grip, so
+                the keyboard path is not a hover-only feature). */}
+            <div className="relative flex h-full items-start justify-end pr-2 pt-1 text-2xs tabular-nums text-fg-subtle/60 transition-colors group-hover:text-fg-subtle">
                 <div className="flex min-h-[var(--nl-story-row-box)] items-center gap-0.5">
                     {canFold ? (
                         <button
@@ -344,13 +350,11 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                     ) : (
                         <span className="h-3.5 w-3.5" />
                     )}
-                    <span>{row.lineNumber}</span>
+                    <span style={{ opacity: showGrip ? 0 : undefined }}>{row.lineNumber}</span>
                 </div>
-            </div>
-            {/* The handle centres inside the SAME single-line box the text and the line number use,
-                not over the whole row: on a wrapped row, centring over the row would drift it below
-                the line it grabs. */}
-            <div className="relative flex min-h-[calc(var(--nl-story-row-box)+0.25rem)] items-center justify-center pt-1">
+                {/* Always mounted, never unmounted on blur: it is `tabIndex={0}` and has to exist to be
+                    tabbed to. It centres in the same single-line box the number and the words use —
+                    centring over the whole row would drift it below the line it grabs on a wrapped one. */}
                 <div
                     ref={setActivatorNodeRef}
                     {...attributes}
@@ -359,62 +363,67 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                     tabIndex={0}
                     aria-label={t("story.rows.dragRow")}
                     title={freeze.frozen ? freeze.reason : t("story.rows.dragRow")}
-                    // Sized to the (narrowed) column so the invisible-but-clickable target never
-                    // overhangs into the badge beside it — an opacity-0 button still takes clicks.
-                    className={`flex h-7 w-[var(--nl-story-handle,20px)] touch-none select-none items-center justify-center rounded-md text-fg-subtle opacity-0 transition-colors hover:text-primary hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 group-hover:opacity-100 ${freeze.frozen ? "cursor-not-allowed" : "hover:cursor-grab"}`}
+                    className={`absolute right-2 top-1 flex h-[var(--nl-story-row-box)] w-[18px] touch-none select-none items-center justify-center rounded-md text-fg-subtle transition-opacity hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 ${showGrip ? "opacity-100" : "opacity-0"} ${freeze.frozen ? "cursor-not-allowed" : "hover:cursor-grab"}`}
+                    onFocus={() => setGripFocused(true)}
+                    onBlur={() => setGripFocused(false)}
                     onMouseDown={event => event.stopPropagation()}
                     onClick={event => event.stopPropagation()}
                 >
-                    <GripVertical className="pointer-events-none h-4 w-4" />
+                    <GripVertical className="pointer-events-none h-3.5 w-3.5" />
                 </div>
             </div>
             <div className="relative min-w-0 py-1">
-                <RailGuides depth={row.depth} highlight={selected || active} />
-                <div style={{ paddingLeft: row.depth * RAIL_STEP }}>
-                {lensBarTrack ? (
-                    <LensTrackContent
-                        row={row}
-                        scene={scene}
-                        document={document}
-                        characters={characters}
-                        commandContext={props.commandContext}
-                        tempSpeakers={props.tempSpeakers}
-                        onSetSpeaker={on.onSetSpeaker}
-                        onCreateCharacter={on.onCreateCharacter}
-                        onSetDialogueCharacter={on.onSetDialogueCharacter}
-                        onUpdatePayload={on.onUpdatePayload}
-                        onAddInside={on.onAddInside}
-                        onInsertAfter={on.onInsertAfter}
-                        onDeleteRow={on.onDeleteRow}
-                        active={active}
-                    />
-                ) : (
+                <RowNesting
+                    depth={row.depth}
+                    nextDepth={row.nextRowDepth ?? 0}
+                    opensBlock={Boolean(containerInfo) && !collapsed && block.childrenIds.length > 0}
+                    stopAt={rowTextCentre}
+                    plateBottom={rowPlateBottom}
+                    highlight={selected || active}
+                />
                 <>
-                <div className={[
-                    "flex min-h-[var(--nl-story-row-box)] min-w-0 gap-2",
-                    // A dialogue block is read top-down (portrait, name, words), so its columns hang
-                    // from the top; every other row keeps the single centred line.
-                    stackedDialogue ? "items-start" : "items-center",
-                ].join(" ")}>
+                {/* `items-start` with every chrome cell holding the single-line box open: on a wrapped
+                    line the plate and the nametag stay level with the FIRST line — which is the line
+                    they name — instead of drifting to the middle of the paragraph. */}
+                <div className="flex min-h-[var(--nl-story-row-box)] min-w-0 items-start gap-2" style={{ paddingLeft: rowIndent(row.depth) }}>
+                    {/* The row's content in three fixed cells: plate, nametag, words. Nesting indents
+                        the whole group — the plate is the leading edge of a row's content, and an
+                        outline that indents only the words hides its own structure behind any line
+                        long enough to reach the same x anyway. */}
+                    <span className="flex min-h-[var(--nl-story-row-box)] w-[var(--nl-story-avatar,28px)] shrink-0 items-center" aria-hidden={dialogueMember || hideBadge}>
+                        {expressionMember ? (
+                            <GroupExpressionBead block={block} characters={characters} />
+                        ) : dialogueMember || hideBadge ? null : (
+                            <BlockBadge block={block} characters={characters} appearance={row.appearance} />
+                        )}
+                    </span>
+                    {/* The nametag cell: fixed width, left-aligned, and never anything but a name. It
+                        is the column's WIDTH that holds the words to one x, not the name's own length —
+                        which is what lets the names read as a left-aligned band and the text beside
+                        them still start on a single edge. */}
+                    <span className="relative flex min-h-[var(--nl-story-row-box)] w-[var(--nl-story-name,56px)] shrink-0 items-center" style={textStyle}>
+                        {namesSpeaker ? (
+                            <CharacterSelectTrigger
+                                characters={characters}
+                                tempSpeakers={props.tempSpeakers}
+                                characterId={block.kind === "nodeAction" && block.payload.action === "dialogue" ? block.payload.characterId : undefined}
+                                speakerName={block.kind === "nodeAction" && block.payload.action === "dialogue" ? block.payload.speakerName : undefined}
+                                onChoose={on.onSetSpeaker}
+                                onCreateCharacter={on.onCreateCharacter}
+                                suppressColor={selected}
+                                column
+                            />
+                        ) : null}
+                    </span>
                     {containerInfo ? (
                         <>
-                            <ContainerPill info={containerInfo} />
+                            {/* A container header is a directive like any other: plate, then words. The
+                                pill it used to wear was a fourth icon shape AND it started further left
+                                than its own children's text, so a block never lined up with itself. */}
+                            <span className="flex min-h-[var(--nl-story-row-box)] shrink-0 items-center truncate text-sm italic text-fg-muted" style={textStyle}>{containerInfo.pill}</span>
                             {lensMode ? <ContainerModeBadge mode={lensMode} /> : null}
                         </>
-                    ) : (
-                        // The gutter's last column: one fixed width for every row at a given density,
-                        // so nothing in it — portrait, category plate, differential bead, or the empty
-                        // slot a continuation leaves for the rail — can move the text baseline beside
-                        // it. A category plate stays 28px and sits at the column's leading edge rather
-                        // than growing into it (U1).
-                        <span className="flex w-[var(--nl-story-avatar,28px)] shrink-0 items-center" aria-hidden={dialogueMember || hideBadge}>
-                            {expressionMember ? (
-                                <GroupExpressionBead block={block} characters={characters} />
-                            ) : dialogueMember || hideBadge ? null : (
-                                <BlockBadge block={block} characters={characters} appearance={row.appearance} portrait={isDialogue} />
-                            )}
-                        </span>
-                    )}
+                    ) : null}
                     {containerInfo?.role === "branch" && containerInfo.hasCondition ? (
                         <ConditionChip
                             block={block}
@@ -444,72 +453,71 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                             onInsertAfter={on.onInsertAfter}
                             block={block}
                             scene={scene}
-                            tempSpeakers={props.tempSpeakers}
-                            onSetSpeaker={on.onSetSpeaker}
-                            onCreateCharacter={on.onCreateCharacter}
                             document={document}
                             characters={characters}
-                            onSetDialogueCharacter={on.onSetDialogueCharacter}
-                            hideSpeaker={dialogueMember}
-                            suppressSpeakerColor={selected}
-                            stacked={stackedDialogue}
                         />
                     ) : textSegment || !containerInfo ? (
                         <BlockPreview
                             block={block}
                             scene={scene}
                             commandContext={props.commandContext}
-                            tempSpeakers={props.tempSpeakers}
-                            onSetSpeaker={on.onSetSpeaker}
-                            onCreateCharacter={on.onCreateCharacter}
                             document={document}
                             characters={characters}
-                            onSetDialogueCharacter={on.onSetDialogueCharacter}
-                            hideSpeaker={dialogueMember}
-                            suppressSpeakerColor={selected}
-                            stacked={stackedDialogue}
                             onUpdatePayload={on.onUpdatePayload}
                         />
                     ) : null}
-                    <div className="ml-auto flex shrink-0 items-center gap-1">
+                    {/* The hover cluster is MOUNTED on every row and merely hidden, not conditionally
+                        rendered.
+
+                        Mounting it on hover took 80–108px of width away from the words, which re-wrapped
+                        any line long enough to be near the edge — and because the text box centres its
+                        content, the first line then jumped UPWARD as the paragraph grew a second line.
+                        Text that moves under the pointer is the worst thing an editing surface can do,
+                        and it happened on exactly the rows an author works on longest.
+
+                        The nodes it costs are bounded now in a way they were not when this was written:
+                        the list is windowed, so "every row" is one screenful. */}
+                    {/* The lint mark and the voice indicator are NOT part of the hover cluster: they are
+                        there to be noticed while reading, so they keep their own always-visible slot. */}
+                    {containerInfo ? null : (
+                        <div className="ml-auto flex shrink-0 items-center gap-1">
+                            {diagnostic ? <RowDiagnosticMark code={diagnostic.code} /> : null}
+                            <StoryVoiceIndicator block={block} />
+                        </div>
+                    )}
+                    <div
+                        aria-hidden={!showRowActions}
+                        className={[
+                            "flex shrink-0 items-center gap-1 transition-opacity",
+                            containerInfo ? "ml-auto" : "",
+                            showRowActions ? "opacity-100" : "pointer-events-none opacity-0",
+                        ].join(" ")}
+                    >
                         {containerInfo ? (
-                            <>
-                                {lensMode ? <LensToggle active={props.lensActive} onToggle={on.onToggleLens} /> : null}
-                                <ContainerHeaderAdd info={containerInfo} onAdd={() => on.onAddInside(block.id)} />
-                            </>
+                            <ContainerHeaderAdd info={containerInfo} onAdd={() => on.onAddInside(block.id)} />
                         ) : (
                             <>
-                                {dialogueHead && showRowActions ? (
+                                {dialogueHead ? (
                                     <GroupHeadPositionControl position={row.appearance?.position} active={active} onSetPosition={on.onSetPosition} />
                                 ) : null}
-                                {diagnostic ? <RowDiagnosticMark code={diagnostic.code} /> : null}
-                                <StoryVoiceIndicator block={block} />
-                                {showRowActions ? (
-                                    <RowActions onInsertAfter={on.onInsertAfter} onDelete={on.onDeleteRow} active={active} />
-                                ) : null}
+                                <RowActions onInsertAfter={on.onInsertAfter} onDelete={on.onDeleteRow} active={active} />
                             </>
                         )}
-                        {showRowActions ? (
-                            <RowPlayAction block={block} active={active} onPlay={() => on.onPlayFromRow(block.id)} />
-                        ) : null}
+                        <RowPlayAction block={block} active={active} onPlay={() => on.onPlayFromRow(block.id)} />
                     </div>
                 </div>
-                {containerInfo ? (
-                    <ContainerFooter
-                        block={block}
-                        info={containerInfo}
-                        onAddInside={() => on.onAddInside(block.id)}
-                        onAddBranch={branch => on.onAddBranch(block.id, branch)}
-                    />
-                ) : null}
-                {/* A prose track on the ordinary path still carries the lens's tail "+" when it is the
-                    container's last child — the affordance belongs to the lens, not to the bar. */}
-                {lensTrack?.segment.isLast && block.parentId ? (
-                    <LensTailAdd onAdd={() => on.onAddInside(block.parentId as StoryBlockId)} />
-                ) : null}
-                </>
-                )}
+                {/* The footer and the container's tail "+" take the same indent the row's content does. */}
+                <div style={{ paddingLeft: rowIndent(row.depth) }}>
+                    {containerInfo ? (
+                        <ContainerFooter
+                            block={block}
+                            info={containerInfo}
+                            onAddInside={() => on.onAddInside(block.id)}
+                            onAddBranch={branch => on.onAddBranch(block.id, branch)}
+                        />
+                    ) : null}
                 </div>
+                </>
             </div>
         </div>
     );
@@ -565,16 +573,6 @@ function TextEditBox(props: {
     scene: StoryScene;
     document: StoryDocument;
     characters: Character[];
-    onSetDialogueCharacter: (characterId: string | undefined) => void;
-    tempSpeakers: TempSpeakerRef[];
-    onSetSpeaker: (speaker: { characterId: string } | { speakerName: string } | null) => void;
-    onCreateCharacter: (name: string) => void;
-    /** In-group dialogue member (WI-5): drop the nametag and indent the text, matching the read row. */
-    hideSpeaker?: boolean;
-    /** Row is selected: the nametag yields its accent colour to the selection highlight. */
-    suppressSpeakerColor?: boolean;
-    /** `comfortable` dialogue block (U1 WI-3): nametag on its own line above the field. */
-    stacked?: boolean;
 }) {
     const { t } = useTranslation();
     // Second enforcement point for the row text (see isRowTextEditable): even with the state
@@ -586,6 +584,7 @@ function TextEditBox(props: {
         : null;
     const initialRuns = useMemo(() => segmentToRuns(getTextSegment(props.block)), [props.block]);
     const containerRef = useRef<HTMLDivElement | null>(null);
+    const toolbarRef = useRef<RichTextToolbarHandle | null>(null);
     const { context, isInitialized } = useWorkspace();
     const [persistentVars, setPersistentVars] = useState<PersistentVariableOption[]>([]);
     useEffect(() => {
@@ -696,6 +695,14 @@ function TextEditBox(props: {
             if (containerRef.current && active && containerRef.current.contains(active)) {
                 return;
             }
+            // The style strip is a portal on <body>, so it is NOT inside the container — and the
+            // keyboard path walks focus straight into it (Tab from the field). Without this the very
+            // first Tab committed the row and closed the editor, which is indistinguishable from the
+            // toolbar simply not working. The pointer path never hit this: it prevents focus from
+            // moving at all, which is what the `lastToolbarInteractRef` window above is for.
+            if (active instanceof HTMLElement && active.closest("[data-rt-toolbar]")) {
+                return;
+            }
             props.onCommitTextEdit();
         }, 0);
     };
@@ -703,27 +710,19 @@ function TextEditBox(props: {
     return (
         <div
             ref={containerRef}
-            className={[
-                "relative flex min-w-0 flex-1 overflow-visible",
-                // Mirrors the read row's stacked block exactly, so opening a dialogue for editing does
-                // not move a single glyph.
-                props.stacked ? "flex-col items-start" : "items-center gap-2",
-            ].join(" ")}
+            // The nametag is the ROW's, not the field's (it lives in the name column), so opening a
+            // dialogue for editing swaps the words and nothing else — not one glyph moves.
+            //
+            // `self-stretch` + the row box are what make that true, and they are not decoration. The
+            // read-only body (`TextClickTarget`) stretches to the row's single-line box and centres its
+            // glyphs in it; this field had neither, so under the row's `items-start` it collapsed to its
+            // own content — measured at 21px against the body's 28 — and the same line sat 3.5px HIGHER
+            // the instant the caret arrived, then dropped back on Escape. Identical on all six rows
+            // measured, and it is the one motion an editing surface may never make: the words move away
+            // from the click that was aiming at them.
+            className="relative flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center self-stretch overflow-visible"
         >
-            <RichTextToolbar editor={props.editorRef} anchorRef={containerRef} commitGuard={commitGuardRef} active={activeMarks} hasVariables={variableOptions.scene.length + variableOptions.saved.length + variableOptions.persistent.length > 0} canInsertEvent={Boolean(dialoguePayload?.characterId)} onInsertEvent={insertEvent} />
-            {dialoguePayload && !props.hideSpeaker ? (
-                <CharacterSelectTrigger
-                    characters={props.characters}
-                    tempSpeakers={props.tempSpeakers}
-                    characterId={dialoguePayload.characterId}
-                    speakerName={dialoguePayload.speakerName}
-                    onChoose={props.onSetSpeaker}
-                    onCreateCharacter={props.onCreateCharacter}
-                    style={textStyle}
-                    suppressColor={props.suppressSpeakerColor}
-                    heading={props.stacked}
-                />
-            ) : null}
+            <RichTextToolbar ref={toolbarRef} editor={props.editorRef} anchorRef={containerRef} commitGuard={commitGuardRef} active={activeMarks} hasVariables={variableOptions.scene.length + variableOptions.saved.length + variableOptions.persistent.length > 0} canInsertEvent={Boolean(dialoguePayload?.characterId)} onInsertEvent={insertEvent} onReturnToText={() => props.editorRef.current?.focus()} />
             <RichTextInput
                 ref={props.editorRef}
                 initialRuns={initialRuns}
@@ -734,11 +733,7 @@ function TextEditBox(props: {
                 // the "you are here" signal, so the field needs none of its own. See the interaction model.
                 // A group member needs no indent of its own: the row holds the portrait column open
                 // for it, so read and edit start at the same x and entering edit never jumps.
-                className={[
-                    "min-h-[20px] whitespace-pre-wrap break-words bg-transparent text-fg outline-none empty:before:italic empty:before:text-fg-subtle empty:before:content-[attr(data-placeholder)]",
-                    // Down a column the main axis is vertical, so the field takes its width outright.
-                    props.stacked ? "w-full" : "flex-1",
-                ].join(" ")}
+                className="min-h-[20px] flex-1 whitespace-pre-wrap break-words bg-transparent text-fg outline-none empty:before:italic empty:before:text-fg-subtle empty:before:content-[attr(data-placeholder)]"
                 style={textStyle}
                 placeholder={editorPlaceholder(props.block, t)}
                 onChange={props.onEditRichChange}
@@ -747,6 +742,9 @@ function TextEditBox(props: {
                 onEnter={props.onContinue}
                 onShiftEnter={() => { props.onCommitTextEdit(); props.onInsertAfter(); }}
                 onArrowOut={props.onArrowOut}
+                // "Tab advances within a row" (interaction model, rule 3): within a row being edited,
+                // the next thing to advance to is the style strip.
+                onTab={backwards => toolbarRef.current?.enterFromEditor(backwards) ?? false}
                 onGoalColumnInvalidated={props.onGoalColumnInvalidated}
                 onBackspaceAtEmptyStart={props.onBackspaceAtEmptyStart}
                 onUndoBeyondRow={props.onUndoBeyondRow}
@@ -1032,35 +1030,155 @@ function RowPlayAction(props: { block: StoryBlock; active: boolean; onPlay: () =
 
 // --- Control-flow container rendering: accordion headers + visual indent rails. ---
 
-/** Indent step (px) per nesting level. Each level draws a vertical guide rail. */
-const RAIL_STEP = 20;
+/**
+ * The `gap-2` between a row's columns, in px.
+ *
+ * The group connector and the nesting guides are positioned outside that flex, so they have to add
+ * the gaps back to find where a level's content begins.
+ */
+const ROW_GAP_PX = 8;
 
 /**
  * The content column's own top padding (`py-1`), in px.
  *
- * The group's attribution rail is positioned on the ROW, which knows nothing of the column's padding,
- * so a head has to add it back to find the bottom edge of its own portrait.
+ * The group connector is positioned on the ROW, which knows nothing of the column's padding, so a
+ * head has to add it back to find the bottom edge of its own plate.
  */
 const ROW_CONTENT_PAD_PX = 4;
 
-/** Vertical guide rails, one per ancestor nesting level, so nesting reads at a glance. */
-function RailGuides({ depth, highlight }: { depth: number; highlight: boolean }) {
-    if (depth <= 0) {
-        return null;
+/**
+ * How far a connector's last segment turns right, in px.
+ *
+ * Short on purpose. Running it out to the name column's far edge was tried: it made the turn a
+ * statement, and a line whose job is to say "these rows belong together" should not be making
+ * statements at the end of every run and every block on the screen.
+ */
+const CONNECTOR_ELBOW_PX = 10;
+
+/**
+ * The connector's tone.
+ *
+ * One hairline at one weight, for both the things a row can belong to: the same-speaker run above it
+ * and the container around it. They are the same relationship — "this row hangs off that one" — and
+ * drawing them differently made a screen with both on it look like two systems.
+ *
+ * Thin and dim by intent: it is no longer load-bearing. When U1 raised this rail to 2px at full
+ * `fg-subtle` it was the ONLY thing telling a continuation from a line of narration, so it had a
+ * contrast floor to meet. The name column and the plate carry that now, and a connector loud enough
+ * to be the answer is loud enough to be noise once it isn't.
+ */
+const CONNECTOR_FILL = "bg-fg-subtle/50";
+const CONNECTOR_FILL_ACTIVE = "bg-primary/70";
+// Kept apart from the fill on purpose: the elbow is drawn from borders around an EMPTY box, so handing
+// it a background class as well — which one combined token quietly did — fills that box in and turns a
+// hairline corner into a 10px slab.
+const CONNECTOR_EDGE = "border-fg-subtle/50";
+const CONNECTOR_EDGE_ACTIVE = "border-primary/70";
+
+/**
+ * One segment of a connector: a hairline down the row, stopping at the text's centre line when the
+ * branch ends here, and turning right when this is also the deepest level that ends.
+ *
+ * Every segment butts square against its neighbours — a radius on each one pinches the line at every
+ * row boundary, which is the one thing a single line must not do — so only the elbow is rounded,
+ * being the only end there is.
+ */
+function ConnectorSegment(props: { left: string | number; top: number; ends: boolean; elbow: boolean; stopAt: number; highlight: boolean }) {
+    if (props.elbow) {
+        return (
+            <span
+                aria-hidden
+                className={`pointer-events-none absolute rounded-bl-md border-b border-l ${props.highlight ? CONNECTOR_EDGE_ACTIVE : CONNECTOR_EDGE}`}
+                style={{ left: props.left, top: props.top, height: props.stopAt - props.top, width: CONNECTOR_ELBOW_PX }}
+            />
+        );
     }
     return (
+        <span
+            aria-hidden
+            className={`pointer-events-none absolute w-px ${props.highlight ? CONNECTOR_FILL_ACTIVE : CONNECTOR_FILL}`}
+            style={props.ends
+                ? { left: props.left, top: props.top, height: props.stopAt - props.top }
+                : { left: props.left, top: props.top, bottom: 0 }}
+        />
+    );
+}
+
+/**
+ * One nesting level's indent: the plate box plus the gap after it, so a child's plate lands where its
+ * parent's NAME column starts.
+ *
+ * Two other steps were tried. A flat 20px put a child's plate to the LEFT of the text of the row
+ * containing it, so a block read as rows that had been nudged rather than as one thing inside another.
+ * The full content offset (plate + name + both gaps) put the child's plate on its parent's text edge —
+ * which sounds right and reads badly: an action row already carries a speaker column it can never
+ * fill, so at depth 1 that void stacked on top of the indent and a nested action's words began ~250px
+ * in, with the pair of empty bands compounding at every further level.
+ *
+ * This step is a third of that. It cannot line a child's plate up with a column the eye already knows
+ * — nothing sits at the parent's name edge on a row with no speaker — but it keeps a block's rows near
+ * the reading column the rest of the document uses, which is what a script is mostly made of.
+ *
+ * A calc rather than a number because the plate box follows the reading density.
+ */
+const ROW_INDENT_STEP = `(var(--nl-story-avatar,28px) + ${ROW_GAP_PX}px)`;
+
+/** The indent for content `levels` deep, as a CSS length. */
+function rowIndent(levels: number): string {
+    return `calc(${ROW_INDENT_STEP} * ${levels})`;
+}
+
+
+/**
+ * The nesting connector: one line per ancestor level, hanging from that ancestor's plate, and turning
+ * right into the last row of the block.
+ *
+ * It used to be a flat `bg-edge` hairline running the full height of every row it passed — no start
+ * (it began at the first child's top edge, nowhere near the header that owns the block) and no end (it
+ * ran off the bottom of the last child into whatever followed). It is now the SAME line, drawn by the
+ * same component, as the one joining a run of dialogue to its speaker: both say "this row hangs off
+ * that one", and drawing them differently made a screen carrying both look like two systems.
+ *
+ * `opensBlock` is the header's own half: an expanded container drops the line out from under its own
+ * plate, exactly as a dialogue head does, so the block starts where the row that names it does.
+ */
+function RowNesting({ depth, nextDepth, opensBlock, stopAt, plateBottom, highlight }: {
+    depth: number;
+    nextDepth: number;
+    opensBlock: boolean;
+    /** Y of the row's text centre line: where a branch that ends here stops. */
+    stopAt: number;
+    /** Y of the bottom of this row's own plate: where a block's line leaves its header. */
+    plateBottom: number;
+    highlight: boolean;
+}) {
+    if (depth <= 0 && !opensBlock) {
+        return null;
+    }
+    // Down the centre of the ancestor's plate at that level.
+    const at = (level: number) => `calc(${ROW_INDENT_STEP} * ${level} + (var(--nl-story-avatar,28px) / 2))`;
+    return (
         <>
-            {Array.from({ length: depth }).map((_, index) => (
-                <span
-                    key={index}
-                    aria-hidden
-                    className={[
-                        "pointer-events-none absolute inset-y-0 w-px",
-                        highlight && index === depth - 1 ? "bg-primary/40" : "bg-edge",
-                    ].join(" ")}
-                    style={{ left: index * RAIL_STEP + 9 }}
-                />
-            ))}
+            {Array.from({ length: depth }).map((_, level) => {
+                // A preorder list: the branch at this level ends here when nothing deeper follows.
+                const ends = nextDepth <= level;
+                return (
+                    <ConnectorSegment
+                        key={level}
+                        left={at(level)}
+                        top={0}
+                        ends={ends}
+                        // Only the deepest level that ends here turns; the shallower ones that also end
+                        // simply stop, because their own turn happened rows ago, at their last child.
+                        elbow={ends && level === depth - 1}
+                        stopAt={stopAt}
+                        highlight={highlight && level === depth - 1}
+                    />
+                );
+            })}
+            {opensBlock ? (
+                <ConnectorSegment left={at(depth)} top={plateBottom} ends={false} elbow={false} stopAt={stopAt} highlight={highlight} />
+            ) : null}
         </>
     );
 }
@@ -1118,29 +1236,15 @@ function GroupExpressionMember({ block, characters }: { block: StoryBlock; chara
     );
 }
 
-const CONTAINER_PILL_TONE: Record<StoryContainerHeaderInfo["role"], string> = {
-    condition: "border-binding/40 bg-binding/10 text-binding",
-    branch: "border-binding/40 bg-binding/10 text-binding",
-    group: "border-success/40 bg-success/10 text-success",
-    menu: "border-primary/40 bg-primary/10 text-primary",
-    option: "border-primary/40 bg-primary/10 text-primary",
-    nvl: "border-edge bg-fill-subtle text-fg-muted",
-};
-
-/** The plain-language label pill that titles a control-flow container header. */
-function ContainerPill({ info }: { info: StoryContainerHeaderInfo }) {
-    return (
-        <span
-            className={[
-                "inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-0.5 text-2xs font-medium",
-                CONTAINER_PILL_TONE[info.role],
-            ].join(" ")}
-        >
-            {info.role === "option" ? <span aria-hidden className="text-2xs leading-none">○</span> : null}
-            {info.pill}
-        </span>
-    );
-}
+/**
+ * The container header's label pill is gone: it was a bordered, tinted, small-caps chip — a fourth
+ * icon form on a screen that already had three — and it started at the header's own left edge, which
+ * is one column further left than the text of every row inside the block. A block that does not line
+ * up with itself is the worst offender in a list read top-down.
+ *
+ * A header now renders exactly like the directives it contains: the same plate, carrying the same
+ * category colour it always did (`getBlockBadgeInfo`), then its words in column 3.
+ */
 
 type StoryT = ReturnType<typeof useTranslation>["t"];
 
@@ -1302,7 +1406,7 @@ function ContainerFooter(props: {
     const empty = props.block.childrenIds.length === 0;
     if (props.info.role === "condition") {
         return (
-            <div className="mt-1 flex items-center gap-3 text-2xs text-fg-subtle" style={{ paddingLeft: RAIL_STEP }}>
+            <div className="mt-1 flex items-center gap-3 text-2xs text-fg-subtle" style={{ paddingLeft: rowIndent(1) }}>
                 <button
                     type="button"
                     className="rounded-md px-1.5 py-0.5 hover:bg-fill hover:text-primary"
@@ -1334,7 +1438,7 @@ function ContainerFooter(props: {
         <button
             type="button"
             className="mt-1 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-2xs italic text-fg-subtle hover:bg-fill hover:text-fg-muted"
-            style={{ marginLeft: RAIL_STEP }}
+            style={{ marginLeft: rowIndent(1) }}
             onClick={event => {
                 event.stopPropagation();
                 props.onAddInside();
@@ -1347,36 +1451,16 @@ function ContainerFooter(props: {
 }
 
 // ---------------------------------------------------------------------------
-// Staging lens (M7): the bar-timeline rendering of a parallel/race container.
+// Parallel / race containers.
+//
+// The staging lens (M7) used to render their children as a bar timeline down the right of the row.
+// It is gone, machinery and all: a coloured bar with no ruler, no scale and no labels beside it reads
+// as decoration, and it was the last thing in the list that did not obey the row's columns. Two of its
+// side effects outlived its usefulness and were bugs on their own — it discarded the collapse flag for
+// any container it had ever been switched on for (a permanently dead fold chevron), and it replaced a
+// container's whole subtree with one row per direct child, silently hiding grandchildren. Their
+// children are ordinary rows now, and the container's own footer carries the inside-add.
 // ---------------------------------------------------------------------------
-
-/** Hatch fill for a track's leading dead time (a wait) — reads as "not an animation", theme-aware. */
-const LENS_DELAY_HATCH = "repeating-linear-gradient(45deg, rgb(var(--nl-fg-subtle) / 0.28) 0, rgb(var(--nl-fg-subtle) / 0.28) 2px, transparent 2px, transparent 5px)";
-/** Share of the content column the time lane occupies; fixed so every track's bars align left-to-right. */
-const LENS_LANE_FLEX = "0 0 44%";
-
-/** The list⇄lens toggle on a parallel/race container header. Pinned while on so the way back is visible. */
-function LensToggle(props: { active: boolean; onToggle: () => void }) {
-    const { t } = useTranslation();
-    const Icon = props.active ? List : GanttChart;
-    return (
-        <button
-            type="button"
-            tabIndex={-1}
-            title={props.active ? t("story.lens.toList") : t("story.lens.toLens")}
-            className={[
-                "shrink-0 rounded-md p-1 transition-colors hover:bg-fill hover:text-primary",
-                props.active ? "text-primary" : "text-fg-subtle opacity-0 group-hover:opacity-100",
-            ].join(" ")}
-            onClick={event => {
-                event.stopPropagation();
-                props.onToggle();
-            }}
-        >
-            <Icon className="h-3.5 w-3.5" />
-        </button>
-    );
-}
 
 /** The engine-mode badge on a parallel/race header (WI-3): `all` / `allAsync` / `any`, in control colour. */
 function ContainerModeBadge({ mode }: { mode: "all" | "allAsync" | "any" }) {
@@ -1391,135 +1475,6 @@ function ContainerModeBadge({ mode }: { mode: "all" | "allAsync" | "any" }) {
     );
 }
 
-/**
- * One track's bar. A known duration draws a proportional bar (in the block's category colour), a
- * leading wait draws a hatched dead-time region, and an undeterminable duration draws an equal-width
- * dashed stub. For a race, a thin marker sits at the earliest known finish — and every bar still runs
- * its full length past it, because the engine does NOT abort a race's losers (2026-07-23 裁决).
- */
-function LensBar({ track, color }: { track: StoryLensRowTrack; color: string }) {
-    const { segment, scaleMs, mode, winnerFinishMs } = track;
-    const pct = (ms: number) => `${Math.min(100, Math.max(0, (ms / scaleMs) * 100))}%`;
-    return (
-        <div className="relative h-3.5 self-center rounded-md bg-fill-subtle/70" style={{ flex: LENS_LANE_FLEX }} aria-hidden>
-            {segment.unknown || segment.disabled ? (
-                // A disabled track is compiled out — it does not set the scale, so a proportional bar
-                // would clamp to a misleading full width. Both it and an undeterminable duration show the
-                // same equal-width dashed stub: "no footprint on this timeline".
-                <div className="absolute inset-y-0 left-0 w-[30%] rounded-md border border-dashed border-fg-subtle/50" />
-            ) : (
-                <>
-                    {segment.delayMs > 0 ? (
-                        <div className="absolute inset-y-0 rounded-l" style={{ left: 0, width: pct(segment.delayMs), backgroundImage: LENS_DELAY_HATCH }} />
-                    ) : null}
-                    {segment.durationMs > 0 ? (
-                        <div className="absolute inset-y-0 min-w-[3px] rounded-md" style={{ left: pct(segment.delayMs), width: pct(segment.durationMs), backgroundColor: color, opacity: 0.6 }} />
-                    ) : null}
-                </>
-            )}
-            {mode === "race" && winnerFinishMs !== null ? (
-                <div className="absolute inset-y-0 w-px bg-primary/70" style={{ left: pct(winnerFinishMs) }}>
-                    <span className="absolute -top-1 h-1.5 w-1.5 rounded-full bg-primary" style={{ left: 0, marginLeft: -2.5 }} />
-                </div>
-            ) : null}
-        </div>
-    );
-}
-
-/**
- * A lensed container's direct child, rendered as a bar-timeline track: the block's badge and overview
- * on the left (its `d=` token stays in-place editable), the duration bar on the right, and the row's
- * own insert/delete actions past it. It is still a full row — selection, drag, inspector, context menu
- * and playhead all live on the row around this — so only the read chrome changes. A nested container
- * shows as one compact subgroup track; the last track carries the tail "+" that inserts a new child
- * into the container (reusing the InsertRow path). Only `RowPlayAction` yields its hover slot to the
- * bar (a declared M7 concession — "play from here" stays reachable from the context menu); prose
- * children never reach here at all, they keep the ordinary row (see `LensTrackKind["text"]`), which is
- * also the only row kind `StoryVoiceIndicator` can ever render on.
- */
-function LensTrackContent(props: {
-    row: VisibleStoryRow;
-    scene: StoryScene;
-    document: StoryDocument;
-    characters: Character[];
-    commandContext: StoryCommandContext;
-    tempSpeakers: TempSpeakerRef[];
-    onSetSpeaker: (speaker: { characterId: string } | { speakerName: string } | null) => void;
-    onCreateCharacter: (name: string) => void;
-    onSetDialogueCharacter: (characterId: string | undefined) => void;
-    onUpdatePayload: (payload: StoryBlock["payload"]) => void;
-    onAddInside: (parentId: StoryBlockId) => void;
-    onInsertAfter: () => void;
-    onDeleteRow: () => void;
-    active: boolean;
-}) {
-    const { row, scene, document, characters } = props;
-    const block = row.block;
-    const track = row.lensTrack!;
-    const containerInfo = isContainerBlock(block) ? getContainerHeaderInfo(block) : null;
-    const barColor = getBlockBadgeInfo(block).iconColor;
-    return (
-        <>
-            <div className="flex min-h-[var(--nl-story-row-box)] min-w-0 items-center gap-2">
-                {containerInfo ? (
-                    <ContainerPill info={containerInfo} />
-                ) : (
-                    <BlockBadge block={block} characters={characters} appearance={row.appearance} />
-                )}
-                <div className="flex min-w-0 flex-1 items-center gap-2">
-                    {containerInfo ? (
-                        <span className="shrink-0 text-2xs tabular-nums text-fg-subtle">{block.childrenIds.length > 0 ? `· ${block.childrenIds.length}` : ""}</span>
-                    ) : (
-                        <BlockPreview
-                            block={block}
-                            scene={scene}
-                            commandContext={props.commandContext}
-                            tempSpeakers={props.tempSpeakers}
-                            onSetSpeaker={props.onSetSpeaker}
-                            onCreateCharacter={props.onCreateCharacter}
-                            document={document}
-                            characters={characters}
-                            onSetDialogueCharacter={props.onSetDialogueCharacter}
-                            onUpdatePayload={props.onUpdatePayload}
-                        />
-                    )}
-                </div>
-                <LensBar track={track} color={barColor} />
-                <RowActions onInsertAfter={props.onInsertAfter} onDelete={props.onDeleteRow} active={props.active} />
-            </div>
-            {track.segment.isLast && block.parentId ? (
-                <LensTailAdd onAdd={() => props.onAddInside(block.parentId as StoryBlockId)} />
-            ) : null}
-        </>
-    );
-}
-
-/** The tail "+" under a lens's last track — reuses the container's inside-insert (InsertRow) path. */
-function LensTailAdd(props: { onAdd: () => void }) {
-    const { t } = useTranslation();
-    return (
-        <div className="mt-1 flex opacity-0 transition-opacity group-hover:opacity-100">
-            <button
-                type="button"
-                tabIndex={-1}
-                title={t("story.container.addAction")}
-                className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-2xs text-fg-subtle hover:bg-fill hover:text-primary"
-                onClick={event => {
-                    event.stopPropagation();
-                    props.onAdd();
-                }}
-            >
-                <Plus className="h-3 w-3" />
-                {t("story.container.addAction")}
-            </button>
-        </div>
-    );
-}
-
-/**
- * The icon for a candidate, chosen from what the param is asking for. A speaker with nobody behind it
- * gets the outline icon the picker uses, so picking one is never mistaken for picking a character.
- */
 function candidateIcon(cursor: StoryCommandCursor, candidate: StoryCommandCandidate): { icon: typeof Hash; className?: string } | null {
     if (cursor.kind !== "positional" && cursor.kind !== "paramValue") {
         return null;
@@ -1773,19 +1728,26 @@ export function InsertRow(props: {
         // highlight while it is open — see the tab's `insertActive`). The marker attribute lets the
         // comfortable-density rule open it to the same 46px as a committed row, so narration's Enter
         // falls into it without a vertical jump.
-        <div data-story-insert-slot="" className="relative grid min-h-[calc(var(--nl-story-row-box)+0.5rem)] grid-cols-[var(--nl-story-gutter)_var(--nl-story-handle,20px)_1fr] items-start border-l-2 border-primary bg-fill-subtle pr-3">
-            <div aria-hidden />
-            <div className="flex min-h-[calc(var(--nl-story-row-box)+0.25rem)] items-center justify-center pt-1">
-                <Plus className="h-4 w-4 text-primary" />
+        <div data-story-insert-slot="" className="relative grid min-h-[calc(var(--nl-story-row-box)+0.5rem)] grid-cols-[var(--nl-story-gutter)_1fr] items-start border-l-2 border-primary bg-fill-subtle pr-3">
+            <div className="flex min-h-[calc(var(--nl-story-row-box)+0.25rem)] items-center justify-end pt-1">
+                <Plus className="h-3.5 w-3.5 text-primary" />
             </div>
             <div ref={menuAnchorRef} className="relative min-w-0 py-1">
                 {/* Mirror a row's content column so the slot lines up with its future siblings: guide
-                    rails + depth indent, then the gutter's portrait column, so the line being typed
-                    starts on exactly the baseline the committed row will keep. */}
-                <RailGuides depth={props.depth ?? 0} highlight={false} />
-                <div style={{ paddingLeft: (props.depth ?? 0) * RAIL_STEP }}>
+                    rails + depth indent, then the badge and name columns, so the line being typed
+                    starts on exactly the body edge the committed row will keep. */}
+                <RowNesting
+                    depth={props.depth ?? 0}
+                    nextDepth={props.depth ?? 0}
+                    opensBlock={false}
+                    stopAt={ROW_CONTENT_PAD_PX + 14}
+                    plateBottom={ROW_CONTENT_PAD_PX}
+                    highlight={false}
+                />
+                <div style={{ paddingLeft: rowIndent(props.depth ?? 0) }}>
                 <div className="flex min-h-[var(--nl-story-row-box)] items-center gap-2">
                 <span className="w-[var(--nl-story-avatar,28px)] shrink-0" aria-hidden />
+                <span className="w-[var(--nl-story-name,56px)] shrink-0" aria-hidden />
                 {/* The ghost hint sits in a wrapper around the textarea rather than the row's own
                     anchor, so it is positioned against the field's box and inherits its exact metrics.
                     `min-w-0 flex-1` moves off the textarea onto the wrapper; the textarea then fills it. */}
@@ -2391,11 +2353,12 @@ function CharacterSelectTrigger(props: {
     /** When the row is selected, drop the accent so the selection highlight owns the nametag colour. */
     suppressColor?: boolean;
     /**
-     * The nametag heads its run on its own line (U1): one type size down, no reserved line box, and
-     * its horizontal padding pulled back out by a negative margin — the hover target keeps its 4px,
-     * but the *glyphs* start exactly on the block's text baseline, which is the whole point.
+     * The nametag sits in the row's name column: left-aligned, at the body type size, and with its
+     * leading padding pulled back out by a negative margin — the hover chip keeps its 4px, but the
+     * first *glyph* lands exactly on the column's edge, so the names read as one left-aligned band
+     * however long or short they are.
      */
-    heading?: boolean;
+    column?: boolean;
 }) {
     const { t } = useTranslation();
     // A frozen row keeps its nametag readable and stops offering the picker, which is also the way a
@@ -2474,24 +2437,26 @@ function CharacterSelectTrigger(props: {
     if (!editing) {
         const unassigned = !committedName;
         return (
-            <div ref={rootRef} className={["relative overflow-visible", props.heading ? "w-full" : "shrink-0"].join(" ")}>
+            <div ref={rootRef} className={["relative overflow-hidden", props.column ? "max-w-full" : "shrink-0"].join(" ")}>
                 <button
                     type="button"
                     className={[
                         "flex max-w-full items-center truncate rounded-md px-1 py-0.5 text-left hover:bg-fill focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60",
-                        // The negative margins are what keep the name line cheap: the hover chip keeps
-                        // its padding, but the padding is pulled back out of the layout, so heading a
-                        // run costs one 16px line and its glyphs start on the baseline, not 4px in.
-                        // `w-fit` matters: the heading's wrapper spans the body width (so a very long
-                        // name truncates at the column rather than at nothing), and without it the
-                        // block-level flex button would stretch its hover chip across the whole line.
-                        props.heading ? "-mx-1 -my-0.5 w-fit text-2xs font-medium leading-4" : "h-full min-h-[28px] text-sm",
+                        // `-ml-1` pulls the hover chip's leading padding back out of the layout, so the
+                        // chip contributes exactly its glyphs and the name's FIRST one lands on the
+                        // column edge. Medium weight, because in a column of its own the name is a
+                        // scanning target: running the eye down the cast is the most common thing done
+                        // to a script.
+                        // `box-content` is load-bearing next to `w-fit`: under the default border-box,
+                        // `width: fit-content` resolves to the GLYPHS' width and the chip's `px-1` then
+                        // eats 8px out of it, so the name the column was measured from is the first one
+                        // to truncate. Sizing the content box instead puts the padding outside it.
+                        props.column ? "box-content -ml-1 w-fit font-medium" : "h-full min-h-[28px] text-sm",
                         unassigned ? "italic text-fg-subtle hover:text-primary" : props.speakerName ? "text-fg-muted" : characterColor ? "" : "text-primary",
                         props.className ?? "",
                     ].join(" ")}
-                    // A heading takes its size from the class, not from the editor's body type.
                     style={(() => {
-                        const base = props.heading ? { ...props.style, fontSize: undefined, lineHeight: undefined } : props.style;
+                        const base = props.style;
                         return characterColor ? { ...base, color: characterColor } : base;
                     })()}
                     onMouseDown={event => {
@@ -2511,13 +2476,17 @@ function CharacterSelectTrigger(props: {
     }
 
     return (
-        <div ref={rootRef} className="relative shrink-0 overflow-visible">
+        <div ref={rootRef} className={["relative overflow-visible", props.column ? "w-full" : "shrink-0"].join(" ")}>
             <input
                 ref={inputRef}
                 value={draft}
+                // In the column the field needs more room than the column has (a name being typed is
+                // often longer than any name in the cast yet), so it grows RIGHTWARDS over the words.
+                // Anchored on the left, where the name's glyphs already start, so they do not jump
+                // when the picker opens.
                 className={[
-                    "h-full min-h-[28px] w-[128px] rounded-md border border-primary/50 bg-surface-sunken px-1 py-0.5 text-sm text-fg outline-none",
-                    props.heading ? "-ml-1" : "",
+                    "h-full min-h-[28px] rounded-md border border-primary/50 bg-surface-sunken px-1 py-0.5 text-sm text-fg outline-none",
+                    props.column ? "absolute left-0 top-1/2 z-10 w-[160px] -translate-y-1/2" : "w-[128px]",
                     props.className ?? "",
                 ].join(" ")}
                 style={props.style}
@@ -2672,7 +2641,7 @@ function useCharacterBadgeImage(
  * head, a crop selection and a nametag colour are all wasted below about 28px. A category glyph does
  * not grow with it: it is a 14px icon, and a 40px tile around it is chrome.
  */
-function BlockBadge({ block, characters, appearance, portrait }: { block: StoryBlock; characters: Character[]; appearance?: CharacterAppearanceRef; portrait?: boolean }) {
+function BlockBadge({ block, characters, appearance }: { block: StoryBlock; characters: Character[]; appearance?: CharacterAppearanceRef }) {
     const { label, icon: Icon, iconColor } = getBlockBadgeInfo(block);
     // A differential-resolved sprite (framed on the face) when a look applies; otherwise the profile
     // thumbnail (already a square crop, shown as-is); otherwise the category icon.
@@ -2680,10 +2649,12 @@ function BlockBadge({ block, characters, appearance, portrait }: { block: StoryB
 
     return (
         <span
-            className={[
-                "relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-md border border-edge bg-fill-subtle",
-                portrait ? "h-[var(--nl-story-avatar,28px)] w-[var(--nl-story-avatar,28px)]" : "h-7 w-7",
-            ].join(" ")}
+            // ONE plate: one box, one radius, on every row that has one. It used to be a circle for a
+            // speaker and a 28px square for a command, which at `standard` and `comfortable` density
+            // put two sizes AND two shapes on the same screen — and bought nothing, because the name
+            // column already says which rows are speech. A list is easier to read down when its
+            // furniture is identical and only the content differs.
+            className="relative inline-flex h-[var(--nl-story-avatar,28px)] w-[var(--nl-story-avatar,28px)] shrink-0 items-center justify-center overflow-hidden rounded-md border border-edge bg-fill-subtle"
             title={label}
             aria-label={label}
         >
@@ -2747,7 +2718,7 @@ function DraftRowPreview(props: { source: string; commandContext: StoryCommandCo
         ? t(reason.key, reason.paramHintKey ? { ...reason.params, slot: t(reason.paramHintKey) } : reason.params)
         : t("story.rows.invalidHint");
     return (
-        <span className="flex min-w-0 flex-1 items-baseline gap-2">
+        <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center gap-2">
             <span className="min-w-0 truncate font-mono text-sm text-warning">{props.source}</span>
             <span className="shrink-0 truncate text-2xs text-warning/80">{reasonText}</span>
         </span>
@@ -2760,16 +2731,6 @@ function BlockPreview(props: {
     document: StoryDocument;
     characters: Character[];
     commandContext: StoryCommandContext;
-    onSetDialogueCharacter: (characterId: string | undefined) => void;
-    tempSpeakers: TempSpeakerRef[];
-    onSetSpeaker: (speaker: { characterId: string } | { speakerName: string } | null) => void;
-    onCreateCharacter: (name: string) => void;
-    /** In-group dialogue member (WI-5): drop the nametag and indent the text under the group speaker. */
-    hideSpeaker?: boolean;
-    /** Row is selected: the nametag yields its accent colour to the selection highlight. */
-    suppressSpeakerColor?: boolean;
-    /** `comfortable` dialogue block (U1 WI-3): nametag on its own line above the words. */
-    stacked?: boolean;
     /** Commit an inline quick-param edit (WI-2) through the same history path the inspector uses. */
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
 }) {
@@ -2778,38 +2739,6 @@ function BlockPreview(props: {
     const text = getTextSegment(block);
     const textStyle = useStoryEditorTextStyle();
     const quickParams = getQuickParams(block);
-    if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
-        const hasValue = Boolean(text?.value) || Boolean(text?.rich && text.rich.length > 0);
-        return (
-            <div className={[
-                "flex min-w-0 flex-1 self-stretch text-sm",
-                // Stacked (U1 WI-3): the nametag heads the block on its own line and the words run
-                // full width underneath it, instead of the name eating into the line it introduces.
-                props.stacked ? "flex-col items-start" : "items-center gap-2",
-            ].join(" ")}>
-                {props.hideSpeaker ? null : (
-                    <CharacterSelectTrigger
-                        characters={props.characters}
-                        tempSpeakers={props.tempSpeakers}
-                        characterId={block.payload.characterId}
-                        speakerName={block.payload.speakerName}
-                        onChoose={props.onSetSpeaker}
-                        onCreateCharacter={props.onCreateCharacter}
-                        style={textStyle}
-                        suppressColor={props.suppressSpeakerColor}
-                        heading={props.stacked}
-                    />
-                )}
-                {hasValue && text ? (
-                    <TextClickTarget style={textStyle} className={props.stacked ? "w-full" : undefined}>
-                        <RichTextView className="min-w-0 flex-1 whitespace-pre-wrap break-words text-fg" segment={text} document={props.document} sceneId={props.scene.id} />
-                    </TextClickTarget>
-                ) : (
-                    <TextClickTarget style={textStyle} className={["italic text-fg-subtle", props.stacked ? "w-full" : ""].join(" ")}>{getEmptyTextPlaceholder(block)}</TextClickTarget>
-                )}
-            </div>
-        );
-    }
     if (text) {
         const hasValue = Boolean(text.value) || Boolean(text.rich && text.rich.length > 0);
         const note = block.kind === "note";
@@ -2882,11 +2811,14 @@ function BlockPreview(props: {
  * A bounded strip fixes both: the row reads as text again, the painted area drops by roughly three
  * quarters, and the fade is an ordinary gradient mask with no backdrop sampling anywhere.
  */
-const BACKGROUND_STRIP_WIDTH = 180;
-/** Dissolves the strip's leading edge into the row instead of cutting a seam down the list. */
-const BACKGROUND_STRIP_MASK = "linear-gradient(to right, transparent, #000 62%)";
+const BACKGROUND_STRIP_WIDTH = "max(180px, 32%)";
+/**
+ * Dissolves the strip's leading edge into the row instead of cutting a seam down the list. The fade
+ * starts earlier than it did at 180px: over a third of the row, a hard 62% ramp reads as an edge.
+ */
+const BACKGROUND_STRIP_MASK = "linear-gradient(to right, transparent, #000 55%)";
 /** The label's cap: the content column, less the strip it must not run under. */
-const BACKGROUND_LABEL_MAX_WIDTH = `calc(100% - ${BACKGROUND_STRIP_WIDTH + 24}px)`;
+const BACKGROUND_LABEL_MAX_WIDTH = `calc(100% - ${BACKGROUND_STRIP_WIDTH} - 24px)`;
 
 /**
  * The picked background, as a strip at the row's trailing edge. Rendered only for background rows
@@ -2951,9 +2883,13 @@ function BackgroundBlockPreview({ payload, quickParams, onUpdatePayload }: {
     const label = asset?.name ?? (payload.assetId ? t("story.background.missingImage") : payload.color || t("story.background.unassigned"));
 
     return (
-        <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm text-fg-muted" style={textStyle}>
+        <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center gap-1.5 text-sm italic text-fg-muted" style={textStyle}>
             <span className="min-w-0 truncate" style={{ maxWidth: BACKGROUND_LABEL_MAX_WIDTH }}>
-                {t("story.rows.setBackground")} <span className={payload.assetId || payload.color ? "text-fg" : "italic text-fg-subtle"}>{label}</span>
+                {t("story.rows.setBackground")}{" "}
+                {/* The picked asset is the row's subject, so it is set apart — but by WEIGHT and by
+                    dropping the italic, not by jumping to full-brightness `text-fg`. A directive that
+                    out-shouts the prose around it is what made a screen of these rows hard to read. */}
+                <span className={payload.assetId || payload.color ? "font-medium not-italic text-fg-muted" : "text-fg-subtle"}>{label}</span>
             </span>
             <QuickParamsInline params={quickParams} onUpdatePayload={onUpdatePayload} />
         </span>
@@ -3007,11 +2943,11 @@ function DisplayableTransformPreview(props: {
 
     // No resolvable image (e.g. a text/layer target or an unresolved name) — keep the plain description.
     if (!assetId) {
-        return <span className="min-w-0 flex-1 truncate text-sm text-fg-muted" style={textStyle}>{props.fallback}</span>;
+        return <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center truncate text-sm italic text-fg-muted" style={textStyle}>{props.fallback}</span>;
     }
 
     return (
-        <span className="flex min-w-0 flex-1 items-center gap-2 text-sm text-fg-muted" style={textStyle}>
+        <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center gap-2 text-sm italic text-fg-muted" style={textStyle}>
             <span className="h-5 w-8 shrink-0 overflow-hidden rounded-md border border-edge bg-surface">
                 {url ? (
                     <img
@@ -3027,7 +2963,7 @@ function DisplayableTransformPreview(props: {
                 )}
             </span>
             <span className="min-w-0 truncate">
-                {t("story.rows.transform")} <span className="text-fg">{name}</span>
+                {t("story.rows.transform")} <span className="font-medium not-italic">{name}</span>
                 {asset ? <span className="text-fg-subtle"> · {asset.name}</span> : null}
             </span>
         </span>

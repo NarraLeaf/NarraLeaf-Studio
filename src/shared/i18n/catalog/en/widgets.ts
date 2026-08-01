@@ -219,6 +219,8 @@ export const widgets = {
         autoplayHint: "Applies in the game. The editor canvas stays paused; use the docker bar to preview.",
         volume: "Volume",
         volumeHint: "0 to 1. A blueprint volume pin overrides this at runtime.",
+        audioTrack: "Audio Track",
+        audioTrackDefault: "SFX",
         playbackRate: "Speed",
         controls: "Native controls",
         controlsHint: "Shows the browser's own play bar over the clip.",

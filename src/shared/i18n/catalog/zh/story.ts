@@ -47,6 +47,49 @@ export const story = {
                 other: "{count} 处跳转没有有效目标",
             },
         },
+        branch: {
+            forkChoice: "选择",
+            forkCondition: "条件",
+            fallsThrough: "继续",
+            fallsThroughTitle: "此分支自身没有跳转，流程会继续执行分叉之后的内容",
+            forkCount: {
+                other: "{count} 个分支",
+            },
+            expand: "展开分支",
+            collapse: "收起分支",
+        },
+        route: {
+            title: "路线",
+            show: "显示路线",
+            hide: "隐藏路线",
+            count: {
+                other: "{count} 条路线",
+            },
+            countTruncated: "{count}+ 条路线",
+            truncated: "已达 {count} 条路线上限，下方的计数与统计仅覆盖已列出的路线。",
+            noEntryScene: "未设置入口场景，无法列出路线。",
+            noRoutes: "没有路线。",
+            noDecisions: "没有分支选择",
+            stopsHere: "在此中断",
+            stopsHereTitle: "路径在此停止，但这里并不是结局——它绕回了已访问过的场景，或某个分支没有后续内容",
+            diagnostics: {
+                unreachableEndings: {
+                    other: "{count} 个结局没有路线到达",
+                },
+                deadBranches: {
+                    other: "{count} 个分支不在任何路线上",
+                },
+            },
+        },
+        variable: {
+            none: "不聚焦变量",
+            hintArrival: "场景上的数值为到达时的取值",
+            arrivalTitle: "到达该场景时的取值，不含该场景自身的改动",
+            finalTitle: "该路线结束时的取值",
+            rangeChip: "{name} {min}–{max}",
+            valueChip: "{name} {value}",
+            unknownChip: "{name} ?",
+        },
         summary: {
             scenes: {
                 other: "{count} 个场景",
@@ -187,6 +230,7 @@ export const story = {
         lineText: "文本",
         labelName: "标签",
         scene: "场景",
+        track: "音轨",
         displayName: "显示名",
         seekTime: "秒数",
         cameraOperation: "平移 / 推拉 / 旋转 / 压暗 / 运镜 / 复位",
@@ -269,6 +313,7 @@ export const story = {
                 param: "该角色模型里的数值参数 id",
             },
             scene: "场景",
+            audioTrack: "音轨",
             label: "本场景内的标签",
             variable: "变量",
             content: "新内容，类型随目标而定",
@@ -344,6 +389,7 @@ export const story = {
         sceneMusicLoop: "循环",
         sceneMusicFade: "淡入（秒）",
         sceneMusicLoopRegion: "循环 {from}s – {to}s",
+        sceneMusicIntroLoop: "从 {from}s 播放，循环 {loop}s – {to}s",
         sceneMusicFromIn: "从 {from}s 开始",
         sceneMusicWholeClip: "整曲",
         backgroundResolveError: "无法解析图片资源：{error}",

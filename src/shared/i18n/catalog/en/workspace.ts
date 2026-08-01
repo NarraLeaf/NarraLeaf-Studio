@@ -137,8 +137,15 @@ export const workspace = {
     shell: {
         errorTitle: "Failed to initialize workspace",
         showStackTrace: "Show stack trace",
-        errorConsoleHint: "If the problem persists, please check the console for more details.",
         retry: "Retry",
+        openOtherProject: "Open another project",
+        errorCopyDetails: "Copy details",
+        errorCopied: "Error details copied to the clipboard.",
+        errorCopyFailed: "Could not copy: {error}",
+        errorExportLogs: "Export logs",
+        errorExported: "Logs saved to {path}",
+        errorExportFailed: "Could not export the logs: {error}",
+        errorOpenFailed: "Could not open that folder: {error}",
         initializing: "Initializing workspace…",
         notAProjectTitle: "This folder is not a NarraLeaf project",
         notAProjectDetail: "No .nlproj file was found.",
@@ -195,10 +202,18 @@ export const workspace = {
             categoryView: "View",
             // Category + titles for the editor-tab commands (act on the active tab).
             categoryEditor: "Editor",
+            // Caption for commands that declare no category (browse mode groups by category).
+            categoryOther: "Other",
+            categoryGo: "Go",
+            categoryStory: "Story",
+            categoryRun: "Run",
+            categoryProject: "Project",
+            categoryPreferences: "Preferences",
             // Category for the version-control commands (freeze, and later: commit, history).
             categoryVersionControl: "Version Control",
             editor: {
                 closeTab: "Close Tab",
+                closeSelectedTabs: "Close Selected Tabs",
                 closeOthers: "Close Other Tabs",
                 closeToRight: "Close Tabs to the Right",
                 closeAll: "Close All Tabs",
@@ -290,6 +305,12 @@ export const workspace = {
                 theme: "Theme switcher",
                 zoom: "Zoom level",
                 version: "Version",
+                // The text-document cells. Named for what they report rather than for the editor
+                // they come from, because that is what the author is deciding to hide.
+                textFileName: "Text file name",
+                textEncoding: "Text encoding",
+                textLineEnding: "Line ending",
+                textSelection: "Cursor position",
             },
         },
         // Save reporting: the sticky toast raised when a file cannot be written, and the lines the
@@ -325,6 +346,7 @@ export const workspace = {
                 localization: "localization",
                 voice: "voice library",
                 variables: "variable registry",
+                audioTracks: "audio tracks",
                 characters: "characters",
                 project: "project settings",
                 assets: "asset library",
@@ -570,6 +592,12 @@ export const workspace = {
                     undo: "Undo",
                     redo: "Redo",
                     delete: "Delete Keyframe",
+                    prevFrame: "Step Playhead Back One Frame",
+                    nextFrame: "Step Playhead Forward One Frame",
+                    prevFrames: "Step Playhead Back Ten Frames",
+                    nextFrames: "Step Playhead Forward Ten Frames",
+                    playheadStart: "Move Playhead to Start",
+                    playheadEnd: "Move Playhead to End",
                 },
             },
         },
@@ -582,13 +610,22 @@ export const workspace = {
             building: "Building search index…",
             empty: "No results",
             more: "{count} more",
+            // Entity groups come first: the box answers "open the thing called X" before
+            // "find the line that says X".
             groups: {
-                story: "Story Text",
+                scene: "Scenes",
+                story: "Stories",
+                character: "Characters",
+                uiSurface: "UI Surfaces",
+                blueprint: "Blueprints",
                 asset: "Assets",
+                storyText: "Story Text",
                 variable: "Variables",
                 uiTextKey: "UI Text Keys",
                 blueprintNode: "Blueprint Nodes",
             },
+            // Trailing badge on a result row standing in for several identical ones.
+            occurrences: "×{count}",
         },
         // The PyCharm-style project switcher in the title bar: current project name plus a
         // dropdown of recent workspaces to jump between.

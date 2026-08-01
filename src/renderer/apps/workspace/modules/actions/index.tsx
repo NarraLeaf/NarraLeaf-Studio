@@ -12,6 +12,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { openWelcomeTab } from "../welcome/openWelcomeTab";
 import { openAboutTab } from "../about/openAboutTab";
 import { getInterface } from "@/lib/app/bridge";
+import { getProjectWriteFreeze } from "@/lib/app/writeFreeze";
 import { Separator } from "../../registry/types";
 import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
 import { openBuildDialog } from "./BuildDialog";
@@ -48,6 +49,9 @@ export const buildAction: ModuleAction = {
     icon: <Package className="w-4 h-4" />,
     tooltip: "Build project",
     tooltipKey: "actions.build.tooltip",
+    // Standalone, so it carries its own palette category — it belongs beside Run Dev Mode and Run
+    // Preview, which is where an author looks for it.
+    paletteCategoryKey: "workspace.shell.commandPalette.categoryRun",
     onClick: (workspace: Workspace) => {
         void openBuildDialog(workspace);
     },
@@ -117,12 +121,21 @@ export const fileActionGroup: ModuleActionGroup = {
                     // Refresh the plugin dependency table so the exported package
                     // records exactly which plugins this project needs. Best-effort:
                     // a scan failure must not block the export itself.
-                    try {
-                        await context.services
-                            .get<ProjectDependencyService>(Services.ProjectDependency)
-                            .rescanAndPersist();
-                    } catch (error) {
-                        console.warn("[export] plugin dependency rescan failed", error);
+                    //
+                    // Deferred rather than attempted while the project is frozen. Exporting is
+                    // one of the two things File keeps alive on a frozen workspace, and nobody
+                    // asked for this write - so on a frozen project it only raised "Nothing is
+                    // being saved right now" about the export's own bookkeeping. The table
+                    // already on disk is exported instead, and the rescan lands on the next
+                    // export once the workspace is writable again.
+                    if (getProjectWriteFreeze() === null) {
+                        try {
+                            await context.services
+                                .get<ProjectDependencyService>(Services.ProjectDependency)
+                                .rescanAndPersist();
+                        } catch (error) {
+                            console.warn("[export] plugin dependency rescan failed", error);
+                        }
                     }
 
                     uiService.showNotification(translate("actions.export.chooseFolder"), "info");
