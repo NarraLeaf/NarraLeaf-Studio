@@ -23,10 +23,20 @@ export const wizard = {
             label: "确认",
             description: "确认并创建",
         },
+        source: {
+            label: "来源",
+            description: "服务器与存放位置",
+        },
+        clone: {
+            label: "获取项目",
+            description: "复制到本机",
+        },
     },
     nav: {
         createProject: "创建项目",
         creating: "正在创建…",
+        cloneProject: "获取项目",
+        cloning: "正在获取…",
     },
     error: {
         createFailedTitle: "创建项目失败",
@@ -48,6 +58,11 @@ export const wizard = {
                 name: "空白",
                 description: "从空白项目开始，从零构建",
                 category: "自定义",
+            },
+            clone: {
+                name: "来自服务器",
+                description: "复制一个已存在于版本控制服务器上的项目",
+                category: "已有项目",
             },
         },
     },
@@ -102,6 +117,41 @@ export const wizard = {
             hourly: "每小时",
             daily: "每天",
             weekly: "每周",
+        },
+    },
+    source: {
+        title: "项目在哪里",
+        subtitle: "指向存放该项目的服务器，并选择本机副本的存放位置",
+        server: {
+            title: "服务器",
+            description: "项目在版本控制服务器上的地址",
+        },
+        addressLabel: "项目地址",
+        addressHint: "向搭建该项目的人索取这个地址",
+        addressInvalid: "项目地址末尾需要带上项目名，例如 lore://studio.example.lan:41337/my-game",
+        parsedServer: "服务器",
+        parsedName: "服务器上的项目名",
+        destination: {
+            title: "存放位置",
+            description: "副本在本机的存放位置",
+        },
+        destinationLabel: "存放到",
+        destinationHint: "必须是新建或空的文件夹",
+        destinationWillBeCreated: "复制项目时将创建该文件夹",
+    },
+    clone: {
+        title: "获取项目",
+        subtitle: "尚未开始下载。此操作会把整个项目复制到本机",
+        summary: {
+            title: "将要复制的内容",
+            description: "开始前请确认；整个项目都会经网络传输",
+        },
+        working: "正在从服务器复制项目，可能需要一段时间",
+        error: {
+            failedTitle: "无法获取项目",
+            generic: "无法从服务器获取该项目",
+            notAProjectTitle: "这不是 NarraLeaf Studio 项目",
+            notAProject: "复制已完成，但其中没有 Studio 项目文件，Studio 无法打开。已复制的内容位于 {path}。请与搭建该项目的人核对地址，然后另选一个空文件夹重试",
         },
     },
     review: {
