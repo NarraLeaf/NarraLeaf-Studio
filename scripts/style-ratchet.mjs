@@ -9,8 +9,9 @@
  *   yarn style:ratchet          compare current counts against the baseline
  *   yarn style:ratchet --save   write current counts as the new baseline
  *
- * Scans .ts/.tsx under src/renderer, excluding build output (dist/), tests, and
- * comment bodies — see scripts/style-scan.mjs for why those last two are out.
+ * Scans the string literals of .ts/.tsx under src/renderer, excluding build
+ * output (dist/), tests, comment bodies, and identifiers — see
+ * scripts/style-scan.mjs for why each of those is out.
  */
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -24,9 +25,9 @@ const BASELINE = join(ROOT, "scripts", "style-ratchet.baseline.json");
 function count() {
     const totals = Object.fromEntries(Object.keys(METRICS).map((k) => [k, 0]));
     for (const file of walk(SCAN_DIR)) {
-        const { code } = readCode(file);
+        const { styles } = readCode(file);
         for (const [key, re] of Object.entries(METRICS)) {
-            const m = code.match(re);
+            const m = styles.match(re);
             if (m) totals[key] += m.length;
         }
     }
