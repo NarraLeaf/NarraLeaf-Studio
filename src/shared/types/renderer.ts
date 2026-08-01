@@ -12,6 +12,7 @@ import { GlobalStateKeys } from "./state/globalState";
 import type { MissingRecentProject } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
+import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
 import type {
     MacSigningIdentity,
@@ -326,6 +327,19 @@ export interface RendererPreloadedInterface {
         launch(projectPath: string, entry: GameRuntimeLaunchEntry): Promise<RequestStatus<{ status: PreviewStatus }>>;
         stop(projectPath: string): Promise<RequestStatus<{ status: PreviewStatus }>>;
         getStatus(projectPath: string): Promise<RequestStatus<{ status: PreviewStatus }>>;
+    };
+
+    /**
+     * Game processes owned by a test run.
+     *
+     * No `getStatus`: everything a test needs to know arrives on `onEvent`, in order. A polled
+     * status could not distinguish the two exits a test cares about, which is the reason this
+     * namespace exists next to `preview` rather than inside it.
+     */
+    gameTest: {
+        launch(request: GameTestLaunchRequest): Promise<RequestStatus<GameTestLaunchResult>>;
+        stop(projectPath: string, sessionId: string): Promise<RequestStatus<void>>;
+        onEvent(handler: (payload: GameTestEventPayload) => void): AppEventToken;
     };
 
     /**
