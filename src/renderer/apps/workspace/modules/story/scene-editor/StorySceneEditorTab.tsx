@@ -42,6 +42,7 @@ import {
 import { stopVoiceAudition } from "./voiceAudition";
 import { STORY_DENSITY_METRICS, STORY_NAME_MIN_PX, StoryEditorTextStyleProvider, StoryNameColumnProbe, storyEditorRootStyle } from "./storyEditorTextStyle";
 import { StoryRowActionsContext, type StoryRowActions } from "./storyRowActions";
+import { StoryPasteWizardModal } from "./StoryPasteWizardModal";
 import { toReadOnlyStoryKeybindings, toReadOnlyStoryRowActions } from "./storySceneReadOnly";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { TranslationKey } from "@shared/i18n";
@@ -1621,6 +1622,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     ? { ...mode, value, rich }
                     : mode);
             },
+            pasteIntoRowText: (_blockId, event) => latest().editor.handleRowTextPaste(event),
             commitTextEdit: () => latest().editor.commitTextEdit(),
             exitTextEdit: () => {
                 const { editor: current } = latest();
@@ -1773,7 +1775,11 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             className="flex h-full min-h-0 flex-col bg-surface text-fg outline-none"
             onFocus={editor.focusWorkspace}
             onFocusCapture={handleEditorFocusCapture}
-            onKeyDown={editor.handleKeyDown}
+            // Freeze-wrapped for the same reason the paste is: this handler's one job is to arm the
+            // plain-paste flag for the paste that follows. While frozen that paste never runs, so the
+            // flag was never consumed and never reset - it sat here and turned the first paste after
+            // the thaw into a plain one the author never asked for.
+            onKeyDown={freeze.run(editor.handleKeyDown)}
             onCopy={editor.copySelectionToClipboard}
             onPaste={freeze.run(editor.handlePaste)}
         >
@@ -2126,6 +2132,22 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 />
             ) : null}
             </div>
+            {/* Opens already parsed, writes nothing until it is confirmed, and leaves the document
+                (and the cast) untouched on cancel. It is a paste affordance and has no menu entry. */}
+            {editor.pasteWizard ? (
+                <StoryPasteWizardModal
+                    open
+                    text={editor.pasteWizard.text}
+                    inferred={editor.pasteWizard.inferred}
+                    characters={editor.characters}
+                    memory={editor.pasteMemory}
+                    busy={editor.pasteWizardBusy}
+                    onSaveSeparator={editor.savePasteSeparator}
+                    onForgetSeparator={editor.forgetPasteSeparator}
+                    onCancel={editor.cancelPasteWizard}
+                    onConfirm={editor.confirmPasteWizard}
+                />
+            ) : null}
         </div>
         </StoryRowActionsContext.Provider>
         </StoryEditorTextStyleProvider>
