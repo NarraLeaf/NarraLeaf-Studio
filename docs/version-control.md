@@ -416,7 +416,8 @@ stage / commit 本身在三种配置下都是 5–20 ms，**开销全在等待**
 > **§4.23–§4.30 来自 2026-08-01 的合并实测**（卡 [2026-07-31-004](plans/2026-07-31-004-plan-vcs-diff-and-resolve.md) 的 D0）。
 > 此前仓库里**没有一行代码碰过 Lore 的合并面**，所以这八条全部是第一次测量。脚本是
 > `mergeSpike*.integration.test.ts`（打真 DLL，其中三条要真 loreserver 0.8.5）。
-> **§4.29 是其中最重的一条，它今天就在损坏已发布的 V5a。**
+> **§4.29 值得单独读**：它记的是一条真缺陷，也记着这条缺陷第一次被归因错了——错的那版会让
+> 我们在同步按钮旁边写一句根本不必要的「请重启 Studio」。
 
 ### 4.23 automerge 把冲突标记写进 JSON —— 但它同时在旁边留下三份干净的副本
 
@@ -520,68 +521,56 @@ SyntaxError: Expected double-quoted property name in JSON at position 423
 
 所以任何持有 store 的代码路径必须在下一个打开之前走完 flush → closeStore → release。
 
-### 4.29 ⚠️ **同步之后，执行同步的那个进程再也读不出这个仓库的任何内容**
+### 4.29 ⚠️ **在线提交的内容，写它的那个进程读不回来**
 
-这一条是本轮最重的发现，而且它**现在就在损坏已经发布的 V5a**。
-
-一次 `revisionSync` 之后，在**同一个进程**里：
+判据只有一个：**提交时 globals 上的 `offline` 标志**。一个已经在服务器上登记过的仓库，
+用 `offline: false` 提交出来的修订，**写它的那个进程取不到它的新内容**：
 
 ```
-storageGet: 1/1 get items failed          ← 对这个仓库的每一个内容地址
+storageGet: 1/1 get items failed          ← 只针对这次提交新写的内容
 ```
 
-**范围比直觉大得多**：连**同步之前本地提交的修订**也读不出来。而修订**树**完全正常——
-`listFilesAt` 照样给出路径、大小和内容地址（`{hash, context, size:470}` 都对），
-**只有字节取不到**。
+三个对照，同一个仓库、同一个进程（`onlineCommitCheck.integration.test.ts`）：
 
-穷举过的、**都无效**的补救：
-
-| 试过 | 结果 |
+| 情形 | 读回来 |
 |---|---|
-| 冲突同步 / 干净同步（`fileConflict:0, fileAutomerge:0`） | 都失败——**与合并无关，是同步本身** |
-| `repositoryFlush` | 无效 |
-| `closeStore` + `openStore` 重开 | 无效 |
-| 等 15 秒 / 45 秒，中间再做两轮开关 | 无效 |
-| `offline:true` / `offline:false` 两种 globals | 都失败 |
-| `storageOpen` 带上 `hasRemoteConfig:1` + 真实 `remoteUrl` | 无效 |
-| `blobAt` 的 resolve 路线 与 `documentsAt` 的 walk 路线 | **两条都失败**（同一个 `readAddress`） |
+| **没登记服务器**时在线提交 | ✅ 7 字节——所以**光有 `offline:false` 不是判据** |
+| 已登记，**离线**提交 | ✅ 26 字节 |
+| 已登记，**在线**提交 | ❌ `storageGet: 1/1 get items failed` |
+| 在那次在线修订上读**更早**的文件 | ✅ 6 字节 |
 
-**而换一个进程读同一个仓库，立刻成功**（连续三个全新进程都读回了正确字节）。所以
-**不是数据损坏，是进程级的**。唯一的补充条件是同步的那个进程要先 flush/release 干净：
-有一次测量里第一个新进程仍然失败、下一个成功。
+最后一行划出了真正的爆炸半径：**坏的不是那个修订，是那次提交新写的片段**。修订树完全正常
+（`listFilesAt` 照给路径、大小、内容地址），同一棵树上更早的内容照读不误。
+`repositoryStatus` / `revisionHistory` 也全程正常——死的**只有 `storageGet`**。
 
-对 Studio 的后果是硬的：`VcsManager` 的 session 是**按项目常驻在主进程**的，同步之后被毒的
-正是它。于是**同步一次之后，这个工程的历史浏览、`readRevisionDocuments`、`readBlob`、
-`getThreeWay`、V4 恢复，以及本卡要做的全部 diff，在 Studio 重启之前都读不出东西**——
-而 V5a 的同步本来就要走 V4 的重载路径，那条路径要读文档。
+**换一个进程读同一个仓库立刻成功**，所以字节确实落了盘；像是在线会话在内存里把自己刚写的
+片段记成了「远端的」。为什么这样**不知道**。
 
-**进程内解不了毒，所以同步之后只能请作者重启 Studio**（`mergeSpike4.integration.test.ts` 的
-R4 实测）。最后一个没试过的杠杆 `resetLoreLibraryForRetry()`
-（[`library.ts`](../src/main/app/application/managers/vcs/lore/library.ts)）**两种顺序都无效**：
-先 flush→closeStore→release 再重置、以及先重置再 release，读回来都还是
-`storageGet: 1/1 get items failed`。机制上它本来也治不了：重置只丢掉 JS 侧那份 `LoreLibrary`
-缓存，**从不 unload 那个 DLL**——Windows 上第二次 `koffi.load` 拿到的是同一个 HMODULE，
-Lore 自己的进程内状态一点没动。所以「重启 Studio」必须写在同步按钮旁边，而不是让作者撞上
-一堆点不开的历史。
+补救全部无效，别再试：`repositoryFlush`；`closeStore` + `openStore` 重开；等 15 秒 / 45 秒；
+读侧换 `offline:true` / `offline:false`；`storageOpen` 带 `hasRemoteConfig:1` + 真实
+`remoteUrl`；`blobAt` 的 resolve 路线与 `documentsAt` 的 walk 路线（同一个 `readAddress`，
+两条都失败）；`resetLoreLibraryForRetry()` 的两种调用顺序——它只丢掉 JS 侧的 `LoreLibrary`
+缓存，**从不 unload 那个 DLL**，第二次 `koffi.load` 拿到的是同一个 HMODULE。
 
-顺带测到的两件事让这个提示能写得准一点：**被毒的只有内容读**。同一个毒态进程里
-`repositoryStatus` 与 `revisionHistory` 照常返回分支、修订与整条历史（三个节点全在），
-**第二次 `revisionSync` 也照常成功**（从服务器取到新 target，`local:false`），修订树也照样给
-路径和内容地址——死的只有 `storageGet`。也就是说作者看到的不是「版本控制坏了」，而是
-**列表都在、每一项点开都是空的**。另外，重置时**开着 store handle 是安全的**：同一个
-handleId 经新绑定照样读得出字节，`closeStore` / `releaseRepository` / 重开全部正常，代价只是
-每次重置多一次不配对的 `LoadLibrary`。
+> **这一条曾被写成「同步毒死整个进程」，那是夹具造成的假象**，保留在此是因为它值得记住：
+> 当时每一次失败的读，读的都是 `commitAll(onlineGlobals, …)` 的产物，于是「同步之后连同步
+> 之前的提交也读不出」看起来成立——而那条「之前的提交」本身就是在线提交。**归因错了就会
+> 修错东西**：照那个版本，Studio 该在同步按钮旁边写「请重启」，而真相是同步一切正常。
 
-> 这一轮还捎带修掉一个更早的哑弹：`loadLoreLibrary` 每次都调 `koffi.config`，而 koffi 在已经
-> 载入库之后**拒绝**改配置。于是第一次 `resetLoreLibraryForRetry()` 之后所有 Lore 调用都抛
-> `Cannot change Koffi configuration once a library has been loaded`——整个进程的版本控制被
-> 打死，比同步的毒还狠。§4.13 承诺的「用户修好安装后 `refreshVcsAvailability()` 就能恢复」
-> 走的正是这条路。现已改成只配置一次。
+**对 Studio 的后果（按真实姿势实测，不是推断）**：`VcsManager.globalsFor` 是
+`offline: !options.online`，只有五个网络动词才 spread `offline:false`，**提交走的是离线
+globals**。所以：
 
-**仍然不知道**：同步到底把什么弄坏了（Lore 内部状态没有可观察面），以及有没有别的解毒杠杆
-——反正我们没找到。还有一条没测：一个工程的同步会不会连带把同进程里**别的**工程也毒掉。
-R4 里两个仓库各自都同步过，所以这个问题没有被答上，而它决定「重启」这句话该说给一个工程听
-还是说给整个 Studio 听。
+- 一次真同步之后，作者自己的提交**和从服务器收到的修订**都读得出来（收到的 `other.json`
+  69 字节，本地此前从没有过这份内容）——同步只是**下载**片段，不新写内容；
+- 两个互不相干的服务器仓库放在同一个进程里，published → 克隆 A → 同步 A → 同步 B 四个阶段
+  逐个读，**A、B 全程都读得出**——没有跨工程波及；
+- **已发布的 V5a 没有因此受损**，同步之后不需要让作者重启。
+
+**唯一会踩到它的是本卡自己**：冲突解决之后那次 commit 如果走在线 globals，作者刚解决出来的
+字节就会在当前进程里读不回来。所以 **D6 的写回管线必须用离线 globals 提交**——合并是在线
+动作，提交不是，这两件事在同一条管线里必须用不同的 globals。这条没有测过，因为那条管线还
+不存在；写它的时候按这条来，并在它的集成测试里钉住。
 
 ### 4.30 `readRevisionGraph` 只覆盖当前分支，于是 `threeWay` 对任何跨分支合并都答「没有 base」
 
