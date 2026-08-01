@@ -93,6 +93,55 @@ export const story = {
             speakerUnresolved: "A speaker name was edited on a line that binds no character; the original name was kept. The line's text still changed.",
         },
     },
+    // Pasting a wall of prose into a scene. The wizard asks one question — who is speaking — and
+    // remembers the answer per project, so chapter two opens with chapter one's decisions filled in.
+    paste: {
+        title: "Paste as Rows",
+        action: "Paste",
+        totals: "{dialogue} dialogue · {narration} narration · {created} new characters",
+        lineCount: {
+            one: "{count} line",
+            other: "{count} lines",
+        },
+        moreRows: {
+            one: "…and {count} more row",
+            other: "…and {count} more rows",
+        },
+        noSpeakers: "No speaker labels — every line becomes narration.",
+        targetFor: "Who {label} is",
+        willBeCreated: "Will be created",
+        separator: {
+            none: "No speakers",
+            colon: "Name: text",
+            fullwidthColon: "Name：text",
+            dash: "Name — text",
+            lenticular: "【Name】text",
+            cornerBracket: "「Name」text",
+            tab: "Name ⇥ text",
+            regex: "Custom",
+        },
+        regexPlaceholder: "^(?<speaker>[^:]+):\\s*(?<text>.+)$",
+        problem: {
+            invalidRegex: "This pattern is not valid yet.",
+            missingGroups: "The pattern needs both a (?<speaker>…) and a (?<text>…) group.",
+        },
+        presetNamePlaceholder: "Name this separator",
+        savePreset: "Save",
+        forgetPreset: "Forget this preset",
+        target: {
+            tempSpeaker: "Name only",
+            createCharacter: "New character",
+            notASpeaker: "Not a speaker",
+            existing: "character",
+        },
+        // The plain (Ctrl+Shift+V) path, which has no wizard to show what it is about to do.
+        bulkConfirm: {
+            one: "Paste {count} row?",
+            other: "Paste {count} rows?",
+        },
+        bulkConfirmDetail: "This adds them below the current line as one undo step.",
+        scriptFile: "This is a story script. Use Import Script to bring it back in.",
+    },
     flow: {
         tabTitle: "Scene Flow",
         tabTitleNamed: "Scene Flow — {name}",
