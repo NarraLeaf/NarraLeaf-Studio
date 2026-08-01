@@ -33,7 +33,11 @@ import type {
     VcsStatus,
 } from "@shared/types/vcs";
 import type { WorkspaceFreezeReason } from "../../app/writeFreeze";
-import type { WorkspaceReloadCause, WorkspaceReloadResult } from "./core/WorkspaceReloadService";
+import type {
+    ExternalReloadParticipant,
+    WorkspaceReloadCause,
+    WorkspaceReloadResult,
+} from "./core/WorkspaceReloadService";
 import type { DocumentSource } from "@shared/documents/documentSource";
 import { Asset, AssetsMap, AssetSource } from "./assets/types";
 import { ServiceRegistry } from "./serviceRegistry";
@@ -1099,6 +1103,8 @@ interface IWorkspaceReloadService extends IService {
     /** Bumped once per reload; the editor area keys its tabs on it so each re-resolves its subject. */
     getGeneration(): number;
     onReloaded(handler: (result: WorkspaceReloadResult) => void): () => void;
+    /** Enrol something the participant table cannot name - today, a plugin's own store. */
+    registerReloader(participant: ExternalReloadParticipant): () => void;
 }
 
 // Plugin Services

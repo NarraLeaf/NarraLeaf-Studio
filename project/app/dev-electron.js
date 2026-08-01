@@ -16,7 +16,6 @@ const { watchBuild } = require('../build/watch');
 const { postcssPlugin } = require('../build/postCss-plugin');
 const {
     buildBuiltInPlugins,
-    copyBuiltInPluginsToDevUserData,
     sourceRoot: builtInPluginsSourceRoot,
 } = require('../build/builtin-plugins');
 
@@ -30,6 +29,24 @@ const runtimeSourceRoots = [
     path.join(rootDir, 'src', 'renderer', 'apps', 'dev-mode', 'nlr'),
     path.join(rootDir, 'src', 'renderer', 'lib', 'ui-editor'),
 ];
+
+/**
+ * chokidar tests `ignored` against absolute paths, so the usual
+ * `/(^|[\/\\])\../` also matches every checkout that itself lives under a dot
+ * directory - a git worktree in `.claude/`, say. The watch root matched its own
+ * ignore rule there, the watcher observed nothing at all, and edits looked like
+ * they simply did not trigger a rebuild. Only dot-segments *below* a watch root
+ * are junk worth skipping.
+ */
+function ignoreDotSegmentsBelow(roots) {
+    const bases = (Array.isArray(roots) ? roots : [roots]).map((root) => path.resolve(root));
+    return (target) => {
+        const resolved = path.resolve(target);
+        const base = bases.find((candidate) => resolved === candidate || resolved.startsWith(candidate + path.sep));
+        const relative = base ? path.relative(base, resolved) : path.basename(resolved);
+        return relative.split(path.sep).some((segment) => segment.startsWith('.'));
+    };
+}
 
 // Bind the reload port BEFORE clearing `dist`. This used to be a `rimraf dist`
 // in the npm script, so a second `yarn dev` against a live session wiped the
@@ -203,7 +220,7 @@ function broadcastReload(target = 'all') {
     void rebuildRuntimeForDev();
 
     const runtimeWatcher = chokidar.watch(runtimeSourceRoots, {
-        ignored: /(^|[\/\\])\../,
+        ignored: ignoreDotSegmentsBelow(runtimeSourceRoots),
         ignoreInitial: true,
     });
 
@@ -250,7 +267,7 @@ function broadcastReload(target = 'all') {
     // Fallback watcher: ensure rebuild when any file in src/main changes
     // Note: The esbuild watcher should handle most changes, this is just a fallback
     const mainWatcher = chokidar.watch(path.join(rootDir, 'src', 'main'), {
-        ignored: /(^|[\/\\])\../,
+        ignored: ignoreDotSegmentsBelow(path.join(rootDir, 'src', 'main')),
         ignoreInitial: true,
     });
 
@@ -408,14 +425,14 @@ function broadcastReload(target = 'all') {
         tryStartElectronOnce();
     });
 
-    async function rebuildBuiltInPluginsForDev() {
-        const results = await buildBuiltInPlugins({ dev: true });
-        await copyBuiltInPluginsToDevUserData();
-        return results;
-    }
-
+    // Only the build runs here. Installing the result is the main process's job
+    // (PluginManager syncs `dist/builtin-plugins` into userData on start-up and
+    // on the `builtin-plugins` reload below) - this script used to copy the
+    // packages in as well, and the two writers racing on the same directory is
+    // what left `<id>.builtin-tmp-*` leftovers behind, which then shadowed the
+    // real package and pinned the plugin to a stale version for good.
     const buildInitialBuiltInPlugins = async () => {
-        const builtInPluginResults = await rebuildBuiltInPluginsForDev();
+        const builtInPluginResults = await buildBuiltInPlugins({ dev: true });
         initialBuiltInPluginsBuilt = true;
         console.log(`[builtin-plugins] initial build complete (${builtInPluginResults.length}).`);
         tryStartElectronOnce();
@@ -433,7 +450,7 @@ function broadcastReload(target = 'all') {
 
     let builtInPluginRebuildTimer = null;
     const builtInPluginWatcher = chokidar.watch(builtInPluginsSourceRoot, {
-        ignored: /(^|[\/\\])\../,
+        ignored: ignoreDotSegmentsBelow(builtInPluginsSourceRoot),
         ignoreInitial: true,
     });
 
@@ -443,11 +460,11 @@ function broadcastReload(target = 'all') {
         }
         builtInPluginRebuildTimer = setTimeout(async () => {
             try {
-                const results = await rebuildBuiltInPluginsForDev();
+                const results = await buildBuiltInPlugins({ dev: true });
                 console.log(`[builtin-plugins] rebuilt (${results.length}).`);
                 if (appStarted) {
-                    console.log('[builtin-plugins] broadcasting workspace reload...');
-                    broadcastReload('workspace');
+                    console.log('[builtin-plugins] broadcasting re-sync + workspace reload...');
+                    broadcastReload('builtin-plugins');
                 }
             } catch (error) {
                 console.error('[builtin-plugins] rebuild failed:', error);

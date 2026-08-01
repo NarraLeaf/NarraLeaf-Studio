@@ -2,9 +2,19 @@ import { LORE_METADATA_TYPES } from "./abi/definitions";
 import { invoke, type InvokeOptions, type LoreGlobals } from "./call";
 import {
     LoreTag,
+    type LoreAuthIdentityPayload,
     type LoreBranchCreatePayload,
     type LoreBranchEntryPayload,
     type LoreBranchInfoPayload,
+    type LoreBranchPushPayload,
+    type LoreCloneBeginPayload,
+    type LoreCloneCountPayload,
+    type LoreCloneEndPayload,
+    type LoreCloneProgressPayload,
+    type LoreConfigPayload,
+    type LoreSyncProgressPayload,
+    type LoreSyncRevisionPayload,
+    type LoreSyncTargetPayload,
     type LoreCommitRevisionPayload,
     type LoreDiffFilePayload,
     type LoreHistoryEntryPayload,
@@ -509,6 +519,197 @@ export async function switchBranch(
         reset: options.reset ? 1 : 0,
         bare: 0,
     });
+}
+
+// -- remote -----------------------------------------------------------------
+
+/**
+ * The four verbs that touch the network, plus the config read that says whether
+ * there is a network to touch.
+ *
+ * **Every one of them needs `offline: false` on its globals.** Studio's globals are
+ * offline everywhere else on purpose (see `VcsManager.globalsFor`), and an offline
+ * push does not fail loudly - it simply has nothing to talk to. The flag is left to
+ * the caller rather than forced here so that this layer stays a transcription of the
+ * ABI and the policy stays in one place above it.
+ */
+
+/** One repository config value, or undefined when the key is not set. */
+export async function repositoryConfig(globals: LoreGlobals, key: string): Promise<string | undefined> {
+    const result = await invoke("repositoryConfigGet", globals, { key: scopeString(key) });
+    return result.first<LoreConfigPayload>(LoreTag.REPOSITORY_CONFIG_GET)?.value || undefined;
+}
+
+/** The config key Lore stores a repository's remote under. Its spelling is Lore's, not ours. */
+export const LORE_REMOTE_URL_KEY = "remote_url";
+
+export interface PushResult {
+    remote: string;
+    branch: string;
+    /**
+     * The remote already had this branch tip, so nothing was transferred.
+     *
+     * A SUCCESS, not a failure. Pressing push twice is an ordinary thing to do and the
+     * second press has to read as "already there" rather than as an error.
+     */
+    alreadyPushed: boolean;
+    localRevision?: LoreHex;
+    remoteRevision?: LoreHex;
+}
+
+/**
+ * Send this branch's revisions to the remote.
+ *
+ * `fastForwardMerge` is deliberately NOT exposed. It lets the remote take a push that
+ * is not a fast-forward by merging on the server, and a merge Studio cannot see, review
+ * or undo is not something a Push button should be able to cause. Divergence is
+ * refused above this layer instead, with a sentence the author can act on.
+ */
+export async function pushBranch(
+    globals: LoreGlobals,
+    options: { branch?: string } = {},
+): Promise<PushResult> {
+    const result = await invoke("branchPush", globals, {
+        branch: scopeString(options.branch),
+        fastForwardMerge: 0,
+    });
+    const pushed = result.one<LoreBranchPushPayload>(LoreTag.BRANCH_PUSH);
+    return {
+        remote: pushed.remote,
+        branch: pushed.branchName,
+        alreadyPushed: pushed.alreadyPushed,
+        localRevision: pushed.localRevision,
+        remoteRevision: pushed.remoteRevision,
+    };
+}
+
+export interface SyncResult {
+    target: LoreSyncTargetPayload | undefined;
+    /** Files the sync wrote or removed in the working tree. */
+    files: LoreStatusFilePayload[];
+    revisions: LoreSyncRevisionPayload[];
+    /** The last progress report, which carries the automerge and conflict counters. */
+    progress: LoreSyncProgressPayload | undefined;
+}
+
+/**
+ * Bring the working tree up to a revision fetched from the remote.
+ *
+ * **This WRITES the working tree**, which is why nothing above it may call it while
+ * the author has uncommitted work: the merge it would then perform is one Studio has
+ * no interface to resolve.
+ *
+ * `forwardChanges` carries local edits onto the new revision. Left off, for the same
+ * reason: it is the flag that turns this into a merge.
+ */
+export async function syncRevision(
+    globals: LoreGlobals,
+    options: { revision?: string; onProgress?: (progress: LoreSyncProgressPayload) => void } = {},
+): Promise<SyncResult> {
+    const result = await invoke("revisionSync", globals, {
+        revision: scopeString(options.revision),
+        forwardChanges: 0,
+        reset: 0,
+        rootFiles: scopeStringArray(undefined),
+        dependencyTags: scopeStringArray(undefined),
+        dependencyRecursive: 0,
+        dependencyDepthLimit: 0,
+    }, {
+        onEvent: options.onProgress
+            ? (event) => {
+                if (event.tag === LoreTag.REVISION_SYNC_PROGRESS) {
+                    options.onProgress?.(event.data as LoreSyncProgressPayload);
+                }
+            }
+            : undefined,
+    });
+
+    return {
+        target: result.first<LoreSyncTargetPayload>(LoreTag.REVISION_SYNC_TARGET),
+        files: result.of<LoreStatusFilePayload>(LoreTag.REVISION_SYNC_FILE),
+        revisions: result.of<LoreSyncRevisionPayload>(LoreTag.REVISION_SYNC_REVISION),
+        progress: result.of<LoreSyncProgressPayload>(LoreTag.REVISION_SYNC_PROGRESS).at(-1),
+    };
+}
+
+export interface CloneResult {
+    branch: string;
+    revision?: LoreHex;
+    fileCount: number;
+    bytesTransferred: number;
+}
+
+/**
+ * Fetch a repository from a remote into `globals.repositoryPath`.
+ *
+ * The destination must be an EMPTY directory that already exists - Lore writes
+ * `.lore/` plus the working tree into it, and it does not ask before overwriting.
+ * Guarding that is the caller's job.
+ */
+export async function cloneRepository(
+    globals: LoreGlobals,
+    options: { repositoryUrl: string; onProgress?: (count: LoreCloneCountPayload) => void },
+): Promise<CloneResult> {
+    const result = await invoke("repositoryClone", globals, {
+        repositoryUrl: scopeString(options.repositoryUrl),
+        revision: scopeString(undefined),
+        view: scopeString(undefined),
+        bare: 0,
+        virtually: 0,
+        directFileWrite: 0,
+        directFileIo: 0,
+        layer: scopeString(undefined),
+        layerMetadata: scopeString(undefined),
+        prefetch: scopeString(undefined),
+        useSharedStore: 0,
+        sharedStorePath: scopeString(undefined),
+        noTracking: 0,
+        rootFiles: scopeStringArray(undefined),
+        dependencyTags: scopeStringArray(undefined),
+        dependencyRecursive: 0,
+        dependencyDepthLimit: 0,
+    }, {
+        onEvent: options.onProgress
+            ? (event) => {
+                if (event.tag === LoreTag.REPOSITORY_CLONE_PROGRESS) {
+                    options.onProgress?.((event.data as LoreCloneProgressPayload).count);
+                }
+            }
+            : undefined,
+    });
+
+    const end = result.first<LoreCloneEndPayload>(LoreTag.REPOSITORY_CLONE_END);
+    const begin = result.first<LoreCloneBeginPayload>(LoreTag.REPOSITORY_CLONE_BEGIN);
+    return {
+        branch: end?.branch || begin?.branch || "",
+        revision: end?.revision ?? begin?.revision,
+        fileCount: end?.count.fileCount ?? 0,
+        bytesTransferred: end?.count.bytesTransferred ?? 0,
+    };
+}
+
+/**
+ * Present a bearer token to a remote and keep the resulting session.
+ *
+ * Lore persists the session in its own per-user auth store, NOT in the repository, so
+ * this is a machine-level act rather than a project-level one - which is also why the
+ * token itself never needs to be written into anything Studio ships to a collaborator.
+ *
+ * A bare loreserver has no `[server.auth]` section and therefore accepts anyone; this
+ * call is what makes Studio work against a server that DOES verify, and it is harmless
+ * against one that does not.
+ */
+export async function loginWithToken(
+    globals: LoreGlobals,
+    options: { remoteUrl: string; token: string; tokenType?: string; authUrl?: string },
+): Promise<LoreAuthIdentityPayload | undefined> {
+    const result = await invoke("authLoginWithToken", globals, {
+        remoteUrl: scopeString(options.remoteUrl),
+        token: scopeString(options.token),
+        tokenType: scopeString(options.tokenType),
+        authUrl: scopeString(options.authUrl),
+    });
+    return result.first<LoreAuthIdentityPayload>(LoreTag.AUTH_IDENTITY);
 }
 
 // -- argument helpers -------------------------------------------------------

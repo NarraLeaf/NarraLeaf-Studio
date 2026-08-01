@@ -7,10 +7,13 @@ import type {
     VcsCommitResult,
     VcsHistoryEntry,
     VcsRepositoryInfo,
+    VcsPushResult,
     VcsRestoreOptions,
     VcsRestoreResult,
     VcsRevisionKind,
     VcsStatus,
+    VcsSyncResult,
+    VcsSyncState,
     VcsThreeWayResult,
 } from "@shared/types/vcs";
 import { composeVcsIdentity } from "@shared/types/vcs";
@@ -249,10 +252,25 @@ export class VcsManager extends Manager {
         }
     }
 
-    private globalsFor(root: string): LoreGlobals {
+    /**
+     * The globals every call in this class runs on.
+     *
+     * **`offline` is the single most consequential flag here, and it defaults to on.**
+     * Offline, the backend never opens a socket, so a status read from the status bar
+     * cannot wait on a network no matter what a project's config says. Online, the same
+     * read takes 2.03 s against a server that does not answer (measured) - affordable for
+     * something the author pressed, and not for anything that happens on opening a
+     * project.
+     *
+     * `{ online: true }` is therefore reachable from exactly five places, all of them in
+     * this class and all of them named after an act the author performed: reading the
+     * sync state, pushing, syncing, cloning, and signing in. Adding a sixth means
+     * deciding, again, that a socket may be opened without anyone asking for it.
+     */
+    private globalsFor(root: string, options: { online?: boolean } = {}): LoreGlobals {
         return {
             repositoryPath: root,
-            offline: true,
+            offline: !options.online,
             // Retain fragments fetched from a remote. Off upstream by default, which
             // would make repeated diffs of the same two revisions re-fetch every time.
             cache: true,
@@ -985,6 +1003,210 @@ export class VcsManager extends Manager {
             const { session, backend } = await this.sessionFor(projectPath);
             const graph = await backend.readRevisionGraph(session.globals);
             return backend.mergeBase(graph, a, b);
+        });
+    }
+
+    // -- remote ---------------------------------------------------------------
+
+    /**
+     * The server this project syncs with, or null when it has none.
+     *
+     * A pure LOCAL read - it reads the repository's own config file through the backend
+     * and opens no socket - so it is safe to ask whenever a panel wants to know whether
+     * to offer the remote controls at all. Everything below it is not.
+     */
+    public async getRemote(projectPath: string): Promise<string | null> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            return backend.readRemote(session.globals);
+        });
+    }
+
+    /**
+     * Connect this project to a server, or disconnect it by passing null.
+     *
+     * **Connecting is two acts, and doing only the first is the trap this method exists to
+     * avoid.** Writing the address makes push and sync work; it does NOT make the project
+     * clonable. Measured: a project that was only pointed at a server pushes successfully,
+     * reports `remoteBranchExists: true`, and answers `Not found` to every clone - by name,
+     * by repository id, and by its own name. The collaboration looks finished from the one
+     * machine that set it up and does not exist from any other. So the address is written
+     * AND the repository is registered, or neither happens.
+     *
+     * Which is why this needs the network, while {@link getRemote} does not. Rolled back on
+     * a failed registration rather than left half-done: an address in the config with
+     * nothing behind it is exactly the state above.
+     *
+     * **The session is closed around the write.** The backend reads the config when a
+     * store is opened, so rewriting it under a live session would leave every later call in
+     * that session dialling the OLD address - a failure that looks like the setting did not
+     * save, on a screen that says it did.
+     *
+     * Disconnecting is purely local and cannot fail that way: it writes the unconfigured
+     * placeholder and leaves whatever is on the server alone.
+     */
+    public async setRemote(projectPath: string, url: string | null): Promise<void> {
+        const root = path.resolve(projectPath);
+        // Read BEFORE the session is closed, and needed only for the connect path: the
+        // registration has to carry this project's own repository id, or the name on the
+        // server would resolve to a different repository than the one that pushes to it.
+        const repositoryId = url ? (await this.getInfo(projectPath)).repositoryId : null;
+        const previous = url ? await this.getRemote(projectPath) : null;
+
+        // Outside the queue on purpose: `closeProject` serializes internally, and calling
+        // it from inside our own block would wait on the block it is already in.
+        await this.closeProject(projectPath);
+        return this.serialize(projectPath, async () => {
+            const backend = await requireVcsBackend();
+            await backend.writeRemote(root, url);
+            if (!url || !repositoryId) {
+                this.app.logger.info("[Vcs] Disconnected from server", root);
+                return;
+            }
+            try {
+                await backend.publishToRemote(this.globalsFor(root, { online: true }), {
+                    url,
+                    repositoryId,
+                });
+            } catch (error) {
+                // Put the address back to what it was, so a failed connection leaves the
+                // project in the state the author can retry from rather than in the
+                // pushes-but-cannot-be-cloned state described above.
+                await backend.writeRemote(root, previous).catch(() => undefined);
+                throw error;
+            }
+            this.app.logger.info("[Vcs] Connected to server", root, url);
+        });
+    }
+
+    /**
+     * Where this branch stands against its server.
+     *
+     * **The one read in this class that goes online**, because the five fields it answers
+     * are all false under offline globals - indistinguishable from "there is no server".
+     *
+     * Costs up to ~2 s when nothing answers, and reports that as `remoteAvailable: false`
+     * rather than throwing: an unreachable server is information the panel has to draw,
+     * not an error. Only ever called because the author asked - never on project open,
+     * never on a timer.
+     */
+    public async getSyncState(projectPath: string): Promise<VcsSyncState> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            return backend.readSyncState({ ...session.globals, offline: false });
+        });
+    }
+
+    /**
+     * Send this branch's revisions to the server.
+     *
+     * Refused by the backend when the branch has diverged, with a sentence that names the
+     * remedy (`Branch has diverged, sync to merge remote changes`). That error is passed
+     * through unchanged - see `remote.ts`.
+     *
+     * Nothing is written locally, so a failure leaves the project exactly as it was.
+     */
+    public async push(projectPath: string): Promise<VcsPushResult> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            const result = await backend.pushToRemote({
+                ...session.globals,
+                offline: false,
+                identity: this.resolveIdentity(),
+            });
+            this.app.logger.info(
+                "[Vcs] Pushed", session.root, result.branch,
+                result.alreadyPushed ? "(already up to date)" : "",
+            );
+            return result;
+        });
+    }
+
+    /**
+     * Bring the server's revisions down into the working tree.
+     *
+     * **This writes the author's files**, which puts it in the same category as a restore
+     * and gives it the same two obligations:
+     *
+     *  - the renderer's pending saves are flushed FIRST and inside the lock, or a
+     *    debounced auto-save lands on top of what was just synced;
+     *  - the caller must re-read every document afterwards. The bytes under the editors
+     *    are no longer the ones they were read from, and an editor that saves before
+     *    re-reading writes the pre-sync version straight back over it.
+     *
+     * **A dirty working tree is refused before anything is fetched.** Syncing a diverged
+     * branch merges automatically (measured), and a merge is only safe to accept when
+     * there is nothing uncommitted underneath it for the merge to land on. The refusal
+     * names the remedy, which is to submit a version first.
+     */
+    public async sync(projectPath: string): Promise<VcsSyncResult> {
+        return this.serialize(projectPath, async () => {
+            if (this.flushPendingSaves) {
+                await this.flushPendingSaves(projectPath).catch((error) => {
+                    this.app.logger.warn("[Vcs] Could not flush pending saves before syncing", error);
+                });
+            }
+
+            const { session, backend } = await this.sessionFor(projectPath);
+            const globals = { ...session.globals, identity: this.resolveIdentity() };
+
+            // Offline and non-scanning, so establishing the precondition costs neither a
+            // socket nor the staged-state side effect a scan would have (§4.17). This
+            // reports what is STAGED, which is what an uncommitted change looks like once
+            // anything has staged it - and a commit is what clears it.
+            const pending = await backend.getStatus(globals);
+            if (!pending.clean) {
+                throw new Error(
+                    "There are unsubmitted changes in this project. Submit a version before syncing,"
+                    + " so that anything the server sends can be merged onto a recorded state.",
+                );
+            }
+
+            const result = await backend.syncFromRemote({ ...globals, offline: false });
+            this.app.logger.info(
+                "[Vcs] Synced", session.root,
+                `${result.filesChanged} file(s), ${result.revisionsReceived} revision(s)`,
+                result.conflicts.length ? `CONFLICTS: ${result.conflicts.join(", ")}` : "",
+            );
+            return result;
+        });
+    }
+
+    /**
+     * Copy a repository from a server into a local directory.
+     *
+     * Takes no project session and cannot: there is no repository here until this
+     * finishes. It works on bare globals for the same reason {@link initRepository} does,
+     * and like that method it releases the repository afterwards - the backend keeps it
+     * open otherwise, and on Windows that is a folder the author cannot move or delete.
+     *
+     * The destination must be empty. That guard is in `remote.ts` because the backend
+     * has none: it writes the working tree into whatever it is pointed at.
+     */
+    public async cloneRepository(
+        repositoryUrl: string,
+        destination: string,
+        options: { onProgress?: (transferred: number, total: number) => void } = {},
+    ): Promise<{ root: string; branch: string; fileCount: number }> {
+        const root = path.resolve(destination);
+        return this.serialize(root, async () => {
+            const backend = await requireVcsBackend();
+            const globals = this.globalsFor(root, { online: true });
+            try {
+                const cloned = await backend.cloneInto(
+                    { ...globals, identity: this.resolveIdentity() },
+                    { repositoryUrl, onProgress: options.onProgress },
+                );
+                this.app.logger.info("[Vcs] Cloned", repositoryUrl, "->", root, `${cloned.fileCount} file(s)`);
+                return { root, ...cloned };
+            } finally {
+                // No session was opened here, so nothing else will let go of the
+                // repository - and a half-finished clone holds it too, which is why this
+                // is in the `finally`.
+                await backend.releaseRepository(globals).catch((error) => {
+                    this.app.logger.warn("[Vcs] Failed to release after clone", root, error);
+                });
+            }
         });
     }
 

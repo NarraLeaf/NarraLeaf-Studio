@@ -535,6 +535,62 @@ export const workspace = {
                 platform: "Version control is not available on this machine.",
                 installation: "Version control is not available in this installation of Studio.",
             },
+            // The server section of the rail. "Server" rather than "remote": an author who has
+            // never used version control knows what a server is, and "remote" is a word that only
+            // means anything once you already know the model.
+            server: {
+                title: "Server",
+                // A project with no server, which is every project until someone says otherwise.
+                // One line and one button, because connecting is a decision rather than a default.
+                none: "Not connected to a server",
+                connect: "Connect to a server",
+                // The one field. Measured: the backend keeps only the ORIGIN of whatever URL it is
+                // given and identifies the repository by its own id, so there is genuinely nothing
+                // else to type - which is why there is no "repository name" box beside it.
+                addressLabel: "Server address",
+                addressPlaceholder: "lore://studio.example.lan:41337",
+                save: "Connect",
+                cancel: "Cancel",
+                disconnect: "Disconnect",
+                // Reaching the server costs up to two seconds, so it never happens on its own -
+                // the panel opens on "not checked" and this is what asks.
+                check: "Check the server",
+                checking: "Checking the server…",
+                notChecked: "Not checked",
+                // The server answered and this branch matches it.
+                upToDate: "Up to date",
+                // Deliberately counted in versions rather than in files: the author submits
+                // versions, and the number that tells them whether to push is how many of those
+                // have not left this machine.
+                localAhead: "You have versions the server does not",
+                remoteAhead: "The server has versions you do not",
+                // Both moved. Push refuses in this state and says so; syncing merges first.
+                diverged: "You and the server have both moved on",
+                unreachable: "Cannot reach this server",
+                // The server answered but would not accept us. This is the ONLY state that shows
+                // the credential fields - asking for a token before anyone has been refused is
+                // asking a question most authors will never need to answer.
+                unauthorized: "This server did not accept you",
+                push: "Send to server",
+                pushing: "Sending to the server…",
+                // "Already there" is a success. Pressing this twice is an ordinary thing to do.
+                pushedAlready: "The server already has these versions",
+                sync: "Get from server",
+                syncing: "Getting versions from the server…",
+                syncedNothing: "Already up to date",
+            },
+            // A sync whose merge could not settle. Sticky rather than inline, because the sync
+            // leaves the version view on its way out and the rail re-reads on that change, which
+            // clears the inline error before anyone could read it.
+            //
+            // It says plainly that Studio cannot finish this, because it cannot: resolving is a
+            // separate feature that does not exist yet, and an author left guessing would try the
+            // same button again.
+            syncConflictTitle: "Some files could not be merged",
+            syncConflictDetail:
+                "{count} file(s) changed both here and on the server, and Studio cannot merge them yet:\n"
+                + "{files}\n"
+                + "Your other changes did arrive. Resolve these files outside Studio before submitting a version.",
         },
         // Keyboard-shortcut customization (Settings window → Editor) + the "?" cheat sheet overlay.
         keybindings: {
