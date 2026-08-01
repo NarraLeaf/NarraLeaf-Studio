@@ -96,9 +96,15 @@ describe("findGpg", () => {
         // and nothing else, so every way of installing gpg on a Mac is invisible
         // to a PATH search. Without this arm the same machine answers differently
         // depending on whether Studio was started from a terminal.
-        const root = await tempTree(["opt/homebrew/bin/gpg"]);
+        //
+        // The PATH is a synthetic empty directory rather than the literal
+        // "/usr/bin:/bin" launchd would hand over: on a host that really does
+        // have /usr/bin/gpg - every Linux CI runner - the real binary is found
+        // first and the fallback this test exists to cover never runs. What the
+        // case needs is only that PATH mention no gpg.
+        const root = await tempTree(["opt/homebrew/bin/gpg", "launchd-path/.keep"]);
         expect(await findGpg({
-            env: { PATH: "/usr/bin:/bin" },
+            env: { PATH: at(root, "launchd-path") },
             platform: "darwin",
             fallbackDirs: [at(root, "opt/homebrew/bin")],
         })).toBe(at(root, "opt/homebrew/bin/gpg"));
