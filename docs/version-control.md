@@ -555,11 +555,33 @@ storageGet: 1/1 get items failed          ← 对这个仓库的每一个内容�
 `getThreeWay`、V4 恢复，以及本卡要做的全部 diff，在 Studio 重启之前都读不出东西**——
 而 V5a 的同步本来就要走 V4 的重载路径，那条路径要读文档。
 
-**未确定、且是 D5/D6 的第一个前置**：进程内有没有任何办法解毒。已知 `closeStore` +
-`releaseRepository` + 重开**不够**；没试过的是 `resetLoreLibraryForRetry()`
-（[`library.ts`](../src/main/app/application/managers/vcs/lore/library.ts)）——即把整个
-`koffi.load` 卸掉重来。如果连它也不行，那么同步之后能给作者的只有「请重启 Studio」，
-这件事必须在同步按钮旁边说清楚，而不是让作者撞上一堆空白的历史。
+**进程内解不了毒，所以同步之后只能请作者重启 Studio**（`mergeSpike4.integration.test.ts` 的
+R4 实测）。最后一个没试过的杠杆 `resetLoreLibraryForRetry()`
+（[`library.ts`](../src/main/app/application/managers/vcs/lore/library.ts)）**两种顺序都无效**：
+先 flush→closeStore→release 再重置、以及先重置再 release，读回来都还是
+`storageGet: 1/1 get items failed`。机制上它本来也治不了：重置只丢掉 JS 侧那份 `LoreLibrary`
+缓存，**从不 unload 那个 DLL**——Windows 上第二次 `koffi.load` 拿到的是同一个 HMODULE，
+Lore 自己的进程内状态一点没动。所以「重启 Studio」必须写在同步按钮旁边，而不是让作者撞上
+一堆点不开的历史。
+
+顺带测到的两件事让这个提示能写得准一点：**被毒的只有内容读**。同一个毒态进程里
+`repositoryStatus` 与 `revisionHistory` 照常返回分支、修订与整条历史（三个节点全在），
+**第二次 `revisionSync` 也照常成功**（从服务器取到新 target，`local:false`），修订树也照样给
+路径和内容地址——死的只有 `storageGet`。也就是说作者看到的不是「版本控制坏了」，而是
+**列表都在、每一项点开都是空的**。另外，重置时**开着 store handle 是安全的**：同一个
+handleId 经新绑定照样读得出字节，`closeStore` / `releaseRepository` / 重开全部正常，代价只是
+每次重置多一次不配对的 `LoadLibrary`。
+
+> 这一轮还捎带修掉一个更早的哑弹：`loadLoreLibrary` 每次都调 `koffi.config`，而 koffi 在已经
+> 载入库之后**拒绝**改配置。于是第一次 `resetLoreLibraryForRetry()` 之后所有 Lore 调用都抛
+> `Cannot change Koffi configuration once a library has been loaded`——整个进程的版本控制被
+> 打死，比同步的毒还狠。§4.13 承诺的「用户修好安装后 `refreshVcsAvailability()` 就能恢复」
+> 走的正是这条路。现已改成只配置一次。
+
+**仍然不知道**：同步到底把什么弄坏了（Lore 内部状态没有可观察面），以及有没有别的解毒杠杆
+——反正我们没找到。还有一条没测：一个工程的同步会不会连带把同进程里**别的**工程也毒掉。
+R4 里两个仓库各自都同步过，所以这个问题没有被答上，而它决定「重启」这句话该说给一个工程听
+还是说给整个 Studio 听。
 
 ### 4.30 `readRevisionGraph` 只覆盖当前分支，于是 `threeWay` 对任何跨分支合并都答「没有 base」
 
