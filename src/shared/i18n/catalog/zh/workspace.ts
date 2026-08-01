@@ -134,7 +134,6 @@ export const workspace = {
     shell: {
         errorTitle: "工作区初始化失败",
         showStackTrace: "显示堆栈跟踪",
-        errorConsoleHint: "如果问题持续存在，请导出日志并附在反馈里",
         retry: "重试",
         openOtherProject: "打开其他项目",
         errorCopyDetails: "复制详情",
@@ -297,6 +296,10 @@ export const workspace = {
                 theme: "主题切换",
                 zoom: "缩放比例",
                 version: "版本",
+                textFileName: "文本文件名",
+                textEncoding: "文本编码",
+                textLineEnding: "行尾符号",
+                textSelection: "光标位置",
             },
         },
         // 保存反馈：文件写不进去时弹出的常驻提示，以及「存储」控制台频道的日志行。

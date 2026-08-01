@@ -3,6 +3,7 @@ import {
     PersistentStateConfig,
     StorageNamespaceInfo
 } from "@shared/types/persistentState";
+import type { FsTextEncoding } from "@shared/types/textEncoding";
 import crypto from "crypto";
 import { app as electronApp } from "electron";
 import fs from "fs/promises";
@@ -19,7 +20,11 @@ export interface FileStorageInfo {
     path: string;
     raw: boolean;
     operation: FileSystemAccessMode;
-    encoding?: BufferEncoding;
+    /**
+     * The encoding the text at `path` is stored in. Widened past `BufferEncoding` for the text
+     * editor (GBK, Shift_JIS, a UTF-8 that keeps its mark); see `@shared/types/textEncoding`.
+     */
+    encoding?: FsTextEncoding;
     status: "allocated" | "ready" | "error";
     error?: string;
     /**
@@ -74,7 +79,7 @@ export class StorageManager extends Manager {
     /**
      * Allocate a unique hash for file operations
      */
-    public allocateHash(path: string, raw: boolean, operation: FileSystemAccessMode, encoding?: BufferEncoding): string {
+    public allocateHash(path: string, raw: boolean, operation: FileSystemAccessMode, encoding?: FsTextEncoding): string {
         const hash = crypto.randomBytes(32).toString("base64url");
         this.storage.set(hash, { path, raw, operation, encoding, status: "allocated" });
         return hash;

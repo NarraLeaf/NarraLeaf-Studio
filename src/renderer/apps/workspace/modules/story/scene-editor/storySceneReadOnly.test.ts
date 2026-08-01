@@ -41,7 +41,6 @@ const ALL_ROW_ACTIONS: Array<keyof StoryRowActions> = [
     "addInside",
     "addBranch",
     "playFromRow",
-    "toggleLens",
 ];
 
 function spyActions(): { actions: StoryRowActions; spies: Map<keyof StoryRowActions, ReturnType<typeof vi.fn>> } {
@@ -62,7 +61,6 @@ describe("isStoryRowActionReadOnlySafe", () => {
         expect(isStoryRowActionReadOnlySafe("mouseEnter")).toBe(true);
         expect(isStoryRowActionReadOnlySafe("contextMenu")).toBe(true);
         expect(isStoryRowActionReadOnlySafe("toggleCollapsed")).toBe(true);
-        expect(isStoryRowActionReadOnlySafe("toggleLens")).toBe(true);
         expect(isStoryRowActionReadOnlySafe("openInspector")).toBe(true);
         // Reading a row's fields is worth nothing if the rail holding them cannot be revealed.
         expect(isStoryRowActionReadOnlySafe("revealInspectorPanel")).toBe(true);

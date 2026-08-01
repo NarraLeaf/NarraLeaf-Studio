@@ -1,8 +1,9 @@
 import { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { AssetCategory, categoryOfAssetType } from "@/lib/workspace/services/assets/assetTypes";
 
 export interface ContextMenuTargetState {
-    type: AssetType;
+    /** The sidebar section the row was drawn in — what every group-level service call takes. */
+    category: AssetCategory;
     item: Asset | AssetGroup | null;
     isGroup: boolean;
 }
@@ -10,7 +11,7 @@ export interface ContextMenuTargetState {
 /** One row an action will act on, carrying enough to call the group or asset service method. */
 export interface AssetActionTarget {
     isGroup: boolean;
-    type: AssetType;
+    category: AssetCategory;
     item: Asset | AssetGroup;
 }
 
@@ -21,8 +22,8 @@ export interface ResolveAssetActionTargetsParams {
     contextMenuTarget: ContextMenuTargetState | null;
     /** Selection key of the focused row, used only when nothing else points anywhere. */
     focusedItemId: string | null;
-    assets: Record<AssetType, Asset[]>;
-    groups: Record<AssetType, AssetGroup[]>;
+    assets: Record<AssetCategory, Asset[]>;
+    groups: Record<AssetCategory, AssetGroup[]>;
 }
 
 const ASSET_KEY_PREFIX = "asset:";
@@ -54,18 +55,18 @@ export function contextMenuActsOnSelection(
 
 function resolveSelectionKeys(
     keys: Iterable<string>,
-    assets: Record<AssetType, Asset[]>,
-    groups: Record<AssetType, AssetGroup[]>,
+    assets: Record<AssetCategory, Asset[]>,
+    groups: Record<AssetCategory, AssetGroup[]>,
 ): AssetActionTarget[] {
     const assetById = new Map<string, Asset>();
     for (const asset of Object.values(assets).flat()) {
         assetById.set(asset.id, asset);
     }
 
-    const groupById = new Map<string, { group: AssetGroup; type: AssetType }>();
-    for (const [type, groupList] of Object.entries(groups)) {
+    const groupById = new Map<string, { group: AssetGroup; category: AssetCategory }>();
+    for (const [category, groupList] of Object.entries(groups)) {
         for (const group of groupList) {
-            groupById.set(group.id, { group, type: type as AssetType });
+            groupById.set(group.id, { group, category: category as AssetCategory });
         }
     }
 
@@ -76,13 +77,13 @@ function resolveSelectionKeys(
             const asset = assetById.get(key.slice(ASSET_KEY_PREFIX.length));
             if (asset && !seen.has(key)) {
                 seen.add(key);
-                targets.push({ isGroup: false, type: asset.type, item: asset });
+                targets.push({ isGroup: false, category: categoryOfAssetType(asset.type), item: asset });
             }
         } else if (key.startsWith(GROUP_KEY_PREFIX)) {
             const entry = groupById.get(key.slice(GROUP_KEY_PREFIX.length));
             if (entry && !seen.has(key)) {
                 seen.add(key);
-                targets.push({ isGroup: true, type: entry.type, item: entry.group });
+                targets.push({ isGroup: true, category: entry.category, item: entry.group });
             }
         }
     }
@@ -105,7 +106,7 @@ export function resolveAssetActionTargets({
     groups,
 }: ResolveAssetActionTargetsParams): AssetActionTarget[] {
     if (contextMenuTarget?.item && !contextMenuActsOnSelection(contextMenuTarget, selectedItems)) {
-        return [{ isGroup: contextMenuTarget.isGroup, type: contextMenuTarget.type, item: contextMenuTarget.item }];
+        return [{ isGroup: contextMenuTarget.isGroup, category: contextMenuTarget.category, item: contextMenuTarget.item }];
     }
 
     if (selectedItems.size > 0) {

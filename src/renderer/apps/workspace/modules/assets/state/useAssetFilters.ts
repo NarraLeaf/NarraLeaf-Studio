@@ -1,35 +1,18 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Asset, AssetGroup } from '@/lib/workspace/services/assets/types';
-import { AssetType } from '@/lib/workspace/services/assets/assetTypes';
+import { ASSET_CATEGORY_ORDER, AssetCategory } from '@/lib/workspace/services/assets/assetTypes';
 import { useTranslation } from '@/lib/i18n';
 import { ASSET_SIZE_BANDS, createDefaultFilters, getUniqueTags, type ActiveFilter } from '../components/FilterSystem';
 import { assetMatchesQuery, buildGroupSearchPaths } from './useAssetSearch';
+import { createEmptyAssetCategoryRecord } from './assetCategoryRecord';
 
-const createEmptyAssets = (): Record<AssetType, Asset[]> => ({
-    [AssetType.Image]: [],
-    [AssetType.Audio]: [],
-    [AssetType.Video]: [],
-    [AssetType.JSON]: [],
-    [AssetType.Blueprint]: [],
-    [AssetType.Font]: [],
-    [AssetType.Model]: [],
-    [AssetType.Other]: [],
-});
+const createEmptyAssets = (): Record<AssetCategory, Asset[]> => createEmptyAssetCategoryRecord<Asset>();
 
-const createEmptyGroups = (): Record<AssetType, AssetGroup[]> => ({
-    [AssetType.Image]: [],
-    [AssetType.Audio]: [],
-    [AssetType.Video]: [],
-    [AssetType.JSON]: [],
-    [AssetType.Blueprint]: [],
-    [AssetType.Font]: [],
-    [AssetType.Model]: [],
-    [AssetType.Other]: [],
-});
+const createEmptyGroups = (): Record<AssetCategory, AssetGroup[]> => createEmptyAssetCategoryRecord<AssetGroup>();
 
 export interface UseAssetFiltersParams {
-    assets: Record<AssetType, Asset[]>;
-    groups: Record<AssetType, AssetGroup[]>;
+    assets: Record<AssetCategory, Asset[]>;
+    groups: Record<AssetCategory, AssetGroup[]>;
     /**
      * Owned by the panel, not by this hook: whether the library needs measuring is decided from the
      * active filters, and that decision has to be made before this pass can be handed the numbers.
@@ -124,20 +107,20 @@ export function useAssetFilters({ assets, groups, activeFilters, query, bytesByA
             return { assets, groups, matchedGroupIds: new Set<string>() };
         }
 
-        const filteredAssets: Record<AssetType, Asset[]> = createEmptyAssets();
-        const filteredGroups: Record<AssetType, AssetGroup[]> = createEmptyGroups();
+        const filteredAssets: Record<AssetCategory, Asset[]> = createEmptyAssets();
+        const filteredGroups: Record<AssetCategory, AssetGroup[]> = createEmptyGroups();
         const matchedGroupIds = new Set<string>();
 
-        Object.values(AssetType).forEach(assetType => {
-            const typeAssets = assets[assetType];
-            const typeGroups = groups[assetType];
-            const groupPaths = buildGroupSearchPaths(typeGroups);
+        ASSET_CATEGORY_ORDER.forEach(category => {
+            const categoryAssets = assets[category];
+            const categoryGroups = groups[category];
+            const groupPaths = buildGroupSearchPaths(categoryGroups);
 
-            if (typeFilters.size > 0 && !typeFilters.has(assetType)) {
+            if (typeFilters.size > 0 && !typeFilters.has(category)) {
                 return;
             }
 
-            filteredAssets[assetType] = typeAssets.filter(asset => {
+            filteredAssets[category] = categoryAssets.filter(asset => {
                 if (!assetMatchesQuery(asset, query, groupPaths)) return false;
 
                 if (tagFilters.length > 0 && !tagFilters.every(tag => asset.tags.includes(tag))) return false;
@@ -161,7 +144,7 @@ export function useAssetFilters({ assets, groups, activeFilters, query, bytesByA
             });
 
             if (query) {
-                typeGroups.forEach(group => {
+                categoryGroups.forEach(group => {
                     if (group.name.toLowerCase().includes(query)) {
                         matchedGroupIds.add(group.id);
                     }
@@ -169,14 +152,14 @@ export function useAssetFilters({ assets, groups, activeFilters, query, bytesByA
             }
 
             const relevantGroupIds = new Set<string>(matchedGroupIds);
-            filteredAssets[assetType].forEach(asset => {
+            filteredAssets[category].forEach(asset => {
                 if (asset.groupId) {
                     relevantGroupIds.add(asset.groupId);
                 }
             });
 
             const addAncestors = (groupId: string) => {
-                const group = typeGroups.find(g => g.id === groupId);
+                const group = categoryGroups.find(g => g.id === groupId);
                 if (group?.parentGroupId && !relevantGroupIds.has(group.parentGroupId)) {
                     relevantGroupIds.add(group.parentGroupId);
                     addAncestors(group.parentGroupId);
@@ -184,7 +167,7 @@ export function useAssetFilters({ assets, groups, activeFilters, query, bytesByA
             };
             Array.from(relevantGroupIds).forEach(groupId => addAncestors(groupId));
 
-            filteredGroups[assetType] = typeGroups.filter(group => relevantGroupIds.has(group.id));
+            filteredGroups[category] = categoryGroups.filter(group => relevantGroupIds.has(group.id));
         });
 
         return { assets: filteredAssets, groups: filteredGroups, matchedGroupIds };

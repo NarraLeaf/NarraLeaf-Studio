@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Filter, ChevronDown, X, Tag, FileImage, Shapes, Link2, Scale } from "lucide-react";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { ASSET_CATEGORY_ORDER, AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
 import { useTranslation } from "@/lib/i18n";
 import type { Translator } from "@shared/i18n";
 
@@ -184,10 +184,12 @@ export const createDefaultFilters = (t: FilterTranslator): FilterConfig[] => [
         label: t('assets.filter.category'),
         icon: <Shapes className="w-4 h-4" />,
         multiSelect: true,
-        options: Object.values(AssetType).map(type => ({
-            id: type,
-            label: t(`assets.types.${type}` as `assets.types.${AssetType}`),
-            value: type,
+        // The sections the sidebar actually draws. Listing types here would offer "Audio" and
+        // "Videos" as separate narrowings of a library that has no such split any more.
+        options: ASSET_CATEGORY_ORDER.map(category => ({
+            id: category,
+            label: t(`assets.categories.${category}` as `assets.categories.${AssetCategory}`),
+            value: category,
         })),
     },
     {

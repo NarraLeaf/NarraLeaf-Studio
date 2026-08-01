@@ -1,4 +1,4 @@
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { ASSET_CATEGORY_ORDER, AssetCategory, AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset, AssetGroup, AssetsMap } from "@/lib/workspace/services/assets/types";
 
 /** Custom MIME for cross-workspace HTML5 DnD (renderer-local). */
@@ -94,11 +94,12 @@ export function resolveAssetsFromDragPayload(payload: AssetDragWirePayloadV1, ma
 }
 
 /**
- * Build stable ordering of `asset:id` keys matching the assets panel tree walk (root groups then assets per type).
+ * Build stable ordering of `asset:id` keys matching the assets panel tree walk (root groups then
+ * assets, per sidebar section).
  */
 export function buildOrderedAssetSelectionKeys(
-    groupsByType: Record<AssetType, AssetGroup[]>,
-    assetsByType: Record<AssetType, Asset[]>
+    groupsByCategory: Record<AssetCategory, AssetGroup[]>,
+    assetsByCategory: Record<AssetCategory, Asset[]>
 ): string[] {
     const orderedKeys: string[] = [];
     const traverseGroups = (grpList: AssetGroup[], assetList: Asset[], parentId?: string) => {
@@ -110,8 +111,8 @@ export function buildOrderedAssetSelectionKeys(
             orderedKeys.push(`asset:${a.id}`);
         });
     };
-    for (const t of Object.values(AssetType)) {
-        traverseGroups(groupsByType[t] ?? [], assetsByType[t] ?? []);
+    for (const category of ASSET_CATEGORY_ORDER) {
+        traverseGroups(groupsByCategory[category] ?? [], assetsByCategory[category] ?? []);
     }
     return orderedKeys;
 }
@@ -125,8 +126,8 @@ export function buildOrderedAssetSelectionKeys(
 export function collectAssetsForWorkspaceDrag(
     primaryAsset: Asset,
     selectedItems: Set<string>,
-    filteredGroups: Record<AssetType, AssetGroup[]>,
-    filteredAssets: Record<AssetType, Asset[]>
+    filteredGroups: Record<AssetCategory, AssetGroup[]>,
+    filteredAssets: Record<AssetCategory, Asset[]>
 ): Asset[] {
     const selectedAssetIds = new Set<string>();
     for (const key of selectedItems) {

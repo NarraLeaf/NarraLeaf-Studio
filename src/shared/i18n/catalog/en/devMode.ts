@@ -37,6 +37,11 @@ export const devMode = {
         contextInside: "Inside",
         contextRunning: "Running",
         currentScene: "Current",
+        // Scene map: the numeric counter the map is labelled against, and the value the RUNNING game
+        // currently holds for it (shown only when the runtime can actually answer — a default is not
+        // a live value).
+        focusNone: "No focus",
+        focusLive: "Live value",
     },
     // The debug drawer's dock/float toggle. Each label names what the click will DO, not the state
     // it is in - same shape as `devtools.openMenu` / `devtools.closeMenu` above, and the only thing
