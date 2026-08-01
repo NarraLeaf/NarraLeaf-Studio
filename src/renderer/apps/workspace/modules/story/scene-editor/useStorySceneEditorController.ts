@@ -241,6 +241,19 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setEditorMode(current => (current.kind === "text" || current.kind === "insert" ? { kind: "idle" } : current));
     }, [frozen]);
 
+    /**
+     * The same answer, readable from inside an `await`.
+     *
+     * A callback that closed over `frozen` would report whatever was true when it was created, and the
+     * one place that asks is on the far side of a modal confirm - precisely the window in which the
+     * author can freeze the workspace. See the bulk paste in `useStorySceneClipboardHandlers`.
+     */
+    const frozenRef = useRef(frozen);
+    useEffect(() => {
+        frozenRef.current = frozen;
+    }, [frozen]);
+    const isFrozenNow = useCallback(() => frozenRef.current, []);
+
     // Persist the focused row + selection so they survive the tab unmounting when the author switches
     // away and a Studio restart (paired with the seed above and the scroll persistence in the tab).
     useEffect(() => {
@@ -1818,7 +1831,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * exactly "drop this", with no undo step and nothing to clean up.
      */
     const [pasteWizard, setPasteWizard] = useState<StoryPasteWizardRequest | null>(null);
-    const [pasteWizardBusy, setPasteWizardBusy] = useState(false);
     /** Bumped when a separator preset is saved or dropped; see {@link pasteMemory}. */
     const [pasteMemoryRevision, setPasteMemoryRevision] = useState(0);
 
@@ -1855,6 +1867,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         editorMode,
         insertInputRef,
         plainPasteRequestedRef,
+        isFrozen: isFrozenNow,
         recordHistory,
         setActiveBlockId,
         setSelectedBlockIds,
@@ -1862,11 +1875,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         requestPasteWizard: setPasteWizard,
         suspendInsertSlotCommit,
         resumeInsertSlotCommit,
+        dismissInsertChooser,
     });
 
     const cancelPasteWizard = useCallback(() => {
         setPasteWizard(null);
-        setPasteWizardBusy(false);
         resumeInsertSlotCommit();
     }, [resumeInsertSlotCommit]);
 
@@ -1880,8 +1893,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      *
      * `promoteTempSpeaker` is deliberately not used. It rebinds every matching temp speaker in the
      * whole document, and a paste must not silently rewrite rows the author was not looking at.
+     *
+     * `authoredMappings` is only what the author changed from the wizard's own defaults, so nothing
+     * guessed is ever written to the per-project memory.
      */
-    const confirmPasteWizard = useCallback((plan: PastePlan, mappings: Record<string, SpeakerMappingTarget>) => {
+    const confirmPasteWizard = useCallback((plan: PastePlan, authoredMappings: Record<string, SpeakerMappingTarget>) => {
         const request = pasteWizard;
         // Closed rather than left standing: a confirm that cannot run (the workspace froze under the
         // open dialog, a service went away on a project switch) must not leave the author pressing a
@@ -1890,7 +1906,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             cancelPasteWizard();
             return;
         }
-        setPasteWizardBusy(true);
         try {
             const createdCharacterIds: Record<string, string> = {};
             for (const name of plan.charactersToCreate) {
@@ -1906,12 +1921,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             // going idle here would drop it without ever writing it anywhere. Every other mode has
             // nothing in flight (a row being edited was committed by the modal taking focus).
             setEditorMode(current => (current.kind === "insert" ? current : { kind: "idle" }));
-            rememberStoryPasteSpeakers(panelStateService, resolveMappingsForMemory(mappings, createdCharacterIds));
+            rememberStoryPasteSpeakers(panelStateService, resolveMappingsForMemory(authoredMappings, createdCharacterIds));
             // The next paste in this session has to see what this one just decided - that is the whole
             // point of the memory, and the store is on disk rather than in state, so nothing else says so.
             setPasteMemoryRevision(revision => revision + 1);
         } finally {
-            setPasteWizardBusy(false);
             setPasteWizard(null);
             resumeInsertSlotCommit();
         }
@@ -2291,7 +2305,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!isStoryEditorFocusActive()) {
             return;
         }
-        if (isTextInputActive()) {
+        // The insert slot is the one text input this editor pastes *for* (see the root paste handler's
+        // matching carve-out), so the no-wizard gesture has to reach it too - otherwise the caret being
+        // in the slot silently turned `Ctrl+Shift+V` back into an ordinary paste, which opens the very
+        // wizard it means to skip. The slot's own line is still never committed by that paste.
+        if (isTextInputActive(insertInputRef.current)) {
             return;
         }
         if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "v") {
@@ -2349,7 +2367,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         rootRef, scrollContainerRef, insertInputRef, textInputRef, uuidService,
         focusRoot, focusWorkspace, revealBlock, handleKeyDown, copySelectionToClipboard: handleCopy, handlePaste: handlePasteInEditor,
         handleRowTextPaste,
-        pasteWizard, pasteWizardBusy, pasteMemory, cancelPasteWizard, confirmPasteWizard, savePasteSeparator, forgetPasteSeparator,
+        pasteWizard, pasteMemory, cancelPasteWizard, confirmPasteWizard, savePasteSeparator, forgetPasteSeparator,
         deleteRows, deleteSelection, replaceRowWithBlankLine, startInsertAfter, startInsertBefore, selectRow, beginDragSelection,
         selectionRootIds, toggleDisableSelection,
         extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateBlockPayloads, updateSceneMetadata,
@@ -2377,11 +2395,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
  * that now exists - one paste per chapter, one duplicate cast per chapter.
  */
 function resolveMappingsForMemory(
-    mappings: Record<string, SpeakerMappingTarget>,
+    authoredMappings: Record<string, SpeakerMappingTarget>,
     createdCharacterIds: Record<string, string>,
 ): Record<string, SpeakerMappingTarget> {
     const resolved: Record<string, SpeakerMappingTarget> = {};
-    for (const [key, target] of Object.entries(mappings)) {
+    for (const [key, target] of Object.entries(authoredMappings)) {
         if (target.kind !== "createCharacter") {
             resolved[key] = target;
             continue;

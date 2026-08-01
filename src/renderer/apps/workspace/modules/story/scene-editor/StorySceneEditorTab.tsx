@@ -2141,7 +2141,6 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     inferred={editor.pasteWizard.inferred}
                     characters={editor.characters}
                     memory={editor.pasteMemory}
-                    busy={editor.pasteWizardBusy}
                     onSaveSeparator={editor.savePasteSeparator}
                     onForgetSeparator={editor.forgetPasteSeparator}
                     onCancel={editor.cancelPasteWizard}
