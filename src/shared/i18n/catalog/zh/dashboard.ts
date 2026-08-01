@@ -23,9 +23,6 @@ export const dashboard = {
         words: {
             other: "{count} 字",
         },
-        nodes: {
-            other: "{count} 个节点",
-        },
         days: {
             other: "{count} 天",
         },
@@ -52,7 +49,7 @@ export const dashboard = {
         totalWords: "字数",
         characters: "角色",
         assets: "资源",
-        blueprints: "蓝图",
+        blueprintNodes: "蓝图节点",
         uiSurfaces: "界面",
         variables: "变量",
     },
@@ -66,7 +63,7 @@ export const dashboard = {
         streak: "连续写作",
         streakNone: "暂无连续记录",
         peak: "峰值 {words}",
-        empty: "尚未记录任何内容。一旦记录下当天的写作内容，进度条便会显示",
+        empty: "尚未记录任何内容。一旦记录下当天的写作内容，柱状图便会出现",
         chartLabel: "最近 30 天每天的写作字数",
         tooltip: {
             added: "{date} · 新增 {words}",

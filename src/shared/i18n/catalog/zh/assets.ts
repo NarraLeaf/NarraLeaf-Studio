@@ -22,7 +22,7 @@ export const assets = {
             one: "删除 {count} 项？",
             other: "删除 {count} 项？",
         },
-        confirmMessage: "所选分组内的全部内容也会一并删除，且无法撤销。",
+        confirmMessage: "所选分组内的全部内容也会一并删除，且无法撤销",
         action: "删除",
         failedTitle: "删除失败",
     },
@@ -30,7 +30,7 @@ export const assets = {
         confirmTitle: "替换 {name} 的文件内容？",
         confirmAction: "替换",
         failedTitle: "替换素材内容失败",
-        remoteUnsupported: "远程素材没有可替换的本地文件。",
+        remoteUnsupported: "远程素材没有可替换的本地文件",
     },
     types: {
         image: "图片",
@@ -56,7 +56,7 @@ export const assets = {
     },
     overview: {
         loading: "正在读取资源库…",
-        failed: "无法读取资源库。",
+        failed: "无法读取资源库",
         retry: "重试",
         section: {
             library: "资源库",
