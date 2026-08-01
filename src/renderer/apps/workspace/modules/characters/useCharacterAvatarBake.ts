@@ -7,6 +7,7 @@ import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { mapCharacterStoreEntriesToSummaries } from "@shared/utils/characterSummaries";
 import type { CharacterAvatarTarget } from "@shared/utils/characterAvatar";
+import type { PortraitCrop } from "@/lib/workspace/services/character/types";
 import { bakeCharacterAvatars, type AvatarBakeIO, type AvatarBakeReport } from "./avatarBake";
 import { createAvatarRenderer } from "./avatarRenderer";
 import { useWorkspaceFrozen } from "@/apps/workspace/hooks/useWorkspaceFrozen";
@@ -21,6 +22,28 @@ import { isDeferredWriteAllowed } from "@/apps/workspace/components/ui/freezeGua
  */
 export function shouldBakeCharacterAvatars(enabled: boolean, frozen: boolean): boolean {
     return enabled && isDeferredWriteAllowed(frozen);
+}
+
+/**
+ * Which framing a differential is baked with: **entry → pose → profile**.
+ *
+ * The entry's crop is the specific one — it is written against a single avatar key, which is the
+ * only address a `layered` character has for one tag combination. Without it at the head of the
+ * order an author who reframed one look would be overruled by the character-wide crop they were
+ * overriding, which is what dragging the crop box used to do to them silently.
+ *
+ * The pose crop sits in the middle rather than being retired: it predates the entry crop, it only
+ * exists for `preset`, and the story rows still frame their speaker badge from it — so a project
+ * that set one keeps meaning what it meant.
+ *
+ * Pure and exported for the test; the hook below is the only production caller.
+ */
+export function resolveAvatarBakePortrait(input: {
+    entry?: PortraitCrop | null;
+    pose?: PortraitCrop | null;
+    profile?: PortraitCrop | null;
+}): PortraitCrop | undefined {
+    return input.entry ?? input.pose ?? input.profile ?? undefined;
 }
 
 /**
@@ -131,11 +154,18 @@ export function useCharacterAvatarBake(enabled: boolean): {
                         summary: summary.appearance,
                         avatars: appearance.getAvatars(),
                         resolveDrawList: selection => appearance.resolveDrawList(selection),
-                        // A pose's own framing wins over the character's, which is the rule the
-                        // story editor's badges already follow.
-                        portraitFor: (target: CharacterAvatarTarget) =>
-                            (target.selection.poseId ? appearance.getPose(target.selection.poseId)?.portrait : undefined)
-                            ?? profile.getPortrait(),
+                        // entry → pose → profile; see resolveAvatarBakePortrait. The entry arm is
+                        // applied again inside the baker, which has the entry in hand anyway — the
+                        // duplication is deliberate, so this order cannot be lost by a caller.
+                        portraitFor: (target: CharacterAvatarTarget) => resolveAvatarBakePortrait({
+                            entry: appearance.getAvatarPortrait(target.key),
+                            // `poseId` is only ever set for `preset` targets, so this arm is
+                            // structurally preset-only rather than by a kind check.
+                            pose: target.selection.poseId
+                                ? appearance.getPose(target.selection.poseId)?.portrait
+                                : undefined,
+                            profile: profile.getPortrait(),
+                        }),
                     },
                 });
 

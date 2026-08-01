@@ -30,14 +30,16 @@ import {
     Layers,
     Lock,
     Plus,
+    Star,
     Trash2,
     Unlock,
     UserRound,
     XCircle,
 } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { cn } from "@/lib/utils/cn";
 import { useWorkspace } from "@/apps/workspace/context";
-import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { useFreezeGuard, type FrozenControlProps } from "@/apps/workspace/components/ui/freezeGuard";
 import { ResizableHandle } from "@/apps/workspace/components/ui/ResizableHandle";
 import { EditorComponentProps } from "../../types";
 import { LayerStackPreview, type PreviewLayer } from "./components/LayerStackPreview";
@@ -48,6 +50,7 @@ import { InlineName, nextAutoName } from "./components/InlineName";
 import { PoseFilmstrip } from "./components/PoseFilmstrip";
 import { PortraitCropBox } from "./components/PortraitCropBox";
 import { AvatarSection } from "./components/AvatarSection";
+import { ICON_BTN, ICON_BTN_ON } from "./components/iconButton";
 import { characterKindLabel } from "../characterKindLabel";
 import { useCharacterAvatarBake } from "../useCharacterAvatarBake";
 import { syncCharacterEditorTabTitle } from "../state/useCharacterFocus";
@@ -86,10 +89,6 @@ type SlotRef =
 type Focus = CharacterDiagnosticTarget | null;
 
 const ROW = "flex items-center gap-2 rounded-md border bg-fill-subtle px-2 py-1.5 text-xs";
-const ICON_BTN = "p-1 rounded-md text-fg-muted hover:text-fg hover:bg-fill transition-colors disabled:cursor-not-allowed disabled:opacity-40";
-/** Same button, lit. Not `ICON_BTN + " text-primary"`: two colour utilities in one class list are
-    decided by stylesheet order, not by the order they are written, so the muted one can win. */
-const ICON_BTN_ON = "p-1 rounded-md text-primary hover:bg-fill transition-colors disabled:cursor-not-allowed disabled:opacity-40";
 const CARD = "rounded-md border bg-fill-subtle p-2 space-y-1.5";
 const FOCUSED = "border-primary/60";
 
@@ -117,6 +116,41 @@ function Section(props: { title: string; onAdd: () => void; children: React.Reac
             </div>
             {props.children}
         </div>
+    );
+}
+
+/**
+ * "This is the default" and "make this the default", said once.
+ *
+ * They used to be the same *word* on two adjacent rows - a static `Default` label on the default
+ * pose, and a hover-reveal button also labelled `Default` on every other one - so one string meant a
+ * state on one line and an action on the next. Tag chips said the state a third way (a `·`) and put
+ * the action behind an `Eye`, which on a layer row two sections down means show/hide.
+ *
+ * One glyph now, in the two states this module already uses everywhere else: lit and always visible
+ * when it *is* the default, muted and hover-revealed when clicking would *make* it one. Nothing is
+ * ever both, so the two can never be confused for each other.
+ */
+function DefaultStar(props: {
+    isDefault: boolean;
+    onSet: (event: React.MouseEvent) => void;
+    /** Freeze render props for the action arm; the marker arm writes nothing and is never disabled. */
+    writes: FrozenControlProps;
+    /** The hover-group variant that reveals the action arm, e.g. `group-hover/tag:opacity-100`. */
+    reveal: string;
+    label: string;
+}) {
+    if (props.isDefault) {
+        return <Star className="h-3 w-3 shrink-0 fill-current text-primary" aria-label={props.label} />;
+    }
+    return (
+        <button
+            className={cn(ICON_BTN, "shrink-0 opacity-0 focus-visible:opacity-100", props.reveal)}
+            onClick={props.onSet}
+            {...props.writes}
+        >
+            <Star className="h-3 w-3" />
+        </button>
     );
 }
 
@@ -168,8 +202,13 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
     const [grid, setGrid] = useState(false);
     const [psdOpen, setPsdOpen] = useState(false);
     const [cropping, setCropping] = useState(false);
-    /** Author's intent for where a new crop is written, before the pose carries one of its own. */
-    const [scopeToPose, setScopeToPose] = useState<boolean | null>(null);
+    /**
+     * Author's intent for where a new crop is written, before the differential carries one of its
+     * own. Keyed by the differential it was expressed about: an intent stated while looking at one
+     * pose is not an answer about the next one, and an unkeyed flag made "frame this one only" stick
+     * to every look the author moved to afterwards.
+     */
+    const [scopeIntent, setScopeIntent] = useState<{ key: string; on: boolean } | null>(null);
     const [inspectorWidth, setInspectorWidth] = useState(CHARACTER_INSPECTOR_DEFAULT_WIDTH);
     const dragRef = useRef<string | null>(null);
     const anchorRef = useRef<HTMLElement | null>(null);
@@ -459,17 +498,40 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
     const avatarKey = kind === "preset" ? previewPoseId : avatarKeyOf(tags);
     const avatarSelection = kind === "preset" ? { poseId: previewPoseId } : { tags: previewTags };
     const profilePortrait = character.profile.getPortrait();
-    const poseHasOwnCrop = previewPose?.portrait !== undefined;
-    /** Preset only: whether a new framing is written on the pose or on the character. */
-    const cropScoped = kind === "preset" ? (scopeToPose ?? poseHasOwnCrop) : false;
-    const effectiveCrop = kind === "preset"
-        ? (previewPose?.portrait ?? profilePortrait)
-        : profilePortrait;
+
+    /**
+     * The framing this one differential carries, if it carries one.
+     *
+     * Two stores, one idea, and the second one is why this exists at all. `preset` keeps writing
+     * `pose.portrait`, which is what the baker and the story rows already read. `layered` has no
+     * per-combination object to hang a crop on - a combination exists only as a key - so it writes
+     * the avatar table, which is keyed by exactly the differential a crop belongs to.
+     *
+     * Before this, the whole scope idea was preset-only and the layered arm fell through to
+     * `profile.setPortrait`: dragging the box while previewing "casual + angry" silently reframed
+     * every other look the character has, and nothing on screen said so.
+     */
+    const scopedCrop = kind === "preset"
+        ? previewPose?.portrait
+        : (avatarKey ? appearance.getAvatarPortrait(avatarKey) ?? undefined : undefined);
+    const cropScoped = scopeIntent && scopeIntent.key === avatarKey
+        ? scopeIntent.on
+        : scopedCrop !== undefined;
+    const effectiveCrop = scopedCrop ?? profilePortrait;
+
+    /** Write (or clear) the differential's own framing, whichever store its kind keeps it in. */
+    const writeScopedCrop = (crop: PortraitCrop | undefined) => {
+        if (kind === "preset") {
+            if (previewPoseId) appearance.setPosePortrait(previewPoseId, crop);
+        } else if (avatarKey) {
+            appearance.setAvatarPortrait(avatarKey, crop ?? null);
+        }
+    };
 
     const commitCrop = (crop: PortraitCrop) => {
         if (freeze.frozen) return;
-        if (kind === "preset" && previewPoseId && cropScoped) {
-            appearance.setPosePortrait(previewPoseId, crop);
+        if (cropScoped && avatarKey) {
+            writeScopedCrop(crop);
         } else {
             character.profile.setPortrait(crop);
         }
@@ -477,35 +539,35 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
 
     const resetCrop = () => {
         if (freeze.frozen) return;
-        if (kind === "preset" && previewPoseId && cropScoped) {
-            appearance.setPosePortrait(previewPoseId, undefined);
+        if (cropScoped && avatarKey) {
+            writeScopedCrop(undefined);
         } else {
             character.profile.setPortrait(undefined);
         }
     };
 
     const toggleCropScope = () => {
-        if (freeze.frozen || kind !== "preset" || !previewPoseId) return;
+        if (freeze.frozen || !avatarKey) return;
         const next = !cropScoped;
-        setScopeToPose(next);
-        if (!next && poseHasOwnCrop) {
-            // Back to inheriting: the pose's own framing is what makes it scoped, so it goes.
-            appearance.setPosePortrait(previewPoseId, undefined);
-        } else if (next && !poseHasOwnCrop && effectiveCrop) {
+        setScopeIntent({ key: avatarKey, on: next });
+        if (!next && scopedCrop !== undefined) {
+            // Back to inheriting: the differential's own framing is what makes it scoped, so it goes.
+            writeScopedCrop(undefined);
+        } else if (next && scopedCrop === undefined && effectiveCrop) {
             // Start from whatever was on screen rather than from the automatic crop.
-            appearance.setPosePortrait(previewPoseId, effectiveCrop);
+            writeScopedCrop(effectiveCrop);
         }
     };
 
-    const bakeReport = bakeSummary?.byCharacter[character.profile.getId()];
-    const bakeReceipt = bakeSummary
-        ? (bakeSummary.written || bakeSummary.unresolved || bakeSummary.removed)
-            ? t("characters.editor.bakeReceipt", {
-                written: String(bakeSummary.written),
-                unresolved: String(bakeSummary.unresolved),
-                removed: String(bakeSummary.removed),
-            })
-            : t("characters.editor.bakeUpToDate")
+    // Zeroes across the board are dropped rather than said as "Avatars are up to date": a receipt is
+    // an account of what a run changed, and a line reporting that a run changed nothing is a line
+    // that appears when there is nothing to report.
+    const bakeReceipt = bakeSummary && (bakeSummary.written || bakeSummary.unresolved || bakeSummary.removed)
+        ? t("characters.editor.bakeReceipt", {
+            written: String(bakeSummary.written),
+            unresolved: String(bakeSummary.unresolved),
+            removed: String(bakeSummary.removed),
+        })
         : null;
 
     const accent = character.profile.getColor();
@@ -514,6 +576,24 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
     const headerColor = accent && isReadableAccentColor(accent) ? accent : undefined;
 
     const renameHint = t("characters.editor.renameHint");
+
+    /**
+     * The one control that survives into the grid, because it is the one that opened it.
+     *
+     * The grid used to replace the preview *and* its toolbar, so the button that turned the mode on
+     * disappeared the moment it worked and a private close button was the only way back. Kept mounted
+     * and lit, it is an ordinary toggle, and the grid's own `X` could be deleted.
+     */
+    const gridToggle = (
+        <button
+            key="grid"
+            className={grid ? ICON_BTN_ON : ICON_BTN}
+            title={t("characters.editor.combinations.title")}
+            onClick={() => setGrid(current => !current)}
+        >
+            <Grid3x3 className="w-3.5 h-3.5" />
+        </button>
+    );
 
     return (
         <div className="h-full bg-surface text-fg flex flex-col">
@@ -547,7 +627,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                 const key = avatarKeyOf(combination.tags);
                                 if (key) openSlot({ kind: "avatar", avatarKey: key }, anchor);
                             }}
-                            onClose={() => setGrid(false)}
+                            toolbar={gridToggle}
                         />
                     ) : (
                     <LayerStackPreview
@@ -588,13 +668,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                 >
                                     <Layers className="w-3.5 h-3.5" />
                                 </button>
-                                <button
-                                    className={ICON_BTN}
-                                    title={t("characters.editor.combinations.title")}
-                                    onClick={() => setGrid(true)}
-                                >
-                                    <Grid3x3 className="w-3.5 h-3.5" />
-                                </button>
+                                {gridToggle}
                                 <button
                                     className={ICON_BTN}
                                     onClick={() => setPsdOpen(true)}
@@ -612,7 +686,6 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                         <PoseFilmstrip
                             poses={poses}
                             activePoseId={previewPoseId}
-                            defaultPoseId={appearance.getDefaultPoseId()}
                             onPick={poseId => setFocus({ kind: "pose", id: poseId })}
                         />
                     )}
@@ -621,13 +694,26 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                             <div className="px-4 py-1.5 text-2xs tracking-wide text-fg-muted">
                                 {t("characters.editor.problems")}
                             </div>
-                            {diagnostics.map((diagnostic, index) => (
-                                <DiagnosticRow
-                                    key={`${diagnostic.code}:${diagnostic.target?.id ?? "-"}:${index}`}
-                                    diagnostic={diagnostic}
-                                    onClick={diagnostic.target ? () => setFocus(diagnostic.target) : null}
-                                />
-                            ))}
+                            {diagnostics.map((diagnostic, index) => {
+                                // A finding about a *look* has to put that look on screen, or the
+                                // author reads a complaint about a picture they cannot see. Selection
+                                // and tags are one patch, so the two halves cannot land apart.
+                                const target = diagnostic.target;
+                                return (
+                                    <DiagnosticRow
+                                        key={`${diagnostic.code}:${target?.id ?? "-"}:${index}`}
+                                        diagnostic={diagnostic}
+                                        onClick={target ? () => {
+                                            patchView({
+                                                focus: target,
+                                                ...(target.tags ? { previewTags: target.tags } : {}),
+                                            });
+                                            // Nothing it can show is visible behind the grid.
+                                            if (target.tags) setGrid(false);
+                                        } : null}
+                                    />
+                                );
+                            })}
                         </div>
                     )}
                 </div>
@@ -642,10 +728,10 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                 )}
 
                 <div
-                    className={[
+                    className={cn(
                         "overflow-y-auto p-3 space-y-4",
                         isPuppet ? "mx-auto w-full max-w-lg" : "min-h-0 shrink-0",
-                    ].join(" ")}
+                    )}
                     style={isPuppet ? undefined : { width: inspectorWidth }}
                 >
                     {isPuppet ? (
@@ -659,7 +745,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                             selection={avatarSelection}
                             crop={effectiveCrop}
                             cropScoped={cropScoped}
-                            onToggleScope={kind === "preset" && previewPoseId ? toggleCropScope : null}
+                            onToggleScope={avatarKey ? toggleCropScope : null}
                             onResetCrop={resetCrop}
                             cropping={cropping}
                             onToggleCropping={() => setCropping(current => !current)}
@@ -671,7 +757,6 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                             }}
                             frozen={freeze.frozen}
                             freezeReason={freeze.reason}
-                            unresolved={Boolean(avatarKey && bakeReport?.unresolved.includes(avatarKey))}
                             onRebake={() => void rebake()}
                             rebaking={rebaking}
                             receipt={bakeReceipt}
@@ -684,14 +769,19 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                 nextAutoName(n => t("characters.editor.defaultPoseName", { n: String(n) }), poses),
                             )}
                         >
+                            {/* Four controls, which is what this row carried before the round: the
+                                per-pose avatar button that made it five is gone. It opened the same
+                                picker the avatar section's own button opens, for the same pose the
+                                section is already showing - clicking the row is what selects it -
+                                and a layered character never had the equivalent. */}
                             {poses.map(pose => (
                                 <div
                                     key={pose.id}
-                                    className={[
+                                    className={cn(
                                         ROW,
                                         "group cursor-pointer",
                                         focus?.kind === "pose" && focus.id === pose.id ? FOCUSED : "border-edge",
-                                    ].join(" ")}
+                                    )}
                                     onClick={() => setFocus({ kind: "pose", id: pose.id })}
                                 >
                                     <InlineName
@@ -700,30 +790,19 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                         disabled={freeze.frozen}
                                         onCommit={next => appearance.rename(pose, next)}
                                     />
-                                    {appearance.getDefaultPoseId() === pose.id ? (
-                                        <span className="shrink-0 text-2xs text-primary">{t("characters.variantsPanel.default")}</span>
-                                    ) : (
-                                        <button
-                                            className="shrink-0 rounded-md px-1 text-2xs text-fg-subtle opacity-0 hover:text-fg group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
-                                            onClick={event => { event.stopPropagation(); appearance.setDefaultPoseId(pose.id); }}
-                                            {...freeze.writes(false, t("characters.editor.makeDefault"))}
-                                        >
-                                            {t("characters.variantsPanel.default")}
-                                        </button>
-                                    )}
+                                    <DefaultStar
+                                        isDefault={appearance.getDefaultPoseId() === pose.id}
+                                        onSet={event => { event.stopPropagation(); appearance.setDefaultPoseId(pose.id); }}
+                                        writes={freeze.writes(false, t("characters.editor.makeDefault"))}
+                                        reveal="group-hover:opacity-100"
+                                        label={t("characters.editor.isDefault")}
+                                    />
                                     <button
                                         className={ICON_BTN}
                                         onClick={event => { event.stopPropagation(); openSlot({ kind: "pose", poseId: pose.id }, event.currentTarget); }}
-                                        {...freeze.writes(false, t("characters.variantsPanel.changeImage"))}
+                                        {...freeze.writes(false, t("characters.editor.changeImage"))}
                                     >
                                         <ImagePlus className="w-3.5 h-3.5" />
-                                    </button>
-                                    <button
-                                        className={appearance.getAvatar(pose.id)?.overrideAssetId ? ICON_BTN_ON : ICON_BTN}
-                                        onClick={event => { event.stopPropagation(); openSlot({ kind: "avatar", avatarKey: pose.id }, event.currentTarget); }}
-                                        {...freeze.writes(false, t("characters.editor.avatar"))}
-                                    >
-                                        <UserRound className="w-3.5 h-3.5" />
                                     </button>
                                     <button
                                         className={ICON_BTN}
@@ -749,7 +828,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                 {axes.map(axis => (
                                     <div
                                         key={axis.id}
-                                        className={[CARD, focus?.kind === "axis" && focus.id === axis.id ? FOCUSED : "border-edge"].join(" ")}
+                                        className={cn(CARD, focus?.kind === "axis" && focus.id === axis.id ? FOCUSED : "border-edge")}
                                         onClick={() => setFocus({ kind: "axis", id: axis.id })}
                                     >
                                         <div className="flex items-center gap-2">
@@ -798,12 +877,12 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                     // Clicking the chip still previews the tag, the
                                                     // gesture that was already there; renaming rides
                                                     // on the double-click that had nothing bound to it.
-                                                    className={[
+                                                    className={cn(
                                                         "group/tag flex cursor-pointer items-center gap-0.5 rounded-md border pl-2 pr-1 py-0.5 text-2xs transition-colors",
                                                         tags[axis.id] === tag.id
                                                             ? "border-primary/60 bg-primary/15"
                                                             : "border-edge hover:bg-fill",
-                                                    ].join(" ")}
+                                                    )}
                                                     onClick={() => setPreviewTags({ ...previewTags, [axis.id]: tag.id })}
                                                 >
                                                     <InlineName
@@ -813,26 +892,26 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                         disabled={freeze.frozen}
                                                         onCommit={next => appearance.rename(tag, next)}
                                                     />
-                                                    {axis.defaultTagId === tag.id && <span className="text-primary">·</span>}
-                                                    <span className="hidden items-center group-hover/tag:flex">
-                                                        <button
-                                                            className={ICON_BTN}
-                                                            onClick={event => { event.stopPropagation(); appearance.setAxisDefaultTag(axis.id, tag.id); }}
-                                                            {...freeze.writes(false, t("characters.editor.makeDefault"))}
-                                                        >
-                                                            <Eye className="w-3 h-3" />
-                                                        </button>
-                                                        <button
-                                                            className={ICON_BTN}
-                                                            onClick={async event => {
-                                                                event.stopPropagation();
-                                                                if (await confirmDelete(tag.name, "tag")) appearance.removeTag(axis.id, tag.id);
-                                                            }}
-                                                            {...freeze.writes(false, t("characters.editor.removeTag"))}
-                                                        >
-                                                            <Trash2 className="w-3 h-3" />
-                                                        </button>
-                                                    </span>
+                                                    {/* Was a `·` for the state and an `Eye` for the
+                                                        action - and `Eye` two sections down means
+                                                        show/hide a layer. */}
+                                                    <DefaultStar
+                                                        isDefault={axis.defaultTagId === tag.id}
+                                                        onSet={event => { event.stopPropagation(); appearance.setAxisDefaultTag(axis.id, tag.id); }}
+                                                        writes={freeze.writes(false, t("characters.editor.makeDefault"))}
+                                                        reveal="group-hover/tag:opacity-100"
+                                                        label={t("characters.editor.isDefault")}
+                                                    />
+                                                    <button
+                                                        className={cn(ICON_BTN, "shrink-0 opacity-0 focus-visible:opacity-100 group-hover/tag:opacity-100")}
+                                                        onClick={async event => {
+                                                            event.stopPropagation();
+                                                            if (await confirmDelete(tag.name, "tag")) appearance.removeTag(axis.id, tag.id);
+                                                        }}
+                                                        {...freeze.writes(false, t("characters.editor.removeTag"))}
+                                                    >
+                                                        <Trash2 className="w-3 h-3" />
+                                                    </button>
                                                 </div>
                                             ))}
                                         </div>
@@ -854,12 +933,12 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                     return (
                                         <div
                                             key={layer.id}
-                                            className={[
+                                            className={cn(
                                                 CARD,
                                                 "nl-drag-source",
                                                 isFocused ? FOCUSED : "border-edge",
-                                                dragLayerId === layer.id ? "opacity-50" : "",
-                                            ].join(" ")}
+                                                dragLayerId === layer.id && "opacity-50",
+                                            )}
                                             // A native drag begins on mousedown, before a caret can be
                                             // placed, so a draggable row swallows text selection inside
                                             // it - the name being edited has to switch the drag off.
@@ -916,7 +995,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                     {locked[layer.id] ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
                                                 </button>
                                                 <select
-                                                    className="bg-surface border border-edge rounded-md text-2xs px-1 py-0.5 disabled:cursor-not-allowed disabled:opacity-40"
+                                                    className="bg-surface border border-edge rounded-md text-2xs px-1 py-0.5 disabled:cursor-not-allowed disabled:opacity-50"
                                                     value={layer.axisId ?? ""}
                                                     onChange={event => appearance.setLayerAxis(layer.id, event.target.value || null)}
                                                     {...freeze.writes(locked[layer.id])}
@@ -950,7 +1029,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                             <button
                                                                 className={ICON_BTN}
                                                                 onClick={event => { event.stopPropagation(); openSlot({ kind: "option", layerId: layer.id, tagId: tag.id }, event.currentTarget); }}
-                                                                {...freeze.writes(locked[layer.id], t("characters.variantsPanel.changeImage"))}
+                                                                {...freeze.writes(locked[layer.id], t("characters.editor.changeImage"))}
                                                             >
                                                                 <ImagePlus className="w-3 h-3" />
                                                             </button>
@@ -965,7 +1044,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                     <button
                                                         className={ICON_BTN}
                                                         onClick={event => { event.stopPropagation(); openSlot({ kind: "layer", layerId: layer.id }, event.currentTarget); }}
-                                                        {...freeze.writes(locked[layer.id], t("characters.variantsPanel.changeImage"))}
+                                                        {...freeze.writes(locked[layer.id], t("characters.editor.changeImage"))}
                                                     >
                                                         <ImagePlus className="w-3 h-3" />
                                                     </button>
@@ -976,38 +1055,40 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                 })}
                             </Section>
 
-                            {appearance.getSnapshots().length > 0 && (
-                                <Section
-                                    title={t("characters.editor.snapshots")}
-                                    onAdd={() => void nameCombination(tags)}
-                                >
-                                    {appearance.getSnapshots().map(snapshot => (
-                                        <div
-                                            key={snapshot.id}
-                                            className={[ROW, "border-edge cursor-pointer"].join(" ")}
-                                            onClick={() => setPreviewTags(snapshot.tags)}
+                            {/* Not gated on having one. The header and its "+" *are* the way to make
+                                the first snapshot from the inspector; hiding them until one existed
+                                left a hover Bookmark inside the combination grid as the only path to
+                                a feature whose list sat here. */}
+                            <Section
+                                title={t("characters.editor.snapshots")}
+                                onAdd={() => void nameCombination(tags)}
+                            >
+                                {appearance.getSnapshots().map(snapshot => (
+                                    <div
+                                        key={snapshot.id}
+                                        className={cn(ROW, "group border-edge cursor-pointer")}
+                                        onClick={() => setPreviewTags(snapshot.tags)}
+                                    >
+                                        <Bookmark className="w-3.5 h-3.5 shrink-0 text-fg-subtle" />
+                                        <InlineName
+                                            value={snapshot.name}
+                                            title={renameHint}
+                                            disabled={freeze.frozen}
+                                            onCommit={next => appearance.rename(snapshot, next)}
+                                        />
+                                        <button
+                                            className={ICON_BTN}
+                                            onClick={async event => {
+                                                event.stopPropagation();
+                                                if (await confirmDelete(snapshot.name, "snapshot")) appearance.removeSnapshot(snapshot.id);
+                                            }}
+                                            {...freeze.writes(false, t("common.delete"))}
                                         >
-                                            <Bookmark className="w-3.5 h-3.5 shrink-0 text-fg-subtle" />
-                                            <InlineName
-                                                value={snapshot.name}
-                                                title={renameHint}
-                                                disabled={freeze.frozen}
-                                                onCommit={next => appearance.rename(snapshot, next)}
-                                            />
-                                            <button
-                                                className={ICON_BTN}
-                                                onClick={async event => {
-                                                    event.stopPropagation();
-                                                    if (await confirmDelete(snapshot.name, "snapshot")) appearance.removeSnapshot(snapshot.id);
-                                                }}
-                                                {...freeze.writes(false, t("common.delete"))}
-                                            >
-                                                <Trash2 className="w-3.5 h-3.5" />
-                                            </button>
-                                        </div>
-                                    ))}
-                                </Section>
-                            )}
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </Section>
                         </>
                         )}
                         </>
@@ -1073,8 +1154,12 @@ const DIAGNOSTIC_KEYS = {
     axisNoTags: "characters.editor.diagnostics.axisNoTags",
     axisUnused: "characters.editor.diagnostics.axisUnused",
     duplicateTag: "characters.editor.diagnostics.duplicateTag",
+    duplicateAxis: "characters.editor.diagnostics.duplicateAxis",
+    axisDefaultMissing: "characters.editor.diagnostics.axisDefaultMissing",
     occluded: "characters.editor.diagnostics.occluded",
     avatarCombinations: "characters.editor.diagnostics.avatarCombinations",
+    combinationNoArt: "characters.editor.diagnostics.combinationNoArt",
+    snapshotStale: "characters.editor.diagnostics.snapshotStale",
     poseNoImage: "characters.editor.diagnostics.poseNoImage",
     noPoses: "characters.editor.diagnostics.noPoses",
     defaultPoseMissing: "characters.editor.diagnostics.defaultPoseMissing",
@@ -1091,7 +1176,7 @@ function DiagnosticRow(props: { diagnostic: CharacterDiagnostic; onClick: (() =>
             disabled={!props.onClick}
             onClick={props.onClick ?? undefined}
         >
-            <Icon className={["w-3.5 h-3.5 shrink-0", diagnostic.severity === "error" ? "text-danger" : "text-warning"].join(" ")} />
+            <Icon className={cn("w-3.5 h-3.5 shrink-0", diagnostic.severity === "error" ? "text-danger" : "text-warning")} />
             <span className="min-w-0 flex-1 truncate text-fg-muted">
                 {t(DIAGNOSTIC_KEYS[diagnostic.code], diagnostic.values)}
             </span>

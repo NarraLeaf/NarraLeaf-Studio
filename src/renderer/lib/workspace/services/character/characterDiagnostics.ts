@@ -1,16 +1,33 @@
 import type { CharacterAppearance } from "./CharacterAppearance";
+import { enumerateCombinations } from "./characterCombinations";
+import type { CharacterTagSelection } from "./types";
 import { characterAvatarAxisIds } from "@shared/utils/characterAvatar";
 
 export type LayerSize = { width: number; height: number };
 
-/** What a diagnostic row selects when it is clicked. */
-export type CharacterDiagnosticTarget = { kind: "layer" | "axis" | "pose"; id: string };
+/**
+ * What a diagnostic row selects when it is clicked.
+ *
+ * `tags` exists because half the layered findings are about *a look* rather than about an object in
+ * the inspector: "this combination draws nothing" highlighted a card and left the preview on whatever
+ * was already showing, so the author read a complaint about a picture they could not see. A target
+ * carrying a selection puts the offending look on screen, which for a layered character is the whole
+ * point of clicking the row. `kind: "combination"` names no inspector card on purpose — the picture
+ * *is* the target.
+ */
+export type CharacterDiagnosticTarget = {
+    kind: "layer" | "axis" | "pose" | "combination";
+    id: string;
+    /** Layered only: the tag selection that shows what the finding is about. */
+    tags?: CharacterTagSelection;
+};
 
 export type CharacterDiagnostic = {
     /** Which message to render. The editor owns the wording; this module owns the finding. */
     code:
         | "offCanvas" | "constantNoImage" | "layerNoImage" | "axisNoTags" | "axisUnused" | "duplicateTag"
-        | "occluded" | "avatarCombinations"
+        | "occluded" | "avatarCombinations" | "combinationNoArt" | "axisDefaultMissing" | "duplicateAxis"
+        | "snapshotStale"
         | "poseNoImage" | "noPoses" | "defaultPoseMissing" | "duplicatePose";
     severity: "error" | "warning";
     /**
@@ -191,12 +208,20 @@ export function collectCharacterDiagnostics(
             found.push({
                 code: "layerNoImage",
                 severity: "error",
-                target: { kind: "layer", id: layer.id },
+                // Any tag of its axis shows the empty layer, so the first one is as good a look as
+                // any — what matters is that clicking the row puts *a* look on screen where the
+                // complaint can be checked.
+                target: {
+                    kind: "layer",
+                    id: layer.id,
+                    tags: { [layer.axisId]: appearance.getAxis(layer.axisId)?.tags[0]?.id ?? "" },
+                },
                 values: { name: layer.name },
             });
         }
     }
 
+    const axisNames = new Set<string>();
     for (const axis of axes) {
         if (axis.tags.length === 0) {
             found.push({
@@ -214,6 +239,32 @@ export function collectCharacterDiagnostics(
             });
         }
 
+        // Exactly the preset `defaultPoseMissing` finding, one kind over: `defaultTagSelection` falls
+        // back to the first tag, so an axis whose declared default is missing or dangling poses the
+        // character differently from what the store says and never says so.
+        if (axis.tags.length > 0
+            && !axis.tags.some(tag => tag.id === axis.defaultTagId)) {
+            found.push({
+                code: "axisDefaultMissing",
+                severity: "warning",
+                target: { kind: "axis", id: axis.id, tags: { [axis.id]: axis.tags[0].id } },
+                values: { axis: axis.name, name: axis.tags[0].name },
+            });
+        }
+
+        // Two axes of one name is worse than two tags of one name: a story `/face` row names the axis
+        // as well as the tag, so the ambiguity reaches the script rather than staying in the editor.
+        const axisKey = axis.name.trim().toLowerCase();
+        if (axisNames.has(axisKey)) {
+            found.push({
+                code: "duplicateAxis",
+                severity: "warning",
+                target: { kind: "axis", id: axis.id },
+                values: { name: axis.name },
+            });
+        }
+        axisNames.add(axisKey);
+
         const seen = new Set<string>();
         for (const tag of axis.tags) {
             const key = tag.name.trim().toLowerCase();
@@ -221,11 +272,54 @@ export function collectCharacterDiagnostics(
                 found.push({
                     code: "duplicateTag",
                     severity: "warning",
-                    target: { kind: "axis", id: axis.id },
+                    target: { kind: "axis", id: axis.id, tags: { [axis.id]: tag.id } },
                     values: { axis: axis.name, name: tag.name },
                 });
             }
             seen.add(key);
+        }
+    }
+
+    // A snapshot is resolved when it is written, so a stale one means the tag or axis it named was
+    // deleted afterwards. `resolveTagSelection` silently substitutes the defaults, so the bookmark
+    // still opens *a* look — just not the one it was saved as, with nothing to say so.
+    for (const snapshot of appearance.getSnapshots()) {
+        const live: CharacterTagSelection = {};
+        let stale = false;
+        for (const [axisId, tagId] of Object.entries(snapshot.tags)) {
+            if (appearance.getAxis(axisId)?.tags.some(tag => tag.id === tagId)) {
+                live[axisId] = tagId;
+            } else {
+                stale = true;
+            }
+        }
+        if (stale) {
+            found.push({
+                code: "snapshotStale",
+                severity: "warning",
+                target: { kind: "combination", id: snapshot.id, tags: live },
+                values: { name: snapshot.name },
+            });
+        }
+    }
+
+    // "This whole look draws nothing" is the layered form of `poseNoImage`, and until now it was said
+    // only as prose beside the avatar preview, about whichever look happened to be on screen. A
+    // character nobody has started drawing yet is silent: every layer is already reported empty, and
+    // repeating it once per combination would bury the findings that name a real hole.
+    const started = layers.some(layer => (
+        layer.axisId ? Object.values(layer.options ?? {}).some(Boolean) : Boolean(layer.assetId)
+    ));
+    if (started) {
+        for (const combination of enumerateCombinations(appearance).combinations) {
+            if (appearance.resolveDrawList({ tags: combination.tags }).every(assetId => !assetId)) {
+                found.push({
+                    code: "combinationNoArt",
+                    severity: "error",
+                    target: { kind: "combination", id: combination.key, tags: combination.tags },
+                    values: { name: combination.labels.join(" · ") },
+                });
+            }
         }
     }
 
