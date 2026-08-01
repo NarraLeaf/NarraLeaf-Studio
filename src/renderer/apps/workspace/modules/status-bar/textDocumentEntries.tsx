@@ -215,7 +215,10 @@ export function TextEncodingEntry() {
             {
                 id: "save",
                 label: t("assets.textEditor.saveWithEncoding"),
-                ...freeze.menuRow(),
+                // The parent row stays openable while frozen and only its leaves go dead - the
+                // rule `freezeContextMenuRows` follows for every menu it walks. Disabling the
+                // group itself hid the encodings behind a row that would not open, so the author
+                // could not even see which ones the freeze had taken away.
                 submenu: TEXT_ENCODING_IDS.map(id => ({
                     id: `save-${id}`,
                     label: textEncodingLabel(id),

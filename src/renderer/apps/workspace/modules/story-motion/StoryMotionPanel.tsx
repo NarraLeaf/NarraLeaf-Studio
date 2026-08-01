@@ -325,10 +325,14 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
 
     const handlePreviewAssetConfirm = useCallback((assets: Asset[]) => {
         if (assetPickerFor) {
-            setPreviewAsset(assetPickerFor === "target" ? "previewAssetId" : "previewBackgroundAssetId", assets[0]?.id);
+            // Picking a preview image writes the motion asset, so the freeze refuses the binding -
+            // the second lock on a door the slot buttons already hold shut, because a picker that
+            // is open when the freeze arrives outlives the button that opened it. Closing the
+            // picker is not a write and always runs, or the author is left with a stuck panel.
+            freeze.run(setPreviewAsset)(assetPickerFor === "target" ? "previewAssetId" : "previewBackgroundAssetId", assets[0]?.id);
         }
         setAssetPickerFor(null);
-    }, [assetPickerFor, setPreviewAsset]);
+    }, [assetPickerFor, freeze, setPreviewAsset]);
 
     const setConfig = useCallback((patch: { repeat?: number; repeatDelayMs?: number }, clear: ("repeat" | "repeatDelayMs")[] = []) => {
         if (!storyService || !selectedAsset) {
@@ -453,6 +457,11 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                 <div className="grid gap-4">
                                     <label className="grid min-w-0 gap-1.5">
                                         <span className="text-xs font-medium text-fg-subtle">{t("common.name")}</span>
+                                        {/* Renaming writes the motion asset: on a frozen project the
+                                            field took the new name, blurred, and reverted to the old
+                                            one the moment the asset reloaded. Read-only rather than
+                                            disabled, because the name is what the author came here to
+                                            read and a disabled input is dimmed past reading. */}
                                         <EnhancedInput
                                             className="transition-colors focus-within:ring-0"
                                             value={renameDraft}
@@ -462,6 +471,8 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                                 if (event.key === "Enter") event.currentTarget.blur();
                                             }}
                                             inputClassName="font-medium"
+                                            readOnly={freeze.frozen}
+                                            title={freeze.frozen ? freeze.reason : undefined}
                                         />
                                     </label>
                                     <SurfaceEditorToolbarButtonGroup aria-label={t("motion.panel.motionActions")} className="w-full">
@@ -481,6 +492,11 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                             <Trash2 className="h-4 w-4" />
                                         </SurfaceEditorToolbarSegButton>
                                     </SurfaceEditorToolbarButtonGroup>
+                                    {/* Repeat and repeat delay are the motion's config, and every
+                                        keystroke here commits: typed into a frozen project they
+                                        changed the loop on screen and were gone on the next reload.
+                                        Read-only for the same reason as the name - the numbers are
+                                        half of what this panel is for. */}
                                     <div className="grid grid-cols-2 gap-3">
                                         <label className="grid min-w-0 gap-1.5">
                                             <span className="text-xs font-medium text-fg-subtle">{t("motion.panel.repeat")}</span>
@@ -494,6 +510,8 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                                     const repeat = Math.floor(value);
                                                     setConfig(repeat > 0 ? { repeat } : {}, repeat > 0 ? [] : ["repeat"]);
                                                 }}
+                                                readOnly={freeze.frozen}
+                                                title={freeze.frozen ? freeze.reason : undefined}
                                             />
                                         </label>
                                         <label className="grid min-w-0 gap-1.5">
@@ -508,6 +526,8 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                                     const repeatDelayMs = Math.max(0, storySecondsToMs(seconds));
                                                     setConfig(repeatDelayMs > 0 ? { repeatDelayMs } : {}, repeatDelayMs > 0 ? [] : ["repeatDelayMs"]);
                                                 }}
+                                                readOnly={freeze.frozen}
+                                                title={freeze.frozen ? freeze.reason : undefined}
                                             />
                                         </label>
                                     </div>
@@ -715,14 +735,18 @@ function PreviewAssetSlot(props: {
     onClear: () => void;
 }) {
     const { t } = useTranslation();
+    // Both halves of the slot write the motion asset - the label opens the asset picker that binds a
+    // preview image, the ✕ unbinds it - so both are refused while frozen. The slot still shows which
+    // image is bound, which is the part worth reading.
+    const freeze = useFreezeGuard();
     return (
         <div className="flex min-w-0 max-w-56 items-center overflow-hidden rounded-md border border-edge bg-fill-subtle">
             <button
                 ref={props.buttonRef}
                 type="button"
-                className={`flex h-7 min-w-0 flex-1 items-center gap-1.5 px-2 text-xs ${props.hasValue ? "text-fg" : "text-fg-subtle"} hover:bg-fill-subtle hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50`}
+                className={`flex h-7 min-w-0 flex-1 items-center gap-1.5 px-2 text-xs ${props.hasValue ? "text-fg" : "text-fg-subtle"} hover:bg-fill-subtle hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 disabled:cursor-not-allowed disabled:opacity-40`}
                 onClick={props.onOpen}
-                title={props.title}
+                {...freeze.writes(false, props.title)}
             >
                 {props.icon}
                 <span className="min-w-0 truncate">{props.label}</span>
@@ -730,9 +754,9 @@ function PreviewAssetSlot(props: {
             {props.hasValue ? (
                 <button
                     type="button"
-                    className="grid h-7 w-6 shrink-0 place-items-center border-l border-edge text-fg-subtle hover:bg-danger/10 hover:text-danger focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-danger/50"
+                    className="grid h-7 w-6 shrink-0 place-items-center border-l border-edge text-fg-subtle hover:bg-danger/10 hover:text-danger focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-danger/50 disabled:cursor-not-allowed disabled:opacity-40"
                     onClick={props.onClear}
-                    title={t("common.clear")}
+                    {...freeze.writes(false, t("common.clear"))}
                     aria-label={t("motion.panel.clearAria", { name: props.title })}
                 >
                     <X className="h-3 w-3" />

@@ -12,6 +12,7 @@ import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
 import { Input } from "@/lib/components/elements/Input";
+import { InspectOnlyButton } from "@/lib/components/elements/InspectOnlyButton";
 import { Select } from "@/lib/components/elements/Select";
 import { listProjectPuppetRuntimes } from "@/lib/workspace/services/puppet/projectPuppetRuntimes";
 import {
@@ -344,13 +345,18 @@ function PuppetStateField(props: CustomFieldProps<UIInspectorData>) {
                             ? t("widgets.puppet.describing")
                             : t(describeStatusKey(result?.status === "unavailable" ? result.reason : null))}
                     </span>
-                    <button
-                        type="button"
-                        className="shrink-0 rounded px-1.5 py-0.5 tracking-wider text-fg-subtle hover:bg-fill hover:text-fg-muted"
+                    {/* Re-reading the model files is looking, not writing: it refreshes the three
+                        lists above and leaves the element's props alone. An
+                        {@link InspectOnlyButton} because the inspector clamps this field in a
+                        `disabled` `<fieldset>` while the workspace is frozen, and as a `<button>`
+                        this went with it - which left the author of a past version staring at a
+                        stale or failed description with no way to take it again. */}
+                    <InspectOnlyButton
+                        className="shrink-0 rounded px-1.5 py-0.5 tracking-wider text-fg-subtle hover:bg-fill hover:text-fg-muted cursor-default"
                         onClick={refresh}
                     >
                         {t("widgets.puppet.redescribe")}
-                    </button>
+                    </InspectOnlyButton>
                 </div>
             ) : null}
         </div>
