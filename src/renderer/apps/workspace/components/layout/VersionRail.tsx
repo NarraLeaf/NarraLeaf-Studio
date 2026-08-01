@@ -127,7 +127,11 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
         return (
             <div
                 data-workspace-version-rail="strip"
-                className="flex shrink-0 flex-col items-center gap-1 border-r border-primary bg-primary/15 px-1 py-2"
+                // No right edge here, and this is the one state that goes without one. The tinted
+                // block IS the seam - it meets the sidebar selector's own `border-r border-edge`
+                // directly, and a coloured rule between two columns that are already different
+                // colours is a second edge drawn over the first.
+                className="flex shrink-0 flex-col items-center gap-1 bg-primary/15 px-1 py-2"
                 style={{ width: VERSION_RAIL_COLLAPSED_WIDTH }}
             >
                 <button
@@ -182,13 +186,20 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
         : t("workspace.shell.versionControl.close");
 
     return (
-        // No right edge: `bg-surface-sunken` already separates this column from the editor beside
-        // it, and a rule on top of a tone change is one seam drawn twice. The frozen state does not
-        // get one either - it is said by the tinted block at the top of the panel, the button under
-        // it and the status cell, all of which say WHICH version, which a coloured line cannot.
+        // Ruled on the right like every other column of the window's left edge - the same
+        // `border-r border-edge` the sidebar selector and the left dock wear. A tone change alone
+        // was tried and read as a missing edge next to neighbours that all have one; the panel is
+        // one column in that row, not a surface of its own.
+        //
+        // Grey even while frozen: which version is on screen is said by the tinted block at the top
+        // of the panel, the button under it and the status cell, all of which name it - a coloured
+        // line cannot, and it would be the only tinted edge in a row of grey ones.
+        //
+        // The border sits INSIDE `VERSION_RAIL_EXPANDED_WIDTH` (border-box), so the width the dock
+        // solver is told about is still the width this column takes.
         <div
             data-workspace-version-rail="panel"
-            className="flex shrink-0 flex-col bg-surface-sunken"
+            className="flex shrink-0 flex-col border-r border-edge bg-surface-sunken"
             style={{ width: VERSION_RAIL_EXPANDED_WIDTH }}
         >
             <div className="flex h-12 shrink-0 items-center justify-between border-b border-edge px-3">

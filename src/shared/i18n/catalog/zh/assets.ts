@@ -42,6 +42,14 @@ export const assets = {
         model: "模型",
         other: "其他",
     },
+    categories: {
+        image: "图片",
+        media: "媒体",
+        data: "数据",
+        font: "字体",
+        model: "模型",
+        other: "其他",
+    },
     itemCount: {
         one: "{count} 项",
         other: "{count} 项",
@@ -53,7 +61,7 @@ export const assets = {
         section: {
             library: "资源库",
             packaging: "打包",
-            byType: "按类型",
+            byCategory: "按类别",
             largest: "体积最大",
             unreferenced: "未被引用",
         },
@@ -131,6 +139,7 @@ export const assets = {
     menu: {
         newGroup: "新建分组",
         newSubGroup: "新建子分组",
+        newTextFile: "新建文本文件",
         importAssets: "导入素材…",
         replaceContent: "替换文件…",
         copyCount: {
@@ -259,5 +268,29 @@ export const assets = {
     jsonPreview: {
         invalid: "此文件不是合法的 JSON，显示原始内容",
         truncated: "文件过大无法格式化，仅显示开头部分",
+    },
+    textEditor: {
+        loadFailed: "无法读取此文件",
+        saveFailed: "无法保存此文件",
+        caret: "行 {line}，列 {column}",
+        selected: "（已选 {count} 个字符）",
+        selectedInRanges: "（已选 {count} 个字符，共 {ranges} 处）",
+        selectionLabel: "光标位置与选中范围",
+        reopenWithEncoding: "以编码重新打开",
+        saveWithEncoding: "以编码保存",
+        selectEncoding: "选择文件编码",
+        selectLineEnding: "选择行尾符号",
+        lineEndingLabel: "行尾：{ending}",
+        encodingLabel: "编码：{encoding}",
+        actionFailed: "该操作执行失败",
+    },
+    newTextFile: {
+        title: "新建文本文件",
+        prompt: "为文件命名。带扩展名则原样保留；不带则使用 .txt。",
+        placeholder: "notes.txt",
+        defaultName: "新建文本文件",
+        empty: "请输入文件名",
+        illegalChars: "文件名不能包含 \\ / : * ? \" < > |",
+        failedTitle: "无法创建文件",
     },
 } satisfies LocaleNamespace<"assets">;

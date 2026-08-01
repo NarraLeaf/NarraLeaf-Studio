@@ -5,6 +5,7 @@ import { StatusBarAlignment, type StatusBarItem } from "@/lib/workspace/services
 import {
     builtInStatusBarEntries,
     StatusEntry,
+    StatusBarEntryIdContext,
     StatusBarRunningContext,
     useActiveRunMode,
 } from "../../modules/status-bar";
@@ -76,14 +77,22 @@ export function StatusBar() {
     );
     const { hiddenIds, openMenu, menu } = useStatusBarContextMenu(menuEntries);
 
+    // Every cell that actually draws something carries its registry id, the same way tabs carry
+    // `data-editor-tab-id` and asset sections carry `data-asset-category`. It names a cell whose
+    // visible text is often a bare value ("LF", "UTF-8", "120%") and would otherwise only be
+    // findable by guessing at that text. The id rides a context down onto `StatusEntry` rather than
+    // sitting on the wrapper here, so an entry that is currently rendering `null` - which is most of
+    // them, most of the time - leaves no element behind claiming to be a cell.
     const renderEntry = (entry: ResolvedEntry) => {
         const onContextMenu = (event: React.MouseEvent) => openMenu(event, entry.id);
         if (entry.kind === "module") {
             const Component = entry.module.component;
             return (
-                <div key={entry.id} className="flex items-stretch" onContextMenu={onContextMenu}>
-                    <Component />
-                </div>
+                <StatusBarEntryIdContext.Provider key={entry.id} value={entry.id}>
+                    <div className="flex items-stretch" onContextMenu={onContextMenu}>
+                        <Component />
+                    </div>
+                </StatusBarEntryIdContext.Provider>
             );
         }
         const { item } = entry;
@@ -91,12 +100,14 @@ export function StatusBar() {
             return null;
         }
         return (
-            <div key={entry.id} className="flex min-w-0 items-stretch" onContextMenu={onContextMenu}>
-                <StatusEntry onClick={item.command} title={item.tooltip}>
-                    {item.icon}
-                    <span className="truncate">{item.text}</span>
-                </StatusEntry>
-            </div>
+            <StatusBarEntryIdContext.Provider key={entry.id} value={entry.id}>
+                <div className="flex min-w-0 items-stretch" onContextMenu={onContextMenu}>
+                    <StatusEntry onClick={item.command} title={item.tooltip}>
+                        {item.icon}
+                        <span className="truncate">{item.text}</span>
+                    </StatusEntry>
+                </div>
+            </StatusBarEntryIdContext.Provider>
         );
     };
 
@@ -106,6 +117,7 @@ export function StatusBar() {
     return (
         <StatusBarRunningContext.Provider value={running}>
             <div
+                data-status-bar
                 className={`flex shrink-0 items-stretch justify-between overflow-hidden border-t transition-colors duration-300 ${
                     running ? "border-primary bg-primary" : "border-edge bg-surface-sunken"
                 }`}

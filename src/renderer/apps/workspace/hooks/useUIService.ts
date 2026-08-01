@@ -10,6 +10,11 @@ import {
     Dialog,
     StatusBarItem,
 } from "@/lib/workspace/services/ui/types";
+import type {
+    PluginTextEditorActionDef,
+    PluginTextEditorLanguageDef,
+    PluginTextEditorPreviewDef,
+} from "@/lib/workspace/services/ui/textEditorContributions";
 import {
     ActionDefinition,
     ActionGroup,
@@ -194,6 +199,90 @@ export function useCollapsedPanels(): Record<string, string[]> {
     }, []);
 
     return collapsed;
+}
+
+/**
+ * Hook to access the languages plugins contributed to the built-in text editor
+ */
+export function useTextEditorLanguages(): PluginTextEditorLanguageDef[] {
+    const uiService = useUIService();
+    const [languages, setLanguages] = useState<PluginTextEditorLanguageDef[]>([]);
+
+    useEffect(() => {
+        let mounted = true;
+
+        const store = uiService.getStore();
+        setLanguages(store.getTextEditorLanguages());
+
+        const unsubscribe = uiService.getEvents().on("stateChanged", (changes) => {
+            if (changes.textEditorLanguages && mounted) {
+                setLanguages(changes.textEditorLanguages);
+            }
+        });
+
+        return () => {
+            mounted = false;
+            unsubscribe();
+        };
+    }, []);
+
+    return languages;
+}
+
+/**
+ * Hook to access the preview panes plugins contributed to the built-in text editor
+ */
+export function useTextEditorPreviews(): PluginTextEditorPreviewDef[] {
+    const uiService = useUIService();
+    const [previews, setPreviews] = useState<PluginTextEditorPreviewDef[]>([]);
+
+    useEffect(() => {
+        let mounted = true;
+
+        const store = uiService.getStore();
+        setPreviews(store.getTextEditorPreviews());
+
+        const unsubscribe = uiService.getEvents().on("stateChanged", (changes) => {
+            if (changes.textEditorPreviews && mounted) {
+                setPreviews(changes.textEditorPreviews);
+            }
+        });
+
+        return () => {
+            mounted = false;
+            unsubscribe();
+        };
+    }, []);
+
+    return previews;
+}
+
+/**
+ * Hook to access the document commands plugins contributed to the built-in text editor
+ */
+export function useTextEditorActions(): PluginTextEditorActionDef[] {
+    const uiService = useUIService();
+    const [actions, setActions] = useState<PluginTextEditorActionDef[]>([]);
+
+    useEffect(() => {
+        let mounted = true;
+
+        const store = uiService.getStore();
+        setActions(store.getTextEditorActions());
+
+        const unsubscribe = uiService.getEvents().on("stateChanged", (changes) => {
+            if (changes.textEditorActions && mounted) {
+                setActions(changes.textEditorActions);
+            }
+        });
+
+        return () => {
+            mounted = false;
+            unsubscribe();
+        };
+    }, []);
+
+    return actions;
 }
 
 /**

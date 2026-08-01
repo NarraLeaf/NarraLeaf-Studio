@@ -1,6 +1,6 @@
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 export { isValidAssetStorageId } from "@shared/utils/assetStorageId";
-import { AssetType } from "../services/assets/assetTypes";
+import { AssetCategory, AssetType } from "../services/assets/assetTypes";
 
 export const ProjectNameConvention = {
     // Project Root Files
@@ -10,7 +10,16 @@ export const ProjectNameConvention = {
     
     // Assets metadata and groups (stored in assets/)
     AssetsMetadataShard: (type: AssetType) => ["assets", `assets.metadata.${type}.json` as const],
-    AssetsGroupsShard: (type: AssetType) => ["assets", `assets.groups.${type}.json` as const],
+    /**
+     * Folders, sharded by {@link AssetCategory} rather than by type: a folder under "Media" holds
+     * audio and video alike, so it cannot belong to either type's file.
+     *
+     * `image` / `font` / `model` / `other` name the same file they always did, because those
+     * categories have exactly one member type with the same id. `media` and `data` are new files;
+     * the `audio` / `video` / `json` / `blueprint` shards they were merged from are left on disk
+     * untouched (see {@link import("../services/assets/mgr/GroupAssetsManager").GroupAssetsManager}).
+     */
+    AssetsGroupsShard: (category: AssetCategory) => ["assets", `assets.groups.${category}.json` as const],
     /**
      * Row order for the two shards above, which are ordered maps: the asset browser draws them in
      * key order and shift-range selection slices that order, so canonical serialization — which
@@ -23,7 +32,7 @@ export const ProjectNameConvention = {
      * an author who opens their project to an empty library re-imports everything. A file nobody
      * else looks for costs those readers nothing.
      */
-    AssetsOrderShard: (type: AssetType) => ["assets", `assets.order.${type}.json` as const],
+    AssetsOrderShard: (category: AssetCategory) => ["assets", `assets.order.${category}.json` as const],
 
     // Project Root Directories
     NLCache: [".nlstudio/"],
