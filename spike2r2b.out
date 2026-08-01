@@ -1,0 +1,49 @@
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mD:/Temp/nls-vcsdiff[39m
+
+[90mstdout[2m | src/main/app/application/managers/vcs/mergeSpike2.integration.test.ts[2m > [22m[2mR2 - blob reads on a connected repository[2m > [22m[2misolates which step of connecting a server breaks blobAt
+[22m[39m
+### R2 BLOB READS WHEN CONNECTED
+{
+  "a_noRemote_wrapperStore": {
+    "read": "ok",
+    "byteLength": 463,
+    "matchesBase": true
+  },
+  "b_addressOnly_wrapperStore": {
+    "read": "ok",
+    "byteLength": 463,
+    "matchesBase": true
+  },
+  "c_published_wrapperStore": {
+    "read": "ok",
+    "byteLength": 463,
+    "matchesBase": true
+  },
+  "d_published_storeWithRemote": {
+    "read": "ok",
+    "byteLength": 463,
+    "matchesBase": true
+  },
+  "e_publishedNotReleased": {
+    "read": "ok",
+    "byteLength": 463
+  },
+  "f_afterSyncConflict": {
+    "ownPreMergeCommit": {
+      "error": "LoreCallError: storageGet: 1/1 get items failed code=-1"
+    },
+    "mergeRevision": {
+      "error": "LoreCallError: storageGet: 1/1 get items failed code=-1"
+    }
+  }
+}
+
+ [32m✓[39m src/main/app/application/managers/vcs/mergeSpike2.integration.test.ts [2m([22m[2m6 tests[22m[2m | [22m[33m5 skipped[39m[2m)[22m[33m 2182[2mms[22m[39m
+   [33m[2m✓[22m[39m R2 - blob reads on a connected repository[2m > [22misolates which step of connecting a server breaks blobAt [33m 2094[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m1 passed[39m[22m[2m | [22m[33m5 skipped[39m[90m (6)[39m
+[2m   Start at [22m 15:47:51
+[2m   Duration [22m 2.96s[2m (transform 102ms, setup 0ms, collect 249ms, tests 2.18s, environment 0ms, prepare 136ms)[22m
+

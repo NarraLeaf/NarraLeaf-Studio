@@ -58,6 +58,18 @@ export interface LoreStatusFilePayload {
     merged: boolean;
     conflict: boolean;
     conflictUnresolved: boolean;
+    /**
+     * The last three of Lore's eight conflict flags.
+     *
+     * Decoded because they were being thrown away, NOT because their meaning is
+     * settled. Nothing has yet observed what Lore sets them to on a real conflict, so
+     * no reading of them is written down here; `mergeSpike.integration.test.ts` (E1,
+     * E6) prints all eight against a measured conflict, and whatever it shows is what
+     * the resolve UI gets to rely on.
+     */
+    conflictAutomerged: boolean;
+    conflictMine: boolean;
+    conflictTheirs: boolean;
     dirty: boolean;
     fromPath: string;
 }
@@ -215,6 +227,43 @@ export interface LoreBranchInfoPayload {
 
 export interface LoreBranchCreatePayload { name: string; latest?: LoreHex; isCommit: boolean }
 export interface LoreLogPayload { level: number; message: string; location: string }
+
+// -- merge ------------------------------------------------------------------
+
+/** Where a merge starts from: the branch being merged in, and its tip. */
+export interface LoreMergeStartBeginPayload { branch: LoreHex; revision?: LoreHex; revisionNumber: number }
+
+/**
+ * How a merge ended, including whether anything is left for a human.
+ *
+ * `stats` is the same counter block a sync reports - `fileAutomerge` and `fileConflict`
+ * are the two that say what the merge did on its own - which is the first hint that a
+ * branch merge and a sync-induced merge may be the same machinery underneath. Whether
+ * they really are is measured, not assumed: see E6 of `mergeSpike.integration.test.ts`.
+ */
+export interface LoreMergeStartEndPayload {
+    stats: LoreSyncProgressPayload;
+    signature?: LoreHex;
+    hasConflicts: boolean;
+}
+
+/** One path the merge could not settle. Repository-relative, like every other output path. */
+export interface LoreMergeConflictFilePayload { path: string }
+export interface LoreMergeResolveFilePayload { path: string }
+export interface LoreMergeResolveRevisionPayload { repository: LoreHex; revision?: LoreHex }
+
+/**
+ * The two revisions an abort restores to.
+ *
+ * Reported before the rollback, not after, so a caller that wants to know where it was
+ * taken back to has this and nothing else.
+ */
+export interface LoreMergeAbortBeginPayload { stateStagedRevision?: LoreHex; stateCurrentRevision?: LoreHex }
+
+/** The abort finished. Carries no data; decoded so its arrival is observable at all. */
+export interface LoreMergeAbortEndPayload { unused: number }
+
+export interface LoreMergeUnresolveFilePayload { path: string }
 
 /**
  * One metadata entry, as reported by the metadata read verbs.
@@ -396,6 +445,9 @@ function decoderTable(library: LoreLibrary): Map<number, Decoder> {
         merged: bool(raw.flagMerged),
         conflict: bool(raw.flagConflict),
         conflictUnresolved: bool(raw.flagConflictUnresolved),
+        conflictAutomerged: bool(raw.flagConflictAutomerged),
+        conflictMine: bool(raw.flagConflictMine),
+        conflictTheirs: bool(raw.flagConflictTheirs),
         dirty: bool(raw.flagDirty),
         fromPath: decodeString(nested(raw, "fromPath")),
     }));
@@ -628,7 +680,9 @@ function decoderTable(library: LoreLibrary): Map<number, Decoder> {
         local: bool(raw.local),
     }));
 
-    table.set(LoreTag.REVISION_SYNC_PROGRESS, (raw): LoreSyncProgressPayload => ({
+    // Shared with the merge-start end event, which embeds this struct by value rather
+    // than reporting its own counters.
+    const syncProgress = (raw: Record<string, unknown>): LoreSyncProgressPayload => ({
         fileUpdate: decodeCount(raw.fileUpdate),
         fileUpdateTotal: decodeCount(raw.fileUpdateTotal),
         fileDelete: decodeCount(raw.fileDelete),
@@ -638,7 +692,9 @@ function decoderTable(library: LoreLibrary): Map<number, Decoder> {
         bytesUpdate: decodeCount(raw.bytesUpdate),
         bytesUpdateTotal: decodeCount(raw.bytesUpdateTotal),
         discoveryComplete: bool(raw.discoveryComplete),
-    }));
+    });
+
+    table.set(LoreTag.REVISION_SYNC_PROGRESS, (raw): LoreSyncProgressPayload => syncProgress(raw));
 
     table.set(LoreTag.REVISION_SYNC_FILE, (raw): LoreStatusFilePayload => ({
         path: decodeString(nested(raw, "path")),
@@ -651,6 +707,9 @@ function decoderTable(library: LoreLibrary): Map<number, Decoder> {
         merged: false,
         conflict: false,
         conflictUnresolved: false,
+        conflictAutomerged: false,
+        conflictMine: false,
+        conflictTheirs: false,
         dirty: false,
         fromPath: "",
     }));
@@ -670,6 +729,46 @@ function decoderTable(library: LoreLibrary): Map<number, Decoder> {
         remoteHistory: decodeCount(raw.remoteHistory),
         localHistory: decodeCount(raw.localHistory),
         alreadyPushed: bool(raw.flagAlreadyPushed),
+    }));
+
+    // -- merge ----------------------------------------------------------------
+
+    table.set(LoreTag.BRANCH_MERGE_START_BEGIN, (raw): LoreMergeStartBeginPayload => ({
+        branch: decodeHash(nested(raw, "branch")),
+        revision: decodeOptionalHash(nested(raw, "revision")),
+        revisionNumber: decodeCount(raw.revisionNumber),
+    }));
+
+    table.set(LoreTag.BRANCH_MERGE_START_END, (raw): LoreMergeStartEndPayload => ({
+        stats: syncProgress(nested(raw, "stats")),
+        signature: decodeOptionalHash(nested(raw, "signature")),
+        hasConflicts: bool(raw.hasConflicts),
+    }));
+
+    table.set(LoreTag.BRANCH_MERGE_CONFLICT_FILE, (raw): LoreMergeConflictFilePayload => ({
+        path: decodeString(nested(raw, "path")),
+    }));
+
+    table.set(LoreTag.BRANCH_MERGE_RESOLVE_FILE, (raw): LoreMergeResolveFilePayload => ({
+        path: decodeString(nested(raw, "path")),
+    }));
+
+    table.set(LoreTag.BRANCH_MERGE_RESOLVE_REVISION, (raw): LoreMergeResolveRevisionPayload => ({
+        repository: decodeHash(nested(raw, "repository")),
+        revision: decodeOptionalHash(nested(raw, "revision")),
+    }));
+
+    table.set(LoreTag.BRANCH_MERGE_ABORT_BEGIN, (raw): LoreMergeAbortBeginPayload => ({
+        stateStagedRevision: decodeOptionalHash(nested(raw, "stateStagedRevision")),
+        stateCurrentRevision: decodeOptionalHash(nested(raw, "stateCurrentRevision")),
+    }));
+
+    table.set(LoreTag.BRANCH_MERGE_ABORT_END, (raw): LoreMergeAbortEndPayload => ({
+        unused: decodeCount(raw.unused),
+    }));
+
+    table.set(LoreTag.BRANCH_MERGE_UNRESOLVE_FILE, (raw): LoreMergeUnresolveFilePayload => ({
+        path: decodeString(nested(raw, "path")),
     }));
 
     table.set(LoreTag.AUTH_IDENTITY, (raw): LoreAuthIdentityPayload => ({
@@ -731,6 +830,14 @@ const PAYLOAD_STRUCTS: Readonly<Record<number, string>> = {
     [LoreTag.REVISION_SYNC_REVISION]: "LoreRevisionSyncRevisionEventData",
     [LoreTag.BRANCH_PUSH]: "LoreBranchPushEventData",
     [LoreTag.AUTH_IDENTITY]: "LoreAuthIdentityEventData",
+    [LoreTag.BRANCH_MERGE_START_BEGIN]: "LoreBranchMergeStartBeginEventData",
+    [LoreTag.BRANCH_MERGE_START_END]: "LoreBranchMergeStartEndEventData",
+    [LoreTag.BRANCH_MERGE_CONFLICT_FILE]: "LoreBranchMergeConflictFileEventData",
+    [LoreTag.BRANCH_MERGE_RESOLVE_FILE]: "LoreBranchMergeResolveFileEventData",
+    [LoreTag.BRANCH_MERGE_RESOLVE_REVISION]: "LoreBranchMergeResolveRevisionEventData",
+    [LoreTag.BRANCH_MERGE_ABORT_BEGIN]: "LoreBranchMergeAbortBeginEventData",
+    [LoreTag.BRANCH_MERGE_ABORT_END]: "LoreBranchMergeAbortEndEventData",
+    [LoreTag.BRANCH_MERGE_UNRESOLVE_FILE]: "LoreBranchMergeUnresolveFileEventData",
 };
 
 /**

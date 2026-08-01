@@ -411,6 +411,178 @@ stage / commit 本身在三种配置下都是 5–20 ms，**开销全在等待**
 `storeKeepAliveSeconds: 1` —— 保住 §6.3「连续调用不反复开关 store」的本意（一批 blob 读之间
 的间隔远小于 1 秒），同时把每次提交的代价从 10 秒压到 1 秒。
 
+---
+
+> **§4.23–§4.30 来自 2026-08-01 的合并实测**（卡 [2026-07-31-004](plans/2026-07-31-004-plan-vcs-diff-and-resolve.md) 的 D0）。
+> 此前仓库里**没有一行代码碰过 Lore 的合并面**，所以这八条全部是第一次测量。脚本是
+> `mergeSpike*.integration.test.ts`（打真 DLL，其中三条要真 loreserver 0.8.5）。
+> **§4.29 是其中最重的一条，它今天就在损坏已发布的 V5a。**
+
+### 4.23 automerge 把冲突标记写进 JSON —— 但它同时在旁边留下三份干净的副本
+
+同一个键两边都改，Lore 写的是 **diff3 三段式**标记（`<<<<<<< ours` / `||||||| original` /
+`=======` / `>>>>>>> theirs`），标记直接插在 JSON 结构里，于是**这份文档不再能 `JSON.parse`**：
+
+```
+SyntaxError: Expected double-quoted property name in JSON at position 423
+```
+
+本地 `branchMergeStart` 与远端 `revisionSync` 产出的**字节完全相同**（同一个 sha256），
+所以这是一套机制而不是两套。
+
+**但真正有用的发现是另一半**：同一次合并还会在冲突文件旁边写三个附属文件——
+
+| 文件 | 实测 |
+|---|---|
+| `doc.json~base` | 能 `JSON.parse`，无标记 |
+| `doc.json~mine` | 能 parse，sha256 **与 `blobAt(mine)` 逐字节相同** |
+| `doc.json~theirs` | 能 parse，sha256 **与 `blobAt(theirs)` 逐字节相同** |
+
+也就是说三路合并的三个输入**已经在磁盘上了**，各自是一份完整、可解析的文档。写回管线
+**既不需要读那份带标记的文件，也不需要从 DAG 重建**——计划 §6 里那个「若 automerge 破坏 JSON
+就改用 `threeWay` 重建」的备案，被一个更简单的答案取代了。
+
+**并且这三个附属文件不会进提交**：解决之后提交，修订里只有 `doc.json`（实测
+`sidecarsCommitted: []`）。Lore 自己排除它们，`.loreignore` 不需要为此加规则。
+
+### 4.24 冲突路径**只在事件流里出现一次**，`repositoryStatus` 永远不报
+
+一次冲突合并之后，四种 status 形态**全部返回空列表**：
+
+| 调用 | 结果 |
+|---|---|
+| `repositoryStatus({scan:true})` | `[]` |
+| `repositoryStatus({scan:true, checkDirty:true})` | `[]` |
+| `repositoryStatus({scan:false})` | `[]` |
+| `repositoryStatus({scan:true, paths:[冲突文件]})` | `[]` |
+
+原因是合并已经把结果**记进了暂存修订**，工作树与暂存修订一致，于是「没有变更」。
+`summary` 也全是 0。所以 §4.18 那套「靠 status 找出改了什么」的办法在合并态下完全失效。
+
+**唯一说出路径的地方是事件流**：`BRANCH_MERGE_CONFLICT_FILE`（tag **29**）。
+实测 `revisionSync` **也**发这个 tag（一次 sync 共 13 个事件，tag 直方图
+`{2:1, 5:1, 29:1, 44:1, 45:1, 176:1, 177:1, 178:5, 179:1}`，其中只有 `177`（sync file）和
+`29` 带路径）。
+
+> **既有缺陷，本条直接指出**：[`remote.ts`](../src/main/app/application/managers/vcs/remote.ts)
+> 从 `result.files` 里筛 `conflictUnresolved || conflict` 来列冲突文件，而
+> `REVISION_SYNC_FILE` 的解码器把这两个标志**写死成 `false`**
+> （[`events.ts`](../src/main/app/application/managers/vcs/lore/events.ts)，因为那个结构体
+> 根本没有这两个字段）。所以那个筛选**永远命中不了**，一次冲突同步只能落到 `["*"]` 占位符。
+> 正解是订阅 tag 29，不是查 status。
+
+### 4.25 `branchMergeResolve(paths)` 提交的就是工作树里的字节 —— 逐字节
+
+三个 resolve verb 各自在**独立仓库**里单独调用（三个混在一起调用会让结果不可归因，这是第一轮
+踩过的坑），结果分明：
+
+| verb | 对工作树做什么 | 提交进修订的内容 |
+|---|---|---|
+| `branch_merge_resolve` | **什么都不改**，接受现有字节 | **与我们写进去的第三份内容逐字节相同** |
+| `branch_merge_resolve_mine` | 用 mine **覆写**工作树 | mine |
+| `branch_merge_resolve_theirs` | 用 theirs **覆写**工作树 | theirs |
+
+**所以逐变更解决（计划的第二档）在机制上是通的**：先把合并结果写进工作树，再
+`branchMergeResolve([绝对路径])`，提交出来的就是它。
+
+两条附带实测：
+
+- **不需要 `fileStageMerge`。** 直接 `revisionCommit` 就成功（本地路径与同步路径都是），
+  计划 §1.4 里那个「暂存合并结果」的步骤是多余的。
+- `_mine` / `_theirs` **不发** `BRANCH_MERGE_RESOLVE_FILE` 事件（`files: []`），只有
+  `resolve` 发。想确认哪些路径被解决了，得看工作树，不能看事件。
+
+### 4.26 合并修订确实有两个 parent，但 **parent[0] 是哪一边取决于合并从哪来**
+
+`parents.length === 2` 在提交事件与 `readRevisionGraph` 两处一致，历史列表画合并点的前提成立。
+
+**但顺序不一致**，而 `flattenFirstParent` 只走 parent[0]：
+
+| 合并来源 | parent[0] |
+|---|---|
+| 本地 `branchMergeStart` | **本地分支的 tip**（`parent0IsLocalTip: true`） |
+| 远端 `revisionSync` | **拉下来的那一边**（`parent0IsIncomingTip: true`） |
+
+也就是说一次同步合并之后，「第一父线」是**对方的**线而不是作者自己的。历史列表照现在的写法
+会在同步之后换一条主干。
+
+### 4.27 `branchMergeAbort` 完整回滚工作树
+
+整棵工作树按内容哈希做清单，合并前 / 合并后 / abort 后三次对比：abort 后与合并前
+**逐文件相同**（`differsFromBeforeMerge: []`），三个附属文件也被删干净，status 回到合并前。
+
+**所以「取消合并」这个按钮可以存在**（计划 §4.4 把它挂在这条实测上）。
+
+### 4.28 仓库锁在**同一个进程内**同样是阻塞的
+
+§4.12 说的是「第二个进程会一直等」。实测补充：**同一个进程里**对已经持有的仓库再
+`openStore`，同样永远不返回——第一轮的实验挂死 240 秒就是这个，不是 Lore 慢。
+
+所以任何持有 store 的代码路径必须在下一个打开之前走完 flush → closeStore → release。
+
+### 4.29 ⚠️ **同步之后，执行同步的那个进程再也读不出这个仓库的任何内容**
+
+这一条是本轮最重的发现，而且它**现在就在损坏已经发布的 V5a**。
+
+一次 `revisionSync` 之后，在**同一个进程**里：
+
+```
+storageGet: 1/1 get items failed          ← 对这个仓库的每一个内容地址
+```
+
+**范围比直觉大得多**：连**同步之前本地提交的修订**也读不出来。而修订**树**完全正常——
+`listFilesAt` 照样给出路径、大小和内容地址（`{hash, context, size:470}` 都对），
+**只有字节取不到**。
+
+穷举过的、**都无效**的补救：
+
+| 试过 | 结果 |
+|---|---|
+| 冲突同步 / 干净同步（`fileConflict:0, fileAutomerge:0`） | 都失败——**与合并无关，是同步本身** |
+| `repositoryFlush` | 无效 |
+| `closeStore` + `openStore` 重开 | 无效 |
+| 等 15 秒 / 45 秒，中间再做两轮开关 | 无效 |
+| `offline:true` / `offline:false` 两种 globals | 都失败 |
+| `storageOpen` 带上 `hasRemoteConfig:1` + 真实 `remoteUrl` | 无效 |
+| `blobAt` 的 resolve 路线 与 `documentsAt` 的 walk 路线 | **两条都失败**（同一个 `readAddress`） |
+
+**而换一个进程读同一个仓库，立刻成功**（连续三个全新进程都读回了正确字节）。所以
+**不是数据损坏，是进程级的**。唯一的补充条件是同步的那个进程要先 flush/release 干净：
+有一次测量里第一个新进程仍然失败、下一个成功。
+
+对 Studio 的后果是硬的：`VcsManager` 的 session 是**按项目常驻在主进程**的，同步之后被毒的
+正是它。于是**同步一次之后，这个工程的历史浏览、`readRevisionDocuments`、`readBlob`、
+`getThreeWay`、V4 恢复，以及本卡要做的全部 diff，在 Studio 重启之前都读不出东西**——
+而 V5a 的同步本来就要走 V4 的重载路径，那条路径要读文档。
+
+**未确定、且是 D5/D6 的第一个前置**：进程内有没有任何办法解毒。已知 `closeStore` +
+`releaseRepository` + 重开**不够**；没试过的是 `resetLoreLibraryForRetry()`
+（[`library.ts`](../src/main/app/application/managers/vcs/lore/library.ts)）——即把整个
+`koffi.load` 卸掉重来。如果连它也不行，那么同步之后能给作者的只有「请重启 Studio」，
+这件事必须在同步按钮旁边说清楚，而不是让作者撞上一堆空白的历史。
+
+### 4.30 `readRevisionGraph` 只覆盖当前分支，于是 `threeWay` 对任何跨分支合并都答「没有 base」
+
+这一条是 **Studio 侧的缺陷**，不是 Lore 的，但它是在测 Lore 的时候掉出来的。
+
+`readRevisionGraph(globals)` 走的是 `history(globals, {limit})`，**不传 branch 就只给当前分支**。
+实测一次 main/feature 的两侧合并：
+
+```
+currentBranchGraph:      ["#1 e40c23c2", "#2 3475cd9d"]     ← 只有 main
+featureBranchGraph:      ["#1 e40c23c2", "#2 18730fe6"]
+theirsTipInCurrentGraph: false
+baseFromCurrentGraph:    null          ← mergeBase 找不到，因为对面的 tip 不在图里
+baseFromUnionGraph:      e40c23c2…     ← 两个分支的图合起来就找到了，且就是真正的 base
+```
+
+于是 `threeWay` 返回 `base: undefined`。而 `threeWay` 的注释明写「base 缺失 = add/add，
+**绝不能当空文件**」——照这个契约，**每一次普通的跨分支冲突都会被判成 add/add**，
+逐变更合并会整个走错分支。
+
+修法有两个，都成立：把两边分支的 `history` 并起来再算 LCA；或者干脆**用 §4.23 的
+`~base` 附属文件**——合并态下它就在磁盘上，比重算 LCA 更直接也更便宜。
+
 ## 5. 服务端策略
 
 ### 5.1 P0：不需要任何服务端，也不需要包装
