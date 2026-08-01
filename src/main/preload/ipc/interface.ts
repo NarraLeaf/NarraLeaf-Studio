@@ -47,8 +47,14 @@ function createPrivilegedBridge(guarded: boolean): RendererPrivilegedInterface {
 
     return {
         fs: {
-            selectFile: (actor: PrivilegedActor, filters: string[], multiple: boolean) =>
-                invoke(IPCEventType.privilegedFsCall, { actor, operation: "selectFile", filters, multiple }),
+            selectFile: (actor: PrivilegedActor, filters: string[], multiple: boolean, title?: string) =>
+                invoke(IPCEventType.privilegedFsCall, {
+                    actor,
+                    operation: "selectFile",
+                    filters,
+                    multiple,
+                    ...(title === undefined ? {} : { title }),
+                }),
             selectSaveFile: (actor: PrivilegedActor, defaultFileName: string, filters: string[]) =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "selectSaveFile", defaultFileName, filters }),
             stat: (actor: PrivilegedActor, path: string) =>

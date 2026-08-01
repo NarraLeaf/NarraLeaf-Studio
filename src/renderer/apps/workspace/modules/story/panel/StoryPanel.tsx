@@ -16,6 +16,7 @@ import type { PanelComponentProps } from "../../types";
 import { createStorySceneEditorTab } from "../scene-editor/openStorySceneEditorTab";
 import { openSceneFlowTab } from "../../story-flow/openSceneFlowTab";
 import { buildStorySceneTextProjection } from "../projection/storySceneProjection";
+import { useStoryScriptIo } from "../script/useStoryScriptIo";
 
 interface StoryPanelState {
     selectedStoryId?: string;
@@ -46,9 +47,11 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
     const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
-    // Creating, renaming and deleting write the story document; opening a scene, opening the flow and
-    // picking which story is selected do not, and stay live so a frozen project can still be read.
+    // Creating, renaming and deleting write the story document; opening a scene, opening the flow,
+    // exporting a script and picking which story is selected do not, and stay live so a frozen
+    // project can still be read.
     const freeze = useFreezeGuard();
+    const { beginExport: beginScriptExport, beginImport: beginScriptImport, dialogs: scriptDialogs } = useStoryScriptIo();
     const [stories, setStories] = useState<StoryLibraryEntry[]>([]);
     const [defaultStoryId, setDefaultStoryId] = useState<StoryId | undefined>();
     const [selectedStoryId, setSelectedStoryId] = useState<StoryId | null>(null);
@@ -317,6 +320,18 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                     void handleRenameStory(entry);
                 },
             },
+            { id: "story-script-separator", separator: true },
+            {
+                id: "export-story-script",
+                label: t("story.script.exportStory"),
+                onClick: () => beginScriptExport({ storyId: entry.id, sceneIds: null }),
+            },
+            {
+                id: "import-story-script",
+                label: t("story.script.import"),
+                ...freeze.menuRow(),
+                onClick: () => beginScriptImport(entry.id),
+            },
             { id: "story-actions-separator", separator: true },
             {
                 id: "delete-story",
@@ -327,7 +342,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 },
             },
         ];
-    }, [defaultStoryId, freeze, handleDeleteStory, handleOpenSceneFlow, handleRenameStory, handleSetDefaultStory, t]);
+    }, [beginScriptExport, beginScriptImport, defaultStoryId, freeze, handleDeleteStory, handleOpenSceneFlow, handleRenameStory, handleSetDefaultStory, t]);
 
     const handleOpenStoryMenu = useCallback((event: React.MouseEvent, entry: StoryLibraryEntry) => {
         event.stopPropagation();
@@ -423,6 +438,28 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 ...freeze.menuRow(isEntry),
                 onClick: () => handleSetEntryScene(scene),
             },
+            { id: "scene-script-separator", separator: true },
+            {
+                id: "export-scene-script",
+                label: t("story.script.exportScene"),
+                onClick: () => {
+                    if (selectedStoryId) {
+                        beginScriptExport({ storyId: selectedStoryId, sceneIds: [scene.id] });
+                    }
+                },
+            },
+            {
+                // Story-scoped despite sitting on a scene row: the file decides which scenes it
+                // carries, and the confirm dialog names every one of them before anything is written.
+                id: "import-scene-script",
+                label: t("story.script.import"),
+                ...freeze.menuRow(),
+                onClick: () => {
+                    if (selectedStoryId) {
+                        beginScriptImport(selectedStoryId);
+                    }
+                },
+            },
             { id: "scene-actions-separator", separator: true },
             {
                 id: "rename-scene",
@@ -441,7 +478,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 },
             },
         ];
-    }, [document?.entrySceneId, freeze, handleDeleteScene, handleOpenScene, handleRenameScene, handleSetEntryScene, t]);
+    }, [beginScriptExport, beginScriptImport, document?.entrySceneId, freeze, handleDeleteScene, handleOpenScene, handleRenameScene, handleSetEntryScene, selectedStoryId, t]);
 
     const handleOpenSceneMenu = useCallback((event: React.MouseEvent, scene: StoryScene) => {
         event.preventDefault();
@@ -661,6 +698,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 visible={menuState.visible}
                 onClose={hideMenu}
             />
+            {scriptDialogs}
         </div>
     );
 }

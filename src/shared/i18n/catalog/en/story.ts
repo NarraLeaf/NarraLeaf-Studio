@@ -30,6 +30,69 @@ export const story = {
         deleteSceneConfirm: "Delete scene \"{name}\"?",
         deleteSceneDetail: "This removes the scene and its blocks from the story document. This action cannot be undone.",
     },
+    // Taking a scene out of Studio as a text file and bringing it back. `parseError` and `diag` are
+    // keyed by the codec's own codes (see `storyScriptTypes`), so a new code fails the parity test
+    // rather than reaching an author as a raw identifier.
+    script: {
+        exportScene: "Export as Script…",
+        exportStory: "Export Story as Script…",
+        import: "Import Script…",
+        exportTitle: "Export as Script",
+        exportAction: "Export",
+        mode: {
+            roundtrip: "Round-trip",
+            roundtripDetail: "Carries the scene's data, so the file can be imported back.",
+            review: "Review",
+            reviewDetail: "Prose only — clean to read and to diff. Cannot be imported.",
+        },
+        exported: "Exported to {path}",
+        importTitle: "Import Script",
+        importAction: "Import",
+        imported: {
+            one: "Imported {count} scene",
+            other: "Imported {count} scenes",
+        },
+        nothingToImport: "This file carries no scene.",
+        storyMismatch: "This file was exported from a different story.",
+        stale: "This scene changed after the export; importing discards those changes.",
+        sceneMissing: "This scene is no longer in the story, so it is skipped.",
+        // Undo is per open scene editor, so a multi-scene import can be undoable in part.
+        noUndo: "Importing from here cannot be undone.",
+        noUndoSome: {
+            one: "{count} of these scenes cannot be undone after importing.",
+            other: "{count} of these scenes cannot be undone after importing.",
+        },
+        // Both failure paths state what happened to the project, because "an error occurred" leaves an
+        // author unable to tell a refused import from a half-written one.
+        planFailed: "This script could not be prepared for import. Nothing was changed.",
+        importFailed: "Import stopped at \"{scene}\": {applied} of {total} scenes were written, the rest were left unchanged.",
+        line: "Line {line}",
+        stat: {
+            unchanged: "{count} unchanged",
+            edited: "{count} edited",
+            added: "{count} added",
+            removed: "{count} removed",
+            cloned: "{count} cloned",
+            moved: "{count} moved",
+        },
+        parseError: {
+            notAScript: "This file is not a story script.",
+            unsupportedVersion: "This script was written by a newer version of Studio.",
+            dataMissing: "This script carries no scene data, so it cannot be imported. Review exports are read-only.",
+            dataCorrupt: "This script's scene data is damaged and cannot be read.",
+            malformed: "This script could not be read.",
+        },
+        diag: {
+            opaqueWithoutAnchor: "An action line lost its marker, so the action could not be restored.",
+            unknownAnchor: "A marker names a row this script does not carry.",
+            shapeMismatchAction: "An action line was rewritten as prose; the action was kept and the edit dropped.",
+            shapeMismatchText: "A text line was rewritten as an action line; the text was kept and the edit dropped.",
+            duplicateAnchor: "A line was copied; the copies were given new identities.",
+            unknownRun: "A formatting marker names formatting this script does not carry.",
+            unplaceableLine: "A new line has nowhere to go here.",
+            speakerUnresolved: "A speaker name was edited on a line that binds no character; the original name was kept. The line's text still changed.",
+        },
+    },
     flow: {
         tabTitle: "Scene Flow",
         tabTitleNamed: "Scene Flow — {name}",
