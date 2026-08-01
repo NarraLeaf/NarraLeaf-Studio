@@ -10,6 +10,7 @@ import { Services } from "@/lib/workspace/services/services";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { parseComponentEditorSurfaceId } from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
+import { InspectOnlyButton } from "@/lib/components/elements/InspectOnlyButton";
 import { useTranslation } from "@/lib/i18n";
 
 export type BlueprintValueFieldConfig = {
@@ -98,16 +99,23 @@ export function createBlueprintValueField(config: BlueprintValueFieldConfig) {
                                     {config.valueLabel}
                                 </div>
                             </div>
-                            <button
-                                type="button"
-                                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-edge bg-fill-subtle text-fg hover:bg-fill disabled:opacity-40"
+                            {/* Opening the bound blueprint is reading: it leads into another editor,
+                                which enforces the freeze on its own account, and writes nothing on
+                                the way. An inspector field is clamped by a `disabled` `<fieldset>`
+                                while the workspace is frozen, so as a `<button>` this was dead -
+                                the author could see a value was bound to a blueprint and had no way
+                                to go and look at it. An `InspectOnlyButton` is not a form control
+                                and so survives the clamp. The clear and create buttons below stay
+                                `<button>`s deliberately: those two do write. */}
+                            <InspectOnlyButton
+                                className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-edge bg-fill-subtle text-fg hover:bg-fill cursor-default${surfaceId ? "" : " opacity-40"}`}
                                 disabled={!surfaceId}
                                 onClick={() => openValueBlueprint(binding.blueprintId)}
                                 aria-label={t("widgetChrome.blueprint.openBlueprintValue")}
                                 title={t("common.open")}
                             >
                                 <ExternalLink className="h-3.5 w-3.5" />
-                            </button>
+                            </InspectOnlyButton>
                         </div>
                     </div>
                     <button

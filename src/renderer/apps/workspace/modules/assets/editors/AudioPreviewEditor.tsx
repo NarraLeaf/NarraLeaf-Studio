@@ -23,6 +23,7 @@ import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { useTranslation } from "@/lib/i18n";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
 import { WaveformView, type LoopEnd } from "./audio/WaveformView";
@@ -85,6 +86,10 @@ function formatTime(seconds: number): string {
 export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentProps<AudioPreviewPayload>) {
     const { t } = useTranslation();
     const { context } = useWorkspace();
+    // Playback, zoom, selection and the jump-to-point keys are pure inspection and stay live while
+    // frozen. The cue points are the one thing here that is written back to the asset record, so
+    // they are the one thing the freeze refuses.
+    const freeze = useFreezeGuard();
     const asset = payload?.asset;
 
     const [metadata, setMetadata] = useState<AssetData<AssetType.Audio>["metadata"] | null>(null);
@@ -256,29 +261,39 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
         [clip, commitLoop, loopHistory.present, position, sampleToMs],
     );
 
+    /**
+     * The three the waveform drives: clearing a marker, dragging one, and the commit at the end of
+     * that drag. They refuse inside the handler rather than by being withheld from the child, because
+     * `WaveformView` takes all three as required props. Measured while frozen before this: a marker
+     * dragged to a new place, the status bar read the new time, and the asset record still held the
+     * old one.
+     */
     const clearLoopPoint = useCallback(
         (end: LoopEnd) => {
+            if (freeze.frozen) {
+                return;
+            }
             commitLoop(clearPoint(loopHistory.present, end));
         },
-        [commitLoop, loopHistory.present],
+        [commitLoop, freeze.frozen, loopHistory.present],
     );
 
     const dragLoopPoint = useCallback(
         (end: LoopEnd, sample: number) => {
-            if (clip) {
+            if (clip && !freeze.frozen) {
                 // markPoint, not a raw assignment: dragging one end past the other has to resolve
                 // the same way as marking it there, or the drag could build an inverted region.
                 setDraftLoop(markPoint(draftLoop ?? loopHistory.present, end, sampleToMs(sample)));
             }
         },
-        [clip, draftLoop, loopHistory.present, sampleToMs],
+        [clip, draftLoop, freeze.frozen, loopHistory.present, sampleToMs],
     );
 
     const endLoopDrag = useCallback(() => {
-        if (draftLoop) {
+        if (draftLoop && !freeze.frozen) {
             commitLoop(draftLoop);
         }
-    }, [draftLoop, commitLoop]);
+    }, [draftLoop, commitLoop, freeze.frozen]);
 
 
     // ---- transport ---------------------------------------------------------
@@ -403,21 +418,25 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                 handler: () => nudge(NUDGE_SECONDS_COARSE),
             },
             { id: "loop", key: "l", description: "Toggle loop", handler: () => setLoop(value => !value) },
-            { id: "mark-in", key: "i", description: "Set in point", handler: () => markLoopPoint("in") },
-            { id: "mark-out", key: "o", description: "Set out point", handler: () => markLoopPoint("out") },
+            // The marking keys write a point; the shift+i/o pair only moves the playhead to one, so
+            // it keeps working. Undo and redo restore a point and are saved like any other change,
+            // which is why they go through the guard as well - they reach the record without ever
+            // touching `commitLoop`.
+            { id: "mark-in", key: "i", description: "Set in point", handler: freeze.run(() => markLoopPoint("in")) },
+            { id: "mark-out", key: "o", description: "Set out point", handler: freeze.run(() => markLoopPoint("out")) },
             { id: "go-to-in", key: "shift+i", description: "Go to in point", handler: () => goToLoopPoint("in") },
             { id: "go-to-out", key: "shift+o", description: "Go to out point", handler: () => goToLoopPoint("out") },
             { id: "clear-in", key: "mod+shift+i", description: "Clear in point", handler: () => clearLoopPoint("in") },
             { id: "clear-out", key: "mod+shift+o", description: "Clear out point", handler: () => clearLoopPoint("out") },
-            { id: "undo", key: "mod+z", description: "Undo point change", handler: () => dispatchLoop({ type: "undo" }) },
-            { id: "redo", key: "mod+shift+z", description: "Redo point change", handler: () => dispatchLoop({ type: "redo" }) },
+            { id: "undo", key: "mod+z", description: "Undo point change", handler: freeze.run(() => dispatchLoop({ type: "undo" })) },
+            { id: "redo", key: "mod+shift+z", description: "Redo point change", handler: freeze.run(() => dispatchLoop({ type: "redo" })) },
             { id: "select-all", key: "mod+a", description: "Select whole clip", handler: selectAll },
             { id: "clear-selection", key: "escape", description: "Clear selection", handler: () => setSelection(null) },
             { id: "zoom-in", key: "=", description: "Zoom in", handler: () => zoomBy(1.4) },
             { id: "zoom-out", key: "-", description: "Zoom out", handler: () => zoomBy(1 / 1.4) },
             { id: "zoom-fit", key: "0", description: "Fit whole clip", handler: () => setView(fitAll(totalSamples)) },
         ],
-        [togglePlay, seekTo, totalSamples, nudge, setLoop, markLoopPoint, goToLoopPoint, clearLoopPoint, selectAll, zoomBy],
+        [togglePlay, seekTo, totalSamples, nudge, setLoop, markLoopPoint, goToLoopPoint, clearLoopPoint, selectAll, zoomBy, freeze],
     );
 
     useKeybindings({
@@ -528,19 +547,22 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
 
                 {separator}
 
+                {/* The only two toolbar buttons that write: they put a point on the asset record,
+                    so on a frozen project they say why they are off. Everything to their left is
+                    transport and zoom, which a reader needs. */}
                 <button
                     type="button"
                     onClick={() => markLoopPoint("in")}
-                    className={controlButtonClass(loopPoints.inMs !== null)}
-                    title={t("assets.audio.editor.markIn")}
+                    className={`${controlButtonClass(loopPoints.inMs !== null)} disabled:cursor-not-allowed disabled:opacity-40`}
+                    {...freeze.writes(false, t("assets.audio.editor.markIn"))}
                 >
                     <BetweenVerticalStart className="h-4 w-4" />
                 </button>
                 <button
                     type="button"
                     onClick={() => markLoopPoint("out")}
-                    className={controlButtonClass(loopPoints.outMs !== null)}
-                    title={t("assets.audio.editor.markOut")}
+                    className={`${controlButtonClass(loopPoints.outMs !== null)} disabled:cursor-not-allowed disabled:opacity-40`}
+                    {...freeze.writes(false, t("assets.audio.editor.markOut"))}
                 >
                     <BetweenVerticalEnd className="h-4 w-4" />
                 </button>
