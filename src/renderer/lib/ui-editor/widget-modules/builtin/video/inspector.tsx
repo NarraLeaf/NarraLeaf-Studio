@@ -123,7 +123,7 @@ function AssetRow({
                             role="button"
                             tabIndex={-1}
                             onClick={handleClear as unknown as (event: MouseEvent<HTMLSpanElement>) => void}
-                            className="shrink-0 rounded px-1.5 py-0.5 text-2xs tracking-wider text-fg-subtle hover:bg-fill hover:text-fg-muted"
+                            className="shrink-0 rounded-md px-1.5 py-0.5 text-2xs tracking-wider text-fg-subtle hover:bg-fill hover:text-fg-muted"
                         >
                             {t("common.clear")}
                         </span>
