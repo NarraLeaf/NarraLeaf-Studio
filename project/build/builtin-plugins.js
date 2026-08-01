@@ -140,37 +140,13 @@ async function buildBuiltInPlugins(options = {}) {
     return results;
 }
 
-function getDevUserDataPluginsDir() {
-    return path.join(rootDir, '.dev', 'temp', 'userData-dev', 'plugins');
-}
-
-async function copyBuiltInPluginsToDevUserData() {
-    const pluginsDir = getDevUserDataPluginsDir();
-    if (!fs.existsSync(distRootDir)) {
-        return;
-    }
-    fs.mkdirSync(pluginsDir, { recursive: true });
-    const entries = fs.readdirSync(distRootDir, { withFileTypes: true });
-    for (const entry of entries) {
-        if (!entry.isDirectory()) {
-            continue;
-        }
-        const sourceDir = path.join(distRootDir, entry.name);
-        const manifest = readManifest(sourceDir);
-        const targetDir = path.join(pluginsDir, manifest.id);
-        const tempDir = `${targetDir}.builtin-dev-tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        fs.rmSync(tempDir, { recursive: true, force: true });
-        fs.cpSync(sourceDir, tempDir, { recursive: true });
-        fs.rmSync(targetDir, { recursive: true, force: true });
-        fs.renameSync(tempDir, targetDir);
-    }
-}
-
+// Nothing here installs into the dev userData directory any more: the main
+// process is the single writer of `userData/plugins`, in development exactly as
+// in a packaged build. See PluginManager.refreshBuiltInPlugins.
 module.exports = {
     sourceRoot,
     distRootDir,
     buildBuiltInPlugin,
     buildBuiltInPlugins,
-    copyBuiltInPluginsToDevUserData,
     getBuiltInPluginDirs,
 };
