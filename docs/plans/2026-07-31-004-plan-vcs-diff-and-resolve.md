@@ -318,7 +318,7 @@ spec.serialize(合并结果) → 原子写进工作树
 | # | 里程碑 | 依赖 | 产出 |
 |---|---|---|---|
 | **D0** | 实测：§1.6 的五个未知 | — | ✅ **完成 2026-08-01**。`mergeSpike*.integration.test.ts` + 结论写回 `version-control.md` **§4.23–§4.30**（八条，多出来的三条比原来的五条更重要） |
-| **D1** | diff 的地基 | H1 | `shared/documents/diff.ts`、通用 JSON 结构 diff、`vcs/diff/`、两个 IPC、**主进程 import specs 并断言注册表非空**。**没有任何界面** |
+| **D1** | diff 的地基 | H1 | ✅ **完成 2026-08-01**（`5a24f901`）。`shared/documents/diff.ts`、`jsonStructuralDiff.ts`、`vcs/diff/` 三件、两个 IPC、`documentRegistry.test.ts`（**改前 4 条断言挂 3 条**）。五个 project 类型干净、591 测试全绿。真机验收并入 D2——D1 没有界面，能在真机上单独确认的只有「specs 真的进了 main 的产物」，已用实际构建配置（`build-main.js` 的 external 清单）跑 esbuild 确认五个 kind 与 `registerDocumentSpec` 都在产物里 |
 | **D2** | 变更行可点 | D1 | 就地展开 8 行摘要 + loading 态 |
 | **D3** | `vcs-changes` tab | D2 | `working-tree` 与 `between` 两种模式 |
 | **D4** | 三个真 `spec.diff` | D1 | story / assets-metadata / characters |
