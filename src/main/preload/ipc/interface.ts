@@ -21,7 +21,7 @@ import type { DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/dev
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import type { PrivilegedActor } from "@shared/types/privileged";
-import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsHistoryEntry, VcsInitOptions, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult } from "@shared/types/vcs";
+import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsHistoryEntry, VcsInitOptions, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
@@ -378,6 +378,12 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.vcsReadRevisionDocuments, { projectPath, revision, paths }) as Promise<RequestStatus<{ documents: { path: string; contentBase64: string | null }[] }>>,
         getChangedPaths: (projectPath: string, from: RevisionId, to: RevisionId) =>
             ipcClient.invoke(IPCEventType.vcsGetChangedPaths, { projectPath, from, to }) as Promise<RequestStatus<{ paths: string[] }>>,
+        /** Changes between two revisions. Cached in main - sound only because revisions are immutable. */
+        diffRevisions: (projectPath: string, from: RevisionId, to: RevisionId) =>
+            ipcClient.invoke(IPCEventType.vcsDiffRevisions, { projectPath, from, to }) as Promise<RequestStatus<VcsRevisionDiffResult>>,
+        /** Changes since the last version. Never cached, and never on a timer - it scans (docs §4.17). */
+        diffWorkingTree: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsDiffWorkingTree, { projectPath }) as Promise<RequestStatus<VcsWorkingTreeDiffResult>>,
         getThreeWay: (projectPath: string, mine: RevisionId, theirs: RevisionId, path: string) =>
             ipcClient.invoke(IPCEventType.vcsGetThreeWay, { projectPath, mine, theirs, path }) as Promise<RequestStatus<VcsThreeWayResult>>,
         getMergeBase: (projectPath: string, a: RevisionId, b: RevisionId) =>

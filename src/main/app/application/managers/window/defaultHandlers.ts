@@ -12,6 +12,7 @@ import {
 import {
     VcsGetAvailabilityHandler, VcsIsRepositoryHandler, VcsGetInfoHandler, VcsGetHistoryHandler, VcsReadBlobHandler,
     VcsReadRevisionDocumentsHandler, VcsGetChangedPathsHandler, VcsGetThreeWayHandler, VcsGetMergeBaseHandler,
+    VcsDiffRevisionsHandler, VcsDiffWorkingTreeHandler,
     VcsInitRepositoryHandler,
     VcsGetStatusHandler, VcsCommitHandler, VcsCheckpointHandler, VcsRestoreRevisionHandler,
     VcsGetRemoteHandler, VcsSetRemoteHandler, VcsGetSyncStateHandler, VcsPushHandler, VcsSyncHandler, VcsCloneHandler,
@@ -262,6 +263,8 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new VcsReadBlobHandler(),
         new VcsReadRevisionDocumentsHandler(),
         new VcsGetChangedPathsHandler(),
+        new VcsDiffRevisionsHandler(),
+        new VcsDiffWorkingTreeHandler(),
         new VcsGetThreeWayHandler(),
         new VcsGetMergeBaseHandler(),
         new VcsGetRemoteHandler(),

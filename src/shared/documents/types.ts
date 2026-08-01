@@ -1,3 +1,7 @@
+// Type-only in both directions: `diff.ts` names a {@link DocumentKind} and this file names a
+// {@link DocumentDiff}, and a value import either way would make that a real module cycle.
+import type {DocumentDiff} from "./diff";
+
 /**
  * What a versioned editor document is, from the outside.
  *
@@ -113,6 +117,29 @@ export interface DocumentSpec<T> {
     serialize(document: T): string;
 
     summarize(document: T): DocumentSummary;
+
+    /**
+     * The differences between two of these documents that the author would call changes.
+     *
+     * **Optional, and absent is a normal answer, not a gap to be filled in.** A format
+     * whose interesting changes are already what a generic walk finds gains nothing from
+     * a bespoke implementation, and the diff engine degrades openly - it runs
+     * {@link summarize} on both sides instead and marks the result as a lesser tier, so
+     * nothing pretends a semantic answer was given.
+     *
+     * An implementation must be **pure and must not throw**. It runs in the main process
+     * over documents that came out of a repository, on the path that builds the whole
+     * change list for a revision: one throw does not lose one document's changes, it
+     * loses every document's. A document this spec cannot make sense of is answered with
+     * fewer changes, never with an exception.
+     *
+     * `limit` is a hard budget on how many changes to build, not a suggestion. The
+     * engine re-truncates anything over it, and truncating a list that was built in an
+     * arbitrary order discards arbitrary changes - so an implementation that expects to
+     * exceed the budget has to order before it stops, the same discipline
+     * `buildDocumentDiff` applies.
+     */
+    diff?(base: T, head: T, options: {limit: number}): DocumentDiff;
 }
 
 /**

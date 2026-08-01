@@ -57,10 +57,12 @@ import type {
     VcsRestoreOptions,
     VcsRestoreResult,
     VcsPushResult,
+    VcsRevisionDiffResult,
     VcsStatus,
     VcsSyncResult,
     VcsSyncState,
     VcsThreeWayResult,
+    VcsWorkingTreeDiffResult,
 } from "./vcs";
 
 export enum IPCEventType {
@@ -234,6 +236,8 @@ export enum IPCEventType {
     vcsReadBlob = "vcs.readBlob",
     vcsReadRevisionDocuments = "vcs.readRevisionDocuments",
     vcsGetChangedPaths = "vcs.getChangedPaths",
+    vcsDiffRevisions = "vcs.diffRevisions",
+    vcsDiffWorkingTree = "vcs.diffWorkingTree",
     vcsGetThreeWay = "vcs.getThreeWay",
     vcsGetMergeBase = "vcs.getMergeBase",
     vcsGetRemote = "vcs.getRemote",
@@ -675,6 +679,33 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { projectPath: string; from: RevisionId; to: RevisionId },
         response: { paths: string[] };
+    };
+    /**
+     * What changed between two revisions, as changes rather than as bytes.
+     *
+     * Cached in the main process per pair, which it may be because revisions are immutable.
+     * `complete: false` means a budget stopped it short and the surface has to say so;
+     * `readFailure` means the bytes could not be fetched at all, which is a different fact
+     * from "nothing changed" and looks identical if it is ignored.
+     */
+    [IPCEventType.vcsDiffRevisions]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; from: RevisionId; to: RevisionId },
+        response: VcsRevisionDiffResult;
+    };
+    /**
+     * What the author has changed since the last version.
+     *
+     * **Never cached anywhere**, because the working tree changes under Studio between any
+     * two calls. It also SCANS (docs §4.17), so it must be asked because someone wants to
+     * know and never on a timer - a poll manufactures deletions the author never made.
+     */
+    [IPCEventType.vcsDiffWorkingTree]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: VcsWorkingTreeDiffResult;
     };
     [IPCEventType.vcsGetThreeWay]: {
         type: IPCMessageType.request,
