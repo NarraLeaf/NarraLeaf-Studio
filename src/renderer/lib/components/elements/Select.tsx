@@ -327,7 +327,27 @@ export function Select({
                     <button
                         key={option.value}
                         className={optionClass}
-                        onClick={() => handleOptionClick(option)}
+                        // `preventDefault` is load-bearing, and not about this button.
+                        //
+                        // A `Select` nested inside a `<label>` re-opened the instant you picked
+                        // something. The label's activation behavior forwards a click to its labeled
+                        // control - which is this select's own trigger, the first labelable
+                        // descendant - and the guard that should stop it (HTML: do nothing for
+                        // clicks on interactive content inside the label) walks up from the click
+                        // target looking for the label. By the time that walk runs, the row just
+                        // picked has closed the menu and React has unmounted it, so the walk starts
+                        // on a detached node, never reaches the label, and the forward happens
+                        // anyway - toggling a menu the trigger believes is closed back open.
+                        //
+                        // Cancelling the event skips activation behavior outright, so no ancestor
+                        // can turn a pick into a re-open. A `<button>` outside a form has no other
+                        // default action to lose. The `InspectOnlyButton` arm above needs none of
+                        // this: it renders a `<span>`, and a select whose rows are spans has a span
+                        // trigger too, so there is no labelable control to forward to.
+                        onClick={event => {
+                            event.preventDefault();
+                            handleOptionClick(option);
+                        }}
                         disabled={option.disabled}
                     >
                         {optionBody}
