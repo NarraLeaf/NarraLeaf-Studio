@@ -137,12 +137,32 @@ Apple 开发者证书。因此下面明确区分"实证"与"未能实证"。
 | Windows 证书存储在 Mac 上被拒 | 真实 app | 报 `signing-host-unsupported` |
 | 钥匙串身份不存在时报错 | 真实 app | 报 `signing-macos-identity-missing`，文案带证书名 |
 | 五行签名 UI | 真实 app | Windows / macOS / Detached / Android / iOS 全部渲染，各自文案正确 |
+| **`identity: null` 真的不签** | 真跑 electron-builder 出 .app | 日志 `skipped macOS code signing reason=identity explicitly is set to null`，产物标识符仍是 `Electron` |
+| **签名 + fuse 翻转不互相破坏** | 同上，带真实游戏 fuse 集 | `executing @electron/fuses` → `signing` 顺序成立，产物标识符被改写成 appId |
+
+后两条由 `src/main/buildWorker/macSigningOracle.test.ts` 固定下来（`NLS_MAC_SIGN_ORACLE=1` 启用，
+默认跳过，每次约 1 分钟）。用 ad-hoc 身份（`identity: "-"`）替代真实 Developer ID：它走的是
+**完全相同的路径**（findSigningIdentity → buildSignOptions → @electron/osx-sign → codesign），
+只差最后进 CMS 的是哪张证书。
+
+**两条容易踩空的事实**：
+
+- **arm64 macOS 上不存在"没有签名"这个状态**。Apple 要求每个二进制至少带 ad-hoc 签名才能执行，
+  所以 Electron 的 dist 本身就是 ad-hoc 签过的，未签名构建出来依然 `Signature=adhoc`。
+  区分"我们签了"和"我们没签"的是**标识符**：签名步骤会把它改写成 appId，跳过时保留 dist 自带的
+  `Electron`。拿"有没有签名"当断言会永远为真。
+- **fuse 翻转必须在签名之前**，否则 `resetAdHocDarwinSignature` 会把真签名换成 ad-hoc 的。
+  app-builder-lib 自己写了注释 `the fuses MUST be flipped right before signing`（`platformPackager.js:258`），
+  顺序是对的——但这是本轮 `hasSigningIdentityForPlatform` 给 macOS 打开
+  `enableEmbeddedAsarIntegrityValidation` 之后才开始有意义的一条依赖，所以钉住它。
 
 ### 5.2 **未能实证**（如实记录，不要在交接里当成已验证）
 
-- **真正签出一个 macOS 产物**。需要一张受信任的代码签名证书；自签证书要被
-  `security find-identity -v` 收录就必须加进用户的信任存储，那是修改用户机器的安全
-  设置，本轮没有做。`signing-macos-identity-unusable` 分支因此只由**捕获的真实
+- **用一张真实的 Developer ID 证书签出产物**，以及由此才谈得上的 `spctl --assess` /
+  Gatekeeper 接受。已验证的是**签名步骤本身会跑、会改写标识符、且不被 fuse 翻转破坏**
+  （§5.1 末两行，用 ad-hoc 身份），未验证的是"换成真证书后 CMS 里那张证书是对的、且系统认它"。
+  自签证书要被 `security find-identity -v` 收录就必须加进用户的信任存储，那是修改机器的
+  安全设置，本轮没有做。`signing-macos-identity-unusable` 分支因此只由**捕获的真实
   `security` 输出**驱动的单元测试覆盖，未走过完整构建。
 - **公证**。要 Apple 开发者账号与联网提交，本机没有。
 - **iOS 真机安装**（沿用上一轮的边界）。
