@@ -27,6 +27,21 @@ const FULL: Record<string, SigningImportDraft> = {
         keyPassword: "key-secret",
         alias: "release",
     },
+    "macos-keychain": {
+        label: "Mac",
+        identity: "Developer ID Application: NarraLeaf (A1B2C3D4E5)",
+        notaryKeyFile: "/keys/AuthKey_ABC123.p8",
+        notaryKeyId: "ABC123",
+        notaryIssuerId: "11111111-2222-3333-4444-555555555555",
+    },
+    "macos-apple": {
+        label: "Mac file",
+        p12File: "/keys/developer-id.p12",
+        p12Password: "p12-secret",
+        notaryKeyFile: "/keys/AuthKey_ABC123.p8",
+        notaryKeyId: "ABC123",
+        notaryIssuerId: "11111111-2222-3333-4444-555555555555",
+    },
     "ios-apple": {
         label: "Apple",
         p12File: "C:/keys/apple.p12",
@@ -35,6 +50,9 @@ const FULL: Record<string, SigningImportDraft> = {
     },
     "linux-gpg": { label: "GPG", keyId: "0xDEADBEEF", gpgPath: "C:/gpg/gpg.exe" },
 };
+
+/** The three notary rows, cleared. Notarization is optional on both macOS kinds. */
+const NO_NOTARIZATION = { notaryKeyFile: "", notaryKeyId: "", notaryIssuerId: "" };
 
 describe("importFieldsFor", () => {
     it("asks for every field the vault will demand", () => {
@@ -97,6 +115,27 @@ describe("isImportComplete", () => {
         expect(isImportComplete("linux-gpg", { label: "GPG", keyId: "0xDEADBEEF" })).toBe(true);
         expect(isImportComplete("linux-gpg", { label: "GPG" })).toBe(false);
     });
+
+    it("accepts a macOS credential that does not notarize", () => {
+        // Notarization is the optional half. A Mac build signed and not
+        // notarized is a real, buildable thing - it just warns on first launch.
+        expect(isImportComplete("macos-keychain", { ...FULL["macos-keychain"], ...NO_NOTARIZATION })).toBe(true);
+        expect(isImportComplete("macos-apple", { ...FULL["macos-apple"], ...NO_NOTARIZATION })).toBe(true);
+    });
+
+    it("refuses a half-filled notary set, which the vault would reject anyway", () => {
+        // Each row is individually optional, so nothing else here would catch
+        // this - and it is unambiguously a request to notarize.
+        for (const field of ["notaryKeyFile", "notaryKeyId", "notaryIssuerId"] as const) {
+            expect(isImportComplete("macos-apple", { ...FULL["macos-apple"], [field]: "" }), field).toBe(false);
+        }
+    });
+
+    it("still requires the parts a macOS credential cannot do without", () => {
+        expect(isImportComplete("macos-keychain", { ...FULL["macos-keychain"], identity: "" })).toBe(false);
+        expect(isImportComplete("macos-apple", { ...FULL["macos-apple"], p12File: "" })).toBe(false);
+        expect(isImportComplete("macos-apple", { ...FULL["macos-apple"], p12Password: "" })).toBe(false);
+    });
 });
 
 describe("buildSigningImport", () => {
@@ -112,6 +151,24 @@ describe("buildSigningImport", () => {
             label: "Apple",
             p12File: "C:/keys/apple.p12",
             provisioningProfileFile: "C:/keys/app.mobileprovision",
+            p12Password: "p12-secret",
+        });
+        expect(buildSigningImport("macos-keychain", FULL["macos-keychain"])).toEqual({
+            kind: "macos-keychain",
+            label: "Mac",
+            identity: "Developer ID Application: NarraLeaf (A1B2C3D4E5)",
+            notaryKeyFile: "/keys/AuthKey_ABC123.p8",
+            notaryKeyId: "ABC123",
+            notaryIssuerId: "11111111-2222-3333-4444-555555555555",
+        });
+        // The notary keys are omitted entirely rather than sent as empty
+        // strings: the vault treats "" as absent, but a payload that carries
+        // three blank fields is one refactor away from carrying three blank
+        // material paths it then tries to copy.
+        expect(buildSigningImport("macos-apple", { ...FULL["macos-apple"], ...NO_NOTARIZATION })).toEqual({
+            kind: "macos-apple",
+            label: "Mac file",
+            p12File: "/keys/developer-id.p12",
             p12Password: "p12-secret",
         });
         expect(buildSigningImport("windows-azure", FULL["windows-azure"])).toEqual({

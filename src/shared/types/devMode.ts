@@ -222,11 +222,17 @@ export type DevModeBundle = {
      */
     voice?: GameVoiceBundle;
     /**
-     * Audio clip regions (in/out points) marked on audio assets, baked from the
-     * `assets/assets.metadata.audio.json` shard. Carried by the bundle so Dev
-     * Mode and the packaged runtime share one channel: the story compiler folds
-     * a region into the `Sound` it builds, and the blueprint sound family folds
-     * it into a clip a Surface plays. Absent when no asset has been marked.
+     * Audio payload: the clip regions (in/out/loop points) marked on audio
+     * assets, baked from the `assets/assets.metadata.audio.json` shard, plus the
+     * project's audio tracks from `editor/audio-tracks.json`.
+     *
+     * Carried by the bundle so Dev Mode and the packaged runtime share one
+     * channel: the story compiler folds a region into the `Sound` it builds and
+     * resolves a row's track to (bus, gain, fades), and the blueprint sound
+     * family plus the video widget resolve the same way for what a Surface
+     * plays. Optional only for bundles that predate the field; every bundle this
+     * Studio assembles carries it, with the built-in tracks when the project has
+     * no track file.
      */
     audio?: GameAudioBundle;
     /**

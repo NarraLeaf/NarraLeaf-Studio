@@ -76,6 +76,8 @@ function describeType(type: StoryCommandParamType, t: ManualTranslate): string {
             return t("story.manual.type.puppet.param");
         case "scene":
             return t("story.manual.type.scene");
+        case "audioTrack":
+            return t("story.manual.type.audioTrack");
         case "label":
             return t("story.manual.type.label");
         case "variable":

@@ -25,14 +25,30 @@ top of them (see `docs/plans/2026-07-16-001-feat-story-command-system.md`).
 |---|---|---|---|
 | `Esc` | close inspector, if open | commit + exit | ① dismiss candidates, keep text ② discard slot |
 | `Enter` | text row → edit; action row → inspector (or its card-less op) | commit + new same-kind row (carries speaker); **narration → insert slot** | take highlight; else resolve line |
-| `Tab` | indent | — | take highlight |
+| `Tab` | indent | style strip: open it, else step into it | take highlight |
 | `Shift+Enter` | blank row after last selected | commit + blank row after | `#` line → invalid row; else resolve line |
-| `Shift+Tab` | outdent | — | — |
+| `Shift+Tab` | outdent | style strip, entered from its far end | — |
 | `Backspace` | one leaf action row → blank line, caret in it; anything else → delete | at an empty line: dialogue → insert slot, else delete + step back | empty slot → dismiss, step back |
 | double-click | enter edit, native word selection preserved | — | — |
 
 `Mod+Enter` was removed: it did exactly what `Shift+Enter` does, had no UI path, and was silently
 downgraded to plain `Enter` inside the slot.
+
+**The style strip is the "within a row" that rule 3 promises.** From a line being edited, `Tab` opens
+the rich-text strip if it is collapsed — and *only* opens it, leaving the caret in the sentence; one
+keystroke, one effect. Pressed again it steps in, landing on the first control that is not the
+collapse chevron, because arriving on the way out of a thing you just asked to open is a trap.
+`Tab`/`Shift+Tab` then cycle the controls in both directions, wrapping; the chevron stays in the
+cycle, it is just never the arrival point. `Escape` is the ladder as always: an open colour palette
+is its own rung and closes first with the strip keeping focus, then the line takes the caret back,
+then the next `Escape` is the ordinary commit-and-exit. Nothing on that path commits the row.
+
+Two things this costs, both load-bearing. Focus inside the strip has to hold `Tab`, `Escape`,
+`Enter` and `Space` back from the global keybinding service — its `window` listener only stands
+aside for *editable* targets, and a focused button is not one, so otherwise `Tab` re-nests the row
+and `Enter` is `preventDefault`ed before the browser can turn it into a press. And every command
+re-focuses the field internally (a mark needs a live selection), so each one has to hand focus back
+to the control afterwards, or the strip works exactly once per visit.
 
 There is no soft line break. `Enter` never inserts `\n` — rows are the line model.
 

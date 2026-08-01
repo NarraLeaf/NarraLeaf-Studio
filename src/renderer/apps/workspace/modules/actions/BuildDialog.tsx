@@ -296,6 +296,51 @@ function SeverityDot({ severity }: { severity?: BuildPreflightSeverity }) {
 }
 
 /** Findings for one section, rendered as plain sentences (no chips). */
+/**
+ * Detail fields whose value is a platform id, and how many ids each holds.
+ *
+ * A finding travels as a code plus raw values so the console can render English
+ * while the dialog renders the author's language - which means every value that
+ * is an internal identifier has to be turned into a name here, not just the one
+ * called `platform`. `host` reads "This machine runs macos" untranslated, and
+ * `targetPlatform` and the comma-joined `platforms` are the same vocabulary.
+ *
+ * Listed rather than inferred from the value: "linux" is a platform id and also
+ * a plausible substring of something that is not, and guessing would eventually
+ * translate a word that was never an id.
+ */
+const PLATFORM_DETAIL_FIELDS: Record<string, "one" | "list"> = {
+    platform: "one",
+    host: "one",
+    targetPlatform: "one",
+    platforms: "list",
+};
+
+/** A finding's detail with every platform id replaced by its display name. */
+function localizePlatformDetail(
+    detail: BuildPreflightFinding["detail"],
+    t: ReturnType<typeof useTranslation>["t"],
+): Record<string, string> {
+    const name = (id: string): string => {
+        const key = `build.platform.${id as GameBuildPlatform}` as const;
+        // An id from a newer Studio, or one that is not a platform after all:
+        // showing it verbatim beats showing a missing-key marker.
+        const translated = t(key);
+        return translated === key ? id : translated;
+    };
+    const localized: Record<string, string> = { ...detail };
+    for (const [field, arity] of Object.entries(PLATFORM_DETAIL_FIELDS)) {
+        const value = detail?.[field];
+        if (!value) {
+            continue;
+        }
+        localized[field] = arity === "list"
+            ? value.split(",").map(part => name(part.trim())).join(", ")
+            : name(value);
+    }
+    return localized;
+}
+
 function Findings({ findings, section }: { findings: BuildPreflightFinding[]; section: BuildPreflightSection }) {
     const { t } = useTranslation();
     const mine = findings.filter(finding => finding.section === section);
@@ -312,12 +357,7 @@ function Findings({ findings, section }: { findings: BuildPreflightFinding[]; se
                         finding.severity === "error" ? "text-danger" : "text-fg-subtle",
                     )}
                 >
-                    {t(`build.preflight.${finding.code}`, {
-                        ...finding.detail,
-                        ...(finding.detail?.platform
-                            ? { platform: t(`build.platform.${finding.detail.platform as GameBuildPlatform}`) }
-                            : {}),
-                    })}
+                    {t(`build.preflight.${finding.code}`, localizePlatformDetail(finding.detail, t))}
                 </p>
             ))}
         </div>
@@ -747,12 +787,17 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
                     // Same discipline as the identity write above. What lands in
                     // the project is credential ids and nothing else - the key
                     // material stays in the machine's vault.
-                    await projectService.updateSigningConfiguration({
-                        windows: nextSigning.windows,
-                        linux: nextSigning.linux,
-                        android: nextSigning.android,
-                        ios: nextSigning.ios,
-                    }).catch(() => undefined);
+                    //
+                    // Passed whole rather than field by field. This used to name
+                    // the four platforms it knew about, which meant adding a
+                    // fifth compiled cleanly and dropped that platform's
+                    // credential on the way to disk: the row showed the author's
+                    // choice, and preflight - which reads the project back -
+                    // went on calling the build unsigned. `updateSigningConfiguration`
+                    // normalizes against SIGNING_PLATFORMS, so the filtering
+                    // that belongs here already happens there, keyed by a table
+                    // a new platform has to be added to.
+                    await projectService.updateSigningConfiguration(nextSigning).catch(() => undefined);
                 }}
                 onRemoveCredential={async credential => {
                     const confirmed = await uiService.dialogs.confirmDestructive(

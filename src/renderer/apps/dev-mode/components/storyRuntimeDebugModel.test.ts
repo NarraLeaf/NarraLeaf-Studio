@@ -1,12 +1,18 @@
 import { describe, expect, it } from "vitest";
-import type { StoryBlock, StoryBlockId, StoryScene } from "@shared/types/story";
+import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene, StorySceneId } from "@shared/types/story";
 import type { NlrActionIdBinding } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import type { StoryRowLookups } from "@/lib/story/storyRowProjection";
 import { storyRowSentence } from "@/lib/story/storyRowProjection";
 import {
+    advanceStoryRunTrail,
     blockIdForActionId,
+    buildStorySceneBlockIndex,
+    formatStoryVariableDeltaChip,
+    formatStoryVariableRangeChip,
     projectExecutionContext,
     projectSceneTimeline,
+    projectStoryTrailHighlight,
+    seedStoryRunTrail,
     type StackViewLike,
 } from "./storyRuntimeDebugModel";
 
@@ -17,6 +23,16 @@ function narration(id: StoryBlockId, text: string, childrenIds: StoryBlockId[] =
         parentId: null,
         childrenIds,
         payload: { action: "narration", text: { textId: `t-${id}`, value: text, role: "narration" } },
+    };
+}
+
+function jump(id: StoryBlockId, targetSceneId: StorySceneId): StoryBlock {
+    return {
+        id,
+        kind: "jump",
+        parentId: null,
+        childrenIds: [],
+        payload: { targetSceneId },
     };
 }
 
@@ -262,5 +278,143 @@ describe("projectExecutionContext", () => {
 
     it("has no branch list when the play head is not inside a concurrent container", () => {
         expect(contextFor(null, null).branches).toEqual([]);
+    });
+});
+
+describe("buildStorySceneBlockIndex", () => {
+    const document = {
+        scenes: {
+            "scene-a": scene([narration("a1", "hi"), jump("a-jump", "scene-b")], ["a1", "a-jump"]),
+            "scene-b": { ...scene([narration("b1", "there")], ["b1"]), id: "scene-b" },
+        },
+    } as unknown as StoryDocument;
+
+    it("places every block in its scene and names the jumps", () => {
+        const index = buildStorySceneBlockIndex(document);
+        expect(index.sceneIdByBlockId.get("a1")).toBe("scene-a");
+        expect(index.sceneIdByBlockId.get("b1")).toBe("scene-b");
+        expect(Array.from(index.jumpBlockIds)).toEqual(["a-jump"]);
+    });
+});
+
+describe("advanceStoryRunTrail", () => {
+    const observe = (sceneId: string | null, blockId: string | null, isJump = false) => ({ sceneId, blockId, isJump });
+
+    it("returns the very same object when nothing moved (so no render is scheduled)", () => {
+        const trail = seedStoryRunTrail("scene-a");
+        expect(advanceStoryRunTrail(trail, observe("scene-a", "a1"))).toBe(trail);
+        // An action bound to no Studio block says nothing about where the story is.
+        expect(advanceStoryRunTrail(trail, observe(null, null))).toBe(trail);
+    });
+
+    it("credits the jump the head passed through to the scene it lands in", () => {
+        let trail = seedStoryRunTrail("scene-a");
+        trail = advanceStoryRunTrail(trail, observe("scene-a", "a-jump", true));
+        // The jump is not a step of its own — nothing has been entered yet.
+        expect(trail.steps).toEqual([{ sceneId: "scene-a", viaJumpBlockId: null }]);
+        trail = advanceStoryRunTrail(trail, observe("scene-b", "b1"));
+        expect(trail.steps).toEqual([
+            { sceneId: "scene-a", viaJumpBlockId: null },
+            { sceneId: "scene-b", viaJumpBlockId: "a-jump" },
+        ]);
+        expect(trail.pendingJumpBlockId).toBeNull();
+    });
+
+    it("records a scene entered with no witnessed jump rather than dropping it", () => {
+        let trail = seedStoryRunTrail("scene-a");
+        trail = advanceStoryRunTrail(trail, observe("scene-b", "b1"));
+        expect(trail.steps[1]).toEqual({ sceneId: "scene-b", viaJumpBlockId: null });
+    });
+
+    it("records a scene re-entered later as a step of its own", () => {
+        let trail = seedStoryRunTrail("scene-a");
+        for (const step of [["scene-b", "b1"], ["scene-a", "a1"]] as const) {
+            trail = advanceStoryRunTrail(trail, observe(step[0], step[1]));
+        }
+        expect(trail.steps.map(step => step.sceneId)).toEqual(["scene-a", "scene-b", "scene-a"]);
+    });
+});
+
+describe("projectStoryTrailHighlight", () => {
+    /** Two options of one fork, both leaving scene-a; only one of them reaches scene-b. */
+    const graph = {
+        edges: [
+            { id: "e:a->b", source: "scene-a", target: "scene-b", jumps: [{ blockId: "j1" }, { blockId: "j2" }] },
+            { id: "e:a->c", source: "scene-a", target: "scene-c", jumps: [{ blockId: "j3" }] },
+        ],
+        branchEdges: [
+            { id: "br:opt1->b", sourceBranchId: "br:opt1", sourceSceneId: "scene-a", target: "scene-b", jumps: [{ blockId: "j1" }] },
+            { id: "br:opt2->b", sourceBranchId: "br:opt2", sourceSceneId: "scene-a", target: "scene-b", jumps: [{ blockId: "j2" }] },
+            { id: "br:opt3->c", sourceBranchId: "br:opt3", sourceSceneId: "scene-a", target: "scene-c", jumps: [{ blockId: "j3" }] },
+        ],
+    };
+
+    it("lights the arm the witnessed jump belongs to, and leaves its siblings dark", () => {
+        const highlight = projectStoryTrailHighlight({
+            steps: [
+                { sceneId: "scene-a", viaJumpBlockId: null },
+                { sceneId: "scene-b", viaJumpBlockId: "j2" },
+            ],
+            pendingJumpBlockId: null,
+        }, graph);
+        expect(Array.from(highlight.sceneIds).sort()).toEqual(["scene-a", "scene-b"]);
+        expect(highlight.edgeIds.has("br:opt2->b")).toBe(true);
+        expect(highlight.edgeIds.has("br:opt2")).toBe(true);
+        expect(highlight.edgeIds.has("br:opt1->b")).toBe(false);
+        // The collapsed line is keyed by scene pair, so lighting it involves no guess.
+        expect(highlight.edgeIds.has("e:a->b")).toBe(true);
+    });
+
+    it("lights the line but no arm when two arms could have taken it", () => {
+        const highlight = projectStoryTrailHighlight({
+            steps: [
+                { sceneId: "scene-a", viaJumpBlockId: null },
+                { sceneId: "scene-b", viaJumpBlockId: null },
+            ],
+            pendingJumpBlockId: null,
+        }, graph);
+        expect(highlight.edgeIds.has("e:a->b")).toBe(true);
+        expect(highlight.edgeIds.has("br:opt1->b")).toBe(false);
+        expect(highlight.edgeIds.has("br:opt2->b")).toBe(false);
+    });
+
+    it("falls back to the one arm that could have taken it", () => {
+        const highlight = projectStoryTrailHighlight({
+            steps: [
+                { sceneId: "scene-a", viaJumpBlockId: null },
+                { sceneId: "scene-c", viaJumpBlockId: null },
+            ],
+            pendingJumpBlockId: null,
+        }, graph);
+        expect(highlight.edgeIds.has("br:opt3->c")).toBe(true);
+    });
+
+    it("discards a witness the map says cannot lead there", () => {
+        const highlight = projectStoryTrailHighlight({
+            steps: [
+                { sceneId: "scene-a", viaJumpBlockId: null },
+                // `j3` leaves scene-a for scene-c, so it is not how this run reached scene-b.
+                { sceneId: "scene-b", viaJumpBlockId: "j3" },
+            ],
+            pendingJumpBlockId: null,
+        }, graph);
+        expect(highlight.edgeIds.has("br:opt3->c")).toBe(false);
+        expect(highlight.edgeIds.has("br:opt1->b")).toBe(false);
+        expect(highlight.edgeIds.has("e:a->b")).toBe(true);
+    });
+});
+
+describe("variable focus chips", () => {
+    it("words a delta the way the map does, with a real minus sign", () => {
+        expect(formatStoryVariableDeltaChip({ op: "add", amount: 2 })).toBe("+2");
+        expect(formatStoryVariableDeltaChip({ op: "add", amount: -1 })).toBe("\u22121");
+        expect(formatStoryVariableDeltaChip({ op: "set", value: 5 })).toBe("=5");
+        expect(formatStoryVariableDeltaChip({ op: "unknown" })).toBe("?");
+    });
+
+    it("prints a settled range as one number and an underivable one as ?", () => {
+        expect(formatStoryVariableRangeChip({ kind: "known", min: 4, max: 4 })).toBe("4");
+        expect(formatStoryVariableRangeChip({ kind: "known", min: 0, max: 7 })).toBe("0\u20137");
+        expect(formatStoryVariableRangeChip({ kind: "unknown" })).toBe("?");
     });
 });

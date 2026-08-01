@@ -517,6 +517,24 @@ export function createPluginApp(
                 formatList: (items, options) => i18nStore.getTranslator().formatList(items, options),
                 createTranslator: bundle => createPluginTranslator(bundle),
             },
+            textEditor: {
+                // Purely imperative, exactly like `ui.panels`: no manifest `contributes` key
+                // backs these. Nothing outside the open editor session needs to know a preview
+                // exists, so a static declaration would be bookkeeping with no reader - and it
+                // would have to be mirrored into the out-of-repo plugin registry's schema.
+                registerLanguage: def => {
+                    assertOwnedId(descriptor.plugin.id, def.id, "text editor language");
+                    return trackReturn(ui.textEditor.registerLanguage(def));
+                },
+                registerPreview: def => {
+                    assertOwnedId(descriptor.plugin.id, def.id, "text editor preview");
+                    return trackReturn(ui.textEditor.registerPreview(def));
+                },
+                registerAction: def => {
+                    assertOwnedId(descriptor.plugin.id, def.id, "text editor action");
+                    return trackReturn(ui.textEditor.registerAction(def));
+                },
+            },
             ui: {
                 panels: {
                     register: panel => {

@@ -179,6 +179,8 @@ function createHostApi(options?: {
     onSetSoundVolume?: CreateBlueprintHostApiRuntimeOptions["onSetSoundVolume"];
     onSeekSound?: CreateBlueprintHostApiRuntimeOptions["onSeekSound"];
     onIsSoundPlaying?: CreateBlueprintHostApiRuntimeOptions["onIsSoundPlaying"];
+    audioTracks?: CreateBlueprintHostApiRuntimeOptions["audioTracks"];
+    onSubscribeGamePreferences?: CreateBlueprintHostApiRuntimeOptions["onSubscribeGamePreferences"];
 }) {
     return createDevModeBlueprintHostApi({
         document: options?.document ?? createDocument(),
@@ -213,6 +215,8 @@ function createHostApi(options?: {
         onSetSoundVolume: options?.onSetSoundVolume,
         onSeekSound: options?.onSeekSound,
         onIsSoundPlaying: options?.onIsSoundPlaying,
+        audioTracks: options?.audioTracks,
+        onSubscribeGamePreferences: options?.onSubscribeGamePreferences,
         emit: () => undefined,
         onOpenSurface: options?.onOpenSurface ?? (() => undefined),
         onCloseLayer: options?.onCloseLayer ?? (() => undefined),
@@ -1535,6 +1539,87 @@ describe("createDevModeBlueprintHostApi character reads", () => {
         expect(hostApi.game.getSpeakerColor()).toEqual({ r: 64, g: 168, b: 196, a: 1 });
 
         scope.globalSet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY, null);
-        expect(hostApi.game.getSpeakerColor()).toEqual({ r: 255, g: 255, b: 255, a: 1 });
+        expect(hostApi.game.getSpeakerColor()).toEqual({ r: 255, g: 255, b: 255, a: 1 });    });
+});
+
+/**
+ * The mixer seam for host-owned media elements.
+ *
+ * `nl.video` renders a DOM `<video>`, which is on none of the engine's gain nodes - so the product
+ * of the track gain, the channel slider and the master has to be computed here and written to
+ * `element.volume`. It used to be written the authored volume unchanged, which meant muting the game
+ * left the clip blaring.
+ */
+describe("createDevModeBlueprintHostApi element volume", () => {
+    const TRACKS = [
+        { id: "music", name: "Music", channel: "bgm" as const, gain: 1, fadeInMs: 800, fadeOutMs: 800, loop: true },
+        { id: "sfx", name: "SFX", channel: "sound" as const, gain: 1, fadeInMs: 0, fadeOutMs: 0, loop: false },
+        { id: "quiet", name: "Quiet", channel: "bgm" as const, gain: 0.5, fadeInMs: 0, fadeOutMs: 0, loop: false },
+    ];
+
+    function preferences(values: Partial<Record<string, number>>) {
+        return (key: BlueprintGamePreferenceKey) => (values[key] ?? 1) as BlueprintGamePreferenceValue;
+    }
+
+    it("multiplies the authored volume by the track gain, the channel slider and the master", () => {
+        const hostApi = createHostApi({
+            audioTracks: TRACKS,
+            onGetGamePreference: preferences({ globalVolume: 0.5, bgmVolume: 0.4, soundVolume: 1 }),
+        });
+
+        // 0.8 authored * 0.5 track gain * 0.4 BGM * 0.5 master
+        expect(hostApi.sound.resolveElementVolume({ audioTrackId: "quiet", volume: 0.8 })).toBeCloseTo(0.08);
+        // A different track means a different slider governs it.
+        expect(hostApi.sound.resolveElementVolume({ audioTrackId: "sfx", volume: 1 })).toBeCloseTo(0.5);
     });
+
+    it("reaches zero when the player mutes the game", () => {
+        const hostApi = createHostApi({
+            audioTracks: TRACKS,
+            onGetGamePreference: preferences({ globalVolume: 0 }),
+        });
+
+        // The whole defect in one assertion: this used to be 1.
+        expect(hostApi.sound.resolveElementVolume({ audioTrackId: "music", volume: 1 })).toBe(0);
+    });
+
+    it("falls back to the SFX track for an unset or dangling id", () => {
+        const hostApi = createHostApi({
+            audioTracks: TRACKS,
+            onGetGamePreference: preferences({ soundVolume: 0.25, bgmVolume: 1 }),
+        });
+
+        expect(hostApi.sound.resolveElementVolume({ audioTrackId: null, volume: 1 })).toBeCloseTo(0.25);
+        expect(hostApi.sound.resolveElementVolume({ audioTrackId: "deleted", volume: 1 })).toBeCloseTo(0.25);
+    });
+
+    it("plays at the authored level rather than silence when no game is running", () => {
+        // `onGetGamePreference` is backed by `requireLiveGame`, which throws before the game boots.
+        // A video on a title screen must still be audible.
+        const hostApi = createHostApi({
+            audioTracks: TRACKS,
+            onGetGamePreference: () => {
+                throw new Error("game runtime is not available");
+            },
+        });
+
+        expect(hostApi.sound.resolveElementVolume({ audioTrackId: "music", volume: 0.6 })).toBeCloseTo(0.6);
+    });
+
+    it("hands mixer subscribers to the host and returns a no-op disposer without one", () => {
+        const listeners: Array<() => void> = [];
+        const hostApi = createHostApi({
+            onSubscribeGamePreferences: listener => {
+                listeners.push(listener);
+                return () => void listeners.splice(listeners.indexOf(listener), 1);
+            },
+        });
+
+        const dispose = hostApi.sound.subscribeMixerChanges(() => undefined);
+        expect(listeners).toHaveLength(1);
+        dispose();
+        expect(listeners).toHaveLength(0);
+
+        // A host with no preference stream (the editor preview) must not make this throw.
+        expect(() => createHostApi({}).sound.subscribeMixerChanges(() => undefined)()).not.toThrow();    });
 });

@@ -137,6 +137,7 @@ export function AvatarSection(props: {
                 <button
                     className={ICON_BTN}
                     onClick={props.onRebake}
+                    aria-label={t("characters.editor.rebake")}
                     {...writes(props.rebaking, t("characters.editor.rebake"))}
                 >
                     <RefreshCw className={cn("w-3.5 h-3.5", props.rebaking && "animate-spin")} />
@@ -167,6 +168,7 @@ export function AvatarSection(props: {
                         <button
                             className={props.cropping ? ICON_BTN_ON : ICON_BTN}
                             onClick={props.onToggleCropping}
+                            aria-label={t("characters.preview.setPortrait")}
                             {...writes(false, t("characters.preview.setPortrait"))}
                         >
                             <Crop className="w-3.5 h-3.5" />
@@ -174,6 +176,7 @@ export function AvatarSection(props: {
                         <button
                             className={ICON_BTN}
                             onClick={props.onResetCrop}
+                            aria-label={t("characters.preview.resetPortrait")}
                             {...writes(props.crop === undefined, t("characters.preview.resetPortrait"))}
                         >
                             <RotateCcw className="w-3.5 h-3.5" />
@@ -183,6 +186,7 @@ export function AvatarSection(props: {
                 <button
                     className={override ? ICON_BTN_ON : ICON_BTN}
                     onClick={event => props.onPickOverride(event.currentTarget)}
+                    aria-label={t("characters.editor.selectAvatarImage")}
                     {...writes(!props.avatarKey, t("characters.editor.selectAvatarImage"))}
                 >
                     <ImagePlus className="w-3.5 h-3.5" />
@@ -193,6 +197,7 @@ export function AvatarSection(props: {
                     <button
                         className={ICON_BTN}
                         onClick={props.onClearOverride}
+                        aria-label={t("characters.editor.avatarClearOverride")}
                         {...writes(false, t("characters.editor.avatarClearOverride"))}
                     >
                         <X className="w-3.5 h-3.5" />

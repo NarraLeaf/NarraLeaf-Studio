@@ -25,6 +25,14 @@ import {
     BLUEPRINT_GAME_TEXT_READ_STATE_KEY,
     BLUEPRINT_TEXT_READ_PERSISTENCE_KEY,
 } from "@shared/types/blueprint/hostApi";
+import {
+    BUILTIN_AUDIO_TRACKS,
+    resolveAudioTrack,
+    resolveAudioTrackPlayback,
+    resolveMixedElementVolume,
+    type AudioMixPreferences,
+    type ProjectAudioTrack,
+} from "@shared/types/audioTrack";
 import { LOCALE_STORAGE_KEY, type GameLocalizationBundle } from "@shared/types/localization";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
@@ -339,11 +347,53 @@ export type BlueprintHostApiRuntime = {
         /** Milliseconds from the start of the file, not from the clip's in point. */
         seek: (handle: BlueprintSoundHandle, timeMs: number) => Promise<void>;
         isPlaying: (handle: BlueprintSoundHandle) => boolean;
+        /**
+         * The volume a **host-owned** media element (the `nl.video` widget's `<video>`) must be set
+         * to so it obeys the same mixer everything else does.
+         *
+         * A DOM element the host created sits on none of the engine's gain nodes, so the product of
+         * the track gain, the channel slider and the master has to be computed and written to
+         * `element.volume`. Without this a muted game keeps playing video at full volume. Pair it
+         * with {@link subscribeMixerChanges} - a value read once goes stale the moment the player
+         * drags a slider.
+         */
+        resolveElementVolume: (input: { audioTrackId?: string | null; volume?: number | null }) => number;
+        /** Fires when any preference feeding `resolveElementVolume` changes. Returns a disposer. */
+        subscribeMixerChanges: (listener: () => void) => () => void;
     };
     devtools: {
         log: (level: string, message: string) => void;
     };
 };
+
+/**
+ * Read the four volume preferences off whatever preference reader the host supplied.
+ *
+ * Every read is guarded because `onGetGamePreference` is backed by `requireLiveGame`, which throws
+ * when no game is running - and a video widget rendering on a title screen before the story boots
+ * must get a number, not an exception. A missing value reads as unity, not silence.
+ */
+function readMixPreferences(
+    onGetGamePreference: ((key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue) | undefined,
+): AudioMixPreferences {
+    if (!onGetGamePreference) {
+        return {};
+    }
+    const read = (key: BlueprintGamePreferenceKey): number | null => {
+        try {
+            const value = onGetGamePreference(key);
+            return typeof value === "number" ? value : null;
+        } catch {
+            return null;
+        }
+    };
+    return {
+        globalVolume: read("globalVolume"),
+        bgmVolume: read("bgmVolume"),
+        soundVolume: read("soundVolume"),
+        voiceVolume: read("voiceVolume"),
+    };
+}
 
 /**
  * Which mixer channel a clip plays on. These are the engine's own `SoundType`
@@ -361,9 +411,24 @@ export function normalizeBlueprintSoundChannel(value: unknown): BlueprintSoundCh
 
 export type BlueprintSoundPlayInput = {
     assetId: string;
-    channel: BlueprintSoundChannel;
-    loop: boolean;
-    volume: number;
+    /**
+     * Project audio track (`ProjectAudioTrack.id`). The track decides the mixer bus, the gain the
+     * authored volume is multiplied by, and the defaults for the three fields below. Absent resolves
+     * to the built-in SFX track, which is what an unqualified "play this clip" has always meant.
+     */
+    audioTrackId?: string | null;
+    /** Author override; absent means the track's own default. */
+    loop?: boolean | null;
+    /** Author override, 0..1 as authored; absent means the track's gain alone. */
+    volume?: number | null;
+    /** Fade-in in milliseconds; absent means the track's `fadeInMs`. */
+    fadeInMs?: number | null;
+    /**
+     * The pre-track channel select, kept only so a graph or a host call written before tracks
+     * existed still plays on the bus it named. Read only when `audioTrackId` is unset, and mapped
+     * to that channel's built-in track by the transport. Nothing writes it any more.
+     */
+    channel?: BlueprintSoundChannel;
 };
 
 /**
@@ -436,6 +501,16 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onSetSoundVolume?: (handle: BlueprintSoundHandle, volume: number, fadeMs: number) => Promise<void> | void;
     onSeekSound?: (handle: BlueprintSoundHandle, timeMs: number) => Promise<void> | void;
     onIsSoundPlaying?: (handle: BlueprintSoundHandle) => boolean;
+    /**
+     * The project's audio tracks (from the bundle). Absent falls back to the built-ins, so a host
+     * assembled from a bundle that predates tracks resolves exactly as it did before they existed.
+     */
+    audioTracks?: readonly ProjectAudioTrack[];
+    /**
+     * Subscribe to the player's preference changes. Backs `sound.subscribeMixerChanges`; hosts with
+     * no running game (the editor preview) leave it unset and the subscription is a no-op.
+     */
+    onSubscribeGamePreferences?: (listener: () => void) => () => void;
     emit: (event: BlueprintDebugEvent) => void;
     onOpenSurface: (surfaceId: string, props?: Record<string, unknown>) => void | Promise<void>;
     onCloseLayer: () => void | Promise<void>;
@@ -1521,6 +1596,8 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onSetSoundVolume,
         onSeekSound,
         onIsSoundPlaying,
+        audioTracks,
+        onSubscribeGamePreferences,
         emit,
         onOpenSurface,
         onCloseLayer,
@@ -3037,6 +3114,21 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     emitHostCall(emit, cap, "return");
                 }
             },
+            /**
+             * Deliberately not instrumented with `emitHostCall`: this runs on every render of every
+             * video widget and on every slider tick, and a debug event per read would drown the
+             * blueprint event stream in noise that describes nothing an author did.
+             */
+            resolveElementVolume: input => {
+                const track = resolveAudioTrack(
+                    audioTracks && audioTracks.length > 0 ? audioTracks : BUILTIN_AUDIO_TRACKS,
+                    input.audioTrackId,
+                    "sound",
+                );
+                const playback = resolveAudioTrackPlayback(track, { volume: input.volume });
+                return resolveMixedElementVolume(playback, readMixPreferences(onGetGamePreference));
+            },
+            subscribeMixerChanges: listener => onSubscribeGamePreferences?.(listener) ?? (() => undefined),
         },
         devtools: {
             log: (level: string, message: string) => {

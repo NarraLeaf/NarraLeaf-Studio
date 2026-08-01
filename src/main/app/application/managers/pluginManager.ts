@@ -19,6 +19,8 @@ import {
 import { PersistentState } from "@shared/utils/persistentState";
 import type { PersistentStateConfig } from "@shared/types/persistentState";
 import { validatePluginManifest } from "@shared/utils/pluginManifest";
+import { validatePluginIconBytes } from "@shared/utils/pluginIcon";
+import { PLUGIN_ICON_MAX_BYTES } from "@shared/constants/pluginIcon";
 import { isPermissionSubset } from "@shared/utils/pluginInstallPermissions";
 import { flattenCatalog, type LocaleContribution } from "@shared/i18n";
 import { PluginPermissionManager } from "./pluginPermissionManager";
@@ -169,7 +171,7 @@ export class PluginManager {
                     publisher: plugin.manifest.publisher,
                 },
                 manifest: plugin.manifest,
-                entryUrl: this.getPluginEntryUrl(plugin.manifest, plugin.manifest.entries[target]!),
+                entryUrl: this.getPluginFileUrl(plugin.manifest, plugin.manifest.entries[target]!),
             }));
     }
 
@@ -342,6 +344,38 @@ export class PluginManager {
         const target = path.resolve(record.installPath, ...entrySegments);
         const root = path.resolve(record.installPath);
         if (!this.isSameOrChild(target, root)) {
+            return null;
+        }
+        return target;
+    }
+
+    /**
+     * The declared icon file behind an `app://plugins/<id>/<version>/<icon>`
+     * request, or `null`.
+     *
+     * Unlike an entry, this deliberately does not require the plugin to be
+     * enabled: the Launcher shows icons for disabled and not-yet-authorized
+     * plugins too, and those rows are exactly where the user is deciding what
+     * the plugin is. Serving a static image to Studio's own list is not a
+     * capability the enable switch is there to gate.
+     */
+    public async resolvePluginIconFile(url: URL): Promise<string | null> {
+        await this.initialize();
+        const segments = url.pathname.split("/").filter(Boolean).map(segment => decodeURIComponent(segment));
+        if (segments.length < 3) {
+            return null;
+        }
+        const [pluginId, version, ...iconSegments] = segments;
+        const record = this.getRecords()[pluginId];
+        if (!record || record.manifest.version !== version) {
+            return null;
+        }
+        const icon = record.manifest.icon?.replace(/\\/g, "/");
+        if (!icon || iconSegments.join("/") !== icon) {
+            return null;
+        }
+        const target = path.resolve(record.installPath, ...iconSegments);
+        if (!this.isSameOrChild(target, path.resolve(record.installPath))) {
             return null;
         }
         return target;
@@ -531,10 +565,42 @@ export class PluginManager {
                 throw new Error(`Plugin ${target} entry file not found: ${entry}`);
             }
         }
+        if (result.manifest.icon) {
+            await this.verifyIconFile(pluginDir, result.manifest.icon);
+        }
         return result.manifest;
     }
 
-    private getPluginEntryUrl(manifest: NormalizedPluginManifestV2, entry: string): string {
+    /**
+     * Hold a declared icon to the shipping rules: inside the package, actually
+     * an image of the format its name claims, square, and small.
+     *
+     * Failing the whole manifest is deliberate. The alternative — install, drop
+     * the icon, show the monogram — produces a plugin that looks fine to the
+     * user and wrong to its author, with nothing anywhere saying why.
+     */
+    private async verifyIconFile(pluginDir: string, icon: string): Promise<void> {
+        const root = path.resolve(pluginDir);
+        const iconPath = path.resolve(pluginDir, ...icon.split(/[\\/]+/));
+        if (!this.isSameOrChild(iconPath, root)) {
+            throw new Error("Plugin icon must stay inside the plugin package");
+        }
+        const stat = await fs.stat(iconPath).catch(() => null);
+        if (!stat?.isFile()) {
+            throw new Error(`Plugin icon file not found: ${icon}`);
+        }
+        // Checked before reading, so an oversized file is refused rather than
+        // pulled into memory to be refused.
+        if (stat.size > PLUGIN_ICON_MAX_BYTES) {
+            throw new Error(`Plugin icon must be at most ${Math.floor(PLUGIN_ICON_MAX_BYTES / 1024)} KB`);
+        }
+        const error = validatePluginIconBytes(await fs.readFile(iconPath), icon);
+        if (error) {
+            throw new Error(error);
+        }
+    }
+
+    private getPluginFileUrl(manifest: NormalizedPluginManifestV2, entry: string): string {
         const encodedEntry = entry
             .split(/[\\/]+/)
             .map(segment => encodeURIComponent(segment))
@@ -579,6 +645,9 @@ export class PluginManager {
         return {
             pluginId: record.pluginId,
             manifest: record.manifest,
+            ...(record.manifest.icon
+                ? { iconUrl: this.getPluginFileUrl(record.manifest, record.manifest.icon) }
+                : {}),
             installPath: record.installPath,
             enabled: record.enabled,
             builtIn: record.builtIn,

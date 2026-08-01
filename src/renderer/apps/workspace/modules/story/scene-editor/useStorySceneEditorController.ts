@@ -39,6 +39,7 @@ import { CHARACTERS_PANEL_ID } from "../../characters";
 import { PROPERTIES_PANEL_ID } from "../../properties/propertiesPanelId";
 import {
     annotateDialogueGroups,
+    annotateNestingBranches,
     buildDialogueAppearances,
     buildVisibleRows,
     canAcceptChildren,
@@ -57,14 +58,14 @@ import {
     updateTextPayload,
 } from "./storySceneBlockUtils";
 import { isInteractiveTarget, isTextInputActive } from "./storySceneDom";
-import { getStoryEditorLensContainerIds, getStoryEditorViewPrefs, getStoryEditorViewState, patchStoryEditorViewPrefs, patchStoryEditorViewState, setStoryEditorLensContainer, type StoryEditorDensity } from "./storyEditorSessionStore";
-import { applyStagingLensToRows, resolveEffectiveLensContainers } from "./storyStagingLens";
+import { getStoryEditorViewPrefs, getStoryEditorViewState, patchStoryEditorViewPrefs, patchStoryEditorViewState, type StoryEditorDensity } from "./storyEditorSessionStore";
 import { cloneSerializedBlock, insertSerializedClone, serializeBlockSubtree } from "./storySceneClipboard";
 import { getSelectionUnitRange, richRunsToPlain } from "./richText";
 import type { RichTextInputHandle } from "./RichTextInput";
 import type { EditorMode, StoryBlockTarget, StoryCaretTarget, StoryStagePlacement } from "./storySceneEditorTypes";
 import { useStorySceneClipboardHandlers } from "./useStorySceneClipboardHandlers";
 import { useSlashAtAlias } from "@/apps/workspace/hooks/useSlashAtAlias";
+import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
 import { isActionCommandLine, toCanonicalCommandLine } from "./commandTrigger";
 
 const STORY_EDITOR_HISTORY_LIMIT = 100;
@@ -177,30 +178,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             patchStoryEditorViewPrefs(panelStateService, { density: value });
         }
     }, [panelStateService]);
-    // Which parallel/race containers show their staging lens (M7). Held as React state for reactivity and
-    // mirrored to PanelStateService so the view survives tab switches and restarts (same persistence as
-    // density). Keyed by container block id; stale ids for deleted containers are inert.
-    const [lensContainerIds, setLensContainerIds] = useState<Set<StoryBlockId>>(() => (panelStateService ? getStoryEditorLensContainerIds(panelStateService) : new Set()));
-    const setContainerLens = useCallback((containerId: StoryBlockId, on: boolean) => {
-        setLensContainerIds(previous => {
-            if (previous.has(containerId) === on) {
-                return previous;
-            }
-            const next = new Set(previous);
-            if (on) {
-                next.add(containerId);
-            } else {
-                next.delete(containerId);
-            }
-            return next;
-        });
-        if (panelStateService) {
-            setStoryEditorLensContainer(panelStateService, containerId, on);
-        }
-    }, [panelStateService]);
-    const toggleContainerLens = useCallback((containerId: StoryBlockId) => {
-        setContainerLens(containerId, !lensContainerIds.has(containerId));
-    }, [lensContainerIds, setContainerLens]);
     const [editorMode, setEditorMode] = useState<EditorMode>({ kind: "idle" });
     /**
      * The line being typed into the open insert slot.
@@ -235,6 +212,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * and this brings it back when one more lands.
      */
     const [puppetRevision, setPuppetRevision] = useState(0);
+    /** The project's audio tracks, so `/bgm theme track=Ambience` completes and resolves by name. */
+    const audioTracks = useProjectAudioTracks();
 
     /**
      * A freeze that lands while a row is open for editing closes the editor, discarding the draft.
@@ -393,8 +372,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             scene,
             persistentVariables: blueprintService?.listPersistentVariables() ?? [],
             puppetByCharacterId,
+            audioTracks,
         }),
-        [assetsService, blueprintService, blueprintRevision, characters, document, puppetByCharacterId, sceneId, scene],
+        [assetsService, audioTracks, blueprintService, blueprintRevision, characters, document, puppetByCharacterId, sceneId, scene],
     );
     // Each dialogue speaker's accumulated appearance (WI-3), so a dialogue row's avatar can follow the
     // most recent enter/expression. Keyed on the scene's content, not on collapse.
@@ -403,32 +383,27 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!scene) {
             return [];
         }
-        // Staging lens (M7): a container showing its lens is inherently expanded — its direct children
-        // ARE the tracks — so a stale collapse flag must not hide them. `resolveEffectiveLensContainers`
-        // drops deleted/since-changed ids and any lens nested inside another (that shows as a subgroup).
-        // The lens is a staging visualization; "narrative only" hides staging, so it is inert there (and
-        // gating it off avoids a lone narrative child inside a parallel rendering as an orphan track).
-        const effectiveLensIds = narrativeOnly ? new Set<StoryBlockId>() : resolveEffectiveLensContainers(scene, lensContainerIds);
-        const effectiveCollapsed = effectiveLensIds.size > 0
-            ? new Set([...collapsedBlockIds].filter(id => !effectiveLensIds.has(id)))
-            : collapsedBlockIds;
-        let rows = buildVisibleRows(scene, effectiveCollapsed);
+        // The staging lens (M7) used to sit here, doing two things that outlived it once its bar
+        // timeline was removed: it dropped the collapse flag for any container it was on — so the fold
+        // chevron on a parallel block was silently dead for the rest of that project's life — and it
+        // replaced the container's whole SUBTREE with one track per direct child, which quietly hid
+        // grandchildren. Neither had any remaining visual effect to justify it.
+        let rows = buildVisibleRows(scene, collapsedBlockIds);
         // "Narrative only" (WI-6) drops staging rows but leaves each survivor's line number as-is —
         // filtering after buildVisibleRows (which assigns them) is what keeps the numbers un-renumbered.
         if (narrativeOnly) {
             rows = rows.filter(row => isNarrativeRow(row.block));
         }
-        // Swap each lens container's subtree for [header + one bar-timeline track per direct child].
-        rows = applyStagingLensToRows(scene, rows, effectiveLensIds);
         if (dialogueAppearances) {
             rows = rows.map(row => {
                 const appearance = dialogueAppearances.get(row.block.id);
                 return appearance ? { ...row, appearance } : row;
             });
         }
-        // Grouping runs last, over the exact rows that will render (WI-5).
-        return annotateDialogueGroups(rows);
-    }, [collapsedBlockIds, dialogueAppearances, lensContainerIds, narrativeOnly, scene]);
+        // Grouping runs last, over the exact rows that will render (WI-5); the branch lookahead runs
+        // after it, over the same final list, so "the next row" means the next row on screen.
+        return annotateNestingBranches(annotateDialogueGroups(rows));
+    }, [collapsedBlockIds, dialogueAppearances, narrativeOnly, scene]);
     const rowIndexById = useMemo(() => {
         const result = new Map<StoryBlockId, number>();
         visibleRows.forEach((row, index) => result.set(row.block.id, index));
@@ -2257,7 +2232,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         activeBlockId, selectedBlockIds, collapsedBlockIds, editorMode, addRowFocused, selectionRevision,
         characters, commandContext, visibleRows, shouldRenderActiveInsertSlot,
         density, setDensity, narrativeOnly, setNarrativeOnly,
-        lensContainerIds, toggleContainerLens,
         rootRef, scrollContainerRef, insertInputRef, textInputRef, uuidService,
         focusRoot, focusWorkspace, revealBlock, handleKeyDown, copySelectionToClipboard: handleCopy, handlePaste: handlePasteInEditor,
         deleteRows, deleteSelection, replaceRowWithBlankLine, startInsertAfter, startInsertBefore, selectRow, beginDragSelection,

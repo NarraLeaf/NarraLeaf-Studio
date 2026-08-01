@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { AssetCategory, AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { AssetSource, type Asset } from "@/lib/workspace/services/assets/types";
 import { buildAssetOverview, byteShare, formatByteSize } from "./assetOverviewModel";
 
@@ -59,20 +59,23 @@ describe("buildAssetOverview", () => {
         expect(formatByteSize(summary.entries[0].bytes)).toBe("—");
     });
 
-    it("aggregates count and bytes per type, dropping types with nothing in them", () => {
+    it("aggregates count and bytes per sidebar section, dropping empty ones", () => {
+        // Audio and video land in one bucket, the way the sidebar files them: this page and the
+        // tree are two views of the same panel and their counts have to agree.
         const summary = overview({
             assets: [
                 asset("a", "One", AssetType.Image),
                 asset("b", "Two", AssetType.Image),
                 asset("c", "Three", AssetType.Audio),
+                asset("d", "Four", AssetType.Video),
             ],
-            bytes: { a: 10, b: 30, c: 7 },
-            references: { a: 1 },
+            bytes: { a: 10, b: 30, c: 7, d: 3 },
+            references: { a: 1, d: 2 },
         });
 
-        expect(summary.byType).toEqual([
-            { type: AssetType.Image, count: 2, bytes: 40, referencedCount: 1, referencedBytes: 10 },
-            { type: AssetType.Audio, count: 1, bytes: 7, referencedCount: 0, referencedBytes: 0 },
+        expect(summary.byCategory).toEqual([
+            { category: AssetCategory.Image, count: 2, bytes: 40, referencedCount: 1, referencedBytes: 10 },
+            { category: AssetCategory.Media, count: 2, bytes: 10, referencedCount: 1, referencedBytes: 3 },
         ]);
     });
 
@@ -120,7 +123,7 @@ describe("buildAssetOverview", () => {
         const summary = overview({ assets: [] });
 
         expect(summary.total).toEqual({ count: 0, bytes: 0 });
-        expect(summary.byType).toEqual([]);
+        expect(summary.byCategory).toEqual([]);
         expect(summary.largest).toEqual([]);
         expect(summary.packaging.differenceBytes).toBe(0);
     });
