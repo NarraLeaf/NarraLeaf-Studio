@@ -211,6 +211,8 @@ function candidatesForType(
         }
         case "scene":
             return refCandidates(context.scenes, query);
+        case "audioTrack":
+            return refCandidates(context.audioTracks, query);
         case "label":
             return refCandidates(context.labels.map(name => ({ id: name, name })), query);
         case "variable":
@@ -294,6 +296,9 @@ export function hasCandidateSource(
             case "character":
             case "characterForm":
             case "scene":
+            // Every project has at least the three built-ins, so "no matches" here always means what
+            // it says - unlike a puppet channel, whose empty list may only mean nobody could ask.
+            case "audioTrack":
             case "variable":
             case "label":
             case "target":

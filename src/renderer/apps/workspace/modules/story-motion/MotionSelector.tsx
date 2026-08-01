@@ -16,6 +16,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
+import { InspectOnlyButton } from "@/lib/components/elements/InspectOnlyButton";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { createStoryMotionEditorTab, resolveStoryMotionStageSize } from "./StoryMotionEditorTab";
@@ -491,9 +492,20 @@ export function MotionField(props: {
             </button>
             {animationId ? (
                 <>
-                    <button type="button" className={ICON_BUTTON_CLASS} onClick={openEditor} title={t("motion.editMotion")}>
+                    {/* The pencil opens the motion in its own editor tab and writes nothing on the
+                        way. An {@link InspectOnlyButton} because this field is mounted in the story
+                        action inspector, which a frozen workspace clamps in a `disabled`
+                        `<fieldset>`: as a `<button>` this went dead with the rest, so an author
+                        reading a past version could see a motion was bound but never open it and
+                        look at the curve. The ✕ beside it does write, and stays under the clamp. */}
+                    <InspectOnlyButton
+                        className={`${ICON_BUTTON_CLASS} cursor-default`}
+                        onClick={openEditor}
+                        title={t("motion.editMotion")}
+                        aria-label={t("motion.editMotion")}
+                    >
                         <Edit3 className="h-4 w-4" />
-                    </button>
+                    </InspectOnlyButton>
                     <button type="button" className={ICON_BUTTON_CLASS} onClick={clear} title={t("motion.clearMotion")}>
                         <X className="h-4 w-4" />
                     </button>

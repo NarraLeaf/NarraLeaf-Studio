@@ -13,6 +13,7 @@ import type {
     VcsStatus,
     VcsThreeWayResult,
 } from "@shared/types/vcs";
+import { composeVcsIdentity } from "@shared/types/vcs";
 import { BaseApp } from "../../baseApp";
 import { Manager } from "../manager";
 import { getVcsAvailability, requireVcsBackend, type VcsBackend } from "./backend";
@@ -459,11 +460,21 @@ export class VcsManager extends Manager {
      * Lore's `identity` is a per-call global rather than repository configuration, so
      * every write has to answer this. Three sources, in order, and the first is the
      * seam a logged-in identity plugs into without touching anything else here.
+     *
+     * An `explicit` identity is taken WHOLE - no email is folded into it - because a
+     * caller that passes one is passing a finished identity, not a name to decorate.
+     * The two settings are composed by {@link composeVcsIdentity}, which owns the
+     * `Name <email>` shape and the four ways those two fields can be empty.
      */
     private resolveIdentity(explicit?: string): string {
-        const configured = this.app.getGlobalState().get("versionControl.authorName");
+        const state = this.app.getGlobalState();
+        const configuredName = state.get("versionControl.authorName");
+        const configuredEmail = state.get("versionControl.authorEmail");
         return explicit?.trim()
-            || (typeof configured === "string" ? configured.trim() : "")
+            || composeVcsIdentity(
+                typeof configuredName === "string" ? configuredName : "",
+                typeof configuredEmail === "string" ? configuredEmail : "",
+            )
             || UNCONFIGURED_IDENTITY;
     }
 

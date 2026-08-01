@@ -23,6 +23,7 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import { Services } from "@/lib/workspace/services/services";
 import { useWorkspace } from "../../../context";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useTranslation } from "@/lib/i18n";
 import { SearchBox } from "./SearchBox";
 import { FilterSystem, type ActiveFilter } from "./FilterSystem";
@@ -102,6 +103,10 @@ export function AssetSelector({
 }: AssetSelectorProps) {
     const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
+    // The picker asks about the freeze itself rather than trusting whoever opened it: it renders in
+    // a portal on `document.body`, so every `fieldset disabled` clamp an inspector puts around its
+    // trigger stops at the panel's edge and never reaches the controls inside.
+    const freeze = useFreezeGuard();
     const { assets, groups, loading, hasLoaded, error, loadAssets } = useAssetData({ context, isInitialized });
     // The selector keeps its own search (it matches against virtual groups the library does not
     // know about) and asks nothing about bytes or usage, so the measured half of the pass stays off.
@@ -660,11 +665,14 @@ export function AssetSelector({
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
+                        {/* Import from disk copies files into the project's asset library, which is
+                            a write; picking an existing asset is not, so only this one goes off.
+                            On a frozen project it ran the file dialog and the import to completion
+                            and the library came back unchanged. */}
                         <button
                             onClick={handleImportAssets}
-                            disabled={loading}
                             className="p-1 rounded-md hover:bg-fill disabled:opacity-50"
-                            title={t("assets.selector.importFromDisk")}
+                            {...freeze.writes(loading, t("assets.selector.importFromDisk"))}
                         >
                             <FolderOpen className="w-4 h-4" />
                         </button>

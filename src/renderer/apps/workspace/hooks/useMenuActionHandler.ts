@@ -4,6 +4,8 @@ import { isMacPlatform } from "@/lib/app/platform";
 import { useWorkspace } from "../context";
 import { useRegistry } from "../registry";
 import { getActionGroupItems, findActionMenuItemById, isActionVisible } from "../components/ui/actionMenuModel";
+import { resolveFrozenActionDisabled } from "../components/ui/freezeActionPolicy";
+import { useWorkspaceFrozen } from "./useWorkspaceFrozen";
 import type { ActionDefinition, ActionGroup } from "../registry/types";
 import { UIService } from "@/lib/workspace/services/ui";
 import { Services } from "@/lib/workspace/services/services";
@@ -20,6 +22,7 @@ export function useMenuActionHandler(): void {
     const { workspace, context } = useWorkspace();
     const { actions, actionGroups } = useRegistry();
     const [focusContext, setFocusContext] = useState<FocusContext | null>(null);
+    const frozen = useWorkspaceFrozen();
 
     useEffect(() => {
         if (!context) return;
@@ -47,7 +50,13 @@ export function useMenuActionHandler(): void {
                 getInterface().window.editCommand(action.menuRole);
                 return;
             }
-            if (action.disabled) {
+            // The native menu bar is a second door onto the very same action registry the in-app
+            // top bar renders, and it does not pass the bar's disabled state on the way through.
+            // Measured on a frozen project: Dev ▸ Build was greyed out in the toolbar and still
+            // ran from the macOS menu, so the freeze covered one door and not the other. Ask
+            // `freezeActionPolicy` the same question the bar asks - which keeps File and Help
+            // (close the window, read the docs) alive, so a frozen workspace is never a trap.
+            if (resolveFrozenActionDisabled(action, frozen)) {
                 return;
             }
             if (!workspace) {
@@ -57,7 +66,7 @@ export function useMenuActionHandler(): void {
 
             action.onClick(workspace);
         },
-        [actionGroups, actions, focusContext, workspace],
+        [actionGroups, actions, focusContext, frozen, workspace],
     );
 
     useEffect(() => {

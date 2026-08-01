@@ -5,6 +5,7 @@ import {
     type ResolvedSigningMaterial,
     type SigningCertificateExpiry,
     type SigningCertificateInfo,
+    type SigningCredentialKind,
     type SigningInspectResult,
 } from "@shared/types/signing";
 // Relative on purpose: "@/" means src/main here but src/renderer under vitest.
@@ -69,8 +70,41 @@ export function certificateContainer(
             };
         case "ios-apple":
             return { file: material.p12File, secrets: { storePassword: material.p12Password } };
+        case "macos-apple":
+            return { file: material.p12File, secrets: { storePassword: material.p12Password } };
         default:
             return null;
+    }
+}
+
+/**
+ * Whether a credential of this kind has a certificate file to describe at all.
+ *
+ * The answer used to be read off the material table - "the first material field
+ * is the certificate" - which held only while every kind's first file happened
+ * to be one. A macOS credential's first file can be the notarization .p8, a
+ * private key that is not a certificate and would be reported as a damaged one.
+ *
+ * Stated here, beside `certificateContainer`, because the two answer halves of
+ * the same question: this one decides whether to unseal the credential's
+ * passwords, and that one decides what to open with them. Split across two files
+ * they would drift, and the drift would read as "your certificate is unreadable".
+ */
+export function credentialKindHasCertificate(kind: SigningCredentialKind): boolean {
+    switch (kind) {
+        case "windows-pfx":
+        case "android-keystore":
+        case "ios-apple":
+        case "macos-apple":
+            return true;
+        // The certificate is in the Windows store, in Azure, or in the login
+        // keychain - real in every case, but not a file this process can open.
+        // `linux-gpg` has none at all.
+        case "windows-store":
+        case "windows-azure":
+        case "macos-keychain":
+        case "linux-gpg":
+            return false;
     }
 }
 

@@ -1,10 +1,12 @@
 import {registerDocumentSpec} from "../registry";
 import {AnyDocumentSpec} from "../types";
+import {audioTracksSpec} from "./audioTracks";
 import {localizationDocumentSpec} from "./localization";
 import {localizationKeysSpec} from "./localizationKeys";
 import {variableRegistrySpec} from "./variables";
 import {voiceDocumentSpec} from "./voice";
 
+export {AUDIO_TRACKS_DOCUMENT_PATH, audioTracksSpec} from "./audioTracks";
 export {VARIABLE_REGISTRY_DOCUMENT_PATH, variableRegistrySpec} from "./variables";
 export {VOICE_DOCUMENT_PATH, voiceDocumentSpec} from "./voice";
 export {LOCALIZATION_DOCUMENT_PATH, localizationDocumentSpec} from "./localization";
@@ -18,6 +20,7 @@ export {LOCALIZATION_KEYS_DOCUMENT_PATH, localizationKeysSpec} from "./localizat
  * deliberately the only thing a new spec has to be added to.
  */
 export const PROJECT_DOCUMENT_SPECS: readonly AnyDocumentSpec[] = [
+    audioTracksSpec,
     variableRegistrySpec,
     voiceDocumentSpec,
     localizationDocumentSpec,

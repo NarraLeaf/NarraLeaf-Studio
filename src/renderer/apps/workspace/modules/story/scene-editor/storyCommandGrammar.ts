@@ -73,6 +73,15 @@ export type StoryCommandParamType =
     | { kind: "puppetParam"; dependsOn: string }
     | { kind: "scene" }
     /**
+     * A project audio track, by name: the `Ambience` in `/sound rain track=Ambience`.
+     *
+     * Must resolve. A name matching no track would compile - `resolveAudioTrack` always answers - but
+     * it would answer with the built-in for the row's bus, i.e. a *different mix* from the one the
+     * author wrote down, and silently. Nothing else in this grammar tolerates that, and the failure
+     * mode here is exactly the invisible multiplication the track model exists to end.
+     */
+    | { kind: "audioTrack" }
+    /**
      * A `label` row declared in the CURRENT scene - what `/goto` addresses. Scene-scoped by
      * construction (the engine matches within a scene), so the candidates come from the same scan
      * the compiler validates against, and a name the menu offered can never be one the build rejects.
@@ -282,6 +291,7 @@ export function allowsFreeValue(type: StoryCommandParamType): boolean {
             return freeTargetKind(type) !== null;
         case "asset":
         case "scene":
+        case "audioTrack":
         case "variable":
         case "label":
         case "characterForm":

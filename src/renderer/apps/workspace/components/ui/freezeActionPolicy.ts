@@ -15,14 +15,22 @@ import { isActionMenuAction, isActionMenuSeparator } from "./actionMenuModel";
  * setting. Those cannot be audited in third-party code, so a plugin must have no way to opt itself
  * back in; an `exemptWhileFrozen?: boolean` on the definition would be exactly that way in.
  *
- * The two exempt groups are project-level NAVIGATION, none of which edits this project's content:
+ * Two of the three are project-level NAVIGATION, neither of which edits this project's content:
  * File is New Workspace / Open Workspace / Export Project / Close, Help is the help entries. Leaving
  * them live is also what keeps a frozen window escapable - a workspace you cannot close or leave
  * would be a trap.
+ *
+ * The third is the image preview's Zoom in / Zoom out / Reset view, which move a viewport and write
+ * nothing whatsoever. Measured on a frozen project: opening a past revision of an image and being
+ * unable to zoom in on it, which is the one thing the author opened it to do. It is exempt as a
+ * group rather than per-command because a top-bar group is what those three are registered as; the
+ * editor had to be given a fixed id first, since it used to build one per tab and a table that
+ * matches ids exactly can name no such thing.
  */
 const FREEZE_EXEMPT_GROUP_IDS: ReadonlySet<string> = new Set([
     "narraleaf-studio:file",
     "narraleaf-studio:help",
+    "narraleaf-studio:image-preview-actions",
 ]);
 
 /** Whether a top-bar action group and everything inside it keeps working while frozen. */

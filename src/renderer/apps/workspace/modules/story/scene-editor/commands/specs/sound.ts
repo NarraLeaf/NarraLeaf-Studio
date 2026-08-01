@@ -1,7 +1,7 @@
 import type { StoryActionPayload, StoryBlock } from "@shared/types/story";
 import { createBlockForCommand, type ActionCommandId } from "../../storyActionCommands";
 import { BGM_OBJECT_NAME, type StoryCommandValue } from "../../storyCommandValues";
-import { asBoolean, asDurationMs, asNumber, asTarget, asText, defineStoryCommand, targetParam } from "../spec";
+import { asAudioTrackId, asBoolean, asDurationMs, asNumber, asTarget, asText, audioTrackParam, defineStoryCommand, targetParam } from "../spec";
 import { deriveObjectName, vfxOperationBlock } from "../payloadHelpers";
 
 /**
@@ -82,10 +82,14 @@ export const bgm = defineStoryCommand({
     id: "bgm",
     token: "bgm",
     category: "sound",
-    examples: ["/bgm theme", "/bgm theme vol=0.6 fade=1 loop"],
+    examples: ["/bgm theme", "/bgm theme vol=0.6 fade=1 loop", "/bgm theme track=Music"],
     quickParams: ["vol", "loop"],
     params: {
         audio: { aliases: ["src"], hint: "audioAsset", type: { kind: "asset", assetType: "audio" }, positional: true, core: true },
+        // The track decides the bus, the multiplier and the fade/loop defaults; `vol`, `fade` and
+        // `loop` below override them per row. Omitted, the music built-in answers - which is the
+        // behaviour every `/bgm` line written before tracks existed already had.
+        track: audioTrackParam(),
         vol: { aliases: ["volume"], hint: "vol", type: { kind: "number", min: 0, max: 1 } },
         fade: { hint: "fade", type: { kind: "number", min: 0 } },
         loop: { hint: "loop", type: { kind: "boolean" } },
@@ -98,6 +102,10 @@ export const bgm = defineStoryCommand({
         const payload = { ...block.payload };
         if (args.audio?.kind === "asset") {
             payload.assetId = args.audio.assetId;
+        }
+        const audioTrackId = asAudioTrackId(args.track);
+        if (audioTrackId !== undefined) {
+            payload.audioTrackId = audioTrackId;
         }
         const volume = asNumber(args.vol);
         if (volume !== undefined) {
@@ -120,12 +128,16 @@ export const sound = defineStoryCommand({
     token: "sound",
     aliases: ["se"],
     category: "sound",
-    examples: ["/sound hit", "/sound hit name=impact vol=0.8"],
+    examples: ["/sound hit", "/sound hit name=impact vol=0.8", "/sound hit track=SFX fade=0.2"],
     quickParams: ["vol", "loop"],
     params: {
         audio: { aliases: ["src"], hint: "audioAsset", type: { kind: "asset", assetType: "audio" }, positional: true, core: true },
         name: { hint: "objectName", type: { kind: "text" } },
+        track: audioTrackParam(),
         vol: { aliases: ["volume"], hint: "vol", type: { kind: "number", min: 0, max: 1 } },
+        // The compiler has always fed `fade` into `Sound.play()` on this row; only the spec omitted
+        // the key, so a fade-in was reachable from the inspector and not from the line.
+        fade: { hint: "fade", type: { kind: "number", min: 0 } },
         loop: { hint: "loop", type: { kind: "boolean" } },
     },
     // A named sound is addressable later (`/stop hit`); the name derives from the file like `/image`.
@@ -143,9 +155,17 @@ export const sound = defineStoryCommand({
         if (args.audio?.kind === "asset") {
             payload.assetId = args.audio.assetId;
         }
+        const audioTrackId = asAudioTrackId(args.track);
+        if (audioTrackId !== undefined) {
+            payload.audioTrackId = audioTrackId;
+        }
         const volume = asNumber(args.vol);
         if (volume !== undefined) {
             payload.volume = volume;
+        }
+        const fadeMs = asDurationMs(args.fade);
+        if (fadeMs !== undefined) {
+            payload.fadeMs = fadeMs;
         }
         const loop = asBoolean(args.loop);
         if (loop !== undefined) {
@@ -210,9 +230,13 @@ export const pause = defineStoryCommand({
     token: "pause",
     aliases: ["pausesound"],
     category: "sound",
-    examples: ["/pause clip"],
+    examples: ["/pause clip", "/pause music fade=0.5"],
     params: {
         target: targetParam(["audio", "video", "vfx"], { fallbackKind: "audio" }),
+        // `Sound.pause` has always taken a fade and the compiler has always passed it; the spec was
+        // the only thing that did not, which made ducking music out reachable only from the
+        // inspector. A video or overlay target ignores it, exactly as it ignores `/stop`'s.
+        fade: { hint: "fade", type: { kind: "number", min: 0 } },
     },
     build: (args, ctx) => mediaControlBlock("pauseSound", { video: "pause", vfx: "pause" }, args, ctx),
 });
@@ -221,9 +245,11 @@ export const resume = defineStoryCommand({
     id: "resume",
     token: "resume",
     category: "sound",
-    examples: ["/resume clip"],
+    examples: ["/resume clip", "/resume music fade=0.5"],
     params: {
         target: targetParam(["audio", "video", "vfx"], { fallbackKind: "audio" }),
+        /** The other half of `/pause`'s fade - a duck out and back in are one gesture, two lines. */
+        fade: { hint: "fade", type: { kind: "number", min: 0 } },
     },
     build: (args, ctx) => mediaControlBlock("resumeSound", { video: "resume", vfx: "resume" }, args, ctx),
 });

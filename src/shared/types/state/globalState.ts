@@ -137,6 +137,20 @@ export interface GlobalStateType extends Record<string, any> {
      */
     "versionControl.checkpointIntervalMinutes": number;
     /**
+     * Record a checkpoint when a workspace window is closed.
+     *
+     * A DIFFERENT question from the interval above, which is why it is its own key
+     * rather than a mode of it: the interval describes how often the author wants
+     * Studio recording *while they work*, and this one is about the moment after which
+     * nothing is watching the working tree at all. An author who edits for an hour and
+     * closes without committing has that hour recorded nowhere if both are off - so
+     * this defaults on, and turning the interval off does not turn it off.
+     *
+     * Read by the main process in `App.checkpointBeforeClose`, which is the only caller
+     * of the `project-close` checkpoint reason.
+     */
+    "versionControl.checkpointOnClose": boolean;
+    /**
      * Name recorded as the author on commits and checkpoints; "" = unset.
      *
      * The interim answer to Lore's `identity` global, which is per-call rather than
@@ -145,6 +159,16 @@ export interface GlobalStateType extends Record<string, any> {
      * records.
      */
     "versionControl.authorName": string;
+    /**
+     * Email recorded alongside the author name; "" = unset.
+     *
+     * Lore's identity is ONE verbatim string, so this is not a second field it stores -
+     * `composeVcsIdentity` folds the two into the `Name <email>` form every other
+     * version-control tool writes and reads. Separate here because that is how an author
+     * thinks of it, and because a name typed with the angle brackets by hand is the kind
+     * of thing that ends up in every revision of a repository.
+     */
+    "versionControl.authorEmail": string;
 }
 
 export type GlobalStateKeys = string;
@@ -195,5 +219,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "plugins.registryUrl": "",
     "uiTemplates.registryUrl": "",
     "versionControl.checkpointIntervalMinutes": 15,
+    "versionControl.checkpointOnClose": true,
     "versionControl.authorName": "",
+    "versionControl.authorEmail": "",
 };

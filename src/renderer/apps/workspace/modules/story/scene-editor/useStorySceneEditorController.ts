@@ -65,6 +65,7 @@ import type { RichTextInputHandle } from "./RichTextInput";
 import type { EditorMode, StoryBlockTarget, StoryCaretTarget, StoryStagePlacement } from "./storySceneEditorTypes";
 import { useStorySceneClipboardHandlers } from "./useStorySceneClipboardHandlers";
 import { useSlashAtAlias } from "@/apps/workspace/hooks/useSlashAtAlias";
+import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
 import { isActionCommandLine, toCanonicalCommandLine } from "./commandTrigger";
 
 const STORY_EDITOR_HISTORY_LIMIT = 100;
@@ -211,6 +212,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * and this brings it back when one more lands.
      */
     const [puppetRevision, setPuppetRevision] = useState(0);
+    /** The project's audio tracks, so `/bgm theme track=Ambience` completes and resolves by name. */
+    const audioTracks = useProjectAudioTracks();
 
     /**
      * A freeze that lands while a row is open for editing closes the editor, discarding the draft.
@@ -369,8 +372,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             scene,
             persistentVariables: blueprintService?.listPersistentVariables() ?? [],
             puppetByCharacterId,
+            audioTracks,
         }),
-        [assetsService, blueprintService, blueprintRevision, characters, document, puppetByCharacterId, sceneId, scene],
+        [assetsService, audioTracks, blueprintService, blueprintRevision, characters, document, puppetByCharacterId, sceneId, scene],
     );
     // Each dialogue speaker's accumulated appearance (WI-3), so a dialogue row's avatar can follow the
     // most recent enter/expression. Keyed on the scene's content, not on collapse.
