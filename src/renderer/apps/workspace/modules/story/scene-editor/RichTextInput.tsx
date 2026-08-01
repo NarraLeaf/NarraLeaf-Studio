@@ -99,6 +99,16 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
      * hands to the row being entered.
      */
     onArrowOut?: (direction: "up" | "down" | "left" | "right", caretX: number | null) => void;
+    /**
+     * `Tab` / `Shift+Tab` with the caret in the field — the parent moves focus to the style toolbar
+     * ("Tab advances within a row"). `backwards` is Shift+Tab, which enters the strip from its far
+     * end, the way stepping backwards into any composite control does.
+     *
+     * Returns whether the key was taken. It has to be answerable at press time rather than assumed:
+     * a row whose toolbar has scrolled out of its pane renders no strip at all, and swallowing Tab
+     * there would leave the key doing nothing with no way to tell why.
+     */
+    onTab?: (backwards: boolean) => boolean;
     /** Backspace pressed with a collapsed caret at the start of an empty line (row demote / delete). */
     onBackspaceAtEmptyStart?: () => void;
     /**
@@ -374,6 +384,17 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             (event.shiftKey ? props.onRedoBeyondRow : props.onUndoBeyondRow)?.();
             return;
         }
+        if (event.key === "Tab" && props.onTab) {
+            // Hand the caret over BEFORE focus leaves. The toolbar gives the line back on Escape and
+            // every one of its commands applies to a selection, but a contentEditable that has lost
+            // focus has no selection left to read — `savedRange` is the only copy, and `onBlur` saves
+            // it too late for a handler that runs on this keystroke.
+            saveSelection();
+            if (props.onTab(event.shiftKey)) {
+                event.preventDefault();
+            }
+            return;
+        }
         if (event.key === "Escape") {
             event.preventDefault();
             props.onExit();
@@ -420,7 +441,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             edges.caretX,
         );
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [getCaretEdges, props.onArrowOut, props.onBackspaceAtEmptyStart, props.onExit, props.onEnter, props.onShiftEnter, props.onUndoBeyondRow, props.onRedoBeyondRow, undo, redo]);
+    }, [getCaretEdges, saveSelection, props.onArrowOut, props.onBackspaceAtEmptyStart, props.onExit, props.onEnter, props.onShiftEnter, props.onTab, props.onUndoBeyondRow, props.onRedoBeyondRow, undo, redo]);
 
     // Keep the toolbar's active state in sync as the caret / selection moves.
     useEffect(() => {
