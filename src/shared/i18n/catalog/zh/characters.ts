@@ -202,6 +202,11 @@ export const characters = {
         thumbnail: "缩略图",
         preview: "预览",
         defaultAvatar: "对话头像",
+        // 该角色语音所在的总线。只提供语音总线及其之下的总线——引擎不接受挂在别处的语音片段
+        voiceTrack: "语音总线",
+        voiceTrackMissing: "总线已不存在",
+        // 仅当语音总线下还没有任何可选项时出现，也就是选择框帮不上忙、必须先去建一条总线的那一刻
+        voiceTrackEmpty: "在「工程 → 音频」的语音下新建一条总线，才能给这个角色单独的音量",
         select: "选择",
         thumbnailAlt: "缩略图",
         color: "颜色",

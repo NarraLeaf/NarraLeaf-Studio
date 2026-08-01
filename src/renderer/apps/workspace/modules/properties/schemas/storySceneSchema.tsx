@@ -2,9 +2,9 @@ import { useMemo, useRef, useState } from "react";
 import { Image as ImageIcon, Trash2 } from "lucide-react";
 import type { StoryScene, StorySceneBgm, StorySceneUpdate } from "@shared/types/story";
 import { normalizeAudioClipRegion } from "@shared/types/audio";
-import type { AudioTrackChannel } from "@shared/types/audioTrack";
-import { resolveAudioTrack, resolveAudioTrackPlayback } from "@shared/types/audioTrack";
-import type { Translator, TranslationKey } from "@shared/i18n";
+import { resolveAudioTrack } from "@shared/types/audioTrack";
+import { audioBusStatusLine } from "@/lib/story/audioBusStatus";
+import type { Translator } from "@shared/i18n";
 import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
@@ -25,13 +25,6 @@ import type {
 
 /** Translator function, threaded into schema builders since they run outside React. */
 type TranslateFn = Translator["t"];
-
-/** The player slider the scene's music lands under - the same naming the Project → Audio rows use. */
-const SCENE_MUSIC_SLIDER_KEYS: Record<AudioTrackChannel, TranslationKey> = {
-    bgm: "project.audio.slider.bgm",
-    sound: "project.audio.slider.sound",
-    voice: "project.audio.slider.voice",
-};
 
 /**
  * What the right rail edits when a story scene tab is in front and no row is focused.
@@ -132,9 +125,8 @@ function SceneDefaultBackgroundField({ data }: CustomFieldProps<StorySceneEditor
  * once a clip is picked — an empty picker with four dead knobs under it reads as broken.
  *
  * The status line is where the two invisible things are said out loud: what the asset's markers do to
- * this scene (whole clip / loop region / intro→loop) and what the audio track does to it (which player
- * slider governs it, and the volume the engine actually receives after the track's gain). Both were
- * previously answerable only by opening two other surfaces and multiplying by hand.
+ * this scene (whole clip / loop region / intro→loop) and where the sound goes (the bus chain and the
+ * player slider that governs it). Both are otherwise answerable only by opening another surface.
  */
 function SceneBackgroundMusicField({ data }: CustomFieldProps<StorySceneEditorContext>) {
     const { t } = useTranslation();
@@ -155,7 +147,6 @@ function SceneBackgroundMusicField({ data }: CustomFieldProps<StorySceneEditorCo
     // a scene on a non-looping track whose box read "on" would be lying about what the game does.
     const loops = bgm?.loop ?? track.loop;
     const regionHint = buildRegionHint(t, region, loops);
-    const playback = resolveAudioTrackPlayback(track, { volume: bgm?.volume, fadeMs: bgm?.fadeMs, loop: bgm?.loop });
 
     const patch = (next: Partial<StorySceneBgm>): void => {
         if (!bgm) {
@@ -193,14 +184,7 @@ function SceneBackgroundMusicField({ data }: CustomFieldProps<StorySceneEditorCo
             {bgm ? (
                 <div className="mt-2 space-y-2">
                     <div className="text-2xs tabular-nums text-fg-subtle">
-                        {[
-                            regionHint,
-                            track.name,
-                            t(SCENE_MUSIC_SLIDER_KEYS[playback.channel]),
-                            // The number the engine gets, after the track's gain - the slider below
-                            // shows what was authored, and the two differ on any track but unity.
-                            String(Math.round(playback.volume * 100) / 100),
-                        ].join(" · ")}
+                        {[regionHint, audioBusStatusLine(t, tracks, track.id, "bgm")].join(" · ")}
                     </div>
                     <Select
                         fullWidth

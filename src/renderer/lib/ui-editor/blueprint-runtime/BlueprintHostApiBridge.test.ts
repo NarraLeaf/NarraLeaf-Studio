@@ -179,6 +179,8 @@ function createHostApi(options?: {
     onSetSoundVolume?: CreateBlueprintHostApiRuntimeOptions["onSetSoundVolume"];
     onSeekSound?: CreateBlueprintHostApiRuntimeOptions["onSeekSound"];
     onIsSoundPlaying?: CreateBlueprintHostApiRuntimeOptions["onIsSoundPlaying"];
+    onGetTrackVolume?: CreateBlueprintHostApiRuntimeOptions["onGetTrackVolume"];
+    onSetTrackVolume?: CreateBlueprintHostApiRuntimeOptions["onSetTrackVolume"];
     audioTracks?: CreateBlueprintHostApiRuntimeOptions["audioTracks"];
     onSubscribeGamePreferences?: CreateBlueprintHostApiRuntimeOptions["onSubscribeGamePreferences"];
 }) {
@@ -215,6 +217,8 @@ function createHostApi(options?: {
         onSetSoundVolume: options?.onSetSoundVolume,
         onSeekSound: options?.onSeekSound,
         onIsSoundPlaying: options?.onIsSoundPlaying,
+        onGetTrackVolume: options?.onGetTrackVolume,
+        onSetTrackVolume: options?.onSetTrackVolume,
         audioTracks: options?.audioTracks,
         onSubscribeGamePreferences: options?.onSubscribeGamePreferences,
         emit: () => undefined,
@@ -1545,32 +1549,37 @@ describe("createDevModeBlueprintHostApi character reads", () => {
 /**
  * The mixer seam for host-owned media elements.
  *
- * `nl.video` renders a DOM `<video>`, which is on none of the engine's gain nodes - so the product
- * of the track gain, the channel slider and the master has to be computed here and written to
- * `element.volume`. It used to be written the authored volume unchanged, which meant muting the game
- * left the clip blaring.
+ * `nl.video` renders a DOM `<video>`, which is on none of the engine's gain nodes - so the whole
+ * product has to be computed here and written to `element.volume`. It used to be written the
+ * authored volume unchanged, which meant muting the game left the clip blaring.
+ *
+ * With a bus tree that product is a **chain walk**, not one channel lookup: a clip on `bgm/quiet`
+ * is attenuated by `quiet`, then by `bgm`, then by the player's BGM slider, then by master. Reading
+ * a single channel - which is what this did when a track was a preset pinned to one of three fixed
+ * channels - would leave every bus the author invented inaudible to the element.
  */
 describe("createDevModeBlueprintHostApi element volume", () => {
     const TRACKS = [
-        { id: "music", name: "Music", channel: "bgm" as const, gain: 1, fadeInMs: 800, fadeOutMs: 800, loop: true },
-        { id: "sfx", name: "SFX", channel: "sound" as const, gain: 1, fadeInMs: 0, fadeOutMs: 0, loop: false },
-        { id: "quiet", name: "Quiet", channel: "bgm" as const, gain: 0.5, fadeInMs: 0, fadeOutMs: 0, loop: false },
+        { id: "bgm", name: "Music", parentId: null, volume: 1, loop: true },
+        { id: "sound", name: "SFX", parentId: null, volume: 1, loop: false },
+        { id: "voice", name: "Voice", parentId: null, volume: 1, loop: false },
+        { id: "quiet", name: "Quiet", parentId: "bgm", volume: 0.5, loop: false },
     ];
 
     function preferences(values: Partial<Record<string, number>>) {
         return (key: BlueprintGamePreferenceKey) => (values[key] ?? 1) as BlueprintGamePreferenceValue;
     }
 
-    it("multiplies the authored volume by the track gain, the channel slider and the master", () => {
+    it("multiplies the authored volume by every bus in the chain, its slider and the master", () => {
         const hostApi = createHostApi({
             audioTracks: TRACKS,
             onGetGamePreference: preferences({ globalVolume: 0.5, bgmVolume: 0.4, soundVolume: 1 }),
         });
 
-        // 0.8 authored * 0.5 track gain * 0.4 BGM * 0.5 master
+        // 0.8 authored * 0.5 `quiet` * 1 `bgm` * 0.4 BGM slider * 0.5 master
         expect(hostApi.sound.resolveElementVolume({ audioTrackId: "quiet", volume: 0.8 })).toBeCloseTo(0.08);
-        // A different track means a different slider governs it.
-        expect(hostApi.sound.resolveElementVolume({ audioTrackId: "sfx", volume: 1 })).toBeCloseTo(0.5);
+        // A different chain means a different slider governs it.
+        expect(hostApi.sound.resolveElementVolume({ audioTrackId: "sound", volume: 1 })).toBeCloseTo(0.5);
     });
 
     it("reaches zero when the player mutes the game", () => {
@@ -1580,10 +1589,21 @@ describe("createDevModeBlueprintHostApi element volume", () => {
         });
 
         // The whole defect in one assertion: this used to be 1.
-        expect(hostApi.sound.resolveElementVolume({ audioTrackId: "music", volume: 1 })).toBe(0);
+        expect(hostApi.sound.resolveElementVolume({ audioTrackId: "bgm", volume: 1 })).toBe(0);
     });
 
-    it("falls back to the SFX track for an unset or dangling id", () => {
+    it("governs a nested track by the seeded bus its chain runs through", () => {
+        const hostApi = createHostApi({
+            audioTracks: TRACKS,
+            onGetGamePreference: preferences({ bgmVolume: 0.5, soundVolume: 1 }),
+        });
+
+        // `quiet` names no channel of its own; it is BGM because its chain passes through `bgm`.
+        // 1 authored * 0.5 `quiet` * 0.5 BGM slider.
+        expect(hostApi.sound.resolveElementVolume({ audioTrackId: "quiet", volume: 1 })).toBeCloseTo(0.25);
+    });
+
+    it("falls back to the SFX bus for an unset or dangling id", () => {
         const hostApi = createHostApi({
             audioTracks: TRACKS,
             onGetGamePreference: preferences({ soundVolume: 0.25, bgmVolume: 1 }),
@@ -1603,7 +1623,7 @@ describe("createDevModeBlueprintHostApi element volume", () => {
             },
         });
 
-        expect(hostApi.sound.resolveElementVolume({ audioTrackId: "music", volume: 0.6 })).toBeCloseTo(0.6);
+        expect(hostApi.sound.resolveElementVolume({ audioTrackId: "bgm", volume: 0.6 })).toBeCloseTo(0.6);
     });
 
     it("hands mixer subscribers to the host and returns a no-op disposer without one", () => {
@@ -1622,4 +1642,33 @@ describe("createDevModeBlueprintHostApi element volume", () => {
 
         // A host with no preference stream (the editor preview) must not make this throw.
         expect(() => createHostApi({}).sound.subscribeMixerChanges(() => undefined)()).not.toThrow();    });
+
+    /**
+     * The per-bus volume seam, which is what `Get/Set Track Volume` runs on.
+     *
+     * Distinct from `sound.setVolume` above: that one addresses a playing clip by handle and dies
+     * with it, this one moves a fader that applies to everything under the bus and is persisted.
+     */
+    it("forwards track volume to the host and clamps the write", async () => {
+        const writes: Array<[string, number]> = [];
+        const hostApi = createHostApi({
+            onGetTrackVolume: trackId => (trackId === "alice" ? 0.3 : 1),
+            onSetTrackVolume: (trackId, volume) => void writes.push([trackId, volume]),
+        });
+
+        expect(hostApi.sound.getTrackVolume("alice")).toBeCloseTo(0.3);
+        await hostApi.sound.setTrackVolume("alice", 1.4);
+        await hostApi.sound.setTrackVolume("alice", -2);
+        await hostApi.sound.setTrackVolume("alice", Number.NaN);
+        expect(writes).toEqual([["alice", 1], ["alice", 0], ["alice", 1]]);
+    });
+
+    it("reads unity and swallows the write when the host backs no mixer", async () => {
+        // The editor preview. Unity rather than zero, so a slider bound on the canvas sits at the
+        // top instead of reading to the author as a muted bus.
+        const hostApi = createHostApi({});
+
+        expect(hostApi.sound.getTrackVolume("alice")).toBe(1);
+        await expect(hostApi.sound.setTrackVolume("alice", 0.5)).resolves.toBeUndefined();
+    });
 });

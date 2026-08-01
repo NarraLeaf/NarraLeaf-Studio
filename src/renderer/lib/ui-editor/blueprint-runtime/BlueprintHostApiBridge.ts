@@ -351,15 +351,30 @@ export type BlueprintHostApiRuntime = {
          * The volume a **host-owned** media element (the `nl.video` widget's `<video>`) must be set
          * to so it obeys the same mixer everything else does.
          *
-         * A DOM element the host created sits on none of the engine's gain nodes, so the product of
-         * the track gain, the channel slider and the master has to be computed and written to
-         * `element.volume`. Without this a muted game keeps playing video at full volume. Pair it
-         * with {@link subscribeMixerChanges} - a value read once goes stale the moment the player
-         * drags a slider.
+         * A DOM element the host created sits on none of the engine's gain nodes, so the whole
+         * product has to be computed and written to `element.volume`: the authored volume, times
+         * every bus in the track's chain, times the player's slider for whichever seeded bus that
+         * chain runs through, times master. Without this a muted game keeps playing video at full
+         * volume. Pair it with {@link subscribeMixerChanges} - a value read once goes stale the
+         * moment the player drags a slider, bus faders included.
          */
         resolveElementVolume: (input: { audioTrackId?: string | null; volume?: number | null }) => number;
         /** Fires when any preference feeding `resolveElementVolume` changes. Returns a disposer. */
         subscribeMixerChanges: (listener: () => void) => () => void;
+        /**
+         * An audio **track**'s own volume, 0..1 - one strip of the player's mixer.
+         *
+         * The player-facing counterpart of {@link setVolume}, which addresses one playing clip by
+         * handle. A track is a bus every clip beneath it is routed through, so setting one applies
+         * live to everything already playing and survives the clip that provoked it. This is what
+         * makes "turn Alice down" expressible at all: the four fixed volume preferences can only
+         * reach the three buses the engine seeds.
+         *
+         * An unknown or deleted track id reads as unity and writes nowhere, so a settings page
+         * built against a track the author later removed degrades to an inert slider.
+         */
+        getTrackVolume: (trackId: string) => number;
+        setTrackVolume: (trackId: string, volume: number) => Promise<void>;
     };
     devtools: {
         log: (level: string, message: string) => void;
@@ -368,6 +383,10 @@ export type BlueprintHostApiRuntime = {
 
 /**
  * Read the four volume preferences off whatever preference reader the host supplied.
+ *
+ * Still four, and still only four: they are aliases onto the three seeded buses plus master, which
+ * is all `Preference` can express (its value type forbids a nested map). Everything the author
+ * invented is reached through the bus mixer instead - see `sound.getTrackVolume`.
  *
  * Every read is guarded because `onGetGamePreference` is backed by `requireLiveGame`, which throws
  * when no game is running - and a video widget rendering on a title screen before the story boots
@@ -412,16 +431,17 @@ export function normalizeBlueprintSoundChannel(value: unknown): BlueprintSoundCh
 export type BlueprintSoundPlayInput = {
     assetId: string;
     /**
-     * Project audio track (`ProjectAudioTrack.id`). The track decides the mixer bus, the gain the
-     * authored volume is multiplied by, and the defaults for the three fields below. Absent resolves
-     * to the built-in SFX track, which is what an unqualified "play this clip" has always meant.
+     * Project audio track (`ProjectAudioTrack.id`), which **is** the engine bus this clip is routed
+     * into, and whose own gain is applied live by the gain graph rather than folded in here. It also
+     * supplies the loop default below. Absent resolves to the seeded SFX bus, which is what an
+     * unqualified "play this clip" has always meant.
      */
     audioTrackId?: string | null;
     /** Author override; absent means the track's own default. */
     loop?: boolean | null;
-    /** Author override, 0..1 as authored; absent means the track's gain alone. */
+    /** Author override, 0..1 as authored; absent means unity. Never pre-multiplied by a bus gain. */
     volume?: number | null;
-    /** Fade-in in milliseconds; absent means the track's `fadeInMs`. */
+    /** Fade-in in milliseconds; absent means a hard start (a fade belongs to the moment). */
     fadeInMs?: number | null;
     /**
      * The pre-track channel select, kept only so a graph or a host call written before tracks
@@ -501,6 +521,13 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onSetSoundVolume?: (handle: BlueprintSoundHandle, volume: number, fadeMs: number) => Promise<void> | void;
     onSeekSound?: (handle: BlueprintSoundHandle, timeMs: number) => Promise<void> | void;
     onIsSoundPlaying?: (handle: BlueprintSoundHandle) => boolean;
+    /**
+     * Per-bus volume, backed by the engine's mixer. Absent in an environment with no running game,
+     * where `Get Track Volume` reads unity and `Set Track Volume` is a no-op - the same degradation
+     * the rest of this family takes.
+     */
+    onGetTrackVolume?: (trackId: string) => number;
+    onSetTrackVolume?: (trackId: string, volume: number) => Promise<void> | void;
     /**
      * The project's audio tracks (from the bundle). Absent falls back to the built-ins, so a host
      * assembled from a bundle that predates tracks resolves exactly as it did before they existed.
@@ -1596,6 +1623,8 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onSetSoundVolume,
         onSeekSound,
         onIsSoundPlaying,
+        onGetTrackVolume,
+        onSetTrackVolume,
         audioTracks,
         onSubscribeGamePreferences,
         emit,
@@ -3120,15 +3149,39 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
              * blueprint event stream in noise that describes nothing an author did.
              */
             resolveElementVolume: input => {
-                const track = resolveAudioTrack(
-                    audioTracks && audioTracks.length > 0 ? audioTracks : BUILTIN_AUDIO_TRACKS,
-                    input.audioTrackId,
-                    "sound",
-                );
+                const tracks = audioTracks && audioTracks.length > 0 ? audioTracks : BUILTIN_AUDIO_TRACKS;
+                const track = resolveAudioTrack(tracks, input.audioTrackId, "sound");
                 const playback = resolveAudioTrackPlayback(track, { volume: input.volume });
-                return resolveMixedElementVolume(playback, readMixPreferences(onGetGamePreference));
+                // The whole chain, not one channel: with a bus tree a clip on `voice/alice` is
+                // attenuated by `alice`, then by `voice`, then by the player's Voice slider, then by
+                // master. Reading a single channel's preference - which is what this did when a
+                // track was a preset on one of three fixed channels - would leave every bus the
+                // author invented inaudible to the element.
+                return resolveMixedElementVolume(playback, tracks, readMixPreferences(onGetGamePreference));
             },
             subscribeMixerChanges: listener => onSubscribeGamePreferences?.(listener) ?? (() => undefined),
+            getTrackVolume: (trackId: string) => {
+                const cap = "sound.getTrackVolume";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return onGetTrackVolume?.(String(trackId ?? "").trim()) ?? 1;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setTrackVolume: async (trackId: string, volume: number) => {
+                const cap = "sound.setTrackVolume";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // Clamped rather than rejected, exactly as `setVolume` above: a slider bound to
+                    // the wrong range asking for 1.2 means "as loud as it goes", and the engine's
+                    // own bus gain clamps to 0..1 anyway.
+                    const safeVolume = Number.isFinite(volume) ? Math.min(1, Math.max(0, volume)) : 1;
+                    await onSetTrackVolume?.(String(trackId ?? "").trim(), safeVolume);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
         },
         devtools: {
             log: (level: string, message: string) => {

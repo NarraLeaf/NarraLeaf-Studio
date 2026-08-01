@@ -81,6 +81,15 @@ export type DevModeCharacterSummary = {
     /** Dialog avatar used when no differential resolves one (speaking off-stage, or nothing baked). */
     defaultAvatarAssetId?: string | null;
     /**
+     * The audio bus this character's voice lines play on - a project audio track id, absent when the
+     * character sits on the seeded `voice` bus like every character always did.
+     *
+     * Carried unresolved, exactly as authored: which bus a dangling id degrades to is
+     * `resolveAudioTrack`'s answer and depends on the track list the compile is running against, so
+     * resolving it here would freeze one answer into the bundle.
+     */
+    voiceTrackId?: string;
+    /**
      * The author's accent colour for this character, verbatim from the profile (a hex string, e.g.
      * `#40A8C4`) and absent when none is set. Two very different surfaces read it, so it is carried
      * unfiltered and each side decides for itself:

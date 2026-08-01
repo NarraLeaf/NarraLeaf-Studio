@@ -2968,18 +2968,21 @@ describe("story audio", () => {
     });
 
     /**
-     * Audio tracks: the bus, the multiplier and the fade/loop defaults a row inherits.
+     * Audio buses: which bus a row's clip is routed to, and what the clip carries with it.
      *
-     * The failure these guard is the one the whole track model exists to end - a per-row `volume`
-     * multiplying with something invisible. Here the multiplier is a project value, so "0.8 on a 0.6
-     * track is 0.48" has to be a fact the compiler can be held to, not a convention.
+     * The failure these guard is the one the bus tree exists to end - a track that was an
+     * authoring-time multiplier folded into the clip, so the *player* could never move it. A track
+     * is a bus now: its id travels on `Sound.config.type`, the clip carries the author's own volume
+     * and nothing else, and every gain between the clip and the master output is applied live by the
+     * engine's gain graph. So "0.8 stays 0.8" is the assertion, and the 0.6 the bus holds is
+     * deliberately nowhere in the compiled output.
      */
-    describe("audio tracks", () => {
-        const AMBIENCE = {
-            id: "t_amb", name: "Ambience", channel: "bgm" as const,
-            gain: 0.6, fadeInMs: 1200, fadeOutMs: 400, loop: true,
-        };
-        const TRACKS = [...BUILTIN_AUDIO_TRACKS, AMBIENCE];
+    describe("audio buses", () => {
+        const AMBIENCE = { id: "t_amb", name: "Ambience", parentId: "bgm", volume: 0.6, loop: true };
+        // A root of the author's own, under none of the three seeded buses - the case that decides
+        // which factory (and therefore which engine slot check) a bus with no seeded root answers to.
+        const FIELD = { id: "t_field", name: "Field", parentId: null, volume: 0.8, loop: false };
+        const TRACKS = [...BUILTIN_AUDIO_TRACKS, AMBIENCE, FIELD];
 
         function soundRow(id: string, name: string, assetId: string, extra: Record<string, unknown> = {}): StoryBlock {
             return {
@@ -2991,7 +2994,7 @@ describe("story audio", () => {
             };
         }
 
-        it("a track moves an ordinary sound row onto another bus and scales its volume by the gain", async () => {
+        it("a track routes an ordinary sound row to its own bus and leaves the volume alone", async () => {
             const compiled = await compileStudioStoryToNlr({
                 document: baseDocument({
                     rain: soundRow("rain", "rain", "asset-rain", { audioTrackId: "t_amb", volume: 0.8 }),
@@ -3003,10 +3006,12 @@ describe("story audio", () => {
 
             expect(compiled.diagnostics).toEqual([]);
             const sound = compiled.sceneElements?.["scene-1"].sounds.get("rain") as any;
-            // The bus decides which player slider governs it - the reason a track is worth naming.
-            expect(sound.config.type).toBe("bgm");
-            // 0.8 × 0.6. Clamped on the PRODUCT, so a quiet source can be lifted past unity by gain.
-            expect(sound.state.volume).toBeCloseTo(0.48, 5);
+            // The track's id IS the bus id - not the seeded bus it hangs under. Assert the id, not
+            // "bgm": collapsing to the root is what would take the player's Ambience slider away.
+            expect(sound.config.type).toBe("t_amb");
+            // 0.8, not 0.48. The bus's own 0.6 is applied live by the gain graph, so pre-multiplying
+            // it here would apply it twice AND freeze it where no slider can reach.
+            expect(sound.state.volume).toBeCloseTo(0.8, 5);
             // Loop comes from the track when the row does not say - Ambience loops, SFX does not.
             expect(sound.config.loop).toBe(true);
         });
@@ -3045,6 +3050,23 @@ describe("story audio", () => {
             expect((compiled.sceneElements?.["scene-1"].sounds.get("impact") as any).config.type).toBe("sound");
         });
 
+        it("a bus under a root of the author's own still carries its own id", async () => {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument({
+                    wind: soundRow("wind", "wind", "asset-wind", { audioTrackId: "t_field" }),
+                }, ["wind"]),
+                sceneId: "scene-1",
+                audioTracks: TRACKS,
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            // `t_field` hangs off master directly, so its chain passes through none of the three
+            // seeded buses. The clip is still routed to it - only the *factory* falls back, which
+            // decides nothing but which engine slot the resulting Sound may occupy.
+            expect(compiled.diagnostics).toEqual([]);
+            expect((compiled.sceneElements?.["scene-1"].sounds.get("wind") as any).config.type).toBe("t_field");
+        });
+
         it("reports a second row that names a different track for a handle that already has one", async () => {
             const compiled = await compileStudioStoryToNlr({
                 document: baseDocument({
@@ -3056,10 +3078,10 @@ describe("story audio", () => {
                 resolveAssetUrl: async assetId => `nlr://${assetId}`,
             });
 
-            // The handle is created once and holds the first row's bus and gain, so the second row's
-            // track cannot be honoured. Two intents, one outcome - said out loud rather than dropped.
+            // The handle is created once and holds the first row's bus, so the second row's track
+            // cannot be honoured. Two intents, one outcome - said out loud rather than dropped.
             expect(compiled.diagnostics.some(entry => /already playing on the "Ambience" track/.test(entry.message))).toBe(true);
-            expect((compiled.sceneElements?.["scene-1"].sounds.get("rain") as any).config.type).toBe("bgm");
+            expect((compiled.sceneElements?.["scene-1"].sounds.get("rain") as any).config.type).toBe("t_amb");
         });
 
         it("a control row inherits the creating row's track rather than the fallback", async () => {
@@ -3103,7 +3125,7 @@ describe("story audio", () => {
             expect(sound.state.volume).toBe(1);
         });
 
-        it("the scene's own music takes its bus, gain, loop and fade from its track", async () => {
+        it("the scene's own music takes its bus and loop from its track, and its fade from itself", async () => {
             const document = baseDocument({ say: narrationBlock("say", "text-say", "Quiet.") }, ["say"]);
             document.scenes["scene-1"].bgm = { assetId: "asset-theme", audioTrackId: "t_amb", volume: 0.5 };
 
@@ -3115,10 +3137,142 @@ describe("story audio", () => {
             });
 
             const music = (compiled.scene as any).state.backgroundMusic;
-            expect(music.config.type).toBe("bgm");
-            expect(music.state.volume).toBeCloseTo(0.3, 5);
-            // Entering a scene is a play, so an unstated fade is the track's fade-IN.
-            expect((compiled.scene as any).config.backgroundMusicFade).toBe(1200);
+            expect(music.config.type).toBe("t_amb");
+            expect(music.state.volume).toBeCloseTo(0.5, 5);
+            expect(music.config.loop).toBe(true);
+            // A fade belongs to the moment. The scene names none, so the music cuts in - which is
+            // what it did before a track could carry one to fill the field in unasked.
+            expect((compiled.scene as any).config.backgroundMusicFade).toBe(0);
+        });
+
+        /**
+         * Per-character voice: the case the bus tree exists for.
+         *
+         * A player turning Alice down has to reach a bus that only Alice's lines are on, so what is
+         * asserted here is the routing - `type`, on both voice paths the compiler has.
+         */
+        describe("per-character voice", () => {
+            const ALICE_BUS = { id: "t_alice", name: "Alice", parentId: "voice", volume: 1, loop: false };
+            const VOICE_TRACKS = [...BUILTIN_AUDIO_TRACKS, ALICE_BUS];
+
+            function speaker(voiceTrackId?: string): DevModeCharacterSummary {
+                return {
+                    id: "char-alice",
+                    name: "Alice",
+                    appearance: { kind: "preset", poses: [], defaultPoseId: null },
+                    ...(voiceTrackId ? { voiceTrackId } : {}),
+                };
+            }
+
+            function voiceLine(voiceAssetId?: string): Record<string, StoryBlock> {
+                return {
+                    say: {
+                        id: "say",
+                        kind: "nodeAction",
+                        parentId: null,
+                        childrenIds: [],
+                        payload: {
+                            action: "dialogue",
+                            characterId: "char-alice",
+                            text: { textId: "text-say", value: "Hello.", role: "dialogue" },
+                            ...(voiceAssetId ? { voiceAssetId } : {}),
+                        },
+                    } as StoryBlock,
+                };
+            }
+
+            const VOICE_BUNDLE = {
+                voicedLocales: [{ code: "ja", displayName: "日本語" }],
+                tables: { ja: { "text-say": "asset-ja-say" } },
+                getVoiceLocale: () => "ja",
+            };
+
+            /** The compiled say's inline voice `Sound`; its `config.type` is the bus it was routed to. */
+            function inlineVoice(compiled: Awaited<ReturnType<typeof compileStudioStoryToNlr>>): any {
+                const binding = compiled.actionIdBindings.find(entry => entry.blockId === "say");
+                const content = (binding!.action as any).contentNode?.getContent?.();
+                const sentence = Array.isArray(content) ? content.find((item: any) => item?.text) : content;
+                return sentence?.config?.voice;
+            }
+
+            it("routes an inline per-line take to the speaker's own bus", async () => {
+                const compiled = await compileStudioStoryToNlr({
+                    document: baseDocument(voiceLine("asset-voice"), ["say"]),
+                    sceneId: "scene-1",
+                    characters: [speaker("t_alice")],
+                    audioTracks: VOICE_TRACKS,
+                    resolveAssetUrl: async assetId => `nlr://${assetId}`,
+                });
+
+                expect(inlineVoice(compiled)?.config?.type).toBe("t_alice");
+            });
+
+            it("routes the voice module's id-keyed take to the same bus", async () => {
+                const compiled = await compileStudioStoryToNlr({
+                    document: baseDocument(voiceLine(), ["say"]),
+                    sceneId: "scene-1",
+                    characters: [speaker("t_alice")],
+                    audioTracks: VOICE_TRACKS,
+                    voice: VOICE_BUNDLE,
+                    resolveAssetUrl: async assetId => `nlr://${assetId}`,
+                });
+
+                // The voice module is the pipeline a voiced game actually ships, so routing that
+                // only reached the inline fallback above would be a feature nobody could use.
+                const take = (compiled.scenes["scene-1"] as any).config?.voices?.["text-say"];
+                expect(take?.config?.type).toBe("t_alice");
+            });
+
+            it("an unset character stays on `voice`, and the voice map stays a bare URL", async () => {
+                const compiled = await compileStudioStoryToNlr({
+                    document: baseDocument(voiceLine("asset-voice"), ["say"]),
+                    sceneId: "scene-1",
+                    characters: [speaker()],
+                    audioTracks: VOICE_TRACKS,
+                    voice: VOICE_BUNDLE,
+                    resolveAssetUrl: async assetId => `nlr://${assetId}`,
+                });
+
+                expect(inlineVoice(compiled)?.config?.type).toBe("voice");
+                // A string, byte-identical to the table this compiler produced before buses existed.
+                expect((compiled.scenes["scene-1"] as any).config?.voices?.["text-say"]).toBe("nlr://asset-ja-say");
+            });
+
+            it("a character pointed at a deleted bus falls back to `voice` rather than going silent", async () => {
+                const compiled = await compileStudioStoryToNlr({
+                    document: baseDocument(voiceLine("asset-voice"), ["say"]),
+                    sceneId: "scene-1",
+                    characters: [speaker("t_gone")],
+                    audioTracks: VOICE_TRACKS,
+                    resolveAssetUrl: async assetId => `nlr://${assetId}`,
+                });
+
+                expect(compiled.diagnostics).toEqual([]);
+                expect(inlineVoice(compiled)?.config?.type).toBe("voice");
+            });
+
+            it("refuses a bus that is not beneath `voice`, rather than failing the whole compile", async () => {
+                // Reachable by re-parenting a bus in Project → Audio after a character was pointed at
+                // it; the character editor offers nothing else. It matters because the engine THROWS
+                // on a voice clip outside the voice subtree, and it throws while constructing the
+                // Scene - so honouring the stale id would take the project down, not one line.
+                const strayed = [
+                    ...BUILTIN_AUDIO_TRACKS,
+                    { id: "t_alice", name: "Alice", parentId: "bgm", volume: 1, loop: false },
+                ];
+                const compiled = await compileStudioStoryToNlr({
+                    document: baseDocument(voiceLine("asset-voice"), ["say"]),
+                    sceneId: "scene-1",
+                    characters: [speaker("t_alice")],
+                    audioTracks: strayed,
+                    voice: VOICE_BUNDLE,
+                    resolveAssetUrl: async assetId => `nlr://${assetId}`,
+                });
+
+                expect(compiled.diagnostics).toEqual([]);
+                expect(inlineVoice(compiled)?.config?.type).toBe("voice");
+                expect((compiled.scenes["scene-1"] as any).config?.voices?.["text-say"]).toBe("nlr://asset-ja-say");
+            });
         });
     });
 

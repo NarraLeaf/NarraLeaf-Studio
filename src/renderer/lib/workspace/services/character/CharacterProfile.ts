@@ -169,6 +169,24 @@ export class CharacterProfile {
         this.notifyChange();
     }
 
+    /**
+     * The bus this character's voice lines play on. `null` is "the seeded `voice` bus", which is
+     * what every character was on before this existed - so an unset character and a character
+     * pointed at `voice` are the same playback, and the model keeps them the same value.
+     */
+    public getVoiceTrackId(): string | null {
+        return this.profile.voiceTrackId ?? null;
+    }
+
+    public setVoiceTrackId(trackId: string | null): void {
+        const next = trackId?.trim() || null;
+        if ((this.profile.voiceTrackId ?? null) === next) {
+            return;
+        }
+        this.profile.voiceTrackId = next;
+        this.notifyChange();
+    }
+
     public getNicknames(): string[] {
         return this.profile.nicknames;
     }
@@ -200,6 +218,7 @@ export class CharacterProfile {
             color: this.profile.color,
             portrait: this.profile.portrait,
             defaultAvatarAssetId: this.profile.defaultAvatarAssetId,
+            voiceTrackId: this.profile.voiceTrackId,
             appearance: this.appearance.toJSON(),
         };
     }

@@ -12,7 +12,7 @@ export const project = {
         },
         audio: {
             title: "音频",
-            description: "音频轨道，以及各自跟随的玩家音量",
+            description: "混音台：总线之间如何汇入，各自多大声",
         },
         assets: {
             title: "图标",
@@ -84,34 +84,37 @@ export const project = {
     },
     // 音频子页。刻意不放标签：控件通过 aria 名称告知辅助技术，行上可见的一切都是数值。
     audio: {
-        add: "轨道",
+        add: "新建轨道",
         newTrackName: "新建轨道",
-        nameAria: "轨道名称",
-        gainAria: "增益",
-        fadeInAria: "默认淡入，毫秒",
-        fadeOutAria: "默认淡出，毫秒",
-        loopAria: "默认循环",
+        nameTitle: "名称",
+        nameDescription: "这条总线在 Studio 里的显示名。引用按 id 保存，改名不会影响任何指向它的地方",
+        parentTitle: "汇入",
+        parentDescription: "这条总线汇入的上级。从这里到主输出之间的每一条总线，音量都会逐级相乘",
+        parentMaster: "主输出",
+        volumeTitle: "音量",
+        volumeDescription: "这条总线自身的电平，实时作用于其上及其下播放的一切。总线只能衰减，不能放大",
+        volumeUnit: "%",
+        loopTitle: "默认循环",
+        loopDescription: "在这条轨道上播放的片段默认循环，除非播放它的动作另有指定",
         duplicate: "复制",
         delete: "删除",
         deleteConfirm: "删除「{name}」？",
-        // 诚实地说明后果：指向这条轨道的地方不会被改写，从此按其总线的内置轨道解析。
+        // 诚实地说明后果：指向这条轨道的地方不会被改写，从此各自按自身形态对应的内置总线解析——
+        // 具体落到哪一条取决于播放的是什么，在这里点名某一条只会是猜测。
         deleteDetail: {
-            other: "{count} 处引用将回落到 {track}",
+            other: "{count} 处引用将各自回落到默认总线",
         },
-        referencesAria: {
-            other: "被引用 {count} 次",
+        // 子总线会被上提而不是一并删除，并且明确告诉作者它们落到哪里。
+        deleteChildren: {
+            other: "其下的 {count} 条轨道将移到 {parent}",
         },
-        // 引擎的混音总线，够短，能与同一行的另外两个控件共存。
-        channel: {
-            bgm: "BGM",
-            sound: "音效",
-            voice: "语音",
-        },
-        // 玩家自己的音量滑块——状态行点名的就是它，因为这正是这个界面存在的理由。
+        // 玩家自己的音量滑块，与三条内置总线一一对应。
         slider: {
             bgm: "BGM 音量",
             sound: "音效音量",
             voice: "语音音量",
+            // 不经由三条内置总线、直接挂在主输出下的总线没有专属滑杆，玩家只能用全局音量控制它
+            global: "全局音量",
         },
     },
     settings: {

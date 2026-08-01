@@ -1,123 +1,149 @@
 /**
- * Audio tracks - the one project-level noun every audio-producing surface points at.
+ * Audio tracks - the project's mixer, as a tree of buses.
  *
- * Before this existed, "which mixer bus does this clip land on" was answered three different ways
- * that never met: the story compiler hard-coded it per operation, a blueprint `Play Sound` node had
- * its own `soundChannel` select reachable nowhere else, and a per-action `volume` silently
- * multiplied with the player's preference sliders with nothing in the UI saying so.
+ * A track **is** a bus. It has a parent (another track, or the master output when `parentId` is
+ * null) and its own live gain, and the engine builds one gain node per track at boot with each
+ * child's gain connected to its parent's. So the effective level of a clip is a *graph*, not a
+ * formula: the clip's own volume times every bus between it and the destination.
  *
- * A track collapses all of that into a row an author can see and edit: a name, the bus it lands on
- * (which is exactly the player-facing volume slider that governs it), the multiplier that used to be
- * invisible, and the fade/loop defaults a play on this track inherits.
+ * That is the whole difference from the first round, where a track was an authoring-time preset -
+ * a name, one of the engine's three fixed channels, and a multiplier folded into the clip at
+ * compile time. The preset could not be adjusted by the player and could not express the case that
+ * motivated the feature at all: **per-character voice volume**, i.e. `voice/alice -> voice ->
+ * master`, which is two buses and one player slider that did not previously exist.
  *
- * **What a track is NOT**: a runtime-adjustable bus. The engine has three gain buses and one master,
- * and those stay the player's knobs. A track is an *authoring-time mix preset* that resolves to
- * (bus, multiplier, defaults) at compile/play time - see {@link resolveAudioTrackPlayback}. Nothing
- * here needs an engine change, and adding "Ambience" costs one row instead of a convention every
- * author has to remember.
+ * Two things a track deliberately does NOT carry:
+ *
+ * - **A channel.** There is nothing left to point at; the track is the bus, and the three seeded
+ *   tracks carry the ids the engine's three channels have always had.
+ * - **Fades.** A fade is a property of the moment, not of a category - the same music fades in over
+ *   3s at a chapter open, cuts hard on a jump-scare, and fades out over 8s at an ending. Every
+ *   surface that plays or stops audio already has its own explicit fade field, so a fade on the
+ *   track was pure default-filler that invented a default which had never existed. Absent fade
+ *   means 0, exactly as it did before that field was added.
  *
  * Comments in English per project convention.
  */
 
-/**
- * The engine's mixer buses, spelled the way the engine spells them (`SoundType`).
- *
- * These are also the player's preference sliders: `bgm` follows BGM Volume, `sound` follows Sound
- * Volume, `voice` follows Voice Volume, and all three follow the master. That one-to-one mapping is
- * the reason a track's channel is worth showing on its row.
- */
-export const AUDIO_TRACK_CHANNELS = ["bgm", "voice", "sound"] as const;
-
-export type AudioTrackChannel = (typeof AUDIO_TRACK_CHANNELS)[number];
-
 /** Persisted document version for `editor/audio-tracks.json`. Independent of every other document. */
-export const AUDIO_TRACK_SCHEMA_VERSION = 1 as const;
+export const AUDIO_TRACK_SCHEMA_VERSION = 2 as const;
 
 export type AudioTrackSchemaVersion = typeof AUDIO_TRACK_SCHEMA_VERSION;
 
-/**
- * The multiplier ceiling. Two rather than one because the point of exposing the multiplier is to let
- * an author fix a quiet source, which needs headroom above unity; the *result* is still clamped to
- * 0..1 at resolve time, since that is all a gain node accepts.
- */
-export const AUDIO_TRACK_GAIN_MIN = 0;
-export const AUDIO_TRACK_GAIN_MAX = 2;
-
-export interface ProjectAudioTrack {
-    /** Stable; referenced by story rows, scenes, blueprint nodes and widgets. */
-    id: string;
-    /** Author-facing. Renameable even for the three built-ins - the id is what references hold. */
-    name: string;
-    /** Engine mixer bus == which player slider governs it. Fixed for the built-ins; see below. */
-    channel: AudioTrackChannel;
-    /** 0..{@link AUDIO_TRACK_GAIN_MAX}. The multiplier, made explicit and editable. */
-    gain: number;
-    /** Default fade for plays on this track, in milliseconds. */
-    fadeInMs: number;
-    /** Default fade for stops on this track, in milliseconds. */
-    fadeOutMs: number;
-    /** Default loop policy for plays on this track. */
-    loop: boolean;
-    /** Set on the three seeded tracks. Derived from {@link isBuiltinAudioTrackId}, never authored. */
-    builtin?: boolean;
-}
-
-export const AUDIO_TRACK_ID_MUSIC = "music";
-export const AUDIO_TRACK_ID_SFX = "sfx";
+export const AUDIO_TRACK_ID_BGM = "bgm";
+export const AUDIO_TRACK_ID_SOUND = "sound";
 export const AUDIO_TRACK_ID_VOICE = "voice";
 
 /**
- * The three tracks every project has, seeded on first read.
+ * The ids of the three seeded, top-level buses.
  *
- * One per bus, so that "no track chosen" always has somewhere honest to land, and so that a project
- * that never opens the Audio surface behaves exactly the way Studio behaved before tracks existed:
- * BGM fades over 800ms and loops, sound effects and voice fire dry and once.
+ * They are spelled the way the engine spells its channels (`SoundType`) because they *are* those
+ * channels: existing content, existing saves and the player's four volume preferences all name
+ * `bgm` / `sound` / `voice`, so seeding under any other id would strand every one of them.
+ *
+ * A caller passes one of these as its `fallbackChannel` when it knows the *shape* of what it is
+ * playing but not which track - a `/bgm` row is music whether or not the track it names still
+ * exists.
+ */
+export const AUDIO_TRACK_CHANNELS = [AUDIO_TRACK_ID_BGM, AUDIO_TRACK_ID_SOUND, AUDIO_TRACK_ID_VOICE] as const;
+
+export type AudioTrackChannel = (typeof AUDIO_TRACK_CHANNELS)[number];
+
+/**
+ * A bus attenuates; it never boosts.
+ *
+ * `Channel.setVolume` in `@narraleaf/sound` clamps to 0..1, so a stored 1.5 would be silently
+ * truncated the moment it reached the runtime. Offering a range the runtime cannot honour is how an
+ * author ends up tuning a number that does nothing, so the model clamps where the runtime does.
+ */
+export const AUDIO_TRACK_VOLUME_MIN = 0;
+export const AUDIO_TRACK_VOLUME_MAX = 1;
+
+/**
+ * How far a track may sit below master.
+ *
+ * Not a musical limit - a gain node costs nothing - but a guard on the document: parent chains are
+ * walked on every resolve, and a hand-edited or merge-mangled file must not be able to turn that
+ * walk into an unbounded one. Eight is well past any mixer an author would build by hand
+ * (`voice/party/alice/whisper` is four) and shallow enough that the walk is free.
+ */
+export const AUDIO_TRACK_MAX_DEPTH = 8;
+
+export interface ProjectAudioTrack {
+    /** Stable; referenced by story rows, scenes, blueprint nodes and widgets, and the engine bus id. */
+    id: string;
+    /** Author-facing. Renameable even for the seeded three - the id is what references hold. */
+    name: string;
+    /** The bus this one feeds into. `null` means it hangs directly off the master output. */
+    parentId: string | null;
+    /** 0..1. This bus's own gain - live, multiplied with every bus above it, never folded into clips. */
+    volume: number;
+    /** Default loop policy for clips played on this track. */
+    loop: boolean;
+    /** Set on the three seeded tracks. Derived from {@link isBuiltinAudioTrackId}, never authored. */
+    builtin?: true;
+}
+
+/**
+ * The three tracks every project has, seeded on first read and re-seeded if a document loses them.
+ *
+ * They are otherwise ordinary tracks - renameable, re-parentable, adjustable - and the only thing
+ * that makes them special is that they cannot be deleted, because they are where an unresolvable
+ * reference lands and what the player's four existing volume preferences alias onto.
+ *
+ * The loop defaults reproduce Studio's behaviour before tracks existed: music loops, sound effects
+ * and voice fire once.
  */
 export const BUILTIN_AUDIO_TRACKS: readonly ProjectAudioTrack[] = Object.freeze([
     Object.freeze({
-        id: AUDIO_TRACK_ID_MUSIC,
+        id: AUDIO_TRACK_ID_BGM,
         name: "Music",
-        channel: "bgm",
-        gain: 1,
-        fadeInMs: 800,
-        fadeOutMs: 800,
+        parentId: null,
+        volume: 1,
         loop: true,
-        builtin: true,
+        builtin: true as const,
     }),
     Object.freeze({
-        id: AUDIO_TRACK_ID_SFX,
+        id: AUDIO_TRACK_ID_SOUND,
         name: "SFX",
-        channel: "sound",
-        gain: 1,
-        fadeInMs: 0,
-        fadeOutMs: 0,
+        parentId: null,
+        volume: 1,
         loop: false,
-        builtin: true,
+        builtin: true as const,
     }),
     Object.freeze({
         id: AUDIO_TRACK_ID_VOICE,
         name: "Voice",
-        channel: "voice",
-        gain: 1,
-        fadeInMs: 0,
-        fadeOutMs: 0,
+        parentId: null,
+        volume: 1,
         loop: false,
-        builtin: true,
+        builtin: true as const,
     }),
 ]) as readonly ProjectAudioTrack[];
 
 /**
- * Which built-in a channel falls back to.
- *
- * Read by {@link resolveAudioTrack} when a reference names a track that has been deleted or was
- * never set. The caller supplies the channel because it knows the *shape* of the thing it is
- * playing (a `/bgm` row is music whether or not its track still exists), which the dangling id
- * cannot tell it.
+ * Which seeded bus a reference of a given shape falls back to. Identity, now that the seeded ids
+ * *are* the channel names - kept as a map because the callers read it as "the default track for
+ * this kind of play", which is a fact about the model rather than about string equality.
  */
 export const DEFAULT_AUDIO_TRACK_ID: Readonly<Record<AudioTrackChannel, string>> = Object.freeze({
-    bgm: AUDIO_TRACK_ID_MUSIC,
-    sound: AUDIO_TRACK_ID_SFX,
+    bgm: AUDIO_TRACK_ID_BGM,
+    sound: AUDIO_TRACK_ID_SOUND,
     voice: AUDIO_TRACK_ID_VOICE,
+});
+
+/**
+ * v1 seeded the three tracks under ids of their own (`music`, `sfx`, `voice`) rather than under the
+ * engine's channel names. The document migration renames them, but the *references* stored in
+ * stories, graphs and widgets are not rewritten - they are spread across documents this module
+ * cannot see, and rewriting them would mean touching every one of them on load.
+ *
+ * So resolution knows the old spellings. A live track always wins: an author who creates a track
+ * genuinely called `music` gets their own track, not the alias.
+ */
+export const LEGACY_AUDIO_TRACK_ID_ALIASES: Readonly<Record<string, string>> = Object.freeze({
+    music: AUDIO_TRACK_ID_BGM,
+    sfx: AUDIO_TRACK_ID_SOUND,
 });
 
 /** The persisted document. A plain array because author ordering is meaningful and a map loses it. */
@@ -133,9 +159,9 @@ export type ProjectAudioTrackDocument = {
 /**
  * The field names a stored reference to a track uses.
  *
- * Declared here so the story rows, the blueprint node params and the widget props that will hold one
- * agree on a spelling, and so the "how many things use this track" count on the Audio surface has a
- * single place to learn about a new holder.
+ * Declared here so the story rows, the blueprint node params and the widget props that carry a track
+ * id agree on a spelling, and so the "how many things use this track" count has a single place to
+ * learn about a new holder.
  */
 export const AUDIO_TRACK_REFERENCE_FIELDS = ["audioTrackId", "trackId"] as const;
 
@@ -150,7 +176,7 @@ export function builtinAudioTrack(id: string): ProjectAudioTrack | undefined {
 export function normalizeAudioTrackChannel(value: unknown): AudioTrackChannel {
     return AUDIO_TRACK_CHANNELS.includes(value as AudioTrackChannel)
         ? value as AudioTrackChannel
-        : "sound";
+        : AUDIO_TRACK_ID_SOUND;
 }
 
 function finiteOr(value: unknown, fallback: number): number {
@@ -165,14 +191,18 @@ export function clamp01(value: number): number {
     return clamp(value, 0, 1);
 }
 
+/** 0..1, clamped where the runtime clamps. */
+export function normalizeAudioTrackVolume(value: unknown, fallback = 1): number {
+    return clamp(finiteOr(value, fallback), AUDIO_TRACK_VOLUME_MIN, AUDIO_TRACK_VOLUME_MAX);
+}
+
 /**
  * One track, from whatever was on disk. `null` when there is no id to hold references by - an entry
  * nothing can point at is not a track, and keeping it would put an unaddressable row on the surface.
  *
- * The built-in arm is what makes the three seeded tracks survive hand-editing: their channel is
- * forced back to the seed, because `DEFAULT_AUDIO_TRACK_ID` promises that `music` is where a bgm
- * play lands, and a `music` re-pointed at the voice bus would quietly break every `/bgm` row whose
- * own track had been deleted. Name, gain, fades and loop stay the author's.
+ * Structural only: the parent is trimmed to a string or null here, but whether it *exists* and
+ * whether it makes a cycle are questions about the whole list, answered by
+ * {@link normalizeProjectAudioTracks}.
  */
 export function normalizeProjectAudioTrack(raw: unknown): ProjectAudioTrack | null {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
@@ -187,33 +217,38 @@ export function normalizeProjectAudioTrack(raw: unknown): ProjectAudioTrack | nu
     const name = typeof record.name === "string" && record.name.trim()
         ? record.name.trim()
         : builtin?.name ?? id;
+    const parentRaw = typeof record.parentId === "string" ? record.parentId.trim() : "";
 
     return {
         id,
         name,
-        channel: builtin ? builtin.channel : normalizeAudioTrackChannel(record.channel),
-        gain: clamp(finiteOr(record.gain, builtin?.gain ?? 1), AUDIO_TRACK_GAIN_MIN, AUDIO_TRACK_GAIN_MAX),
-        fadeInMs: Math.max(0, finiteOr(record.fadeInMs, builtin?.fadeInMs ?? 0)),
-        fadeOutMs: Math.max(0, finiteOr(record.fadeOutMs, builtin?.fadeOutMs ?? 0)),
+        parentId: parentRaw && parentRaw !== id ? parentRaw : null,
+        volume: normalizeAudioTrackVolume(record.volume, builtin?.volume ?? 1),
         loop: typeof record.loop === "boolean" ? record.loop : builtin?.loop ?? false,
         // Derived from the id and re-derived on every load, so a hand-written `builtin: true` on a
         // custom track cannot make it undeletable and a stripped one cannot make Music deletable.
-        ...(builtin ? { builtin: true } : {}),
+        ...(builtin ? { builtin: true as const } : {}),
     };
 }
 
 /**
- * The track list as the rest of Studio may assume it: the three built-ins first and in seed order,
- * then everything the author added, in the order they arranged it.
+ * The track list as the rest of Studio may assume it: every id unique, every `parentId` naming a
+ * track that is really there, no cycles, nothing deeper than {@link AUDIO_TRACK_MAX_DEPTH}, and the
+ * three seeded tracks present.
  *
- * The built-ins lead rather than sort by name because they are the fallbacks - the row an author
- * looks for when they want to know what an untracked sound does is the first row. Their *stored*
- * form wins over the seed when there is one, which is how a rename or a re-tuned fade survives.
+ * **A bad tree degrades, it never throws.** A cycle - self, mutual, or a long ring - is broken by
+ * re-parenting the offending track to the root, and an over-deep track is hoisted the same way. The
+ * alternative is a project that cannot be opened because two rows of a JSON file point at each
+ * other, which locks an author out of their own work over something they can fix in ten seconds
+ * once they can see it.
+ *
+ * Order is the author's, except that a missing seeded track is prepended: the array order is sibling
+ * order on the surface, and the tree itself is rebuilt from `parentId` rather than from position.
  */
 export function normalizeProjectAudioTracks(raw: unknown): ProjectAudioTrack[] {
     const source = Array.isArray(raw) ? raw : [];
     const byId = new Map<string, ProjectAudioTrack>();
-    const customOrder: string[] = [];
+    const order: string[] = [];
 
     for (const entry of source) {
         const track = normalizeProjectAudioTrack(entry);
@@ -223,13 +258,71 @@ export function normalizeProjectAudioTracks(raw: unknown): ProjectAudioTrack[] {
             continue;
         }
         byId.set(track.id, track);
-        if (!track.builtin) {
-            customOrder.push(track.id);
+        order.push(track.id);
+    }
+
+    // Missing seeds go in front, in seed order, so a document that lost one comes back looking like
+    // a fresh project rather than like a project with a stray track appended.
+    const missing = BUILTIN_AUDIO_TRACKS.filter(seed => !byId.has(seed.id));
+    for (const seed of missing) {
+        byId.set(seed.id, { ...seed });
+    }
+    const ids = [...missing.map(seed => seed.id), ...order];
+
+    // Unknown parent -> root. A reference to a track that was deleted (or never existed, in a
+    // hand-written file) must not leave the track unreachable from master.
+    for (const id of ids) {
+        const track = byId.get(id)!;
+        if (track.parentId !== null && !byId.has(track.parentId)) {
+            track.parentId = null;
         }
     }
 
-    const builtins = BUILTIN_AUDIO_TRACKS.map(seed => byId.get(seed.id) ?? { ...seed });
-    return [...builtins, ...customOrder.map(id => byId.get(id)!)];
+    // Cycles and depth, in one walk per track. `settled` is the visited set across the whole pass,
+    // so a ring is paid for once rather than once per member.
+    const settled = new Set<string>();
+    for (const id of ids) {
+        if (settled.has(id)) {
+            continue;
+        }
+        const path: string[] = [];
+        const onPath = new Set<string>();
+        let cursor: string | null = id;
+        while (cursor !== null && !settled.has(cursor)) {
+            if (onPath.has(cursor)) {
+                // The ring closes on a track already in this path, so that track is the one cut
+                // loose. Everything else in the ring keeps the parent the author gave it: a
+                // three-way cycle degrades into a three-deep chain rather than three loose tracks.
+                byId.get(cursor)!.parentId = null;
+                break;
+            }
+            onPath.add(cursor);
+            path.push(cursor);
+            cursor = byId.get(cursor)!.parentId;
+        }
+        for (const member of path) {
+            settled.add(member);
+        }
+    }
+
+    for (const id of ids) {
+        if (audioTrackDepth(byId, id) > AUDIO_TRACK_MAX_DEPTH) {
+            byId.get(id)!.parentId = null;
+        }
+    }
+
+    return ids.map(entry => byId.get(entry)!);
+}
+
+/** Ancestor count. Only called after cycles are broken, but bounded anyway so it cannot hang. */
+function audioTrackDepth(byId: ReadonlyMap<string, ProjectAudioTrack>, id: string): number {
+    let depth = 0;
+    let cursor = byId.get(id)?.parentId ?? null;
+    while (cursor !== null && depth <= AUDIO_TRACK_MAX_DEPTH + 1) {
+        depth += 1;
+        cursor = byId.get(cursor)?.parentId ?? null;
+    }
+    return depth;
 }
 
 /** An absent or unreadable document is a project that has never had the Audio surface opened. */
@@ -241,7 +334,20 @@ export function createSeededAudioTrackDocument(now?: string): ProjectAudioTrackD
     };
 }
 
-/** Load-time migration. v1 is the first version; anything newer is refused by the spec's `parse`. */
+/**
+ * v1 -> v2. A v1 track was `{id, name, channel, gain, fadeInMs, fadeOutMs, loop}`; a v2 track is a
+ * bus.
+ *
+ * - `channel` becomes `parentId`, which is exactly what it meant: "the bus this lands on".
+ * - `gain` becomes `volume`, clamped into 0..1 - a v1 document could store up to 2, and the runtime
+ *   would have truncated it anyway, so the clamp makes visible what was already happening.
+ * - the fades are dropped; see the module header.
+ * - the v1 seeded ids (`music`, `sfx`) are renamed onto the engine's channel names, carrying the
+ *   author's name, volume and loop with them. References to the old ids keep resolving through
+ *   {@link LEGACY_AUDIO_TRACK_ID_ALIASES}. The rename is skipped if the document already contains a
+ *   track under the new id, because dropping an author's own `bgm` track to make room would lose
+ *   work that the alias cannot bring back.
+ */
 export function migrateProjectAudioTrackDocument(raw: unknown): ProjectAudioTrackDocument {
     const record = raw && typeof raw === "object" && !Array.isArray(raw)
         ? raw as Record<string, unknown>
@@ -249,11 +355,48 @@ export function migrateProjectAudioTrackDocument(raw: unknown): ProjectAudioTrac
     const meta = record.meta && typeof record.meta === "object" && !Array.isArray(record.meta)
         ? record.meta as ProjectAudioTrackDocument["meta"]
         : undefined;
+    const version = typeof record.schemaVersion === "number" ? record.schemaVersion : 1;
+    const tracks = version < 2 ? migrateV1Tracks(record.tracks) : record.tracks;
+
     return {
         schemaVersion: AUDIO_TRACK_SCHEMA_VERSION,
-        tracks: normalizeProjectAudioTracks(record.tracks),
+        tracks: normalizeProjectAudioTracks(tracks),
         ...(meta ? { meta } : {}),
     };
+}
+
+function migrateV1Tracks(raw: unknown): unknown[] {
+    const source = Array.isArray(raw) ? raw : [];
+    const presentIds = new Set(
+        source
+            .map(entry => (entry && typeof entry === "object" && !Array.isArray(entry)
+                ? (entry as Record<string, unknown>).id
+                : null))
+            .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+            .map(id => id.trim()),
+    );
+
+    return source.map(entry => {
+        if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+            return entry;
+        }
+        const track = entry as Record<string, unknown>;
+        const id = typeof track.id === "string" ? track.id.trim() : "";
+        const alias = LEGACY_AUDIO_TRACK_ID_ALIASES[id];
+        const renamed = alias && !presentIds.has(alias) ? alias : null;
+        const channel = typeof track.channel === "string" ? track.channel.trim() : "";
+        // A renamed seed IS the bus it used to point at, so it lands at the root rather than
+        // becoming a child of itself.
+        const parentId = renamed ? null : (channel || null);
+
+        return {
+            id: renamed ?? id,
+            name: track.name,
+            parentId,
+            volume: normalizeAudioTrackVolume(track.gain, 1),
+            loop: track.loop,
+        };
+    });
 }
 
 /**
@@ -267,13 +410,18 @@ export function migrateProjectAudioTrackDocument(raw: unknown): ProjectAudioTrac
 export function resolveAudioTrack(
     tracks: readonly ProjectAudioTrack[],
     trackId: string | null | undefined,
-    fallbackChannel: AudioTrackChannel = "sound",
+    fallbackChannel: AudioTrackChannel = AUDIO_TRACK_ID_SOUND,
 ): ProjectAudioTrack {
     const id = typeof trackId === "string" ? trackId.trim() : "";
     if (id) {
         const found = tracks.find(track => track.id === id);
         if (found) {
             return found;
+        }
+        const alias = LEGACY_AUDIO_TRACK_ID_ALIASES[id];
+        const aliased = alias ? tracks.find(track => track.id === alias) : undefined;
+        if (aliased) {
+            return aliased;
         }
     }
     const fallbackId = DEFAULT_AUDIO_TRACK_ID[fallbackChannel];
@@ -284,39 +432,137 @@ export function resolveAudioTrack(
         ?? builtinAudioTrack(fallbackId)!;
 }
 
-/** What a play/stop actually uses, after the track's defaults and the action's overrides are folded. */
+/**
+ * Every bus a signal on `trackId` passes through, nearest first and master-most last.
+ *
+ * Bounded by {@link AUDIO_TRACK_MAX_DEPTH} independently of the normalizer, because this is called
+ * with lists that a caller assembled by hand as well as with normalized ones.
+ */
+export function resolveAudioTrackChain(
+    tracks: readonly ProjectAudioTrack[],
+    trackId: string | null | undefined,
+    fallbackChannel: AudioTrackChannel = AUDIO_TRACK_ID_SOUND,
+): ProjectAudioTrack[] {
+    const chain: ProjectAudioTrack[] = [];
+    const seen = new Set<string>();
+    let cursor: ProjectAudioTrack | undefined = resolveAudioTrack(tracks, trackId, fallbackChannel);
+    while (cursor && !seen.has(cursor.id) && chain.length <= AUDIO_TRACK_MAX_DEPTH) {
+        seen.add(cursor.id);
+        chain.push(cursor);
+        const parentId: string | null = cursor.parentId;
+        cursor = parentId === null ? undefined : tracks.find(track => track.id === parentId);
+    }
+    return chain;
+}
+
+/** The product of every bus gain between a clip and the master output. 0..1. */
+export function resolveAudioTrackBusGain(
+    tracks: readonly ProjectAudioTrack[],
+    trackId: string | null | undefined,
+    fallbackChannel: AudioTrackChannel = AUDIO_TRACK_ID_SOUND,
+): number {
+    return clamp01(resolveAudioTrackChain(tracks, trackId, fallbackChannel)
+        .reduce((gain, track) => gain * clamp01(track.volume), 1));
+}
+
+/** Every track whose chain passes through `id`, `id` itself excluded. */
+export function audioTrackDescendantIds(
+    tracks: readonly ProjectAudioTrack[],
+    id: string,
+): Set<string> {
+    const descendants = new Set<string>();
+    let grew = true;
+    while (grew) {
+        grew = false;
+        for (const track of tracks) {
+            if (track.id === id || descendants.has(track.id) || track.parentId === null) {
+                continue;
+            }
+            if (track.parentId === id || descendants.has(track.parentId)) {
+                descendants.add(track.id);
+                grew = true;
+            }
+        }
+    }
+    return descendants;
+}
+
+/** The tracks parented directly to `parentId`, in stored order. */
+export function audioTrackChildren(
+    tracks: readonly ProjectAudioTrack[],
+    parentId: string | null,
+): ProjectAudioTrack[] {
+    return tracks.filter(track => track.parentId === parentId);
+}
+
+/**
+ * The tree flattened for rendering: parents immediately before their children, depth-first, each
+ * entry carrying how far below master it sits.
+ *
+ * Falls back to appending anything the walk did not reach, which a normalized list never has - but
+ * this is also called straight from React state that a mutation is halfway through, and a row that
+ * silently disappears is worse than a row that appears at the bottom.
+ */
+export function flattenAudioTrackTree(
+    tracks: readonly ProjectAudioTrack[],
+): { track: ProjectAudioTrack; depth: number }[] {
+    const flat: { track: ProjectAudioTrack; depth: number }[] = [];
+    const emitted = new Set<string>();
+
+    const walk = (parentId: string | null, depth: number): void => {
+        if (depth > AUDIO_TRACK_MAX_DEPTH) {
+            return;
+        }
+        for (const track of tracks) {
+            if (track.parentId !== parentId || emitted.has(track.id)) {
+                continue;
+            }
+            emitted.add(track.id);
+            flat.push({ track, depth });
+            walk(track.id, depth + 1);
+        }
+    };
+    walk(null, 0);
+
+    for (const track of tracks) {
+        if (!emitted.has(track.id)) {
+            flat.push({ track, depth: 0 });
+        }
+    }
+    return flat;
+}
+
+/**
+ * What a play actually uses, after the track's defaults and the action's overrides are folded.
+ *
+ * Two survivors from v1, and they are the only two a *track* can contribute now:
+ *
+ * - `busId` - which bus the clip is routed to, i.e. the track's own id. It replaces `channel`,
+ *   which named one of three fixed engine channels; the bus tree above it is the engine's business
+ *   at boot, not the compiler's at compile time.
+ * - `loop` - the track's default loop policy, still overridable per action.
+ *
+ * `volume` is here but is the *action's* number, passed through: the bus gain is applied live by
+ * the gain graph, so pre-multiplying it into the clip (which is what v1 did) would both apply it
+ * twice and freeze it at compile time, where no player slider can reach it.
+ *
+ * The fades are gone entirely rather than passed through, because the caller already holds its own
+ * fade and a resolver that hands it straight back is a place for a default to be invented later.
+ */
 export type AudioTrackPlayback = {
-    channel: AudioTrackChannel;
-    /** 0..1 - the gain a mixer node accepts, after the track multiplier. */
+    /** The engine bus this clip plays on - the track's id. */
+    busId: string;
+    /** 0..1 - the clip's authored volume, unmultiplied. */
     volume: number;
-    fadeInMs: number;
-    fadeOutMs: number;
     loop: boolean;
 };
 
 export type AudioTrackPlaybackOverrides = {
-    /** The action's own volume, 0..1 as authored. Absent means "whatever the track says", i.e. 1. */
+    /** The action's own volume, 0..1 as authored. Absent means unity. */
     volume?: number | null;
-    /** The action's own fade, applied to BOTH directions - an action carries one fade, a track two. */
-    fadeMs?: number | null;
     loop?: boolean | null;
 };
 
-/**
- * The resolution formula, in one place.
- *
- * ```
- * type   = track.channel
- * volume = clamp01((action.volume ?? 1) * track.gain)
- * fadeIn  = action.fadeMs ?? track.fadeInMs
- * fadeOut = action.fadeMs ?? track.fadeOutMs
- * loop    = action.loop   ?? track.loop
- * ```
- *
- * The clamp is on the *product*, not on either factor: a 0.5 action volume on a 2.0 track is unity,
- * which is the whole reason the multiplier is worth exposing, and clamping the factors separately
- * would have thrown that away.
- */
 export function resolveAudioTrackPlayback(
     track: ProjectAudioTrack,
     overrides: AudioTrackPlaybackOverrides = {},
@@ -324,15 +570,10 @@ export function resolveAudioTrackPlayback(
     const actionVolume = typeof overrides.volume === "number" && Number.isFinite(overrides.volume)
         ? overrides.volume
         : 1;
-    const actionFade = typeof overrides.fadeMs === "number" && Number.isFinite(overrides.fadeMs)
-        ? Math.max(0, overrides.fadeMs)
-        : null;
 
     return {
-        channel: track.channel,
-        volume: clamp01(actionVolume * track.gain),
-        fadeInMs: actionFade ?? track.fadeInMs,
-        fadeOutMs: actionFade ?? track.fadeOutMs,
+        busId: track.id,
+        volume: clamp01(actionVolume),
         loop: typeof overrides.loop === "boolean" ? overrides.loop : track.loop,
     };
 }
@@ -368,34 +609,41 @@ function preferenceVolume(preferences: AudioMixPreferences, key: keyof AudioMixP
  * The volume a **host-owned** media element must be set to so it obeys the same mixer the engine's
  * own sounds do.
  *
- * The engine routes a `Sound` through master → per-channel gain → token volume, all multiplicative
- * (`AudioManager.setGlobalVolume` / `setGroupVolume`). A DOM `<video>` or `<audio>` the host created
- * is on none of those nodes, so the product has to be computed here and written to `element.volume`.
+ * A DOM `<video>` or `<audio>` the host created is on none of the engine's gain nodes, so the whole
+ * product has to be computed here and written to `element.volume`. With a tree that means walking
+ * the clip's bus chain rather than reading one channel: the clip's authored volume, times every bus
+ * between it and master, times the player's slider for whichever seeded bus the chain passes
+ * through, times the master slider.
+ *
  * Get this wrong in the "just use the authored number" direction and muting the game leaves the clip
  * blaring - which is exactly the defect this exists to close.
- *
- * Takes the already-resolved playback (so the track's own gain is folded in by
- * {@link resolveAudioTrackPlayback} and not duplicated here) plus whatever the player's sliders
- * currently say.
  */
 export function resolveMixedElementVolume(
-    playback: Pick<AudioTrackPlayback, "channel" | "volume">,
+    playback: Pick<AudioTrackPlayback, "busId" | "volume">,
+    tracks: readonly ProjectAudioTrack[],
     preferences: AudioMixPreferences = {},
 ): number {
-    const channelVolume = preferenceVolume(preferences, CHANNEL_PREFERENCE_KEY[playback.channel]);
-    const globalVolume = preferenceVolume(preferences, "globalVolume");
-    return clamp01(clamp01(playback.volume) * channelVolume * globalVolume);
+    const chain = resolveAudioTrackChain(tracks, playback.busId);
+    const busGain = chain.reduce((gain, track) => {
+        const sliderKey = CHANNEL_PREFERENCE_KEY[track.id as AudioTrackChannel];
+        // The player's per-channel sliders are aliases onto the seeded buses, so they apply where
+        // that bus sits in the chain - a `voice/alice` clip is governed by Voice Volume because its
+        // chain runs through `voice`, without anything having to say so.
+        const slider = sliderKey ? preferenceVolume(preferences, sliderKey) : 1;
+        return gain * clamp01(track.volume) * slider;
+    }, 1);
+
+    return clamp01(clamp01(playback.volume) * busGain * preferenceVolume(preferences, "globalVolume"));
 }
 
 /**
  * How many stored references point at each track, across whatever documents the caller hands over.
  *
- * A structural sweep rather than a per-holder extractor, because the holders do not exist yet: the
- * story rows, blueprint params and widget props that will carry a track id land in later milestones,
- * and an extractor per holder would have to be revisited by each of them. The sweep is safe because
- * it only counts values that name a track in `trackIds` - `trackId` is also the key a story-motion
- * timeline uses for its own rows, and matching against the known set is what keeps those from
- * reporting as audio references.
+ * A structural sweep rather than a per-holder extractor, because the holders are spread across
+ * story rows, blueprint params and widget props, and an extractor per holder would have to be
+ * revisited by each of them. The sweep is safe because it only counts values that name a track in
+ * `trackIds` - `trackId` is also the key a story-motion timeline uses for its own rows, and matching
+ * against the known set is what keeps those from reporting as audio references.
  */
 export function countAudioTrackReferences(
     roots: readonly unknown[],

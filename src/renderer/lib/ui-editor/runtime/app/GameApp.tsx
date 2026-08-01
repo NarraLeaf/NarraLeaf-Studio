@@ -7,7 +7,7 @@ import {
     type ReactNode,
 } from "react";
 import { AnimatePresence, MotionConfig, useReducedMotion } from "motion/react";
-import { Sound, SoundType, type LiveGame, type SavedGame } from "narraleaf-react";
+import { Sound, type LiveGame, type SavedGame } from "narraleaf-react";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
 import {
     LOCALE_STORAGE_KEY,
@@ -105,18 +105,7 @@ import {
 import { audioClipRegionToSoundConfig } from "@shared/types/audio";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import { createSoundTransport } from "./soundTransport";
-
-/**
- * Blueprint channel name -> the engine's mixer channel. The string values match,
- * but the engine types the field as its own enum, and going through this map
- * means a renamed enum member breaks the build here rather than silently
- * routing every clip to the default channel.
- */
-const BLUEPRINT_CHANNEL_TO_SOUND_TYPE = {
-    bgm: SoundType.Bgm,
-    sound: SoundType.Sound,
-    voice: SoundType.Voice,
-} as const;
+import { attachAudioBusPersistence, audioTracksToBusDeclarations } from "./audioBusRuntime";
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
@@ -371,6 +360,10 @@ export function GameApp(props: GameAppProps): ReactNode {
     // waits on it too, for the paths that enter without going through boot.
     const pendingAssetsReadyRef = useRef(new Map<string, { resolve: () => void }>());
     const stageWarmupRef = useRef<{ sessionId: string; promise: Promise<void> } | null>(null);
+    // Disposes the previous session's bus-volume subscription. One per mounted `Game`: a relaunch
+    // builds a new mixer, and a listener left on the old one would keep writing a dead game's
+    // volumes over the live one's.
+    const audioBusPersistenceRef = useRef<(() => void) | null>(null);
     const startStoryInGameRef = useRef<
         ((request: DevModeStartStoryRequest, options?: { forceReinit?: boolean }) => Promise<void>) | null
     >(null);
@@ -747,22 +740,25 @@ export function GameApp(props: GameAppProps): ReactNode {
      * its identity is stable across relaunches; it reads the live game through
      * the ref and degrades to a warned no-op when there is none.
      *
-     * `Sound.sound` vs the per-channel constructors: the channel is passed as
-     * `type` so the engine routes it, which is what makes the player's volume
-     * settings apply. `Sound.bgm()` is deliberately not used - the engine blocks
-     * `play()` on a bgm-typed element, and the token path here is the other one.
+     * `Sound.sound` vs the per-bus constructors: the resolved bus id is passed as
+     * `type` so the engine routes it into that bus's gain node, which is what
+     * makes the player's mixer apply. `Sound.bgm()` is deliberately not used -
+     * the engine blocks `play()` on a bgm-typed element, and the token path here
+     * is the other one.
      */
     const soundTransport = useMemo(() => createSoundTransport({
         getLiveGame: () => nlrLiveGameRef.current,
         resolveAssetUrl: (assetId, assetType) => host.resolveStoryAssetUrl(assetId, assetType),
-        // The bus, the gain and the fade/loop defaults a play inherits. Absent on a bundle that
-        // predates tracks, which the transport reads as the built-ins.
+        // The bus and the loop default a play inherits. Absent on a bundle that predates tracks,
+        // which the transport reads as the built-ins.
         getAudioTracks: () => bundle.audio?.tracks,
         // The in/out points the author marked on the asset apply here exactly as they do in a story
         // row, so a music page loops a track's body rather than the whole file.
-        createSound: ({ src, channel, loop, volume, assetId }) => new Sound({
+        createSound: ({ src, busId, loop, volume, assetId }) => new Sound({
             src,
-            type: BLUEPRINT_CHANNEL_TO_SOUND_TYPE[channel],
+            // An arbitrary bus id, not one of three enum members: the tracks declared at boot are
+            // the buses, so `voice/alice` routes here with nothing to map it through.
+            type: busId,
             loop,
             volume,
             ...audioClipRegionToSoundConfig(bundle.audio?.clips?.[assetId]),
@@ -771,6 +767,13 @@ export function GameApp(props: GameAppProps): ReactNode {
     }), [bundle, host]);
 
     useEffect(() => () => soundTransport.dispose(), [soundTransport]);
+
+    // Mount-scoped, not session-scoped: each mount replaces the previous subscription itself, and
+    // this is only the last one, on the way out.
+    useEffect(() => () => {
+        audioBusPersistenceRef.current?.();
+        audioBusPersistenceRef.current = null;
+    }, []);
 
     const fastForwardToNextChoiceInGame = useCallback(async (): Promise<void> => {
         const liveGame = requireActiveLiveGame("Skip To Next Choice");
@@ -1288,6 +1291,23 @@ export function GameApp(props: GameAppProps): ReactNode {
             // and offset the stage instead of letterboxing down (same override as the story
             // preview, which embeds into arbitrarily small panes).
             minStageSize: { width: 1, height: 1 },
+            // The project's mixer, declared at boot. This is the *only* moment the shape of the
+            // tree can be set: the engine realizes it into gain nodes when audio starts and never
+            // re-shapes it. A bundle with no track table declares nothing and gets the engine's
+            // three seeded buses, which is exactly the pre-bus behaviour.
+            audioBuses: audioTracksToBusDeclarations(bundle.audio?.tracks),
+        });
+        // The player's own volumes, restored on top of the author's declaration and written back on
+        // every change. Deliberately here rather than after the Player mounts: setting a volume for
+        // a bus whose channel does not exist yet is normal and is applied when it is realized, so
+        // doing it now closes the window where the first clip plays at the wrong level.
+        audioBusPersistenceRef.current?.();
+        audioBusPersistenceRef.current = await attachAudioBusPersistence({
+            mixer: (game as { audioBuses?: Parameters<typeof attachAudioBusPersistence>[0]["mixer"] }).audioBuses,
+            read: key => core.scopeBridge.persistenceGetAsync(key),
+            write: (key, value) => core.scopeBridge.persistenceSetAsync(key, value),
+            onVolumeChange: () => preferenceListenersRef.current.forEach(listener => listener()),
+            log: (level, message) => host.log(level, message),
         });
         // Before the Player mounts, not after: a puppet looks its backend up once, when its
         // component mounts, so anything registered later is simply not there for it. Failures are
@@ -1527,6 +1547,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             onSetSoundVolume: soundTransport.setVolume,
             onSeekSound: soundTransport.seek,
             onIsSoundPlaying: soundTransport.isPlaying,
+            onGetTrackVolume: soundTransport.getTrackVolume,
+            onSetTrackVolume: soundTransport.setTrackVolume,
             audioTracks: bundle.audio?.tracks,
             onSubscribeGamePreferences: subscribeGamePreferences,
             onWidgetPatch: (elementId, patch) => {
@@ -1778,6 +1800,8 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onSetSoundVolume: soundTransport.setVolume,
                     onSeekSound: soundTransport.seek,
                     onIsSoundPlaying: soundTransport.isPlaying,
+                    onGetTrackVolume: soundTransport.getTrackVolume,
+                    onSetTrackVolume: soundTransport.setTrackVolume,
                     audioTracks: bundle.audio?.tracks,
                     onSubscribeGamePreferences: subscribeGamePreferences,
                     onWidgetPatch: (elementId, patch) => {

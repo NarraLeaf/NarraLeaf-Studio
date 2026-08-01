@@ -863,6 +863,16 @@ export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_DELAY = "blueprint.game.setSkipDe
 export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_INTERVAL = "blueprint.game.getSkipInterval" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_INTERVAL = "blueprint.game.setSkipInterval" as const;
 
+/**
+ * Per-track (per-bus) volume: the general form of the four fixed volume preferences above.
+ *
+ * Those four can only reach the three buses the engine seeds, so a project that adds `voice/alice`
+ * has a mixer strip no settings page can bind to. These take a track id instead, with the picker
+ * populated from the project's own tracks, and the four stay for the graphs that already use them.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_GET_TRACK_VOLUME = "blueprint.game.getTrackVolume" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_TRACK_VOLUME = "blueprint.game.setTrackVolume" as const;
+
 // Localization nodes. Every getter here is latent and publishes its result through
 // `execute()`'s `outputValues`, so each one also has to be listed on the read side,
 // in `resolveSelfOutput` in `graphParamResolvers.ts`.

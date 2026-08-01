@@ -86,8 +86,8 @@ export const bgm = defineStoryCommand({
     quickParams: ["vol", "loop"],
     params: {
         audio: { aliases: ["src"], hint: "audioAsset", type: { kind: "asset", assetType: "audio" }, positional: true, core: true },
-        // The track decides the bus, the multiplier and the fade/loop defaults; `vol`, `fade` and
-        // `loop` below override them per row. Omitted, the music built-in answers - which is the
+        // The track IS the bus the clip is routed to, and supplies the loop default; `vol` and
+        // `loop` below are the row's own. Omitted, the music built-in answers - which is the
         // behaviour every `/bgm` line written before tracks existed already had.
         track: audioTrackParam(),
         vol: { aliases: ["volume"], hint: "vol", type: { kind: "number", min: 0, max: 1 } },
