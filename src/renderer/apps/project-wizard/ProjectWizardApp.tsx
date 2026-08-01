@@ -2,11 +2,29 @@ import { useTranslation } from "@/lib/i18n";
 import { AppLayout } from "@/lib/components/layout";
 import { WizardHeader, WizardNavigation } from "./components";
 import { useProjectWizard } from "./hooks/useProjectWizard";
+import { CloneStep } from "./steps/CloneStep";
 import { DetailsStep } from "./steps/DetailsStep";
 import { ReviewStep } from "./steps/ReviewStep";
 import { SettingsStep } from "./steps/SettingsStep";
+import { SourceStep } from "./steps/SourceStep";
 import { TemplateStep } from "./steps/TemplateStep";
-import { StepConfig } from "./types";
+import { StepConfig, WizardStep } from "./types";
+import type { TranslationKey } from "@shared/i18n";
+
+/**
+ * The label and one-line description each page carries in the header, keyed by page.
+ *
+ * Every page in every flow is described here rather than per flow: a page belongs to whichever
+ * flows list it, and describing it twice is how the same step ends up named two things.
+ */
+const STEP_LABEL_KEYS: Record<WizardStep, { label: TranslationKey; description: TranslationKey }> = {
+    template: { label: "wizard.steps.template.label", description: "wizard.steps.template.description" },
+    details: { label: "wizard.steps.details.label", description: "wizard.steps.details.description" },
+    settings: { label: "wizard.steps.settings.label", description: "wizard.steps.settings.description" },
+    review: { label: "wizard.steps.review.label", description: "wizard.steps.review.description" },
+    source: { label: "wizard.steps.source.label", description: "wizard.steps.source.description" },
+    clone: { label: "wizard.steps.clone.label", description: "wizard.steps.clone.description" },
+};
 
 /**
  * Main Project Wizard Application Component
@@ -18,6 +36,9 @@ export function ProjectWizardApp() {
     // Use the custom hook for all wizard logic
     const {
         currentStep,
+        steps: stepKeys,
+        flow,
+        remote,
         projectData,
         validationErrors,
         directoryValidation,
@@ -25,13 +46,17 @@ export function ProjectWizardApp() {
         isSelectingDirectory,
         isCreatingProject,
         creationError,
+        cloneStatus,
+        cloneFailure,
         updateProjectName,
         updateAppId,
         updateProjectData,
+        updateRemoteUrl,
         handleLocationChange,
         handleLocationBlur,
         handleLocationFocus,
         handleSelectDirectory,
+        cloneProject,
         nextStep,
         prevStep,
         createProject,
@@ -39,13 +64,12 @@ export function ProjectWizardApp() {
         clearCreationError,
     } = useProjectWizard();
 
-    // Step configuration
-    const steps: StepConfig[] = [
-        { key: "template", label: t("wizard.steps.template.label"), description: t("wizard.steps.template.description") },
-        { key: "details", label: t("wizard.steps.details.label"), description: t("wizard.steps.details.description") },
-        { key: "settings", label: t("wizard.steps.settings.label"), description: t("wizard.steps.settings.description") },
-        { key: "review", label: t("wizard.steps.review.label"), description: t("wizard.steps.review.description") }
-    ];
+    // Step configuration - which pages exist depends on the flow the first page started.
+    const steps: StepConfig[] = stepKeys.map(key => ({
+        key,
+        label: t(STEP_LABEL_KEYS[key].label),
+        description: t(STEP_LABEL_KEYS[key].description),
+    }));
 
     /**
      * Handle project creation
@@ -57,6 +81,20 @@ export function ProjectWizardApp() {
         if (!result.success) {
             console.error("Failed to create project:", result.error);
         }
+    };
+
+    /**
+     * The last page's action, whichever flow it belongs to.
+     *
+     * A clone reports into `CloneStep` rather than into the shared error panel below: its two
+     * failures need the destination path alongside them, and that is the page that has it.
+     */
+    const handleFinish = () => {
+        if (flow === "clone") {
+            void cloneProject();
+            return;
+        }
+        void handleCreateProject();
     };
 
     /**
@@ -99,6 +137,31 @@ export function ProjectWizardApp() {
                 );
             case "review":
                 return <ReviewStep projectData={projectData} />;
+            case "source":
+                return (
+                    <SourceStep
+                        projectData={projectData}
+                        remote={remote}
+                        updateRemoteUrl={updateRemoteUrl}
+                        validationErrors={validationErrors}
+                        directoryValidation={directoryValidation}
+                        isValidatingDirectory={isValidatingDirectory}
+                        onLocationChange={handleLocationChange}
+                        onLocationBlur={handleLocationBlur}
+                        onLocationFocus={handleLocationFocus}
+                        onSelectDirectory={handleSelectDirectory}
+                        isSelectingDirectory={isSelectingDirectory}
+                    />
+                );
+            case "clone":
+                return (
+                    <CloneStep
+                        projectData={projectData}
+                        remote={remote}
+                        cloneStatus={cloneStatus}
+                        cloneFailure={cloneFailure}
+                    />
+                );
             default:
                 return null;
         }
@@ -147,12 +210,14 @@ export function ProjectWizardApp() {
 
                 {/* Navigation Footer */}
                 <WizardNavigation
+                    steps={steps}
                     currentStep={currentStep}
+                    flow={flow}
                     canProceed={canProceed()}
-                    isCreatingProject={isCreatingProject}
+                    isBusy={isCreatingProject || cloneStatus !== "idle"}
                     onPrevStep={prevStep}
                     onNextStep={nextStep}
-                    onCreateProject={handleCreateProject}
+                    onFinish={handleFinish}
                     onCancel={handleCancel}
                 />
             </div>

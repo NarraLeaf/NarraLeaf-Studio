@@ -470,6 +470,24 @@ export function isVcsRemoteConfigured(url: string | null | undefined): boolean {
         && trimmed !== VCS_LEGACY_PLACEHOLDER_REMOTE;
 }
 
+/**
+ * A server address split into the two things it names, or null when it is not one.
+ *
+ * **The path segment is required and is not decoration.** Measured: it becomes the repository's
+ * name on the server, it is the name a collaborator clones by, and the backend rejects an address
+ * without one outright (`parsing repository URL: Invalid URL`).
+ *
+ * Shared rather than kept beside the backend, because both ends now need the same verdict: the
+ * main process refuses a bad address as it writes one into a repository config, and the wizard has
+ * to refuse the same one while the author is still looking at the field. Two spellings of this
+ * rule would be a wizard that accepts an address the backend later rejects - and it would reject
+ * it after the destination folder had already been written into.
+ */
+export function parseVcsRemoteUrl(url: string): { origin: string; name: string } | null {
+    const match = /^(lore:\/\/[^/?#\s]+)\/([^/?#\s]+)\/*$/i.exec(url.trim());
+    return match ? { origin: match[1], name: match[2] } : null;
+}
+
 /** What a push did. */
 export interface VcsPushResult {
     branch: string;
