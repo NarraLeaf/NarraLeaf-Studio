@@ -2,7 +2,7 @@ import type { LocaleNamespace } from "../types";
 
 export const widgetAppearance = {
     panel: {
-        invalidModel: "此元素缺少外观数据或数据无效，本编辑器需要一个已序列化的外观模型，请从素材面板新建元素以获取有效的外观数据块",
+        invalidModel: "此元素没有有效的外观数据，请从素材面板新建一个",
     },
     variant: {
         nameLabel: "变体名称",
@@ -138,7 +138,7 @@ export const widgetAppearance = {
         when: "当",
         toggleTitle: "要求 {condition} = true（循环：未设 → true → false）",
         overridesTitle: "状态覆盖（高级）",
-        overridesHint: "单一状态（hover/active/disabled/focused）覆盖建议优先使用模块标题栏，本区域用于查看条件行、调整复合条件，或手动添加按属性设置的行，同一属性以最后匹配的行为准",
+        overridesHint: "只覆盖单一状态（hover/active/disabled/focused）时请用模块标题栏。同一属性以最后匹配的行为准",
         conditionalRows: "条件行",
         removeRow: "移除行",
         addRowManually: "手动添加行",

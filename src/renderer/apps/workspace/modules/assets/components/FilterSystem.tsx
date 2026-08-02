@@ -168,7 +168,7 @@ export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilter
 /** Byte thresholds behind the size bands. Labels are the numbers themselves — no sentence explains them. */
 export const ASSET_SIZE_BANDS = [
     { id: 'lt1mb', label: '< 1 MB', max: 1024 * 1024 },
-    { id: '1to10mb', label: '1 – 10 MB', min: 1024 * 1024, max: 10 * 1024 * 1024 },
+    { id: '1to10mb', label: '1 - 10 MB', min: 1024 * 1024, max: 10 * 1024 * 1024 },
     { id: 'gt10mb', label: '> 10 MB', min: 10 * 1024 * 1024 },
 ] as const satisfies readonly { id: string; label: string; min?: number; max?: number }[];
 
