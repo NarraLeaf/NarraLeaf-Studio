@@ -241,7 +241,7 @@ function TestFindingRow({
         <button
             type="button"
             aria-label={message}
-            className="flex w-full items-baseline gap-2 rounded-md px-2 py-0.5 text-left hover:bg-fill-subtle"
+            className="flex w-full cursor-default items-baseline gap-2 rounded-md px-2 py-0.5 text-left hover:bg-fill-subtle"
             onClick={() => onJump(finding)}
         >
             {body}

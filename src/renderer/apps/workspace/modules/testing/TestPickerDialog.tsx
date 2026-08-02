@@ -165,7 +165,10 @@ function TestRow({
                 }
             }}
             className={cn(
-                "grid min-w-0 gap-0.5 rounded-md px-2 py-1.5 text-left",
+                // `cursor-default` is not decoration: Tailwind's preflight gives every <button> a
+                // pointer cursor, and Studio is arrow-everywhere (the shared `Button` sets it too).
+                // Without it this row is the one hand cursor in the window.
+                "grid min-w-0 cursor-default gap-0.5 rounded-md px-2 py-1.5 text-left",
                 "transition-colors duration-150",
                 "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50",
                 !available
