@@ -7,6 +7,7 @@ import { NEW_TAB_ID_PREFIX } from "@/apps/workspace/modules/new-tab/newTabId";
 import { BlueprintEntryTab } from "@/apps/workspace/modules/blueprint-lite/editors/BlueprintEntryTab";
 import {
     getBlueprintEntryTabId,
+    type BlueprintEntryOwnerKind,
     type BlueprintEntryTabPayload,
 } from "@/apps/workspace/modules/blueprint-lite/blueprintEntryTabId";
 import { UISurfaceEditorTab } from "@/apps/workspace/modules/ui-editor/editors/UISurfaceEditorTab";
@@ -51,13 +52,25 @@ const IMAGE_PREVIEW_PREFIX = "narraleaf-studio:assets:image-preview-";
 const AUDIO_PREVIEW_PREFIX = "narraleaf-studio:assets:audio-preview-";
 const STORY_SCENE_TAB_PREFIX = "story:scene:";
 const STORY_MOTION_TAB_PREFIX = "story-motion:";
-const BLUEPRINT_ENTRY_OWNER_KINDS = new Set([
-    "globalMain",
-    "surfaceMain",
-    "widgetMain",
-    "widgetValue",
-    "componentWidgetMain",
-]);
+/**
+ * Owner kinds accepted when reading a blueprint tab back off disk.
+ *
+ * Keyed off the union instead of listed loose, because this set already drifted once and did so
+ * silently: `storyAction` was added to `BlueprintEntryOwnerKind` but never added here, so every
+ * story-action blueprint tab failed `isBlueprintEntryPayload` and was dropped by `trySerializeTab`
+ * - the tab never even reached the session file, and came back missing after every restart.
+ * The `satisfies` makes the next added owner kind a compile error until it is decided here.
+ */
+const BLUEPRINT_ENTRY_OWNER_KINDS = new Set<string>(
+    Object.keys({
+        globalMain: true,
+        surfaceMain: true,
+        widgetMain: true,
+        widgetValue: true,
+        componentWidgetMain: true,
+        storyAction: true,
+    } satisfies Record<BlueprintEntryOwnerKind, true>),
+);
 
 export type SerializedTab =
     | { kind: "welcome" }
@@ -120,7 +133,13 @@ function isBlueprintEntryPayload(value: unknown): value is BlueprintEntryTabPayl
         return false;
     }
     const o = value as Record<string, unknown>;
-    if (typeof o.blueprintId !== "string" || typeof o.surfaceId !== "string") {
+    if (typeof o.blueprintId !== "string") {
+        return false;
+    }
+    // `surfaceId` is optional *by design* (see BlueprintEntryTabPayload): a story-action blueprint
+    // hangs off a story action, not off a surface, so it has none to record. Demanding a string
+    // here made those tabs unserializable, which is why they disappeared instead of coming back.
+    if (o.surfaceId !== undefined && typeof o.surfaceId !== "string") {
         return false;
     }
     if (typeof o.ownerKind !== "string" || !BLUEPRINT_ENTRY_OWNER_KINDS.has(o.ownerKind)) {
@@ -531,7 +550,19 @@ export function buildTabDefinition(ctx: WorkspaceContext, entry: SerializedTab):
         if (!blueprintDocument.blueprints[p.blueprintId]) {
             return null;
         }
-        if (!document.surfaces.some(surface => surface.id === p.surfaceId)) {
+        // Only three owner kinds put a real UISurfaceId in `surfaceId`, so only those three can be
+        // checked against the document - same gating the widget/component checks below already do.
+        // For the rest, `surfaceId` is not a surface reference at all:
+        //   globalMain           -> the GLOBAL_MAIN_OWNER_KEY sentinel ("globalMain")
+        //   componentWidgetMain  -> a `component-editor:<componentId>` pseudo id (the component is
+        //                           what gets checked, in the branch below)
+        //   storyAction          -> absent entirely; the blueprint hangs off a story action
+        // For those, "no surface with this id" is their permanent, correct state rather than a
+        // deleted resource - reading it as a dead reference is what silently ate their tabs.
+        if (
+            (p.ownerKind === "surfaceMain" || p.ownerKind === "widgetMain" || p.ownerKind === "widgetValue") &&
+            !document.surfaces.some(surface => surface.id === p.surfaceId)
+        ) {
             return null;
         }
         if (p.ownerKind === "componentWidgetMain") {

@@ -68,7 +68,19 @@ function findByName(entries: readonly StoryCommandNamedRef[], raw: string): Stor
     return matches.length > 1 ? "ambiguous" : matches[0];
 }
 
-/** Parse a bare token into the scalar it denotes: `true` / `12` / anything else stays a string. */
+/**
+ * Parse a bare token into the scalar it denotes: `true` / `12` / anything else stays a string.
+ *
+ * A value that *opens* like JSON is additionally offered to `JSON.parse`, so a declaration can carry a
+ * list or an object as its default. Without it `/local inv "[1, 2]" type=json` declared a json
+ * variable holding the STRING `"[1, 2]"` - the declared type and the stored value disagreeing in the
+ * one place the author has no way to see it.
+ *
+ * Two properties keep this from guessing. The attempt is gated on the FIRST character rather than on
+ * "contains a bracket", so `min(1, 2)` and ordinary prose are never candidates - a constant must not
+ * read or compute anything, and a lenient gate is how that rule would erode. And a failed parse falls
+ * back to the raw text instead of throwing, so `/local note "[draft]"` is still the string it reads as.
+ */
 export function parseLiteral(raw: string): StoryLiteralValue {
     const trimmed = raw.trim();
     if (trimmed === "true") {
@@ -79,6 +91,13 @@ export function parseLiteral(raw: string): StoryLiteralValue {
     }
     if (trimmed !== "" && Number.isFinite(Number(trimmed))) {
         return Number(trimmed);
+    }
+    if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+        try {
+            return JSON.parse(trimmed) as StoryLiteralValue;
+        } catch {
+            // Looked like JSON, is not. The author typed words that begin with a bracket.
+        }
     }
     return raw;
 }
@@ -325,7 +344,7 @@ function resolveAgainstType(
         // A constant resolves exactly like a literal - the difference between them is what each
         // *offers* and what each *forbids*, both of which are settled before we get here.
         case "constant":
-            return { value: { kind: "literal", value: parseLiteral(value) } };
+            return { value: { kind: "literal", value: parseLiteral(value), source: value } };
         case "expression":
             return resolveExpression(type, value, span, context, resolved);
         case "text":

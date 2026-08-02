@@ -429,6 +429,15 @@ describe("sound (bible B4: target defaults to bgm)", () => {
 });
 
 describe("variables", () => {
+    /** Parse, resolve, and read back the declaration a line produces - the seam every test below asserts on. */
+    const declare = (source: string) => {
+        const line = parseCommandLine(source);
+        if (line.kind !== "command" || !line.def) {
+            throw new Error(`not a command: ${source}`);
+        }
+        return declarationFromArgs(resolveCommandLine(line, CONTEXT).args);
+    };
+
     it("/set folds a constant back into value and keeps an expression as a tree", () => {
         expect(build("/set gold 100")).toMatchObject({
             payload: { action: "setVariable", target: { scope: "scene", variableId: "var_gold" }, value: 100, expression: undefined },
@@ -471,13 +480,6 @@ describe("variables", () => {
     it("declarationFromArgs pins the whole line to the declaration it produces", () => {
         // The bug class this guards: a default read under the wrong kind silently declaring the
         // wrong type. `/local gold 100` must be a NUMBER with default 100, never a boolean.
-        const declare = (source: string) => {
-            const line = parseCommandLine(source);
-            if (line.kind !== "command" || !line.def) {
-                throw new Error("not a command");
-            }
-            return declarationFromArgs(resolveCommandLine(line, CONTEXT).args);
-        };
         expect(declare("/local hp 100")).toEqual({ name: "hp", valueType: "number", defaultValue: 100, description: undefined });
         expect(declare("/var seen")).toEqual({ name: "seen", valueType: "boolean", defaultValue: undefined, description: undefined });
         expect(declare("/persis nickname type=string desc=\"player name\"")).toEqual({
@@ -487,6 +489,67 @@ describe("variables", () => {
         expect(declare("/local flag 1 type=bool")).toMatchObject({ valueType: "boolean", defaultValue: 1 });
         // A declaration into an occupied name is refused, not overwritten.
         expect(issuesOf("/local gold")).toEqual(["duplicateVariable"]);
+    });
+
+    /**
+     * A bracketed default is read as the structure it spells, so `type=json` and the stored value stop
+     * disagreeing: `/local inv "[1, 2]" type=json` used to declare a json variable holding the STRING
+     * "[1, 2]", which is a silent wrong type in the one place the author cannot see it.
+     *
+     * The reading is deliberately narrow, and each way it could over-reach is pinned below: it must
+     * not swallow prose that merely opens with a bracket, must not outrank an explicit `type=string`,
+     * and must not become a foothold for evaluating anything - a constant reads nothing, which is the
+     * whole reason the kind exists apart from `expression`.
+     */
+    it("reads a bracketed default as the list or object it spells", () => {
+        expect(declare("/local inv \"[1, 2]\" type=json"))
+            .toEqual({ name: "inv", valueType: "json", defaultValue: [1, 2], description: undefined });
+        // An object needs its keys quoted, and `"` is the tokenizer's own grouping character - so the
+        // spelling that survives is the single-quoted wrapper, inside which `"` is data (the rule the
+        // tokenizer already documents for `'say "hi"'`). Same for a list of strings.
+        expect(declare("/local cfg '{\"hp\": 3}' type=json")).toMatchObject({ defaultValue: { hp: 3 } });
+        expect(declare("/local inv '[\"sword\", \"potion\"]'")).toMatchObject({ valueType: "json", defaultValue: ["sword", "potion"] });
+        // The double-quoted spelling of the same thing loses the inner quotes to the tokenizer and so
+        // is no longer JSON. It degrades to the string it now reads as rather than to an error - the
+        // fallback doing its job on a case an author will hit.
+        expect(declare("/local cfg \"{\\\"hp\\\": 3}\" type=json")).toMatchObject({ defaultValue: "{\\hp\\: 3}" });
+        // With no `type=` at all the value is the only evidence, and a list says json by itself - the
+        // arm `inferDeclaredType` has always ended on, reachable for the first time.
+        expect(declare("/local inv \"[1, 2]\"")).toMatchObject({ valueType: "json", defaultValue: [1, 2] });
+        expect(declare("/local cfg \"{}\"")).toMatchObject({ valueType: "json", defaultValue: {} });
+        // The primitive readings are untouched: a bracket is the only new trigger.
+        expect(declare("/local hp 100")).toMatchObject({ valueType: "number", defaultValue: 100 });
+        expect(declare("/local met true")).toMatchObject({ valueType: "boolean", defaultValue: true });
+    });
+
+    it("leaves words that merely open with a bracket as the string they read as", () => {
+        // `JSON.parse` throws on all of these; the fallback is the raw text, never an exception and
+        // never a half-parsed value. An author's placeholder is not a broken list.
+        expect(declare("/local note \"[draft]\"")).toMatchObject({ valueType: "string", defaultValue: "[draft]" });
+        expect(declare("/local note \"[1, 2\"")).toMatchObject({ valueType: "string", defaultValue: "[1, 2" });
+        expect(declare("/local note \"{unclosed\"")).toMatchObject({ valueType: "string", defaultValue: "{unclosed" });
+        expect(declare("/local note \"[TODO] rewrite this\"")).toMatchObject({ defaultValue: "[TODO] rewrite this" });
+    });
+
+    it("lets an explicit type=string outrank how the value happens to read", () => {
+        // The author said what they wanted. Storing the parsed list here would be the same class of
+        // mismatch this change exists to remove, just pointing the other way - and the source text goes
+        // back verbatim rather than re-serialized, so the stored string is the one that was typed.
+        expect(declare("/local x \"[1, 2]\" type=string")).toMatchObject({ valueType: "string", defaultValue: "[1, 2]" });
+        expect(declare("/local x \"[1,2]\" type=str")).toMatchObject({ valueType: "string", defaultValue: "[1,2]" });
+        // Only `string` is undone: a declared bool keeps the value it was handed, as it always has.
+        expect(declare("/local flag 1 type=bool")).toMatchObject({ valueType: "boolean", defaultValue: 1 });
+    });
+
+    it("still refuses to read or compute anything in a constant slot", () => {
+        // `constant` exists to forbid exactly this (grammar: "a value that must not read anything").
+        // Unquoted, the line cannot even parse - the value breaks at its space and the tail is an extra
+        // positional, so Enter refuses it. Quoted, it parses and is stored as the CHARACTERS it is:
+        // no call is made, no variable is read, and the declared type is string, not number.
+        expect(canCommit(parseCommandLine("/local hp min(1, 2)"))).toBe(false);
+        expect(parseCommandLine("/local hp min(1, 2)")).toMatchObject({ issues: [{ code: "extraPositional" }] });
+        expect(declare("/local hp \"min(1, 2)\"")).toMatchObject({ valueType: "string", defaultValue: "min(1, 2)" });
+        expect(declare("/local hp \"gold + 1\"")).toMatchObject({ valueType: "string", defaultValue: "gold + 1" });
     });
 
     it("the renamed declarations keep their old tokens working, and rename nothing in a document", () => {

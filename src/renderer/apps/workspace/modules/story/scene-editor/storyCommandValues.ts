@@ -234,7 +234,12 @@ export type StoryCommandValue =
     | { kind: "keyword"; value: string }
     | { kind: "number"; value: number }
     | { kind: "boolean"; value: boolean }
-    | { kind: "literal"; value: StoryLiteralValue }
+    /**
+     * A scalar the author typed. `source` is the text it was read from, kept because the reading is
+     * lossy now that `[1, 2]` becomes a real list: a slot told it wants a string needs the words back,
+     * and re-serializing the parsed value would hand back a normalized spelling nobody typed.
+     */
+    | { kind: "literal"; value: StoryLiteralValue; source: string }
     /** A parsed expression. `source` is the desugared text (`gold + (1)` for `+= 1`), which is what gets stored. */
     | { kind: "expression"; expression: StoryExpression; source: string }
     | { kind: "text"; value: string }
