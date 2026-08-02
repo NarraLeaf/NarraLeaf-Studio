@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import type { CSSProperties, KeyboardEvent } from "react";
+import type { ClipboardEvent, CSSProperties, KeyboardEvent } from "react";
 import type { StoryInlineEvent, StoryInterpolationRef, StoryRichRun } from "@shared/types/story";
 import type { StoryCaretTarget } from "./storySceneEditorTypes";
 import { parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
@@ -117,6 +117,19 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
      * Fires for moves *within* the row too, which never reach {@link onArrowOut}.
      */
     onGoalColumnInvalidated?: () => void;
+    /**
+     * A paste carrying more than one line arrived while this row was open for editing.
+     *
+     * The split is here rather than at the handler because it is a fact about the field, not about the
+     * story: **a row is one line.** A single-line paste is left entirely to the browser — the caret,
+     * the marks the text lands in, and this row's own undo stack are all things Chromium gets right
+     * and a re-implementation would only get differently. More than one line is text this field cannot
+     * hold, so it goes to whoever can make rows out of it.
+     *
+     * Returns whether the caller took it; only then is the browser's own paste cancelled, so a handler
+     * that declines still leaves the author with a working paste.
+     */
+    onMultiLinePaste?: (event: ClipboardEvent<HTMLDivElement>) => boolean;
     onPauseClick?: (info: PauseClickInfo) => void;
     onInterpolationClick?: (info: InterpolationClickInfo) => void;
     onEventClick?: (info: EventClickInfo) => void;
@@ -660,6 +673,17 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
                 }
             }}
             onInput={emitChange}
+            onPaste={event => {
+                if (readOnly || !props.onMultiLinePaste) {
+                    return;
+                }
+                if (!/\r?\n/.test(event.clipboardData.getData("text/plain").trim())) {
+                    return;
+                }
+                if (props.onMultiLinePaste(event)) {
+                    event.preventDefault();
+                }
+            }}
             onKeyUp={saveSelection}
             // Clicking into the text states a column as plainly as an arrow does. The row's own
             // mousedown never sees this: a contentEditable counts as an interactive target.

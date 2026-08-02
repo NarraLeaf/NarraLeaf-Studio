@@ -501,7 +501,7 @@ export function EditorGroup({ group }: EditorGroupProps) {
                                             type="button"
                                             onClick={(e) => handleCloseTab(tab.id, e)}
                                             className={`
-                                                w-4 h-4 rounded-md flex items-center justify-center transition-colors
+                                                w-4 h-4 cursor-default rounded-md flex items-center justify-center transition-colors
                                                 ${
                                                     isActive
                                                         ? "hover:bg-fill-strong"
@@ -522,7 +522,7 @@ export function EditorGroup({ group }: EditorGroupProps) {
                                 e.stopPropagation();
                                 handleNewTab();
                             }}
-                            className="flex items-center justify-center w-9 h-9 flex-shrink-0 text-fg-subtle hover:text-fg hover:bg-surface transition-colors"
+                            className="flex cursor-default items-center justify-center w-9 h-9 flex-shrink-0 text-fg-subtle hover:text-fg hover:bg-surface transition-colors"
                             aria-label={t("workspace.shell.newTab")}
                             title={t("workspace.shell.newTab")}
                         >

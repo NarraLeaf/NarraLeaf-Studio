@@ -22,7 +22,7 @@ import type { DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/dev
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import type { PrivilegedActor } from "@shared/types/privileged";
-import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsHistoryEntry, VcsInitOptions, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult } from "@shared/types/vcs";
+import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
@@ -405,10 +405,30 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.vcsReadRevisionDocuments, { projectPath, revision, paths }) as Promise<RequestStatus<{ documents: { path: string; contentBase64: string | null }[] }>>,
         getChangedPaths: (projectPath: string, from: RevisionId, to: RevisionId) =>
             ipcClient.invoke(IPCEventType.vcsGetChangedPaths, { projectPath, from, to }) as Promise<RequestStatus<{ paths: string[] }>>,
+        /** Changes between two revisions. Cached in main - sound only because revisions are immutable. */
+        diffRevisions: (projectPath: string, from: RevisionId, to: RevisionId) =>
+            ipcClient.invoke(IPCEventType.vcsDiffRevisions, { projectPath, from, to }) as Promise<RequestStatus<VcsRevisionDiffResult>>,
+        /** Changes since the last version. Never cached, and never on a timer - it scans (docs §4.17). */
+        diffWorkingTree: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsDiffWorkingTree, { projectPath }) as Promise<RequestStatus<VcsWorkingTreeDiffResult>>,
         getThreeWay: (projectPath: string, mine: RevisionId, theirs: RevisionId, path: string) =>
             ipcClient.invoke(IPCEventType.vcsGetThreeWay, { projectPath, mine, theirs, path }) as Promise<RequestStatus<VcsThreeWayResult>>,
         getMergeBase: (projectPath: string, a: RevisionId, b: RevisionId) =>
             ipcClient.invoke(IPCEventType.vcsGetMergeBase, { projectPath, a, b }) as Promise<RequestStatus<{ base?: RevisionId }>>,
+        /** Is a merge open here? Repository state, so ask on project open, not only after a sync. */
+        getMergeState: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsGetMergeState, { projectPath }) as Promise<RequestStatus<VcsMergeState>>,
+        /** Settles paths; records nothing. `mine`/`theirs` rewrite the working tree - re-read them. */
+        resolveConflicts: (projectPath: string, paths: string[], choice: VcsConflictChoice) =>
+            ipcClient.invoke(IPCEventType.vcsResolveConflicts, { projectPath, paths, choice }) as Promise<RequestStatus<VcsMergeResolveResult>>,
+        unresolveConflicts: (projectPath: string, paths: string[]) =>
+            ipcClient.invoke(IPCEventType.vcsUnresolveConflicts, { projectPath, paths }) as Promise<RequestStatus<VcsMergeResolveResult>>,
+        /** Merges these paths again, discarding the working-tree bytes for them. */
+        restartConflicts: (projectPath: string, paths: string[]) =>
+            ipcClient.invoke(IPCEventType.vcsRestartConflicts, { projectPath, paths }) as Promise<RequestStatus<VcsMergeState>>,
+        /** Full rollback to before the merge (measured). Re-read every document afterwards. */
+        abortMerge: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsAbortMerge, { projectPath }) as Promise<RequestStatus<VcsMergeState>>,
         /** Local read - no socket. Null means the project has no server. */
         getRemote: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.vcsGetRemote, { projectPath }) as Promise<RequestStatus<{ url: string | null }>>,

@@ -52,16 +52,21 @@ import type {
     VcsCheckpointReason,
     VcsCommitOptions,
     VcsCommitResult,
+    VcsConflictChoice,
     VcsHistoryEntry,
     VcsInitOptions,
+    VcsMergeResolveResult,
+    VcsMergeState,
     VcsRepositoryInfo,
     VcsRestoreOptions,
     VcsRestoreResult,
     VcsPushResult,
+    VcsRevisionDiffResult,
     VcsStatus,
     VcsSyncResult,
     VcsSyncState,
     VcsThreeWayResult,
+    VcsWorkingTreeDiffResult,
 } from "./vcs";
 
 export enum IPCEventType {
@@ -241,8 +246,15 @@ export enum IPCEventType {
     vcsReadBlob = "vcs.readBlob",
     vcsReadRevisionDocuments = "vcs.readRevisionDocuments",
     vcsGetChangedPaths = "vcs.getChangedPaths",
+    vcsDiffRevisions = "vcs.diffRevisions",
+    vcsDiffWorkingTree = "vcs.diffWorkingTree",
     vcsGetThreeWay = "vcs.getThreeWay",
     vcsGetMergeBase = "vcs.getMergeBase",
+    vcsGetMergeState = "vcs.getMergeState",
+    vcsResolveConflicts = "vcs.resolveConflicts",
+    vcsUnresolveConflicts = "vcs.unresolveConflicts",
+    vcsRestartConflicts = "vcs.restartConflicts",
+    vcsAbortMerge = "vcs.abortMerge",
     vcsGetRemote = "vcs.getRemote",
     vcsSetRemote = "vcs.setRemote",
     vcsGetSyncState = "vcs.getSyncState",
@@ -697,6 +709,33 @@ export type IPCVcsEvents = {
         data: { projectPath: string; from: RevisionId; to: RevisionId },
         response: { paths: string[] };
     };
+    /**
+     * What changed between two revisions, as changes rather than as bytes.
+     *
+     * Cached in the main process per pair, which it may be because revisions are immutable.
+     * `complete: false` means a budget stopped it short and the surface has to say so;
+     * `readFailure` means the bytes could not be fetched at all, which is a different fact
+     * from "nothing changed" and looks identical if it is ignored.
+     */
+    [IPCEventType.vcsDiffRevisions]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; from: RevisionId; to: RevisionId },
+        response: VcsRevisionDiffResult;
+    };
+    /**
+     * What the author has changed since the last version.
+     *
+     * **Never cached anywhere**, because the working tree changes under Studio between any
+     * two calls. It also SCANS (docs §4.17), so it must be asked because someone wants to
+     * know and never on a timer - a poll manufactures deletions the author never made.
+     */
+    [IPCEventType.vcsDiffWorkingTree]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: VcsWorkingTreeDiffResult;
+    };
     [IPCEventType.vcsGetThreeWay]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
@@ -708,6 +747,48 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { projectPath: string; a: RevisionId; b: RevisionId },
         response: { base?: RevisionId };
+    };
+    /**
+     * Whether a merge is open here, and which paths are still unsettled.
+     *
+     * Worth asking on project open and not only after a sync: a merge is repository
+     * state and survives closing the window (docs §4.23-§4.24).
+     */
+    [IPCEventType.vcsGetMergeState]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: VcsMergeState;
+    };
+    /**
+     * **Records nothing** - the merge stays open until a commit closes it. `mine` and
+     * `theirs` overwrite the working tree, so re-read the paths afterwards.
+     */
+    [IPCEventType.vcsResolveConflicts]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; paths: string[]; choice: VcsConflictChoice },
+        response: VcsMergeResolveResult;
+    };
+    [IPCEventType.vcsUnresolveConflicts]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; paths: string[] },
+        response: VcsMergeResolveResult;
+    };
+    /** **Discards the working-tree bytes** for these paths and merges them again. */
+    [IPCEventType.vcsRestartConflicts]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; paths: string[] },
+        response: VcsMergeState;
+    };
+    /** **Writes the working tree** back to before the merge. Re-read every document. */
+    [IPCEventType.vcsAbortMerge]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: VcsMergeState;
     };
     /** Local read: the configured server, or null. Opens no socket. */
     [IPCEventType.vcsGetRemote]: {
