@@ -92,13 +92,18 @@ describe("workspaceFrozenMessage", () => {
 });
 
 describe("who consults the freeze record", () => {
-    it("is refused by the build and the preview only - Dev Mode reads it to run the revision", async () => {
+    it("is refused by the build, the preview and a test's game - Dev Mode reads it to run the revision", async () => {
         // The decision (plan 2026-07-28-002 §1) is that a frozen workspace still runs Dev Mode, and
         // that Dev Mode runs the FOCUSED REVISION rather than the working tree. So the list below has
-        // two kinds of entry on it and they must not be confused: two managers that refuse, and one
+        // two kinds of entry on it and they must not be confused: managers that refuse, and one
         // reader that asks which revision so it can compile that one. A `workspaceFrozenMessage` call
-        // appearing in the Dev Mode entry would mean Run had been turned into a third refusal, which
+        // appearing in the Dev Mode entry would mean Run had been turned into a refusal, which
         // would take away the only runtime an author browsing a revision is left with.
+        //
+        // `GameTestManager` joined the refusers with the test pipeline (plan 2026-08-01-002 R9): a
+        // test that launches a game goes through the same gate Preview does, or picking a windowed
+        // test would be a way around it. Headless tests are unaffected - they never come here, which
+        // is why a frozen workspace can still run project diagnostics.
         const managersRoot = path.resolve(__dirname, "..", "managers");
         const consumers: string[] = [];
         for (const file of await listSourceFiles(managersRoot)) {
@@ -111,6 +116,7 @@ describe("who consults the freeze record", () => {
             "build/GameBuildManager.ts",
             // Reads the record to learn WHICH revision; never refuses on the strength of it.
             "devMode/revisionLaunchSource.ts",
+            "gameTest/GameTestManager.ts",
             "preview/PreviewManager.ts",
             // The handler that fills the record, not a consumer of the guard.
             "window/handlers/workspaceFreezeAction.ts",

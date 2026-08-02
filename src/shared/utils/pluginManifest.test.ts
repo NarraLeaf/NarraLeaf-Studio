@@ -159,6 +159,80 @@ describe("validatePluginManifest", () => {
         });
     });
 
+    it("normalizes contributed test ids", () => {
+        const result = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.sample-plugin",
+            name: "Sample Plugin",
+            version: "1.0.0",
+            entries: { studio: "main.js" },
+            contributes: {
+                tests: ["acme.sample-plugin.smoke", "acme.sample-plugin.smoke"],
+            },
+        });
+
+        expect(result).toMatchObject({
+            ok: true,
+            manifest: {
+                contributes: {
+                    blueprintNodes: [],
+                    widgets: [],
+                    tests: ["acme.sample-plugin.smoke"],
+                },
+            },
+        });
+
+        // The registry keys tests by id across every plugin at once, so an
+        // unprefixed one could shadow Studio's own `narraleaf-studio:` tests or
+        // another plugin's.
+        const invalid = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.sample-plugin",
+            name: "Sample Plugin",
+            version: "1.0.0",
+            entries: { studio: "main.js" },
+            contributes: {
+                tests: ["smoke"],
+            },
+        });
+        expect(invalid).toMatchObject({
+            ok: false,
+            error: expect.stringContaining("Contributed test must be prefixed with the plugin id"),
+        });
+    });
+
+    it("defaults contributes.tests to an empty list", () => {
+        const result = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.sample-plugin",
+            name: "Sample Plugin",
+            version: "1.0.0",
+            entries: { studio: "main.js" },
+        });
+
+        expect(result).toMatchObject({ ok: true, manifest: { contributes: { tests: [] } } });
+    });
+
+    it("derives no install permission from contributed tests", () => {
+        // Ruling R3: a test runs only when the author picks it from the Run >
+        // Test dialog and presses Start, so there is nothing ambient to consent
+        // to. If this ever starts failing, someone taught
+        // derivePermissionsFromContributes about tests - that is a product
+        // decision, not a bug fix.
+        const result = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.sample-plugin",
+            name: "Sample Plugin",
+            version: "1.0.0",
+            entries: { studio: "main.js" },
+            contributes: {
+                tests: ["acme.sample-plugin.smoke"],
+            },
+        });
+
+        expect(result).toMatchObject({ ok: true, manifest: { permissions: [] } });
+    });
+
     it("rejects contributed node types without the plugin id prefix", () => {
         const result = validatePluginManifest({
             manifestVersion: 2,

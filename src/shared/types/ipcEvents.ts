@@ -8,6 +8,7 @@ import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
 import type { MissingRecentProject } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
+import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
@@ -171,6 +172,11 @@ export enum IPCEventType {
     previewLaunch = "preview.launch",
     previewStop = "preview.stop",
     previewGetStatus = "preview.getStatus",
+
+    gameTestLaunch = "gameTest.launch",
+    gameTestStop = "gameTest.stop",
+    /** Pushed, unlike preview's polled status: event ordering is evidence a test reasons about. */
+    workspaceGameTestEvent = "workspace.gameTest.event",
 
     gameBuildStart = "gameBuild.start",
     gameBuildCancel = "gameBuild.cancel",
@@ -544,7 +550,7 @@ export type IPCEvents = {
             byteLength?: number;
         };
     };
-} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameBuildEvents & IPCSigningEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCPrivilegedEvents & IPCVcsEvents;
+} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCPrivilegedEvents & IPCVcsEvents;
 
 /**
  * Version control. Every event carries `projectPath`: Studio is
@@ -1467,6 +1473,41 @@ export type IPCPreviewEvents = {
         response: {
             status: PreviewStatus;
         };
+    };
+};
+
+/**
+ * Game processes owned by a *test* run, not by the author's Run button.
+ *
+ * Separate from `IPCPreviewEvents` on purpose. Preview answers one question - "is it running" - by
+ * polling, which is enough for an author watching their own game; a test has to tell a window being
+ * closed from a process dying, and has to see an uncaught error rather than read about one in a log
+ * line. Folding that onto the preview calls would have made every preview consumer carry it.
+ */
+export type IPCGameTestEvents = {
+    [IPCEventType.gameTestLaunch]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: GameTestLaunchRequest;
+        response: GameTestLaunchResult;
+    };
+    [IPCEventType.gameTestStop]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+            sessionId: string;
+        };
+        response: Record<string, never>;
+    };
+    [IPCEventType.workspaceGameTestEvent]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: GameTestEventPayload;
+        // Required by `IPCConfiguration` even for a one-way push. Omitting it does not just weaken
+        // this entry: `IPCEvents` stops satisfying the constraint every IPC generic is written
+        // against, so every handler in main and every preload call fails to typecheck at once.
+        response: never;
     };
 };
 

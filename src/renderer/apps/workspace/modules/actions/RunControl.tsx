@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, Loader2, MonitorPlay, Package, Play, Square } from "lucide-react";
+import { Check, ChevronDown, FlaskConical, Loader2, MonitorPlay, Package, Play, Square } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { useWorkspace } from "../../context";
 import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
@@ -16,12 +16,30 @@ import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { flushUIDocAndGraphIfDirty } from "./flushDevModeAssets";
 import { openBuildDialog } from "./BuildDialog";
 import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "./runtimeActionStatus";
+import {
+    getTestRunService,
+    isTerminalTestStatus,
+    openTestDialog,
+    openTestReportTab,
+    resolveTestText,
+    TEST_RUN_COMMAND_ID,
+    TEST_TOAST_KEYS,
+    TEST_TOAST_TONE,
+} from "../testing";
+import type { TestRunRecord } from "@/lib/testing/types";
 import type { DevModeStatus } from "@shared/types/devMode";
 import type { GameBuildStatus } from "@shared/types/gameBuild";
 import type { PreviewStatus } from "@shared/types/gameRuntime";
 import type { TranslationKey } from "@shared/i18n";
 
-/** The two modes the Run button can launch; Build/Production is a separate control. */
+/**
+ * The two modes the Run button can launch; Build/Production is a separate control, and so is Test.
+ *
+ * A test is deliberately NOT a run mode: a mode is a persisted habit the split button remembers and
+ * launches with one click, and "which test" is a question with as many answers as the registry has
+ * entries. It holds the run slot while it runs (ruling R7) without being something the button can be
+ * left pointing at.
+ */
 type RunMode = "devMode" | "preview";
 const RUN_MODE_SETTINGS_KEY = "ui.runMode";
 const RUN_MODES: readonly RunMode[] = ["devMode", "preview"];
@@ -75,6 +93,7 @@ export function RunControl() {
     const [devStatus, setDevStatus] = useState<DevModeStatus>("idle");
     const [previewStatus, setPreviewStatus] = useState<PreviewStatus>("idle");
     const [buildStatus, setBuildStatus] = useState<GameBuildStatus>("idle");
+    const [activeRun, setActiveRun] = useState<TestRunRecord | null>(null);
     const [menuOpen, setMenuOpen] = useState(false);
 
     // The selected mode is a global UI habit; follow live changes so a second window stays in sync.
@@ -135,10 +154,54 @@ export function RunControl() {
         });
     }, [context]);
 
+    /**
+     * The test run: what the button is holding, and the one announcement a finished run makes.
+     *
+     * Raised here for the same reason the build's toasts moved here - this control is mounted for
+     * the whole session, while anything that could plausibly own the announcement instead (the
+     * picker, the report tab) is transient, and a dialog that closed at Start cannot report an
+     * outcome it is not around for. Opening the report tab rides along for the same reason.
+     *
+     * `announced` is seeded with every run that had already settled before this subscription
+     * existed, so remounting the top bar does not re-toast a run the author read about ten minutes
+     * ago. It is keyed by run id rather than by "the newest one changed", because a run's record
+     * keeps being written to (findings, log lines) after it settles.
+     */
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const testRun = getTestRunService(context);
+        const uiService = context.services.get<UIService>(Services.UI);
+        const announced = new Set(
+            testRun.listRuns().filter(run => isTerminalTestStatus(run.status)).map(run => run.runId),
+        );
+        const sync = () => {
+            setActiveRun(testRun.getActiveRun());
+            for (const run of testRun.listRuns()) {
+                if (!isTerminalTestStatus(run.status) || announced.has(run.runId)) {
+                    continue;
+                }
+                announced.add(run.runId);
+                const title = resolveTestText(run.title, translate);
+                uiService.showNotification(
+                    translate(TEST_TOAST_KEYS[run.status], { title }),
+                    TEST_TOAST_TONE[run.status],
+                );
+                openTestReportTab(context, run.runId);
+            }
+        };
+        sync();
+        return testRun.onChanged(sync);
+    }, [context]);
+
     const devActive = isDevModeRuntimeActive(devStatus);
     const previewActive = isPreviewRuntimeActive(previewStatus);
+    const testActive = activeRun !== null;
     const activeMode: RunMode | null = devActive ? "devMode" : previewActive ? "preview" : null;
-    const running = activeMode !== null;
+    // A test holds the run slot exactly as a mode does (ruling R7): the mode rows go inert, and this
+    // button becomes the Stop control for it.
+    const running = activeMode !== null || testActive;
     // The face reflects whatever is actually running; when nothing is, the selected mode.
     const shownMode = activeMode ?? mode;
     const meta = RUN_MODE_META[shownMode];
@@ -191,6 +254,10 @@ export function RunControl() {
         if (!workspace || !context) {
             return;
         }
+        if (activeRun) {
+            getTestRunService(context).cancel(activeRun.runId);
+            return;
+        }
         if (devActive) {
             void context.services.get<DevModeService>(Services.DevMode).stop();
             return;
@@ -224,8 +291,14 @@ export function RunControl() {
      * the opposite of that. `when` reads live status through the ref, since the palette re-evaluates
      * it on every keystroke.
      */
-    const runStateRef = useRef({ devActive, previewActive, frozen, runOrStop, launchMode });
-    runStateRef.current = { devActive, previewActive, frozen, runOrStop, launchMode };
+    const openTest = () => {
+        if (workspace) {
+            openTestDialog(workspace);
+        }
+    };
+
+    const runStateRef = useRef({ devActive, previewActive, testActive, frozen, runOrStop, launchMode, openTest });
+    runStateRef.current = { devActive, previewActive, testActive, frozen, runOrStop, launchMode, openTest };
 
     useEffect(() => {
         if (!context) {
@@ -264,13 +337,35 @@ export function RunControl() {
                 when: () => runStateRef.current.previewActive,
                 run: () => runStateRef.current.runOrStop(),
             },
+            {
+                // Not gated on `idle()`, unlike the two launches above: this opens the picker rather
+                // than starting anything, and the picker is where an author reads WHY every test is
+                // greyed out while something else runs. Not gated on the freeze either - a headless
+                // test is a read-only observer and runs while frozen (ruling R9), and which tests
+                // those are is `getAvailability`'s answer to give, not this predicate's.
+                id: TEST_RUN_COMMAND_ID,
+                titleKey: "test.action.run",
+                categoryKey: "workspace.shell.commandPalette.categoryRun",
+                when: () => !runStateRef.current.testActive,
+                run: () => runStateRef.current.openTest(),
+            },
+            {
+                id: "run:stop-test",
+                titleKey: "test.action.stop",
+                categoryKey: "workspace.shell.commandPalette.categoryRun",
+                when: () => runStateRef.current.testActive,
+                run: () => runStateRef.current.runOrStop(),
+            },
             // Production Build is deliberately absent: `buildAction` is a registered action, so the
             // palette already derives it (and drops it while frozen). A second entry would be a
             // duplicate row that the freeze policy does not reach.
         ]);
     }, [context]);
 
-    const runTitle = running ? t(meta.stopKey) : t(meta.runKey);
+    // A test owns the face while it runs: showing "Dev Mode" over a Stop square would name the wrong
+    // thing to stop.
+    const runTitle = testActive ? t("test.action.stop") : running ? t(meta.stopKey) : t(meta.runKey);
+    const runLabel = testActive ? t("test.statusBar.label") : t(meta.labelKey);
 
     return (
         <div className="relative flex items-center">
@@ -292,7 +387,7 @@ export function RunControl() {
                     <span className={cn("flex h-4 w-4 items-center justify-center", errored && "text-danger")}>
                         {running ? <Square className="h-3.5 w-3.5 fill-current" /> : meta.icon}
                     </span>
-                    <span>{t(meta.labelKey)}</span>
+                    <span>{runLabel}</span>
                 </button>
 
                 {/* Stays live while a mode runs, unlike before: the menu is no longer only "switch
@@ -383,6 +478,34 @@ export function RunControl() {
                                 {building ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Package className="h-4 w-4" />}
                             </span>
                             <span className="flex-1 text-left">{t("actions.run.productionBuild")}</span>
+                            <span className="w-3" />
+                        </button>
+
+                        {/* Test. Beside Production Build rather than among the mode rows above,
+                            because it is not a mode either - it checks the project instead of
+                            launching it, and the picker is what decides what runs. Never gated
+                            here: a headless test runs on a frozen workspace (ruling R9) and every
+                            other refusal - the freeze, a run already in flight - is `getAvailability`'s
+                            to state, per row, with its reason. Greying this row would replace all of
+                            that with silence. */}
+                        <button
+                            type="button"
+                            role="menuitem"
+                            aria-label={t("test.action.open")}
+                            onClick={() => {
+                                setMenuOpen(false);
+                                if (workspace) {
+                                    openTestDialog(workspace);
+                                }
+                            }}
+                            className="flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm text-fg-muted transition-colors hover:bg-fill hover:text-fg"
+                        >
+                            <span className="flex h-4 w-4 items-center justify-center">
+                                {testActive
+                                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    : <FlaskConical className="h-4 w-4" />}
+                            </span>
+                            <span className="flex-1 text-left">{t("test.action.open")}</span>
                             <span className="w-3" />
                         </button>
                     </div>
