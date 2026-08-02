@@ -669,6 +669,7 @@ function ChangeRow({
                             diff={entry.diff}
                             limit={RAIL_CHANGE_SUMMARY_ROWS}
                             dense
+                            wholeDocument={file.kind === "added" || file.kind === "deleted"}
                             footer={context ? (
                                 <button
                                     type="button"
