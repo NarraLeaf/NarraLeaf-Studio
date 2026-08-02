@@ -91,6 +91,9 @@ interface VersionRailProps {
  */
 export function VersionRail({ surface, presence, onExpandedChange }: VersionRailProps) {
     const { t } = useTranslation();
+    // Only for the strip's merge button; everything else here reads the surface. Null before the
+    // workspace has a context, which is why that button is conditional on it.
+    const { context } = useWorkspace();
     const { state, busy, error, history } = surface;
     const onRevision = state.kind === "revision";
     const visible = isVersionSurfaceVisible(state);
@@ -163,21 +166,38 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
                     {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <History className="h-4 w-4" />}
                 </button>
 
-                {/* Disabled for exactly one operation, and no other. Leaving DURING a restore would
-                    re-read a working tree the main process is still halfway through rewriting, and
-                    the editors would then hold a project that is part one version and part another.
-                    Every other busy state is a read, and an escape hatch that greys out whenever
-                    anything is loading is not an escape hatch. */}
-                <button
-                    type="button"
-                    onClick={surface.returnToCurrent}
-                    disabled={busy === "restore"}
-                    title={escapeLabel}
-                    aria-label={escapeLabel}
-                    className="flex h-10 w-10 items-center justify-center rounded-md text-primary transition-colors cursor-default hover:bg-fill disabled:opacity-50"
-                >
-                    <RotateCcw className="h-4 w-4" />
-                </button>
+                {/* **A merge is the one freeze with no way out through `thaw`.** Leaving would
+                    re-read a working tree whose conflicted documents are still unparseable - the
+                    state this freeze exists because of - so the strip offers the way FORWARD
+                    instead: open the merge. The panel's section says the same at full width.
+
+                    Otherwise the ordinary escape, disabled for exactly one operation: leaving
+                    DURING a restore would re-read a tree the main process is halfway through
+                    rewriting, and the editors would hold a project that is part one version and
+                    part another. Every other busy state is a read, and an escape hatch that greys
+                    out whenever anything is loading is not an escape hatch. */}
+                {surface.frozen === "merge" && context ? (
+                    <button
+                        type="button"
+                        onClick={() => openVcsChangesTab(context, { mode: "resolve" })}
+                        title={t("workspace.shell.versionControl.mergeResolve")}
+                        aria-label={t("workspace.shell.versionControl.mergeResolve")}
+                        className="flex h-10 w-10 items-center justify-center rounded-md text-primary transition-colors cursor-default hover:bg-fill"
+                    >
+                        <GitMerge className="h-4 w-4" />
+                    </button>
+                ) : (
+                    <button
+                        type="button"
+                        onClick={surface.returnToCurrent}
+                        disabled={busy === "restore"}
+                        title={escapeLabel}
+                        aria-label={escapeLabel}
+                        className="flex h-10 w-10 items-center justify-center rounded-md text-primary transition-colors cursor-default hover:bg-fill disabled:opacity-50"
+                    >
+                        <RotateCcw className="h-4 w-4" />
+                    </button>
+                )}
 
                 {onRevision && (
                     /* Vertical because 48px has no room for `#12` horizontally, and the label is the
@@ -249,6 +269,11 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
                 {state.kind !== "not-a-repository" && state.kind !== "probing" && (
                     <ServerSection surface={surface} />
                 )}
+
+                {/* Under the server, because that is where a merge comes from, and above the commit
+                    form, because while one is open committing is not "record my work" - it is what
+                    closes the merge. Absent whenever there is none, which is almost always. */}
+                <MergeSection surface={surface} />
 
                 {/* Above the change list, which is the opposite of a review-then-act reading order and
                     is deliberate: this is a 320px column with ONE scroller, and the list can be fifty
@@ -991,15 +1016,58 @@ function ServerSection({ surface }: { surface: VersionSurface }) {
                     {t("workspace.shell.versionControl.server.sync")}
                 </button>
             </div>
+        </div>
+    );
+}
 
-            {/* The files the last sync could not merge. Kept on screen rather than left to the
-                notification, because it is a state the project is IN until someone deals with it -
-                a notification the author dismissed would take the only record of it away. */}
-            {surface.conflicts.length > 0 && (
-                <p className="mt-1.5 text-2xs text-danger">
-                    {t("workspace.shell.versionControl.syncConflictTitle")}
-                </p>
-            )}
+/**
+ * The merge this project is in the middle of, and the way into finishing it.
+ *
+ * **A section of its own rather than a line under the sync button**, for two reasons. A merge
+ * outlives the sync that caused it and outlives the window, so it is a state the project is IN -
+ * the notification the author dismissed is gone, and the row under a button they may never press
+ * again is not where they would look tomorrow. And the server section is absent entirely on a
+ * project with no remote, while a merge can be there anyway (the author's own `lore` CLI can start
+ * one), so hanging this off it would hide the only way out of that state.
+ *
+ * **The button is how the author enters resolving, and nothing enters it for them.** A conflicted
+ * sync reports and stops; this is the press. Same discipline as never creating a repository on
+ * their behalf, and forced by the mechanism too - the paths exist only in the sync's own event
+ * stream (docs §4.24), so handing them over has to be deliberate.
+ *
+ * It does NOT say how many conflicts are left to decide, and that is not an omission: settling a
+ * path leaves no readable mark anywhere, so a count here would be the number the merge STARTED
+ * with, shown as if it were progress.
+ */
+function MergeSection({ surface }: { surface: VersionSurface }) {
+    const { t, tn } = useTranslation();
+    const { context } = useWorkspace();
+
+    if (!surface.merge?.inProgress || !context) {
+        return null;
+    }
+
+    return (
+        <div data-vcs-seam="merge" className="border-b border-edge bg-danger/5 px-3 py-2">
+            <div className="flex items-center gap-1.5">
+                <GitMerge className="h-3 w-3 shrink-0 text-danger" aria-hidden />
+                <span className="text-2xs tracking-wide text-danger">
+                    {t("workspace.shell.versionControl.mergeOpen")}
+                </span>
+            </div>
+            <p className="mt-1 text-2xs text-fg-muted">
+                {surface.merge.conflicts.length > 0
+                    ? tn("workspace.shell.versionControl.mergeConflicts", surface.merge.conflicts.length)
+                    : t("workspace.shell.versionControl.mergeNoConflicts")}
+            </p>
+            <button
+                type="button"
+                onClick={() => openVcsChangesTab(context, { mode: "resolve" })}
+                className="mt-1.5 flex h-7 w-full items-center justify-center gap-1.5 rounded-md border border-danger/40 px-2 text-2xs text-danger transition-colors cursor-default hover:bg-fill"
+            >
+                <GitMerge className="h-3 w-3" />
+                {t("workspace.shell.versionControl.mergeResolve")}
+            </button>
         </div>
     );
 }

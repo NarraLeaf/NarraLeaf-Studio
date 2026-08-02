@@ -5,7 +5,7 @@ import { VersionControlService } from "@/lib/workspace/services/core/VersionCont
 import { WorkspaceFreezeService } from "@/lib/workspace/services/core/WorkspaceFreezeService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { NotificationType } from "@/lib/workspace/services/ui/types";
-import type { RevisionId, VcsAvailability, VcsStatus, VcsSyncState } from "@shared/types/vcs";
+import type { RevisionId, VcsAvailability, VcsMergeState, VcsStatus, VcsSyncState } from "@shared/types/vcs";
 import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
 import {
     collapseCheckpoints,
@@ -200,8 +200,20 @@ export interface VersionSurface {
      * changed the answer, never on open and never on a timer.
      */
     syncState: VcsSyncState | null;
-    /** Paths the last sync could not merge. Non-empty means the author is blocked. */
-    conflicts: string[];
+    /**
+     * The merge this project is in the middle of, or null when it is in none (and null before
+     * anyone has looked, which is the same thing to draw).
+     *
+     * **Read from the repository rather than remembered from the sync that caused it**, because a
+     * merge outlives the window: an author who closes Studio on a conflicted sync reopens onto the
+     * same unfinished merge, and a surface that only knew about syncs it had watched would offer
+     * them no way in at all.
+     *
+     * `conflicts` on it is "the merge left these to a human", NOT "these are still undecided" -
+     * settling leaves no readable mark (see `VcsMergeState.conflicts`). Nothing here may present
+     * it as progress.
+     */
+    merge: VcsMergeState | null;
     /** Ask the server where things stand. The only thing here that waits on a network by itself. */
     checkRemote: () => void;
     /**
@@ -237,7 +249,7 @@ export function useVersionSurface(): VersionSurface {
     const [error, setError] = useState<string | null>(null);
     const [remote, setRemoteUrl] = useState<string | null>(null);
     const [syncState, setSyncState] = useState<VcsSyncState | null>(null);
-    const [conflicts, setConflicts] = useState<string[]>([]);
+    const [merge, setMerge] = useState<VcsMergeState | null>(null);
     // Guards every setState behind an await: a project switch unmounts this while reads are still in
     // flight, and the slowest of them (a revision load over the network) can land long afterwards.
     const alive = useRef(true);
@@ -282,8 +294,16 @@ export function useVersionSurface(): VersionSurface {
             setHeadNumber(null);
             setBranch(null);
             setRemoteUrl(null);
+            setMerge(null);
             return;
         }
+        // Asked on every identity read - which is project open, and after any revision - because a
+        // merge is repository state that outlives the window, and the alternative is an author who
+        // reopened Studio mid-merge with nothing on screen offering them a way to finish it. Local
+        // and non-scanning; the walk it does is the same one a restore pays for.
+        const mergeState = await services.versionControl.getMergeState();
+        if (!alive.current) return;
+        setMerge(mergeState);
         // LOCAL, and that is the only reason it belongs in this function: it reads the
         // repository's own config and opens no socket. Whether that server answers is
         // `checkRemote`, which costs seconds and is never called from here.
@@ -314,6 +334,10 @@ export function useVersionSurface(): VersionSurface {
         setRawHistory(null);
         setPage({ limit: VERSION_HISTORY_PAGE, received: 0 });
         setStatus(null);
+        // Cleared here rather than left to the read below: a host with no version control at all
+        // returns from `readIdentity` before it reaches the merge, and the previous project's
+        // unfinished merge would then be offered over this one.
+        setMerge(null);
         void readIdentity();
     }, [services, readIdentity]);
 
@@ -356,6 +380,18 @@ export function useVersionSurface(): VersionSurface {
             return;
         }
         return services.versionControl.onRevisionRecorded(() => {
+            void readIdentity();
+        });
+    }, [services, readIdentity]);
+
+    // Abandoning a merge records NO revision, so the event above never fires for it - and the way
+    // into resolving would sit in the rail pointing at a merge that is over. Completing one fires
+    // both, and re-reading twice is a local read.
+    useEffect(() => {
+        if (!services) {
+            return;
+        }
+        return services.versionControl.onMergeChanged(() => {
             void readIdentity();
         });
     }, [services, readIdentity]);
@@ -649,7 +685,6 @@ export function useVersionSurface(): VersionSurface {
             // no longer pointed at. Left in place, disconnecting would leave the row
             // reporting "2 versions ahead" of nothing.
             setSyncState(null);
-            setConflicts([]);
             return true;
         } catch (thrown) {
             if (alive.current) setError(messageOf(thrown));
@@ -699,7 +734,12 @@ export function useVersionSurface(): VersionSurface {
         try {
             const result = await services.versionControl.sync();
             if (!alive.current) return true;
-            setConflicts(result.conflicts);
+            // Re-read rather than kept from the result: the sync's own list comes out of an event
+            // stream that is gone by the next call (docs §4.24), and the repository's answer is
+            // recovered from disk - so it is the one that survives the window closing, and the one
+            // the resolve surface will be working from.
+            setMerge(await services.versionControl.getMergeState());
+            if (!alive.current) return true;
             if (result.conflicts.length > 0) {
                 services.ui.notifications.showSticky({
                     type: NotificationType.Error,
@@ -779,7 +819,7 @@ export function useVersionSurface(): VersionSurface {
         enableVersionControl,
         remote,
         syncState,
-        conflicts,
+        merge,
         checkRemote,
         setRemote,
         pushToRemote,

@@ -1,4 +1,4 @@
-import { GitCompare } from "lucide-react";
+import { GitCompare, GitMerge } from "lucide-react";
 import type { EditorTabDefinition } from "@/apps/workspace/registry/types";
 import { translate } from "@/lib/i18n";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -10,14 +10,18 @@ import { vcsChangesTabId, type VcsChangesPayload } from "./vcsChangesIds";
 /**
  * The comparison opens as an editor tab, for the reason the lint report does: it is a document about
  * the whole project, and the workspace already opens documents in tabs. The rail's own summary stays
- * where it is - this is where the author goes when eight rows are not enough, and (from D6) where a
- * conflict is resolved, which a 320px column cannot hold.
+ * where it is - this is where the author goes when eight rows are not enough, and where a conflict is
+ * resolved, which a 320px column cannot hold.
  */
 export function createVcsChangesTab(payload: VcsChangesPayload): EditorTabDefinition<VcsChangesPayload> {
     return {
         id: vcsChangesTabId(payload),
         title: tabTitle(payload),
-        icon: <GitCompare className="h-4 w-4" />,
+        // The one tab in this family that can change the project wears a different mark, so a strip
+        // holding both does not read as two copies of the same thing.
+        icon: payload.mode === "resolve"
+            ? <GitMerge className="h-4 w-4" />
+            : <GitCompare className="h-4 w-4" />,
         component: VcsChangesTab,
         closable: true,
         payload,
@@ -51,5 +55,7 @@ function tabTitle(payload: VcsChangesPayload): string {
                 from: payload.fromLabel ?? shortRevision(payload.from),
                 to: payload.toLabel ?? shortRevision(payload.to),
             });
+        case "resolve":
+            return translate("documentDiff.resolve.tab");
     }
 }

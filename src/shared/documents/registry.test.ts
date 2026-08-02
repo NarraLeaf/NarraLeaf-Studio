@@ -202,6 +202,36 @@ describe("defineDocumentSpec", () => {
         }
     });
 
+    /**
+     * The optional members have to be FORWARDED, not merely declared.
+     *
+     * D1 declared `diff` on the spec interface and left it out of `DocumentSpecDefinition`, so
+     * `defineDocumentSpec` dropped every implementation on the floor - and nothing reported it,
+     * because `undefined` there is a legitimate answer the diff engine reads to fall back a tier.
+     * `merge3` fails worse: its fallback is not a lesser change list, it is the author resolving
+     * the whole file from one side. Absence must stay absence and presence must survive.
+     */
+    it("forwards diff and merge3, and leaves them absent when the definition has none", () => {
+        const bare = fixtureSpec("story", ["editor/story/index.json"]);
+        expect(bare.diff).toBeUndefined();
+        expect(bare.merge3).toBeUndefined();
+
+        const diff = {changes: [], complete: true, total: 0, tier: "semantic"} as const;
+        const merge = {document: "merged", decisions: [], conflicts: 0} as const;
+        const full = defineDocumentSpec<string>({
+            kind: "story",
+            version: 1,
+            paths: ["editor/story/index.json"],
+            parse: raw => String(raw),
+            summarize: () => ({title: "", counts: []}),
+            diff: () => diff,
+            merge3: () => merge,
+        });
+
+        expect(full.diff?.("a", "b", {limit: 10})).toBe(diff);
+        expect(full.merge3?.(undefined, "a", "b")).toBe(merge);
+    });
+
     it("builds a fixed path when the spec takes no parameters", () => {
         const spec = fixtureSpec("ui-document", ["editor/ui/uidoc.json"]);
 

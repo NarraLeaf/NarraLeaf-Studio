@@ -600,6 +600,109 @@ baseFromUnionGraph:      e40c23c2…     ← 两个分支的图合起来就找�
 修法有两个，都成立：把两边分支的 `history` 并起来再算 LCA；或者干脆**用 §4.23 的
 `~base` 附属文件**——合并态下它就在磁盘上，比重算 LCA 更直接也更便宜。
 
+> **已修（D7 模型半，2026-08-01）**：取的是第一种。`revisionReader.ts` 加了
+> `readMergeGraph(globals, tips)`（当前分支 → 每个未覆盖的 tip 走 `history({revision})` →
+> 仍有洞才并全部分支）与 `graphCoversAncestry(graph, tip)`，`threeWay` 改用前者。
+> **实测：`history(globals, {revision: theirs})` 一步就够**，它给的 2 个节点里就有真 base，
+> 分支兜底那步在普通两分支拓扑上不会跑到。
+>
+> **没用 `~base` 附属文件，理由是寻址方式不同**：`threeWay` 是按「两个修订」提问的，要对
+> 任意一对修订作答（历史里两点比较、还没开始的合并、Lore 自动合掉因而根本没写附属文件的
+> 路径）；附属文件只在合并进行中、且只为冲突路径存在，上面三种它一个都答不了，也分不出
+> 「add/add」和「Lore 干净合掉了」。附属文件仍是 D6 写回管线的正解——那条路径确实在合并态里。
+>
+> 同时补上的是**「找不到 base」的两种含义要分开**：`ThreeWay.baseStatus` 现在是
+> `found` / `absent-in-base` / `no-common-ancestor` / `indeterminate`。前两者之外，
+> **`indeterminate`（图没读全）绝不能当 add/add** —— 把它们拼成同一个 `base: undefined`
+> 正是本条缺陷发货时的样子。
+>
+> **还没修**：`VcsManager.getMergeBase` 仍旧走 `readRevisionGraph`，同一个洞原样还在
+> （`VcsManager.ts` 属于 D6 的地盘，本卡没碰）。
+
+### 4.31 ⚠️ 同步之后，`_mine` / `_theirs` 两个 verb **跟附属文件和冲突标记是反的**
+
+§4.25 是在**本地** `branchMergeStart` 上测的，那时 verb 与附属文件一致。**同步产生的合并上
+不一致**，同一个仓库、同一个冲突文件（真 loreserver，`merge.integration.test.ts` 里已钉住）：
+
+| 读什么 | 内容 |
+|---|---|
+| `doc.json` 的 `<<<<<<< ours` 段 | **作者自己的** |
+| `doc.json~mine` | **作者自己的** |
+| `doc.json~theirs` | 服务器那边的 |
+| `branch_merge_resolve_mine` 写进工作树的 | **服务器那边的** ← 跟上面两行相反 |
+| `branch_merge_resolve_theirs` 写进工作树的 | 作者自己的 |
+
+机理：**两个 verb 跟的是分支指针，而同步已经把分支指针挪到服务器的 tip 上了**（这也是 §4.26
+「同步之后 parent[0] 是拉下来的那一边」的同一件事）；附属文件与标记跟的是这次合并**记下来的
+两侧**，不随指针动。
+
+后果是这条必须写进文档的理由：**Studio 能产生的合并只有同步这一种**，所以照着 verb 名字做，
+「保留我的」每次都会丢掉作者自己的工作、「保留对方的」每次都会丢掉同伴的——两边都是静默的，
+而且本地测试全绿（本地两者一致）。
+
+所以 [`merge.ts`](../src/main/app/application/managers/vcs/merge.ts) 的 `resolveConflicts`
+**不调那两个 verb**：把 `~mine` / `~theirs` 拷到冲突文件上，再用**普通的**
+`branch_merge_resolve`（§4.25 实测逐字节提交工作树内容）。两种来源下都正确，而且仍然是「整份
+取一边」——全程不看文档内容，二进制与没有 spec 的文档同样成立。
+
+> 另有一个**未测**的边界：`readMergeState().incoming` 读的是 `revisionMerged`，同步态下它给的
+> 是**作者自己的 tip**（实测），与「收到的那一版」直觉相反。界面上那句「把从服务器拿到的版本
+> （xxxxxx）合并进来」因此**可能名字取反**；只是个展示用的短哈希，没有按它做任何决定。
+
+### 4.32 提交被拒时，**已经解决的路径不会回滚**，而且它们的附属文件已经没了
+
+`completeMerge` 的语义是「每条路径取一边，然后提交收尾」。若作者漏了一条，提交按 §4.25 的
+方式被拒（错误里带那条路径名）——**但前面几条已经落到工作树上了，并且提交里的 stage 那一步
+已经把它们的附属文件删掉**。实测（`merge.integration.test.ts`「refuses when a conflicted path
+was left undecided」）：
+
+- `doc.json` 已是所选那一边的内容，尽管**什么都没记进历史**；
+- `readMergeState().conflicts` 从 `[doc.json, other.json]` 缩成 `[other.json]`。
+
+两条派生结论：
+
+1. **渲染进程在失败路径上也必须重读文档。** 拒绝不是回滚，编辑器手上那份是合并前的字节，下一次
+   自动保存就会把它写回去、盖掉作者刚选的那一边。
+2. 这是唯一一处「已解决 vs 未解决」在仓库里读得出来的地方，但**只在一次被拒的提交之后**才成立，
+   §4.24 那条（附属文件在普通 resolve 之后照样在）没有被推翻。
+
+### 4.33 冲突文件让**整个工程打不开** —— 而这不是 Lore 的缺陷，是 §4.23 的直接后果
+
+真机复现（无需服务端）：一个留着未完成合并的工程用 Studio 打开，工作区**根本起不来**：
+
+```
+Failed to initialize workspace
+Failed to parse JSON from <project>/editor/story/index.json
+```
+
+链条是死的：§4.23 说 automerge 把 diff3 标记写进冲突文件 → 那份文件不再是合法 JSON →
+`editor/story/index.json` 在工作区启动时就要解析 → `Service.initializeAll` 抛错 → 失败屏。
+失败屏只提供「重试 / 打开启动器 / 打开别的工程」，**没有一条通向合并**。也就是说
+**一旦真的有东西要解决，解决界面就够不着了**——而「关掉窗口第二天再回来」正是 §4.24
+那套附属文件探测存在的理由。
+
+裁决按本卡计划 §6：**因为合并没做完而无法解析的文档，不是损坏文档**，把它挪进隔离区等于
+给一份好文件贴坏标签。而「有没有合并在进行」在**解析任何文档之前**就问得出来——
+`readMergeState` 只要状态头 + 一次附属文件遍历。
+
+修法（渲染进程，三处）：
+
+1. `workspaceProjectPreflight` 在 `Service.initializeAll` **之前**问一次 `getMergeState`；
+2. 有冲突路径时装上 `mergeConflictReads`：那几条路径的读改读 `<path>~mine`（作者自己那一边，
+   §4.23 保证逐字节等于他上次提交的内容），于是每份文档都能解析；
+3. 同时 `freezeProjectWrites({kind:"merge"})`。**冻结必须和替换同时装、且在第一次读之前**：
+   编辑器手上拿的不是磁盘上的东西，一次迁移或一次自动保存就会把合并前的内容盖到 automerge
+   的结果上。
+
+三条边界：**没有冲突路径的合并不装**（automerge 全合上了，磁盘上就是要提交的东西）；
+**版本控制答不上来就照常打开**（可选能力，不能让它挡住开工程）；**合并结束/放弃时必须先
+`clearMergeConflictReads()` 再重读**——提交会删掉附属文件，还挂着替换去重读会把每份冲突
+文档读成「不存在」，作者刚解决出来的东西会被默认值顶掉。
+
+> `kind: "merge"` 是第三种冻结原因。`WorkspaceFreezeKind` 的注释早就写着「加第三种会在上报处
+> 编译失败，那正是该被问『这种情况怎么说』的地方」——确实如此：构建/预览在合并态下同样要拒绝，
+> 但话术不是「解除冻结」而是「先把合并做完」。
+
 ## 5. 服务端策略
 
 ### 5.1 P0：不需要任何服务端，也不需要包装

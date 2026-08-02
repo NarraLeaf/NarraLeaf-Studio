@@ -1,11 +1,14 @@
 import fs from "fs";
 import path from "path";
-import type { VcsConflictChoice, VcsMergeResolveResult, VcsMergeState } from "@shared/types/vcs";
+import type {
+    VcsConflictChoice,
+    VcsMergeResolveResult,
+    VcsMergeSideChoice,
+    VcsMergeState,
+} from "@shared/types/vcs";
 import {
     branchMergeAbort,
     branchMergeResolve,
-    branchMergeResolveMine,
-    branchMergeResolveTheirs,
     branchMergeRestart,
     branchMergeUnresolve,
     flushRepository,
@@ -49,9 +52,15 @@ import { collectWorkingSet } from "./workingSet";
  * next to it. `~mine` and `~theirs` are byte-identical to the two sides' recorded
  * content, `~base` is their common ancestor.
  *
- * They are the backend's spelling, not Studio's, and they are the only thing on disk
- * that names a conflicted path after a restart. The backend excludes them from a commit
- * itself, so a resolved merge does not carry them into the author's history (§4.23).
+ * They are the backend's spelling, not Studio's, and they do two jobs here. They are the
+ * only thing on disk that names a conflicted path after a restart, and they are what
+ * "take one side" actually copies - see {@link resolveConflicts} for why the two verbs
+ * named after the sides cannot be trusted to mean them. The backend excludes them from a
+ * commit itself, so a resolved merge does not carry them into the author's history
+ * (§4.23).
+ *
+ * Keyed so that a {@link VcsMergeSideChoice} indexes it directly, which is what keeps the
+ * two spellings of "mine" from drifting apart.
  */
 const SIDECAR_SUFFIXES = { base: "~base", mine: "~mine", theirs: "~theirs" } as const;
 
@@ -151,11 +160,36 @@ function toRepositoryRelative(root: string, absolute: string): string {
 /**
  * Settle these paths by taking one side, or by taking whatever is in the working tree.
  *
- * `working-tree` takes the bytes on disk verbatim - measured to the byte (§4.25), which
- * is what makes a per-change merge possible at all given that the backend has no
- * in-memory write API: the caller writes the answer, then says it is settled. The other
- * two OVERWRITE the working tree with one side, so anything a caller wrote there first
- * is gone.
+ * **A side is taken from the merge's own copy of it - the sidecar - and NOT from
+ * `branch_merge_resolve_mine` / `_theirs`. That is measured, and it is the single most
+ * consequential measurement in this milestone.**
+ *
+ * Those two verbs follow the BRANCH POINTER, and a sync has already moved it. Same
+ * repository, same conflicted file, driven through a real server:
+ *
+ * ```
+ * doc.json           <<<<<<< ours / AUTHOR-SIDE / ||||||| original / ======= / SERVER-SIDE / >>>>>>> theirs
+ * doc.json~mine      AUTHOR-SIDE          doc.json~theirs    SERVER-SIDE
+ * branch_merge_resolve_mine    -> SERVER-SIDE      <- the OPPOSITE of ~mine and of `ours`
+ * branch_merge_resolve_theirs  -> AUTHOR-SIDE
+ * ```
+ *
+ * After a LOCAL `branch_merge_start` the same two verbs agree with the sidecars, which
+ * is why §4.25 - measured on a local merge only - records them as "mine" and "theirs"
+ * and why this is worth stating at length: a merge that Studio produces is ALWAYS a
+ * sync, so following those verbs would have made every "keep mine" discard the author's
+ * work and every "keep theirs" discard their collaborator's, with nothing on screen
+ * saying so and a green test suite either way.
+ *
+ * The sidecars do not have that problem: in both origins `~mine` holds the side the
+ * conflict markers call `ours` and `~theirs` the incoming one, and they are byte-exact
+ * copies of the two recorded sides (§4.23). So a side is taken by copying that file over
+ * the conflicted one and settling with the plain verb, which commits the working tree's
+ * bytes verbatim (§4.25). "Take one side, whole" is still exactly that - nothing here
+ * looks inside a document, so it holds for binaries and for documents with no spec.
+ *
+ * `working-tree` writes nothing and accepts the bytes on disk as they are; it is what a
+ * per-change merge will use once it can compose an answer neither side wrote.
  *
  * Flushed before returning. The decision is repository state and an unflushed write can
  * be lost outright, and it is a race rather than a stable failure (§4.11) - a resolve
@@ -171,12 +205,41 @@ export async function resolveConflicts(
     choice: VcsConflictChoice,
 ): Promise<VcsMergeResolveResult> {
     const absolute = relativePaths.map((relative) => repositoryPath(root, relative));
-    const verb = choice === "mine" ? branchMergeResolveMine
-        : choice === "theirs" ? branchMergeResolveTheirs
-            : branchMergeResolve;
-    const result = await verb(globals, absolute);
+    if (choice !== "working-tree") {
+        // Every path first, then one settle call: a copy that fails must not leave half the
+        // selection settled and the other half not, which is a state nothing can read back.
+        for (const file of absolute) takeSide(file, choice);
+    }
+    const result = await branchMergeResolve(globals, absolute);
     await flushRepository(globals);
     return { files: result.files, state: await readMergeState(globals, root) };
+}
+
+/**
+ * A conflicted path with one side of the merge missing from disk.
+ *
+ * Named and thrown rather than skipped: the paths this runs on come from
+ * {@link findConflictedPaths}, which only lists a path when BOTH sides are beside it, so
+ * reaching this means something removed one between the two - and settling the path
+ * anyway would record the file with the conflict markers still in it.
+ */
+export class MergeSideMissingError extends Error {
+    constructor(readonly file: string) {
+        super(`The merge's copy of this side is missing: ${file}`);
+        this.name = "MergeSideMissingError";
+    }
+}
+
+/** Copy one recorded side over the conflicted file. See {@link resolveConflicts}. */
+function takeSide(absolute: string, choice: VcsMergeSideChoice): void {
+    const source = `${absolute}${SIDECAR_SUFFIXES[choice]}`;
+    if (!fs.existsSync(source)) {
+        throw new MergeSideMissingError(source);
+    }
+    // A plain copy rather than Studio's atomic writer, for `revisionRestore`'s reason: the
+    // operation as a whole is not atomic (it is one file per conflict), so per-file atomicity
+    // buys nothing the merge's own three copies on disk do not already provide.
+    fs.copyFileSync(source, absolute);
 }
 
 /**

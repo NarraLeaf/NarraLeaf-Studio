@@ -55,6 +55,9 @@ import type {
     VcsConflictChoice,
     VcsHistoryEntry,
     VcsInitOptions,
+    VcsMergeCompletion,
+    VcsMergeDecision,
+    VcsMergeDocument,
     VcsMergeResolveResult,
     VcsMergeState,
     VcsRepositoryInfo,
@@ -251,7 +254,9 @@ export enum IPCEventType {
     vcsGetThreeWay = "vcs.getThreeWay",
     vcsGetMergeBase = "vcs.getMergeBase",
     vcsGetMergeState = "vcs.getMergeState",
+    vcsGetMergeDocument = "vcs.getMergeDocument",
     vcsResolveConflicts = "vcs.resolveConflicts",
+    vcsCompleteMerge = "vcs.completeMerge",
     vcsUnresolveConflicts = "vcs.unresolveConflicts",
     vcsRestartConflicts = "vcs.restartConflicts",
     vcsAbortMerge = "vcs.abortMerge",
@@ -288,7 +293,7 @@ export type BlueprintPersistenceProjectRef = {
  * A third kind added to the reason will fail to compile at the reporting call site, which is the
  * right place to be asked what to say about it.
  */
-export type WorkspaceFreezeKind = "revision" | "manual";
+export type WorkspaceFreezeKind = "revision" | "manual" | "merge";
 
 /**
  * Which part of the close a workspace is currently waiting on.
@@ -761,6 +766,23 @@ export type IPCVcsEvents = {
         response: VcsMergeState;
     };
     /**
+     * The three-way merge of ONE conflicted document, change by change - tier two.
+     *
+     * A pure read of the three copies the merge left beside the file (docs §4.23); it records
+     * nothing and remembers nothing, so a settled change and an unsettled one look the same here
+     * exactly as they do everywhere else in a merge (§4.24).
+     *
+     * Every reason a document cannot be settled this way comes back as `blocked` rather than as a
+     * failure: most paths have no spec, most specs have no `merge3`, and a spec that has one may
+     * still refuse to write itself back. All three keep the path at tier one, visibly.
+     */
+    [IPCEventType.vcsGetMergeDocument]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; path: string },
+        response: VcsMergeDocument;
+    };
+    /**
      * **Records nothing** - the merge stays open until a commit closes it. `mine` and
      * `theirs` overwrite the working tree, so re-read the paths afterwards.
      */
@@ -769,6 +791,20 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { projectPath: string; paths: string[]; choice: VcsConflictChoice },
         response: VcsMergeResolveResult;
+    };
+    /**
+     * Take one side per path and close the merge with a commit - the whole of tier one, as ONE
+     * operation.
+     *
+     * One call rather than "resolve, then commit" from the renderer, because the two halves must
+     * not be interleavable: anything else that commits in between (the checkpoint timer) would
+     * close the author's merge under a different message and a different kind.
+     */
+    [IPCEventType.vcsCompleteMerge]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; decisions: VcsMergeDecision[]; options?: VcsCommitOptions },
+        response: VcsMergeCompletion;
     };
     [IPCEventType.vcsUnresolveConflicts]: {
         type: IPCMessageType.request,
