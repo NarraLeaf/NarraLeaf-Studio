@@ -85,6 +85,17 @@ export interface GlobalStateType extends Record<string, any> {
      * locale. A value written here (the user toggled it) is honored as-is.
      */
     "editor.slashAtAlias": boolean;
+    /**
+     * Whether the story editor's command vocabulary — command names, their categories, parameter
+     * names and the inline ghost hint — follows the interface language. Off keeps it in English.
+     *
+     * A second language axis rather than a reuse of `app.language`, because the two answer different
+     * questions. The interface language is "what language do I read"; this is "what language is the
+     * grammar I type", and authors working from English tutorials routinely want English commands
+     * behind a Chinese interface. On by default, so nobody who does not care ever meets the
+     * distinction. Resolved through `resolveCommandLocale` in lib/settings/commandLanguageOptions.
+     */
+    "editor.localizedCommands": boolean;
     "workspace.restoreLastWorkspace": boolean;
     /**
      * Ask for confirmation before a workspace window closes.
@@ -203,6 +214,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "editor.lineNumbers": true,
     "editor.softWrap": false,
     "editor.maxActiveEditors": 8,
+    "editor.localizedCommands": true,
     "workspace.restoreLastWorkspace": true,
     "workspace.confirmBeforeClose": false,
     "workspace.returnToLauncherOnClose": true,

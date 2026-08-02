@@ -4,26 +4,20 @@ import type { ClipboardEvent, CSSProperties, ReactNode, RefObject, MouseEvent } 
 import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Hash, Image, LayoutGrid, List, Music, Play, Plus, Route, Trash2, TriangleAlert, UserRoundPlus, Variable, Video } from "lucide-react";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
 import { useSortable } from "@dnd-kit/sortable";
-import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryCharacterTagSelection, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
-import { representativeAssetId } from "@shared/utils/characterVariant";
+import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryDocument, StoryRichRun, StoryScene, StorySceneId } from "@shared/types/story";
 import { HeadThumbnail } from "@/apps/workspace/modules/characters/editors/components/HeadThumbnail";
-import { useCompositedSprite } from "@/lib/workspace/hooks/useCompositedSprite";
-import type { NormalizedCrop } from "@/lib/utils/headCrop";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { isRowTextEditable } from "./storySceneReadOnly";
-import { useTranslation } from "@/lib/i18n";
+import { useCommandTranslation, useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
 import { getCommandGhost } from "./storyCommandGhost";
 import { getCommandLineDraftReason, getCommandLineReason } from "./storyCommandReason";
 import { isMacPlatform } from "@/lib/app/platform";
 import { formatKeybinding } from "@/lib/workspace/services/ui/KeybindingService";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
-import type { Asset } from "@/lib/workspace/services/assets/types";
-import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
-import { useBadgeImageUrl, type BadgeImageSource } from "./storyBadgeImageCache";
+import { useCharacterFace } from "./storyCharacterFace";
 import { resolveStoryMotionPreviewTarget } from "../../story-motion/storyMotionPreviewTarget";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import type { PaletteActionCommand } from "./storyActionCommands";
@@ -40,7 +34,8 @@ import { localizeSpecCommand, specPaletteCommands } from "./commands/specPalette
 import { browseMenuStops, buildSpecSidebarGroups, dedupeToPrimarySubject, filterSidebarGroups, type StoryCommandMenuStop, type StoryCommandSidebarGroup } from "./commands/specSidebar";
 import { useStoryPluginActionCommands } from "./useStoryPluginActionCommands";
 import { paramTypes } from "./storyCommandGrammar";
-import { getCommandDef } from "./commands/registry";
+import { getCommandDef, localizedCommandToken } from "./commands/registry";
+import { localizeCommandVerb } from "./storyCommandSpelling";
 import { completionFor, defaultHighlights, getCommandCursor, type StoryCommandCursor } from "./storyCommandCursor";
 import { getCommandCandidates, hasCandidateSource, type StoryCommandCandidate } from "./storyCommandCandidates";
 import { parseCommandLine } from "./storyCommandParser";
@@ -75,8 +70,9 @@ import {
 } from "./storySceneBlockUtils";
 import { ConditionPopover } from "./ConditionPopover";
 import { EMPTY_EXPRESSION_CONDITION } from "./ConditionEditor";
-import { BlockOverview, getQuickParams, QuickParamsInline, type QuickParam } from "./storyQuickParams";
-import { actionTrigger, ACTION_TRIGGER, insertChooserType, toCanonicalCommandLine } from "./commandTrigger";
+import { BlockOverview } from "./storyQuickParams";
+import { actionTrigger, ACTION_TRIGGER, insertChooserType, isActionCommandLine, toCanonicalCommandLine } from "./commandTrigger";
+import { StoryCommandLineText } from "./StoryCommandLineView";
 import { useStoryRowActions } from "./storyRowActions";
 import { diagnoseRow, type StoryRowDiagnosticCode } from "./storyRowDiagnostics";
 import { useReduceMotion } from "@/lib/appearance/useReduceMotion";
@@ -1206,7 +1202,7 @@ function RowNesting({ depth, nextDepth, opensBlock, stopAt, plateBottom, highlig
  * drawn in front of them would be a fourth left edge.
  */
 function GroupExpressionBead({ block, characters }: { block: StoryBlock; characters: Character[] }) {
-    const { url: imageUrl, frame, showingSprite } = useCharacterBadgeImage(block, undefined, characters);
+    const { url: imageUrl, frame, showingSprite } = useCharacterFace(block, undefined, characters, "inline");
     return (
         <span className="relative ml-[calc((var(--nl-story-avatar,28px)-1rem)/2)] h-4 w-4 shrink-0 overflow-hidden rounded-full border border-edge bg-fill-subtle">
             {imageUrl ? (
@@ -1613,6 +1609,32 @@ export function argMenuOffer(
 }
 
 /**
+ * The colours under the line being typed.
+ *
+ * Same mirror trick as the ghost hint below — the text repeated in a `pointer-events-none` layer with
+ * the field's exact metrics — except this copy is the visible one: the textarea's own glyphs are made
+ * transparent (its caret is not) so the roles show through. A textarea cannot colour parts of its
+ * value, and every alternative is worse: a contenteditable would cost the caret model, the undo stack
+ * and the IME handling that the plain field gets from the platform for free.
+ *
+ * **Held back during IME composition.** Chrome draws the composing text with the element's own colour,
+ * so a transparent field would leave a Chinese author typing into an invisible box. `composing` puts
+ * the real glyphs back for the length of the composition — the one case where the mirror cannot see
+ * what the field is showing, since a composition is not in `value` yet.
+ */
+function CommandLineHighlight(props: { source: string; trigger: "/" | "@"; textStyle: CSSProperties }) {
+    return (
+        <span
+            aria-hidden
+            className="pointer-events-none absolute inset-0 select-none overflow-hidden whitespace-pre-wrap break-words"
+            style={props.textStyle}
+        >
+            <StoryCommandLineText source={props.source} trigger={props.trigger} />
+        </span>
+    );
+}
+
+/**
  * The grey `<Var Name>` that trails the caret on a command line.
  *
  * Rendered as a mirror of the typed text — the text itself repeated but invisible, then the hint —
@@ -1627,14 +1649,22 @@ export function argMenuOffer(
  */
 function CommandGhostHint(props: { value: string; source: string; caret: number; textStyle: CSSProperties; commandContext: StoryCommandContext; confirmation?: string }) {
     const { t } = useTranslation();
+    // The slot's NAME is vocabulary — the word the author may type as `位置=` — so it follows the
+    // command language. The failure sentence around it is prose and stays in the interface language.
+    const { t: ct } = useCommandTranslation();
     // The ghost and reason parse the canonical "/" line (`source`); the invisible spacer below uses the
     // displayed `value` so it occupies the exact width the author sees ("@" and "/" render differently).
-    const ghost = useMemo(() => getCommandGhost(props.source, props.caret), [props.caret, props.source]);
+    //
+    // `ct` is a dependency of both, though neither takes it as an argument: the parse is NOT a pure
+    // function of (source, caret). The command locale is a hidden third input — it decides whether
+    // `位置=` names a slot — so a locale switch changes the verdict with no keystroke to recompute on.
+    // Without it a mid-typed line keeps its stale answer until the author types again.
+    const ghost = useMemo(() => getCommandGhost(props.source, props.caret), [ct, props.caret, props.source]);
     // Why the line will not commit, if it will not. It outranks the hint: naming the next slot while
     // the line is already broken answers a question the author is no longer asking.
     const reason = useMemo(
         () => getCommandLineReason(props.source, props.commandContext),
-        [props.commandContext, props.source],
+        [ct, props.commandContext, props.source],
     );
     if (!ghost && !reason && !props.confirmation) {
         return null;
@@ -1655,7 +1685,7 @@ function CommandGhostHint(props: { value: string; source: string; caret: number;
             ) : reason ? (
                 <span className="text-danger/80">{`  ${t(reason.key, reason.params)}`}</span>
             ) : (
-                <span className="italic text-fg-subtle">{`<${t(`story.paramHint.${ghost!.hintKey}` as TranslationKey)}>`}</span>
+                <span className="italic text-fg-subtle">{`<${ct(`story.paramHint.${ghost!.hintKey}` as TranslationKey)}>`}</span>
             )}
         </span>
     );
@@ -1688,6 +1718,10 @@ export function InsertRow(props: {
     slashAtAlias: boolean;
 }) {
     const { t } = useTranslation();
+    // The action creator is command vocabulary end to end — command names, their categories, the
+    // param slots — so it reads the command language (`editor.localizedCommands`), which an author may
+    // keep in English behind a Chinese interface. `t` stays for this slot's own chrome.
+    const { t: ct } = useCommandTranslation();
     /**
      * The line being typed lives here, not in the editor's mode.
      *
@@ -1720,6 +1754,14 @@ export function InsertRow(props: {
     // completion (bible M3). Escape is the one thing text cannot express: `chooserDismissed` shuts the
     // menu until the next keystroke clears it (see the controller), so it forces "none" here.
     const chooser = props.mode.chooserDismissed ? "none" : insertChooserType(value, props.slashAtAlias);
+    // The trigger this line is actually wearing — the author's own key, not the canonical "/".
+    const trigger = actionTrigger(value, props.slashAtAlias) ?? ACTION_TRIGGER;
+    // Composition state is local and short-lived: it exists only to hand the glyphs back to the field
+    // while an IME is composing into it (see CommandLineHighlight).
+    const [composing, setComposing] = useState(false);
+    // Coloured only while the line IS a command: `insertChooserType` answers that from the text, and
+    // `chooserDismissed` (Escape) must not change it — the line is still a command, the menu is just shut.
+    const colourLine = !composing && isActionCommandLine(value, props.slashAtAlias);
     const menuAnchorRef = useRef<HTMLDivElement | null>(null);
     const menuFrame = useAnchoredMenuFrame(menuAnchorRef, chooser !== "none", 312);
     const pluginCommands = useStoryPluginActionCommands();
@@ -1728,13 +1770,13 @@ export function InsertRow(props: {
             [
                 // The typing/filter tier lists one entry per spec — the ranked flat list is the right
                 // shape while filtering, so a verb appears once even though it files under many subjects.
-                ...specPaletteCommands().map(command => localizeSpecCommand(command, t)),
+                ...specPaletteCommands().map(command => localizeSpecCommand(command, ct)),
                 // A plugin action carries the label its own language pack already resolved.
                 ...pluginCommands,
             ],
             chooserQuery,
         ),
-        [chooserQuery, pluginCommands, t],
+        [chooserQuery, ct, pluginCommands],
     );
     // The browse is the sidebar's projection, not a second catalogue: same `accepts` classification
     // (WI-1). Handed over undeduped, because the menu's category column needs both readings of it —
@@ -1742,8 +1784,8 @@ export function InsertRow(props: {
     // each time reads as six commands, not as one that reaches six places), while a chosen category
     // wants the full filing, where `/show` under 图片 is the answer rather than a repeat.
     const sidebarGroups = useMemo(
-        () => buildSpecSidebarGroups(pluginCommands, command => localizeSpecCommand(command, t)),
-        [pluginCommands, t],
+        () => buildSpecSidebarGroups(pluginCommands, command => localizeSpecCommand(command, ct)),
+        [ct, pluginCommands],
     );
     const characterOptions = useMemo(
         () => getSpeakerCandidates(props.characters, props.tempSpeakers, chooserQuery),
@@ -1756,17 +1798,21 @@ export function InsertRow(props: {
     // Where the caret is decides what the slot offers, so it has to be state: `/bg fo|` asks for an
     // image, `/bg forest_day t=|` for a transition, and only the caret tells them apart.
     const [caret, setCaret] = useState(props.mode.initialValue.length);
-    const cursor = useMemo(() => getCommandCursor(source, caret), [caret, source]);
+    // `ct` is a dependency here for the same reason it is one in `CommandGhostHint`: the command
+    // locale is a hidden input to every parse, so a locale switch has to invalidate these too.
+    const cursor = useMemo(() => getCommandCursor(source, caret), [ct, caret, source]);
     // `form=` can only list the forms of the character this line already named, so the candidates need
     // the args resolved so far.
     const resolvedArgs = useMemo(() => {
         const line = parseCommandLine(source);
         return line.kind === "command" && line.def ? resolveCommandLine(line, props.commandContext).args : {};
-    }, [props.commandContext, source]);
+    }, [ct, props.commandContext, source]);
     // The whole menu decision — what to show, whether to open, what (if anything) starts highlighted.
+    // `ct` is a dependency for the same reason it is one above: the candidates are spelled in the
+    // command locale (an enum offers the word it displays), so a locale switch has to re-offer them.
     const argOffer = useMemo(
         () => argMenuOffer(cursor, props.commandContext, resolvedArgs),
-        [cursor, props.commandContext, resolvedArgs],
+        [ct, cursor, props.commandContext, resolvedArgs],
     );
     const argItems = useMemo<StoryCandidateItem[]>(() => {
         return argOffer.candidates.map((candidate, index) => {
@@ -1775,19 +1821,27 @@ export function InsertRow(props: {
                 // Values are not unique on their own — two assets may share a name.
                 key: `${index}:${candidate.value}`,
                 value: candidate.value,
-                label: candidate.label,
+                // A param candidate leads with the slot's name in the command language and trails the
+                // canonical key: the word being taught belongs in the reading column, the key it also
+                // answers to in the footnote. It was the other way round, so a zh author read a column
+                // of `t` `d` `at` with the words that explain them pushed to the margin.
+                label: candidate.hintKey
+                    ? ct(`story.paramHint.${candidate.hintKey}` as TranslationKey)
+                    : candidate.label,
                 // The kind a name belongs to is carried untranslated; it shares the subject vocabulary
                 // the category strip already names, so it reads in the author's own language.
-                detail: candidate.detailKind
-                    ? t(commandCategoryLabelKey(subjectGroupId(candidate.detailKind)))
-                    : candidate.detail,
+                detail: candidate.hintKey
+                    ? candidate.label
+                    : candidate.detailKind
+                        ? t(commandCategoryLabelKey(subjectGroupId(candidate.detailKind)))
+                        : candidate.detail,
                 icon: icon?.icon,
                 iconClassName: icon?.className,
                 tag: candidate.free ? t("story.rows.tempSpeaker") : undefined,
                 ...(candidate.free ? { free: true as const } : {}),
             };
         });
-    }, [argOffer, cursor, t]);
+    }, [argOffer, ct, cursor, t]);
     // The candidates decide the highlight along with the cursor: an untyped slot, a slot whose best
     // offer is the author's own text, and every expression slot all have to leave Enter meaning
     // "submit". See `defaultHighlights`, and `argMenuOffer` for why the expression case is deliberate.
@@ -1825,10 +1879,12 @@ export function InsertRow(props: {
     const chooseCommandCandidate = (commandId: string) => {
         const def = getCommandDef(commandId);
         if (def && def.params.length > 0) {
-            // Rebuild the whole line, but keep the trigger the author is using so "@" does not flip to
-            // "/" mid-completion. The commit path canonicalizes it either way.
-            const trigger = actionTrigger(value, props.slashAtAlias) ?? ACTION_TRIGGER;
-            applyCompletion(`${trigger}${def.token} `, { start: 0, end: value.length });
+            // Rebuild the whole line, keeping the trigger the author is using (`trigger`, resolved
+            // above) so "@" does not flip to "/" mid-completion. The commit path canonicalizes either way.
+            // The word the menu is SHOWING, not the canonical token: a pick that displayed 显示 and
+            // wrote `@show` taught the author nothing they could type. `localizedCommandToken` comes
+            // out of the same pass that built the parser's accept table, so it always reads back.
+            applyCompletion(`${trigger}${localizedCommandToken(def)} `, { start: 0, end: value.length });
             return;
         }
         props.onChooseCommand(commandId);
@@ -1864,14 +1920,23 @@ export function InsertRow(props: {
                     anchor, so it is positioned against the field's box and inherits its exact metrics.
                     `min-w-0 flex-1` moves off the textarea onto the wrapper; the textarea then fills it. */}
                 <div className="relative flex min-w-0 flex-1">
+                {colourLine ? <CommandLineHighlight source={source} trigger={trigger} textStyle={textStyle} /> : null}
                 <CommandGhostHint value={value} source={source} caret={caret} textStyle={textStyle} commandContext={props.commandContext} confirmation={props.mode.confirmation} />
                 <textarea
                     ref={props.inputRef}
                     // Same in-place surface as an editing row (see TextEditBox): the new line reads as a
                     // line being typed, not a widget dropped into the list — which is what lets narration's
                     // Enter fall into this slot without the text visibly jumping.
-                    className="relative min-h-[20px] w-full resize-none bg-transparent px-0 py-0 text-fg outline-none placeholder:italic placeholder:text-fg-subtle"
+                    className={[
+                        "relative min-h-[20px] w-full resize-none bg-transparent px-0 py-0 outline-none placeholder:italic placeholder:text-fg-subtle",
+                        // Transparent glyphs, opaque caret: the colours come from the mirror behind.
+                        // Prose keeps its own text — there is nothing to colour, and a line the mirror
+                        // would not draw must never be invisible.
+                        colourLine ? "text-transparent caret-[rgb(var(--nl-fg))]" : "text-fg",
+                    ].join(" ")}
                     style={textStyle}
+                    onCompositionStart={() => setComposing(true)}
+                    onCompositionEnd={() => setComposing(false)}
                     rows={1}
                     value={value}
                     // The hint advertises whichever trigger this author actually uses. Suppressed while a
@@ -1879,8 +1944,22 @@ export function InsertRow(props: {
                     // empty slot; the next keystroke clears the receipt and the placeholder is moot anyway.
                     placeholder={props.mode.confirmation ? "" : t("story.rows.insertPlaceholder", { trigger: props.slashAtAlias ? "@" : "/" })}
                     onChange={event => {
-                        setCaret(event.target.selectionStart ?? event.target.value.length);
-                        setLineValue(event.target.value);
+                        const typed = event.target.value;
+                        const typedCaret = event.target.selectionStart ?? typed.length;
+                        // The verb settles into the command language the moment it is finished, so a
+                        // hand-typed `@show` reads as the `@显示` the menu, the ghost and the committed
+                        // row all say. Almost every keystroke returns null and takes the plain path.
+                        const respelled = localizeCommandVerb(typed, typedCaret, props.slashAtAlias);
+                        if (!respelled) {
+                            setCaret(typedCaret);
+                            setLineValue(typed);
+                            return;
+                        }
+                        setCaret(respelled.caret);
+                        setLineValue(respelled.value);
+                        // Same hand-off as `applyCompletion`: the field is controlled, so the caret has
+                        // to be put back once React has rendered the text that replaced what was typed.
+                        window.requestAnimationFrame(() => props.inputRef.current?.setSelectionRange(respelled.caret, respelled.caret));
                     }}
                     // Fires on caret moves as well as selections — the slot has to follow the caret,
                     // not just the text, or clicking back into `/bg |forest` would still offer transitions.
@@ -2377,6 +2456,9 @@ function ActionCommandMenu(props: {
     frame: AnchoredMenuFrame;
 }) {
     const { t } = useTranslation();
+    // Category names are the subject vocabulary the whole command surface is filed under, so they
+    // follow the command language; the menu's own chrome ("no actions", the key strip) does not.
+    const { t: ct } = useCommandTranslation();
     const listRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
@@ -2432,7 +2514,7 @@ function ActionCommandMenu(props: {
                         <div key={entry.group.id} className="pt-2 first:pt-0">
                             <div className="flex items-center gap-1.5 px-2 pb-1 text-2xs font-medium tracking-wide text-fg-subtle">
                                 <Icon className="h-3 w-3 shrink-0" style={{ color: entry.group.iconColor }} />
-                                <span>{t(commandCategoryLabelKey(entry.group.id))}</span>
+                                <span>{ct(commandCategoryLabelKey(entry.group.id))}</span>
                             </div>
                             {entry.commands.map(command => {
                                 const key = `${entry.group.id}:${command.id}`;
@@ -2476,7 +2558,7 @@ function ActionCommandMenu(props: {
                     <ActionCommandCategoryRow
                         icon={LayoutGrid}
                         iconColor="#a8adb5"
-                        label={t("story.actionCategory.all")}
+                        label={ct("story.actionCategory.all")}
                         active={props.category === ALL_MENU_CATEGORY}
                         empty={!props.reachable.has(ALL_MENU_CATEGORY)}
                         onSelect={() => props.onCategory(ALL_MENU_CATEGORY)}
@@ -2486,7 +2568,7 @@ function ActionCommandMenu(props: {
                             key={category.id}
                             icon={category.icon}
                             iconColor={category.iconColor}
-                            label={t(commandCategoryLabelKey(category.id))}
+                            label={ct(commandCategoryLabelKey(category.id))}
                             active={props.category === category.id}
                             empty={!props.reachable.has(category.id)}
                             onSelect={() => props.onCategory(category.id)}
@@ -2834,108 +2916,9 @@ function CharacterSelectTrigger(props: {
 }
 
 /**
- * Which character and appearance a row's badge should picture, and whether to resolve a
- * differential-specific sprite (vs. fall straight through to the profile thumbnail).
- *
- * A character action row (`/show`, `/face`…) pictures its own payload's form/variants. A dialogue row
- * pictures the speaker's accumulated appearance (WI-3) — but only when one exists; a speaker who has
- * not been shown keeps the plain thumbnail, so a line before any `/show` does not invent a look.
- */
-function getBadgeImageSpec(
-    block: StoryBlock,
-    appearance: CharacterAppearanceRef | undefined,
-): { characterId: string; pose?: string; tags?: StoryCharacterTagSelection; resolveVariant: boolean } | null {
-    if (block.kind === "action" && block.payload.action === "character" && block.payload.characterId) {
-        return { characterId: block.payload.characterId, pose: block.payload.pose, tags: block.payload.tags, resolveVariant: true };
-    }
-    if (block.kind === "nodeAction" && block.payload.action === "dialogue" && block.payload.characterId) {
-        // Only a *shown* appearance pictures an avatar — a placement-only appearance (a `/move` on a
-        // never-shown speaker, used by the group-header dropdown) must not invent a look (WI-3, M3.1).
-        return { characterId: block.payload.characterId, pose: appearance?.pose, tags: appearance?.tags, resolveVariant: appearance?.shown === true };
-    }
-    return null;
-}
-
-/**
- * Longest edge of a composited badge sprite. The plate itself tops out at 40px (U1's comfortable
- * density) and the head crop reads a sub-rectangle of it, so this is the largest useful size at 2x.
- */
-const BADGE_COMPOSITE_PX = 96;
-
-/**
- * The sprite `Asset` + portrait frame a character badge should picture, resolved against the same
- * rule the runtime uses (shared `representativeAssetId`). The frame is the pose's own portrait
- * override, else the profile default; `undefined` lets the badge fall back to the automatic head
- * crop. The `Asset` object (not just its id) is returned because a sprite is a *project* asset and
- * loads through the asset library, not the editor store.
- *
- * A layered character has no single sprite: this returns its bottom-most drawing layer, which the
- * badge uses only until the composite of the whole stack arrives (and as the fallback when the
- * compositor cannot draw). See {@link useCharacterBadgeImage}.
- */
-function resolveCharacterBadgeImage(
-    character: Character,
-    pose: string | undefined,
-    tags: StoryCharacterTagSelection | undefined,
-    lookupAsset: (assetId: string) => Asset<AssetType.Image> | null,
-): { asset: Asset<AssetType.Image> | null; frame?: NormalizedCrop } {
-    const appearance = character.profile.appearance;
-    const summary = appearance.getKind() === "preset"
-        ? { kind: "preset" as const, poses: appearance.getPoses().map(p => ({ id: p.id, name: p.name, assetId: p.assetId })), defaultPoseId: appearance.getDefaultPoseId() }
-        : { kind: "layered" as const, canvas: appearance.getCanvas(), axes: appearance.getAxes(), layers: appearance.getLayers() };
-    const assetId = representativeAssetId(summary, { poseId: pose, tags });
-    const frame = (pose ? appearance.getPose(pose)?.portrait : undefined) ?? character.profile.getPortrait();
-    return { asset: assetId ? lookupAsset(assetId) : null, frame };
-}
-
-/**
- * The framed avatar a character row should picture: the differential sprite when a look applies
- * (loaded from the project asset library, framed on the face), else the character thumbnail (an editor
- * asset, already a square crop). Both share the id-keyed object-URL cache so one sprite is read — and
- * its head located — once no matter how many rows show it.
- */
-function useCharacterBadgeImage(
-    block: StoryBlock,
-    appearance: CharacterAppearanceRef | undefined,
-    characters: Character[],
-): { url: string | null; frame?: NormalizedCrop; showingSprite: boolean } {
-    const spec = getBadgeImageSpec(block, appearance);
-    const character = spec ? characters.find(next => next.profile.getId() === spec.characterId) : undefined;
-    // The appearance stores asset ids; the badge cache needs the `Asset` record to fetch bytes, so
-    // the id is resolved against the live library here rather than embedded in the character store
-    // (which is what the old variant slots did, and what made a renamed or replaced asset go stale).
-    const { context, isInitialized } = useWorkspace();
-    const lookupAsset = useCallback((assetId: string): Asset<AssetType.Image> | null => {
-        if (!context || !isInitialized) {
-            return null;
-        }
-        const assets = context.services.get<AssetsService>(Services.Assets).getAssets();
-        return assets?.[AssetType.Image]?.[assetId] ?? null;
-    }, [context, isInitialized]);
-    const resolved = character && spec?.resolveVariant
-        ? resolveCharacterBadgeImage(character, spec.pose, spec.tags, lookupAsset)
-        : { asset: null as Asset<AssetType.Image> | null, frame: undefined };
-    const thumbnailId = character?.profile.getThumbnail() ?? null;
-    const source: BadgeImageSource | null = resolved.asset
-        ? { kind: "project", asset: resolved.asset }
-        : thumbnailId
-            ? { kind: "editor", fileId: thumbnailId }
-            : null;
-    const fallbackUrl = useBadgeImageUrl(source);
-    // A layered character is a stack, so the badge shows the whole thing composited. The single-asset
-    // path above still runs: it is what the badge shows while the composite is being drawn, which
-    // keeps a scrolling list from flashing empty plates.
-    const layered = character && spec?.resolveVariant && character.profile.appearance.getKind() === "layered"
-        ? character
-        : null;
-    const composite = useCompositedSprite(layered, { tags: spec?.tags }, BADGE_COMPOSITE_PX);
-    const url = composite.url ?? fallbackUrl;
-    return { url, frame: resolved.frame, showingSprite: Boolean(composite.url) || resolved.asset !== null };
-}
-
-/**
  * A row's leading plate: a speaker's face on a dialogue row, the command's category glyph on every
- * other one.
+ * other one — a character command included, since its face now rides inline beside the name it acts
+ * on (see {@link StoryLineCharacterFace}) and the plate is where the row says what is being *done*.
  *
  * `portrait` is what separates the two. A dialogue plate follows the reading density (U1) — 28px in
  * compact, 40px in comfortable, where it becomes the block's own column — because a differential
@@ -2946,7 +2929,7 @@ function BlockBadge({ block, characters, appearance }: { block: StoryBlock; char
     const { label, icon: Icon, iconColor } = getBlockBadgeInfo(block);
     // A differential-resolved sprite (framed on the face) when a look applies; otherwise the profile
     // thumbnail (already a square crop, shown as-is); otherwise the category icon.
-    const { url: imageUrl, frame, showingSprite } = useCharacterBadgeImage(block, appearance, characters);
+    const { url: imageUrl, frame, showingSprite } = useCharacterFace(block, appearance, characters, "plate");
 
     return (
         <span
@@ -3011,12 +2994,17 @@ function TextClickTarget(props: { style?: CSSProperties; className?: string; chi
 /** A draft row's line: the source, and why it has not committed yet. */
 function DraftRowPreview(props: { source: string; commandContext: StoryCommandContext }) {
     const { t } = useTranslation();
+    const { t: ct } = useCommandTranslation();
     const reason = useMemo(
+        // `ct`: the command locale is a hidden input to the parse behind this reason. See `CommandGhostHint`.
         () => getCommandLineDraftReason(props.source, props.commandContext),
-        [props.commandContext, props.source],
+        [ct, props.commandContext, props.source],
     );
+    // The sentence is prose (interface language); the slot name interpolated into it is vocabulary
+    // (command language), so a Chinese author reading an English command line is told the slot is
+    // missing in Chinese and told its name in the word they would have to type.
     const reasonText = reason
-        ? t(reason.key, reason.paramHintKey ? { ...reason.params, slot: t(reason.paramHintKey) } : reason.params)
+        ? t(reason.key, reason.paramHintKey ? { ...reason.params, slot: ct(reason.paramHintKey) } : reason.params)
         : t("story.rows.invalidHint");
     return (
         <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center gap-2">
@@ -3035,11 +3023,9 @@ function BlockPreview(props: {
     /** Commit an inline quick-param edit (WI-2) through the same history path the inspector uses. */
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
 }) {
-    const { t } = useTranslation();
     const block = props.block;
     const text = getTextSegment(block);
     const textStyle = useStoryEditorTextStyle();
-    const quickParams = getQuickParams(block);
     if (text) {
         const hasValue = Boolean(text.value) || Boolean(text.rich && text.rich.length > 0);
         const note = block.kind === "note";
@@ -3059,17 +3045,28 @@ function BlockPreview(props: {
         );
     }
     if (block.kind === "action" && block.payload.action === "setBackground") {
-        return <BackgroundBlockPreview payload={block.payload} quickParams={quickParams} onUpdatePayload={props.onUpdatePayload} />;
+        return (
+            <BackgroundBlockPreview
+                block={block}
+                payload={block.payload}
+                characters={props.characters}
+                scene={props.scene}
+                scenes={props.document.scenes}
+                onUpdatePayload={props.onUpdatePayload}
+            />
+        );
     }
     if (block.kind === "action" && block.payload.action === "displayable" && block.payload.operation === "transform") {
         return (
             <DisplayableTransformPreview
+                block={block}
                 payload={block.payload}
                 sceneId={props.scene.id}
                 blockId={block.id}
                 document={props.document}
                 characters={props.characters}
-                fallback={describeBlock(block, props.characters, props.scene, props.document.scenes)}
+                scene={props.scene}
+                onUpdatePayload={props.onUpdatePayload}
             />
         );
     }
@@ -3081,10 +3078,10 @@ function BlockPreview(props: {
         // re-opens the line in place, candidates and all.
         return <DraftRowPreview source={block.payload.source} commandContext={props.commandContext} />;
     }
-    // One structured overview path for every action row (bible M5): `[target · modifiers]` with any
-    // quick-edit params inline as clickable tokens; a row with none is just an overview whose only
-    // fragment is the `describeBlock` fallback. setBackground / displayable-transform keep their rich
-    // renderers above (spec-level overrides).
+    // One overview path for every action row: the command line that would produce it, with any
+    // quick-edit params clickable inside it — and the old `describeBlock` sentence for the rows no
+    // command owns. setBackground / displayable-transform reach it through their own wrappers above,
+    // which add the artwork the line cannot carry.
     return (
         <BlockOverview
             block={block}
@@ -3168,50 +3165,50 @@ function BackgroundRowArtwork({ payload, selected, active }: {
     );
 }
 
-function BackgroundBlockPreview({ payload, quickParams, onUpdatePayload }: {
+/**
+ * A background row: the command line, held clear of the artwork strip at the row's trailing edge.
+ *
+ * The line says everything the old bespoke sentence did — `@背景 forest_day 转场=淡变 持续时间=0.5` names
+ * the image, and the strip beside it shows which image that is — so the only thing this preview adds
+ * over the shared overview is the width cap that keeps the text from running under the picture.
+ */
+function BackgroundBlockPreview({ block, payload, characters, scene, scenes, onUpdatePayload }: {
+    block: StoryBlock;
     payload: Extract<StoryActionPayload, { action: "setBackground" }>;
-    quickParams: QuickParam[];
+    characters: Character[];
+    scene: StoryScene;
+    scenes: Record<StorySceneId, StoryScene>;
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
 }) {
-    const { t } = useTranslation();
-    const { context, isInitialized } = useWorkspace();
     const textStyle = useStoryEditorTextStyle();
-    const assetsService = useMemo(
-        () => context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null,
-        [context, isInitialized],
-    );
-    const asset = payload.assetId ? assetsService?.getAssets()[AssetType.Image]?.[payload.assetId] ?? null : null;
-    const label = asset?.name ?? (payload.assetId ? t("story.background.missingImage") : payload.color || t("story.background.unassigned"));
-
     return (
-        <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center gap-1.5 text-sm italic text-fg-muted" style={textStyle}>
-            <span className="min-w-0 truncate" style={{ maxWidth: BACKGROUND_LABEL_MAX_WIDTH }}>
-                {t("story.rows.setBackground")}{" "}
-                {/* The picked asset is the row's subject, so it is set apart — but by WEIGHT and by
-                    dropping the italic, not by jumping to full-brightness `text-fg`. A directive that
-                    out-shouts the prose around it is what made a screen of these rows hard to read. */}
-                <span className={payload.assetId || payload.color ? "font-medium not-italic text-fg-muted" : "text-fg-subtle"}>{label}</span>
-            </span>
-            <QuickParamsInline params={quickParams} onUpdatePayload={onUpdatePayload} />
+        <span
+            className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center"
+            style={{ maxWidth: payload.assetId || payload.color ? BACKGROUND_LABEL_MAX_WIDTH : undefined }}
+        >
+            <BlockOverview
+                block={block}
+                characters={characters}
+                scene={scene}
+                scenes={scenes}
+                textStyle={textStyle}
+                onUpdatePayload={onUpdatePayload}
+            />
         </span>
     );
 }
 
 function DisplayableTransformPreview(props: {
+    block: StoryBlock;
     payload: Extract<StoryActionPayload, { action: "displayable" }>;
     sceneId: StoryScene["id"];
     blockId: StoryBlock["id"];
     document: StoryDocument;
     characters: Character[];
-    fallback: string;
+    scene: StoryScene;
+    onUpdatePayload: (payload: StoryBlock["payload"]) => void;
 }) {
-    const { t } = useTranslation();
-    const { context, isInitialized } = useWorkspace();
     const textStyle = useStoryEditorTextStyle();
-    const assetsService = useMemo(
-        () => context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null,
-        [context, isInitialized],
-    );
 
     const target = props.payload.target;
     const resolved = useMemo(
@@ -3237,18 +3234,29 @@ function DisplayableTransformPreview(props: {
     }, [resolved.assetId, resolved.kind, resolved.label, props.characters]);
 
     const assetId = resolved.assetId ?? characterThumbId;
-    const asset = assetId ? assetsService?.getAssets()[AssetType.Image]?.[assetId] ?? null : null;
     const { url } = useAssetObjectUrl(assetId ?? null);
-    // `resolved.label` already follows the stable anchor (and falls back to the stored name).
-    const name = resolved.label;
 
-    // No resolvable image (e.g. a text/layer target or an unresolved name) — keep the plain description.
+    const overview = (
+        <BlockOverview
+            block={props.block}
+            characters={props.characters}
+            scene={props.scene}
+            scenes={props.document.scenes}
+            textStyle={textStyle}
+            onUpdatePayload={props.onUpdatePayload}
+        />
+    );
+
+    // No resolvable image (a text/layer target, or a name nothing on stage answers to) — the line alone.
     if (!assetId) {
-        return <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center truncate text-sm italic text-fg-muted" style={textStyle}>{props.fallback}</span>;
+        return overview;
     }
 
+    // The thumbnail stays: `/transform hero` says WHICH object, and the picture is the fastest answer
+    // to "which one is that" on a scene full of them. It leads the line rather than sitting inside it,
+    // so the command still starts on the same column as every other row's.
     return (
-        <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center gap-2 text-sm italic text-fg-muted" style={textStyle}>
+        <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center gap-2">
             <span className="h-5 w-8 shrink-0 overflow-hidden rounded-md border border-edge bg-surface">
                 {url ? (
                     <img
@@ -3263,10 +3271,7 @@ function DisplayableTransformPreview(props: {
                     </span>
                 )}
             </span>
-            <span className="min-w-0 truncate">
-                {t("story.rows.transform")} <span className="font-medium not-italic">{name}</span>
-                {asset ? <span className="text-fg-subtle"> · {asset.name}</span> : null}
-            </span>
+            {overview}
         </span>
     );
 }

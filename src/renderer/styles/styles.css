@@ -108,6 +108,19 @@
     --nl-warning: 204 170 92;         /* #ccaa5c */
 
     /*
+     * Story command syntax. Only two tokens live here: the VERB wears the
+     * accent (`--nl-primary`, so it follows the user's chosen colour) and the
+     * SCAFFOLD — trigger, `=`, param keys — is the foreground ramp's `subtle`.
+     * What is left is the thing acted on and the value it is set to, and they
+     * are hue-shifts of the anchor at low saturation like every other secondary
+     * (see docs/design-system.md): warm for the object, green for the value.
+     * They do NOT follow the accent — a syntax palette that re-hued itself
+     * whenever the accent changed would stop meaning anything.
+     */
+    --nl-syntax-target: 202 160 115;  /* #caa073 */
+    --nl-syntax-value: 146 187 129;   /* #92bb81 */
+
+    /*
      * Hairline borders (`edge-*`) and translucent fills (`fill-*`) are
      * white overlays on dark, ink overlays on light — full color values
      * (not channels) because the alpha is part of the token.
@@ -163,6 +176,18 @@
         --nl-danger: 172 73 57;           /* #ac4939 */
         --nl-success: 59 114 91;          /* #3b725b */
         --nl-warning: 127 103 46;         /* #7f672e */
+
+        /*
+         * Same hues, dark enough to read as text on the light surface ladder —
+         * and darker than a straight lightness flip, because a committed row
+         * dims the whole line. On dark, dimming sinks a colour toward black and
+         * it keeps its chroma; on light it lifts toward white, and the first
+         * green here washed out to roughly the weight of the muted scaffold
+         * beside it. Deeper and a little more saturated is what keeps the value
+         * reading as a value once the row is done.
+         */
+        --nl-syntax-target: 122 82 38;    /* #7a5226 */
+        --nl-syntax-value: 46 96 36;      /* #2e6024 */
 
         --nl-edge: rgb(15 23 42 / 0.13);
         --nl-edge-subtle: rgb(15 23 42 / 0.07);

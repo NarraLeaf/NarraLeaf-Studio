@@ -74,11 +74,19 @@ export function getQuickParams(block: StoryBlock): QuickParam[] {
         return [durationParam("d", "d", transition.durationMs ?? 0, undefined, ms => ({ ...payload, transition: { ...transition, durationMs: ms } }))];
     }
     if (payload.action === "character" && (payload.operation === "enter" || payload.operation === "exit")) {
-        const transition = payload.transition;
-        if (!transition) {
+        // The TRANSFORM, not the transition: an entering character has nothing to transition from, so
+        // `/show Alice d=2` writes `transform.durationMs` and the compiler drives the entrance entirely
+        // off it (`createShowTransform`) — the same field `exit`'s `hide()` reads. Reading the
+        // transition here made the token print `d 0s` beside a row that had just been given `d=2`,
+        // because a character row's transition is only ever meaningful for `expression`.
+        //
+        // Under a bound Story Motion the timing lives in the motion's keyframes, so there is no number
+        // to offer — the same rule `/camera motion` follows.
+        const transform = payload.transform;
+        if (!transform || transform.mode === "animation") {
             return [];
         }
-        return [durationParam("d", "d", transition.durationMs ?? 0, undefined, ms => ({ ...payload, transition: { ...transition, durationMs: ms } }))];
+        return [durationParam("d", "d", transform.durationMs ?? 0, undefined, ms => ({ ...payload, transform: { ...transform, durationMs: ms } }))];
     }
     if (payload.action === "camera") {
         // The camera's `d=` is the whole feel of the move — the one knob worth a token on the row.

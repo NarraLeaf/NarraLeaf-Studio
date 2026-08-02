@@ -57,7 +57,13 @@ export type StoryCommandValidateContext = {
 export type StoryCommandSpec<P extends StoryCommandParamsShape = StoryCommandParamsShape> = {
     /** Stable identity: keys `story.command.<id>.label` / `.detail` and telemetry. Never shown raw. */
     id: string;
-    /** The canonical keyword. English, never translated (bible B11). */
+    /**
+     * The canonical keyword. English, and always accepted (bible B11).
+     *
+     * Not the only accepted spelling: the active command locale's menu label is derived into an alias
+     * table (`registry.ts`), so `/背景` reaches `bg` too. This one never moves, which is what keeps a
+     * script written in one locale parsing in every other.
+     */
     token: string;
     aliases?: readonly string[];
     /**
@@ -110,8 +116,10 @@ export type StoryCommandSpec<P extends StoryCommandParamsShape = StoryCommandPar
     /**
      * Working lines for the manual, written exactly as an author would type them.
      *
-     * Not translated: a command line is keywords and names, English in every locale (bible B11), and a
-     * localized example would teach a language the parser does not speak.
+     * Written in the canonical English spellings, and left that way in every locale. A locale may add
+     * spellings for the command and its params (bible B11), but the canonical ones are the spellings
+     * that work everywhere — which is exactly what an example should teach — and enum values have no
+     * localized form at all, so a translated example would be part real and part invented.
      *
      * `specs.test.ts` runs every one of these through parse → resolve → build against the suite's
      * fixture project, so an example that stopped being legal fails the suite instead of teaching an
@@ -192,9 +200,18 @@ export function asTarget(value: StoryCommandValue | undefined): Extract<StoryCom
 // Shared param fragments - the vocabulary table of the bible (§1.2). One key, one meaning.
 // ---------------------------------------------------------------------------
 
+/**
+ * A time in seconds — the one numeric shape in the whole vocabulary that carries a unit.
+ *
+ * Every slot measured in seconds shares it, so `d=1s`, `fade=0.5s` and `/wait 2s` are one rule rather
+ * than four. The unit is optional on input and is what a committed row prints (`持续时间=1s`), which is
+ * the point of declaring it: a row may only show a line the author could have typed.
+ */
+export const SECONDS_TYPE: StoryCommandParamType = { kind: "number", min: 0, unit: "s" };
+
 /** `d=` - a duration in seconds. */
 export function secondsParam(hint = "duration"): StoryCommandParamSpec {
-    return { aliases: ["duration"], hint, type: { kind: "number", min: 0 } };
+    return { aliases: ["duration"], hint, type: SECONDS_TYPE };
 }
 
 /** The `at=` word list (bible §1.2). Exported so a positional placement slot spells the same three words. */

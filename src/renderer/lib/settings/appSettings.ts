@@ -19,6 +19,7 @@ import {
     MAX_ACTIVE_EDITORS_MIN,
 } from "@/lib/settings/editorLayoutOptions";
 import { SLASH_AT_ALIAS_KEY, slashAtAliasDefault } from "@/lib/settings/slashAliasOptions";
+import { LOCALIZED_COMMANDS_DEFAULT, LOCALIZED_COMMANDS_KEY } from "@/lib/settings/commandLanguageOptions";
 import {
     ACCENT_COLOR_DEFAULT,
     ACCENT_PRESETS,
@@ -326,6 +327,26 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "Avoids the clash between / and 、 in Chinese input methods.",
         descriptionKey: "settings.items.slashAtAlias.description",
         defaultValue: slashAtAliasDefault(),
+    },
+    {
+        // Applied by `lib/i18n/commandLocale`: this value picks the translator the Story action
+        // creator reads - its menu labels and categories, the parameter candidates, the inline ghost
+        // hint, the command reference, the verb the line itself settles on and the verb a committed
+        // row reads back - and the same locale keys the three derived alias tables the parser
+        // consults (`commands/registry.ts`, `commands/localizedParams.ts`, `commands/localizedEnums.ts`),
+        // so the word shown and the word accepted are always one word. A switch rather than a third
+        // language picker:
+        // the only two useful answers are "my language" and "the one the grammar is written in". The
+        // canonical English spellings parse in every locale regardless.
+        key: LOCALIZED_COMMANDS_KEY,
+        category: "editor",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Show story commands in the interface language",
+        labelKey: "settings.items.localizedCommands.label",
+        description: "Turn this off to keep the action creator's command names, parameter names and values in English. Their English spellings work either way.",
+        descriptionKey: "settings.items.localizedCommands.description",
+        defaultValue: LOCALIZED_COMMANDS_DEFAULT,
     },
     {
         // Applied by the main process in `App.handleWorkspaceCloseRequest`: the workspace
