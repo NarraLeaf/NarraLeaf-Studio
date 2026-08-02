@@ -5,6 +5,8 @@ import { cn } from "@/lib/utils/cn";
 import { translate, useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
+import { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
+import { TEST_CONSOLE_CHANNEL } from "@/lib/testing/TestRunService";
 import type { Workspace } from "@/lib/workspace/workspace";
 import type { RegisteredTest, TestAvailability, TestId } from "@/lib/testing/types";
 import { getTestRunService } from "./testRunService";
@@ -201,6 +203,7 @@ function TestRow({
 export function openTestDialog(workspace: Workspace): void {
     const context = workspace.getContext();
     const uiService = context.services.get<UIService>(Services.UI);
+    const consoleService = context.services.get<ConsoleService>(Services.Console);
     const testRun = getTestRunService(context);
 
     const dialogId = uiService.dialogs.show({
@@ -215,6 +218,10 @@ export function openTestDialog(workspace: Workspace): void {
                 onStart={testId => {
                     uiService.dialogs.close(dialogId);
                     uiService.panels.show(CONSOLE_PANEL_ID);
+                    // Showing the panel is not enough: it restores whichever tab was last active,
+                    // so without this the author lands on an empty `build` tab while the run they
+                    // just started writes to `test` one tab over.
+                    consoleService?.requestFocus(TEST_CONSOLE_CHANNEL);
                     void testRun.start(testId);
                 }}
             />
