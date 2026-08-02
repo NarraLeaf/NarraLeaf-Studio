@@ -150,6 +150,47 @@ export interface DocumentMergeDecision {
 }
 
 /**
+ * Why a spec declined to merge a document at all, rather than merging it badly.
+ *
+ * A refusal is a **product** answer, not an implementation gap, and it exists because the failure it
+ * prevents is silent and late: two rearrangements of one story interleaved into a third produce a
+ * script nobody wrote which nevertheless compiles, so the author sees no error at all - until some
+ * day when the plot has a hole in it. Plan 2026-07-31-004 §4.3 states the case, and §4.5 lists the
+ * six others that are permanent rather than a backlog.
+ *
+ * It is carried here rather than thrown, and rather than left to look like an ordinary
+ * {@link DocumentMergeDecision}, for three separate reasons. A throw takes out the whole change
+ * list, in the main process, for one bad pair of documents. A bare conflict row draws identically
+ * to the twenty beside it, so "this file cannot be merged row by row" reads as "here is one more
+ * row to settle". And saying nothing at all - just handing back one whole-document conflict - is
+ * the same tier-one fallback with the reason removed, which is precisely the thing the author needs
+ * in order to agree with it.
+ *
+ * The accompanying merge still answers with **one whole-document decision** (an empty
+ * {@link DocumentMergeDecision.path}), so a consumer that has never heard of this field still
+ * cannot merge the document by accident - it gets exactly the "take one side whole" that tier one
+ * offers, which is the designed fallback.
+ */
+export interface DocumentMergeRefusal {
+    /**
+     * A stable identifier for the reason, scoped to the format that produced it, e.g.
+     * `"scene-restructured"`.
+     *
+     * **Not a sentence and not a translation key.** A sentence would be main-process English in
+     * data; a translation key would put the wording in a producer that has no surface, and a key
+     * missing from a catalogue renders as itself at the author (see `documentDiffKeys.test.ts`).
+     * The surface maps this identifier to its own words and is free to have a fallback for one it
+     * does not recognise - which is what a spec adding a reason must be able to do without a
+     * renderer change landing first.
+     */
+    readonly reason: string;
+    /** Where the refusal was decided, when it has one place - the same addressing a decision uses. */
+    readonly path?: readonly string[];
+    /** The author's own word for that place, on {@link DocumentChange.subject}'s terms. */
+    readonly subject?: string;
+}
+
+/**
  * The result of a three-way merge: a document that can always be written, plus what was decided.
  *
  * The invariant that makes per-change resolution possible at all is on {@link document}: it is a
@@ -172,6 +213,11 @@ export interface DocumentMerge3<T> {
     readonly decisions: readonly DocumentMergeDecision[];
     /** How many of {@link decisions} are still the author's, i.e. `outcome === "conflict"`. */
     readonly conflicts: number;
+    /**
+     * Present when this format declined to merge these two documents at all. See
+     * {@link DocumentMergeRefusal}; absent is the ordinary answer.
+     */
+    readonly refusal?: DocumentMergeRefusal;
 }
 
 /** One document's changes, as a revision or working-tree comparison reports them. */

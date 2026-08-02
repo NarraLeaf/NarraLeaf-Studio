@@ -12,6 +12,7 @@ import type {
     VcsInitOptions,
     VcsMergeCompletion,
     VcsMergeDecision,
+    VcsMergeDocument,
     VcsMergeState,
     VcsPushResult,
     VcsRepositoryInfo,
@@ -714,6 +715,26 @@ export class VersionControlService extends Service<VersionControlService> implem
         if (!(await this.isAvailable())) return null;
         const result = await getInterface().vcs.getMergeState(this.projectPath());
         return result.success ? result.data : null;
+    }
+
+    /**
+     * The three-way merge of ONE conflicted document, change by change - tier two.
+     *
+     * Asked per path and on demand rather than for the whole merge at once: a decision carries both
+     * sides' values verbatim, so a merge with two hundred conflicted files would be a message
+     * nobody reads most of.
+     *
+     * **A `blocked` answer is a normal one and the caller must draw it**, not hide the row: it says
+     * this document has to be taken whole, and why. Null means this host has no version control.
+     *
+     * Records nothing, exactly like {@link getMergeState}: the repository cannot tell a settled
+     * change from an unsettled one, so the choices taken on this live in the window that asked.
+     */
+    public async getMergeDocument(path: string): Promise<VcsMergeDocument | null> {
+        if (!(await this.isAvailable())) return null;
+        const result = await getInterface().vcs.getMergeDocument(this.projectPath(), path);
+        if (!result.success) throw new Error(result.error);
+        return result.data;
     }
 
     /**

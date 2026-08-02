@@ -95,6 +95,12 @@ export const documentDiff = {
         groupRemoved: "删除分组",
         groupRenamed: "分组改名",
     },
+    /** 只有 merge3 会用到；这个格式还没有语义 diff，行旁边也不放 subject（单元 id 不是作者写的字）。 */
+    localization: {
+        added: "新增译文",
+        removed: "删除译文",
+        changed: "译文改动",
+    },
     assets: {
         added: "新增素材",
         removed: "删除素材",
@@ -176,5 +182,37 @@ export const documentDiff = {
         abandonConfirm: "放弃这次合并？",
         abandonConfirmDetail:
             "所有文件都会回到从服务器获取之前的样子，包括那些已经自动合并好的。你自己的东西不会丢——想要的时候随时可以再获取一次。",
+        /**
+         * 第二档：在一个文件内部逐条变更选边。
+         *
+         * `auto` 那一档是**合并自己**已经定下来的，不是作者定的，所以画成已决定、把另一边收进
+         * 悬停里——绝大多数时候什么都不按才是对的答案。`conflict` 那一档则一边都不预选。
+         * `blocked` 下面几句说的是「为什么这个文件没有逐条列表」，而不是「列表是空的」。
+         */
+        change: {
+            expand: "展开内部变更",
+            collapse: "收起内部变更",
+            loading: "正在读取两个版本…",
+            heading: "未标注的都是自动合并的结果。把鼠标放到某一行上可以改用另一边。",
+            none: "这个文件的两个版本内部完全一致。",
+            auto: "已自动合并",
+            useMine: "改用我的",
+            useTheirs: "改用对方的",
+            absent: "这一边没有",
+            moreFields: "另有 {count} 项",
+            undecided: {
+                one: "还有 {count} 条变更没选边",
+                other: "还有 {count} 条变更没选边",
+            },
+            blocked: {
+                title: "这个文件只能整份取一边。",
+                noSpec: "Studio 不认识这个文件的格式，没法只合并其中一部分。",
+                noMerge3: "Studio 能读这个格式，但还不能把两个版本逐条合并。",
+                readOnly: "Studio 能合并这个格式，但还写不回去，所以整个文件只能取一边。",
+                tooLarge: "这个文件太大，没法逐条合并。",
+                tooMany: "这个文件里的变更太多，没法一条一条地决定。",
+                unreadable: "两个版本里有一个读不出来，所以只能整份取一边。",
+            },
+        },
     },
 } satisfies LocaleNamespace<"documentDiff">;

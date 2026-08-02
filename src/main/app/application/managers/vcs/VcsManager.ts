@@ -10,6 +10,8 @@ import type {
     VcsHistoryEntry,
     VcsMergeCompletion,
     VcsMergeDecision,
+    VcsMergeDocument,
+    VcsMergePerChangeDecision,
     VcsMergeResolveResult,
     VcsMergeSideChoice,
     VcsMergeState,
@@ -156,6 +158,11 @@ const DEFAULT_MERGE_MESSAGE = "Merge";
  * rather than a side that is silently never applied.
  */
 const MERGE_SIDES: readonly VcsMergeSideChoice[] = ["mine", "theirs"];
+
+/** Tier two, told apart from tier one by the one value {@link MERGE_SIDES} cannot hold. */
+function isPerChangeDecision(decision: VcsMergeDecision): decision is VcsMergePerChangeDecision {
+    return decision.choice === "per-change";
+}
 
 /** How much of a revision id names it in a commit message when the caller had no label. */
 const RESTORE_MESSAGE_HASH_LENGTH = 12;
@@ -1398,6 +1405,30 @@ export class VcsManager extends Manager {
     }
 
     /**
+     * The three-way merge of one conflicted document, change by change - tier two.
+     *
+     * **A pure read of what the merge already left on disk.** The three sides are files beside the
+     * conflicted one (docs §4.23), so this needs no revision graph, no base lookup and none of
+     * `getMergeBase`'s single-branch blind spot (§4.30): a merge in progress has its own inputs,
+     * and they are the same bytes the two sides recorded.
+     *
+     * **Answers rather than throws for every reason a document cannot be settled this way.** Most
+     * of a repository has no spec, most specs have no `merge3` yet, and one that has one still
+     * refuses to write itself back - all three are ordinary states of ordinary files, and the
+     * surface has to be able to say WHICH, because "we cannot do this here" and "there is nothing
+     * left to decide here" are otherwise the same blank row.
+     *
+     * Queued with everything else on this project so it cannot read the sidecars while a resolve
+     * is replacing them.
+     */
+    public async getMergeDocument(projectPath: string, documentPath: string): Promise<VcsMergeDocument> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            return backend.readMergeDocument(session.root, documentPath);
+        });
+    }
+
+    /**
      * Settle conflicted paths by taking one side, or by taking the working tree as it is.
      *
      * **Records nothing.** Settling a path is not committing it - the merge stays open
@@ -1451,9 +1482,11 @@ export class VcsManager extends Manager {
      *     commit does it, plus the sharper one a sync has: the resolve below OVERWRITES the paths
      *     it names, so a debounced auto-save landing a moment later writes the author's pre-merge
      *     document back over the side they just chose.
-     *  2. **Settle, one call per side.** Grouped rather than one call per path: each of these
-     *     flushes the repository, and a flush waits out the store keep-alive window (§4.22), so
-     *     per-path calls would cost a second each on a merge with two hundred files.
+     *  2. **Compose the per-change answers, then settle, one call per side.** Grouped rather than
+     *     one call per path: each of these flushes the repository, and a flush waits out the store
+     *     keep-alive window (§4.22), so per-path calls would cost a second each on a merge with two
+     *     hundred files. A tier-two path is written first and then settled with `working-tree`,
+     *     which is the only choice that can express an answer neither side wrote.
      *  3. **Commit**, through `commitWorkingTree`, which is where the remaining three obligations
      *     already live: it confirms there is something to commit with a NON-scanning status read
      *     (§4.17), writes `narraleaf.kind` BEFORE the commit rather than after (§4.21 - the
@@ -1491,6 +1524,28 @@ export class VcsManager extends Manager {
 
             const { session, backend } = await this.sessionFor(projectPath);
             const globals = { ...session.globals, identity: this.resolveIdentity(options.identity) };
+
+            // **Tier two, and it is written BEFORE anything is settled and after the flush above.**
+            // The composed bytes are an answer neither side wrote, so they go into the working tree
+            // first and are then accepted by the plain resolve verb, which commits the working tree
+            // byte for byte (§4.25). Writing them before the flush would lose them to a debounced
+            // auto-save; writing them after the settle would write into a path the backend has
+            // already recorded.
+            const perChange = decisions.filter(isPerChangeDecision);
+            for (const decision of perChange) {
+                await backend.resolveDocumentChanges(session.root, decision.path, decision.changes);
+            }
+            if (perChange.length > 0) {
+                // One call for all of them, for the reason the two side groups are grouped: each
+                // resolve flushes the repository and a flush waits out the keep-alive window
+                // (§4.22).
+                await backend.resolveConflicts(
+                    globals,
+                    session.root,
+                    perChange.map((decision) => decision.path),
+                    "working-tree",
+                );
+            }
 
             for (const choice of MERGE_SIDES) {
                 const paths = decisions.filter((decision) => decision.choice === choice)

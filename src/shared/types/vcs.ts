@@ -10,7 +10,8 @@
 // Type-only: the document model is where a change is defined, and a diff result is that
 // model with two revisions named around it. Re-declaring the shape here would be a second
 // definition of a change for the same renderer to draw.
-import type { DocumentDiffEntry } from "../documents/diff";
+import type { DocumentDiffEntry, DocumentMergeDecision } from "../documents/diff";
+import type { DocumentKind } from "../documents/types";
 
 /** A revision identifier. Opaque to the renderer; hex at the transport layer. */
 export type RevisionId = string;
@@ -628,15 +629,90 @@ export type VcsConflictChoice = "working-tree" | "mine" | "theirs";
 export type VcsMergeSideChoice = Exclude<VcsConflictChoice, "working-tree">;
 
 /**
- * One conflicted path and the side the author chose for it.
+ * One conflicted path taken WHOLE from one side - tier one.
  *
  * Per PATH rather than one choice for the whole merge, because taking every file from one side is
  * rarely what anyone means - and per file is still tier one, since each file is taken whole.
  */
-export interface VcsMergeDecision {
+export interface VcsMergeWholeDecision {
     /** Repository-relative, as {@link VcsMergeState.conflicts} reports it. */
     path: string;
     choice: VcsMergeSideChoice;
+}
+
+/**
+ * One conflicted path settled change by change - tier two.
+ *
+ * Only reachable for a path {@link VcsMergeDocument} answered without a `blocked`, which is
+ * exactly the set of documents whose spec can both merge three ways and write itself back. Every
+ * other document stays at tier one in the same list, visibly, rather than being hidden.
+ *
+ * **The choices travel, the decisions do not.** `changes` is keyed by `mergeDecisionKey` over a
+ * decision's own path, and the main process recomputes the decision list from the merge's three
+ * copies on disk before applying them: `merge3` is pure and its inputs are files, so the two runs
+ * agree by construction. Sending the decisions back instead would let a renderer settle a
+ * conflict with a value the repository never held.
+ *
+ * A conflict with no entry here is refused by name rather than defaulted - see
+ * `MergeChangeUndecidedError`. An `auto-*` row with no entry keeps the side the merge took, which
+ * is what makes flipping one and answering a conflict the same act.
+ */
+export interface VcsMergePerChangeDecision {
+    path: string;
+    choice: "per-change";
+    changes: Record<string, VcsMergeSideChoice>;
+}
+
+export type VcsMergeDecision = VcsMergeWholeDecision | VcsMergePerChangeDecision;
+
+/**
+ * Why one conflicted document cannot be settled change by change.
+ *
+ * **Falling back to tier one is a normal outcome and has to be visible**, which is what this type
+ * is for: a surface that simply omitted the per-change control would present "we cannot" and "you
+ * already have" as the same blank space. Per plan 2026-07-31-004 §4.2, tier three is "refuse and
+ * say why", not a greyed-out button.
+ *
+ *  - `no-spec` - nothing in Studio claims this path. Most of a repository is like this.
+ *  - `no-merge3` - a spec, but no three-way merge for this format yet.
+ *  - `read-only` - the spec can merge but refuses to write itself back, so a per-change result
+ *    could be composed and never saved. True today of the asset shards, whose `serialize` throws
+ *    by design while `AssetsService` still owns writing them.
+ *  - `too-large` - one of the three sides is over the parse ceiling.
+ *  - `too-many` - more decisions than a list can honestly carry. Not truncated: a partial decision
+ *    list cannot be applied, because the changes it left out would have to be settled by something
+ *    other than the author.
+ *  - `unreadable` - a side is missing, is not JSON, or the spec rejected it.
+ */
+export type VcsMergeDocumentBlocker =
+    | "no-spec"
+    | "no-merge3"
+    | "read-only"
+    | "too-large"
+    | "too-many"
+    | "unreadable";
+
+/**
+ * What a three-way merge of one conflicted document says, or why there is nothing to say.
+ *
+ * Rebuilt from the three copies the merge left beside the file (docs §4.23) every time it is
+ * asked, and it holds NO record of what the author has decided - there is nowhere to put one. A
+ * settled conflict and an unsettled one are indistinguishable in the repository (§4.24), so the
+ * choices live in the window that is drawing them, exactly as tier one's do.
+ */
+export interface VcsMergeDocument {
+    /** Repository-relative, as {@link VcsMergeState.conflicts} reports it. */
+    path: string;
+    /** The format, when a spec claims this path. */
+    documentKind?: DocumentKind;
+    /** Empty when {@link blocked} is set. */
+    decisions: DocumentMergeDecision[];
+    /** How many of {@link decisions} are still the author's. */
+    conflicts: number;
+    /** Set when this path stays at tier one. {@link detail} carries the producer's own sentence. */
+    blocked?: VcsMergeDocumentBlocker;
+    /** Untranslated, from whatever refused. Shown beside the translated reason, never instead. */
+    detail?: string;
 }
 
 /**
