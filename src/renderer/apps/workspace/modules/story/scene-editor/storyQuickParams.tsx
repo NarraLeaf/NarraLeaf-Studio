@@ -19,6 +19,7 @@ import {
     useStoryCommandLineContext,
 } from "./StoryCommandLineView";
 import { StoryLineValueToken } from "./StoryLineValueToken";
+import { StoryLineCharacterFace } from "./storyCharacterFace";
 import type { StoryCommandLineProjection } from "./storyCommandLine";
 import { storyActionRowFragments, type StoryRowFragment } from "@/lib/story/storyRowProjection";
 import type { Character } from "@/lib/workspace/services/character/Character";
@@ -92,6 +93,8 @@ export function BlockOverview(props: {
         return (
             <StoryCommandLineRow
                 line={line}
+                block={props.block}
+                characters={props.characters}
                 textStyle={props.textStyle}
                 scenes={props.scenes}
                 onUpdatePayload={props.onUpdatePayload}
@@ -122,9 +125,15 @@ export function BlockOverview(props: {
  * makes "typed" and "committed" read as two states of one thing instead of two designs. Every option
  * the line carries stays first-class inside it: values keep their colour and only add the dotted
  * underline that says a click will edit them.
+ *
+ * The one thing the row has that the typed line does not is the faces: a character command draws its
+ * subject's portrait in front of the name, at the line's own font size. It is the row that can afford
+ * it — the live field is a mirror over a textarea and has to stay text-for-text.
  */
 function StoryCommandLineRow(props: {
     line: StoryCommandLineProjection;
+    block: StoryBlock;
+    characters: Character[];
     textStyle?: CSSProperties;
     scenes?: Record<StorySceneId, StoryScene>;
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
@@ -138,6 +147,12 @@ function StoryCommandLineRow(props: {
                 edits={props.line.edits}
                 renderEdit={(edit, content) => (
                     <StoryLineValueToken edit={edit} onApply={props.onUpdatePayload}>{content}</StoryLineValueToken>
+                )}
+                ornaments={props.line.ornaments}
+                // The block, not the ornament's id: the picture is of this row's own look — the pose
+                // and tags in its payload — and the id is what says the line names a character at all.
+                renderOrnament={ornament => (
+                    <StoryLineCharacterFace key={ornament.id} block={props.block} characters={props.characters} />
                 )}
             />
         </StoryCommandLineBox>

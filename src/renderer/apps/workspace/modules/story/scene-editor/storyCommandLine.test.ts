@@ -173,6 +173,31 @@ describe("projectStoryCommandLine", () => {
         expect(line!.edits.map(edit => edit.control.kind)).toEqual(["choice", "enum", "number"]);
     });
 
+    it("marks the character's face onto the name, and onto nothing else", () => {
+        const faces = (source: string) => projectStoryCommandLine(build(source), LOOKUPS)!.ornaments;
+        const line = projectStoryCommandLine(build("/show Alice smile at=left d=0.3"), LOOKUPS)!;
+        expect(line.ornaments).toEqual([{ at: line.source.indexOf("Alice"), kind: "character", id: "c1" }]);
+        // Every character command, whichever slot it names its subject in (`target` vs `character`).
+        expect(faces("/move Alice at=right").map(mark => mark.id)).toEqual(["c1"]);
+        expect(faces("/face Alice smile").map(mark => mark.id)).toEqual(["c1"]);
+        // And nowhere else: a scene, an asset or a variable is not somebody.
+        expect(faces("/bg night")).toEqual([]);
+        expect(faces("/wait 1.5")).toEqual([]);
+    });
+
+    it("puts the face where the renderer will look for it — the start of a coloured part", () => {
+        // The way this fails is invisible: an offset landing mid-token simply draws no face, and the
+        // row goes on reading correctly without one. So the join is asserted directly, in the command
+        // language too — a localized verb moves every offset on the line.
+        i18nStore.setLocale("zh");
+        const line = projectStoryCommandLine(build("/show Alice at=left"), LOOKUPS)!;
+        const parts = storyCommandLineParts(line.source, line.edits);
+        const starts = parts.map(part => part.pieces[0]?.start);
+        expect(line.source).toContain("显示");
+        expect(starts).toContain(line.ornaments[0]?.at);
+        expect(line.source.slice(line.ornaments[0]!.at)).toMatch(/^Alice/);
+    });
+
     it("keeps the whole value clickable, unit and all", () => {
         // The affordance fails INVISIBLY — a quick value that stops matching still renders, just as
         // plain text nobody can click. So the grouping is asserted directly: one part, carrying the

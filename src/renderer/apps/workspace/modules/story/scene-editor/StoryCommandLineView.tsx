@@ -10,7 +10,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { ACTION_TRIGGER, ALT_ACTION_TRIGGER } from "./commandTrigger";
 import { getCommandSegments, type StoryCommandRole } from "./storyCommandHighlight";
 import type { StoryCommandContext } from "./storyCommandValues";
-import { projectStoryCommandLine, type StoryCommandLineEdit, type StoryCommandLineProjection } from "./storyCommandLine";
+import { projectStoryCommandLine, type StoryCommandLineEdit, type StoryCommandLineOrnament, type StoryCommandLineProjection } from "./storyCommandLine";
 import { characterRowLookup } from "./storySceneBlockUtils";
 import { useStoryMotionNames } from "./useStoryMotionNames";
 
@@ -184,6 +184,15 @@ export function StoryCommandLineText(props: {
     edits?: readonly StoryCommandLineEdit[];
     /** Wraps one editable value in its affordance. Absent on the live field, which is already text. */
     renderEdit?: (edit: StoryCommandLineEdit, content: ReactNode) => ReactNode;
+    ornaments?: readonly StoryCommandLineOrnament[];
+    /**
+     * Draws one picture the line carries inside itself — a speaker's face before their name.
+     *
+     * Absent on the live field on purpose: that copy is a mirror sitting on top of a textarea and has
+     * to occupy the same width character for character, so anything drawn between the glyphs would
+     * walk the colours off the caret.
+     */
+    renderOrnament?: (ornament: StoryCommandLineOrnament) => ReactNode;
 }) {
     const { t: ct } = useCommandTranslation();
     // The one memo worth having on this path: the projection above is string building, but this is a
@@ -204,9 +213,19 @@ export function StoryCommandLineText(props: {
             {parts.map(part => {
                 const painted = part.pieces.map(paint);
                 const key = part.pieces[0]?.start ?? 0;
-                return part.edit && props.renderEdit
-                    ? <span key={`e${key}`}>{props.renderEdit(part.edit, painted)}</span>
-                    : <span key={key}>{painted}</span>;
+                const token = part.edit && props.renderEdit
+                    ? props.renderEdit(part.edit, painted)
+                    : painted;
+                // Outside the token, never inside it: an editable value wears a dotted underline, and
+                // an underline running under a face is the seam this whole arrangement exists to
+                // avoid. Adjacent is enough to read as one thing.
+                const ornament = props.renderOrnament ? props.ornaments?.find(entry => entry.at === key) : undefined;
+                return (
+                    <span key={key}>
+                        {ornament ? props.renderOrnament?.(ornament) : null}
+                        {token}
+                    </span>
+                );
             })}
         </>
     );
