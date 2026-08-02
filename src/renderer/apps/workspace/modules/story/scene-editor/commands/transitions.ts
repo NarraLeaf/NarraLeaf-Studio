@@ -202,3 +202,34 @@ export function transformPresetFor(context: "reveal" | "conceal" | "nvl", word: 
     }
     return (context === "reveal" ? REVEAL_PRESETS : CONCEAL_PRESETS)[word as StoryTransitionWord];
 }
+
+/**
+ * The word a stored value came from — the inverse of the two lookups above, for the row that has to
+ * read a committed block back as the line that would produce it.
+ *
+ * Searched in `SUPPORTED` order rather than over the raw table, so the word a context PREFERS wins
+ * when two spell the same stored value: a character `fadeIn` reads back as `fade`, the word the
+ * author typed, not as whichever alias the object literal happened to list first.
+ *
+ * `null` when nothing in this context names the value. That is a real case — the inspector writes
+ * kinds no line can express — and the caller decides what to print instead; it must not invent a word
+ * the parser would reject.
+ */
+function wordFor<T>(context: StoryTransitionContext, stored: T | undefined, of: (word: StoryTransitionWord) => T | undefined): StoryTransitionWord | null {
+    // An absent stored value is "nothing to name", never a match against a word this context does not
+    // map — every unmapped word answers `undefined` too, and `undefined === undefined` would pick one.
+    if (stored === undefined) {
+        return null;
+    }
+    return SUPPORTED[context].find(word => of(word) === stored) ?? null;
+}
+
+/** The unified word behind a stored `StoryTransitionRef.kind`, or `null` when no word names it. */
+export function transitionWordFor(context: "scene" | "character", kind: StoryTransitionRef["kind"]): StoryTransitionWord | null {
+    return wordFor(context, kind, word => transitionKindFor(context, word));
+}
+
+/** The unified word behind a stored transform preset, or `null` when no word names it. */
+export function transitionWordForPreset(context: "reveal" | "conceal" | "nvl", preset: StoryTransformRef["preset"] | undefined): StoryTransitionWord | null {
+    return wordFor(context, preset, word => transformPresetFor(context, word));
+}

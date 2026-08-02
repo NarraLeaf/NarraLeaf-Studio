@@ -113,6 +113,16 @@ const DISPLAYABLE: Partial<Record<OperationOf<"displayable">, CommandId>> = {
     transform: "transform",
 };
 
+/**
+ * One token per effect, not one `/effect` verb with the name as an argument: the two are different
+ * gestures with different knobs (a blink holds, a vignette has an opacity), and the vocabulary names
+ * the idea rather than the type.
+ */
+const SCREEN_EFFECT: Record<Extract<StoryActionPayload, { action: "screenEffect" }>["effect"], CommandId> = {
+    blink: "blink",
+    vignette: "vignette",
+};
+
 /** The command id whose label names this payload's verb, or `null` when no command owns it. */
 export function storyVerbCommandId(payload: StoryActionPayload): CommandId | null {
     switch (payload.action) {
@@ -129,6 +139,7 @@ export function storyVerbCommandId(payload: StoryActionPayload): CommandId | nul
             return payload.operation === "muteSound"
                 ? (payload.muted === false ? "unmute" : "mute")
                 : AUDIO[payload.operation] ?? null;
+        case "screenEffect": return SCREEN_EFFECT[payload.effect] ?? null;
         case "setBackground": return "background";
         case "wait": return "wait";
         case "nvl": return "nvl";

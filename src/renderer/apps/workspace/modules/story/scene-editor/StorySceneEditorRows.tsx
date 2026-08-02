@@ -4,7 +4,7 @@ import type { ClipboardEvent, CSSProperties, ReactNode, RefObject, MouseEvent } 
 import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Hash, Image, LayoutGrid, List, Music, Play, Plus, Route, Trash2, TriangleAlert, UserRoundPlus, Variable, Video } from "lucide-react";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
 import { useSortable } from "@dnd-kit/sortable";
-import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryCharacterTagSelection, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
+import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryCharacterTagSelection, StoryDocument, StoryRichRun, StoryScene, StorySceneId } from "@shared/types/story";
 import { representativeAssetId } from "@shared/utils/characterVariant";
 import { HeadThumbnail } from "@/apps/workspace/modules/characters/editors/components/HeadThumbnail";
 import { useCompositedSprite } from "@/lib/workspace/hooks/useCompositedSprite";
@@ -74,8 +74,9 @@ import {
     type StoryContainerHeaderInfo,
 } from "./storySceneBlockUtils";
 import { ConditionPopover } from "./ConditionPopover";
-import { BlockOverview, getQuickParams, QuickParamsInline, type QuickParam } from "./storyQuickParams";
-import { actionTrigger, ACTION_TRIGGER, insertChooserType, toCanonicalCommandLine } from "./commandTrigger";
+import { BlockOverview } from "./storyQuickParams";
+import { actionTrigger, ACTION_TRIGGER, insertChooserType, isActionCommandLine, toCanonicalCommandLine } from "./commandTrigger";
+import { StoryCommandLineText } from "./StoryCommandLineView";
 import { useStoryRowActions } from "./storyRowActions";
 import { diagnoseRow, type StoryRowDiagnosticCode } from "./storyRowDiagnostics";
 import { useReduceMotion } from "@/lib/appearance/useReduceMotion";
@@ -1502,6 +1503,32 @@ function candidateIcon(cursor: StoryCommandCursor, candidate: StoryCommandCandid
 }
 
 /**
+ * The colours under the line being typed.
+ *
+ * Same mirror trick as the ghost hint below — the text repeated in a `pointer-events-none` layer with
+ * the field's exact metrics — except this copy is the visible one: the textarea's own glyphs are made
+ * transparent (its caret is not) so the roles show through. A textarea cannot colour parts of its
+ * value, and every alternative is worse: a contenteditable would cost the caret model, the undo stack
+ * and the IME handling that the plain field gets from the platform for free.
+ *
+ * **Held back during IME composition.** Chrome draws the composing text with the element's own colour,
+ * so a transparent field would leave a Chinese author typing into an invisible box. `composing` puts
+ * the real glyphs back for the length of the composition — the one case where the mirror cannot see
+ * what the field is showing, since a composition is not in `value` yet.
+ */
+function CommandLineHighlight(props: { source: string; trigger: "/" | "@"; textStyle: CSSProperties }) {
+    return (
+        <span
+            aria-hidden
+            className="pointer-events-none absolute inset-0 select-none overflow-hidden whitespace-pre-wrap break-words"
+            style={props.textStyle}
+        >
+            <StoryCommandLineText source={props.source} trigger={props.trigger} />
+        </span>
+    );
+}
+
+/**
  * The grey `<Var Name>` that trails the caret on a command line.
  *
  * Rendered as a mirror of the typed text — the text itself repeated but invisible, then the hint —
@@ -1621,6 +1648,14 @@ export function InsertRow(props: {
     // completion (bible M3). Escape is the one thing text cannot express: `chooserDismissed` shuts the
     // menu until the next keystroke clears it (see the controller), so it forces "none" here.
     const chooser = props.mode.chooserDismissed ? "none" : insertChooserType(value, props.slashAtAlias);
+    // The trigger this line is actually wearing — the author's own key, not the canonical "/".
+    const trigger = actionTrigger(value, props.slashAtAlias) ?? ACTION_TRIGGER;
+    // Composition state is local and short-lived: it exists only to hand the glyphs back to the field
+    // while an IME is composing into it (see CommandLineHighlight).
+    const [composing, setComposing] = useState(false);
+    // Coloured only while the line IS a command: `insertChooserType` answers that from the text, and
+    // `chooserDismissed` (Escape) must not change it — the line is still a command, the menu is just shut.
+    const colourLine = !composing && isActionCommandLine(value, props.slashAtAlias);
     const menuAnchorRef = useRef<HTMLDivElement | null>(null);
     const menuFrame = useAnchoredMenuFrame(menuAnchorRef, chooser !== "none", 312);
     const pluginCommands = useStoryPluginActionCommands();
@@ -1742,9 +1777,8 @@ export function InsertRow(props: {
     const chooseCommandCandidate = (commandId: string) => {
         const def = getCommandDef(commandId);
         if (def && def.params.length > 0) {
-            // Rebuild the whole line, but keep the trigger the author is using so "@" does not flip to
-            // "/" mid-completion. The commit path canonicalizes it either way.
-            const trigger = actionTrigger(value, props.slashAtAlias) ?? ACTION_TRIGGER;
+            // Rebuild the whole line, keeping the trigger the author is using (`trigger`, resolved
+            // above) so "@" does not flip to "/" mid-completion. The commit path canonicalizes either way.
             // The word the menu is SHOWING, not the canonical token: a pick that displayed 显示 and
             // wrote `@show` taught the author nothing they could type. `localizedCommandToken` comes
             // out of the same pass that built the parser's accept table, so it always reads back.
@@ -1784,14 +1818,23 @@ export function InsertRow(props: {
                     anchor, so it is positioned against the field's box and inherits its exact metrics.
                     `min-w-0 flex-1` moves off the textarea onto the wrapper; the textarea then fills it. */}
                 <div className="relative flex min-w-0 flex-1">
+                {colourLine ? <CommandLineHighlight source={source} trigger={trigger} textStyle={textStyle} /> : null}
                 <CommandGhostHint value={value} source={source} caret={caret} textStyle={textStyle} commandContext={props.commandContext} confirmation={props.mode.confirmation} />
                 <textarea
                     ref={props.inputRef}
                     // Same in-place surface as an editing row (see TextEditBox): the new line reads as a
                     // line being typed, not a widget dropped into the list — which is what lets narration's
                     // Enter fall into this slot without the text visibly jumping.
-                    className="relative min-h-[20px] w-full resize-none bg-transparent px-0 py-0 text-fg outline-none placeholder:italic placeholder:text-fg-subtle"
+                    className={[
+                        "relative min-h-[20px] w-full resize-none bg-transparent px-0 py-0 outline-none placeholder:italic placeholder:text-fg-subtle",
+                        // Transparent glyphs, opaque caret: the colours come from the mirror behind.
+                        // Prose keeps its own text — there is nothing to colour, and a line the mirror
+                        // would not draw must never be invisible.
+                        colourLine ? "text-transparent caret-[rgb(var(--nl-fg))]" : "text-fg",
+                    ].join(" ")}
                     style={textStyle}
+                    onCompositionStart={() => setComposing(true)}
+                    onCompositionEnd={() => setComposing(false)}
                     rows={1}
                     value={value}
                     // The hint advertises whichever trigger this author actually uses. Suppressed while a
@@ -2977,11 +3020,9 @@ function BlockPreview(props: {
     /** Commit an inline quick-param edit (WI-2) through the same history path the inspector uses. */
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
 }) {
-    const { t } = useTranslation();
     const block = props.block;
     const text = getTextSegment(block);
     const textStyle = useStoryEditorTextStyle();
-    const quickParams = getQuickParams(block);
     if (text) {
         const hasValue = Boolean(text.value) || Boolean(text.rich && text.rich.length > 0);
         const note = block.kind === "note";
@@ -3001,17 +3042,28 @@ function BlockPreview(props: {
         );
     }
     if (block.kind === "action" && block.payload.action === "setBackground") {
-        return <BackgroundBlockPreview payload={block.payload} quickParams={quickParams} onUpdatePayload={props.onUpdatePayload} />;
+        return (
+            <BackgroundBlockPreview
+                block={block}
+                payload={block.payload}
+                characters={props.characters}
+                scene={props.scene}
+                scenes={props.document.scenes}
+                onUpdatePayload={props.onUpdatePayload}
+            />
+        );
     }
     if (block.kind === "action" && block.payload.action === "displayable" && block.payload.operation === "transform") {
         return (
             <DisplayableTransformPreview
+                block={block}
                 payload={block.payload}
                 sceneId={props.scene.id}
                 blockId={block.id}
                 document={props.document}
                 characters={props.characters}
-                fallback={describeBlock(block, props.characters, props.scene, props.document.scenes)}
+                scene={props.scene}
+                onUpdatePayload={props.onUpdatePayload}
             />
         );
     }
@@ -3023,10 +3075,10 @@ function BlockPreview(props: {
         // re-opens the line in place, candidates and all.
         return <DraftRowPreview source={block.payload.source} commandContext={props.commandContext} />;
     }
-    // One structured overview path for every action row (bible M5): `[target · modifiers]` with any
-    // quick-edit params inline as clickable tokens; a row with none is just an overview whose only
-    // fragment is the `describeBlock` fallback. setBackground / displayable-transform keep their rich
-    // renderers above (spec-level overrides).
+    // One overview path for every action row: the command line that would produce it, with any
+    // quick-edit params clickable inside it — and the old `describeBlock` sentence for the rows no
+    // command owns. setBackground / displayable-transform reach it through their own wrappers above,
+    // which add the artwork the line cannot carry.
     return (
         <BlockOverview
             block={block}
@@ -3110,50 +3162,50 @@ function BackgroundRowArtwork({ payload, selected, active }: {
     );
 }
 
-function BackgroundBlockPreview({ payload, quickParams, onUpdatePayload }: {
+/**
+ * A background row: the command line, held clear of the artwork strip at the row's trailing edge.
+ *
+ * The line says everything the old bespoke sentence did — `@背景 forest_day 转场=淡变 持续时间=0.5` names
+ * the image, and the strip beside it shows which image that is — so the only thing this preview adds
+ * over the shared overview is the width cap that keeps the text from running under the picture.
+ */
+function BackgroundBlockPreview({ block, payload, characters, scene, scenes, onUpdatePayload }: {
+    block: StoryBlock;
     payload: Extract<StoryActionPayload, { action: "setBackground" }>;
-    quickParams: QuickParam[];
+    characters: Character[];
+    scene: StoryScene;
+    scenes: Record<StorySceneId, StoryScene>;
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
 }) {
-    const { t } = useTranslation();
-    const { context, isInitialized } = useWorkspace();
     const textStyle = useStoryEditorTextStyle();
-    const assetsService = useMemo(
-        () => context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null,
-        [context, isInitialized],
-    );
-    const asset = payload.assetId ? assetsService?.getAssets()[AssetType.Image]?.[payload.assetId] ?? null : null;
-    const label = asset?.name ?? (payload.assetId ? t("story.background.missingImage") : payload.color || t("story.background.unassigned"));
-
     return (
-        <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center gap-1.5 text-sm italic text-fg-muted" style={textStyle}>
-            <span className="min-w-0 truncate" style={{ maxWidth: BACKGROUND_LABEL_MAX_WIDTH }}>
-                {t("story.rows.setBackground")}{" "}
-                {/* The picked asset is the row's subject, so it is set apart — but by WEIGHT and by
-                    dropping the italic, not by jumping to full-brightness `text-fg`. A directive that
-                    out-shouts the prose around it is what made a screen of these rows hard to read. */}
-                <span className={payload.assetId || payload.color ? "font-medium not-italic text-fg-muted" : "text-fg-subtle"}>{label}</span>
-            </span>
-            <QuickParamsInline params={quickParams} onUpdatePayload={onUpdatePayload} />
+        <span
+            className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center"
+            style={{ maxWidth: payload.assetId || payload.color ? BACKGROUND_LABEL_MAX_WIDTH : undefined }}
+        >
+            <BlockOverview
+                block={block}
+                characters={characters}
+                scene={scene}
+                scenes={scenes}
+                textStyle={textStyle}
+                onUpdatePayload={onUpdatePayload}
+            />
         </span>
     );
 }
 
 function DisplayableTransformPreview(props: {
+    block: StoryBlock;
     payload: Extract<StoryActionPayload, { action: "displayable" }>;
     sceneId: StoryScene["id"];
     blockId: StoryBlock["id"];
     document: StoryDocument;
     characters: Character[];
-    fallback: string;
+    scene: StoryScene;
+    onUpdatePayload: (payload: StoryBlock["payload"]) => void;
 }) {
-    const { t } = useTranslation();
-    const { context, isInitialized } = useWorkspace();
     const textStyle = useStoryEditorTextStyle();
-    const assetsService = useMemo(
-        () => context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null,
-        [context, isInitialized],
-    );
 
     const target = props.payload.target;
     const resolved = useMemo(
@@ -3179,18 +3231,29 @@ function DisplayableTransformPreview(props: {
     }, [resolved.assetId, resolved.kind, resolved.label, props.characters]);
 
     const assetId = resolved.assetId ?? characterThumbId;
-    const asset = assetId ? assetsService?.getAssets()[AssetType.Image]?.[assetId] ?? null : null;
     const { url } = useAssetObjectUrl(assetId ?? null);
-    // `resolved.label` already follows the stable anchor (and falls back to the stored name).
-    const name = resolved.label;
 
-    // No resolvable image (e.g. a text/layer target or an unresolved name) — keep the plain description.
+    const overview = (
+        <BlockOverview
+            block={props.block}
+            characters={props.characters}
+            scene={props.scene}
+            scenes={props.document.scenes}
+            textStyle={textStyle}
+            onUpdatePayload={props.onUpdatePayload}
+        />
+    );
+
+    // No resolvable image (a text/layer target, or a name nothing on stage answers to) — the line alone.
     if (!assetId) {
-        return <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center truncate text-sm italic text-fg-muted" style={textStyle}>{props.fallback}</span>;
+        return overview;
     }
 
+    // The thumbnail stays: `/transform hero` says WHICH object, and the picture is the fastest answer
+    // to "which one is that" on a scene full of them. It leads the line rather than sitting inside it,
+    // so the command still starts on the same column as every other row's.
     return (
-        <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center gap-2 text-sm italic text-fg-muted" style={textStyle}>
+        <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center gap-2">
             <span className="h-5 w-8 shrink-0 overflow-hidden rounded-md border border-edge bg-surface">
                 {url ? (
                     <img
@@ -3205,10 +3268,7 @@ function DisplayableTransformPreview(props: {
                     </span>
                 )}
             </span>
-            <span className="min-w-0 truncate">
-                {t("story.rows.transform")} <span className="font-medium not-italic">{name}</span>
-                {asset ? <span className="text-fg-subtle"> · {asset.name}</span> : null}
-            </span>
+            {overview}
         </span>
     );
 }
