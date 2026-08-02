@@ -176,6 +176,27 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
         panelStateLoadedRef.current = true;
     }, [panelId, panelStateService]);
 
+    // A run that started before this panel mounted still gets its tab. Read after the stored state
+    // above, so a pending request wins over the remembered tab - it is the more recent intent.
+    useEffect(() => {
+        const pending = consoleService?.takePendingFocusRequest();
+        if (pending) {
+            setActiveChannel(pending);
+        }
+    }, [consoleService]);
+
+    useEffect(() => {
+        if (!consoleService) {
+            return;
+        }
+        return consoleService.onFocusRequested(({ channel }) => {
+            // Consume the pending copy too, or a later remount would re-apply this same request
+            // and yank the author off whatever tab they moved to in the meantime.
+            consoleService.takePendingFocusRequest();
+            setActiveChannel(channel);
+        });
+    }, [consoleService]);
+
     useEffect(() => {
         if (!panelStateService || !panelStateLoadedRef.current) {
             return;

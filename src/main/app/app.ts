@@ -6,6 +6,7 @@ import { AppWindow, WindowConfig } from "./application/managers/window/appWindow
 import { DevModeManager } from "./application/managers/devMode/DevModeManager";
 import { devModeNetworkPolicy, readProjectAllowHttp } from "./application/managers/devMode/devModeNetworkPolicy";
 import { GameBuildManager } from "./application/managers/build/GameBuildManager";
+import { GameTestManager } from "./application/managers/gameTest/GameTestManager";
 import { PreviewManager } from "./application/managers/preview/PreviewManager";
 import { VcsManager } from "./application/managers/vcs/VcsManager";
 // Shared with the recently-opened history, which must agree with the "already open?" lookup here.
@@ -34,6 +35,7 @@ export class App extends BaseApp {
         super(config);
         this.devModeManager = new DevModeManager(this);
         this.previewManager = new PreviewManager(this);
+        this.gameTestManager = new GameTestManager(this);
         this.gameBuildManager = new GameBuildManager(this);
         // The commit pipeline has to settle the renderer's auto-save debt before it
         // stages, and only the window layer can ask a window to do that. Handed in as a
@@ -49,6 +51,7 @@ export class App extends BaseApp {
 
     private readonly devModeManager: DevModeManager;
     private readonly previewManager: PreviewManager;
+    private readonly gameTestManager: GameTestManager;
     private readonly gameBuildManager: GameBuildManager;
     private readonly vcsManager: VcsManager;
 
@@ -58,6 +61,11 @@ export class App extends BaseApp {
 
     public getPreviewManager(): PreviewManager {
         return this.previewManager;
+    }
+
+    /** Game processes a test run owns. Separate from the preview's for the reasons in its header. */
+    public getGameTestManager(): GameTestManager {
+        return this.gameTestManager;
     }
 
     public getGameBuildManager(): GameBuildManager {
