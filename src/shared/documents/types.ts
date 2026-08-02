@@ -1,6 +1,6 @@
 // Type-only in both directions: `diff.ts` names a {@link DocumentKind} and this file names a
 // {@link DocumentDiff}, and a value import either way would make that a real module cycle.
-import type {DocumentDiff} from "./diff";
+import type {DocumentDiff, DocumentMerge3} from "./diff";
 
 /**
  * What a versioned editor document is, from the outside.
@@ -150,6 +150,38 @@ export interface DocumentSpec<T> {
      * `buildDocumentDiff` applies.
      */
     diff?(base: T, head: T, options: {limit: number}): DocumentDiff;
+
+    /**
+     * Merge two versions of this document that were written from a common starting point.
+     *
+     * **Optional, and absent is a normal answer**, like {@link diff}. A format with no
+     * implementation here is resolved whole - take mine or take theirs - which is what the
+     * first tier of conflict resolution does for every document including binary assets, and
+     * which is by itself enough to make a merge finishable. This is the second tier: the
+     * author decides one entry at a time instead of one file at a time.
+     *
+     * Three properties are the contract rather than the implementation's business:
+     *
+     *  - **`base` absent means add/add.** Both sides created this document independently and
+     *    there is nothing they started from. It must NEVER be treated as an empty document:
+     *    an empty base makes every entry on both sides look like an addition, every one of
+     *    them merges automatically, and the author is handed a document neither of them wrote
+     *    with nothing reporting that a decision was taken. Answer conflicts instead.
+     *  - **A path with an open conflict holds base** - mine when there is no base - so that
+     *    {@link DocumentMerge3.document} is a complete, serializable document of this format
+     *    at every point, including halfway through resolving. The author can stop, the file
+     *    can be written, the merge can be resumed.
+     *  - **Decisions are addressed by the same `path` a `DocumentChange` uses.** Comparing and
+     *    resolving are one list seen twice; a second addressing scheme would break the one
+     *    premise the whole surface is built on.
+     *
+     * Pure and non-throwing, for the reason {@link diff} is: it runs in the main process over
+     * documents that came out of a repository, and a throw here does not cost one document's
+     * merge but the whole merge. A document this spec cannot make sense of is answered with a
+     * conflict - in the last resort one whole-document conflict at the empty path, which is
+     * how a spec says "I cannot merge this, decide it whole" without pretending otherwise.
+     */
+    merge3?(base: T | undefined, mine: T, theirs: T): DocumentMerge3<T>;
 }
 
 /**

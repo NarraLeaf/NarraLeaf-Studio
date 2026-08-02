@@ -112,7 +112,7 @@ export const launcher = {
         },
     },
     learning: {
-        hint: "Tutorials, examples, and documentation for building with NarraLeaf. Links open in your browser.",
+        hint: "Tutorials, examples and documentation. Links open in your browser.",
         openInBrowser: "Open {name} in your browser",
         categories: {
             tutorials: "Tutorials",

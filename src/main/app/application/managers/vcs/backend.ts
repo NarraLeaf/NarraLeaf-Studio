@@ -39,7 +39,14 @@ export type VcsBackend =
     & typeof import("./revisionReader")
     & typeof import("./repository")
     & typeof import("./remote")
-    & typeof import("./merge");
+    & typeof import("./merge")
+    /**
+     * Per-change resolution. Reaches no native code at all - it is `fs` plus the document
+     * registry - and is behind the plug anyway because it is only ever called on a repository
+     * whose merge the modules above opened, and because a second way into `vcs/` would give the
+     * "never reach the binding at startup" rule a second place to be broken.
+     */
+    & typeof import("./mergeDocument");
 
 let cached: VcsBackend | null = null;
 let availability: VcsAvailability | null = null;
@@ -76,18 +83,19 @@ export async function loadVcsBackend(): Promise<VcsBackend | null> {
         try {
             // Dynamic on purpose: these imports are what reach the native library, and
             // a static one would run `koffi.load()` during main-process startup.
-            const [reader, repository, remote, merge] = await Promise.all([
+            const [reader, repository, remote, merge, mergeDocument] = await Promise.all([
                 import("./revisionReader"),
                 import("./repository"),
                 import("./remote"),
                 import("./merge"),
+                import("./mergeDocument"),
             ]);
             // Force the load now rather than at first use, so availability reflects
             // whether the library actually opened rather than merely whether the
             // module resolved.
             const { loadLoreLibrary } = await import("./lore");
             loadLoreLibrary();
-            cached = { ...reader, ...repository, ...remote, ...merge };
+            cached = { ...reader, ...repository, ...remote, ...merge, ...mergeDocument };
             availability = { available: true };
             return cached;
         } catch (error) {

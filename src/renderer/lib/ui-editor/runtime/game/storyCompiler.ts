@@ -3389,7 +3389,7 @@ async function getSound(
     }
     if (!assetId) {
         diagnostic(ctx, "warning", blockId, name === "bgm"
-            ? "No background music is set before this row - /bgm has to run first."
+            ? "No background music is set before this row; /bgm has to run first."
             : `Sound "${name}" has no asset.`);
         return null;
     }

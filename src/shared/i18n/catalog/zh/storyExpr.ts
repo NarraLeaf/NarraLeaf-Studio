@@ -20,7 +20,7 @@ export const storyExpr = {
     check: {
         notBoolean: "条件必须是真假判断，例如 gold >= 100",
         typeMismatch: "这里得到的是 {received}，而变量存放的是 {expected}",
-        notConstant: "默认值不能引用其他变量——它在所有变量存在之前就已确定",
+        notConstant: "默认值不能引用其他变量，它在所有变量存在之前就已确定",
         duplicateVariable: "该作用域下已存在同名变量",
         compoundWithoutTarget: "这里没有可供累加的变量",
     },
@@ -45,7 +45,7 @@ export const storyExpr = {
         expressionError: "{message}",
         expressionNotBoolean: "条件必须是真假判断，例如 gold >= 100",
         expressionTypeMismatch: "「{variable}」存放的是 {expected}，无法存入 {received}",
-        duplicateVariable: "「{value}」已存在——换个名字，或用 /set 修改它的值",
+        duplicateVariable: "「{value}」已存在，换个名字，或用 /set 修改它的值",
         unknownTarget: "舞台上没有名为「{value}」的对象",
         unsupportedOption: "「{value}」不适用于此处，可用：{allowed}",
         missingCore: "/{token} 还缺少{slot}",

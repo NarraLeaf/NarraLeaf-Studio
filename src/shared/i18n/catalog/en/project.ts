@@ -74,12 +74,12 @@ export const project = {
     },
     game: {
         autoSaveTitle: "Automatic saving",
-        autoSaveDescription: "Save the playthrough on a timer while the player is in the game, so a crash or a closed window costs a moment instead of a session.",
+        autoSaveDescription: "Save the playthrough on a timer, so a crash costs a moment instead of a session.",
         autoSaveIntervalTitle: "Save every",
-        autoSaveIntervalDescription: "How often to check. Nothing is written unless the story moved on, so an idle game costs nothing.",
+        autoSaveIntervalDescription: "How often to check. Nothing is written unless the story moved on.",
         autoSaveIntervalUnit: "s",
         autoSaveSlotsTitle: "Autosaves kept",
-        autoSaveSlotsDescription: "Autosaves rotate through this many slots, oldest overwritten first. They stay out of the player's own save slots and are read with the List Auto Saves node.",
+        autoSaveSlotsDescription: "Autosaves rotate through this many slots, oldest first. They stay out of the player's own save slots.",
     },
     // The Audio sub-page: the project's mixer, as a tree of buses. One collapsed row per bus with
     // its fields behind a disclosure, so the labels below are labels rather than headings - the
@@ -88,7 +88,7 @@ export const project = {
     audio: {
         // What a bus is and how the mix multiplies, said once at the top of the section. This
         // absorbed the former per-field `nameDescription` / `parentDescription` / `volumeDescription`.
-        intro: "A track is a bus: it feeds another bus, or the master output. A clip plays at its own level times every bus above it, and a bus can quieten but never amplify. Renaming is safe — references are stored by id.",
+        intro: "A track is a bus: it feeds another bus, or the master output. A clip plays at its own level times every bus above it, and a bus can only quieten. Renaming is safe.",
         add: "Add track",
         newTrackName: "New Track",
         nameTitle: "Name",
@@ -131,9 +131,9 @@ export const project = {
     settings: {
         allowHttpTitle: "Allow HTTP",
         allowHttpDescription: "When off, the game is confined to the app protocol and all HTTP/HTTPS requests are blocked.",
-        allowHttpWebHint: "Not applicable to the Web export: a web game is served over HTTP(S) by nature, so this setting only affects desktop builds.",
+        allowHttpWebHint: "Does not apply to the Web export, only to desktop builds.",
         encryptAssetsTitle: "Encrypt assets",
-        encryptAssetsDescription: "Encrypt assets, plugin code and the story bundle in packaged and previewed builds. Makes unpacking difficult; does not affect Dev Mode.",
+        encryptAssetsDescription: "Encrypt assets, plugin code and the story bundle in packaged and previewed builds. Does not affect Dev Mode.",
         encryptAssetsWebHint: "Not applicable to the Web export: Web builds always ship without asset protection.",
         orientationTitle: "Mobile orientation",
         orientationDescription: "The orientation mobile builds lock the game to when it starts.",
@@ -148,7 +148,7 @@ export const project = {
         scanning: "Scanning project…",
         empty: "No plugin dependencies. This project uses only built-in Studio features.",
         banner: {
-            blocked: "One or more plugins are disabled for this project because their installed version is incompatible. Update or reinstall them to restore full functionality.",
+            blocked: "Some plugins are disabled here: their installed version is incompatible. Update or reinstall them.",
             warnings: "Some dependencies need attention. A plugin is outdated or a soft dependency is unavailable.",
         },
         status: {

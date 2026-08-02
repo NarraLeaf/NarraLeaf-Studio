@@ -25,7 +25,7 @@ export const properties = {
     diagnostics: {
         title: "静态检查",
         selectOnCanvas: "→ 在画布中选中",
-        help: "图形结构与绑定问题：从蓝图区域打开蓝图编辑器标签页；实时执行、节点进入/退出以及宿主 API 跟踪仅在开发模式中显示",
+        help: "图结构与绑定问题请打开蓝图编辑器。实时执行轨迹只在开发模式中显示",
     },
     layout: {
         title: "布局",
@@ -104,7 +104,7 @@ export const properties = {
         selectHint: "点击打开素材浏览器",
         changeImage: "更换图片",
         openEditor: "点击打开编辑器",
-        resolveError: "静态检查：图片素材无法解析（{error}），在素材存在之前预览可能不准确，请在开发模式下进行验证",
+        resolveError: "图片素材无法解析（{error}），在它存在之前预览可能不准确",
         selectFillImage: "选择填充图片",
         mode: {
             cover: "覆盖",
@@ -132,7 +132,7 @@ export const properties = {
             other: "{count} 处引用",
         },
         dormant: "未生效",
-        dormantHint: "已保存在控件上，但当前不会显示——填充方式被设为纯色。删除该素材会让它变空。",
+        dormantHint: "已保存在控件上，但当前不会显示：填充方式被设为纯色。删除该素材会让它变空。",
         kind: {
             story: "剧情",
             blueprint: "蓝图",

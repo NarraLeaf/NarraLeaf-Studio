@@ -1,5 +1,6 @@
 import { getInterface } from "@/lib/app/bridge";
 import { getProjectWriteFreeze, isFrozenProjectData } from "@/lib/app/writeFreeze";
+import { clearMergeConflictReads } from "@/lib/app/mergeConflictReads";
 import type {
     RevisionId,
     VcsAvailability,
@@ -9,6 +10,10 @@ import type {
     VcsFileChange,
     VcsHistoryEntry,
     VcsInitOptions,
+    VcsMergeCompletion,
+    VcsMergeDecision,
+    VcsMergeDocument,
+    VcsMergeState,
     VcsPushResult,
     VcsRepositoryInfo,
     VcsRevisionDiffResult,
@@ -90,6 +95,18 @@ type VersionControlServiceEvents = {
      * (see the class comment on why nothing here may refresh a status on its own).
      */
     revisionRecorded: void;
+    /**
+     * A merge was closed or abandoned here, so anything drawing one has to look again.
+     *
+     * Separate from {@link revisionRecorded} because abandoning a merge records NO revision and
+     * still changes everything about what the rail should say. Folding it into that event would
+     * mean announcing a revision that does not exist, which is the kind of small lie the version
+     * surfaces have already drifted apart over once.
+     *
+     * Carries nothing: the state is re-read rather than passed, so two subscribers cannot end up
+     * holding different vintages of the same answer.
+     */
+    mergeChanged: void;
 };
 
 /** The settings key holding the checkpoint interval in minutes. 0 disables. */
@@ -676,6 +693,156 @@ export class VersionControlService extends Service<VersionControlService> implem
         return result.data;
     }
 
+    // -- merge ----------------------------------------------------------------
+
+    /**
+     * Whether this project is in the middle of a merge, and which paths it left to a human.
+     *
+     * **Ask on project open, not only after a sync.** A merge is repository state and outlives the
+     * window: the author can close Studio on a conflicted sync and reopen it tomorrow, and nothing
+     * in this window remembers. Null means this host has no version control, which is the one
+     * answer a caller renders as "there is nothing to show".
+     *
+     * Cheap and local - a non-scanning status read plus a walk of the versioned working set - but
+     * not free, so it is asked on open and after the operations that change it, never on a timer.
+     *
+     * **`conflicts` is "the merge left these to a human", not a to-do list**, and no caller may
+     * present it as one: a path stays on it after the author settles it, because settling records
+     * no mark anywhere Studio can read (see `VcsMergeState.conflicts`). A surface showing progress
+     * keeps its own record for the life of the window.
+     */
+    public async getMergeState(): Promise<VcsMergeState | null> {
+        if (!(await this.isAvailable())) return null;
+        const result = await getInterface().vcs.getMergeState(this.projectPath());
+        return result.success ? result.data : null;
+    }
+
+    /**
+     * The three-way merge of ONE conflicted document, change by change - tier two.
+     *
+     * Asked per path and on demand rather than for the whole merge at once: a decision carries both
+     * sides' values verbatim, so a merge with two hundred conflicted files would be a message
+     * nobody reads most of.
+     *
+     * **A `blocked` answer is a normal one and the caller must draw it**, not hide the row: it says
+     * this document has to be taken whole, and why. Null means this host has no version control.
+     *
+     * Records nothing, exactly like {@link getMergeState}: the repository cannot tell a settled
+     * change from an unsettled one, so the choices taken on this live in the window that asked.
+     */
+    public async getMergeDocument(path: string): Promise<VcsMergeDocument | null> {
+        if (!(await this.isAvailable())) return null;
+        const result = await getInterface().vcs.getMergeDocument(this.projectPath(), path);
+        if (!result.success) throw new Error(result.error);
+        return result.data;
+    }
+
+    /**
+     * Take one side per conflicted path, record the result, and put the workspace back in step
+     * with the disk.
+     *
+     * **The same contract as {@link restoreRevision} and {@link sync}, for the same reason**: the
+     * main process rewrites project files without passing the renderer's write latch, so
+     * afterwards every document this window holds describes something that is no longer on disk -
+     * and the next auto-save would put it back. So the hold, the `afterRevision` and the
+     * thaw-or-reload below are not optional, and the ORDER is not either: the hold is released
+     * before this method leaves the view, because the hold does not know who owns it and a merge
+     * still holding its own hold would refuse its own `thaw` - stranding the author in a frozen
+     * view over a working tree that has already changed.
+     *
+     * Throws on failure with the backend's own words. The failure that actually happens is a path
+     * nobody decided, and the backend's sentence names it - which is more useful than anything
+     * this layer could substitute. Nothing is recorded in that case and the merge stays open, so
+     * the author can decide the file and press again.
+     *
+     * **The re-read happens on the failure path too, and that is measured rather than cautious.**
+     * A refused close is not a rollback: the sides chosen before the refusal are already written
+     * over the author's files (`merge.integration.test.ts` asserts exactly that), so an editor
+     * still holding the pre-merge bytes of one of them would write them back at the next auto-save.
+     * The throw comes after, so the caller still sees the failure - it just sees it over a
+     * workspace that matches the disk.
+     */
+    public async completeMerge(
+        decisions: readonly VcsMergeDecision[],
+        options: VcsCommitOptions = {},
+    ): Promise<VcsMergeCompletion> {
+        const availability = await this.getAvailability();
+        if (!availability.available) {
+            throw new Error(`Version control is not available on this machine (${availability.reason})`);
+        }
+        const freeze = this.freezeService();
+        const release = freeze.holdRelease();
+        let result;
+        try {
+            result = await getInterface().vcs.completeMerge(this.projectPath(), [...decisions], options);
+        } finally {
+            release();
+        }
+
+        // Only on success: a refusal recorded nothing, and announcing a revision that does not
+        // exist is how the version surfaces drifted apart the last time.
+        if (result.success) this.afterRevision();
+        // Either way: settled or refused, what the merge is has changed.
+        this.events.emit("mergeChanged", undefined);
+        // **Before the re-read, and this ordering is load-bearing.** While the merge was open the
+        // conflicted paths were read out of its `~mine` copies so the project could be opened at
+        // all; the commit deletes those copies, so a reload with the substitution still installed
+        // would ask for files that no longer exist and hand every service a default document - the
+        // author's just-resolved work replaced by nothing, one save from being written.
+        clearMergeConflictReads();
+        if (freeze.isFrozen()) {
+            freeze.thaw();
+        } else {
+            await this.getContext().services
+                .get<WorkspaceReloadService>(Services.WorkspaceReload)
+                .reload("restore");
+        }
+
+        if (!result.success) throw new Error(result.error);
+        return result.data;
+    }
+
+    /**
+     * Abandon the merge and put the working tree back to what it was before it started.
+     *
+     * **A complete rollback, measured rather than assumed** (docs §4.27) - which is the only
+     * reason this is offered at all: a cancel that left a half-merged tree behind would be worse
+     * than no cancel.
+     *
+     * It writes the author's files without adding a revision, so it carries the working-tree half
+     * of {@link completeMerge}'s contract - hold, release, re-read - and not the revision half.
+     */
+    public async abortMerge(): Promise<VcsMergeState> {
+        const availability = await this.getAvailability();
+        if (!availability.available) {
+            throw new Error(`Version control is not available on this machine (${availability.reason})`);
+        }
+        const freeze = this.freezeService();
+        const release = freeze.holdRelease();
+        let result;
+        try {
+            result = await getInterface().vcs.abortMerge(this.projectPath());
+        } finally {
+            release();
+        }
+        if (!result.success) throw new Error(result.error);
+
+        // No revision was recorded, so the head has not moved - but every document under the
+        // editors was just rewritten, which is the half that still has to be undone in memory.
+        this.events.emit("mergeChanged", undefined);
+        // Before the re-read, for the reason `completeMerge` gives: abandoning removes the merge's
+        // copies too (measured, docs §4.27), so the substitution has to go with them.
+        clearMergeConflictReads();
+        if (freeze.isFrozen()) {
+            freeze.thaw();
+        } else {
+            await this.getContext().services
+                .get<WorkspaceReloadService>(Services.WorkspaceReload)
+                .reload("restore");
+        }
+        return result.data;
+    }
+
     /** Paths that differ between two revisions - the filter before diffing. */
     public async getChangedPaths(from: RevisionId, to: RevisionId): Promise<string[]> {
         if (!(await this.isAvailable())) return [];
@@ -878,6 +1045,17 @@ export class VersionControlService extends Service<VersionControlService> implem
      */
     public onRevisionRecorded(handler: () => void): () => void {
         return this.events.on("revisionRecorded", handler);
+    }
+
+    /**
+     * A merge was closed or abandoned. Subscribe from anything that offers the way into resolving
+     * one; re-read {@link getMergeState} rather than assuming what changed.
+     *
+     * A sync that CREATES a merge does not fire this: the caller of `sync` already has the result
+     * in hand and re-reads on its own.
+     */
+    public onMergeChanged(handler: () => void): () => void {
+        return this.events.on("mergeChanged", handler);
     }
 
     private async isAvailable(): Promise<boolean> {

@@ -109,7 +109,7 @@ export const launcher = {
         },
     },
     learning: {
-        hint: "使用 NarraLeaf 创作所需的教程、示例与文档，链接会在浏览器中打开",
+        hint: "教程、示例与文档，链接会在浏览器中打开",
         openInBrowser: "在浏览器中打开 {name}",
         categories: {
             tutorials: "教程",
