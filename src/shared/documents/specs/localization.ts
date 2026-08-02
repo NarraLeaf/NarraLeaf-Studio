@@ -22,6 +22,20 @@ export const LOCALIZATION_DOCUMENT_PATH = "editor/localization/<locale>.json";
 
 const LOCALIZATION_DOCUMENT_PATTERN = compileDocumentPathPattern(LOCALIZATION_DOCUMENT_PATH);
 
+/**
+ * How one translation unit's row reads. Three words, chosen by the BASE.
+ *
+ * Which of them applies cannot be read off the two sides: "theirs does not have this unit" is an
+ * addition by me when the base did not have it either, and a removal by them when it did. The two
+ * are the same observation from opposite ends, and only the base tells them apart - the same rule
+ * the asset shard's rows follow, for the same reason.
+ */
+const LABEL = {
+    added: "documentDiff.localization.added",
+    removed: "documentDiff.localization.removed",
+    changed: "documentDiff.localization.changed",
+} as const;
+
 export const localizationDocumentSpec = defineDocumentSpec<LocalizationDocument>({
     kind: "localization",
     version: LOCALIZATION_DOCUMENT_SCHEMA_VERSION,
@@ -66,12 +80,15 @@ export function merge3Localization(
 ): DocumentMerge3<LocalizationDocument> {
     const units = mergeKeyed(base?.units, mine.units, theirs.units);
     const decisions: DocumentMergeDecision[] = units.rows.map(row =>
-        // No label: there is no `documentDiff.localization.*` vocabulary, because this format has
-        // no semantic diff yet. Emitting a key that is in neither catalogue would draw the dotted
-        // path itself at the author - see `documentDiffKeys.test.ts`, which is what caught that
-        // happening at scale once already. The unit id is not a subject either: it is a story
-        // text id or a `key:`/`char:` handle, none of which the author typed.
-        decision(["units", row.key], row));
+        // Labelled but with no `subject`, and the omission is the deliberate half: the unit id is a
+        // story text id or a `key:`/`char:` handle, none of which the author typed, and `subject` is
+        // defined as the author's own word. What they recognise a row by is the two translations
+        // beside it, which is what {@link DocumentMergeSide.value} carries.
+        decision(["units", row.key], row, {
+            label: row.mine.present && row.theirs.present && row.base.present ? LABEL.changed
+                : row.mine.present && row.theirs.present ? LABEL.added
+                    : row.base.present ? LABEL.removed : LABEL.added,
+        }));
 
     return {
         document: {

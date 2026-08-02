@@ -57,6 +57,7 @@ import type {
     VcsInitOptions,
     VcsMergeCompletion,
     VcsMergeDecision,
+    VcsMergeDocument,
     VcsMergeResolveResult,
     VcsMergeState,
     VcsRepositoryInfo,
@@ -253,6 +254,7 @@ export enum IPCEventType {
     vcsGetThreeWay = "vcs.getThreeWay",
     vcsGetMergeBase = "vcs.getMergeBase",
     vcsGetMergeState = "vcs.getMergeState",
+    vcsGetMergeDocument = "vcs.getMergeDocument",
     vcsResolveConflicts = "vcs.resolveConflicts",
     vcsCompleteMerge = "vcs.completeMerge",
     vcsUnresolveConflicts = "vcs.unresolveConflicts",
@@ -762,6 +764,23 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { projectPath: string },
         response: VcsMergeState;
+    };
+    /**
+     * The three-way merge of ONE conflicted document, change by change - tier two.
+     *
+     * A pure read of the three copies the merge left beside the file (docs §4.23); it records
+     * nothing and remembers nothing, so a settled change and an unsettled one look the same here
+     * exactly as they do everywhere else in a merge (§4.24).
+     *
+     * Every reason a document cannot be settled this way comes back as `blocked` rather than as a
+     * failure: most paths have no spec, most specs have no `merge3`, and a spec that has one may
+     * still refuse to write itself back. All three keep the path at tier one, visibly.
+     */
+    [IPCEventType.vcsGetMergeDocument]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; path: string },
+        response: VcsMergeDocument;
     };
     /**
      * **Records nothing** - the merge stays open until a commit closes it. `mine` and
