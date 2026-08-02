@@ -6,6 +6,7 @@ import { uiElementTypeAcceptsChildren } from "@shared/types/ui-editor/document";
 import { DEFAULT_UI_ROOT_NAME } from "@shared/constants/ui-editor";
 import { getOutlineVisualChildren } from "@/lib/ui-editor/interaction/outline/outlineDropGeometry";
 import { useTranslation } from "@/lib/i18n";
+import { isSurfaceGestureEnabled, type UIEditorReadOnly } from "@/lib/ui-editor/interaction/readOnlyInteraction";
 
 export const OUTLINE_ROOT_WIDGET_TYPE = "nl.root";
 const ROW_LEFT_PADDING = 6;
@@ -57,6 +58,8 @@ export type OutlineRowBase = {
     onRowContextMenu: (element: UIElement, event: MouseEvent<HTMLElement>) => void;
     onToggleVisible: (element: UIElement, event: MouseEvent) => void;
     onStartRename: (element: UIElement) => void;
+    /** Reorder, rename and the eye go inert; selecting and expanding a branch do not. */
+    readOnly: UIEditorReadOnly;
 };
 
 export function OutlineRow({
@@ -72,10 +75,17 @@ export function OutlineRow({
     onRowContextMenu,
     onToggleVisible,
     onStartRename,
+    readOnly,
 }: OutlineRowBase & { element: UIElement; depth: number }) {
     const { t } = useTranslation();
+    const reorderEnabled = isSurfaceGestureEnabled("outlineReorder", readOnly);
+    const renameEnabled = isSurfaceGestureEnabled("outlineRename", readOnly);
+    const visibilityEnabled = isSurfaceGestureEnabled("outlineVisibility", readOnly);
+    // dnd-kit's own `disabled` rather than withholding the listeners: it also stops the sensor, so the
+    // 4px activation constraint cannot half-start a drag that then has nowhere to land.
     const { attributes, listeners, setActivatorNodeRef, setNodeRef, isDragging } = useDraggable({
         id: element.id,
+        disabled: !reorderEnabled,
     });
 
     const hasChildren = element.childrenIds.length > 0;
@@ -125,13 +135,13 @@ export function OutlineRow({
             ) : null}
             <div
                 ref={setNodeRef}
-                className={`group/outline-row relative flex min-h-[26px] items-center gap-1 rounded text-xs pr-1 transition-[background-color,box-shadow,color,opacity] duration-150 ease-out ${rowToneClass} ${rowDropPreviewClass} ${isDimmed ? "opacity-60" : ""}`}
+                className={`group/outline-row relative flex min-h-[26px] items-center gap-1 rounded-md text-xs pr-1 transition-[background-color,box-shadow,color,opacity] duration-150 ease-out ${rowToneClass} ${rowDropPreviewClass} ${isDimmed ? "opacity-60" : ""}`}
                 style={{ paddingLeft: rowPaddingLeft, opacity: isDragging ? 0 : undefined }}
                 onContextMenu={e => onRowContextMenu(element, e)}
             >
                 <button
                     type="button"
-                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-fg-subtle transition-colors hover:bg-fill-subtle hover:text-fg disabled:pointer-events-none disabled:opacity-25"
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-fg-subtle transition-colors hover:bg-fill-subtle hover:text-fg disabled:pointer-events-none disabled:opacity-25"
                     disabled={!hasChildren}
                     aria-label={expanded ? t("common.collapse") : t("common.expand")}
                     onClick={e => {
@@ -155,8 +165,10 @@ export function OutlineRow({
                 <button
                     type="button"
                     ref={setActivatorNodeRef}
-                    className="flex h-5 w-4 shrink-0 cursor-grab touch-none items-center justify-center rounded text-fg-subtle/70 opacity-60 transition hover:text-fg hover:opacity-100 active:cursor-grabbing group-hover/outline-row:opacity-100 group-focus-within/outline-row:opacity-100"
+                    className="flex h-5 w-4 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-fg-subtle/70 opacity-60 transition hover:text-fg hover:opacity-100 active:cursor-grabbing group-hover/outline-row:opacity-100 group-focus-within/outline-row:opacity-100 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:text-fg-subtle/70"
                     aria-label={t("widgetChrome.outline.dragToReorder")}
+                    disabled={!reorderEnabled}
+                    title={reorderEnabled ? undefined : readOnly.reason}
                     {...attributes}
                     {...listeners}
                 >
@@ -175,7 +187,7 @@ export function OutlineRow({
                     onClick={e => onSelect(element.id, e)}
                     onDoubleClick={e => {
                         e.stopPropagation();
-                        if (element.type !== OUTLINE_ROOT_WIDGET_TYPE) {
+                        if (renameEnabled && element.type !== OUTLINE_ROOT_WIDGET_TYPE) {
                             onStartRename(element);
                         }
                     }}
@@ -189,11 +201,14 @@ export function OutlineRow({
                 </button>
                 <button
                     type="button"
-                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-fg-subtle transition hover:bg-fill-subtle hover:text-fg disabled:pointer-events-none disabled:opacity-25 ${
+                    // `disabled:cursor-not-allowed` and not `disabled:pointer-events-none`: the read-only
+                    // reason lives in `title`, and a button that ignores the pointer never shows one.
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-subtle transition hover:bg-fill-subtle hover:text-fg disabled:cursor-not-allowed disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-fg-subtle ${
                         visible ? "opacity-0 group-hover/outline-row:opacity-100 group-focus-within/outline-row:opacity-100" : "opacity-100"
                     }`}
                     aria-label={visible ? t("common.hide") : t("common.show")}
-                    disabled={element.type === OUTLINE_ROOT_WIDGET_TYPE}
+                    disabled={element.type === OUTLINE_ROOT_WIDGET_TYPE || !visibilityEnabled}
+                    title={visibilityEnabled ? undefined : readOnly.reason}
                     onClick={e => onToggleVisible(element, e)}
                 >
                     {visible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
@@ -213,6 +228,7 @@ export function OutlineRow({
                     onRowContextMenu={onRowContextMenu}
                     onToggleVisible={onToggleVisible}
                     onStartRename={onStartRename}
+                    readOnly={readOnly}
                 />
             ) : null}
             {!hasChildren && uiElementTypeAcceptsChildren(element.type) ? (
@@ -234,7 +250,7 @@ export function OutlineDragPreview({ element }: { element: UIElement }) {
 
     return (
         <div
-            className={`flex h-[26px] min-w-40 max-w-72 items-center gap-1 rounded border border-primary/35 bg-surface-raised/90 px-2 pr-2 text-xs text-fg opacity-90 shadow-lg shadow-black/30 ${
+            className={`flex h-[26px] min-w-40 max-w-72 items-center gap-1 rounded-md border border-primary/35 bg-surface-raised/90 px-2 pr-2 text-xs text-fg opacity-90 shadow-lg shadow-black/30 ${
                 visible ? "" : "opacity-70"
             }`}
         >
@@ -359,6 +375,7 @@ export function OutlineSubtree(props: OutlineRowBase & { parentId: string; depth
                                 onRowContextMenu={props.onRowContextMenu}
                                 onToggleVisible={props.onToggleVisible}
                                 onStartRename={props.onStartRename}
+                                readOnly={props.readOnly}
                             />
                         ) : null}
                         <OutlineGapDropZone

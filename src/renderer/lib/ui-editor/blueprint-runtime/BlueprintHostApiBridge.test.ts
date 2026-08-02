@@ -17,13 +17,18 @@ import {
     createDevModeBlueprintHostApi,
     type BlueprintGamePreferenceKey,
     type BlueprintGamePreferenceValue,
+    type BlueprintSoundPlayInput,
+    type CreateBlueprintHostApiRuntimeOptions,
     type DevModeWidgetRuntimePatch,
 } from "./BlueprintHostApiBridge";
 import {
+    BLUEPRINT_GAME_CHARACTERS_STATE_KEY,
     BLUEPRINT_GAME_NAMETAG_STATE_KEY,
+    BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY,
     BLUEPRINT_GAME_TEXT_READ_STATE_KEY,
     BLUEPRINT_TEXT_READ_PERSISTENCE_KEY,
 } from "@shared/types/blueprint/hostApi";
+import { toBlueprintCharacterInfo } from "@shared/types/blueprint/characterInfo";
 import type { BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import { UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
 import { displayableMotionFromCurrent } from "@/lib/ui-editor/runtime/displayableMotion";
@@ -169,6 +174,15 @@ function createHostApi(options?: {
     onSetGamePreference?: (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => Promise<void> | void;
     onCloseLayer?: () => Promise<void> | void;
     widgetRuntimeStore?: WidgetRuntimeStateStore;
+    onPlaySound?: CreateBlueprintHostApiRuntimeOptions["onPlaySound"];
+    onStopSound?: CreateBlueprintHostApiRuntimeOptions["onStopSound"];
+    onSetSoundVolume?: CreateBlueprintHostApiRuntimeOptions["onSetSoundVolume"];
+    onSeekSound?: CreateBlueprintHostApiRuntimeOptions["onSeekSound"];
+    onIsSoundPlaying?: CreateBlueprintHostApiRuntimeOptions["onIsSoundPlaying"];
+    onGetTrackVolume?: CreateBlueprintHostApiRuntimeOptions["onGetTrackVolume"];
+    onSetTrackVolume?: CreateBlueprintHostApiRuntimeOptions["onSetTrackVolume"];
+    audioTracks?: CreateBlueprintHostApiRuntimeOptions["audioTracks"];
+    onSubscribeGamePreferences?: CreateBlueprintHostApiRuntimeOptions["onSubscribeGamePreferences"];
 }) {
     return createDevModeBlueprintHostApi({
         document: options?.document ?? createDocument(),
@@ -198,6 +212,15 @@ function createHostApi(options?: {
         onSetSentenceSpeed: options?.onSetSentenceSpeed,
         onGetGamePreference: options?.onGetGamePreference,
         onSetGamePreference: options?.onSetGamePreference,
+        onPlaySound: options?.onPlaySound,
+        onStopSound: options?.onStopSound,
+        onSetSoundVolume: options?.onSetSoundVolume,
+        onSeekSound: options?.onSeekSound,
+        onIsSoundPlaying: options?.onIsSoundPlaying,
+        onGetTrackVolume: options?.onGetTrackVolume,
+        onSetTrackVolume: options?.onSetTrackVolume,
+        audioTracks: options?.audioTracks,
+        onSubscribeGamePreferences: options?.onSubscribeGamePreferences,
         emit: () => undefined,
         onOpenSurface: options?.onOpenSurface ?? (() => undefined),
         onCloseLayer: options?.onCloseLayer ?? (() => undefined),
@@ -1408,5 +1431,244 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
         } finally {
             vi.useRealTimers();
         }
+    });
+});
+
+/**
+ * The sound family's transport half. `setVolume` doubles as the fade node, so its clamping and its
+ * duration are the two things a bad slider binding would break.
+ */
+describe("createDevModeBlueprintHostApi sound transport", () => {
+    it("clamps the volume and passes the fade through", async () => {
+        const calls: unknown[] = [];
+        const hostApi = createHostApi({
+            onSetSoundVolume: (handle, volume, fadeMs) => void calls.push({ id: handle.id, volume, fadeMs }),
+        });
+
+        await hostApi.sound.setVolume({ kind: "soundHandle", id: "s1" }, 2, 800);
+        await hostApi.sound.setVolume({ kind: "soundHandle", id: "s1" }, -1);
+
+        // 2 from a slider bound to the wrong range means "as loud as it goes"; a dead control is the
+        // worse answer, so this clamps rather than throws.
+        expect(calls).toEqual([
+            { id: "s1", volume: 1, fadeMs: 800 },
+            { id: "s1", volume: 0, fadeMs: 0 },
+        ]);
+    });
+
+    it("floors a negative seek at the start of the clip", async () => {
+        const calls: unknown[] = [];
+        const hostApi = createHostApi({ onSeekSound: (handle, timeMs) => void calls.push({ id: handle.id, timeMs }) });
+
+        await hostApi.sound.seek({ kind: "soundHandle", id: "s1" }, -5);
+        await hostApi.sound.seek({ kind: "soundHandle", id: "s1" }, 30_000);
+
+        expect(calls).toEqual([{ id: "s1", timeMs: 0 }, { id: "s1", timeMs: 30_000 }]);
+    });
+
+    it("stays silent rather than throwing when the host backs no audio", async () => {
+        const hostApi = createHostApi({});
+
+        // The editor's surface preview. A graph built there has to run end to end.
+        await expect(hostApi.sound.play({ assetId: "a1", channel: "bgm", loop: true, volume: 1 }))
+            .resolves.toBeNull();
+        await expect(hostApi.sound.setVolume({ kind: "soundHandle", id: "s1" }, 0.5)).resolves.toBeUndefined();
+        await expect(hostApi.sound.seek({ kind: "soundHandle", id: "s1" }, 1000)).resolves.toBeUndefined();
+    });
+
+    it("hands the play request through untouched", async () => {
+        const seen: BlueprintSoundPlayInput[] = [];
+        const hostApi = createHostApi({
+            onPlaySound: input => {
+                seen.push(input);
+                return { kind: "soundHandle", id: "s7" };
+            },
+        });
+
+        const handle = await hostApi.sound.play({ assetId: "a1", channel: "bgm", loop: true, volume: 0.4 });
+
+        expect(handle).toEqual({ kind: "soundHandle", id: "s7" });
+        expect(seen[0]).toEqual({ assetId: "a1", channel: "bgm", loop: true, volume: 0.4 });
+    });
+});
+
+/**
+ * The character family reads global state rather than host callbacks, on purpose: the mirror is
+ * written once per bundle and every host sharing the scope bridge - the app surfaces, each Game UI
+ * slot surface, the workspace story preview - then answers identically without wiring anything.
+ * These assert that contract, because a slot surface that silently answered `null` would look
+ * exactly like a project with no characters.
+ */
+describe("createDevModeBlueprintHostApi character reads", () => {
+    const ALICE = toBlueprintCharacterInfo({
+        id: "char-alice",
+        name: "Alice",
+        color: "#40a8c4",
+        avatarAssetId: "asset-alice",
+    })!;
+
+    it("answers getCharacter from the mirrored table", () => {
+        const scope = new ScopeStoreBridge();
+        scope.globalSet(BLUEPRINT_GAME_CHARACTERS_STATE_KEY, [ALICE]);
+        const hostApi = createHostApi({ scope });
+
+        expect(hostApi.game.getCharacter("char-alice")).toEqual({
+            id: "char-alice",
+            name: "Alice",
+            color: { r: 64, g: 168, b: 196, a: 1 },
+            avatar: { kind: "imageAsset", assetId: "asset-alice" },
+        });
+        // An id that is not in the table, and no id at all, are both "no character" - neither is an
+        // error, because a graph authored against a since-deleted character must still run.
+        expect(hostApi.game.getCharacter("char-gone")).toBeNull();
+        expect(hostApi.game.getCharacter("")).toBeNull();
+    });
+
+    it("answers getCharacter with null before any mirror is written", () => {
+        expect(createHostApi({}).game.getCharacter("char-alice")).toBeNull();
+    });
+
+    it("normalizes the speaker colour, defaulting to opaque white", () => {
+        const scope = new ScopeStoreBridge();
+        const hostApi = createHostApi({ scope });
+
+        // Nothing mirrored yet: the pin is a non-nullable RGBAColor, so there is no "absent".
+        expect(hostApi.game.getSpeakerColor()).toEqual({ r: 255, g: 255, b: 255, a: 1 });
+
+        scope.globalSet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY, { r: 64, g: 168, b: 196, a: 1 });
+        expect(hostApi.game.getSpeakerColor()).toEqual({ r: 64, g: 168, b: 196, a: 1 });
+
+        // A host that mirrored the raw profile hex instead of the parsed record still resolves.
+        scope.globalSet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY, "#40a8c4");
+        expect(hostApi.game.getSpeakerColor()).toEqual({ r: 64, g: 168, b: 196, a: 1 });
+
+        scope.globalSet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY, null);
+        expect(hostApi.game.getSpeakerColor()).toEqual({ r: 255, g: 255, b: 255, a: 1 });    });
+});
+
+/**
+ * The mixer seam for host-owned media elements.
+ *
+ * `nl.video` renders a DOM `<video>`, which is on none of the engine's gain nodes - so the whole
+ * product has to be computed here and written to `element.volume`. It used to be written the
+ * authored volume unchanged, which meant muting the game left the clip blaring.
+ *
+ * With a bus tree that product is a **chain walk**, not one channel lookup: a clip on `bgm/quiet`
+ * is attenuated by `quiet`, then by `bgm`, then by the player's BGM slider, then by master. Reading
+ * a single channel - which is what this did when a track was a preset pinned to one of three fixed
+ * channels - would leave every bus the author invented inaudible to the element.
+ */
+describe("createDevModeBlueprintHostApi element volume", () => {
+    const TRACKS = [
+        { id: "bgm", name: "Music", parentId: null, volume: 1, loop: true },
+        { id: "sound", name: "SFX", parentId: null, volume: 1, loop: false },
+        { id: "voice", name: "Voice", parentId: null, volume: 1, loop: false },
+        { id: "quiet", name: "Quiet", parentId: "bgm", volume: 0.5, loop: false },
+    ];
+
+    function preferences(values: Partial<Record<string, number>>) {
+        return (key: BlueprintGamePreferenceKey) => (values[key] ?? 1) as BlueprintGamePreferenceValue;
+    }
+
+    it("multiplies the authored volume by every bus in the chain, its slider and the master", () => {
+        const hostApi = createHostApi({
+            audioTracks: TRACKS,
+            onGetGamePreference: preferences({ globalVolume: 0.5, bgmVolume: 0.4, soundVolume: 1 }),
+        });
+
+        // 0.8 authored * 0.5 `quiet` * 1 `bgm` * 0.4 BGM slider * 0.5 master
+        expect(hostApi.sound.resolveElementVolume({ audioTrackId: "quiet", volume: 0.8 })).toBeCloseTo(0.08);
+        // A different chain means a different slider governs it.
+        expect(hostApi.sound.resolveElementVolume({ audioTrackId: "sound", volume: 1 })).toBeCloseTo(0.5);
+    });
+
+    it("reaches zero when the player mutes the game", () => {
+        const hostApi = createHostApi({
+            audioTracks: TRACKS,
+            onGetGamePreference: preferences({ globalVolume: 0 }),
+        });
+
+        // The whole defect in one assertion: this used to be 1.
+        expect(hostApi.sound.resolveElementVolume({ audioTrackId: "bgm", volume: 1 })).toBe(0);
+    });
+
+    it("governs a nested track by the seeded bus its chain runs through", () => {
+        const hostApi = createHostApi({
+            audioTracks: TRACKS,
+            onGetGamePreference: preferences({ bgmVolume: 0.5, soundVolume: 1 }),
+        });
+
+        // `quiet` names no channel of its own; it is BGM because its chain passes through `bgm`.
+        // 1 authored * 0.5 `quiet` * 0.5 BGM slider.
+        expect(hostApi.sound.resolveElementVolume({ audioTrackId: "quiet", volume: 1 })).toBeCloseTo(0.25);
+    });
+
+    it("falls back to the SFX bus for an unset or dangling id", () => {
+        const hostApi = createHostApi({
+            audioTracks: TRACKS,
+            onGetGamePreference: preferences({ soundVolume: 0.25, bgmVolume: 1 }),
+        });
+
+        expect(hostApi.sound.resolveElementVolume({ audioTrackId: null, volume: 1 })).toBeCloseTo(0.25);
+        expect(hostApi.sound.resolveElementVolume({ audioTrackId: "deleted", volume: 1 })).toBeCloseTo(0.25);
+    });
+
+    it("plays at the authored level rather than silence when no game is running", () => {
+        // `onGetGamePreference` is backed by `requireLiveGame`, which throws before the game boots.
+        // A video on a title screen must still be audible.
+        const hostApi = createHostApi({
+            audioTracks: TRACKS,
+            onGetGamePreference: () => {
+                throw new Error("game runtime is not available");
+            },
+        });
+
+        expect(hostApi.sound.resolveElementVolume({ audioTrackId: "bgm", volume: 0.6 })).toBeCloseTo(0.6);
+    });
+
+    it("hands mixer subscribers to the host and returns a no-op disposer without one", () => {
+        const listeners: Array<() => void> = [];
+        const hostApi = createHostApi({
+            onSubscribeGamePreferences: listener => {
+                listeners.push(listener);
+                return () => void listeners.splice(listeners.indexOf(listener), 1);
+            },
+        });
+
+        const dispose = hostApi.sound.subscribeMixerChanges(() => undefined);
+        expect(listeners).toHaveLength(1);
+        dispose();
+        expect(listeners).toHaveLength(0);
+
+        // A host with no preference stream (the editor preview) must not make this throw.
+        expect(() => createHostApi({}).sound.subscribeMixerChanges(() => undefined)()).not.toThrow();    });
+
+    /**
+     * The per-bus volume seam, which is what `Get/Set Track Volume` runs on.
+     *
+     * Distinct from `sound.setVolume` above: that one addresses a playing clip by handle and dies
+     * with it, this one moves a fader that applies to everything under the bus and is persisted.
+     */
+    it("forwards track volume to the host and clamps the write", async () => {
+        const writes: Array<[string, number]> = [];
+        const hostApi = createHostApi({
+            onGetTrackVolume: trackId => (trackId === "alice" ? 0.3 : 1),
+            onSetTrackVolume: (trackId, volume) => void writes.push([trackId, volume]),
+        });
+
+        expect(hostApi.sound.getTrackVolume("alice")).toBeCloseTo(0.3);
+        await hostApi.sound.setTrackVolume("alice", 1.4);
+        await hostApi.sound.setTrackVolume("alice", -2);
+        await hostApi.sound.setTrackVolume("alice", Number.NaN);
+        expect(writes).toEqual([["alice", 1], ["alice", 0], ["alice", 1]]);
+    });
+
+    it("reads unity and swallows the write when the host backs no mixer", async () => {
+        // The editor preview. Unity rather than zero, so a slider bound on the canvas sits at the
+        // top instead of reading to the author as a muted bus.
+        const hostApi = createHostApi({});
+
+        expect(hostApi.sound.getTrackVolume("alice")).toBe(1);
+        await expect(hostApi.sound.setTrackVolume("alice", 0.5)).resolves.toBeUndefined();
     });
 });

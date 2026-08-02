@@ -89,7 +89,6 @@ function testDocument(): BlueprintDocument {
     };
     return {
         schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-        persistentVariables: {},
         blueprints,
         ownerRecords: {
             [ownerRefToIndexKey({ kind: "globalMain" })]: {

@@ -5,6 +5,14 @@ export const project = {
             title: "Details",
             description: "Name, identifier, and metadata",
         },
+        game: {
+            title: "Game",
+            description: "How the finished game behaves for players",
+        },
+        audio: {
+            title: "Audio",
+            description: "The mixer: which bus feeds which, and how loud each one is",
+        },
         assets: {
             title: "Assets",
             description: "Application icons for each platform",
@@ -12,6 +20,14 @@ export const project = {
         dependencies: {
             title: "Dependencies",
             description: "Plugins this project relies on",
+        },
+        runtimes: {
+            title: "Runtimes",
+            description: "Drawing runtimes for Live2D and Spine characters",
+        },
+        linting: {
+            title: "Linting",
+            description: "Which problems the project check reports",
         },
         settings: {
             title: "Settings",
@@ -38,19 +54,86 @@ export const project = {
         required: "Required",
     },
     assets: {
-        iconMissing: "Icon file missing",
-        iconSaved: "{platform} icon saved.",
-        uploadIcon: "Upload {platform} icon",
-        iconAlt: "{platform} icon",
-        noIcon: "No icon selected",
+        master: "Choose the app icon",
+        override: "Override",
+        chooseOverride: "Choose an image for this platform",
+        clearOverride: "Use the app icon here",
+        inset: "Inset",
+        background: "Background",
+        clearBackground: "Keep transparency",
+        transparent: "None",
         icnsPreview: "ICNS preview",
+        target: {
+            macos: "macOS",
+            windows: "Windows",
+            linux: "Linux",
+            android: "Android",
+            ios: "iOS",
+            web: "Web",
+        },
+    },
+    game: {
+        autoSaveTitle: "Automatic saving",
+        autoSaveDescription: "Save the playthrough on a timer, so a crash costs a moment instead of a session.",
+        autoSaveIntervalTitle: "Save every",
+        autoSaveIntervalDescription: "How often to check. Nothing is written unless the story moved on.",
+        autoSaveIntervalUnit: "s",
+        autoSaveSlotsTitle: "Autosaves kept",
+        autoSaveSlotsDescription: "Autosaves rotate through this many slots, oldest first. They stay out of the player's own save slots.",
+    },
+    // The Audio sub-page: the project's mixer, as a tree of buses. One collapsed row per bus with
+    // its fields behind a disclosure, so the labels below are labels rather than headings - the
+    // explanation they used to each carry is stated once, in `intro`. A paragraph repeated on every
+    // track is noise; the same paragraph once is documentation.
+    audio: {
+        // What a bus is and how the mix multiplies, said once at the top of the section. This
+        // absorbed the former per-field `nameDescription` / `parentDescription` / `volumeDescription`.
+        intro: "A track is a bus: it feeds another bus, or the master output. A clip plays at its own level times every bus above it, and a bus can only quieten. Renaming is safe.",
+        add: "Add track",
+        newTrackName: "New Track",
+        nameTitle: "Name",
+        parentTitle: "Routes into",
+        parentMaster: "Master output",
+        volumeTitle: "Volume",
+        volumeUnit: "%",
+        loopTitle: "Loop by default",
+        loopDescription: "Clips played on this track repeat unless the action that plays them says otherwise.",
+        duplicate: "Duplicate",
+        delete: "Delete",
+        // Sits beside Delete inside an open bus: the count the confirmation is about to be about.
+        usedBy: {
+            one: "Used by {count} reference",
+            other: "Used by {count} references",
+        },
+        deleteConfirm: "Delete \"{name}\"?",
+        // The honest consequence: nothing pointing at this track is rewritten, so those references
+        // resolve to the seeded bus for their own shape from now on - which one depends on what is
+        // playing, so naming a single track here would be a guess.
+        deleteDetail: {
+            one: "{count} reference falls back to its default bus.",
+            other: "{count} references fall back to their default bus.",
+        },
+        // Children are promoted rather than deleted, and the author is told where they land.
+        deleteChildren: {
+            one: "{count} track under it moves to {parent}.",
+            other: "{count} tracks under it move to {parent}.",
+        },
+        // The player's own volume sliders, which alias onto the three seeded buses.
+        slider: {
+            bgm: "BGM Volume",
+            sound: "Sound Volume",
+            voice: "Voice Volume",
+            // A bus hanging off master through none of the three has no alias of its own, so the
+            // only player control over it is the one that governs everything.
+            global: "Global Volume",
+        },
     },
     settings: {
         allowHttpTitle: "Allow HTTP",
         allowHttpDescription: "When off, the game is confined to the app protocol and all HTTP/HTTPS requests are blocked.",
-        allowHttpWebHint: "Not applicable to the Web export: a web game is served over HTTP(S) by nature, so this setting only affects desktop builds.",
+        allowHttpWebHint: "Does not apply to the Web export, only to desktop builds.",
         encryptAssetsTitle: "Encrypt assets",
-        encryptAssetsDescription: "Encrypt assets, plugin code and the story bundle in packaged and previewed builds. Makes unpacking difficult; does not affect Dev Mode.",
+        encryptAssetsDescription: "Encrypt assets, plugin code and the story bundle in packaged and previewed builds. Does not affect Dev Mode.",
         encryptAssetsWebHint: "Not applicable to the Web export: Web builds always ship without asset protection.",
         orientationTitle: "Mobile orientation",
         orientationDescription: "The orientation mobile builds lock the game to when it starts.",
@@ -65,7 +148,7 @@ export const project = {
         scanning: "Scanning project…",
         empty: "No plugin dependencies. This project uses only built-in Studio features.",
         banner: {
-            blocked: "One or more plugins are disabled for this project because their installed version is incompatible. Update or reinstall them to restore full functionality.",
+            blocked: "Some plugins are disabled here: their installed version is incompatible. Update or reinstall them.",
             warnings: "Some dependencies need attention. A plugin is outdated or a soft dependency is unavailable.",
         },
         status: {

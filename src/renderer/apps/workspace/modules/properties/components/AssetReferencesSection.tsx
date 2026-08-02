@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BookOpen, Boxes, LayoutTemplate, Mic, Users } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import { InspectOnlyButton } from "@/lib/components/elements/InspectOnlyButton";
 import { Services } from "@/lib/workspace/services/services";
 import { ReferenceService } from "@/lib/workspace/services/references/ReferenceService";
 import type { AssetReference, ReferenceSiteKind } from "@/lib/workspace/services/references/referenceModel";
@@ -117,12 +118,21 @@ export function AssetReferencesSection({ assetId }: { assetId: string }) {
                                         const clickable = Boolean(reference.target);
                                         return (
                                             <li key={reference.id}>
-                                                <button
-                                                    type="button"
+                                                {/* An `InspectOnlyButton` because a row only jumps -
+                                                    it opens the scene or blueprint holding the
+                                                    reference and writes nothing. This section is
+                                                    mounted as a `custom` field, so a frozen workspace
+                                                    wraps it in `FieldRenderer`'s `disabled`
+                                                    `<fieldset>`, and a real `<button>` inside one is
+                                                    dead: the "used by" list is exactly what an author
+                                                    reads a past version for, and every row in it had
+                                                    stopped answering. `disabled` stays the row's own -
+                                                    a site with no deep link yet. */}
+                                                <InspectOnlyButton
                                                     onClick={() => handleJump(reference)}
                                                     disabled={!clickable}
                                                     title={reference.field}
-                                                    className={`w-full text-left px-2 py-1 rounded text-xs transition-colors cursor-default ${
+                                                    className={`block w-full text-left px-2 py-1 rounded-md text-xs transition-colors cursor-default ${
                                                         clickable
                                                             ? "hover:bg-surface-raised text-fg-muted"
                                                             : "text-fg-subtle"
@@ -132,7 +142,7 @@ export function AssetReferencesSection({ assetId }: { assetId: string }) {
                                                         <span className="truncate">{reference.label}</span>
                                                         {reference.dormant && (
                                                             <span
-                                                                className="shrink-0 px-1 rounded bg-surface-raised text-fg-subtle"
+                                                                className="shrink-0 px-1 rounded-md bg-surface-raised text-fg-subtle"
                                                                 title={t("properties.references.dormantHint")}
                                                             >
                                                                 {t("properties.references.dormant")}
@@ -144,7 +154,7 @@ export function AssetReferencesSection({ assetId }: { assetId: string }) {
                                                             {reference.detail}
                                                         </span>
                                                     )}
-                                                </button>
+                                                </InspectOnlyButton>
                                             </li>
                                         );
                                     })}

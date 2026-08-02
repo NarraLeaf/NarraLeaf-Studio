@@ -23,9 +23,6 @@ export const dashboard = {
         words: {
             other: "{count} 字",
         },
-        nodes: {
-            other: "{count} 个节点",
-        },
         days: {
             other: "{count} 天",
         },
@@ -52,7 +49,7 @@ export const dashboard = {
         totalWords: "字数",
         characters: "角色",
         assets: "资源",
-        blueprints: "蓝图",
+        blueprintNodes: "蓝图节点",
         uiSurfaces: "界面",
         variables: "变量",
     },
@@ -66,13 +63,14 @@ export const dashboard = {
         streak: "连续写作",
         streakNone: "暂无连续记录",
         peak: "峰值 {words}",
-        empty: "尚未记录任何内容。一旦记录下当天的写作内容，进度条便会显示",
+        empty: "尚未记录任何内容。一旦记录下当天的写作内容，柱状图便会出现",
         chartLabel: "最近 30 天每天的写作字数",
         tooltip: {
             added: "{date} · 新增 {words}",
             removed: "{date} · 删减 {words}",
             unchanged: "{date} · 无变化",
             start: "{date} · 统计从这天开始，没有可对比的基准",
+            rebased: "{date} · 字数统计口径在这天变更，与前一天不可比",
             untracked: "{date} · 早于统计开始时间",
         },
     },
@@ -106,6 +104,6 @@ export const dashboard = {
         clear: "清空本项目统计数据",
         clearConfirm: "确定清空本项目的统计数据？",
         clearDetail:
-            "仅清除已记录的活动历史：写作曲线、活跃时长、编辑次数与构建记录。场景数、字数、角色数与本地化进度都是从项目本身实时计算的，不会受到影响。此操作无法撤销！",
+            "清除写作曲线、活跃时长、编辑次数与构建记录。从项目本身算出的数字不受影响。此操作无法撤销",
     },
 } satisfies LocaleNamespace<"dashboard">;

@@ -11,7 +11,9 @@ import {
 import {
     useActions,
     useActionGroups,
+    useCollapsedPanels,
     useEditorLayout,
+    usePanelOrder,
     usePanels,
     usePanelVisibility,
     useUIService,
@@ -31,6 +33,12 @@ interface RegistryContextValue {
     getPanelsByPosition: (position: PanelPosition) => PanelDefinition[];
     /** Set the user-defined ordering for a dock area (panel ids, first shown first). */
     reorderPanels: (position: PanelPosition, orderedIds: string[]) => void;
+    /** The raw stored ordering per dock area; may name panels this window has not registered. */
+    panelOrder: Record<string, string[]>;
+    /** Panel ids folded into each dock area's collapse group. */
+    collapsedPanels: Record<string, string[]>;
+    /** Replace a dock area's collapse-group membership. */
+    setCollapsedPanels: (position: PanelPosition, panelIds: string[]) => void;
     updatePanelPayload: <TPayload = any>(panelId: string, payload: TPayload) => void;
 
     // Action management
@@ -76,6 +84,8 @@ export function RegistryProvider({ children }: RegistryProviderProps) {
     const actionGroups = useActionGroups();
     const editorLayout = useEditorLayout();
     const visiblePanels = usePanelVisibility();
+    const panelOrder = usePanelOrder();
+    const collapsedPanels = useCollapsedPanels();
     
     // Helper function to get panels by position
     const getPanelsByPosition = (position: PanelPosition): PanelDefinition[] => {
@@ -93,6 +103,10 @@ export function RegistryProvider({ children }: RegistryProviderProps) {
 
     const reorderPanels = useCallback((position: PanelPosition, orderedIds: string[]) => {
         uiService.getStore().setPanelOrder(position, orderedIds);
+    }, [uiService]);
+
+    const setCollapsedPanels = useCallback((position: PanelPosition, panelIds: string[]) => {
+        uiService.getStore().setCollapsedPanels(position, panelIds);
     }, [uiService]);
 
     const updatePanelPayload = useCallback(<TPayload = any>(panelId: string, payload: TPayload) => {
@@ -245,6 +259,9 @@ export function RegistryProvider({ children }: RegistryProviderProps) {
                 unregisterPanel,
                 getPanelsByPosition,
                 reorderPanels,
+                panelOrder,
+                collapsedPanels,
+                setCollapsedPanels,
                 updatePanelPayload,
                 actions,
                 actionGroups,

@@ -13,21 +13,37 @@ import {
     AssetType,
     PanelPosition,
     type PluginApp,
+    type PluginBlueprintNodeDef,
     type PluginCleanup,
     type PluginMessageBundle,
     type PluginTranslator,
+    type PluginVoiceUnitEntry,
 } from "@/plugin";
+import type { BlueprintNodeDef } from "@/lib/ui-editor/blueprint-nodes/types";
+import type {
+    RuntimePluginGame,
+    RuntimePluginLogLevel,
+} from "@/lib/ui-editor/runtime/plugins/runtimePluginApi";
+import type { RuntimePluginHost } from "@/lib/ui-editor/runtime/plugins/runtimePluginHost";
 import { i18nStore } from "@/lib/i18n/store";
 import { isActionMenuAction, isActionMenuSeparator } from "@/apps/workspace/components/ui/actionMenuModel";
 import type { ActionGroup, ActionMenuItem } from "@/apps/workspace/registry/types";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
+import { VoiceService } from "@/lib/workspace/services/voice/VoiceService";
+import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
+import { extractVoiceableRows } from "@/lib/workspace/services/voice/voiceModel";
+import { listSceneIdsInDocumentOrder } from "@shared/types/story/order";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
+import { WorkspaceFreezeService } from "@/lib/workspace/services/core/WorkspaceFreezeService";
+import { WorkspaceReloadService } from "@/lib/workspace/services/core/WorkspaceReloadService";
 import { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
 import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
+import { testRegistry } from "@/lib/testing/registry";
+import { TEST_PROTOCOL_VERSION } from "@/lib/testing/types";
 import type { WorkspacePluginDescriptor } from "@shared/types/plugins";
 import { FsRejectErrorCode } from "@shared/types/os";
 import { pluginStoreNamespace } from "@shared/utils/pluginStorage";
@@ -259,6 +275,113 @@ function assertDeclaredWidget(descriptor: WorkspacePluginDescriptor, type: strin
 }
 
 /**
+ * Test registrations must match `contributes.tests` for a reason the other two
+ * do not share: the manifest is the only thing that can say what a plugin checks
+ * *before its code runs*. The Launcher lists a plugin's tests from the manifest
+ * alone, so a test that exists only at registration time is one the author is
+ * never told about until they have already installed and loaded the plugin.
+ */
+function assertDeclaredTest(descriptor: WorkspacePluginDescriptor, id: string): void {
+    if (!descriptor.manifest.contributes.tests.includes(id)) {
+        throw new Error(
+            `Test id is not declared in manifest contributes.tests: ${id}. ` +
+            "Declare it so Studio can list what this plugin checks before loading it.",
+        );
+    }
+}
+
+/**
+ * Build the `game` handed to a plugin node's execute while it runs in the editor.
+ *
+ * Studio is an environment that backs nothing. Game shells each pass the
+ * {@link RuntimePluginHost} subset they can actually serve — the Dev Mode window,
+ * the preview shell, the web export all differ — and the editor's subset is empty:
+ * there is no playthrough to read state from, no save file, no game to draw an
+ * overlay over. So every capability-gated domain is *absent from this object*,
+ * indistinguishable from one the manifest never declared, and only the four
+ * always-present members remain. Plugin nodes already have to survive that (the
+ * web export has no sidecar either); running in the editor is the same situation.
+ *
+ * Nothing here closes over `hostAdapter`. Routing the host context back in through
+ * a side door would undo exactly what narrowing the plugin execute achieved.
+ */
+function createEditorRuntimePluginGame(descriptor: WorkspacePluginDescriptor): RuntimePluginGame {
+    const pluginId = descriptor.plugin.id;
+    const log = (level: RuntimePluginLogLevel, message: string): void => {
+        const line = `[plugin:${pluginId}] ${message}`;
+        if (level === "error") {
+            console.error(line);
+        } else if (level === "warning") {
+            console.warn(line);
+        } else {
+            console.info(line);
+        }
+    };
+    // Registration belongs to `setup(app)` in a game environment. In Studio the
+    // equivalent is `app.services.*`, which the plugin already used to get this
+    // node registered - so a call here is a mistake worth naming, not a silent
+    // no-op that drops a contribution on the floor.
+    const registrationUnavailable = (namespace: string): never => {
+        throw new Error(
+            `[plugin:${pluginId}] app.game.${namespace} is only available in a game runtime entry; ` +
+            `use app.services.${namespace} from the studio entry instead.`,
+        );
+    };
+
+    return {
+        blueprintNodes: {
+            register: () => registrationUnavailable("blueprintNodes"),
+            registerMany: () => registrationUnavailable("blueprintNodes"),
+        },
+        widgets: {
+            register: () => registrationUnavailable("widgets"),
+            registerMany: () => registrationUnavailable("widgets"),
+        },
+        data: {
+            // In a game this reads the copy published with the pack, synchronously.
+            // The editor's authored copy lives behind the async storage service, so
+            // there is nothing to return in time; documented as "degrade gracefully
+            // rather than assume authored data exists", which is what null means.
+            readJson: () => {
+                log(
+                    "warning",
+                    "app.game.data is not readable in the editor; read the authored copy through "
+                    + "app.services.storage in the studio entry and pass it into the node.",
+                );
+                return null;
+            },
+        },
+        log,
+    };
+}
+
+/**
+ * Adapt a plugin's node definition to the editor catalog's wider execute.
+ *
+ * The narrowing happens here, mirroring `registerNode` in the runtime loader:
+ * the host context carries `hostAdapter`, and with it saves, localization and
+ * quit - none of which the manifest declared or the user approved. Only the
+ * fields of {@link RuntimeBlueprintNodeContext} cross over, plus the same
+ * capability-gated `game` the plugin's runtime entry would see.
+ */
+function toEditorBlueprintNodeDef(
+    def: PluginBlueprintNodeDef,
+    game: RuntimePluginGame,
+): BlueprintNodeDef {
+    return {
+        ...def,
+        execute: hostCtx => def.execute({
+            params: hostCtx.params,
+            resolveInput: hostCtx.resolveInput,
+            eventName: hostCtx.eventName,
+            eventPayload: hostCtx.eventPayload,
+            signal: hostCtx.signal,
+            game,
+        }),
+    };
+}
+
+/**
  * Keep a plugin's group in a menu of its own.
  *
  * A group declares where it lands on the macOS menu bar, and two of those slots are load-bearing
@@ -300,6 +423,11 @@ export function createPluginApp(
     const storage = ctx.services.get<ServiceAssetsService>(Services.ServiceAssets);
     const blueprintNodes = ctx.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
     const story = ctx.services.get<StoryService>(Services.Story);
+    const freeze = ctx.services.get<WorkspaceFreezeService>(Services.WorkspaceFreeze);
+    const workspaceReload = ctx.services.get<WorkspaceReloadService>(Services.WorkspaceReload);
+    // One per plugin, shared by every node it registers - the runtime loader
+    // hands a node's execute the same `game` object `setup(app)` received.
+    const nodeGame = createEditorRuntimePluginGame(descriptor);
 
     // Every registration a plugin makes through this app object is recorded
     // so the host can reclaim it on unload, even if the plugin's own cleanup
@@ -391,6 +519,24 @@ export function createPluginApp(
                     }
                 },
             },
+            workspace: {
+                get frozen() {
+                    return freeze.isFrozen();
+                },
+                get freezeReason() {
+                    return freeze.getReason()?.kind ?? null;
+                },
+                onFreezeChange: listener => trackReturn(
+                    freeze.onChanged(reason => listener(reason !== null, reason?.kind ?? null)),
+                ),
+                // Keyed by plugin id, so a plugin that re-registers replaces its own reader rather
+                // than stacking a second one that reads into a store nobody owns any more.
+                registerReloader: reload => trackReturn(workspaceReload.registerReloader({
+                    id: `plugin:${descriptor.plugin.id}`,
+                    label: descriptor.manifest.name || descriptor.plugin.id,
+                    reload,
+                })),
+            },
             i18n: {
                 get locale() {
                     return i18nStore.getLocale();
@@ -410,6 +556,51 @@ export function createPluginApp(
                 formatDate: (value, options) => i18nStore.getTranslator().formatDate(value, options),
                 formatList: (items, options) => i18nStore.getTranslator().formatList(items, options),
                 createTranslator: bundle => createPluginTranslator(bundle),
+            },
+            tests: {
+                protocolVersion: TEST_PROTOCOL_VERSION,
+                register: definition => {
+                    assertOwnedId(descriptor.plugin.id, definition.id, "test");
+                    assertDeclaredTest(descriptor, definition.id);
+                    // `ownerPluginId` is taken from the descriptor, never from the definition:
+                    // a plugin must not be able to attribute its test to somebody else.
+                    return trackReturn(testRegistry.register(definition, {
+                        ownerPluginId: descriptor.plugin.id,
+                        replaceExisting: true,
+                    }));
+                },
+                registerMany: definitions => {
+                    // Validate the whole batch before registering any of it, so a typo in the
+                    // last definition does not leave the first half installed.
+                    for (const definition of definitions) {
+                        assertOwnedId(descriptor.plugin.id, definition.id, "test");
+                        assertDeclaredTest(descriptor, definition.id);
+                    }
+                    return combine(definitions.map(definition => trackReturn(
+                        testRegistry.register(definition, {
+                            ownerPluginId: descriptor.plugin.id,
+                            replaceExisting: true,
+                        }),
+                    )));
+                },
+            },
+            textEditor: {
+                // Purely imperative, exactly like `ui.panels`: no manifest `contributes` key
+                // backs these. Nothing outside the open editor session needs to know a preview
+                // exists, so a static declaration would be bookkeeping with no reader - and it
+                // would have to be mirrored into the out-of-repo plugin registry's schema.
+                registerLanguage: def => {
+                    assertOwnedId(descriptor.plugin.id, def.id, "text editor language");
+                    return trackReturn(ui.textEditor.registerLanguage(def));
+                },
+                registerPreview: def => {
+                    assertOwnedId(descriptor.plugin.id, def.id, "text editor preview");
+                    return trackReturn(ui.textEditor.registerPreview(def));
+                },
+                registerAction: def => {
+                    assertOwnedId(descriptor.plugin.id, def.id, "text editor action");
+                    return trackReturn(ui.textEditor.registerAction(def));
+                },
             },
             ui: {
                 panels: {
@@ -492,6 +683,25 @@ export function createPluginApp(
                 has: type => widgetModuleRegistry.has(type),
             },
             story: {
+                listStories: () => story.listStories().map(entry => ({
+                    id: entry.id,
+                    name: entry.name,
+                })),
+                listScenes: async storyId => {
+                    const id = storyId.trim();
+                    if (!id) {
+                        return [];
+                    }
+                    // A story the author has not opened yet is not in memory;
+                    // load it rather than reporting it as having no scenes.
+                    const document = await story.loadStory(id);
+                    return listSceneIdsInDocumentOrder(document).flatMap(sceneId => {
+                        const scene = document.scenes[sceneId];
+                        return scene
+                            ? [{ id: scene.id, name: scene.name || scene.runtimeName || scene.id, storyId: id }]
+                            : [];
+                    });
+                },
                 actions: {
                     register: registration => {
                         assertOwnedId(descriptor.plugin.id, registration.id ?? "", "story action");
@@ -503,6 +713,64 @@ export function createPluginApp(
                     })),
                 },
             },
+            voice: {
+                /**
+                 * Every recorded take, joined to the line it voices so the
+                 * author recognises it by text rather than by unit id.
+                 *
+                 * A project with no voice configured yields an empty list, not
+                 * an error: "no voice yet" is a normal state for a plugin panel
+                 * offering to curate it.
+                 */
+                listUnits: async localeCode => {
+                    const voice = ctx.services.get<VoiceService>(Services.Voice);
+                    const locales = voice.getConfiguration().voicedLocales;
+                    const wanted = localeCode?.trim()
+                        ? locales.filter(entry => entry.code === localeCode.trim())
+                        : locales;
+                    if (wanted.length === 0) {
+                        return [];
+                    }
+                    // Line text lives in the story documents, keyed by the same
+                    // unit id the voice table uses.
+                    const characters = ctx.services.get<CharacterService>(Services.Character);
+                    // The row carries a character *id*; a plugin panel showing a
+                    // UUID where a speaker's name belongs is unusable, so it is
+                    // resolved here and falls back to the id only if the
+                    // character was deleted.
+                    const speakerName = (characterId: string | undefined): string | null => {
+                        if (!characterId) {
+                            return null;
+                        }
+                        return characters.getCharacter(characterId)?.profile.getName() || characterId;
+                    };
+                    const rowsByUnitId = new Map<string, { text: string; character: string | null }>();
+                    for (const entry of story.listStories()) {
+                        const document = await story.loadStory(entry.id);
+                        for (const row of extractVoiceableRows(document)) {
+                            rowsByUnitId.set(row.unitId, {
+                                text: row.sourceText,
+                                character: speakerName(row.characterId),
+                            });
+                        }
+                    }
+                    const units: PluginVoiceUnitEntry[] = [];
+                    for (const locale of wanted) {
+                        const document = await voice.loadDocument(locale.code);
+                        for (const [unitId, unit] of Object.entries(document.units)) {
+                            const line = rowsByUnitId.get(unitId);
+                            units.push({
+                                unitId,
+                                locale: locale.code,
+                                text: line?.text ?? "",
+                                character: line?.character ?? null,
+                                durationSec: unit.duration ?? null,
+                            });
+                        }
+                    }
+                    return units;
+                },
+            },
             blueprintNodes: {
                 // Node defs are deliberately not auto-removed on unload: the
                 // catalog enforces per-plugin ownership with replaceExisting
@@ -510,7 +778,7 @@ export function createPluginApp(
                 // that reference them.
                 register: def => {
                     assertDeclaredBlueprintNode(descriptor, def.type);
-                    blueprintNodes.register(def, {
+                    blueprintNodes.register(toEditorBlueprintNodeDef(def, nodeGame), {
                         ownerPluginId: descriptor.plugin.id,
                         replaceExisting: true,
                     });
@@ -519,10 +787,13 @@ export function createPluginApp(
                     for (const def of defs) {
                         assertDeclaredBlueprintNode(descriptor, def.type);
                     }
-                    blueprintNodes.registerMany(defs, {
-                        ownerPluginId: descriptor.plugin.id,
-                        replaceExisting: true,
-                    });
+                    blueprintNodes.registerMany(
+                        defs.map(def => toEditorBlueprintNodeDef(def, nodeGame)),
+                        {
+                            ownerPluginId: descriptor.plugin.id,
+                            replaceExisting: true,
+                        },
+                    );
                 },
                 registerDynamicSelectOptionsSource: (sourceId, provider) => {
                     const disposer = blueprintNodes.registerDynamicSelectOptionsSource(sourceId, provider, {

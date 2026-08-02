@@ -12,6 +12,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { Check, Plus, Trash2, TriangleAlert, Undo2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import type { LocalizationUnitState } from "@/lib/workspace/services/localization/localizationModel";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 
 /** Minimal row shape both modes render; the tab supplies story/UI/key rows alike. */
 export type TranslationTableRow = {
@@ -75,6 +76,12 @@ function AutosizeTextarea(props: {
     onFocus?: () => void;
     onBlur?: () => void;
 }) {
+    // Both boxes this renders - the translation and a named key's source text - rewrite the
+    // localization document. `readOnly` rather than `disabled`, the same bargain the story-variable
+    // rows make: the text is exactly what a reader of a past version came to see, and a disabled
+    // textarea is dimmed past reading. Unguarded, a frozen project took the edit, showed it in the
+    // row, and threw it away on thaw.
+    const freeze = useFreezeGuard();
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
     // Auto-size on mount and whenever the value changes (filter/mode switches
@@ -101,6 +108,8 @@ function AutosizeTextarea(props: {
             onChange={event => props.onChange(event.target.value)}
             onFocus={props.onFocus}
             onBlur={props.onBlur}
+            readOnly={freeze.frozen}
+            title={freeze.frozen ? freeze.reason : undefined}
             className="min-h-[3.25rem] w-full resize-none overflow-hidden rounded-md border border-edge-subtle bg-transparent px-2 py-1.5 text-sm leading-relaxed text-fg outline-none transition-colors placeholder:text-fg-subtle focus:border-primary/50 focus:bg-surface-raised"
         />
     );
@@ -155,6 +164,9 @@ export function TranslateRow(props: {
     onRemove?: (row: TranslationTableRow) => void;
 }) {
     const { t } = useTranslation();
+    // Removing a key deletes it from the localization document. The row itself, its source text and
+    // its translation stay readable - browsing a past version is the point - so only the trash is off.
+    const freeze = useFreezeGuard();
     const sourceEditable = props.row.editableSource === true && !!props.onSourceChange;
     const removable = props.row.editableSource === true && !!props.onRemove;
 
@@ -184,9 +196,9 @@ export function TranslateRow(props: {
             {removable ? (
                 <button
                     type="button"
-                    title={t("workspace.localization.table.removeKey")}
-                    className="absolute right-3 top-2 flex h-6 w-6 items-center justify-center rounded text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
+                    className="absolute right-3 top-2 flex h-6 w-6 items-center justify-center rounded-md text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
                     onClick={() => props.onRemove?.(props.row)}
+                    {...freeze.writes(false, t("workspace.localization.table.removeKey"))}
                 >
                     <Trash2 className="h-3.5 w-3.5" />
                 </button>
@@ -210,6 +222,9 @@ export function ReviewRow(props: {
     onReturn: (row: TranslationTableRow) => void;
 }) {
     const { t } = useTranslation();
+    // Approving and returning both restate the unit in the localization document, so both are off
+    // while frozen - each keeping its own reason when the row's state is already why it is disabled.
+    const freeze = useFreezeGuard();
     const { row, speaker, state, target } = props;
     const canApprove = state !== "reviewed" && state !== "untranslated";
     const canReturn = state === "reviewed" || state === "stale" || state === "machine";
@@ -236,20 +251,18 @@ export function ReviewRow(props: {
                 <div className="flex items-center gap-1.5">
                     <button
                         type="button"
-                        disabled={!canApprove}
                         onClick={() => props.onApprove(row)}
-                        title={t("workspace.localization.table.markReviewed")}
                         className="inline-flex h-6 items-center gap-1.5 rounded-md bg-success/15 px-2.5 text-xs font-medium text-success transition-colors hover:bg-success/25 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-success/15"
+                        {...freeze.writes(!canApprove, t("workspace.localization.table.markReviewed"))}
                     >
                         <Check className="h-3.5 w-3.5" />
                         {t("workspace.localization.table.reviewApprove")}
                     </button>
                     <button
                         type="button"
-                        disabled={!canReturn}
                         onClick={() => props.onReturn(row)}
-                        title={t("workspace.localization.table.unmarkReviewed")}
                         className="inline-flex h-6 items-center gap-1.5 rounded-md bg-fill px-2.5 text-xs font-medium text-fg-muted transition-colors hover:bg-fill-strong hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-fill disabled:hover:text-fg-muted"
+                        {...freeze.writes(!canReturn, t("workspace.localization.table.unmarkReviewed"))}
                     >
                         <Undo2 className="h-3.5 w-3.5" />
                         {t("workspace.localization.table.reviewReturn")}
@@ -261,7 +274,7 @@ export function ReviewRow(props: {
 }
 
 const ADD_KEY_INPUT_CLASS =
-    "h-7 min-w-0 rounded border border-edge bg-surface-raised px-2 text-xs text-fg outline-none placeholder:text-fg-subtle focus:border-primary/50";
+    "h-7 min-w-0 rounded-md border border-edge bg-surface-raised px-2 text-xs text-fg outline-none placeholder:text-fg-subtle focus:border-primary/50";
 
 /**
  * Ghost row at the end of the named-keys group (translate mode only).
@@ -271,6 +284,10 @@ const ADD_KEY_INPUT_CLASS =
  */
 export function AddKeyRow(props: { onSubmit: (name: string, sourceText: string) => boolean }) {
     const { t } = useTranslation();
+    // Declaring a UI key writes the localization document. Guarded at the collapsed "+" so the draft
+    // row never opens - a form that accepts a name and then throws it away is the measured failure this
+    // milestone exists to remove.
+    const freeze = useFreezeGuard();
     const [expanded, setExpanded] = useState(false);
     const [nameDraft, setNameDraft] = useState("");
     const [sourceDraft, setSourceDraft] = useState("");
@@ -292,8 +309,9 @@ export function AddKeyRow(props: { onSubmit: (name: string, sourceText: string) 
             <div className="px-4 py-2">
                 <button
                     type="button"
-                    className="flex h-7 w-full items-center justify-center gap-1 rounded border border-dashed border-edge text-2xs text-fg-subtle transition-colors hover:border-edge-strong hover:text-fg"
+                    className="flex h-7 w-full items-center justify-center gap-1 rounded-md border border-dashed border-edge text-2xs text-fg-subtle transition-colors hover:border-edge-strong hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
                     onClick={() => setExpanded(true)}
+                    {...freeze.writes()}
                 >
                     <Plus className="h-3 w-3" /> {t("workspace.localization.table.addKey")}
                 </button>
@@ -335,7 +353,7 @@ export function AddKeyRow(props: { onSubmit: (name: string, sourceText: string) 
             />
             <button
                 type="button"
-                className="flex h-7 w-7 flex-none items-center justify-center rounded border border-edge text-fg-muted hover:border-primary/50 hover:text-fg"
+                className="flex h-7 w-7 flex-none items-center justify-center rounded-md border border-edge text-fg-muted hover:border-primary/50 hover:text-fg"
                 onClick={submit}
                 title={t("workspace.localization.table.addKey")}
             >

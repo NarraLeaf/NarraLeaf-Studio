@@ -120,6 +120,24 @@ describe("collectPaletteCommands", () => {
         expect(commands[0]).toMatchObject({ id: "devmode", title: "Dev Mode", source: "action" });
     });
 
+    it("puts a standalone action in the category it declares", () => {
+        const commands = collectPaletteCommands(
+            build({
+                actions: [action({ id: "build", tooltip: "Build project", paletteCategoryKey: "cat.run" as never })],
+            }),
+        );
+        expect(commands[0]).toMatchObject({ title: "Build project", category: "cat.run" });
+    });
+
+    it("ignores a declared category on a grouped action - the group label wins", () => {
+        const group: ActionGroup = {
+            id: "file",
+            label: "File",
+            items: [action({ id: "open", label: "Open", paletteCategoryKey: "cat.run" as never })],
+        };
+        expect(collectPaletteCommands(build({ actionGroups: [group] }))[0]?.category).toBe("File");
+    });
+
     it("prefers the label over the tooltip when both exist", () => {
         const commands = collectPaletteCommands(
             build({ actions: [action({ id: "x", label: "Real Label", tooltip: "Tip" })] }),
@@ -205,6 +223,47 @@ describe("collectPaletteCommands", () => {
             }),
         );
         expect(commands.map(c => c.source)).toEqual(["registered", "action", "panel", "keybinding"]);
+    });
+});
+
+describe("collectPaletteCommands - frozen workspace", () => {
+    /**
+     * The palette runs the SAME registrations the top bar renders. The top bar greys them out while
+     * frozen, so a palette that still listed them would leave a dead button one Ctrl+P from running -
+     * and what disabling them prevents is the side effects the write boundary cannot catch.
+     */
+    const fileGroup: ActionGroup = {
+        id: "narraleaf-studio:file",
+        label: "File",
+        actions: [action({ id: "narraleaf-studio:file-open", label: "Open Workspace" })],
+    };
+    const pluginGroup: ActionGroup = {
+        id: "some-plugin:tools",
+        label: "Tools",
+        actions: [action({ id: "some-plugin:sync", label: "Sync Now" })],
+    };
+    const standalone = action({ id: "narraleaf-studio:build", tooltip: "Build project" });
+
+    it("drops standalone and non-exempt grouped actions once frozen", () => {
+        const sources = { actions: [standalone], actionGroups: [fileGroup, pluginGroup] };
+
+        const thawed = collectPaletteCommands(build({ ...sources, frozen: false }));
+        expect(thawed.map(c => c.id)).toEqual([
+            "narraleaf-studio:build",
+            "narraleaf-studio:file-open",
+            "some-plugin:sync",
+        ]);
+
+        const frozen = collectPaletteCommands(build({ ...sources, frozen: true }));
+        // File survives because it is project-level navigation - and because a frozen window you
+        // cannot close or leave would be a trap.
+        expect(frozen.map(c => c.id)).toEqual(["narraleaf-studio:file-open"]);
+    });
+
+    it("leaves the registrations themselves alone", () => {
+        collectPaletteCommands(build({ actions: [standalone], frozen: true }));
+        // Registry state outlives a freeze; disabling by mutation would survive the thaw.
+        expect(standalone.disabled).toBeUndefined();
     });
 });
 

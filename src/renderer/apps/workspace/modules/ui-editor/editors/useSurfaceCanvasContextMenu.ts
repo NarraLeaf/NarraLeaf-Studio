@@ -29,6 +29,17 @@ import type {
 } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceEditorTabModel";
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
+import { freezeContextMenuRows, useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+
+/**
+ * The canvas menu rows a frozen project keeps: the two that only read the document.
+ *
+ * Named as an exemption rather than as a list of writes because widget modules push their own rows in
+ * at runtime (`buildCanvasContextMenu`, the `sep-widget` group) - an opt-out list would leave every
+ * plugin-contributed row live. Copy fills the clipboard, Select All changes the selection; neither
+ * touches the interface document.
+ */
+const FREEZE_READ_ONLY_CANVAS_MENU_IDS: ReadonlySet<string> = new Set(["copy", "select-all"]);
 
 export function useSurfaceCanvasContextMenu(params: {
     surface: UISurface | null | undefined;
@@ -57,6 +68,7 @@ export function useSurfaceCanvasContextMenu(params: {
         hideMenu,
     } = params;
 
+    const freeze = useFreezeGuard();
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
     const lastContextPoint = useRef<{ x: number; y: number } | null>(null);
     const lastContextHitElementId = useRef<string | null>(null);
@@ -194,10 +206,11 @@ export function useSurfaceCanvasContextMenu(params: {
                     },
                 },
             });
-            setMenuItems(items);
+            setMenuItems(freezeContextMenuRows(items, freeze.frozen, FREEZE_READ_ONLY_CANVAS_MENU_IDS, freeze.reason));
             showMenu(event);
         },
         [
+            freeze,
             surface,
             documentService,
             stateService,

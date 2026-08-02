@@ -11,6 +11,7 @@ import { useRef, useState } from "react";
 import { Check, Play, Plus, RotateCcw, Square, Trash2 } from "lucide-react";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import type { VoiceUnitState } from "@/lib/workspace/services/voice/voiceModel";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 
 export type VoiceTableRow = {
     unitId: string;
@@ -64,6 +65,9 @@ const STATUS_DOT: Record<VoiceUnitState, string> = {
 
 export function VoiceRow(props: VoiceRowProps) {
     const { row, speaker, state, asset, mode, isPlaying, strings } = props;
+    // Assigning, removing, approving and returning write the locale voice document. Playing the clip
+    // and reading the row do not, so auditioning a frozen revision still works.
+    const freeze = useFreezeGuard();
     const assignRef = useRef<HTMLButtonElement | null>(null);
     const [dragOver, setDragOver] = useState(false);
     const hasClip = state !== "missing";
@@ -88,14 +92,16 @@ export function VoiceRow(props: VoiceRowProps) {
             className={`group flex items-center gap-3 border-b border-edge-subtle px-4 py-2 text-xs ${
                 dragOver ? "bg-primary/10" : ""
             }`}
-            onDragOver={event => {
+            // Both halves withheld together while frozen: assigning a clip writes the voice document, and
+            // a row that highlights on drag-over and then keeps its old clip would look like a bug.
+            onDragOver={freeze.gesture((event: React.DragEvent) => {
                 if (readAudioAssetId(event.dataTransfer, true)) {
                     event.preventDefault();
                     setDragOver(true);
                 }
-            }}
+            })}
             onDragLeave={() => setDragOver(false)}
-            onDrop={handleDrop}
+            onDrop={freeze.gesture(handleDrop)}
         >
             <span className="w-24 shrink-0 truncate text-2xs text-fg-subtle" title={speaker}>
                 {speaker}
@@ -108,7 +114,7 @@ export function VoiceRow(props: VoiceRowProps) {
                 <>
                     <button
                         type="button"
-                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-fg-muted hover:bg-fill hover:text-fg"
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-muted hover:bg-fill hover:text-fg"
                         title={isPlaying ? strings.stop : strings.play}
                         onClick={props.onTogglePlay}
                         disabled={!asset}
@@ -130,19 +136,18 @@ export function VoiceRow(props: VoiceRowProps) {
                             state === "approved" ? (
                                 <button
                                     type="button"
-                                    className="flex h-6 w-6 items-center justify-center rounded text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-fg group-hover:opacity-100"
-                                    title={strings.reject}
+                                    className="flex h-6 w-6 items-center justify-center rounded-md text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-fg group-hover:opacity-100"
                                     onClick={props.onReturn}
+                                    {...freeze.writes(false, strings.reject)}
                                 >
                                     <RotateCcw className="h-3.5 w-3.5" />
                                 </button>
                             ) : (
                                 <button
                                     type="button"
-                                    className="flex h-6 w-6 items-center justify-center rounded text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-success group-hover:opacity-100"
-                                    title={strings.approve}
+                                    className="flex h-6 w-6 items-center justify-center rounded-md text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-success group-hover:opacity-100"
                                     onClick={props.onApprove}
-                                    disabled={state === "stale"}
+                                    {...freeze.writes(state === "stale", strings.approve)}
                                 >
                                     <Check className="h-3.5 w-3.5" />
                                 </button>
@@ -152,17 +157,17 @@ export function VoiceRow(props: VoiceRowProps) {
                                 <button
                                     ref={assignRef}
                                     type="button"
-                                    className="flex h-6 w-6 items-center justify-center rounded text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-fg group-hover:opacity-100"
-                                    title={strings.replace}
+                                    className="flex h-6 w-6 items-center justify-center rounded-md text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-fg group-hover:opacity-100"
                                     onClick={() => assignRef.current && props.onAssign(assignRef.current)}
+                                    {...freeze.writes(false, strings.replace)}
                                 >
                                     <Plus className="h-3.5 w-3.5" />
                                 </button>
                                 <button
                                     type="button"
-                                    className="flex h-6 w-6 items-center justify-center rounded text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-danger group-hover:opacity-100"
-                                    title={strings.remove}
+                                    className="flex h-6 w-6 items-center justify-center rounded-md text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-danger group-hover:opacity-100"
                                     onClick={props.onRemove}
+                                    {...freeze.writes(false, strings.remove)}
                                 >
                                     <Trash2 className="h-3.5 w-3.5" />
                                 </button>
@@ -174,9 +179,9 @@ export function VoiceRow(props: VoiceRowProps) {
                 <button
                     ref={assignRef}
                     type="button"
-                    className="flex h-7 shrink-0 items-center gap-1 rounded border border-dashed border-edge px-2 text-2xs text-fg-subtle transition-colors hover:border-edge-strong hover:text-fg"
-                    title={strings.assign}
+                    className="flex h-7 shrink-0 items-center gap-1 rounded-md border border-dashed border-edge px-2 text-2xs text-fg-subtle transition-colors hover:border-edge-strong hover:text-fg"
                     onClick={() => assignRef.current && props.onAssign(assignRef.current)}
+                    {...freeze.writes(false, strings.assign)}
                 >
                     <Plus className="h-3 w-3" />
                     {dragOver ? strings.dropHint : strings.assign}

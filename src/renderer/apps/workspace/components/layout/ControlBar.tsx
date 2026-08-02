@@ -36,7 +36,7 @@ export function ControlBar({
             <button
                 onClick={onToggleLeftSidebar}
                 className={`
-                    w-8 h-8 rounded flex items-center justify-center transition-colors cursor-default
+                    w-8 h-8 rounded-md flex items-center justify-center transition-colors cursor-default
                     ${leftSidebarVisible
                         ? "bg-fill-strong text-fg"
                         : "text-fg-muted hover:bg-fill hover:text-fg"
@@ -52,7 +52,7 @@ export function ControlBar({
             <button
                 onClick={onToggleBottomPanel}
                 className={`
-                    w-8 h-8 rounded flex items-center justify-center transition-colors cursor-default
+                    w-8 h-8 rounded-md flex items-center justify-center transition-colors cursor-default
                     ${bottomPanelVisible
                         ? "bg-fill-strong text-fg"
                         : "text-fg-muted hover:bg-fill hover:text-fg"
@@ -68,7 +68,7 @@ export function ControlBar({
             <button
                 onClick={onToggleRightSidebar}
                 className={`
-                    w-8 h-8 rounded flex items-center justify-center transition-colors cursor-default
+                    w-8 h-8 rounded-md flex items-center justify-center transition-colors cursor-default
                     ${rightSidebarVisible
                         ? "bg-fill-strong text-fg"
                         : "text-fg-muted hover:bg-fill hover:text-fg"
@@ -83,7 +83,7 @@ export function ControlBar({
             {/* Settings Button */}
             <button
                 onClick={handleOpenSettings}
-                className="w-8 h-8 rounded flex items-center justify-center text-fg-muted hover:bg-fill hover:text-fg transition-colors cursor-default"
+                className="w-8 h-8 rounded-md flex items-center justify-center text-fg-muted hover:bg-fill hover:text-fg transition-colors cursor-default"
                 title={t("workspace.shell.openSettings")}
                 aria-label={t("workspace.shell.openSettings")}
             >

@@ -11,6 +11,7 @@ export const BLUEPRINT_VALUE_TYPE_IMAGE_ASSET = "ImageAsset" as const;
 export const BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE = "ImageAsset|null" as const;
 export const BLUEPRINT_VALUE_TYPE_TIMER = "Timer" as const;
 export const BLUEPRINT_VALUE_TYPE_ANIMATION_TOKEN = "AnimationToken" as const;
+export const BLUEPRINT_VALUE_TYPE_SOUND_HANDLE = "SoundHandle" as const;
 
 export type BlueprintElementRef = {
     surfaceId: string;
@@ -42,6 +43,17 @@ export type BlueprintTimerToken = {
 
 export type BlueprintAnimationToken = {
     kind: "animation";
+    id: string;
+};
+
+/**
+ * A handle on one playing clip, returned by Play Sound and accepted by the
+ * transport nodes. Opaque: the id addresses a SoundToken the host holds, so the
+ * graph can pass playback around without the engine's object crossing into
+ * blueprint data.
+ */
+export type BlueprintSoundHandle = {
+    kind: "soundHandle";
     id: string;
 };
 
@@ -136,6 +148,26 @@ export function normalizeBlueprintTimerToken(value: unknown): BlueprintTimerToke
         return null;
     }
     return toBlueprintTimerToken(typeof record.id === "string" ? record.id : null);
+}
+
+export function isBlueprintSoundHandleValueType(valueType: string | undefined): boolean {
+    return valueType === BLUEPRINT_VALUE_TYPE_SOUND_HANDLE;
+}
+
+export function toBlueprintSoundHandle(id: string | null | undefined): BlueprintSoundHandle | null {
+    const safe = typeof id === "string" ? id.trim() : "";
+    return safe ? { kind: "soundHandle", id: safe } : null;
+}
+
+export function normalizeBlueprintSoundHandle(value: unknown): BlueprintSoundHandle | null {
+    if (typeof value === "string") {
+        return toBlueprintSoundHandle(value);
+    }
+    const record = readRecord(value);
+    if (!record || record.kind !== "soundHandle") {
+        return null;
+    }
+    return toBlueprintSoundHandle(typeof record.id === "string" ? record.id : null);
 }
 
 export function toBlueprintAnimationToken(id: string | null | undefined): BlueprintAnimationToken | null {

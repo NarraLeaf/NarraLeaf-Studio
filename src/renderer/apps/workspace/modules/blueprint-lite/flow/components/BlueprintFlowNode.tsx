@@ -8,7 +8,7 @@ import {
     type ReactNode,
 } from "react";
 import { Handle, Position, useReactFlow, type NodeProps } from "@xyflow/react";
-import { Image as ImageIcon, Keyboard as KeyboardIcon, Link2, Minus, Plus, X } from "lucide-react";
+import { Image as ImageIcon, Keyboard as KeyboardIcon, Link2, Minus, Music, Plus, X } from "lucide-react";
 import type { BlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import {
     BLUEPRINT_NODE_PARAM_DISPLAYABLE_ANIMATION_FROM_EXPLICIT,
@@ -44,6 +44,7 @@ import {
     normalizeBlueprintImageAssetValue,
     type BlueprintImageAsset,
 } from "@shared/types/blueprint/valueTypes";
+import { normalizeAudioClipRegion } from "@shared/types/audio";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
@@ -53,6 +54,7 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
 import { ButtonCursorSelect } from "@/lib/ui-editor/widget-modules/shared/appearance/editors/ButtonCursorSelect";
 import { useTranslation, type UseTranslation } from "@/lib/i18n";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import {
     resolveBlueprintCategoryLabel,
     resolveBlueprintLabel,
@@ -134,15 +136,15 @@ export type BlueprintFlowNodeData = {
     onBindElementLiteral?: (nodeId: string) => void;
 };
 
-const EXEC_HANDLE_CLASS = "!h-2 !w-2 !border border-edge-strong !bg-cyan-500";
+const EXEC_HANDLE_CLASS = "!h-2 !w-2 !border border-edge-strong !bg-primary";
 const DATA_HANDLE_CLASS = "!h-2 !w-2 !border border-amber-200/35 !bg-amber-500";
 const PIN_LABEL_CLASS = "text-fg-muted";
 const OPTIONAL_UNWIRED_PIN_LABEL_CLASS = "text-fg-subtle italic";
 
 const CARD_INPUT =
-    "rounded border-edge bg-surface px-1.5 py-1 font-mono text-2xs";
+    "rounded-md border-edge bg-surface px-1.5 py-1 font-mono text-2xs";
 const CARD_ICON_BUTTON =
-    "nodrag !h-4 !w-4 shrink-0 !gap-0 rounded !p-0.5 text-fg-muted hover:bg-fill-subtle hover:text-fg-muted";
+    "nodrag !h-4 !w-4 shrink-0 !gap-0 rounded-md !p-0.5 text-fg-muted hover:bg-fill-subtle hover:text-fg-muted";
 
 /** Hide native number steppers — keep same look as other card fields (WebKit + Firefox). */
 const INPUT_NUMBER_NO_SPINNER =
@@ -167,6 +169,100 @@ function useImageAssetDisplayName(assetId: string | null): string | null {
         const assetsService = context.services.get<AssetsService>(Services.Assets);
         return assetsService.getAssets()[AssetType.Image]?.[assetId]?.name ?? null;
     }, [assetId, context]);
+}
+
+/**
+ * Audio has no thumbnail, so its picker is a name row rather than the image
+ * card below. Stores a bare asset-id string: unlike images there is no existing
+ * envelope wire format for audio to match.
+ */
+function AudioAssetPickerRow({
+    value,
+    onChange,
+    disabled = false,
+}: {
+    value: unknown;
+    onChange?: (assetId: string | null) => void;
+    disabled?: boolean;
+}) {
+    const { t } = useTranslation();
+    const assetId = typeof value === "string" && value.trim() ? value.trim() : null;
+    const [selectorOpen, setSelectorOpen] = useState(false);
+    const anchorRef = useRef<HTMLButtonElement | null>(null);
+    let context: ReturnType<typeof useWorkspace>["context"] | null = null;
+    try {
+        context = useWorkspace().context;
+    } catch {
+        context = null;
+    }
+    const asset = useMemo(() => {
+        if (!assetId || !context) {
+            return null;
+        }
+        return context.services.get<AssetsService>(Services.Assets).getAssets()[AssetType.Audio]?.[assetId] ?? null;
+    }, [assetId, context]);
+    const assetName = asset?.name ?? null;
+    // Whether the author marked in/out points on this clip decides whether Loop loops the body or
+    // the whole file - and it is decided somewhere else entirely (the asset manager's audio preview),
+    // so the node has to say which it is.
+    const marked = normalizeAudioClipRegion(asset?.extras) !== null;
+
+    return (
+        <div
+            className="nodrag min-w-0"
+            onMouseDown={stopFlowNodePointerBubble}
+            onPointerDown={stopFlowNodePointerBubble}
+        >
+            <button
+                ref={anchorRef}
+                type="button"
+                disabled={disabled}
+                title={assetName ?? undefined}
+                className={`flex w-full min-w-0 items-center gap-1.5 rounded-md border border-edge bg-surface px-2 py-1 text-left text-2xs ${
+                    disabled ? "cursor-default opacity-80" : "hover:border-primary/35 hover:bg-fill-subtle"
+                }`}
+                onClick={() => setSelectorOpen(true)}
+            >
+                <Music size={11} className="shrink-0 text-fg-subtle" />
+                <span className={`min-w-0 flex-1 truncate ${assetId ? "text-fg" : "text-fg-subtle"}`}>
+                    {assetId
+                        ? assetName ?? t("blueprint.image.missing")
+                        : t("blueprint.image.select")}
+                </span>
+                {marked && (
+                    <span className="shrink-0 rounded-md bg-fill-subtle px-1 text-2xs text-fg-subtle">
+                        {t("blueprint.audio.marked")}
+                    </span>
+                )}
+                {assetId && !disabled && (
+                    <span
+                        role="button"
+                        tabIndex={-1}
+                        aria-label={t("common.clear")}
+                        className="shrink-0 text-fg-subtle hover:text-danger"
+                        onClick={event => {
+                            event.stopPropagation();
+                            onChange?.(null);
+                        }}
+                    >
+                        <X size={10} />
+                    </span>
+                )}
+            </button>
+            <AssetSelector
+                visible={selectorOpen}
+                assetType={AssetType.Audio}
+                multiple={false}
+                anchorRef={anchorRef}
+                selectedIds={assetId ? [assetId] : []}
+                onClose={() => setSelectorOpen(false)}
+                onConfirm={assets => {
+                    onChange?.(assets[0]?.id ?? null);
+                    setSelectorOpen(false);
+                }}
+            />
+        </div>
+    );
 }
 
 function ImageAssetPickerCard({
@@ -209,7 +305,7 @@ function ImageAssetPickerCard({
                     ref={anchorRef}
                     type="button"
                     disabled={disabled}
-                    className={`group relative flex w-full min-w-0 overflow-hidden rounded border border-edge bg-surface text-left transition-colors ${
+                    className={`group relative flex w-full min-w-0 overflow-hidden rounded-md border border-edge bg-surface text-left transition-colors ${
                         disabled ? "cursor-default opacity-80" : "hover:border-primary/35 hover:bg-fill-subtle"
                     } ${heightClass}`}
                     title={assetId ? `${label} (${assetId})` : t("blueprint.image.selectAsset")}
@@ -252,7 +348,7 @@ function ImageAssetPickerCard({
                 {assetId && !disabled ? (
                     <button
                         type="button"
-                        className="absolute right-1 top-1 rounded bg-black/55 p-0.5 text-white/80 hover:bg-black/80 hover:text-white"
+                        className="absolute right-1 top-1 rounded-md bg-black/55 p-0.5 text-white/80 hover:bg-black/80 hover:text-white"
                         title={t("blueprint.image.clear")}
                         aria-label={t("blueprint.image.clear")}
                         onMouseDown={stopFlowNodePointerBubble}
@@ -1058,7 +1154,7 @@ function KeyboardBindingCardControl({
     return (
         <div ref={rootRef} className="nodrag relative min-w-0">
             {listening ? (
-                <div className="absolute bottom-full left-0 z-[60] mb-1 w-full rounded border border-primary/35 bg-surface-overlay px-2 py-1.5 text-left shadow-lg ring-1 ring-black/35">
+                <div className="absolute bottom-full left-0 z-[60] mb-1 w-full rounded-lg border border-primary/35 bg-surface-overlay px-2 py-1.5 text-left shadow-lg ring-1 ring-black/35">
                     <div className="truncate font-mono text-2xs text-primary">
                         {preview || t("blueprint.keyboard.pressKey")}
                     </div>
@@ -1067,7 +1163,7 @@ function KeyboardBindingCardControl({
             ) : null}
             <button
                 type="button"
-                className={`flex min-h-[26px] w-full min-w-0 items-center gap-1.5 rounded border px-2 py-1 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 ${
+                className={`flex min-h-[26px] w-full min-w-0 items-center gap-1.5 rounded-md border px-2 py-1 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 ${
                     listening
                         ? "border-primary/45 bg-primary/10 text-primary"
                         : "border-edge bg-surface text-fg hover:border-primary/35 hover:bg-fill-subtle"
@@ -1092,7 +1188,7 @@ function KeyboardBindingCardControl({
             {displayValue ? (
                 <button
                     type="button"
-                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-fg-subtle hover:bg-fill hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-fg-subtle hover:bg-fill hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
                     title={t("blueprint.keyboard.clear")}
                     aria-label={t("blueprint.keyboard.clear")}
                     onMouseDown={event => {
@@ -1263,6 +1359,8 @@ function InspectorParamOnCard({
                 <BlueprintColorValueControl value={raw} onChange={v => onPatchNodeParam(nodeId, spec.key, v)} />
             ) : spec.kind === "imageAsset" ? (
                 <ImageAssetPickerCard value={raw} onChange={v => onPatchNodeParam(nodeId, spec.key, v)} />
+            ) : spec.kind === "audioAsset" ? (
+                <AudioAssetPickerRow value={raw} onChange={v => onPatchNodeParam(nodeId, spec.key, v)} />
             ) : spec.kind === "keyboardBinding" ? (
                 <KeyboardBindingCardControl value={raw} onChange={v => onPatchNodeParam(nodeId, spec.key, v)} />
             ) : spec.kind === "buttonCursor" ? (
@@ -1468,7 +1566,7 @@ function CardNumberInput({
     return (
         <div className="relative">
             <input
-                className={`nodrag block w-full rounded border border-edge bg-surface px-1.5 py-1 font-mono text-2xs text-fg transition-colors focus:border-primary focus:outline-none ${
+                className={`nodrag block w-full rounded-md border border-edge bg-surface px-1.5 py-1 font-mono text-2xs text-fg transition-colors focus:border-primary focus:outline-none ${
                     unit ? "pr-8" : ""
                 } ${disabled ? "cursor-not-allowed opacity-55" : ""} ${INPUT_NUMBER_NO_SPINNER}`}
                 type="text"
@@ -1943,6 +2041,9 @@ function BlueprintCommentNodeCard({
     onPatchNodeParam?: BlueprintNodeParamPatch;
 }) {
     const { t } = useTranslation();
+    // The resize corner IS the gesture affordance, so while frozen it is not drawn at all - a grab
+    // handle that refuses to move is the half-gesture that reads as a broken editor.
+    const freeze = useFreezeGuard();
     const { getZoom } = useReactFlow();
     const colorKey = typeof params.color === "string" && COMMENT_COLORS[params.color] ? params.color : "amber";
     const color = COMMENT_COLORS[colorKey] ?? COMMENT_COLORS.amber;
@@ -2007,7 +2108,7 @@ function BlueprintCommentNodeCard({
 
     return (
         <div
-            className="group relative flex flex-col overflow-hidden rounded border shadow-lg backdrop-blur-[1px]"
+            className="group relative flex flex-col overflow-hidden rounded-md border shadow-lg backdrop-blur-[1px]"
             style={{
                 width: draftSize.width,
                 height: draftSize.height,
@@ -2076,13 +2177,15 @@ function BlueprintCommentNodeCard({
                 onPointerDown={stopFlowNodePointerBubble}
                 onChange={e => onPatchNodeParam?.(nodeId, "text", e.target.value)}
             />
-            <div
-                className="nodrag absolute bottom-1 right-1 h-4 w-4 cursor-nwse-resize rounded-sm border border-edge-strong bg-fill-subtle"
-                title={t("blueprint.comment.resize")}
-                onPointerDown={startResize}
-            >
-                <div className="absolute bottom-1 right-1 h-2 w-2 border-b border-r border-edge-strong" />
-            </div>
+            {freeze.frozen ? null : (
+                <div
+                    className="nodrag absolute bottom-1 right-1 h-4 w-4 cursor-nwse-resize rounded-sm border border-edge-strong bg-fill-subtle"
+                    title={t("blueprint.comment.resize")}
+                    onPointerDown={startResize}
+                >
+                    <div className="absolute bottom-1 right-1 h-2 w-2 border-b border-r border-edge-strong" />
+                </div>
+            )}
         </div>
     );
 }
@@ -2131,7 +2234,7 @@ function BlueprintElementLiteralNodeCard({
             <div className="mx-2 my-1.5">
                 <button
                     type="button"
-                    className="nodrag block w-full overflow-hidden rounded border border-edge bg-fill-subtle p-1.5 text-left transition-colors hover:border-primary/35 hover:bg-fill focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
+                    className="nodrag block w-full overflow-hidden rounded-md border border-edge bg-fill-subtle p-1.5 text-left transition-colors hover:border-primary/35 hover:bg-fill focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
                     aria-label={elementPreview ? t("blueprint.element.selectNamed", { name: boundLabel }) : t("blueprint.element.select")}
                     onMouseDown={stopFlowNodePointerBubble}
                     onPointerDown={stopFlowNodePointerBubble}
@@ -2185,7 +2288,7 @@ function BlueprintImageAssetLiteralNodeCard({
                 firstNodeError
                     ? "border-danger/85 ring-1 ring-danger/40"
                     : selected
-                      ? "border-cyan-400/80 ring-1 ring-cyan-500/40"
+                      ? "border-primary/80 ring-1 ring-primary/40"
                       : "border-edge"
             }`}
             title={firstNodeError?.message}
@@ -2215,7 +2318,39 @@ function BlueprintImageAssetLiteralNodeCard({
     );
 }
 
-export function BlueprintFlowNode({ data, selected }: NodeProps) {
+/**
+ * One node on the graph, plus the read-only clamp a frozen workspace needs it to wear.
+ *
+ * **The clamp is here rather than on each control**, and it is the same instrument the properties
+ * framework uses (`FieldRenderer`): a `disabled` `<fieldset>` with `display: contents`, so it takes
+ * no part in layout and React Flow measures the card exactly as before. Per HTML every form control
+ * beneath it is disabled without knowing this code exists - which is the whole reason to prefer it
+ * here. A node card carries thirteen `Select`s, the on-card number and text inputs, the pin literal
+ * editors, the keyboard-binding capture, the asset pickers and the element binder, and they are
+ * written across two thousand lines by whoever added a node type; a per-control `freeze.writes()`
+ * would have to be remembered by each of them, and measured on a frozen project it had not been:
+ * every dropdown on every node still accepted a change and threw it away on thaw.
+ *
+ * **Nothing on a card is inspection-only**, which is what makes the blanket safe here and would not
+ * be in the inspector. Reading a frozen graph is selection, panning and zooming - none of them form
+ * controls, none of them touched by this - and the canvas switches off the gestures that write
+ * (`BlueprintFlowCanvas`: dragging, connecting, the pane menu, delete). Even the pin's "edit value"
+ * toggle writes: which pins are open is stored in the node's params.
+ */
+export function BlueprintFlowNode(props: NodeProps) {
+    const freeze = useFreezeGuard();
+    const card = <BlueprintFlowNodeCard {...props} />;
+    if (!freeze.frozen) {
+        return card;
+    }
+    return (
+        <fieldset disabled aria-readonly style={{ display: "contents" }}>
+            {card}
+        </fieldset>
+    );
+}
+
+function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
     const { t } = useTranslation();
     const {
         catalog,
@@ -2341,7 +2476,7 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
         <Button
             type="button"
             title={catalog.dynamicInputPinAddLabel ?? t("blueprint.pin.addInput")}
-            className="nodrag mt-0.5 flex w-full items-center justify-center rounded border border-dashed border-edge !py-0.5 text-fg-subtle hover:border-edge-strong hover:bg-fill-subtle hover:text-fg-muted"
+            className="nodrag mt-0.5 flex w-full items-center justify-center rounded-md border border-dashed border-edge !py-0.5 text-fg-subtle hover:border-edge-strong hover:bg-fill-subtle hover:text-fg-muted"
             variant="ghost"
             size="sm"
             aria-label={catalog.dynamicInputPinAddLabel ?? t("blueprint.pin.addInput")}
@@ -2415,12 +2550,12 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
                 firstNodeError
                     ? "border-danger/85 ring-1 ring-danger/40"
                     : selected
-                      ? "border-cyan-400/80 ring-1 ring-cyan-500/40"
+                      ? "border-primary/80 ring-1 ring-primary/40"
                       : "border-edge"
-            } ${!firstNodeError && isEventHead ? "border-l-cyan-400/70" : ""} ${
+            } ${!firstNodeError && isEventHead ? "border-l-primary/70" : ""} ${
                 !firstNodeError && isVarDeclare ? "border-l-amber-500/80" : ""
             } ${
-                !firstNodeError && isTerminalNode ? "border-r-cyan-400/70" : ""
+                !firstNodeError && isTerminalNode ? "border-r-primary/70" : ""
             }`}
             title={firstNodeError?.message}
             aria-invalid={Boolean(firstNodeError)}

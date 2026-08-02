@@ -31,6 +31,10 @@ export const settings = {
             label: "同步",
             description: "本地备份频率与同步辅助项",
         },
+        plugins: {
+            label: "插件",
+            description: "插件商店与注册表",
+        },
         advanced: {
             label: "高级",
             description: "遥测、开发者辅助与实验性开关",
@@ -43,7 +47,7 @@ export const settings = {
         },
         themeMode: {
             label: "主题",
-            description: "Studio 界面的配色主题，“跟随系统”会随操作系统切换",
+            description: "Studio 界面的配色主题",
             options: {
                 auto: "跟随系统",
                 light: "亮色",
@@ -52,7 +56,7 @@ export const settings = {
         },
         accentColor: {
             label: "强调色",
-            description: "Studio 界面中选中项、焦点框和主要按钮所用的颜色",
+            description: "选中项、焦点框和主要按钮所用的颜色",
             options: {
                 teal: "叶青",
                 sky: "天蓝",
@@ -63,7 +67,7 @@ export const settings = {
         },
         reduceMotion: {
             label: "减少动效",
-            description: "关闭 Studio 界面中的动画过渡。不影响你的游戏本身的动画，编辑时和发行后都不受影响",
+            description: "关闭 Studio 界面中的动画过渡，不影响你的游戏本身的动画",
         },
         zoomPercent: {
             label: "界面缩放",
@@ -71,19 +75,63 @@ export const settings = {
         },
         editorFontSize: {
             label: "故事编辑器字号",
-            description: "故事场景编辑器中对话、旁白与选项文本的字号（px，{min}–{max}）",
+            description: "场景编辑器中故事文本的字号（px，{min}-{max}）",
         },
         editorFontFamily: {
             label: "故事编辑器字体",
             description: "场景编辑器中故事文本所用的字体",
         },
+        editorSurfaceOpacity: {
+            label: "编辑面不透明度",
+            description: "故事正文与检查器字段背后阅读面的不透明度",
+        },
         maxActiveEditors: {
             label: "最大活动编辑器数",
-            description: "同时保持加载的编辑器标签数，切换标签时保留其滚动位置与焦点（{min}–{max}），超出的标签会在重新打开时重新加载",
+            description: "同时保持加载、保留滚动位置与焦点的编辑器标签数（{min}-{max}），其余的重新打开时会重新加载",
+        },
+        blueprintDragConnectExecOutput: {
+            label: "从执行输出引脚拖拽创建节点",
+            description: "拖到空白画布松手即可挑选节点，它会被接在该引脚之后",
+        },
+        blueprintDragConnectDataOutput: {
+            label: "从数据输出引脚拖拽创建节点",
+            description: "拖到空白画布松手即可挑选节点，菜单只列出能接收该数据类型的节点",
+        },
+        blueprintDragConnectInput: {
+            label: "从输入引脚拖拽创建节点",
+            description: "拖到空白画布松手即可挑选节点，它的输出会连到该引脚",
+        },
+        slashAtAlias: {
+            label: "用“@”打开动作创建",
+            description: "以防中文输入法的「/」与「、」冲突",
         },
         electronMirror: {
             label: "Electron 下载镜像",
-            description: "为其他平台构建游戏时下载 Electron 所用的镜像地址，留空则使用官方源",
+            description: "下载 Electron 所用的镜像地址，留空则使用官方源",
+        },
+        pluginRegistryUrl: {
+            label: "注册表地址",
+            description: "插件商店从哪里取索引，留空则使用 NarraLeaf 官方注册表",
+        },
+        uiTemplateRegistryUrl: {
+            label: "界面模板注册表地址",
+            description: "模板商店从哪里取索引，留空则使用 NarraLeaf 官方注册表",
+        },
+        checkpointInterval: {
+            label: "自动检查点间隔",
+            description: "间隔多久记录一个检查点，只在确实有改动时记录。填 0 则关闭",
+        },
+        checkpointOnClose: {
+            label: "关闭工作区时记录检查点",
+            description: "关窗时记录一次，与上面的间隔各自独立",
+        },
+        versionControlAuthor: {
+            label: "作者名",
+            description: "记录为提交与检查点的作者，留空则记为 NarraLeaf Studio",
+        },
+        versionControlAuthorEmail: {
+            label: "作者邮箱",
+            description: "与作者名一起记录，形如「作者名 <邮箱>」，留空则不记录地址",
         },
         confirmBeforeClose: {
             label: "关闭工作区时弹出提示",
@@ -91,29 +139,29 @@ export const settings = {
         },
         returnToLauncherOnClose: {
             label: "关闭工作区后返回首页",
-            description: "关闭工作区后回到首页，关闭此项则在没有其他窗口时直接退出 NarraLeaf Studio",
+            description: "关闭此项则在没有其他窗口时直接退出 NarraLeaf Studio",
         },
         dashboardOnOpen: {
             label: "默认显示项目仪表盘",
-            description: "尚未单独设置过的项目，进入工作区时是否自动打开仪表盘标签页。可在各项目的仪表盘底部单独调整",
+            description: "对尚未单独设置过的项目生效，各项目可自行覆盖",
         },
         clearAllStats: {
             label: "清空所有统计数据",
-            description: "抹除所有项目已记录的写作历史、活跃时长和构建历史。从项目本身算出的统计数字不受影响",
+            description: "抹除所有项目的写作历史、活跃时长和构建历史。从项目本身算出的数字不受影响",
             action: "清空",
             confirm: "确认清空",
         },
         statusBarVisible: {
             label: "显示状态栏",
-            description: "工作区底部的细条（运行状态、字数、快捷开关）",
+            description: "工作区底部的那一条",
         },
         titleBarSearchVisible: {
             label: "显示标题栏搜索框",
-            description: "标题栏中间的搜索条，用于打开搜索和命令面板",
+            description: "标题栏中间的搜索框",
         },
         backgroundImage: {
             label: "自定义背景图",
-            description: "以水印方式在整个工作区叠加一张你选择的图片",
+            description: "在工作区背后显示一张你选择的图片",
             action: "配置…",
             needsWorkspace: "必须打开一个工作区才能配置背景图",
         },

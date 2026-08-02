@@ -5,9 +5,11 @@ import { EditorComponentProps } from "../../types";
 import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
 import { useKeybindings, whenEditorFocused } from "@/apps/workspace/hooks";
+import { isDeferredWriteAllowed, useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useRegistry } from "@/apps/workspace/registry";
 import type { EditorLayout } from "@/apps/workspace/registry/types";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import { VariableRegistryService } from "@/lib/workspace/services/variables/VariableRegistryService";
 import type { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UuidService } from "@/lib/workspace/services/core/UuidService";
@@ -15,12 +17,16 @@ import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import type { UIRuntimeBridgeService } from "@/lib/workspace/services/ui-editor/UIRuntimeBridgeService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
+import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
+import type { AudioTrackService } from "@/lib/workspace/services/audio/AudioTrackService";
+import { BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/soundNodes";
 import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
 import type { BlueprintEntryTabPayload } from "../blueprintEntryTabId";
 import type { Blueprint, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import type { StoryDocument } from "@shared/types/story";
+import { listSceneIdsInDocumentOrder } from "@shared/types/story";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
 import { getUIListChildSlot, isListLikeWidgetType } from "@shared/types/ui-editor/list";
@@ -34,6 +40,7 @@ import {
 import { buildBlueprintPaletteContext } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import { useBlueprintDocumentRevision } from "../hooks/useBlueprintDocumentRevision";
 import { useBlueprintDiagnostics } from "../hooks/useBlueprintDiagnostics";
+import { useBlueprintDragConnectSettings } from "../hooks/useBlueprintDragConnectSettings";
 import { useBlueprintEditorState, type BlueprintEditorGraphView } from "../state/useBlueprintEditorState";
 import { BlueprintEditorLayout } from "../components/BlueprintEditorLayout";
 import { BlueprintMemberTree, type BlueprintVariableGroupKey } from "../components/BlueprintMemberTree";
@@ -73,6 +80,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
     BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE,
+    BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER,
     readBlueprintFnSignatureSnapshot,
 } from "@shared/types/blueprint/graph";
 import {
@@ -414,7 +422,7 @@ function ElementLiteralSurfacePreview({
     return (
         <div className="relative flex h-[72px] w-full items-center justify-center overflow-hidden rounded-sm bg-surface-sunken">
             <div
-                className="relative overflow-hidden rounded-[3px] border border-edge shadow-sm"
+                className="relative overflow-hidden rounded-sm border border-edge shadow-sm"
                 style={{
                     width: frameWidth,
                     height: frameHeight,
@@ -473,6 +481,9 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
     const revision = useBlueprintDocumentRevision();
+    // The canvas and its cards carry their own clamp (`BlueprintFlowCanvas`, `BlueprintFlowNode`);
+    // what is left in this file is the keyboard, the empty state and one on-open normalisation.
+    const freeze = useFreezeGuard();
 
     if (!isInitialized || !context || !payload?.blueprintId) {
         return (
@@ -498,10 +509,31 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     const nodeCatalog = context.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
     const runtimeBridge = context.services.get<UIRuntimeBridgeService>(Services.RuntimeBridge);
     const storyService = context.services.get<StoryService>(Services.Story);
+    const characterService = context.services.get<CharacterService>(Services.Character);
+    const variableRegistry = context.services.get<VariableRegistryService>(Services.VariableRegistry);
+    const audioTrackService = context.services.get<AudioTrackService>(Services.AudioTracks);
+    // Persistent variables live in the M-VAR registry; its edits do not bump the blueprint revision.
+    const [registryRevision, setRegistryRevision] = useState(0);
+    useEffect(() => variableRegistry.onRegistryChanged(() => setRegistryRevision(r => r + 1)), [variableRegistry]);
+    // Audio tracks are a project document of their own, so renaming or adding one has to reach the
+    // `Play Sound` picker without anything touching the blueprint.
+    const [audioTrackRevision, setAudioTrackRevision] = useState(0);
+    useEffect(
+        () => audioTrackService.onTracksChanged(() => setAudioTrackRevision(r => r + 1)),
+        [audioTrackService],
+    );
     const [uiDocumentRevision, setUiDocumentRevision] = useState(() => uidoc.getRevision());
     const [storyDocumentsById, setStoryDocumentsById] = useState<Record<string, StoryDocument>>({});
     const [storyLibraryRevision, setStoryLibraryRevision] = useState(0);
     const [dynamicSelectOptionsRevision, setDynamicSelectOptionsRevision] = useState(0);
+    // The `characters` source is reactive: renaming or deleting a character while a blueprint tab is
+    // open has to be visible in the picker, otherwise a stale list is the only evidence the author
+    // ever sees that the reference they are about to pick no longer exists.
+    const [characterLibraryRevision, setCharacterLibraryRevision] = useState(0);
+    useEffect(
+        () => characterService.subscribe(() => setCharacterLibraryRevision(value => value + 1)),
+        [characterService],
+    );
     const [memberPanelState, setMemberPanelState] = useState<BlueprintEditorMemberPanelState>(() =>
         normalizeBlueprintEditorMemberPanelState(
             panelStateService.getPanelState<Partial<BlueprintEditorMemberPanelState>>(
@@ -576,13 +608,15 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     );
 
     const editor = useBlueprintEditorState(payload, { eventIds, functionIds });
-    const diagnostics = useBlueprintDiagnostics(doc, payload.blueprintId, revision, {
+    const diagnostics = useBlueprintDiagnostics(doc, payload.blueprintId, revision + registryRevision, {
         widgetElement,
         widgetSurfaceId: payload.surfaceId,
         widgetBlueprintEvents: widgetLogicEvents,
         isComponentDefinitionGraph,
+        persistentVariables: localBp.listPersistentVariables(),
     });
     const openBlueprint = useOpenBlueprintTarget();
+    const dragConnectCreate = useBlueprintDragConnectSettings();
     const focusBlueprintEditor = useCallback(() => {
         uiService.focus.setFocus(FocusArea.Editor, tabId);
     }, [tabId, uiService]);
@@ -734,6 +768,10 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         editor.setSelectedNodeIds(pasted.newNodeIds);
     }, [commitIr, editor, uuid, payload.blueprintId]);
 
+    // A keystroke has no button to grey out, so `freeze.run` is how these are refused: undo, redo,
+    // cut and paste all rewrite the graph, and on a frozen project they moved nodes about on screen
+    // and threw the result away on thaw - a graph that visibly edits itself and then does not.
+    // Copy is left alone: it only fills the clipboard, which is the author's, not the project's.
     const blueprintKeybindings = useMemo(
         () => [
             // `mod` resolves to ⌘/Ctrl per platform, replacing the ctrl/meta twin
@@ -741,20 +779,20 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             {
                 id: "undo",
                 key: "mod+z",
-                handler: () => {
+                handler: freeze.run(() => {
                     if (!isTypingInField()) {
                         localBp.undoBlueprint(payload.blueprintId);
                     }
-                },
+                }),
             },
             {
                 id: "redo",
                 key: "mod+shift+z",
-                handler: () => {
+                handler: freeze.run(() => {
                     if (!isTypingInField()) {
                         localBp.redoBlueprint(payload.blueprintId);
                     }
-                },
+                }),
             },
             {
                 id: "copy",
@@ -764,17 +802,18 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             {
                 id: "cut",
                 key: "mod+x",
-                handler: cutSelectedGraphNodes,
+                handler: freeze.run(cutSelectedGraphNodes),
             },
             {
                 id: "paste",
                 key: "mod+v",
-                handler: pasteGraphNodes,
+                handler: freeze.run(pasteGraphNodes),
             },
         ],
         [
             copySelectedGraphNodes,
             cutSelectedGraphNodes,
+            freeze,
             localBp,
             pasteGraphNodes,
             payload.blueprintId,
@@ -847,6 +886,68 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 // Mutate `draft` in place — `ensureBlueprintGraphIr(draft)` returns a new object, so assigning
                 // to that copy would not update the IR reference held by LocalBlueprintService.
                 draft.nodes = { ...(draft.nodes ?? {}), [node.id]: node };
+                if (entry.magicElementRef) {
+                    draft.edges = applyBlueprintIrConnection(draft, {
+                        source: entry.magicElementRef.sourceNodeId,
+                        sourceHandle: entry.magicElementRef.sourcePortId,
+                        target: node.id,
+                        targetHandle: entry.magicElementRef.targetPortId,
+                    });
+                }
+            };
+            if (editor.graphView.kind === "event") {
+                localBp.updateEventGraphIr(payload.blueprintId, editor.graphView.graphId, mut);
+            } else {
+                localBp.updateFunctionGraphIr(payload.blueprintId, editor.graphView.graphId, mut);
+            }
+            return id;
+        },
+        [editor.graphView, localBp, payload.blueprintId, uuid],
+    );
+
+    const onAddGraphNodeAtFlowPositionAndConnect = useCallback(
+        (
+            entry: BlueprintNodeEditorCatalogEntry,
+            flowPosition: { x: number; y: number },
+            connect: {
+                existingNodeId: string;
+                existingHandleId: string;
+                existingHandleType: "source" | "target";
+                newNodePinId: string;
+            },
+        ): string | undefined => {
+            if (!editor.graphView) {
+                return undefined;
+            }
+            const id = uuid.generate();
+            const node = createGraphNodeForPalette(entry.type, id);
+            if (entry.magicElementRef) {
+                node.params = {
+                    ...(node.params ?? {}),
+                    [BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN]: true,
+                };
+            }
+            writeNodeEditorLayout(node, flowPosition);
+            const mut = (draft: BlueprintGraphIr) => {
+                draft.nodes = { ...(draft.nodes ?? {}), [node.id]: node };
+                // Wire the dragged pin to the new node. The dragged pin's direction decides which
+                // end of the edge the new node is: an output pin feeds the new node's input, an
+                // input pin is fed by the new node's output.
+                const wiring =
+                    connect.existingHandleType === "source"
+                        ? {
+                              source: connect.existingNodeId,
+                              sourceHandle: connect.existingHandleId,
+                              target: node.id,
+                              targetHandle: connect.newNodePinId,
+                          }
+                        : {
+                              source: node.id,
+                              sourceHandle: connect.newNodePinId,
+                              target: connect.existingNodeId,
+                              targetHandle: connect.existingHandleId,
+                          };
+                draft.edges = applyBlueprintIrConnection(draft, wiring);
                 if (entry.magicElementRef) {
                     draft.edges = applyBlueprintIrConnection(draft, {
                         source: entry.magicElementRef.sourceNodeId,
@@ -1249,7 +1350,33 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         }
         const currentDocument = blueprintDocumentService.getDocument();
         const out: Record<string, Record<string, BlueprintInspectorParamSelectOption[]>> = {};
+        // Built lazily: most graphs have no Get Character node, and listing the cast per projection
+        // would be pure cost for them.
+        let characterOptions: BlueprintInspectorParamSelectOption[] | null = null;
         for (const node of Object.values(activeIr.nodes ?? {})) {
+            if (node.type === BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER) {
+                const pickedId = String(node.params?.characterId ?? "").trim();
+                if (!pickedId) {
+                    continue;
+                }
+                characterOptions ??= characterService.listCharacter().map(character => ({
+                    value: character.profile.getId(),
+                    label: character.profile.getName().trim() || t("blueprint.options.unnamedCharacter"),
+                }));
+                if (characterOptions.some(option => option.value === pickedId)) {
+                    continue;
+                }
+                // The character this node points at is gone. Append a stand-in so the picker keeps
+                // showing the dangling id: without it the `<select>` falls back to the empty option
+                // and a deleted reference looks exactly like one that was never set.
+                out[node.id] = {
+                    characters: [
+                        ...characterOptions,
+                        { value: pickedId, label: t("blueprint.options.missingCharacter", { id: pickedId }) },
+                    ],
+                };
+                continue;
+            }
             if (
                 node.type !== BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE &&
                 node.type !== BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE
@@ -1267,7 +1394,17 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             };
         }
         return out;
-    }, [blueprintDocumentService, bp.owner, editor.graphView, ir, revision, uiDocumentRevision]);
+    }, [
+        blueprintDocumentService,
+        bp.owner,
+        characterService,
+        characterLibraryRevision,
+        editor.graphView,
+        ir,
+        revision,
+        t,
+        uiDocumentRevision,
+    ]);
 
     const contextTitle = useMemo(
         () =>
@@ -1296,15 +1433,14 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     }, [doc, revision, payload.blueprintId, payload.surfaceId]);
 
     const blueprintPersistentVariables = useMemo(() => {
-        return Object.values(doc.persistentVariables ?? {})
-            .sort((a, b) => a.name.localeCompare(b.name))
+        return localBp.listPersistentVariables()
             .map(variable => ({
                 id: variable.id,
                 name: variable.name,
                 value: variable.id,
                 valueType: variable.valueType,
             }));
-    }, [doc, revision]);
+    }, [localBp, registryRevision]);
 
     const blueprintMembersSig = useMemo(
         () =>
@@ -1328,37 +1464,45 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         const storyOptions: BlueprintInspectorParamSelectOption[] = storyEntries
             .map(story => ({ value: story.id, label: story.name || t("blueprint.options.untitledStory") }));
         const storySceneOptions: BlueprintInspectorParamSelectOption[] = [];
+        // The `Is Option Picked` picker. Author order, same as the scene list above, and labelled
+        // "<scene> / <option text>": an option's own text is rarely unique across a story ("Yes."
+        // appears everywhere), so the scene it belongs to is what makes the row identifiable. The
+        // VALUE is the option row's block id - a rewrite of the text must not invalidate a graph
+        // that already points at it, which is the same reason the scene picker stores scene ids.
+        const storyChoiceOptions: BlueprintInspectorParamSelectOption[] = [];
         for (const story of storyEntries) {
             const storyDocument = storyDocumentsById[story.id];
             if (!storyDocument) {
                 continue;
             }
-            const orderedSceneIds: string[] = [];
-            const seenSceneIds = new Set<string>();
-            for (const chapter of storyDocument.chapters) {
-                for (const sceneId of chapter.sceneIds) {
-                    if (!seenSceneIds.has(sceneId) && storyDocument.scenes[sceneId]) {
-                        seenSceneIds.add(sceneId);
-                        orderedSceneIds.push(sceneId);
-                    }
-                }
-            }
-            for (const sceneId of Object.keys(storyDocument.scenes).sort()) {
-                if (!seenSceneIds.has(sceneId)) {
-                    seenSceneIds.add(sceneId);
-                    orderedSceneIds.push(sceneId);
-                }
-            }
-            for (const sceneId of orderedSceneIds) {
+            // This used to compose chapters itself and then `.sort()` the leftovers, because key
+            // order could not be trusted to be stable. Sorting UUIDs is stable but it is not the
+            // author's order; `unassignedSceneIds` now carries that, so the picker can show it.
+            for (const sceneId of listSceneIdsInDocumentOrder(storyDocument)) {
                 const scene = storyDocument.scenes[sceneId];
                 if (!scene) {
                     continue;
                 }
+                const sceneLabel = scene.name || scene.runtimeName || t("blueprint.options.untitledScene");
                 storySceneOptions.push({
                     value: scene.id,
-                    label: scene.name || scene.runtimeName || t("blueprint.options.untitledScene"),
+                    label: sceneLabel,
                     meta: { storyId: story.id },
                 });
+                // Block order within the scene, not `rootBlockIds` order: an option is a child of a
+                // choice row, so a document-order walk would have to descend anyway, and the block
+                // table is already the flat form of that.
+                for (const block of Object.values(scene.blocks)) {
+                    if (block?.kind !== "nodeAction" || block.payload.action !== "choiceOption") {
+                        continue;
+                    }
+                    const optionText = block.payload.text.value.trim();
+                    storyChoiceOptions.push({
+                        value: block.id,
+                        label: `${sceneLabel} / ${optionText || t("blueprint.options.untitledChoiceOption")}`,
+                        meta: { storyId: story.id },
+                    });
+                }
             }
         }
         // Named localization keys: pick by source text, key name as context.
@@ -1374,11 +1518,26 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         } catch {
             // Outside a workspace context; no key options.
         }
+        // The project's cast, for `Get Character`. Ids, not names: a rename must not invalidate a
+        // graph that already points at the character.
+        const characterOptions: BlueprintInspectorParamSelectOption[] = characterService
+            .listCharacter()
+            .map(character => ({
+                value: character.profile.getId(),
+                label: character.profile.getName().trim() || t("blueprint.options.unnamedCharacter"),
+            }));
         const opts: Record<string, BlueprintInspectorParamSelectOption[]> = {
             surfaces: surfaceOptions,
             stories: storyOptions,
             storyScenes: storySceneOptions,
+            storyChoiceOptions,
+            characters: characterOptions,
             localizationKeys: localizationKeyOptions,
+            // The `Play Sound` Track picker. Author order, built-ins first - the same order the
+            // project Audio surface shows, so the first row here is the one an author looks for.
+            [BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE]: audioTrackService
+                .listTracks()
+                .map(track => ({ value: track.id, label: track.name })),
             callableFns: listCallableBlueprintFnOptions({
                 blueprintDocument: doc,
                 uiDocument,
@@ -1417,6 +1576,10 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         storyService,
         storyDocumentsById,
         storyLibraryRevision,
+        characterService,
+        characterLibraryRevision,
+        audioTrackService,
+        audioTrackRevision,
         nodeCatalog,
         dynamicSelectOptionsRevision,
         doc,
@@ -1439,7 +1602,15 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     // Heal stale Call Fn signature snapshots when this blueprint is opened. Cross-blueprint
     // signature changes are pull-based: same-graph edits sync on commit, other graphs are
     // covered by the fn.call_signature_stale diagnostic until reopened or re-picked.
+    //
+    // Deferred, not refused, while the workspace is frozen: nobody asked for this write, so merely
+    // opening a blueprint on a frozen project raised "Nothing is being saved right now" about the
+    // editor's own bookkeeping. `frozen` is an input of the effect, so the heal runs the moment the
+    // workspace is writable again - sound because whatever snapshot was stale still is.
     useEffect(() => {
+        if (!isDeferredWriteAllowed(freeze.frozen)) {
+            return;
+        }
         const currentDoc = localBp.getBlueprintDocument();
         const currentBp = currentDoc.blueprints[payload.blueprintId];
         if (!currentBp || currentBp.program.kind !== "graph") {
@@ -1477,7 +1648,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 }
             });
         }
-    }, [localBp, payload.blueprintId]);
+    }, [freeze.frozen, localBp, payload.blueprintId]);
 
     const [memberPanelFocusContained, setMemberPanelFocusContained] = useState(false);
 
@@ -1592,6 +1763,8 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                         onSelectNodeIds={editor.setSelectedNodeIds}
                         onCommitIr={commitIr}
                         onAddNodeAtFlowPosition={onAddGraphNodeAtFlowPosition}
+                        dragConnectCreate={dragConnectCreate}
+                        onAddNodeAtFlowPositionAndConnect={onAddGraphNodeAtFlowPositionAndConnect}
                         paletteContext={paletteContext}
                         deleteKeyCode={memberPanelFocusContained ? null : undefined}
                         dynamicSelectOptions={dynamicSelectOptions}
@@ -1611,8 +1784,12 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 px-4 py-8">
                 <button
                     type="button"
-                    className="rounded-md border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20"
+                    className="rounded-md border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-primary/10"
                     onClick={onAddEvent}
+                    // Declaring a layer writes the blueprint, the same as the member panel's New
+                    // button beside it - which was already refused while this one was not, so an
+                    // empty frozen blueprint offered a layer it could not keep.
+                    {...freeze.writes()}
                 >
                     {t("blueprint.canvas.addLayer")}
                 </button>

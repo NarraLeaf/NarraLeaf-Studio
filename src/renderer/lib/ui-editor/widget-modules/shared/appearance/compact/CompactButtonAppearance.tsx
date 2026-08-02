@@ -325,7 +325,7 @@ export function CompactButtonAppearance({
                         type="checkbox"
                         checked={Boolean(getSpacing("clipContent"))}
                         onChange={e => patchSpacing("clipContent", e.target.checked)}
-                        className="rounded border-edge-strong"
+                        className="rounded-sm border-edge-strong"
                     />
                     {t("widgetAppearance.spacing.clipContent")}
                 </label>

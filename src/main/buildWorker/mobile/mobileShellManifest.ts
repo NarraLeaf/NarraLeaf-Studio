@@ -31,11 +31,17 @@ export type MobileShellOrientation = "landscape" | "portrait" | "auto";
  * `backgroundColor` is the pre-boot background - the same value the web shell's
  * entry document paints, so the native window, the document and the game agree
  * on the first frame instead of flashing white.
+ *
+ * `contentKey` is the opaque token the shell hands to its decoder; it is present
+ * only when the payload was protected at repack time, and absent for a plain
+ * build. One shell template serves both. The field is optional, so a shell that
+ * predates it simply ignores it — the schema version does not change.
  */
 export type MobileShellConfigV1 = {
     schemaVersion: number;
     orientation: MobileShellOrientation;
     backgroundColor: string;
+    contentKey?: string;
 };
 
 export type ShellPlaceholderIdentity = {

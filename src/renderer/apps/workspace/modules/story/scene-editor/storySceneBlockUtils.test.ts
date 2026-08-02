@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
-import { buildVisibleRows, getContainerHeaderInfo, isContainerBlock, nextSelectionAfterDelete } from "./storySceneBlockUtils";
+import { deleteBlockFromScene, insertBlockInScene } from "@/lib/workspace/services/story/storyModel";
+import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isNarrativeRow, isReadableAccentColor, nextSelectionAfterDelete, planRowBackspaceReplacement } from "./storySceneBlockUtils";
+import type { VisibleStoryRow } from "./storySceneEditorTypes";
 
 function control(payload: Extract<StoryBlock, { kind: "control" }>["payload"]): StoryBlock {
     return { id: "b", kind: "control", parentId: null, childrenIds: [], payload };
@@ -8,6 +10,14 @@ function control(payload: Extract<StoryBlock, { kind: "control" }>["payload"]): 
 
 function nodeAction(payload: Extract<StoryBlock, { kind: "nodeAction" }>["payload"]): StoryBlock {
     return { id: "b", kind: "nodeAction", parentId: null, childrenIds: [], payload };
+}
+
+function dialogue(id: string, speaker: { characterId?: string; speakerName?: string } = {}): StoryBlock {
+    return { id, kind: "nodeAction", parentId: null, childrenIds: [], payload: { action: "dialogue", ...speaker, text: { textId: `${id}-t`, role: "dialogue", value: id } } };
+}
+
+function characterAction(id: string, payload: Extract<StoryBlock, { kind: "action" }>["payload"]): StoryBlock {
+    return { id, kind: "action", parentId: null, childrenIds: [], payload };
 }
 
 function narration(id: string, parentId: string | null = null, childrenIds: string[] = []): StoryBlock {
@@ -101,5 +111,326 @@ describe("nextSelectionAfterDelete", () => {
         const rows = buildVisibleRows(nested, new Set());
         // grp is first and g1 is its (also-deleted) descendant, so the survivor is `after`.
         expect(nextSelectionAfterDelete(nested, rows, ["grp"])).toBe("after");
+    });
+});
+
+/**
+ * The nesting connector needs the same fact the dialogue rail does — where the line it draws stops —
+ * and gets it from one lookahead over the flattened preorder list: a branch at level L ends at a row
+ * exactly when the next row sits at depth L or shallower.
+ */
+describe("annotateNestingBranches", () => {
+    const depthsAndNext = (rows: VisibleStoryRow[]) =>
+        annotateNestingBranches(rows).map(row => `${row.depth}->${row.nextRowDepth}`);
+
+    it("records the following row's depth, and 0 for the last row", () => {
+        const rows = [{ depth: 0 }, { depth: 1 }, { depth: 2 }, { depth: 1 }, { depth: 0 }] as VisibleStoryRow[];
+        expect(depthsAndNext(rows)).toEqual(["0->1", "1->2", "2->1", "1->0", "0->0"]);
+    });
+
+    it("leaves an empty list alone", () => {
+        expect(annotateNestingBranches([])).toEqual([]);
+    });
+});
+
+describe("annotateDialogueGroups", () => {
+    const rolesOf = (blocks: StoryBlock[]) =>
+        annotateDialogueGroups(buildVisibleRows(scene(blocks, blocks.map(b => b.id)), new Set())).map(row => row.groupRole);
+
+    it("marks the first same-speaker dialogue a head and the rest members", () => {
+        expect(rolesOf([dialogue("a", { characterId: "c1" }), dialogue("b", { characterId: "c1" }), dialogue("c", { characterId: "c1" })]))
+            .toEqual(["head", "member", "member"]);
+    });
+
+    it("starts a new group when the speaker changes", () => {
+        expect(rolesOf([dialogue("a", { characterId: "c1" }), dialogue("b", { characterId: "c2" })])).toEqual(["head", "head"]);
+    });
+
+    /**
+     * The connector is drawn per row but must read as one line, so every row of a run needs to know
+     * whether another member follows it: the last one is the only segment that ends, and therefore the
+     * only one that rounds and turns. Marking heads alone (the original rule) left the last member
+     * indistinguishable from the middle ones, so the line ran off the bottom of the run.
+     */
+    const continuesOf = (blocks: StoryBlock[]) =>
+        annotateDialogueGroups(buildVisibleRows(scene(blocks, blocks.map(b => b.id)), new Set())).map(row => row.groupContinues ?? false);
+
+    it("marks every row of a run except its last as continuing", () => {
+        expect(continuesOf([dialogue("a", { characterId: "c1" }), dialogue("b", { characterId: "c1" }), dialogue("c", { characterId: "c1" })]))
+            .toEqual([true, true, false]);
+    });
+
+    it("leaves a run of one, and the row after a run, with nothing to continue", () => {
+        expect(continuesOf([dialogue("a", { characterId: "c1" }), narration("n")])).toEqual([false, false]);
+    });
+
+    it("folds a same-character expression into the run without breaking it", () => {
+        expect(rolesOf([
+            dialogue("a", { characterId: "c1" }),
+            characterAction("x", { action: "character", operation: "expression", characterId: "c1" }),
+            dialogue("b", { characterId: "c1" }),
+        ])).toEqual(["head", "member", "member"]);
+    });
+
+    it("breaks the run on any other kind — a different-character expression, an enter, or narration", () => {
+        expect(rolesOf([
+            dialogue("a", { characterId: "c1" }),
+            characterAction("x", { action: "character", operation: "expression", characterId: "c2" }),
+            dialogue("b", { characterId: "c1" }),
+        ])).toEqual(["head", undefined, "head"]);
+        expect(rolesOf([
+            dialogue("a", { characterId: "c1" }),
+            characterAction("x", { action: "character", operation: "enter", characterId: "c1" }),
+            dialogue("b", { characterId: "c1" }),
+        ])).toEqual(["head", undefined, "head"]);
+        expect(rolesOf([dialogue("a", { characterId: "c1" }), narration("n"), dialogue("b", { characterId: "c1" })]))
+            .toEqual(["head", undefined, "head"]);
+    });
+
+    it("groups bare speakers by exact name, but never two unnamed rows", () => {
+        expect(rolesOf([dialogue("a", { speakerName: "Guard" }), dialogue("b", { speakerName: "Guard" })])).toEqual(["head", "member"]);
+        expect(rolesOf([dialogue("a", { speakerName: "Guard" }), dialogue("b", { speakerName: "Maid" })])).toEqual(["head", "head"]);
+        expect(rolesOf([dialogue("a"), dialogue("b")])).toEqual(["head", "head"]);
+    });
+
+    it("never groups a real character with a bare name, even when the names would print the same", () => {
+        // One row keys on `characterId`, the other on `speakerName`; they are different identities.
+        expect(rolesOf([dialogue("a", { characterId: "c1" }), dialogue("b", { speakerName: "c1" })])).toEqual(["head", "head"]);
+        expect(rolesOf([dialogue("a", { speakerName: "c1" }), dialogue("b", { characterId: "c1" })])).toEqual(["head", "head"]);
+    });
+
+    it("does not group across a container boundary — an option body's last line vs a same-speaker line outside", () => {
+        // Flattened order is [option, inside, outside]; adjacency in that list is not adjacency in the
+        // tree, so `inside` (parent=opt) must not merge with `outside` (parent=root) despite same speaker.
+        const opt: StoryBlock = { id: "opt", kind: "nodeAction", parentId: null, childrenIds: ["inside"], payload: { action: "choiceOption", text: { textId: "opt-t", role: "choiceText", value: "pick" } } };
+        const inside: StoryBlock = { id: "inside", kind: "nodeAction", parentId: "opt", childrenIds: [], payload: { action: "dialogue", characterId: "c1", text: { textId: "inside-t", role: "dialogue", value: "inside" } } };
+        const outside: StoryBlock = { id: "outside", kind: "nodeAction", parentId: null, childrenIds: [], payload: { action: "dialogue", characterId: "c1", text: { textId: "outside-t", role: "dialogue", value: "outside" } } };
+        const rows = annotateDialogueGroups(buildVisibleRows(scene([opt, inside, outside], ["opt", "outside"]), new Set()));
+        expect(rows.map(row => row.groupRole)).toEqual([undefined, "head", "head"]);
+    });
+});
+
+describe("filter then group", () => {
+    it("keeps original line numbers and groups the survivors that filtering made adjacent", () => {
+        // Pipeline mirrors the controller: buildVisibleRows -> narrative filter -> annotateDialogueGroups.
+        const blocks = [
+            dialogue("d1", { characterId: "c1" }),
+            characterAction("x", { action: "character", operation: "enter", characterId: "c1" }),
+            dialogue("d2", { characterId: "c1" }),
+        ];
+        const visible = buildVisibleRows(scene(blocks, blocks.map(b => b.id)), new Set());
+        const filtered = annotateDialogueGroups(visible.filter(row => isNarrativeRow(row.block)));
+        // The hidden `enter` (line 2) is dropped, but d1/d2 keep their original numbers — not renumbered.
+        expect(filtered.map(row => row.lineNumber)).toEqual([1, 3]);
+        // With the staging row gone, d1/d2 are adjacent and group.
+        expect(filtered.map(row => row.groupRole)).toEqual(["head", "member"]);
+    });
+});
+
+describe("isNarrativeRow", () => {
+    it("keeps narration, dialogue, choice, option and note; hides staging", () => {
+        expect(isNarrativeRow(narration("n"))).toBe(true);
+        expect(isNarrativeRow(dialogue("d", { characterId: "c1" }))).toBe(true);
+        expect(isNarrativeRow(nodeAction({ action: "choice" }))).toBe(true);
+        expect(isNarrativeRow(nodeAction({ action: "choiceOption", text: { textId: "t", role: "choiceText", value: "" } }))).toBe(true);
+        expect(isNarrativeRow({ id: "b", kind: "note", parentId: null, childrenIds: [], payload: { text: { textId: "t", role: "note", value: "" } } })).toBe(true);
+        // Staging kinds hide, including a character expression (an action).
+        expect(isNarrativeRow(characterAction("x", { action: "character", operation: "expression", characterId: "c1" }))).toBe(false);
+        expect(isNarrativeRow(control({ control: "condition" }))).toBe(false);
+        expect(isNarrativeRow({ id: "b", kind: "jump", parentId: null, childrenIds: [], payload: { targetSceneId: "s2" } })).toBe(false);
+    });
+});
+
+describe("buildVisibleRows disabled propagation", () => {
+    it("marks a disabled block and its whole subtree, leaving siblings enabled", () => {
+        const grp: StoryBlock = { id: "grp", kind: "control", parentId: null, childrenIds: ["c1"], disabled: true, payload: { control: "sequence", mode: "do" } };
+        const c1 = narration("c1", "grp");
+        const after = narration("after");
+        const rows = buildVisibleRows(scene([grp, c1, after], ["grp", "after"]), new Set());
+        expect(rows.map(row => [row.block.id, Boolean(row.disabled)])).toEqual([
+            ["grp", true],
+            ["c1", true],
+            ["after", false],
+        ]);
+    });
+});
+
+describe("isReadableAccentColor", () => {
+    it("keeps mid-range accents that clear both themes", () => {
+        expect(isReadableAccentColor("#40a8c4")).toBe(true);
+        expect(isReadableAccentColor("#3b82f6")).toBe(true);
+        expect(isReadableAccentColor("#808080")).toBe(true);
+        expect(isReadableAccentColor("#1a3a8f")).toBe(true);
+    });
+
+    it("rejects near-background extremes and unparseable values", () => {
+        expect(isReadableAccentColor("#000000")).toBe(false); // drowns on dark
+        expect(isReadableAccentColor("#ffffff")).toBe(false); // washes on light
+        expect(isReadableAccentColor("#ffff00")).toBe(false); // bright yellow, unreadable on light
+        expect(isReadableAccentColor("not-a-color")).toBe(false);
+    });
+});
+
+describe("buildDialogueAppearances", () => {
+    it("gives a dialogue its speaker's most recent enter/expression, resetting on exit", () => {
+        const blocks = [
+            characterAction("e", { action: "character", operation: "enter", characterId: "c1", pose: "casual", tags: { axis: "smile" } }),
+            dialogue("d1", { characterId: "c1" }),
+            characterAction("f", { action: "character", operation: "expression", characterId: "c1", tags: { axis: "angry" } }),
+            dialogue("d2", { characterId: "c1" }),
+            characterAction("x", { action: "character", operation: "exit", characterId: "c1" }),
+            dialogue("d3", { characterId: "c1" }),
+        ];
+        const map = buildDialogueAppearances(scene(blocks, blocks.map(b => b.id)));
+        expect(map.get("d1")).toMatchObject({ pose: "casual", tags: { axis: "smile" } });
+        expect(map.get("d2")).toMatchObject({ tags: { axis: "angry" } });
+        expect(map.has("d3")).toBe(false);
+    });
+
+    it("leaves a dialogue with no prior show unannotated", () => {
+        const blocks = [dialogue("d1", { characterId: "c1" })];
+        expect(buildDialogueAppearances(scene(blocks, blocks.map(b => b.id))).has("d1")).toBe(false);
+    });
+
+    it("tracks the placement (WI-3): an enter sets it and names its own block as the source", () => {
+        const blocks = [
+            characterAction("e", { action: "character", operation: "enter", characterId: "c1", transform: { preset: "left" } }),
+            dialogue("d1", { characterId: "c1" }),
+        ];
+        expect(buildDialogueAppearances(scene(blocks, blocks.map(b => b.id))).get("d1"))
+            .toMatchObject({ position: "left", positionSourceId: "e" });
+    });
+
+    it("a move relocates the placement and becomes the new source, keeping the form", () => {
+        const blocks = [
+            characterAction("e", { action: "character", operation: "enter", characterId: "c1", pose: "casual", transform: { preset: "left" } }),
+            dialogue("d1", { characterId: "c1" }),
+            characterAction("m", { action: "character", operation: "move", characterId: "c1", transform: { preset: "right" } }),
+            dialogue("d2", { characterId: "c1" }),
+        ];
+        const map = buildDialogueAppearances(scene(blocks, blocks.map(b => b.id)));
+        expect(map.get("d1")).toMatchObject({ position: "left", positionSourceId: "e" });
+        expect(map.get("d2")).toMatchObject({ position: "right", positionSourceId: "m", pose: "casual" });
+    });
+
+    it("an expression keeps the placement and its source untouched", () => {
+        const blocks = [
+            characterAction("e", { action: "character", operation: "enter", characterId: "c1", transform: { preset: "right" } }),
+            characterAction("f", { action: "character", operation: "expression", characterId: "c1", tags: { axis: "angry" } }),
+            dialogue("d1", { characterId: "c1" }),
+        ];
+        expect(buildDialogueAppearances(scene(blocks, blocks.map(b => b.id))).get("d1"))
+            .toMatchObject({ position: "right", positionSourceId: "e", tags: { axis: "angry" } });
+    });
+
+    it("marks an entered speaker shown, so its avatar still resolves", () => {
+        const blocks = [
+            characterAction("e", { action: "character", operation: "enter", characterId: "c1" }),
+            dialogue("d1", { characterId: "c1" }),
+        ];
+        expect(buildDialogueAppearances(scene(blocks, blocks.map(b => b.id))).get("d1")?.shown).toBe(true);
+    });
+
+    it("reads back a placement move on a never-shown speaker without inventing a shown avatar (WI-3 round-trip)", () => {
+        // The group-header dropdown authors this /move for a speaker with no /show; the scan must read it
+        // back so a second pick rewrites it rather than stacking a duplicate — but must not mark it shown.
+        const blocks = [
+            characterAction("m", { action: "character", operation: "move", characterId: "c1", transform: { preset: "left" } }),
+            dialogue("d1", { characterId: "c1" }),
+        ];
+        const appearance = buildDialogueAppearances(scene(blocks, blocks.map(b => b.id))).get("d1");
+        expect(appearance).toMatchObject({ position: "left", positionSourceId: "m" });
+        expect(appearance?.shown).toBeUndefined();
+    });
+
+    it("leaves the accumulated placement untouched for a move that carries no placement preset", () => {
+        const blocks = [
+            characterAction("e", { action: "character", operation: "enter", characterId: "c1", transform: { preset: "left" } }),
+            characterAction("m", { action: "character", operation: "move", characterId: "c1", transform: { durationMs: 300 } }),
+            dialogue("d1", { characterId: "c1" }),
+        ];
+        // The placement stays left (the enter's), and the enter stays its source — a coord-only move is
+        // not the row the dropdown edits.
+        expect(buildDialogueAppearances(scene(blocks, blocks.map(b => b.id))).get("d1"))
+            .toMatchObject({ position: "left", positionSourceId: "e" });
+    });
+});
+
+describe("planRowBackspaceReplacement", () => {
+    /** A leaf action row (`/show`-shaped) with a real parent link. */
+    function showRow(id: string, parentId: string | null = null): StoryBlock {
+        return { id, kind: "action", parentId, childrenIds: [], payload: { action: "character", operation: "enter", characterId: "c1" } };
+    }
+
+    it("plans an in-place replacement for a single selected leaf action row", () => {
+        const blocks = [narration("n1"), showRow("a1"), narration("n2")];
+        expect(planRowBackspaceReplacement(scene(blocks, ["n1", "a1", "n2"]), ["a1"]))
+            .toEqual({ replaceBlockId: "a1", target: { parentId: null, beforeBlockId: "a1" } });
+    });
+
+    it("keeps the row's parent and position, so the replacement lands where the row was", () => {
+        const container = { ...group("g", ["a1"]), childrenIds: ["a1"] };
+        const blocks = [container, showRow("a1", "g")];
+        expect(planRowBackspaceReplacement(scene(blocks, ["g"]), ["a1"]))
+            .toEqual({ replaceBlockId: "a1", target: { parentId: "g", beforeBlockId: "a1" } });
+    });
+
+    it("declines a multi-row selection - Backspace there stays a bulk delete", () => {
+        const blocks = [showRow("a1"), showRow("a2")];
+        expect(planRowBackspaceReplacement(scene(blocks, ["a1", "a2"]), ["a1", "a2"])).toBeNull();
+        expect(planRowBackspaceReplacement(scene(blocks, ["a1", "a2"]), [])).toBeNull();
+    });
+
+    it("declines a container that holds children - the subtree would go with it", () => {
+        const blocks = [group("g", ["a1"]), showRow("a1", "g")];
+        expect(planRowBackspaceReplacement(scene(blocks, ["g"]), ["g"])).toBeNull();
+    });
+
+    it("treats a childless container as a leaf", () => {
+        const blocks = [group("g", [])];
+        expect(planRowBackspaceReplacement(scene(blocks, ["g"]), ["g"]))
+            .toMatchObject({ replaceBlockId: "g" });
+    });
+
+    it("declines text rows - they already own the empty-line ladder", () => {
+        const blocks = [narration("n1"), dialogue("d1")];
+        expect(planRowBackspaceReplacement(scene(blocks, ["n1", "d1"]), ["n1"])).toBeNull();
+        expect(planRowBackspaceReplacement(scene(blocks, ["n1", "d1"]), ["d1"])).toBeNull();
+    });
+
+    it("declines structural children - a narration line inside a condition is not a legal tree", () => {
+        const condition: StoryBlock = { id: "c", kind: "control", parentId: null, childrenIds: ["b"], payload: { control: "condition" } };
+        const branch: StoryBlock = { id: "b", kind: "control", parentId: "c", childrenIds: [], payload: { control: "conditionBranch", branch: "if" } };
+        expect(planRowBackspaceReplacement(scene([condition, branch], ["c"]), ["b"])).toBeNull();
+    });
+
+    it("declines a row that is gone", () => {
+        expect(planRowBackspaceReplacement(scene([], []), ["missing"])).toBeNull();
+    });
+
+    it("replaces rather than deletes: applying the plan keeps the row count and the position, and one undo restores the whole pre-edit scene", () => {
+        const blocks = [narration("n1"), showRow("a1"), narration("n2")];
+        const live = scene(blocks.map(block => structuredClone(block)), ["n1", "a1", "n2"]);
+        // Covers the two model mutations and the shape the undo restores. It does NOT run the real
+        // history stack (`recordHistory` / `restoreHistoryState` live in the React controller and
+        // `replaceScene` needs a live document); the clones below stand in for them, matching the
+        // JSON round-trip both `cloneScene` implementations use - so a value that does not survive
+        // serialization does not survive here either.
+        const snapshot = JSON.parse(JSON.stringify(live)) as StoryScene;
+
+        const plan = planRowBackspaceReplacement(live, ["a1"]);
+        expect(plan).not.toBeNull();
+        // What the controller does under one history entry: insert first, then drop the original.
+        insertBlockInScene(live, narration("blank"), plan!.target);
+        deleteBlockFromScene(live, plan!.replaceBlockId);
+
+        expect(live.rootBlockIds).toEqual(["n1", "blank", "n2"]);
+        expect(Object.keys(live.blocks)).toHaveLength(3);
+        expect(live.blocks.a1).toBeUndefined();
+        // A single undo reinstates the scene entire - row order, block set and payloads - and carries
+        // no trace of the replacement: the mutations must not have reached into the recorded state.
+        const restored = JSON.parse(JSON.stringify(snapshot)) as StoryScene;
+        expect(restored.blocks.blank).toBeUndefined();
+        expect(restored).toEqual(scene(blocks, ["n1", "a1", "n2"]));
     });
 });

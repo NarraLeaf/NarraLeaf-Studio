@@ -1,3 +1,6 @@
+import fs from "fs/promises";
+import os from "os";
+import path from "path";
 import { dialog } from "electron";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
@@ -9,9 +12,12 @@ import type {
     RuntimePluginDescriptor,
     WorkspacePluginDescriptor,
 } from "@shared/types/plugins";
+import type { PluginRegistryFetchResult } from "@shared/types/pluginRegistry";
 import type { LocaleContribution } from "@shared/i18n";
+import { downloadAndExtract, fetchRegistryIndex, resolveRegistryUrl } from "../../pluginRegistryClient";
 import { WindowAppType, WindowCloseResults } from "@shared/types/window";
 import { resolveDependencies } from "@shared/utils/resolveDependencies";
+import { satisfiesRange } from "@shared/utils/semver";
 import { readProjectConfigFromDir } from "../../../utils/projectConfigFile";
 import { readPublishedPluginData } from "../../pluginRuntimeData";
 import { authorizeActorCapabilityRequest } from "../actorAuthorization";
@@ -263,5 +269,100 @@ export class PluginReportLoadErrorHandler extends IPCHandler<IPCEventType.plugin
             return this.failed("Plugin load errors can only be reported by workspace windows");
         }
         return this.tryUse(() => window.app.pluginManager.reportLoadError(data.pluginId, data.error));
+    }
+}
+
+export class PluginRegistryFetchHandler extends IPCHandler<IPCEventType.pluginRegistryFetch> {
+    readonly name = IPCEventType.pluginRegistryFetch;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<PluginRegistryFetchResult>> {
+        const denied = ensurePluginInstallCapability(window);
+        if (denied) return denied;
+
+        const registryUrl = resolveRegistryUrl(window.app.getGlobalState().get("plugins.registryUrl"));
+        // Refresh means the whole store, thumbnails included: an icon that was
+        // unreachable last time gets another chance. Ones already on disk stay
+        // there — they are keyed by version, so they cannot be stale.
+        window.app.pluginIconCache.clearFailures();
+        return this.tryUse(async () => ({
+            registryUrl,
+            index: await fetchRegistryIndex(registryUrl),
+        }));
+    }
+}
+
+export class PluginRegistryIconHandler extends IPCHandler<IPCEventType.pluginRegistryIcon> {
+    readonly name = IPCEventType.pluginRegistryIcon;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        data: IPCEvents[IPCEventType.pluginRegistryIcon]["data"],
+    ): Promise<RequestStatus<{ icon: string | null }>> {
+        const denied = ensurePluginInstallCapability(window);
+        if (denied) return denied;
+
+        // Same shape as the install handler: the renderer names a plugin, and
+        // the address is taken from the index main trusts. It never supplies one.
+        const registryUrl = resolveRegistryUrl(window.app.getGlobalState().get("plugins.registryUrl"));
+        return this.tryUse(async () => ({
+            icon: await window.app.pluginIconCache.resolve(registryUrl, data.pluginId),
+        }));
+    }
+}
+
+export class PluginInstallFromRegistryHandler extends IPCHandler<IPCEventType.pluginInstallFromRegistry> {
+    readonly name = IPCEventType.pluginInstallFromRegistry;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        data: IPCEvents[IPCEventType.pluginInstallFromRegistry]["data"],
+    ): Promise<RequestStatus<PluginInstallResult>> {
+        const denied = ensurePluginInstallCapability(window);
+        if (denied) return denied;
+
+        // Re-fetch the index and match the id here so the download URL is the one
+        // the trusted registry carries, never an address supplied by the renderer.
+        const registryUrl = resolveRegistryUrl(window.app.getGlobalState().get("plugins.registryUrl"));
+        const installed = await this.tryUse(async () => {
+            const index = await fetchRegistryIndex(registryUrl);
+            const entry = index.plugins.find(plugin => plugin.id === data.pluginId);
+            if (!entry) {
+                throw new Error(`Plugin is not in the registry: ${data.pluginId}`);
+            }
+            // The store UI already hides the button, but the range is enforced
+            // here too: this handler is the trust boundary, and an incompatible
+            // plugin that installs and then throws at load is far harder to
+            // diagnose than one that refuses up front.
+            const studioVersion = window.app.getAppInfo().version;
+            if (!satisfiesRange(studioVersion, entry.studioVersion)) {
+                throw new Error(
+                    `${entry.name} requires Studio ${entry.studioVersion} (this is ${studioVersion})`,
+                );
+            }
+            const tempDir = path.join(
+                os.tmpdir(),
+                `nls-plugin-install-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            );
+            try {
+                const manifestDir = await downloadAndExtract(entry, tempDir);
+                return await window.app.pluginManager.installFromDirectory(manifestDir, {
+                    kind: "registry",
+                    url: entry.release.download,
+                });
+            } finally {
+                await fs.rm(tempDir, { recursive: true, force: true });
+            }
+        });
+        if (installed.success && !installed.data.canceled) {
+            void window.app.refreshPluginLocales();
+            // The version moved, so a thumbnail cached against the old one is
+            // stale — and the installed package now carries its own icon anyway.
+            // Dropping it here doubles as the retry for one that failed to fetch.
+            void window.app.pluginIconCache.invalidate(data.pluginId);
+        }
+        return installed;
     }
 }

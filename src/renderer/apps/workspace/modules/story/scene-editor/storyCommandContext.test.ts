@@ -28,6 +28,7 @@ describe("buildStoryCommandContext - stage objects", () => {
             b3: { action: "layer", operation: "create", objectName: "fx" },
             b4: { action: "video", operation: "create", objectName: "clip", assetId: "vid-1" },
             b5: { action: "audio", operation: "playSound", objectName: "music", assetId: "aud-1" },
+            b6: { action: "vfx", operation: "create", objectName: "rain", assetId: "vid-2" },
         });
 
         const context = buildStoryCommandContext({
@@ -38,17 +39,19 @@ describe("buildStoryCommandContext - stage objects", () => {
             scene: document.scenes["scene-1"],
         });
 
-        // This is what makes `/imgshow`, `/settext`, `/vidshow`, `/stop` a pick rather than a guess -
-        // image/text/layer via the shared displayable collector, video/audio scanned off the scene.
+        // This is what makes `/show`, `/swap`, `/stop` a pick rather than a guess - image/text/layer
+        // via the shared displayable collector; video, audio and vfx are scanned off the scene, since
+        // none of the three is a Displayable and the shared collector does not know them.
         expect(context.stageObjects.image).toEqual(["hero"]);
         expect(context.stageObjects.text).toEqual(["title"]);
         expect(context.stageObjects.layer).toEqual(["fx"]);
         expect(context.stageObjects.video).toEqual(["clip"]);
         expect(context.stageObjects.audio).toEqual(["music"]);
+        expect(context.stageObjects.vfx).toEqual(["rain"]);
     });
 
     it("is empty, not undefined, when there is no scene", () => {
         const context = buildStoryCommandContext({ assets: undefined, characters: [], document: null, sceneId: null, scene: null });
-        expect(context.stageObjects).toEqual({ image: [], text: [], layer: [], video: [], audio: [] });
+        expect(context.stageObjects).toEqual({ image: [], text: [], layer: [], video: [], audio: [], vfx: [] });
     });
 });

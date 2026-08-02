@@ -13,6 +13,7 @@ import type {
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { useTranslation, type UseTranslation } from "@/lib/i18n";
+import { useFreezeGuard } from "../../components/ui/freezeGuard";
 import { PropertyEditor, createPropertyEditorSchema, defineField } from "../properties/framework";
 import type { FieldDefinition, PropertyEditorSchema } from "../properties/framework/types";
 import {
@@ -372,6 +373,13 @@ const BEZIER_Y_MIN = -0.5;
 const BEZIER_Y_MAX = 1.5;
 
 function StoryMotionBezierEditor(props: { easing: string; onChange: (easing: string) => void }) {
+    // Dragging a handle rewrites the keyframe's easing on every pointer move. The read-only clamp
+    // the properties framework puts around a field is a `disabled` fieldset, and that reaches form
+    // controls only - an SVG circle is not one, so on a frozen project the curve could still be
+    // dragged into a new shape that was discarded on thaw. The gesture goes away entirely rather
+    // than half-attaching: a handle that picks up and refuses to move reads as a broken editor -
+    // and the grab cursor goes with it, since it is the handle's only promise that it can be moved.
+    const freeze = useFreezeGuard();
     const svgRef = useRef<SVGSVGElement | null>(null);
     const points = useMemo<[number, number, number, number]>(() => {
         const parsed = parseStoryEasing(props.easing);
@@ -411,7 +419,7 @@ function StoryMotionBezierEditor(props: { easing: string; onChange: (easing: str
             <svg
                 ref={svgRef}
                 viewBox={`0 0 ${BEZIER_VIEW_SIZE} ${BEZIER_VIEW_SIZE}`}
-                className="w-full touch-none rounded border border-edge bg-fill-subtle"
+                className="w-full touch-none rounded-md border border-edge bg-fill-subtle"
             >
                 <rect x={0} y={toY(1)} width={BEZIER_VIEW_SIZE} height={toY(0) - toY(1)} style={{ fill: "var(--nl-fill-subtle)" }} />
                 <line x1={0} y1={toY(0)} x2={BEZIER_VIEW_SIZE} y2={toY(0)} style={{ stroke: "var(--nl-edge)" }} strokeWidth={1} />
@@ -430,8 +438,8 @@ function StoryMotionBezierEditor(props: { easing: string; onChange: (easing: str
                     r={5}
                     fill="#1f9eff"
                     style={{ stroke: "rgb(var(--nl-fg) / 0.8)" }}
-                    className="cursor-grab"
-                    onPointerDown={event => startHandleDrag(event, 0)}
+                    className={freeze.frozen ? undefined : "cursor-grab"}
+                    onPointerDown={freeze.gesture((event: ReactPointerEvent<SVGCircleElement>) => startHandleDrag(event, 0))}
                 />
                 <circle
                     cx={toX(points[2])}
@@ -439,8 +447,8 @@ function StoryMotionBezierEditor(props: { easing: string; onChange: (easing: str
                     r={5}
                     fill="#1f9eff"
                     style={{ stroke: "rgb(var(--nl-fg) / 0.8)" }}
-                    className="cursor-grab"
-                    onPointerDown={event => startHandleDrag(event, 1)}
+                    className={freeze.frozen ? undefined : "cursor-grab"}
+                    onPointerDown={freeze.gesture((event: ReactPointerEvent<SVGCircleElement>) => startHandleDrag(event, 1))}
                 />
             </svg>
             <div className="text-center text-2xs tabular-nums text-fg-subtle">{formatStoryBezierEasing(points)}</div>

@@ -10,20 +10,12 @@ type HeadThumbnailProps = {
     className?: string;
     /** Size of the placeholder icon shown when there is no image. */
     iconClassName?: string;
+    /**
+     * Explicit framing rect (normalized 0–1). When provided, it is used verbatim and the automatic
+     * head-crop detection is skipped — this is how an author-chosen portrait selection frames the image.
+     */
+    frame?: NormalizedCrop;
 };
-
-/**
- * `undefined` while the head is still being located, `null` once the image is
- * known to have no findable head — see `headCrop`.
- */
-type CropState = {
-    url: string | null | undefined;
-    crop: NormalizedCrop | null | undefined;
-};
-
-function readCache(url: string | null | undefined): CropState {
-    return { url, crop: url ? peekHeadCrop(url) : null };
-}
 
 /**
  * A character thumbnail framed on the head rather than on the middle of the
@@ -32,30 +24,31 @@ function readCache(url: string | null | undefined): CropState {
  * The crop is applied by positioning the original image inside the frame rather
  * than by re-encoding it, so the thumbnail stays sharp at any pixel density.
  */
-export function HeadThumbnail({ url, alt, className, iconClassName }: HeadThumbnailProps) {
-    const [state, setState] = React.useState<CropState>(() => readCache(url));
-
-    // Swapping the image has to drop the old crop in the same render that swaps
-    // the `src`, or the new art paints a frame wearing the old one's framing.
-    if (state.url !== url) {
-        setState(readCache(url));
-    }
+export function HeadThumbnail({ url, alt, className, iconClassName, frame }: HeadThumbnailProps) {
+    // An explicit frame is authoritative — the silhouette heuristic is only the fallback.
+    const hasFrame = frame !== undefined;
+    // The crop is read live from the shared cache below; this bump only forces a re-render once this
+    // component's own async resolution finishes. Reading the cache directly (rather than mirroring it
+    // into state) means a crop already warmed by another thumbnail — or one that lands while an
+    // explicit frame is showing — is picked up immediately, instead of leaving the image stuck at
+    // opacity-0 when a frame is later removed and the effect short-circuits on the cache hit.
+    const [, bump] = React.useReducer((n: number) => n + 1, 0);
 
     React.useEffect(() => {
-        if (!url || peekHeadCrop(url) !== undefined) return;
+        if (hasFrame || !url || peekHeadCrop(url) !== undefined) return;
 
         let cancelled = false;
-        void resolveHeadCrop(url).then(crop => {
+        void resolveHeadCrop(url).then(() => {
             if (!cancelled) {
-                setState({ url, crop });
+                bump();
             }
         });
         return () => {
             cancelled = true;
         };
-    }, [url]);
+    }, [url, hasFrame]);
 
-    const crop = state.url === url ? state.crop : undefined;
+    const crop = hasFrame ? frame : (url ? peekHeadCrop(url) : null);
     return (
         <div className={cn("relative flex items-center justify-center overflow-hidden shrink-0", className)}>
             {url ? (

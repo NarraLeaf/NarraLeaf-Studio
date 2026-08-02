@@ -21,6 +21,34 @@ export function dialogFooterButtonClass(options: {
     return `${base} bg-fill-subtle hover:bg-fill text-fg-muted`;
 }
 
+/**
+ * Escape closes the dialog, for a dialog that is not a {@link Modal}.
+ *
+ * A handful of overlays are hand-built rather than wrapped in `Modal` because they position against
+ * a trigger instead of centring - the asset picker and the thumbnail cropper - and each of them
+ * silently lacked the one keystroke every dialog is expected to answer. This is the behaviour
+ * `Modal` has always had, lifted out so there is one definition of it rather than a copy per
+ * overlay.
+ *
+ * Deliberately on the bubble phase: anything nested that means to answer Escape itself - a menu that
+ * would otherwise be orphaned above a closed dialog - keeps precedence by calling `stopPropagation`,
+ * exactly as it would inside a `Modal`.
+ */
+export function useEscapeToClose(active: boolean, onClose: () => void): void {
+    useEffect(() => {
+        if (!active) {
+            return;
+        }
+        const handleEscape = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                onClose();
+            }
+        };
+        document.addEventListener("keydown", handleEscape);
+        return () => document.removeEventListener("keydown", handleEscape);
+    }, [active, onClose]);
+}
+
 export interface ModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -58,23 +86,15 @@ export function Modal({
     className = "",
 }: ModalProps) {
     const { t } = useTranslation();
+    useEscapeToClose(isOpen && closeOnEscape, onClose);
     useEffect(() => {
-        const handleEscape = (e: KeyboardEvent) => {
-            if (closeOnEscape && e.key === "Escape") {
-                onClose();
-            }
-        };
-
         if (isOpen) {
-            document.addEventListener("keydown", handleEscape);
             document.body.style.overflow = "hidden";
         }
-
         return () => {
-            document.removeEventListener("keydown", handleEscape);
             document.body.style.overflow = "unset";
         };
-    }, [isOpen, closeOnEscape, onClose]);
+    }, [isOpen]);
 
     if (!isOpen) return null;
 
@@ -86,9 +106,16 @@ export function Modal({
 
     return (
         <div className="nl-window-content-layer z-50 flex items-center justify-center p-4">
-            {/* Backdrop — match workspace DialogContainer */}
+            {/* Backdrop. Full *window* (`fixed inset-0`), not just this layer: the layer starts
+                below the titlebar, and the launcher's titlebar covers only the right column, so an
+                `absolute inset-0` backdrop leaves the top 40px of its sidebar - logo included -
+                undimmed. That strip is bare content on Windows, where the sidebar gets no macOS
+                drag spacer, so the seam lands mid-logo. Everywhere else the window's own titlebar
+                already fills the strip and paints above this at `z-[20000]`, so nothing changes
+                there and its window controls stay bright and clickable. The panel keeps centering
+                inside the layer, below the titlebar, so the titlebar never crosses it. */}
             <div
-                className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in"
+                className="bg-black/60 backdrop-blur-sm animate-fade-in fixed inset-0"
                 onClick={handleOverlayClick}
             />
 

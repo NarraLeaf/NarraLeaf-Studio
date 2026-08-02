@@ -10,8 +10,6 @@ export const properties = {
         storyMotion: "故事动效",
         scene: "场景",
         character: "角色",
-        noSelection: "未选择任何项目",
-        noSelectionHint: "选择一个项目以查看其属性",
     },
     scene: {
         title: "界面属性",
@@ -27,7 +25,7 @@ export const properties = {
     diagnostics: {
         title: "静态检查",
         selectOnCanvas: "→ 在画布中选中",
-        help: "图形结构与绑定问题：从蓝图区域打开蓝图编辑器标签页；实时执行、节点进入/退出以及宿主 API 跟踪仅在开发模式中显示",
+        help: "图结构与绑定问题请打开蓝图编辑器。实时执行轨迹只在开发模式中显示",
     },
     layout: {
         title: "布局",
@@ -106,7 +104,7 @@ export const properties = {
         selectHint: "点击打开素材浏览器",
         changeImage: "更换图片",
         openEditor: "点击打开编辑器",
-        resolveError: "静态检查：图片素材无法解析（{error}），在素材存在之前预览可能不准确，请在开发模式下进行验证",
+        resolveError: "图片素材无法解析（{error}），在它存在之前预览可能不准确",
         selectFillImage: "选择填充图片",
         mode: {
             cover: "覆盖",
@@ -123,7 +121,6 @@ export const properties = {
         base: "基础",
         common: "常用",
         recent: "最近使用",
-        noRecent: "还没有最近使用的颜色",
         custom: "自定义",
     },
     references: {
@@ -135,7 +132,7 @@ export const properties = {
             other: "{count} 处引用",
         },
         dormant: "未生效",
-        dormantHint: "已保存在控件上，但当前不会显示——填充方式被设为纯色。删除该素材会让它变空。",
+        dormantHint: "已保存在控件上，但当前不会显示：填充方式被设为纯色。删除该素材会让它变空。",
         kind: {
             story: "剧情",
             blueprint: "蓝图",
@@ -150,12 +147,9 @@ export const properties = {
         add: "添加标签",
         remove: "移除标签",
         removeAria: "移除标签 {tag}",
-        empty: "尚无标签",
     },
     thumbnail: {
         alt: "缩略图",
-        empty: "尚无缩略图",
-        emptyHint: "点击“选择”来指定一张",
         selectTitle: "选择缩略图",
         cropTitle: "裁剪缩略图",
         error: {
@@ -216,6 +210,20 @@ export const properties = {
             preview: "JSON 结构",
             schemaValue: "架构：{schema}",
             noSchema: "无架构",
+        },
+        model: {
+            title: "模型属性",
+            info: "模型信息",
+            entry: "入口文件",
+            entryAuto: "自动识别：{entry}",
+            entryUnresolvedNone: "未能识别入口文件，请手动选择。",
+            entryUnresolvedAmbiguous: "有多个文件可能是入口，请手动选择。",
+            files: "文件",
+            fileCount: {
+                one: "{count} 个文件",
+                other: "{count} 个文件",
+            },
+            browse: "包内文件",
         },
         other: {
             title: "文件属性",

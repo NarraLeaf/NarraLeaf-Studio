@@ -26,8 +26,15 @@ import {
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
 } from "@shared/types/blueprint/graph";
+import {
+    captureBlueprintEventOrder,
+    captureBlueprintFunctionOrder,
+    listBlueprintEventIds,
+    listBlueprintFunctionIds,
+} from "@shared/blueprint/blueprintEventOrder";
 import type { UIDocument, UIElement, UIElementValueBindingValueType } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
+import type { VariableRegistry, VariableRegistryEntry } from "@shared/types/variables/registry";
 import { RendererError } from "@shared/utils/error";
 import { EventEmitter } from "../ui/EventEmitter";
 import { Service } from "../Service";
@@ -37,6 +44,7 @@ import { ProjectService } from "../core/ProjectService";
 import { UuidService } from "../core/UuidService";
 import { UIGraphService } from "./UIGraphService";
 import { UIDocumentService } from "./UIDocumentService";
+import { VariableRegistryService } from "../variables/VariableRegistryService";
 import {
     createMainBlueprint,
     createTypeScriptMainBlueprint,
@@ -96,6 +104,11 @@ export type BlueprintEditorHistorySnapshot = {
     ownerRecord: BlueprintPrivateOwnerRecord | null;
     blueprint: Blueprint | null;
     uiBehavior: UIBehaviorSnapshot;
+    /**
+     * The project-level variable registry, captured so persistent-variable CRUD (which lives in its
+     * own service/file since M-VAR) undoes with the same Ctrl+Z as the blueprint edit that made it.
+     */
+    registry: VariableRegistry;
 };
 
 type BlueprintHistoryEntry = {
@@ -247,7 +260,12 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         const project = ctx.services.get<ProjectService>(Services.Project);
         const uuid = ctx.services.get<UuidService>(Services.Uuid);
         const graph = ctx.services.get<UIGraphService>(Services.UIGraph);
-        await depend([fs, project, uuid, graph]);
+        const registry = ctx.services.get<VariableRegistryService>(Services.VariableRegistry);
+        await depend([fs, project, uuid, graph, registry]);
+    }
+
+    private getVariableRegistryService(): VariableRegistryService {
+        return this.getContext().services.get<VariableRegistryService>(Services.VariableRegistry);
     }
 
     public getBlueprintDocument(): BlueprintDocument {
@@ -294,6 +312,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             ownerRecord: cloneBlueprintHistoryValue(ownerRecord),
             blueprint: cloneBlueprintHistoryValue(blueprint),
             uiBehavior: captureUIBehaviorSnapshot(uidoc.getDocument()),
+            registry: cloneBlueprintHistoryValue(this.getVariableRegistryService().getRegistry()),
         };
     }
 
@@ -636,6 +655,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 blueprint.program.graphs.events = {
                     onCall: { id: "onCall", name: "On Call", graph },
                 };
+                captureBlueprintEventOrder(blueprint.program.graphs);
             }
             doc.blueprints[id] = blueprint;
             registerPrivateBlueprintAsActive(doc, key, id, "visual");
@@ -662,9 +682,9 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         return getActiveBlueprintId(this.getBlueprintDocument(), storyActionOwnerKey(blueprintId));
     }
 
-    /** All project-level persistent variable definitions (shared with the Story editor). */
-    public listPersistentVariables(): BlueprintDocument["persistentVariables"][string][] {
-        return Object.values(this.getBlueprintDocument().persistentVariables ?? {});
+    /** All project-level persistent variable definitions (shared with the Story editor); M-VAR registry. */
+    public listPersistentVariables(): VariableRegistryEntry[] {
+        return this.getVariableRegistryService().listEntries();
     }
 
     public getSurfaceMainBlueprintId(surfaceId: string): string | undefined {
@@ -974,6 +994,10 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                     { skipAfterMutateHook: true },
                 );
             }
+            const registryService = this.getVariableRegistryService();
+            if (JSON.stringify(registryService.getRegistry()) !== JSON.stringify(snapshot.registry)) {
+                registryService.replaceRegistry(cloneBlueprintHistoryValue(snapshot.registry));
+            }
         } finally {
             this.isRestoringHistory = false;
         }
@@ -1046,36 +1070,27 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         return m ? Object.values(m) : [];
     }
 
+    /**
+     * Persistent-variable CRUD is a thin history-wrapping delegation to the M-VAR registry service
+     * (the data lives in `variables.json`, no longer in the blueprint document). Wrapping each edit in
+     * a blueprint history transaction is what keeps a persistent-variable change on the same undo stack
+     * as the blueprint edit an author is making when they touch it - the snapshot captures the registry.
+     */
     public createPersistentVariable(
         historyBlueprintId: string,
         input?: { name?: string; valueType?: string; defaultValue?: LiteralValue },
-    ): BlueprintPersistentVariable {
-        const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
-        const id = uuid.generate();
-        const valueType = input?.valueType?.trim();
-        const v: BlueprintPersistentVariable = {
-            id,
-            storageKey: id,
-            name: input?.name?.trim() || `persist_${id.slice(0, 8)}`,
-            valueType: valueType || undefined,
-            defaultValue: input?.defaultValue,
-        };
-        this.applyBlueprintEdit({ blueprintId: historyBlueprintId }, doc => {
-            doc.persistentVariables = doc.persistentVariables ?? {};
-            doc.persistentVariables[v.id] = v;
-        });
-        return v;
+    ): VariableRegistryEntry {
+        return this.runBlueprintHistoryTransaction(historyBlueprintId, () =>
+            this.getVariableRegistryService().createEntry(input),
+        );
     }
 
     public renamePersistentVariable(historyBlueprintId: string, variableId: string, name: string): void {
-        this.applyBlueprintEdit({ blueprintId: historyBlueprintId }, doc => {
-            const v = doc.persistentVariables?.[variableId];
-            if (!v) {
-                return;
-            }
-            const next = name.trim();
-            v.name = next.length > 0 ? next : v.name;
-        }, { mergeKey: `persistent-variable-name:${variableId}` });
+        this.runBlueprintHistoryTransaction(
+            historyBlueprintId,
+            () => this.getVariableRegistryService().renameEntry(variableId, name),
+            { mergeKey: `persistent-variable-name:${variableId}` },
+        );
     }
 
     public setPersistentVariableDefault(
@@ -1083,22 +1098,20 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         variableId: string,
         defaultValue: LiteralValue | undefined,
     ): void {
-        this.applyBlueprintEdit({ blueprintId: historyBlueprintId }, doc => {
-            const v = doc.persistentVariables?.[variableId];
-            if (!v) {
-                return;
-            }
-            v.defaultValue = defaultValue;
-        }, { mergeKey: `persistent-variable-default:${variableId}` });
+        this.runBlueprintHistoryTransaction(
+            historyBlueprintId,
+            () => this.getVariableRegistryService().setEntryDefault(variableId, defaultValue),
+            { mergeKey: `persistent-variable-default:${variableId}` },
+        );
     }
 
     public deletePersistentVariable(historyBlueprintId: string, variableId: string): void {
-        this.applyBlueprintEdit({ blueprintId: historyBlueprintId }, doc => {
-            if (!doc.persistentVariables?.[variableId]) {
-                return;
-            }
-            this.clearPersistentVariableNodeRefs(doc, variableId);
-            delete doc.persistentVariables[variableId];
+        this.runBlueprintHistoryTransaction(historyBlueprintId, () => {
+            // Node-ref cleanup mutates the blueprint document; the variable itself leaves the registry.
+            this.applyBlueprintMutation(doc => {
+                this.clearPersistentVariableNodeRefs(doc, variableId);
+            });
+            this.getVariableRegistryService().deleteEntry(variableId);
         });
     }
 
@@ -1222,7 +1235,8 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 throw new RendererError(`Blueprint ${blueprintId} is not a graph program`);
             }
             const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
-            const prev = bp.program.graphs.events[eventId];
+            const graphs = bp.program.graphs;
+            const prev = graphs.events[eventId];
             const graphIr = ensureBlueprintEventGraphIrStructure(prev?.graph ?? undefined, () => uuid.generate());
             const next: BlueprintEventGraph = {
                 id: eventId,
@@ -1230,7 +1244,10 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 graph: graphIr,
                 meta: prev?.meta,
             };
-            bp.program.graphs.events[eventId] = next;
+            graphs.events[eventId] = next;
+            // A new layer joins the end of the author's list; an upsert of an existing one
+            // keeps its place, because the reconciliation only appends what is unlisted.
+            captureBlueprintEventOrder(graphs);
         });
     }
 
@@ -1245,21 +1262,26 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             if (!bp || bp.program.kind !== "graph") {
                 return;
             }
-            if (bp.program.graphs.events[slotId]) {
+            const graphs = bp.program.graphs;
+            if (graphs.events[slotId]) {
                 return;
             }
-            const legacy = bp.program.graphs.events[legacyEventId];
+            const legacy = graphs.events[legacyEventId];
             if (!legacy) {
                 return;
             }
-            bp.program.graphs.events[slotId] = {
+            // The adopted layer takes the legacy one's place rather than being appended:
+            // re-keying a layer is not the author moving it down the list.
+            const adopted = listBlueprintEventIds(graphs).map(id => (id === legacyEventId ? slotId : id));
+            graphs.events[slotId] = {
                 ...legacy,
                 id: slotId,
                 name: legacy.name ?? displayName,
             };
             if (legacyEventId !== slotId) {
-                delete bp.program.graphs.events[legacyEventId];
+                delete graphs.events[legacyEventId];
             }
+            graphs.eventIds = adopted;
         });
     }
 
@@ -1285,6 +1307,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 return;
             }
             delete bp.program.graphs.events[eventId];
+            captureBlueprintEventOrder(bp.program.graphs);
         });
     }
 
@@ -1293,7 +1316,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         if (!bp || bp.program.kind !== "graph") {
             return [];
         }
-        return Object.keys(bp.program.graphs.events ?? {});
+        return listBlueprintEventIds(bp.program.graphs);
     }
 
     public ensureFunctionGraph(blueprintId: string, functionId: string, displayName?: string): void {
@@ -1306,7 +1329,8 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 throw new RendererError(`Blueprint ${blueprintId} is not a graph program`);
             }
             const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
-            const prev = bp.program.graphs.functions[functionId];
+            const graphs = bp.program.graphs;
+            const prev = graphs.functions[functionId];
             const graphIr = ensureBlueprintFunctionGraphIrStructure(prev?.graph ?? undefined, () => uuid.generate());
             const next: BlueprintFunctionGraph = {
                 id: functionId,
@@ -1314,7 +1338,8 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 graph: graphIr,
                 meta: prev?.meta,
             };
-            bp.program.graphs.functions[functionId] = next;
+            graphs.functions[functionId] = next;
+            captureBlueprintFunctionOrder(graphs);
         });
     }
 
@@ -1325,6 +1350,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 return;
             }
             delete bp.program.graphs.functions[functionId];
+            captureBlueprintFunctionOrder(bp.program.graphs);
         });
     }
 
@@ -1333,7 +1359,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         if (!bp || bp.program.kind !== "graph") {
             return [];
         }
-        return Object.keys(bp.program.graphs.functions ?? {});
+        return listBlueprintFunctionIds(bp.program.graphs);
     }
 
     public updateEventGraphIr(

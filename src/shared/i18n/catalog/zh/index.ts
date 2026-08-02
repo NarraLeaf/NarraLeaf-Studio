@@ -37,6 +37,9 @@ import { dialogs } from "./dialogs";
 import { defaultDoc } from "./defaultDoc";
 import { build } from "./build";
 import { dashboard } from "./dashboard";
+import { lint } from "./lint";
+import { documentDiff } from "./documentDiff";
+import { test } from "./test";
 import type { LocaleMessages } from "../types";
 
 export const zh = {
@@ -72,4 +75,7 @@ export const zh = {
     defaultDoc,
     build,
     dashboard,
+    lint,
+    documentDiff,
+    test,
 } satisfies LocaleMessages;

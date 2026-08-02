@@ -12,6 +12,7 @@ import type {
     StoryScene,
     StoryTextSegment,
 } from "@shared/types/story";
+import { listScenesInDocumentOrder } from "@shared/types/story";
 import type { LocalizationDocument, LocalizationKeysDocument, LocalizationUnit } from "@shared/types/localization";
 import { characterTranslationUnitId, localizationKeyUnitId } from "@shared/types/localization";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
@@ -53,26 +54,16 @@ export function deriveUnitState(unit: LocalizationUnit | undefined, sourceText: 
     return unit.status === "untranslated" ? "translated" : unit.status;
 }
 
-/** Scene ids in narrative order: chapters first (in order), then unassigned scenes. */
+/**
+ * Scenes in narrative order: chapters first (in order), then the scenes no chapter claims, in the
+ * order `unassignedSceneIds` declares.
+ *
+ * A thin alias kept because the localization vocabulary calls this narrative order, and because the
+ * row order here is what an exported translation file is written in - a translator diffing two
+ * exports must not see the whole file move because the scene record got rewritten.
+ */
 export function listScenesInNarrativeOrder(document: StoryDocument): StoryScene[] {
-    const ordered: StoryScene[] = [];
-    const seen = new Set<string>();
-    for (const chapter of document.chapters) {
-        for (const sceneId of chapter.sceneIds) {
-            const scene = document.scenes[sceneId];
-            if (scene && !seen.has(scene.id)) {
-                seen.add(scene.id);
-                ordered.push(scene);
-            }
-        }
-    }
-    for (const scene of Object.values(document.scenes)) {
-        if (!seen.has(scene.id)) {
-            seen.add(scene.id);
-            ordered.push(scene);
-        }
-    }
-    return ordered;
+    return listScenesInDocumentOrder(document);
 }
 
 type TranslatableSegment = {

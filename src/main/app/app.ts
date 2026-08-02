@@ -1,4 +1,4 @@
-import { IPCEventType } from "@shared/types/ipcEvents";
+import { IPCEventType, WorkspaceCloseStage } from "@shared/types/ipcEvents";
 import { WindowAppType, WindowControlPolicy, WindowProps } from "@shared/types/window";
 import { BaseApp, BaseAppConfig } from "./application/baseApp";
 import { getGameHostWindowBackgroundColor } from "./application/theme";
@@ -6,6 +6,7 @@ import { AppWindow, WindowConfig } from "./application/managers/window/appWindow
 import { DevModeManager } from "./application/managers/devMode/DevModeManager";
 import { devModeNetworkPolicy, readProjectAllowHttp } from "./application/managers/devMode/devModeNetworkPolicy";
 import { GameBuildManager } from "./application/managers/build/GameBuildManager";
+import { GameTestManager } from "./application/managers/gameTest/GameTestManager";
 import { PreviewManager } from "./application/managers/preview/PreviewManager";
 import { VcsManager } from "./application/managers/vcs/VcsManager";
 // Shared with the recently-opened history, which must agree with the "already open?" lookup here.
@@ -13,6 +14,17 @@ import { normalizeProjectPath } from "@shared/utils/recentProject";
 
 export interface AppConfig extends BaseAppConfig {
 }
+
+/**
+ * How long the close-time checkpoint may take before the window closes without it.
+ *
+ * Generous, because a commit's duration is a function of how much the author changed and giving up
+ * early loses the revision. Bounded, because the alternative is a window that cannot be closed:
+ * every Lore call queues per project, and one that is waiting on the repository lock - another
+ * process holding it, or Studio's own handle from earlier in the session - waits without a deadline
+ * of its own. A close is not the moment to find that out.
+ */
+const CLOSE_CHECKPOINT_TIMEOUT_MS = 30_000;
 
 export class App extends BaseApp {
     public static create(config: AppConfig): App {
@@ -23,12 +35,23 @@ export class App extends BaseApp {
         super(config);
         this.devModeManager = new DevModeManager(this);
         this.previewManager = new PreviewManager(this);
+        this.gameTestManager = new GameTestManager(this);
         this.gameBuildManager = new GameBuildManager(this);
-        this.vcsManager = new VcsManager(this);
+        // The commit pipeline has to settle the renderer's auto-save debt before it
+        // stages, and only the window layer can ask a window to do that. Handed in as a
+        // function because VcsManager holds a BaseApp: without it a commit would still
+        // succeed and would describe a document that is about to change on disk.
+        this.vcsManager = new VcsManager(this, async projectPath => {
+            const workspace = this.findWorkspaceForProject(projectPath);
+            if (workspace) {
+                await this.flushWorkspacePendingSaves(workspace);
+            }
+        });
     }
 
     private readonly devModeManager: DevModeManager;
     private readonly previewManager: PreviewManager;
+    private readonly gameTestManager: GameTestManager;
     private readonly gameBuildManager: GameBuildManager;
     private readonly vcsManager: VcsManager;
 
@@ -38,6 +61,11 @@ export class App extends BaseApp {
 
     public getPreviewManager(): PreviewManager {
         return this.previewManager;
+    }
+
+    /** Game processes a test run owns. Separate from the preview's for the reasons in its header. */
+    public getGameTestManager(): GameTestManager {
+        return this.gameTestManager;
     }
 
     public getGameBuildManager(): GameBuildManager {
@@ -169,6 +197,107 @@ export class App extends BaseApp {
     }
 
     /**
+     * How long to wait for one workspace to write out its pending auto-saves.
+     *
+     * Generous, because it covers a megabyte-plus of JSON on a slow disk, but finite: the renderer
+     * applies its own per-store ceiling, and this is the backstop for a renderer that has stopped
+     * answering at all. Exceeding it costs the last few seconds of edits; waiting forever costs a
+     * window that will not close.
+     */
+    private static readonly FlushPendingSavesTimeoutMs = 15 * 1000;
+
+    /**
+     * Have a workspace write out everything it still owes the disk, and wait for it.
+     *
+     * The renderer's auto-save is debounced, so at any instant there is usually an edit that has
+     * been typed but not written. Once the window is gone, so is the timer that would have written
+     * it - and so is the `app://fs` PUT it would have travelled on. This is the only point where
+     * that debt can still be settled.
+     *
+     * Never throws: a workspace that cannot save is not a reason to refuse to close.
+     */
+    public async flushWorkspacePendingSaves(window: AppWindow<WindowAppType.Workspace>): Promise<void> {
+        if (window.isClosed()) {
+            return;
+        }
+        try {
+            const result = await window.invokeIpcRequest(
+                IPCEventType.workspaceFlushPendingSaves,
+                {},
+                { timeoutMs: App.FlushPendingSavesTimeoutMs },
+            );
+            if (!result.success) {
+                this.logger.warn(`[Workspace] Pending saves could not be flushed: ${result.error}`);
+            } else if (!result.data.flushed) {
+                this.logger.warn("[Workspace] Some stores failed to flush; see the workspace's Storage console channel");
+            }
+        } catch (error) {
+            this.logger.warn(`[Workspace] No answer to the pending-save flush: ${String(error)}`);
+        }
+    }
+
+    /**
+     * Record a checkpoint for a project that is about to be closed.
+     *
+     * The point of it: after this returns, nothing is watching the working tree, so an
+     * author who edited for an hour without committing would otherwise have that hour
+     * recorded nowhere. Runs after the pending-save flush so the checkpoint describes
+     * what they actually left behind.
+     *
+     * **Its own setting, not the interval's.** `versionControl.checkpointOnClose` is a
+     * different question from how often to record while working - an author who turned
+     * the interval off to stop being interrupted has said nothing about the one moment
+     * where losing the session is possible - so a 0 interval does not silence this and
+     * this does not silence the interval. Defaults on, which is what it did before it
+     * was a choice.
+     *
+     * Never throws and never blocks the close - the second half enforced by
+     * {@link CLOSE_CHECKPOINT_TIMEOUT_MS} rather than assumed. A project with no repository, a host
+     * with no backend, and a tree that has not changed all answer "nothing to do" rather than
+     * failing (see VcsManager.checkpoint); a repository somebody else has locked answers nothing at
+     * all, and used to leave the window unclosable.
+     *
+     * Deliberately NOT wired into the app-quit flush as well. That path runs under a
+     * hard deadline whose purpose is a bounded teardown, and a commit's duration is a
+     * function of how much the author changed; hanging Cmd+Q on it would trade a
+     * bounded "lost the last few seconds" for an unbounded wait. Closing a workspace
+     * window comes through here first, which is the exit an author takes deliberately.
+     */
+    private async checkpointBeforeClose(window: AppWindow<WindowAppType.Workspace>): Promise<void> {
+        // Only an explicit `false` skips it. A missing or non-boolean value means the author never
+        // answered, and the answer they never gave must not be the one that loses their session.
+        if (this.globalState.get("versionControl.checkpointOnClose") === false) {
+            return;
+        }
+        const projectPath = window.getProps().projectPath;
+        if (typeof projectPath !== "string" || projectPath.length === 0) {
+            return;
+        }
+        try {
+            // The checkpoint keeps running if it outlasts this; what the deadline ends is the
+            // close waiting on it. Abandoning a commit half-way would be worse than a late one.
+            await Promise.race([
+                this.vcsManager.checkpoint(projectPath, "project-close"),
+                new Promise<void>((_, reject) => setTimeout(
+                    () => reject(new Error(`the checkpoint did not finish within ${CLOSE_CHECKPOINT_TIMEOUT_MS}ms`)),
+                    CLOSE_CHECKPOINT_TIMEOUT_MS,
+                ).unref?.()),
+            ]);
+        } catch (error) {
+            this.logger.warn(`[Vcs] Could not check point before closing the project: ${String(error)}`);
+        }
+    }
+
+    /** Flush every open workspace concurrently. Used on the way out of the app. */
+    public async flushAllWorkspacesPendingSaves(): Promise<void> {
+        const workspaces = this.windowManager.getWindows().filter(
+            (window): window is AppWindow<WindowAppType.Workspace> =>
+                !window.isClosed() && window.getWindowType() === WindowAppType.Workspace,
+        );
+        await Promise.allSettled(workspaces.map(window => this.flushWorkspacePendingSaves(window)));
+    }
+
+    /**
      * Decide what closing a workspace means, honouring the user's preferences: confirm first if
      * asked, then either fall back to the launcher or let the close stand (which quits the app
      * when this was the last window).
@@ -181,6 +310,17 @@ export class App extends BaseApp {
             }
         }
 
+        // Confirm first, flush second: asking the renderer to write while a modal is up would
+        // block on a dialog, and a user who answers "don't close" should keep their timers running
+        // rather than get a write they did not ask for.
+        this.reportWorkspaceCloseStage(window, "saving");
+        await this.flushWorkspacePendingSaves(window);
+
+        // Flush first, check point second: the checkpoint's whole value is that it
+        // records what is on disk, and the flush is what puts the last edit there.
+        this.reportWorkspaceCloseStage(window, "checkpoint");
+        await this.checkpointBeforeClose(window);
+
         // The app may have started quitting, or the window may be gone, while the sheet was up.
         // Reopening the launcher now would resurrect a window in the middle of a quit.
         if (this.isQuitting() || window.isClosed()) {
@@ -188,6 +328,7 @@ export class App extends BaseApp {
         }
 
         if (this.globalState.get("workspace.returnToLauncherOnClose")) {
+            this.reportWorkspaceCloseStage(window, "launcher");
             try {
                 await this.ensureLauncher();
             } catch (error) {
@@ -195,11 +336,35 @@ export class App extends BaseApp {
                 // window, and the home the user asked to return to is the thing that failed.
                 // Keeping the workspace open loses nothing and leaves them somewhere to work.
                 this.logger.error("[Workspace] Keeping the window open, the launcher failed to start:", error);
+                // The window is staying, so the "closing" indicator has to go: leaving it up would
+                // put a scrim over a workspace that is fully usable again.
+                this.reportWorkspaceCloseStage(window, null);
                 return;
             }
         }
 
         window.forceClose();
+    }
+
+    /**
+     * Tell a workspace which part of its close is running now.
+     *
+     * Fire and forget by design. This is the window's own progress note; a window that has already
+     * gone, or a renderer that never registered a handler, changes nothing about the close, so a
+     * failure here must not surface as one.
+     */
+    private reportWorkspaceCloseStage(
+        window: AppWindow<WindowAppType.Workspace>,
+        stage: WorkspaceCloseStage | null,
+    ): void {
+        if (window.isClosed()) {
+            return;
+        }
+        try {
+            window.sendIpcEvent(IPCEventType.workspaceCloseProgress, { stage });
+        } catch (error) {
+            this.logger.warn(`[Workspace] Could not report the close stage: ${String(error)}`);
+        }
     }
 
     async launchSettings(
@@ -375,8 +540,19 @@ export class App extends BaseApp {
         // forceClose() is deliberate wherever the opener is retired below: opening a project is
         // not a "close this workspace" gesture, so it must skip the close guard's confirm sheet
         // and return-to-launcher, which would otherwise interrupt the open or flash the home
-        // window. Changes auto-save, so nothing is lost.
-        const retireOpener = () => {
+        // window.
+        //
+        // Skipping the close guard also skips the flush it performs, so this does it itself. The
+        // comment that used to sit here said "changes auto-save, so nothing is lost"; the auto-save
+        // is debounced, and forceClosing a workspace 300ms after the last keystroke lost exactly
+        // that keystroke.
+        const retireOpener = async () => {
+            if (opener.isClosed()) {
+                return;
+            }
+            if (opener.getWindowType() === WindowAppType.Workspace) {
+                await this.flushWorkspacePendingSaves(opener as AppWindow<WindowAppType.Workspace>);
+            }
             if (!opener.isClosed()) {
                 opener.forceClose();
             }
@@ -390,7 +566,7 @@ export class App extends BaseApp {
             }
             existing.focus();
             if (openerIsLauncher) {
-                retireOpener();
+                await retireOpener();
             }
             return existing;
         }
@@ -414,7 +590,7 @@ export class App extends BaseApp {
         if ((openerIsLauncher || replaceOpener) && workspaceWindow !== opener) {
             workspaceWindow.onLoadResult(ok => {
                 if (ok) {
-                    retireOpener();
+                    void retireOpener();
                 }
             });
         }

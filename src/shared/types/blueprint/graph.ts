@@ -789,17 +789,50 @@ export const BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS = "blueprint.game.save.listI
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW = "blueprint.game.save.getPreview" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE = "blueprint.game.save.delete" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA = "blueprint.game.save.getMetadata" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_WRITE = "blueprint.game.autoSave.write" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST = "blueprint.game.autoSave.list" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LATEST = "blueprint.game.autoSave.latest" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET = "blueprint.game.history.get" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_HISTORY_RESTORE = "blueprint.game.history.restore" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_HISTORY_UNDO_LAST = "blueprint.game.history.undoLast" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG = "blueprint.game.getNametag" as const;
+/** The speaking character's dialog avatar for the differential they are currently wearing. */
+export const BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR = "blueprint.game.getSpeakerAvatar" as const;
+/** The speaking character's authored accent colour. Speaker-scoped, exactly like Get Nametag. */
+export const BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR = "blueprint.game.getSpeakerColor" as const;
+/**
+ * Any character's data, by reference - the addressable sibling of the speaker-scoped getters above.
+ * The character is picked with a `characterId` param (a `"characters"` dynamic select), not a pin,
+ * so no new value type was needed for it.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER = "blueprint.game.getCharacter" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS = "blueprint.game.getNotifications" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT = "blueprint.game.getChoiceCount" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE = "blueprint.game.isNvlMode" as const;
 /** True while a dialog line is on screen and its message is read (seen before, or display finished). */
 export const BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ = "blueprint.game.isTextRead" as const;
+/**
+ * Has *this* line ever been read, by text id. The sibling above asks about the
+ * line currently on screen; this one answers for any line, which is what a voice
+ * EXTRA screen needs - the read set is keyed by the same id the voice table uses.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ_BY_ID = "blueprint.game.isTextReadById" as const;
 /** Wipe the persisted text-read record (all stories); works with or without a running game. */
 export const BLUEPRINT_NODE_TYPE_GAME_CLEAR_TEXT_READ = "blueprint.game.clearTextRead" as const;
+/**
+ * The visited record - the two questions a VN asks constantly and Studio could not answer: has the
+ * player been down this route, and have they already said this line.
+ *
+ * Deliberately NOT built on the text-read record above. That one is written when a line is
+ * *displayed*, so every option of a menu the player merely opened counts as read; these are written
+ * when a scene actually starts and when an option is actually picked. Both are keyed by Studio id
+ * (scene id / option row block id), so a rename or a rewrite does not invalidate a record, and both
+ * live in the saved domain - loading an older save rewinds them.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_IS_SCENE_VISITED = "blueprint.game.isSceneVisited" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_IS_OPTION_PICKED = "blueprint.game.isOptionPicked" as const;
+/** Wipe the running game's visited record. The `Clear Text Read` of this family. */
+export const BLUEPRINT_NODE_TYPE_GAME_CLEAR_VISITED = "blueprint.game.clearVisited" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_CHOOSE = "blueprint.game.choose" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_NEXT = "blueprint.game.next" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SKIP = "blueprint.game.skip" as const;
@@ -807,6 +840,19 @@ export const BLUEPRINT_NODE_TYPE_GAME_SHOW_DIALOG = "blueprint.game.showDialog" 
 export const BLUEPRINT_NODE_TYPE_GAME_HIDE_DIALOG = "blueprint.game.hideDialog" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_TOGGLE_DIALOG_DISPLAY = "blueprint.game.toggleDialogDisplay" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED = "blueprint.game.setSentenceSpeed" as const;
+
+/**
+ * Sound transport for authored UI. Not story audio - a story line's `/bgm` is a
+ * story action; these are for what a *screen* plays: a music-appreciation page,
+ * a voice EXTRA list, a button click.
+ */
+export const BLUEPRINT_NODE_TYPE_SOUND_PLAY = "blueprint.sound.play" as const;
+export const BLUEPRINT_NODE_TYPE_SOUND_STOP = "blueprint.sound.stop" as const;
+export const BLUEPRINT_NODE_TYPE_SOUND_PAUSE = "blueprint.sound.pause" as const;
+export const BLUEPRINT_NODE_TYPE_SOUND_RESUME = "blueprint.sound.resume" as const;
+export const BLUEPRINT_NODE_TYPE_SOUND_SET_VOLUME = "blueprint.sound.setVolume" as const;
+export const BLUEPRINT_NODE_TYPE_SOUND_SEEK = "blueprint.sound.seek" as const;
+export const BLUEPRINT_NODE_TYPE_SOUND_IS_PLAYING = "blueprint.sound.isPlaying" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD = "blueprint.game.getAutoForward" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SET_AUTO_FORWARD = "blueprint.game.setAutoForward" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED = "blueprint.game.getSkip" as const;
@@ -830,6 +876,27 @@ export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY = "blueprint.game.getSkipDe
 export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_DELAY = "blueprint.game.setSkipDelay" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_INTERVAL = "blueprint.game.getSkipInterval" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_INTERVAL = "blueprint.game.setSkipInterval" as const;
+
+/**
+ * Per-track (per-bus) volume: the general form of the four fixed volume preferences above.
+ *
+ * Those four can only reach the three buses the engine seeds, so a project that adds `voice/alice`
+ * has a mixer strip no settings page can bind to. These take a track id instead, with the picker
+ * populated from the project's own tracks, and the four stay for the graphs that already use them.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_GET_TRACK_VOLUME = "blueprint.game.getTrackVolume" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_TRACK_VOLUME = "blueprint.game.setTrackVolume" as const;
+
+// Localization nodes. Every getter here is latent and publishes its result through
+// `execute()`'s `outputValues`, so each one also has to be listed on the read side,
+// in `resolveSelfOutput` in `graphParamResolvers.ts`.
+export const BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_CURRENT_LANGUAGE = "blueprint.localization.getCurrentLanguage" as const;
+export const BLUEPRINT_NODE_TYPE_LOCALIZATION_SET_LANGUAGE = "blueprint.localization.setLanguage" as const;
+export const BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT = "blueprint.localization.getText" as const;
+export const BLUEPRINT_NODE_TYPE_LOCALIZATION_HAS_TEXT = "blueprint.localization.hasText" as const;
+export const BLUEPRINT_NODE_TYPE_LOCALIZATION_FORMAT_TEXT = "blueprint.localization.formatText" as const;
+export const BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_AVAILABLE_LANGUAGES = "blueprint.localization.getAvailableLanguages" as const;
+
 export const BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM = "blueprint.frame.getParam" as const;
 export const BLUEPRINT_NODE_TYPE_FRAME_EMIT = "blueprint.frame.emit" as const;
 export const BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE = "blueprint.frameWidget.setTargetPage" as const;

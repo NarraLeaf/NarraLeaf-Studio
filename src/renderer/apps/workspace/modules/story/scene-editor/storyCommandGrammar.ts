@@ -1,4 +1,4 @@
-import type { StoryCommandTargetKind } from "./storyCommandValues";
+import type { StoryCommandStageObjectKind, StoryCommandTargetKind, StoryPuppetChannel } from "./storyCommandValues";
 
 /**
  * The grammar vocabulary of the story editor's slash command line: what a param IS, independent of
@@ -44,7 +44,49 @@ export type StoryCommandParamType =
      * The dependency may resolve to a `character` value or to a `target` value of character type.
      */
     | { kind: "characterForm"; dependsOn: string }
+    /**
+     * One state channel of a puppet-kind character, named by the model its backend loaded:
+     * `/motion Doll run`, `/skin Doll winter`, `/face Doll smile`.
+     *
+     * Free text by construction, not by concession. A puppet has no authoring-time differentials —
+     * what it can do is decided by a file Studio does not parse — so there is nothing in the project
+     * to resolve a name against and nothing that renaming could invalidate. `dependsOn` still names
+     * the owner param, because *whether* this branch applies is a property of the character: it
+     * declines any character Studio draws itself, which is what lets `/face` carry the same slot for
+     * all three appearance kinds.
+     *
+     * `channel` exists so the candidate list can be fed later from the live model
+     * (`PuppetInstance.describe` enumerates motions, expressions and skins separately) without the
+     * spec, the payload or the stored row changing shape.
+     */
+    | { kind: "puppetName"; channel: StoryPuppetChannel; dependsOn: string }
+    /**
+     * One numeric parameter of a puppet-kind character's model, by id: `/param Doll ParamAngleX 12`.
+     *
+     * The fourth thing `PuppetInstance.describe()` reports, and the only free channel with a *shape* -
+     * an id plus bounds plus a default. That shape is why this has a type of its own rather than being
+     * free text: the ids can be listed, and a value can be checked against the range the model gave.
+     *
+     * Still free-valued, for the same reason `puppetName` is: a model nobody could ask reports no ids,
+     * and a project written where the runtime is installed must stay editable where it is not.
+     */
+    | { kind: "puppetParam"; dependsOn: string }
     | { kind: "scene" }
+    /**
+     * A project audio track, by name: the `Ambience` in `/sound rain track=Ambience`.
+     *
+     * Must resolve. A name matching no track would compile - `resolveAudioTrack` always answers - but
+     * it would answer with the built-in for the row's bus, i.e. a *different mix* from the one the
+     * author wrote down, and silently. Nothing else in this grammar tolerates that, and the failure
+     * mode here is exactly the invisible multiplication the track model exists to end.
+     */
+    | { kind: "audioTrack" }
+    /**
+     * A `label` row declared in the CURRENT scene - what `/goto` addresses. Scene-scoped by
+     * construction (the engine matches within a scene), so the candidates come from the same scan
+     * the compiler validates against, and a name the menu offered can never be one the build rejects.
+     */
+    | { kind: "label" }
     | { kind: "variable" }
     /**
      * The subject of a generic verb (`/show poster`, `/hide Alice`, `/vol piano`): a character or a
@@ -56,7 +98,20 @@ export type StoryCommandParamType =
      * object may be created dynamically or in another scene); with several kinds possible there is
      * nothing to dispatch on, and the line faults with `unknownTarget`.
      */
-    | { kind: "target"; accepts: readonly StoryCommandTargetKind[] }
+    | {
+          kind: "target";
+          accepts: readonly StoryCommandTargetKind[];
+          /**
+           * What a name matching nothing on stage means, when several kinds are possible.
+           *
+           * Widening `accepts` would otherwise cost the free-name latitude: `/stop hit` on a sound
+           * created in another scene resolved fine while `/stop` took audio alone, and adding `video`
+           * to it would leave nothing to dispatch on. Declaring the fallback keeps the author's line
+           * legal and says, on the param, which world an unrecognised name belongs to - `/pause` is a
+           * sound command that also reaches video, not a coin flip between the two.
+           */
+          fallbackKind?: StoryCommandStageObjectKind;
+      }
     /**
      * The new content of a `/swap` - typed by what the *target* resolved to: an image target takes an
      * image asset, a video target a video asset, a text target free text. `dependsOn` names the
@@ -176,9 +231,21 @@ export function matchEnumOption(type: Extract<StoryCommandParamType, { kind: "en
         ?? null;
 }
 
+/**
+ * The kind a name matching nothing on stage takes for this target slot, or null when there is none
+ * and the name must resolve. One rule, read by resolution and by the candidate list alike.
+ */
+export function freeTargetKind(type: Extract<StoryCommandParamType, { kind: "target" }>): StoryCommandStageObjectKind | null {
+    const stageKinds = type.accepts.filter((kind): kind is StoryCommandStageObjectKind => kind !== "character");
+    if (stageKinds.length === 1) {
+        return stageKinds[0];
+    }
+    return type.fallbackKind ?? null;
+}
+
 /** Whether a param's candidates can only be listed once another param has resolved, and which one. */
 export function dependsOnParam(type: StoryCommandParamType): string | null {
-    if (type.kind === "characterForm" || type.kind === "content") {
+    if (type.kind === "characterForm" || type.kind === "content" || type.kind === "puppetName" || type.kind === "puppetParam") {
         return type.dependsOn;
     }
     return null;
@@ -209,16 +276,24 @@ export function allowsFreeValue(type: StoryCommandParamType): boolean {
         case "literal":
         // A constant is whatever scalar the author types; nothing to fail to resolve against.
         case "constant":
+        // A model's own vocabulary is not in the project, so a name here can only ever be free text.
+        // What CAN fail is the character: `/motion Alice run` is reported on the character slot by the
+        // spec's `validate`, which is where a cross-param fact belongs.
+        case "puppetName":
+        // A param id is the model's too, and a model nobody could ask lists none of them.
+        case "puppetParam":
         case "text":
             return true;
-        // A free-typed name can only stand where exactly one object kind is possible - the object may
-        // be created dynamically or in another scene. With several kinds possible there is nothing to
-        // dispatch the block type on, so the name must resolve.
+        // A free-typed name can only stand where the kind is knowable without the stage answering -
+        // the object may be created dynamically or in another scene. That is either because exactly
+        // one kind is possible, or because the param declared what an unrecognised name means.
         case "target":
-            return type.accepts.length === 1 && type.accepts[0] !== "character";
+            return freeTargetKind(type) !== null;
         case "asset":
         case "scene":
+        case "audioTrack":
         case "variable":
+        case "label":
         case "characterForm":
         // Content is typed by its target: an image target's content is an asset that must resolve.
         // Resolution owns the per-target answer; the static answer is the strict one.

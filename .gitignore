@@ -154,6 +154,15 @@ package-lock.json
 .security/
 .DS_Store
 
+# Vendored code-signing tools (fetched at Studio build time by
+# project/build/prepare-codesign-tools.js). Third-party binaries stay out of the
+# repository; the pinned version and sha256 that reproduce them live in the
+# script.
+/resources/codesign/
+
 # Generated plugin API declarations (regenerate with: yarn build:plugin-types)
 packages/plugin-types/dist/
 packages/plugin-types/.gen/
+
+# D0 spike output, kept out of the repository: the conclusions live in docs/version-control.md
+spike*.out

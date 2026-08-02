@@ -4,16 +4,31 @@ import chokidar, { FSWatcher } from "chokidar";
 import { App } from "@/app/app";
 import { AppWindow } from "../window/appWindow";
 import { IPCEventType } from "@shared/types/ipcEvents";
+import { ATOMIC_WRITE_TEMP_PATTERN } from "@shared/utils/fs";
 import { DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus } from "@shared/types/devMode";
+import type { RevisionId } from "@shared/types/vcs";
 import { WindowAppType } from "@shared/types/window";
 import { INLangCompiler, NullNLangCompiler } from "./compiler/INLangCompiler";
 import { compileAllBlueprintScriptsForProject } from "./compiler/blueprint/compileProjectBlueprintScripts";
 import { devModeDiskBundleSource } from "./pipeline/bundleAssembler";
 import type { DevModeBundleSource } from "./pipeline/types";
+import { resolveDevModeLaunchSource } from "./revisionLaunchSource";
+import { removeRevisionSnapshots } from "../vcs/revisionSnapshot";
 
 type DevModeSession = {
     id: string;
     projectPath: string;
+    /**
+     * The directory the compile path reads, which is NOT always the project.
+     *
+     * While the workspace is showing a past revision, this is a snapshot of that revision and the
+     * author's own files are left alone (plan 2026-07-28-002 §1). Everything that identifies the
+     * session - the key in `sessions`, which workspace window gets its console output, which project's
+     * freeze is consulted - stays `projectPath`; only reads move.
+     */
+    sourcePath: string;
+    /** Set when {@link sourcePath} is a snapshot. Also what stops the file watcher being installed. */
+    sourceRevision?: RevisionId;
     entry: DevModeEntry;
     status: DevModeStatus;
     window: AppWindow<WindowAppType.DevMode> | null;
@@ -45,6 +60,8 @@ export class DevModeManager {
     private readonly sessions = new Map<string, DevModeSession>();
     /** Serializes launch/stop/reload per project, so a quick stop-then-start cannot interleave. */
     private readonly operations = new Map<string, Promise<DevModeStatus>>();
+    /** In-flight snapshot removal per project. See {@link discardSnapshot} for why it must be shared. */
+    private readonly snapshotDiscards = new Map<string, Promise<void>>();
     private readonly compiler: INLangCompiler;
     private readonly bundleSource: DevModeBundleSource;
 
@@ -81,6 +98,14 @@ export class DevModeManager {
         });
     }
 
+    /**
+     * Recompile what this session is already running.
+     *
+     * Deliberately does NOT re-resolve where it compiles from: a session launched against a past
+     * revision keeps that revision until it is stopped. Re-resolving would mean a reload silently
+     * switching between the revision and the working tree depending on what the workspace happened to
+     * be showing at the moment a file changed.
+     */
     public reload(projectPath: string): Promise<DevModeStatus> {
         return this.enqueue(projectPath, async () => {
             const session = this.sessions.get(this.projectKey(projectPath));
@@ -119,6 +144,9 @@ export class DevModeManager {
 
         try {
             this.emitVerbose(session, `launch requested: ${this.describeEntry(entry)}`);
+            // Before the window, so a revision that cannot be read refuses the launch instead of
+            // opening a Dev Mode window that then has nothing to show.
+            await this.resolveLaunchSource(session);
             await this.startOrFocusWindow(session);
             await this.compileAndSendBundle(session, "starting");
             this.watchProjectFiles(session);
@@ -137,10 +165,53 @@ export class DevModeManager {
         }
     }
 
+    /**
+     * Point this session at what the author is looking at: the working tree, or a snapshot of the
+     * revision the workspace is showing.
+     *
+     * Progress goes to the workspace console, which is where every other stage of a launch already
+     * reports - materialising a revision on a project with a remote can fetch fragments over the
+     * network (docs/version-control.md §6), and a launch that looks hung with nothing to read is worse
+     * than a slow one that says what it is doing.
+     */
+    private async resolveLaunchSource(session: DevModeSession): Promise<void> {
+        const source = await resolveDevModeLaunchSource({
+            projectPath: session.projectPath,
+            materialize: revision => this.app.getVcsManager().materializeRevisionSnapshot(
+                session.projectPath,
+                revision,
+                {
+                    onProgress: message => this.emitWorkspaceConsoleLog(session, {
+                        level: "info",
+                        source: "Dev Mode",
+                        message,
+                    }),
+                },
+            ),
+        });
+        session.sourcePath = source.directory;
+        session.sourceRevision = source.revision;
+        if (!source.revision) {
+            // A snapshot left by an earlier revision launch (or by a crash) has no owner once this
+            // session runs the working tree, and nothing else would ever remove it.
+            await removeRevisionSnapshots(session.projectPath);
+            return;
+        }
+        this.emitWorkspaceConsoleLog(session, {
+            level: "info",
+            source: "Dev Mode",
+            message: `running version ${source.revision.slice(0, 12)}, not your current files, because that is`
+                + " what the workspace is showing. Asset files still come from your project.",
+        });
+    }
+
     private createSession(projectPath: string, entry: DevModeEntry): DevModeSession {
         return {
             id: crypto.randomUUID(),
             projectPath,
+            // Replaced by `resolveLaunchSource` when a revision is on screen. Defaulted rather than
+            // left undefined so a session is never in a state where "what do I compile" has no answer.
+            sourcePath: projectPath,
             entry,
             status: "starting",
             window: null,
@@ -162,6 +233,11 @@ export class DevModeManager {
         }
 
         this.emitVerbose(session, "creating Dev Mode window");
+        // The window keeps the PROJECT path even when the bundle came from a snapshot, and both halves
+        // of that are deliberate. It is how the window finds its workspace - which is who resolves its
+        // asset URLs, and where its console output goes - and `launchDevMode` reads the network policy
+        // (`allowHttp`) from the config on disk, which must be the author's current one: a past revision
+        // does not get to widen what the runtime is allowed to reach.
         const window = await this.app.launchDevMode({
             projectPath: session.projectPath,
             entry: session.entry,
@@ -172,6 +248,13 @@ export class DevModeManager {
             this.disposeWatcher(session);
             this.clearReloadTimer(session);
             this.forgetSession(session);
+            // The window can close without anyone having asked (the native close box), so this path has
+            // to discard too - and nothing here can await it. `discardSnapshot` shares one removal per
+            // project, so a `stop()` arriving around the same time awaits THIS work rather than starting
+            // a second remove of the same tree.
+            void this.discardSnapshot(session).catch(error => {
+                this.app.logger.warn("[DevMode] snapshot cleanup failed after the window closed", error);
+            });
         });
         window.onReady(() => {
             session.windowReady = true;
@@ -261,7 +344,10 @@ export class DevModeManager {
         try {
             let started = Date.now();
             this.emitVerbose(session, "nlang compile started");
-            const compileResult = await this.compiler.compile({ projectPath: session.projectPath });
+            // `sourcePath`, not `projectPath`, for all three stages below: this is the whole of U4.
+            // The compile path is path-driven end to end, so running a past revision is a matter of
+            // which directory it reads - see `revisionLaunchSource.ts`.
+            const compileResult = await this.compiler.compile({ projectPath: session.sourcePath });
             if (!compileResult.ok) {
                 const detail = (compileResult.errors ?? []).join("\n") || "nlang compile failed";
                 session.status = "error";
@@ -278,7 +364,7 @@ export class DevModeManager {
 
             started = Date.now();
             this.emitVerbose(session, "Blueprint script compile started");
-            const blueprintScripts = await compileAllBlueprintScriptsForProject(session.projectPath);
+            const blueprintScripts = await compileAllBlueprintScriptsForProject(session.sourcePath);
             if (!blueprintScripts.ok) {
                 const detail = blueprintScripts.errors.join("\n") || "TypeScript blueprint compile failed";
                 session.status = "error";
@@ -300,7 +386,7 @@ export class DevModeManager {
             started = Date.now();
             this.emitVerbose(session, `bundle assembly started: revision ${session.revision}`);
             const bundle = await this.bundleSource.load({
-                projectPath: session.projectPath,
+                projectPath: session.sourcePath,
                 bundleId: session.id,
                 revision: session.revision,
                 compiled: compileResult.artifacts,
@@ -360,6 +446,14 @@ export class DevModeManager {
         if (session.watcher) {
             return;
         }
+        if (session.sourceRevision) {
+            // Nothing to watch. The snapshot cannot change, and watching the WORKING TREE instead
+            // would reload a running revision every time the author saved something that has nothing
+            // to do with it - and reload it back to the same bytes, so the only visible effect would be
+            // the game restarting for no reason.
+            this.emitVerbose(session, "not watching project files: this session runs a past revision");
+            return;
+        }
         const uidocPath = path.join(session.projectPath, "editor", "ui", "uidoc.json");
         const uigraphsPath = path.join(session.projectPath, "editor", "ui", "uigraphs.json");
         const storyRoot = path.join(session.projectPath, "editor", "story");
@@ -371,7 +465,10 @@ export class DevModeManager {
         this.emitVerbose(session, "watching project files for Dev Mode reload");
         session.watcher = chokidar.watch(
             [uidocPath, uigraphsPath, storyRoot, localizationRoot, characterStorePath, blueprintMetaPath, assetsContentRoot],
-            { ignoreInitial: true },
+            // Atomic writes put a scratch sibling in the tree for a few milliseconds before renaming
+            // it into place. Reporting it would schedule a reload against a file that is already
+            // gone, on top of the reload the rename itself triggers.
+            { ignoreInitial: true, ignored: ATOMIC_WRITE_TEMP_PATTERN },
         );
         session.watcher.on("add", file => this.scheduleReload(session, "add", file));
         session.watcher.on("change", file => this.scheduleReload(session, "change", file));
@@ -409,6 +506,57 @@ export class DevModeManager {
             session.window.forceClose();
         }
         this.forgetSession(session);
+        await this.discardSnapshot(session);
+    }
+
+    /**
+     * Delete the snapshot this session was running, once nothing is running it.
+     *
+     * Guarded against the relaunch race rather than unconditional: a replacement session is installed
+     * before the outgoing window's `close` event arrives, and the snapshot directory is per project, so
+     * an unguarded removal here would delete the directory the NEW session is compiling from and turn a
+     * relaunch into a file-not-found.
+     *
+     * **Single-flight per project, and that is a correctness fix rather than an optimisation.** Stopping
+     * a session closes its window, and the window's own `close` handler discards too, so two removals of
+     * one tree used to be started at once - MEASURED: two concurrent recursive removes of the same tree
+     * fail on Windows 20 times out of 20, one of them with EPERM. The loser returned early having done
+     * nothing, so `stop()` resolved while the tree was still going away: a caller that awaited the
+     * discard had no guarantee, and a genuine failure was invisible because it was swallowed. Sharing
+     * one promise means whoever awaits it awaits the work.
+     */
+    private async discardSnapshot(session: DevModeSession): Promise<void> {
+        if (!session.sourceRevision) {
+            return;
+        }
+        const key = this.projectKey(session.projectPath);
+        const current = this.sessions.get(key);
+        if (current && current !== session) {
+            return;
+        }
+        const inFlight = this.snapshotDiscards.get(key);
+        if (inFlight) {
+            await inFlight;
+            return;
+        }
+        const discard = removeRevisionSnapshots(session.projectPath)
+            .then(removed => {
+                if (!removed) {
+                    // Not fatal - the next launch clears the root and refuses if it cannot - but it is
+                    // disk sitting in the author's project, so it does not go unsaid.
+                    this.app.logger.warn(
+                        "[DevMode] could not remove the revision snapshot; it will be cleared on the next launch",
+                        session.projectPath,
+                    );
+                }
+            })
+            .finally(() => {
+                if (this.snapshotDiscards.get(key) === discard) {
+                    this.snapshotDiscards.delete(key);
+                }
+            });
+        this.snapshotDiscards.set(key, discard);
+        await discard;
     }
 
     /**

@@ -1,5 +1,6 @@
 // Electron
 import { app, dialog, nativeTheme } from "electron/main";
+import { crashReporter } from "electron";
 
 // Utils
 import fs from "fs";
@@ -24,8 +25,11 @@ import { WindowManager } from "./managers/windowManager";
 import { GlobalStateManager } from "./managers/storage/globalState";
 import { PluginPermissionManager } from "./managers/pluginPermissionManager";
 import { PluginManager } from "./managers/pluginManager";
+import { PluginIconCache } from "./managers/pluginIconCache";
 import { isMainDevMode, parseMainCommandLine } from "./commandLine";
 import { applyThemeMode, getWindowBackgroundColor } from "./theme";
+import { StudioDebugServer } from "./managers/debug/studioDebugServer";
+import { installFileLogSink } from "./logging/fileLogSink";
 import { APP_DISPLAY_NAME } from "@shared/constants/app";
 
 export interface AppDependencies {
@@ -39,6 +43,9 @@ export type AppEvents = {
     "ready": [];
     "ready-failed": [error: Error];
 };
+
+/** What a dev-server reload broadcast asks for. Mirrors dev-electron.js. */
+type DevReloadTarget = "all" | "workspace" | "builtin-plugins";
 
 export class BaseApp {
     public static Events = {
@@ -59,12 +66,14 @@ export class BaseApp {
     public readonly globalState: GlobalStateManager;
     public readonly pluginPermissionManager: PluginPermissionManager;
     public readonly pluginManager: PluginManager;
+    public readonly pluginIconCache: PluginIconCache;
 
     private initialized: boolean = false;
     private readyError: Error | null = null;
     private quitting: boolean = false;
     protected appInfo: AppInfo | null = null;
     private readonly commandLine = parseMainCommandLine(process.argv);
+    private debugServer: StudioDebugServer | null = null;
 
     constructor(config: BaseAppConfig) {
         this.config = config;
@@ -82,17 +91,21 @@ export class BaseApp {
 
         this.configureCdp();
         this.setupUserDataDir();
+        this.setupLogging();
 
         this.globalState = new GlobalStateManager(this.getUserDataDir());
         this.pluginPermissionManager = new PluginPermissionManager(this.getUserDataDir());
         this.pluginManager = new PluginManager(this.getUserDataDir(), this.pluginPermissionManager, {
             builtInPluginsDir: this.getBuiltInPluginsDir(),
         });
+        this.pluginIconCache = new PluginIconCache(this.getUserDataDir());
 
         this.protocolManager = new ProtocolManager(this);
         this.windowManager = new WindowManager(this);
         this.menuManager = new MenuManager(this);
         this.storageManager = new StorageManager(this);
+
+        this.setupCrashObservability();
 
         void this.prepare().catch((error) => this.failBootstrap(error));
     }
@@ -278,6 +291,22 @@ export class BaseApp {
         return this.resolveExistingResource("app-icon-mac.png", "app-icon.png", "app-icon.icns");
     }
 
+    /**
+     * The icon a packaged game wears when its project sets none: NarraLeaf's
+     * own mark, not Electron's default and not the mobile shell's placeholder.
+     * A game that ships looking like the framework it was built with is a
+     * worse answer than one that looks like the engine it runs on.
+     *
+     * `opaque` selects the pre-flattened variant, committed alongside because
+     * iOS and apple-touch icons must carry no alpha channel and the build
+     * deliberately does no compositing of its own.
+     */
+    public getDefaultGameIconPath(opaque = false): string | null {
+        return opaque
+            ? this.resolveExistingResource("app-icon-opaque.png", "app-icon.png")
+            : this.resolveExistingResource("app-icon.png", "app-icon.ico");
+    }
+
     public getDistDir(): string {
         return path.resolve(this.getAppPath(), "dist");
     }
@@ -358,6 +387,48 @@ export class BaseApp {
      * Setup development userData path if running in development mode
      * This must be called before creating managers that depend on userData path
      */
+    /**
+     * Start writing the main-process log to disk, and point Electron's own `logs` path at the same
+     * directory.
+     *
+     * The `setPath` matters more than it looks on macOS: the default is
+     * `~/Library/Logs/<app name>`, which is the *same* directory for the dev build and the packaged
+     * one, so two Studios would interleave their lines into one file. Everything else already lives
+     * under the (dev-specific) userData dir; the logs now do too.
+     */
+    private setupLogging(): void {
+        const logsDir = path.join(this.getUserDataDir(), "logs");
+        installFileLogSink(logsDir);
+        try {
+            this.electronApp.setPath("logs", logsDir);
+        } catch (error) {
+            this.logger.warn("[Logging] Could not redirect Electron's log path:", error);
+        }
+        // Collect native crash dumps next to the log. Never uploaded - this is for the user handing
+        // us a folder, not telemetry.
+        crashReporter.start({ uploadToServer: false });
+    }
+
+    /**
+     * Notice the ways this app can die that are not exceptions.
+     *
+     * A GPU, utility or renderer process dying left no trace at all before this; a hung window
+     * looked identical to a slow one. All of it now reaches the log - which, since
+     * {@link setupLogging}, outlives the process that wrote it. (The renderer and hang cases are
+     * reported by `AppWindow`, which is where those events arrive.)
+     */
+    private setupCrashObservability(): void {
+        this.electronApp.on("child-process-gone", (_event, details) => {
+            if (details.reason === "clean-exit") {
+                return;
+            }
+            this.logger.error(
+                `[Crash] Child process "${details.type}"${details.name ? ` (${details.name})` : ""} exited: `
+                + `${details.reason} (exit code ${details.exitCode})`,
+            );
+        });
+    }
+
     private setupUserDataDir(): void {
         if (!this.electronApp.isPackaged) {
             const userDataPath = path.join(this.getDevTempDir(), "userData-dev");
@@ -409,6 +480,7 @@ export class BaseApp {
         if (this.isDevMode()) {
             this.logger.info("App is running in development mode");
             void this.setupDevReloadSocket();
+            this.startDebugServer();
         }
 
         await this.electronApp.whenReady();
@@ -453,40 +525,88 @@ export class BaseApp {
     /**
      * Connect to the development reload server. Failures are never fatal:
      * a missing dev server only disables auto-reload.
+     *
+     * The port comes from --dev-reload-port, which dev-electron.js passes from its
+     * own DEV_RELOAD_PORT. Hardcoding 5588 here did two bad things to a worktree
+     * session on NLS_DEV_RELOAD_PORT: its own reload never arrived, and — with the
+     * main checkout also running — it latched onto *that* session's socket and
+     * reloaded its windows on the other tree's rebuilds.
      */
     private async setupDevReloadSocket(): Promise<void> {
+        const { port, error } = this.commandLine.devReload;
+        if (error) {
+            this.logger.warn(`[Dev] ${error}. Falling back to port ${port}.`);
+        }
+
         try {
             const { WebSocket } = await import("ws");
-            const ws = new WebSocket("ws://localhost:5588");
+            const ws = new WebSocket(`ws://localhost:${port}`);
             ws.onerror = (event) => {
-                this.logger.warn("[Dev] Reload server not reachable; auto-reload disabled.", event.message);
+                this.logger.warn(`[Dev] Reload server on port ${port} not reachable; auto-reload disabled.`, event.message);
             };
             ws.onmessage = (event) => {
-                const target = this.parseDevReloadTarget(event.data);
-                this.windowManager.getWindows().forEach((w) => {
-                    if (w.isClosed()) {
-                        return;
-                    }
-                    if (target === "workspace" && w.getWindowType() !== WindowAppType.Workspace) {
-                        return;
-                    }
-                    // Avoid interrupting an in-flight navigation which causes ERR_ABORTED
-                    try {
-                        const wc = w.getWebContents();
-                        if (!wc.isLoadingMainFrame()) {
-                            w.reload();
-                        }
-                    } catch (_e) {
-                        // Window might be destroyed; ignore
-                    }
-                });
+                void this.handleDevReload(this.parseDevReloadTarget(event.data));
             };
         } catch (error) {
             this.logger.warn("[Dev] Failed to set up reload socket:", error);
         }
     }
 
-    private parseDevReloadTarget(data: unknown): "all" | "workspace" {
+    /**
+     * Start the dev-only debug HTTP server (127.0.0.1). It exposes the app's
+     * Console service and every window's DevTools console feed so tooling can
+     * pull Studio's logs without a hand-rolled CDP session. Never fatal: a
+     * failure here only disables the convenience surface.
+     */
+    private startDebugServer(): void {
+        try {
+            this.debugServer = new StudioDebugServer(this);
+            this.debugServer.start();
+            this.electronApp.on("before-quit", () => this.debugServer?.stop());
+        } catch (error) {
+            this.logger.warn("[Debug] Failed to start debug server:", error);
+        }
+    }
+
+    /**
+     * Apply one dev reload broadcast.
+     *
+     * `builtin-plugins` is the rebuild of `dist/builtin-plugins`. Reloading the
+     * windows alone would show the same code again: the packages the renderer
+     * loads are the copies the main process synced into userData at start-up, so
+     * the sync has to run again *before* the reload, or a dev edit to a built-in
+     * plugin would only appear after restarting Studio.
+     */
+    private async handleDevReload(target: DevReloadTarget): Promise<void> {
+        if (target === "builtin-plugins") {
+            try {
+                await this.pluginManager.refreshBuiltInPlugins();
+            } catch (error) {
+                this.logger.warn("[Dev] Failed to re-sync built-in plugins:", error);
+            }
+        }
+
+        const workspaceOnly = target !== "all";
+        this.windowManager.getWindows().forEach((w) => {
+            if (w.isClosed()) {
+                return;
+            }
+            if (workspaceOnly && w.getWindowType() !== WindowAppType.Workspace) {
+                return;
+            }
+            // Avoid interrupting an in-flight navigation which causes ERR_ABORTED
+            try {
+                const wc = w.getWebContents();
+                if (!wc.isLoadingMainFrame()) {
+                    w.reload();
+                }
+            } catch (_e) {
+                // Window might be destroyed; ignore
+            }
+        });
+    }
+
+    private parseDevReloadTarget(data: unknown): DevReloadTarget {
         const text = typeof data === "string"
             ? data
             : Buffer.isBuffer(data)
@@ -498,7 +618,9 @@ export class BaseApp {
 
         try {
             const parsed = JSON.parse(text) as { target?: unknown };
-            return parsed.target === "workspace" ? "workspace" : "all";
+            return parsed.target === "workspace" || parsed.target === "builtin-plugins"
+                ? parsed.target
+                : "all";
         } catch {
             return "all";
         }

@@ -81,8 +81,20 @@ Manifest 字段：
 | `publisher` | `string` | 可选。 |
 | `description` | `string` | 可选。 |
 | `entries` | `{ studio?: string; runtime?: string }` | 至少声明一个 target；每个值必须是包内相对路径。未知 key 会被拒绝。 |
-| `contributes` | `{ blueprintNodes?: string[]; widgets?: string[] }` | 插件提供的蓝图节点 / widget type 声明（必须以插件 ID 为前缀）。注册未声明的类型会抛错；打包时 Studio 用它静态校验项目用到的类型是否有运行时提供方。省略等同空数组。 |
-| `permissions` | `PluginInstallPermission[]` | 可选，默认 `[]`。仅作用于 studio 入口。 |
+| `contributes` | 见下 | 插件声明的一切。**这是插件能力的唯一真相源**——安装权限从它派生，运行时 API 按它门控。 |
+| `permissions` | `PluginInstallPermission[]` | 可选，默认 `[]`。**只能手写 `filesystem` 与 `api` 两种**（studio 入口的特权控制）；`runtime` / `sidecar` / `buildDependency` 三种由 `contributes` 派生，手写会被判为清单错误。 |
+
+`contributes` 的七个键：
+
+| 键 | 类型 | 说明 |
+|---|---|---|
+| `blueprintNodes` | `string[]` | 蓝图节点 type（必须以插件 ID 为前缀）。注册未声明的类型会抛错。 |
+| `widgets` | `string[]` | widget type，同上。 |
+| `runtimeData` | `string[]` | 随游戏发布的插件存储命名空间，runtime 侧 `app.game.data.readJson` 只能读这里列出的。 |
+| `locales` | `PluginLocaleContribution[]` | Studio 界面语言包。 |
+| `runtimeCapabilities` | `PluginRuntimeCapability[]` | runtime 入口要用的能力域，九选若干：`store` / `events` / `state.read` / `state.write` / `saves.read` / `saves.write` / `ui.overlay` / `assets` / `locale`。**未声明的域在 `app.game` 上不存在**（不是抛错的桩）。 |
+| `sidecars` | `PluginSidecarContribution[]` | 随作者的游戏附带并运行的原生子进程。声明它本身就是权限请求，无需再声明能力。 |
+| `buildDependencies` | `PluginBuildDependencyContribution[]` | 构建时下载/校验/缓存的外部二进制。 |
 
 entry 不能是绝对路径，不能包含 `..`、`.`、空字节、`?` 或 `#`。声明的入口文件必须实际存在。
 
@@ -101,6 +113,9 @@ type PluginInstallPermission =
       capability: string;
     };
 ```
+
+派生出来的另外三种（`runtime` / `sidecar` / `buildDependency`）不要写进 `permissions`——
+校验器会拒绝。理由：一个能力若能在两个地方声明，安装提示所说的和插件实际能做的迟早会分叉。
 
 当前可实际用于插件特权 facade 的 API capability：
 
@@ -165,6 +180,76 @@ Promise<void>
 Promise<() => void | Promise<void>>
 ```
 
+## 扩展文本编辑器（`app.services.textEditor`）
+
+Studio 的文本编辑器（Other 分类里 `.txt` / `.md` / `.ini` 等资产的 Monaco 标签页）只提供编辑本身：
+读写、编码切换、防抖自动保存。**Markdown 的语法高亮增强、预览、格式化等一律由插件提供**，Studio 不内建。
+这一层是纯命令式的，跟 `ui.panels` 一样**没有** manifest `contributes` 项。
+
+```ts
+registerLanguage(def: PluginTextEditorLanguageDef): PluginCleanup;
+registerPreview(def: PluginTextEditorPreviewDef): PluginCleanup;
+registerAction(def: PluginTextEditorActionDef): PluginCleanup;
+```
+
+三者的 `id` 都必须以插件 ID 为前缀，否则注册时抛错。`extensions` 带不带前导点都可以，大小写不敏感。
+
+```ts
+import { definePlugin } from "narraleaf-studio/plugin";
+import { renderMarkdown } from "./markdown";
+
+export default definePlugin({
+  setup(app) {
+    const id = app.plugin.id;
+
+    // 语法：懒注册。这里只是登记，真正进 Monaco 是在第一次打开匹配扩展名的文档时——
+    // 所以在 setup 里注册不会把 Monaco 拖进 Studio 启动路径。
+    app.services.textEditor.registerLanguage({
+      id: `${id}.mermaid`,
+      extensions: ["mmd"],
+      monarch: { tokenizer: { root: [[/^graph\b/, "keyword"]] } },
+    });
+
+    // 预览：组件渲染在编辑器右半边，props 是活的缓冲区内容。
+    app.services.textEditor.registerPreview({
+      id: `${id}.markdown`,
+      extensions: ["md", "markdown"],
+      title: "Preview",
+      component: ({ text, active }) => renderMarkdown(text, { animate: active }),
+    });
+
+    // 动作：不写 extensions 就对所有文本文档生效。
+    app.services.textEditor.registerAction({
+      id: `${id}.format`,
+      title: "Format",
+      extensions: ["md"],
+      run: ctx => ctx.setText(formatMarkdown(ctx.getText())),
+    });
+  },
+});
+```
+
+预览组件拿到的 props（`PluginTextEditorPreviewProps`）：
+
+| 字段 | 含义 |
+|---|---|
+| `text` | **编辑器缓冲区的当前内容**，不是磁盘上的字节。落后于最后一次保存的预览没有意义 |
+| `encoding` | 当前编码 id（`"utf8"` / `"gbk"` / …） |
+| `fileName` | 资产显示名，含扩展名 |
+| `assetId` | 资产 id |
+| `active` | 所在标签页是否是激活的。做动画或轮询的预览应该在它为 false 时停下来 |
+
+动作拿到的 `PluginTextEditorActionContext` 是 `{ assetId, fileName, encoding, getText(), setText(text) }`。
+`setText` 写进的是活模型，会走正常的内容变更路径——可撤销，并且和敲键盘一样吃那份防抖自动保存，
+所以动作不需要知道文本资产是怎么落盘的。
+
+### 两条会让你以为"接口没实现"的规则
+
+- **注册表为空时界面上什么都不画。** 预览开关和动作按钮只在**当前文档的扩展名**有匹配的注册项时
+  才出现在编辑器状态条上。没装这类插件的 Studio 不会留下任何禁用控件——所以"预览按钮没出现"
+  通常是 `extensions` 没匹配上，而不是 API 没做。
+- **冻结工作区时**：预览开关是"看"，照常可用；动作能改写文档，是"写"，会被禁用。
+
 ## runtime.js（runtime entry）
 
 runtime 入口在 Dev Mode 窗口、Preview 和打包后的游戏中执行，用于注册蓝图节点的 `execute` 绑定和插件 widget 的游戏渲染器。它没有 Studio services、没有特权能力；`setup` 返回值被忽略（游戏环境没有卸载生命周期）。
@@ -183,19 +268,32 @@ export default defineRuntimePlugin({
 });
 ```
 
-`app.game.blueprintNodes.register` 只读取 `type`、`displayName`、`execute` 三个字段，所以可以直接传入与 studio 入口共享的完整 `BlueprintNodeDef` 对象。node type 必须以插件 ID 为前缀。
+`app.game.blueprintNodes.register` 只读取 `type`、`displayName`、`execute` 三个字段，所以可以直接传入与 studio 入口共享的完整 `PluginBlueprintNodeDef` 对象。node type 必须以插件 ID 为前缀。
 
 推荐把节点定义放进 `src/nodes.ts` 由两个入口共同 import：studio 入口注册完整定义（palette + 编辑器预览），runtime 入口注册游戏 execute。这样 execute 逻辑只写一次。内建 Gallery 插件（`src/builtin-plugins/gallery/`）是参照实现。
 
-execute 内通过执行上下文访问游戏宿主能力（如 persistence）：
+### ⚠ 插件 UI 用的 Tailwind class 必须已经存在于样式表里
+
+插件面板渲染在 Studio 窗口里，共用**同一份**已经编译好的 Tailwind 样式表——插件自己的 bundle 里没有 CSS。
+Tailwind 只会生成它在 `content` glob 扫到的 class，所以：
+
+- **内建插件**（`src/builtin-plugins/`）已被 `tailwind.config.js` 的 content 收录，随便写。
+  （这条是 2026-07-28 补的：在那之前内建插件不在扫描范围内，Gallery 的
+  `grid-cols-[repeat(auto-fill,minmax(150px,1fr))]` 从未被生成，网格静默塌成一列。）
+- **第三方插件**在构建时并不存在，**无法**让样式表新增 class。只能使用 Studio 自己已经用到的
+  utility。写了没有的 class 不会报错，只会毫无效果——这类 bug 极难自查，务必先在真 app 里看一眼。
+
+execute 拿到的 `ctx` 只有 `params` / `resolveInput` / `eventName` / `eventPayload` / `signal` / `game`。宿主能力一律走 `ctx.game`——也就是 `setup(app)` 收到的同一个能力门控对象，manifest 里 `contributes.runtimeCapabilities` 声明什么就有什么：
 
 ```ts
 execute: async ctx => {
-  const hostApi = ctx.hostAdapter.blueprintRuntime?.hostApi;
-  await hostApi?.persistence.set(`${PLUGIN_ID}.key`, value);
+  // 未声明（或本环境背不动）的域在对象上不存在，不是会抛错的方法——所以要判存降级。
+  await ctx.game.store?.set("key", value);   // 需声明 "store"
   return { nextPort: "next" };
 },
 ```
+
+编辑器本身没有游戏可读，因此节点在 Studio 内预览执行时 `ctx.game` 上的门控域全部缺席，节点必须能降级运行。
 
 ## 构建要求
 

@@ -100,7 +100,7 @@ function isBranchEntry(block: StoryBlock): boolean {
 
 /** Rows with no runtime behaviour at all; emitting them would only add compiler noise. */
 function isInertKind(block: StoryBlock): boolean {
-    return block.kind === "note" || block.kind === "code";
+    return block.kind === "note";
 }
 
 class PlanBuilder {

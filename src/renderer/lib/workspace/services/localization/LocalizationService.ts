@@ -6,6 +6,8 @@
  * Comments in English per project convention.
  */
 
+import { loadDocument, saveDocument, type DocumentStorage } from "@shared/documents/documentIo";
+import { localizationDocumentSpec, localizationKeysSpec } from "@shared/documents/specs";
 import { RendererError } from "@shared/utils/error";
 import {
     LocalizationConfiguration,
@@ -19,15 +21,15 @@ import {
     createEmptyLocalizationKeysDocument,
     isValidLocaleCode,
     isValidLocalizationKeyName,
-    normalizeLocalizationDocument,
-    normalizeLocalizationKeysDocument,
 } from "@shared/types/localization";
 import { hashSourceText } from "@shared/utils/localizationText";
 import type { TranslationCsvRow } from "@shared/utils/localizationCsv";
 import type { StoryDocument } from "@shared/types/story";
-import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
 import { ILocalizationService, Services, WorkspaceContext } from "../services";
+import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver } from "../autosave/DebouncedSaver";
+import { registerAutoSaver, reportUnreadableDocument } from "../autosave/SaveStatusService";
+import { createProjectDocumentStorage } from "../core/DocumentStorage";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { EventEmitter } from "../ui/EventEmitter";
@@ -68,13 +70,18 @@ export class LocalizationService extends Service<LocalizationService> implements
     private keysDocument: LocalizationKeysDocument | null = null;
     private keysDirty = false;
     private readonly events = new EventEmitter<LocalizationServiceEvents>();
-    private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
-    private readonly autoSaveDelay = 800;
+    private readonly autoSaver = new DebouncedSaver({
+        delayMs: DEFAULT_AUTOSAVE_DELAY_MS,
+        maxWaitMs: DEFAULT_AUTOSAVE_MAX_WAIT_MS,
+        save: () => this.writeDirtyDocuments(),
+        onError: err => console.warn("[LocalizationService] auto-save failed", err),
+    });
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
         const projectService = ctx.services.get<ProjectService>(Services.Project);
         await depend([filesystemService, projectService]);
+        await registerAutoSaver(ctx, depend, "localization", "workspace.shell.save.stores.localization", this.autoSaver);
         // Preload the named-key registry: synchronous consumers (widget inspector
         // key pickers, blueprint dynamic options) read it via getKeysIfLoaded().
         void this.loadKeys().catch(() => undefined);
@@ -194,25 +201,18 @@ export class LocalizationService extends Service<LocalizationService> implements
         if (cached) {
             return cached;
         }
-        const fs = this.getFileSystem();
-        const path = this.getDocumentPath(locale);
-        const exists = await fs.isFileExists(path);
-        if (!exists.ok) {
-            throw new RendererError(exists.error.message || `Failed to access translations: ${locale}`);
+        const result = await loadDocument(localizationDocumentSpec, this.storage(), this.getDocumentPath(locale));
+
+        // A present-but-unreadable file throws instead of degrading to empty, and - the part that
+        // matters - is not cached: an "empty" document in the cache is one edit away from being
+        // auto-saved over a file full of translations nobody could read.
+        if (result.status === "corrupt") {
+            reportUnreadableDocument(this.getContext(), result);
+            throw new RendererError(`Failed to read translations for ${locale}: ${result.error.reason}`);
         }
-        let document: LocalizationDocument;
-        if (!exists.data) {
-            // First time this language is opened - start empty, created on first save.
-            document = createEmptyLocalizationDocument(locale);
-        } else {
-            // A present-but-unreadable file throws instead of degrading to empty:
-            // silently editing an "empty" document would overwrite the broken file.
-            const result = await fs.readJSON<unknown>(path);
-            if (!result.ok) {
-                throw new RendererError(result.error.message || `Failed to read translations: ${locale}`);
-            }
-            document = normalizeLocalizationDocument(result.data, locale);
-        }
+
+        // First time this language is opened - start empty, created on first save.
+        const document = result.status === "missing" ? createEmptyLocalizationDocument(locale) : result.document;
         this.documents.set(locale, document);
         return document;
     }
@@ -265,21 +265,77 @@ export class LocalizationService extends Service<LocalizationService> implements
     }
 
     public async flushPendingChanges(): Promise<void> {
-        if (this.autoSaveTimer) {
-            clearTimeout(this.autoSaveTimer);
-            this.autoSaveTimer = null;
-        }
-        const locales = [...this.dirtyLocales];
+        await this.autoSaver.flush();
+    }
+
+    /**
+     * Throw away the cached locale documents and the key registry, and read back whatever was open.
+     *
+     * A participant of `WorkspaceReloadService`. `loadDocument` answers from the cache, so without
+     * this a locale opened before the working tree changed would keep serving the translations it
+     * had - and write them back over the ones now on disk.
+     *
+     * Dirty flags go too: an edit made while writes were refused is owed on a document that is being
+     * replaced, and paying that debt afterwards is the loss this exists to prevent.
+     */
+    public async reloadFromDisk(): Promise<void> {
+        const previouslyLoaded = [...this.documents.keys()];
+        const hadKeys = this.keysDocument !== null;
+        this.documents.clear();
         this.dirtyLocales.clear();
-        for (const locale of locales) {
+        this.keysDocument = null;
+        this.keysDirty = false;
+
+        // One locale at a time, and a failure does not stop the others: a document that cannot be
+        // read stays out of the cache, which is the state `loadDocument` throws from and
+        // `writeDirtyDocuments` skips - never an empty document one edit away from overwriting it.
+        const failures: string[] = [];
+        const reread = async (label: string, load: () => Promise<unknown>): Promise<void> => {
+            try {
+                await load();
+            } catch (error) {
+                failures.push(`${label} (${error instanceof Error ? error.message : String(error)})`);
+            }
+        };
+
+        if (hadKeys) {
+            await reread("keys", () => this.loadKeys());
+        }
+        for (const locale of previouslyLoaded) {
+            // A locale removed from the configuration while the tree changed under us is not an
+            // error - `assertKnownLocale` would throw, and there is nothing left to show.
+            if (!this.getConfiguration().locales.some(entry => entry.code === locale)) {
+                continue;
+            }
+            await reread(locale, async () => {
+                const document = await this.loadDocument(locale);
+                this.events.emit("documentChanged", { locale, document });
+            });
+        }
+
+        if (failures.length > 0) {
+            throw new RendererError(`Could not re-read ${failures.length} translation document(s): ${failures.join("; ")}`);
+        }
+    }
+
+    /**
+     * The write itself. Only ever reached through {@link autoSaver}, which serialises it.
+     *
+     * Each dirty flag is cleared *after* its write lands, not before: `writeDocument` throws on a
+     * rejected write, and clearing up front meant a locale that failed to save was quietly marked
+     * clean and never written again.
+     */
+    private async writeDirtyDocuments(): Promise<void> {
+        for (const locale of [...this.dirtyLocales]) {
             const document = this.documents.get(locale);
             if (document) {
                 await this.writeDocument(document);
             }
+            this.dirtyLocales.delete(locale);
         }
         if (this.keysDirty && this.keysDocument) {
-            this.keysDirty = false;
             await this.writeKeysDocument(this.keysDocument);
+            this.keysDirty = false;
         }
     }
 
@@ -289,22 +345,14 @@ export class LocalizationService extends Service<LocalizationService> implements
         if (this.keysDocument) {
             return this.keysDocument;
         }
-        const fs = this.getFileSystem();
-        const path = this.getContext().project.resolve(ProjectNameConvention.EditorLocalizationKeys);
-        const exists = await fs.isFileExists(path);
-        if (!exists.ok) {
-            throw new RendererError(exists.error.message || "Failed to access localization keys");
+        const result = await loadDocument(localizationKeysSpec, this.storage(), localizationKeysSpec.pathFor());
+
+        if (result.status === "corrupt") {
+            reportUnreadableDocument(this.getContext(), result);
+            throw new RendererError(`Failed to read localization keys: ${result.error.reason}`);
         }
-        let document: LocalizationKeysDocument;
-        if (!exists.data) {
-            document = createEmptyLocalizationKeysDocument();
-        } else {
-            const result = await fs.readJSON<unknown>(path);
-            if (!result.ok) {
-                throw new RendererError(result.error.message || "Failed to read localization keys");
-            }
-            document = normalizeLocalizationKeysDocument(result.data);
-        }
+
+        const document = result.status === "missing" ? createEmptyLocalizationKeysDocument() : result.document;
         this.keysDocument = document;
         return document;
     }
@@ -448,68 +496,33 @@ export class LocalizationService extends Service<LocalizationService> implements
     }
 
     private async writeKeysDocument(document: LocalizationKeysDocument): Promise<void> {
-        await this.ensureLocalizationDir();
-        const result = await this.getFileSystem().write(
-            this.getContext().project.resolve(ProjectNameConvention.EditorLocalizationKeys),
-            JSON.stringify(document, null, 2),
-            "utf-8",
-        );
-        if (!result.ok) {
-            throw new RendererError(result.error.message);
-        }
+        await saveDocument(localizationKeysSpec, this.storage(), localizationKeysSpec.pathFor(), document);
     }
 
     private scheduleAutoSave(): void {
-        if (this.autoSaveTimer) {
-            clearTimeout(this.autoSaveTimer);
-        }
-        this.autoSaveTimer = setTimeout(() => {
-            this.autoSaveTimer = null;
-            void this.flushPendingChanges().catch(err => {
-                console.warn("[LocalizationService] auto-save failed", err);
-            });
-        }, this.autoSaveDelay);
-    }
-
-    private async ensureLocalizationDir(): Promise<void> {
-        const fs = this.getFileSystem();
-        const dir = this.getContext().project.resolve(ProjectNameConvention.EditorLocalization);
-        const exists = await fs.isDirExists(dir);
-        if (!exists.ok) {
-            throw new RendererError(exists.error.message || "Failed to access localization directory");
-        }
-        if (!exists.data) {
-            const created = await fs.createDir(dir);
-            if (!created.ok) {
-                throw new RendererError(created.error.message || "Failed to create localization directory");
-            }
-        }
+        this.autoSaver.schedule();
     }
 
     private async writeDocument(document: LocalizationDocument): Promise<void> {
-        await this.ensureLocalizationDir();
-        const result = await this.getFileSystem().write(
-            this.getDocumentPath(document.locale),
-            JSON.stringify(document, null, 2),
-            "utf-8",
-        );
-        if (!result.ok) {
-            throw new RendererError(result.error.message);
-        }
+        await saveDocument(localizationDocumentSpec, this.storage(), this.getDocumentPath(document.locale), document);
     }
 
+    /**
+     * Project-relative, and built by the spec rather than by `ProjectNameConvention`, so the path a
+     * document is saved to is the same path the document registry resolves back to a spec.
+     */
     private getDocumentPath(locale: string): string {
         if (!isValidLocaleCode(locale)) {
             throw new RendererError(`Invalid locale code: ${locale}`);
         }
-        return this.getContext().project.resolve(ProjectNameConvention.EditorLocalizationDocument(locale));
+        return localizationDocumentSpec.pathFor({ locale });
+    }
+
+    private storage(): DocumentStorage {
+        return createProjectDocumentStorage(this.getContext());
     }
 
     private getProjectService(): ProjectService {
         return this.getContext().services.get<ProjectService>(Services.Project);
-    }
-
-    private getFileSystem(): FileSystemService {
-        return this.getContext().services.get<FileSystemService>(Services.FileSystem);
     }
 }

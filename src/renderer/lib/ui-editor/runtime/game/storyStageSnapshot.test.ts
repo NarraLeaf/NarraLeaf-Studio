@@ -81,7 +81,7 @@ describe("computeStoryStageSnapshot", () => {
         expect(alice.objectName).toBe("char-alice");
         expect(alice.visible).toBe(true);
         expect(alice.autoFit).toBe(true);
-        expect(alice.source).toEqual({ type: "character", characterId: "char-alice", formName: undefined, variants: undefined });
+        expect(alice.source).toEqual({ type: "character", characterId: "char-alice", pose: undefined, tags: undefined });
         expect(alice.props).toEqual(expect.objectContaining({
             opacity: 1,
             zoom: 0.5,
@@ -91,6 +91,96 @@ describe("computeStoryStageSnapshot", () => {
         const atTarget2 = snapshot(document, "target-2");
         expect(atTarget2.displayables[0].visible).toBe(false);
         expect(atTarget2.displayables[0].props.opacity).toBe(0);
+    });
+
+    it("leaves the portrait alone across a /rename", () => {
+        // `setName` retitles the speaker label and nothing else. It used to fall into the
+        // enter/expression arm, which rebuilds `source` from a payload it never carries - so a
+        // `/rename` after a `/face` silently reverted the character to their default look in a
+        // row-precise launch, which is the one place this snapshot is the whole truth.
+        const document = baseDocument({
+            enter: block("enter", "action", { action: "character", operation: "enter", characterId: "char-alice" }),
+            face: block("face", "action", { action: "character", operation: "expression", characterId: "char-alice", pose: "pose-angry" }),
+            rename: block("rename", "action", { action: "character", operation: "setName", characterId: "char-alice", displayName: "Alice" }),
+            target: say("target"),
+        }, ["enter", "face", "rename", "target"]);
+
+        const result = snapshot(document, "target");
+        expect(result.displayables).toHaveLength(1);
+        const alice = result.displayables[0];
+        expect(alice.visible).toBe(true);
+        expect(alice.source).toEqual({ type: "character", characterId: "char-alice", pose: "pose-angry", tags: undefined });
+    });
+
+    it("does not conjure a stage record for a character only ever renamed", () => {
+        // `setName` settles no stage state, so it must not even reserve a displayable - otherwise
+        // "？？？" becoming a name would put a blank portrait in the preview.
+        const document = baseDocument({
+            rename: block("rename", "action", { action: "character", operation: "setName", characterId: "char-bob", displayName: "Bob" }),
+            target: say("target"),
+        }, ["rename", "target"]);
+        expect(snapshot(document, "target").displayables).toEqual([]);
+    });
+
+    it("warns that a /vfx overlay is not previewed, as it does for a video", () => {
+        // An ambience overlay is a real visual the snapshot cannot settle. Silence would leave the
+        // author reading a row-precise launch as complete when a layer of it is simply missing.
+        const document = baseDocument({
+            rain: block("rain", "action", { action: "vfx", operation: "create", objectName: "rain", assetId: "asset-rain" }),
+            clip: block("clip", "action", { action: "video", operation: "create", objectName: "intro", assetId: "asset-intro" }),
+            target: say("target"),
+        }, ["rain", "clip", "target"]);
+        const result = snapshot(document, "target");
+        expect(result.diagnostics).toEqual([
+            { level: "warning", blockId: "rain", message: "Ambience effects are not previewed." },
+            { level: "warning", blockId: "clip", message: "Videos are not previewed." },
+        ]);
+    });
+
+    it("records the settled camera pose before the target and clamps degenerate values", () => {
+        // The stage camera is a story-level singleton whose pose the runtime carries into a
+        // row-precise launch. A launch that pre-poses everything else but leaves the camera neutral
+        // shows the author a shot the real playthrough never had. Clamping mirrors the compiler,
+        // because the pose is pre-posed straight onto the camera, bypassing compileCameraAction.
+        const document = baseDocument({
+            zoom: block("zoom", "action", { action: "camera", operation: "zoom", zoom: 0 }),
+            pan: block("pan", "action", { action: "camera", operation: "pan", position: { xalign: 0.25, yalign: 0.5 } }),
+            rotate: block("rotate", "action", { action: "camera", operation: "rotate", rotation: 15 }),
+            dark: block("dark", "action", { action: "camera", operation: "darken", darkness: 2 }),
+            target: say("target"),
+        }, ["zoom", "pan", "rotate", "dark", "target"]);
+        const result = snapshot(document, "target");
+        expect(result.diagnostics).toEqual([]);
+        // zoom 0 → the 0.05 floor; darkness 2 → the 0-1 ceiling.
+        expect(result.camera).toEqual({
+            props: {
+                zoom: 0.05,
+                position: expect.objectContaining({ xalign: 0.25, yalign: 0.5 }),
+                rotation: 15,
+            },
+            effects: { darkness: 1 },
+        });
+    });
+
+    it("lets the latest camera op on a channel win and drops the pose on reset", () => {
+        const later = baseDocument({
+            first: block("first", "action", { action: "camera", operation: "zoom", zoom: 2 }),
+            second: block("second", "action", { action: "camera", operation: "zoom", zoom: 3 }),
+            target: say("target"),
+        }, ["first", "second", "target"]);
+        expect(snapshot(later, "target").camera?.props.zoom).toBe(3);
+
+        const reset = baseDocument({
+            zoom: block("zoom", "action", { action: "camera", operation: "zoom", zoom: 2 }),
+            reset: block("reset", "action", { action: "camera", operation: "reset" }),
+            target: say("target"),
+        }, ["zoom", "reset", "target"]);
+        expect(snapshot(reset, "target").camera).toBeNull();
+    });
+
+    it("leaves the camera pose null when no /camera runs before the target", () => {
+        const document = baseDocument({ target: say("target") }, ["target"]);
+        expect(snapshot(document, "target").camera).toBeNull();
     });
 
     it("merges successive transforms with position-aware semantics", () => {
@@ -161,6 +251,54 @@ describe("computeStoryStageSnapshot", () => {
         const withoutSet = { ...document, scenes: { "scene-1": { ...document.scenes["scene-1"], rootBlockIds: ["condition", "target"] } } };
         const elseResult = snapshot(withoutSet as StoryDocument, "target");
         expect(elseResult.displayables.map(d => d.objectName)).toEqual(["else-img"]);
+    });
+
+    it("degrades visited / picked / invoke to their zero AND says so", () => {
+        // The preview has no playthrough behind it and no ScriptCtx to run a graph with, so all three
+        // read as their zero. Asserting the DIAGNOSTIC is the whole point of the test: a silent zero
+        // is indistinguishable from the expression having genuinely evaluated to it, which is how
+        // "the preview is lying" becomes "the feature is broken".
+        const document = baseDocument({
+            set: block("set", "action", {
+                action: "setVariable",
+                target: { scope: "scene", variableId: "flag" },
+                expression: { source: "bonus()", ast: { kind: "invoke", blueprintId: "bp1", name: "bonus" } },
+            }),
+            condition: block("condition", "control", { control: "condition" }, null, ["if-branch", "else-branch"]),
+            "if-branch": block("if-branch", "control", {
+                control: "conditionBranch",
+                branch: "if",
+                condition: {
+                    kind: "expression",
+                    expression: {
+                        source: "visited(序章)",
+                        ast: { kind: "visited", target: { kind: "scene", sceneId: "sc_prologue" }, name: "序章" },
+                    },
+                },
+            }, "condition", ["show-if"]),
+            "else-branch": block("else-branch", "control", { control: "conditionBranch", branch: "else" }, "condition", ["show-else"]),
+            "show-if": block("show-if", "action", { action: "image", operation: "show", objectName: "if-img" }, "if-branch"),
+            "show-else": block("show-else", "action", { action: "image", operation: "show", objectName: "else-img" }, "else-branch"),
+            target: say("target"),
+        }, ["set", "condition", "target"]);
+
+        const result = snapshot(document, "target");
+        // `visited(…)` read false, so the else branch ran; `bonus()` read empty, so the assignment
+        // wrote null rather than a number the author would then chase.
+        expect(result.displayables.map(d => d.objectName)).toEqual(["else-img"]);
+        expect(result.sceneVariables).toEqual({ flag: null });
+        expect(result.diagnostics).toEqual([
+            {
+                level: "warning",
+                blockId: "set",
+                message: "Blueprint `bonus()` does not run in the preview; it reads as empty.",
+            },
+            {
+                level: "warning",
+                blockId: "if-branch",
+                message: "Scene visits are not tracked in the preview; `visited(序章)` reads as false.",
+            },
+        ]);
     });
 
     it("takes the branch containing the target and skips earlier un-taken choices", () => {

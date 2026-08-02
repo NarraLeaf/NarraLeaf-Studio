@@ -13,7 +13,82 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
 // are derived by scanning (see `declarations.ts`), and deleting the row deletes the variable. The
 // migration synthesizes a declaration block per registry entry, with the block id taking over the
 // old `variableId` so every stored ref keeps resolving.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 6 as const;
+// v7 adds the block-level `disabled` flag (a compiled-out, build-tolerated row — distinct from
+// `invalid` and `note`). Purely additive: a v6 document loads with every block enabled, so the
+// migration is a no-op version bump. The bump exists only so a v6 Studio refuses a v7 document
+// rather than silently compiling a row the author meant to skip.
+// v8 adds the `event` rich-text run (a zero-width inline reveal-time event — expression switch
+// and/or SE — see `StoryInlineEvent`). Purely additive: a v7 document simply has no event runs, so
+// the migration is a no-op version bump. The bump exists only so a v7 Studio refuses a v8 document
+// rather than dropping event tokens it does not understand.
+// v9 (M-VAR) symmetrizes `StoryVariableRef`: the persistent arm now addresses by `variableId` like
+// the scene/saved arms, replacing the old `storageKey`. The migration renames the field on every
+// persistent ref with the identical value (a persistent variable's id equals its storage key), so
+// old references keep resolving unchanged - `storyVariableRefKey` collapses to `scope:variableId`.
+// v10 follows the character appearance rework: a character no longer has forms, so a row can no
+// longer name one. `formName` + `variants` become `pose` (a preset character's pose id) or `tags`
+// (a layered character's tag per axis). The migration derives the pose id from the old
+// `(formName, variantName)` pair with the same deterministic function the character migration used,
+// so the two migrations need not run together, or even in the same session. A row whose derived id
+// names no pose compiles to a diagnostic — which is the point: the model this replaced answered an
+// unresolvable differential with an arbitrary other image.
+// v11 is a burned number. It added a `{action:"plugin"}` marker block for plugin compile passes;
+// that feature was withdrawn (designed against a Studio that has since moved, and never validated
+// by a consumer), but the number stays spent: documents saved while it existed carry
+// `schemaVersion: 11`, and `assertSupportedStoryDocument` refuses anything newer than this
+// constant. Since v11's migration was a pure no-op bump, such a document is shape-identical to a
+// v10 one, so keeping the number costs nothing and reclaiming it would lock those projects out.
+// v12 adds `StoryDocument.unassignedSceneIds`: the order of the scenes no chapter claims, which
+// until now was only the key order of the `scenes` record. The bump is not additive in the way v7
+// and v8 were. A v11 Studio would ignore the field and fall back to key order, which the canonical
+// serializer sorts by UUID - so it would open the document, show the scenes in a random order, and
+// save that as if the author had arranged it. Refusing the document is the point.
+// v13 does two things at once, because both change what a block may BE and one migration has to see
+// the other's output. (a) The `code` block kind is gone. It had a language picker and a source
+// editor and had never run: the compiler skipped every one of them with a warning, so the whole
+// affordance was a promise the runtime never kept. Its rows migrate to `note` with the source
+// carried over verbatim - authors typed real code into them, and dropping it would be silent data
+// loss. (b) A `repeat` group may now carry `until` (a condition, compiled to the engine's
+// `whileLoop`) instead of `times`, and there is a new `{control:"break"}` row.
+// Neither half is additive, and in opposite directions. A v12 Studio reading a v13 document would
+// find a control payload whose `control` is `"break"` and an `until` it does not know, and would
+// compile the loop as a one-shot `repeat` with no iteration at all - a scene that runs, silently
+// wrong. Reading the other way, a v12 document's `code` rows no longer typecheck as blocks at all.
+// So the bump makes an older Studio refuse rather than reinterpret.
+// v14 adds two node kinds to the story expression language: `array` (the `[1, 2, 3]` literal) and
+// `index` (the `inv[0]` / `flags["ch1"]` subscript), which together are what finally lets a `json`
+// variable be READ - it could always be stored, and until now every use of one had to detour through
+// a blueprint. The whitelist grows by 22 collection and string functions in the same change, but
+// functions need no version: an unknown name has always parsed to `invalid`, which is a tree the
+// compiler refuses, so an older Studio fails loudly on those already.
+// No migration. A v13 document cannot contain either node - they did not exist to be written - so
+// there is nothing to rewrite and the ladder in `migrateStoryDocumentToLatest` gets no new step,
+// only the unconditional stamp it already ends with.
+// The bump is still not optional, and this is the one direction that matters: a v13 Studio reading a
+// v14 expression would meet a node kind absent from every one of its switches. `isStoryExpressionEvaluable`
+// returns `undefined` for it, the compiler reads that as falsy and quietly drops the expression, and
+// the evaluator's exhaustive switch falls through to `undefined` - so an inventory check would read
+// as empty rather than as broken. Refusing the document is the point.
+// v15 adds two more node kinds to the story expression language, and both are *references* rather
+// than computations: `visited` (`visited(序章)` / `picked(那句拒绝)`, a read of the visited record in
+// `runtime/game/storyVisited.ts`) and `invoke` (`bonus()`, a call to a `mode:"value"` Story Action
+// Blueprint whose Return Value becomes the expression's). Between them they close the last two
+// places where an expression had to detour through a blueprint: a route/one-shot check, which only
+// the blueprint nodes could ask, and an assignment right-hand side, which was the one slot of the
+// three that could not name a blueprint at all (interpolation and conditions both already could).
+// Both store an id and carry the author's name for display and repair only - the same convention as
+// `var` / `StoryVariableRef` / `StoryLayerRef` - so renaming a scene, rewording an option or
+// renaming a blueprint cannot break a reference.
+// No migration, for the same reason v14 needed none: a v14 document cannot contain either node, so
+// the ladder in `migrateStoryDocumentToLatest` gains no step, only the stamp it already ends with.
+// The bump is about the other direction, and here the silent-wrong-answer is worse than v14's. A
+// v14 Studio reading `visited(序章)` meets a node kind absent from every switch it has:
+// `isStoryExpressionEvaluable` returns `undefined`, the compiler reads that as falsy and drops the
+// expression, and the branch it guarded stops being taken. The author sees a route lock that never
+// engages and a one-shot option that never greys out - i.e. a story that runs, plausibly, and gates
+// nothing. An `invoke` fails the same way, silently turning a computed bonus into "no bonus".
+// Refusing the document is the point.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 15 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -64,6 +139,22 @@ export type StoryDocument = {
     entrySceneId?: StorySceneId;
     chapters: StoryChapter[];
     scenes: Record<StorySceneId, StoryScene>;
+    /**
+     * Authoring order of the scenes no chapter claims (schema v12). `chapters[].sceneIds` orders
+     * everything inside a chapter; this orders what is left, so that no scene's position depends on
+     * the key order of `scenes` - which the canonical serializer sorts by UUID.
+     *
+     * Deliberately NOT a document-wide list of every scene. That would state a chaptered scene's
+     * position twice, and the two arrays would drift the first time someone reordered a chapter and
+     * forgot the other one. Here every scene's order is stated in exactly one place, and the two
+     * arrays compose (see `listSceneIdsInDocumentOrder`).
+     *
+     * Absent means "no unclaimed scenes", which is the normal case - Studio's own paths always file
+     * a new scene under a chapter, so unclaimed scenes come from imports and hand edits. Reads must
+     * tolerate its absence and `normalizeStoryDocument` is its only writer; nothing that mutates
+     * chapters has to remember it exists.
+     */
+    unassignedSceneIds?: StorySceneId[];
     meta?: StoryMeta;
 };
 
@@ -86,6 +177,16 @@ export type StoryScene = {
     runtimeName: string;
     description?: string;
     defaultBackgroundAssetId?: string;
+    /**
+     * The music this scene opens with. The engine plays it as part of the scene's own init, so it is
+     * already going when the first row runs — which is what "this scene's track" means and what a
+     * leading `/bgm` row can never be (the row plays *after* the scene is on screen).
+     *
+     * Additive: no document written before this carries it, so no schema bump — the same rule
+     * `camera` and `vfx` were added under. Absent means the scene inherits whatever is already
+     * playing, which is how a story that changes music with `/bgm` rows has always behaved.
+     */
+    bgm?: StorySceneBgm;
     rootBlockIds: StoryBlockId[];
     blocks: Record<StoryBlockId, StoryBlock>;
     /**
@@ -108,24 +209,76 @@ export type StorySceneSnapshot = {
     values: Record<string, StoryLiteralValue>;
 };
 
+/**
+ * A scene's opening background music.
+ *
+ * `loop` defaults to true because a scene's music is meant to still be playing when the player
+ * reaches the end of the scene, and because the in/out points an author marks on the asset only
+ * become a loop region when it loops.
+ *
+ * Volume and fade live here rather than being read off the asset: the same track can open a quiet
+ * scene and a loud one, and the fade is a property of *this* transition into *this* scene.
+ */
+export type StorySceneBgm = {
+    assetId: string;
+    /**
+     * The project audio track this music plays on (`ProjectAudioTrack.id`).
+     *
+     * Spelled `audioTrackId` rather than `trackId` because `trackId` already keys a Story Motion
+     * timeline row, and one spelling for two unrelated things would make "how many rows use this
+     * audio track" unanswerable. Absent resolves to the `music` built-in, which is the bus and the
+     * defaults a scene's music has always used.
+     */
+    audioTrackId?: string;
+    /** 0-1 as authored. Multiplied by the track's gain at compile time. Absent = the track's gain alone. */
+    volume?: number;
+    /** Absent = whatever the track's own loop default says (`music` loops). */
+    loop?: boolean;
+    /** Cross-fade into this track, in milliseconds. Absent = the track's fade-in. */
+    fadeMs?: number;
+};
+
 export type StorySceneUpdate = {
     name?: string;
     description?: string;
     defaultBackgroundAssetId?: string | null;
+    /** `null` clears the scene's music; a partial patch replaces the whole record. */
+    bgm?: StorySceneBgm | null;
 };
 
 /**
  * Story-declarable variable classes:
  *  - "scene": per-scene, backed by NLR `Scene.local` (survives save/load); declared on `StoryScene`.
  *  - "saved": per save-file, backed by NLR `Storable`; declared on `StoryDocument`; serializable-only.
- *  - "persistent": app-level, shared with UI blueprints (`BlueprintDocument.persistentVariables`),
- *     referenced by stable `storageKey`; serializable-only. Not stored in the story document.
+ *  - "persistent": app-level, shared with UI blueprints via the project variable registry
+ *     (`VariableRegistry`, `@shared/types/variables/registry`), referenced by stable `storageKey`;
+ *     serializable-only. Not stored in the story document. (The former
+ *     `BlueprintDocument.persistentVariables` map was deleted in the M-VAR registry migration; it now
+ *     survives only as a legacy migration seed - see `variableRegistryModel.ts`.)
  * The blueprint-local "var" class is a Blueprint concern (`Blueprint.members.variables`), not a story scope.
  */
 export type StoryVariableScope = "scene" | "saved" | "persistent";
 export type StoryVariableValueType = "boolean" | "number" | "string" | "json";
-export type StoryStageObjectKind = "image" | "text" | "layer" | "video";
-export type StoryDisplayableTargetKind = Exclude<StoryStageObjectKind, "video"> | "character";
+export type StoryStageObjectKind = "image" | "text" | "layer" | "video" | "vfx";
+/**
+ * The stage objects that ARE Displayables, and so answer `/transform` and `/fx`.
+ *
+ * Video and Vfx are `Actionable`s in the engine, not Displayables: they carry no transform pipeline
+ * at all. Excluding them here is what makes "a vfx cannot be transformed" a fact of the type system
+ * rather than a rule every target picker has to remember.
+ */
+export type StoryDisplayableTargetKind = Exclude<StoryStageObjectKind, "video" | "vfx"> | "character";
+
+/**
+ * What a Story Motion asset animates. Every displayable kind, plus the stage camera.
+ *
+ * Deliberately NOT the same type as {@link StoryDisplayableTargetKind}: that one is the input to
+ * `targetParam(accepts)` and to the command sidebar's subject cut, so widening it would list the
+ * camera as a candidate target for `/transform` and `/fx`. The camera has its own command
+ * (`/camera motion`), and only the motion *library* needs to know that a camera shot is a thing a
+ * motion can be authored for.
+ */
+export type StoryMotionTargetKind = StoryDisplayableTargetKind | "camera";
 
 /** Declaration for a scene variable (backed by NLR `Scene.local`). */
 export type StorySceneVariableDefinition = {
@@ -173,14 +326,13 @@ export type StoryPersistentDefinitionLegacy = {
     meta?: StoryMeta;
 };
 
-export type StoryBlockKind = "nodeAction" | "action" | "control" | "jump" | "code" | "note" | "invalid" | "declaration";
+export type StoryBlockKind = "nodeAction" | "action" | "control" | "jump" | "note" | "invalid" | "declaration";
 
 export type StoryBlock =
     | StoryNodeActionBlock
     | StoryActionBlock
     | StoryControlBlock
     | StoryJumpBlock
-    | StoryCodeBlock
     | StoryNoteBlock
     | StoryInvalidBlock
     | StoryDeclarationBlock;
@@ -192,13 +344,18 @@ export type StoryBlockBase<TKind extends StoryBlockKind, TPayload> = {
     childrenIds: StoryBlockId[];
     payload: TPayload;
     diagnosticsMeta?: StoryDiagnosticsMeta;
+    /**
+     * A disabled row (schema v7) is skipped by the compiler — with its whole subtree, if it is a
+     * container — and is invisible at runtime, but the build does not reject it (unlike `invalid`) and
+     * it keeps its payload (unlike `note`). Absent means enabled; the three states are disjoint.
+     */
+    disabled?: boolean;
 };
 
 export type StoryNodeActionBlock = StoryBlockBase<"nodeAction", StoryNodeActionPayload>;
 export type StoryActionBlock = StoryBlockBase<"action", StoryActionPayload>;
 export type StoryControlBlock = StoryBlockBase<"control", StoryControlPayload>;
 export type StoryJumpBlock = StoryBlockBase<"jump", StoryJumpPayload>;
-export type StoryCodeBlock = StoryBlockBase<"code", StoryCodePayload>;
 export type StoryNoteBlock = StoryBlockBase<"note", StoryNotePayload>;
 export type StoryInvalidBlock = StoryBlockBase<"invalid", StoryInvalidPayload>;
 export type StoryDeclarationBlock = StoryBlockBase<"declaration", StoryDeclarationPayload>;
@@ -285,12 +442,67 @@ export type StoryActionPayload =
       }
     | {
           action: "character";
-          operation: "enter" | "move" | "exit" | "expression";
+          /**
+           * `setName` is the one operation that touches no portrait: it renames the *speaker label*
+           * (NLR `Character.setName`), which is how "？？？" becomes a real name mid-scene. Every other
+           * operation acts on the character's stage image.
+           *
+           * `setMotion` and `setSkin` are the two state channels only a `puppet` character has — the
+           * named loop it settles into and the costume it wears. They are here rather than in an
+           * action kind of their own because the *subject* is the character: the row reads, colours,
+           * indexes and inspects as a character row, and a puppet participates in a scene the way any
+           * other character does. On a character Studio draws itself they are a compile diagnostic.
+           */
+          operation: "enter" | "move" | "exit" | "expression" | "setName" | "setMotion" | "setSkin" | "setParams";
           characterId?: string;
           assetId?: string;
           objectName?: string;
-          formName?: string;
-          variants?: StoryCharacterVariantSelection;
+          /** `preset` character: which finished sprite to show. */
+          pose?: string;
+          /**
+           * `layered` character: the tag chosen on each axis. Deliberately partial on `expression` —
+           * it names only the axes the author touched, and the engine leaves the rest alone, so
+           * changing the mood keeps the outfit. `enter` resolves it out to every axis first.
+           */
+          tags?: StoryCharacterTagSelection;
+          /**
+           * `puppet` character: the state its backend is asked for — the expression on `expression`,
+           * the motion on `setMotion`, the skin on `setSkin`. The third arm of the same question
+           * `pose` and `tags` answer for the other two appearance kinds.
+           *
+           * A **name the backend owns**, stored verbatim rather than as an id, because there is no id
+           * to store: which names a model has is only knowable from the live model (the engine's
+           * `PuppetInstance.describe`), so nothing in the project can be renamed out from under it and
+           * nothing here can be validated against a catalogue.
+           *
+           * Absent (or blank) is the engine's `null`: the *absence* of a request, which visibly clears
+           * that channel — `/motion Doll` with no name puts the model back to rest. That is why this
+           * is one optional field and not a "clear" flag; the engine's own vocabulary already has
+           * exactly this shape (`PuppetState`).
+           *
+           * Additive: no document written before this carries it, so no schema bump — the same rule
+           * `camera` and `vfx` were added under.
+           */
+          puppetName?: string;
+          /**
+           * `setParams` — the numeric parameters of the model this row sets, keyed by the model's own id.
+           *
+           * **A map rather than one pair per row, because one gesture is several parameters.** Turning a
+           * head is `ParamAngleX`, `ParamAngleY` and `ParamAngleZ` moving together; a row each would
+           * make three rows out of one authorial act. The engine's `Puppet.setParam` *merges* — it sets
+           * one id and leaves every other alone — so N calls from one row are exactly equivalent to the
+           * row's intent, and the compiler emits one per entry.
+           *
+           * Unlike the three named channels there is no `null` here: the engine's `PuppetState.params`
+           * documents an absent key as "keep the model's own default for it", so clearing a parameter
+           * means dropping the key rather than nulling it. Dropping every key leaves a row that asks for
+           * nothing, which compiles to nothing.
+           *
+           * Additive, like `puppetName` above: no document written before this carries it.
+           */
+          params?: Record<string, number>;
+          /** `setName` — the label shown from this row on. Empty is legal: some reveals hide the name again. */
+          displayName?: string;
           transition?: StoryTransitionRef;
           transform?: StoryTransformRef;
       }
@@ -304,14 +516,39 @@ export type StoryActionPayload =
               | "resumeSound"
               | "setVolume"
               | "setRate"
-              | "muteSound";
+              | "muteSound"
+              | "seekSound";
           objectName?: string;
           assetId?: string;
+          /**
+           * The project audio track this row plays on (`ProjectAudioTrack.id`) — the bus it lands on,
+           * the multiplier applied to {@link volume}, and the fade/loop defaults it inherits.
+           *
+           * Only the rows that CREATE a sound (`setBgm`, `playSound`) carry one: a later `/vol piano`
+           * addresses a handle that already has a track, and letting it name a second would be two
+           * answers to one question (the compiler reports that as a conflict rather than picking).
+           *
+           * Spelled `audioTrackId`, not `trackId`: the latter is Story Motion's key for a timeline row,
+           * and sharing it would make reference counting across documents ambiguous.
+           *
+           * Additive: no document written before this carries it, so no schema bump. Absent — and a
+           * dangling id, since a track can be deleted — resolves to the built-in for the operation's
+           * natural bus, which is exactly what the compiler hard-coded before tracks existed.
+           */
+          audioTrackId?: string;
+          /**
+           * Fade for this row, in milliseconds, applied in whichever direction the operation goes.
+           * Absent = the track's own `fadeInMs` / `fadeOutMs`.
+           */
           fadeMs?: number;
+          /** 0-1 as authored. Multiplied by the track's gain at compile time. */
           volume?: number;
           rate?: number;
           muted?: boolean;
+          /** Absent = the track's own loop default. */
           loop?: boolean;
+          /** `seekSound` — where to move the play head, in milliseconds (seconds on the line). */
+          timeMs?: number;
       }
     | {
           action: "setVariable";
@@ -357,6 +594,8 @@ export type StoryActionPayload =
               | "clearClip"
               | "filter"
               | "clearFilter"
+              | "backdrop"
+              | "blend"
               | "darken"
               | "circleReveal"
               | "circleClose"
@@ -369,6 +608,17 @@ export type StoryActionPayload =
           clipPath?: string;
           /** CSS filter for the `filter` operation. */
           filter?: string;
+          /**
+           * CSS backdrop-filter for the `backdrop` operation - the frosted-glass knob, a sibling of
+           * `filter` (its raw CSS twin), e.g. `blur(8px)`. Additive: no document before this carries it.
+           */
+          backdropFilter?: string;
+          /**
+           * mix-blend-mode for the `blend` operation. NLR's `blend()` takes the full CSS type, but only
+           * the six modes its `Vfx` overlay exposes are offered (`StoryVfxBlendMode`) - the same curated
+           * set, not the CSS catalogue. Additive.
+           */
+          mixBlendMode?: StoryVfxBlendMode;
           /** Darkness 0..1 for the `darken` operation (image/character targets only). */
           darkness?: number;
           /** Shared effect timing. */
@@ -400,11 +650,90 @@ export type StoryActionPayload =
           transform?: StoryTransformRef;
       }
     | {
+          /**
+           * A `Video` — an Actionable, not a Displayable, which is why it has its own verb set rather
+           * than sharing `displayable`'s. `play` waits for the clip to finish; `resume` does not.
+           *
+           * Additive: the four transport operations and `timeMs` are new in A3, and no document
+           * written before them carries either, so no schema bump.
+           */
           action: "video";
-          operation: "create" | "show" | "hide" | "play";
+          operation: "create" | "show" | "hide" | "play" | "pause" | "resume" | "stop" | "seek";
           objectName: string;
           assetId?: string;
           muted?: boolean;
+          /** `seek` — where to jump to, in milliseconds. The engine's `seek` takes seconds; the compiler converts. */
+          timeMs?: number;
+      }
+    | {
+          /**
+           * The story's stage camera (`story.camera`) — a Displayable like any other in the engine, but
+           * its own action kind here because an author does not file "move the camera" next to "move a
+           * sprite" (plan 2026-07-24-006 §3.3).
+           *
+           * Two facts this payload cannot state but every consumer must respect: the camera is a
+           * **story-level singleton** whose pose survives a scene change (and rides the save file), and
+           * `darken` drives the same CSS `filter` channel `Displayable.filter` does — it is stage
+           * brightness, not the scene's `screenEffect` vignette layer.
+           *
+           * Additive: no document written before this carries it, so no schema bump.
+           */
+          action: "camera";
+          operation: "pan" | "zoom" | "rotate" | "darken" | "reset" | "motion";
+          /** `pan` — where the view centres. The command line fills the three placements; the inspector, any align. */
+          position?: StoryAlignPositionValue;
+          /** `zoom` — 1 is neutral. Clamped away from 0/negative at compile time. */
+          zoom?: number;
+          /** `rotate` — degrees. */
+          rotation?: number;
+          /** `darken` — 0 (normal) to 1 (black). Clamped at compile time; the engine does not clamp. */
+          darkness?: number;
+          /**
+           * `motion` — a Story Motion driving the camera, i.e. a whole keyframed shot (a handheld
+           * shake, a slow push-in) instead of one settled pose. The engine's `Camera` is a
+           * `Displayable`, so it takes a `Transform` exactly like a sprite does; this is the same
+           * {@link StoryTransformRef} `/transform` carries, and it is read only in `animation` mode —
+           * the other five operations already *are* the presets a `preset` mode would offer.
+           *
+           * `durationMs`/`easing` are dead for this operation: the timing lives in the keyframes.
+           */
+          motion?: StoryTransformRef;
+          durationMs?: number;
+          easing?: string;
+      }
+    | {
+          /**
+           * A `Vfx` (NLR 0.16.0) — a full-screen looping video overlay for ambience: falling petals,
+           * rain, dust, light flares. An `Actionable`, **not** a Displayable: it has no transform
+           * pipeline, which is why `StoryDisplayableTargetKind` excludes it and `/transform` `/fx`
+           * never offer it as a target.
+           *
+           * `create` is what puts it on stage AND registers the name the later verbs address, the
+           * same shape `video` uses. Additive: no document before A3 carries it, so no schema bump.
+           */
+          action: "vfx";
+          operation: "create" | "show" | "hide" | "pause" | "resume" | "setRate";
+          objectName: string;
+          /** The looping clip — a video asset, the same pipeline `/video` uses. */
+          assetId?: string;
+          /**
+           * How the overlay composites. The choice IS the material route: `normal` for a true-alpha
+           * WebM, `screen` for glow rendered on black, `multiply` for shadow rendered on white.
+           */
+          blendMode?: StoryVfxBlendMode;
+          opacity?: number;
+          loop?: boolean;
+          fit?: "cover" | "contain" | "fill";
+          zIndex?: number;
+          /**
+           * Playback speed; 0.5 drifts slowly, 2 falls twice as fast. On `setRate` it is the change;
+           * on `create` it is the loop's resting speed — and only the latter survives a save, since
+           * the engine does not persist a runtime rate change.
+           */
+          rate?: number;
+          /** `show` / `hide` — the fade the action waits out. */
+          durationMs?: number;
+          easing?: string;
       }
     | {
           action: "nvl";
@@ -425,6 +754,9 @@ export type StoryActionPayload =
           blueprintId: string;
       };
 
+/** Mirrors NLR's `VfxBlendMode`; the compiler passes it straight through to the overlay's CSS. */
+export type StoryVfxBlendMode = "normal" | "screen" | "multiply" | "lighten" | "color-dodge" | "overlay";
+
 export type StoryControlPayload =
     | {
           control: "condition";
@@ -438,18 +770,61 @@ export type StoryControlPayload =
           control: "sequence" | "parallel" | "race" | "repeat";
           mode?: "do" | "doAsync" | "all" | "allAsync" | "any";
           times?: number;
+          /**
+           * A conditional loop (schema v13), on `repeat` only: run the body over and over **until**
+           * this condition becomes true. Mutually exclusive with {@link times} - `until` present is
+           * what selects the conditional form, and the two together are a command-line error.
+           *
+           * Read the name literally, because the engine's is the opposite. `until` is a STOP
+           * condition; NLR's `Control.whileLoop` takes a CONTINUE condition, so the compiler passes
+           * it the negation. Anything that evaluates this - a preview, a lint, a second compiler -
+           * has to do the same, and getting it backwards produces a loop that runs zero times or
+           * forever rather than an error anyone can see.
+           *
+           * The body is not guaranteed to run: like a while loop, the condition is tested first, so
+           * an `until` that is already true skips the group entirely. There is deliberately no
+           * "test at the end" variant - one loop shape is enough, and the author can put the row
+           * before the group.
+           */
+          until?: StoryConditionRef;
+      }
+    | {
+          /**
+           * Leave the innermost enclosing loop (`Control.breakLoop`) - the escape hatch a conditional
+           * loop needs, since an `until` that a body can no longer satisfy has no other way out.
+           *
+           * Carries nothing and takes no children: it is a single instruction, so unlike every other
+           * `control` row it is not a container. Legal only inside a `repeat` body; the compiler
+           * diagnoses a stray one rather than emitting it, because the engine's own error for a
+           * `breakLoop` with no loop around it arrives at play time, on the player's screen.
+           */
+          control: "break";
+      }
+    | {
+          /**
+           * A named point inside a scene (`Control.label`). Invisible at runtime — it passes straight
+           * through to the next row — and it is the only thing `goto` can address.
+           *
+           * Names are scoped to their scene, so the same name may recur in another one; declaring it
+           * twice within a scene is an error the engine's build rejects, which is why the compiler
+           * diagnoses it here first.
+           */
+          control: "label";
+          name: string;
+      }
+    | {
+          /**
+           * Move the play head to a `label` in the SAME scene (`Control.jump`). Distinct from a
+           * `jump` block, which changes scene and therefore unloads and re-initializes one — this
+           * unloads nothing, so it is the loop and the retry, not the transition.
+           */
+          control: "goto";
+          targetLabel: string;
       };
 
 export type StoryJumpPayload = {
     targetSceneId: StorySceneId;
     transition?: StoryTransitionRef;
-};
-
-export type StoryCodePayload = {
-    language: "typescript" | "javascript" | "narraleaf";
-    source: string;
-    folded?: boolean;
-    advanced?: boolean;
 };
 
 export type StoryNotePayload = {
@@ -493,16 +868,37 @@ export type StoryInterpolationRef =
      */
     | { kind: "expression"; expression: StoryExpression };
 
+/**
+ * An inline reveal-time event (phase B1): a zero-width dialogue token that fires a restricted,
+ * closed set of side effects the instant the typewriter reveals it — the editor analogue of NLR's
+ * `TextEvent`. It is NOT a general action escape hatch; only an expression switch and/or a sound
+ * effect. `expression` targets the speaking character (the row's `characterId`) and reuses the
+ * `pose`/`tags` selection every `/show` `/face` action already uses.
+ */
+export type StoryInlineEvent = {
+    expression?: {
+        characterId: string;
+        pose?: string;
+        tags?: StoryCharacterTagSelection;
+    };
+    sound?: { assetId: string };
+};
+
 export type StoryRichRun =
     | { text: string; marks?: StoryTextMarks }
     | { pause: number | true }
     /** An inline value (variable/blueprint), stylable like a word: bold/italic/color apply to its text. */
-    | { interpolation: StoryInterpolationRef; marks?: StoryTextMarks };
+    | { interpolation: StoryInterpolationRef; marks?: StoryTextMarks }
+    /** A zero-width reveal-time event (expression switch and/or SE). Projects to no plain text. */
+    | { event: StoryInlineEvent };
 
 export type StoryVariableRef =
     | { scope: "scene"; variableId: string }
     | { scope: "saved"; variableId: string }
-    | { scope: "persistent"; storageKey: string };
+    // v9 (M-VAR): symmetric with the other scopes. `variableId` is the persistent variable's identity
+    // (registry entry id, or declaration block id for a story `/persis` row) - which equals its storage
+    // key, so the resolver still hands that value to the host persistence bridge.
+    | { scope: "persistent"; variableId: string };
 
 /** Legacy (schema v1) free-form variable reference, retained for migration + picker safety-net. */
 export type StoryVariableRefLegacy = {
@@ -551,7 +947,8 @@ export type StoryLayerRef =
     | { kind: "default"; layer: "background" | "displayable" }
     | { kind: "custom"; sourceBlockId?: StoryBlockId; name?: string };
 
-export type StoryCharacterVariantSelection = string[] | Record<string, string>;
+/** Tag id per axis id. Partial selections are legal and mean "leave every other axis alone". */
+export type StoryCharacterTagSelection = Record<string, string>;
 
 export type StoryConditionRef =
     | {
@@ -625,6 +1022,12 @@ export type StoryTransitionRef = {
         | "blinds"
         | "slide"
         | "softIris"
+        // 0.16.0 Mask-vocabulary additions (engine `Reveal` + `Mask.*`). Additive: existing documents
+        // never carry these, so no schema bump is needed.
+        | "barnDoor"
+        | "clock"
+        | "fan"
+        | "dots"
         | "blurDissolve"
         | "throughColor"
         | "darkness"
@@ -649,7 +1052,7 @@ export type StoryAnimationIndex = {
 export type StoryAnimationIndexEntry = {
     id: StoryAnimationAssetId;
     name: string;
-    targetKind: StoryDisplayableTargetKind;
+    targetKind: StoryMotionTargetKind;
     documentPath: string;
     createdAt: string;
     updatedAt: string;
@@ -659,7 +1062,7 @@ export type StoryAnimationAsset = {
     schemaVersion: StoryAnimationSchemaVersion;
     id: StoryAnimationAssetId;
     name: string;
-    targetKind: StoryDisplayableTargetKind;
+    targetKind: StoryMotionTargetKind;
     timeline?: StoryAnimationTimeline;
     sequences: StoryAnimationSequence[];
     config?: StoryAnimationConfig;

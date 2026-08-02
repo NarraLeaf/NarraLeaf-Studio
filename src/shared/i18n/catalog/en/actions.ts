@@ -9,6 +9,20 @@ export const actions = {
     build: {
         tooltip: "Build project",
     },
+    // The Run split-button: a run button carrying the selected mode plus a dropdown to switch it.
+    run: {
+        devMode: "Dev Mode",
+        preview: "Preview",
+        runDevMode: "Run Dev Mode",
+        runPreview: "Run Preview",
+        // Dropdown that switches which mode the button runs; the mode rows go inert while one runs.
+        switchMode: "Switch run mode",
+        // The same dropdown, now that it also carries Production Build - so it is no longer only
+        // about switching modes, and the button that opens it cannot say that it is.
+        menu: "Run and build",
+        // Production Build, folded into the dropdown to make room for the version control widget.
+        productionBuild: "Production Build…",
+    },
     file: {
         label: "File",
         new: {

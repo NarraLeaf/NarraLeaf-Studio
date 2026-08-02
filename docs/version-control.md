@@ -4,7 +4,12 @@ Studio 的版本控制以 [Epic Games Lore](https://github.com/EpicGames/lore) �
 
 选 Lore 而不是 Git 的理由只有一条，但足够：Studio 的资产是二进制和 JSON，Lore 的存储热路径**不做 CRLF 转换、不做编码推断、没有 clean/smudge filter**（[system-design.md §13](https://github.com/EpicGames/lore/blob/main/docs/explanation/system-design.md)），且分块去重是 fragment 级而非文件级。Git 的 autocrlf + LFS 组合在这两点上都是长期事故源。
 
-> **状态**：Lore 于 2026-06-16 开源，本文基于 **v0.8.5**（2026-07-16）核实，核实日期 2026-07-18。Lore 是 pre-stable 0.x，**API 和协议在 1.0 前都会变**；数据格式官方承诺向前兼容。
+> **状态**：Lore 于 2026-06-16 开源，本文基于 **v0.8.5**（2026-07-16）核实。Lore 是 pre-stable 0.x，
+> **API 和协议在 1.0 前都会变**；数据格式官方承诺向前兼容。
+>
+> **2026-07-27 重大变更**：Studio 不再使用 `@lore-vcs/sdk` 的运行时。绑定改为
+> [自己写](#21-客户端自有-koffi-绑定)，只保留 SDK 作为 devDependency 供 ABI 快照脚本使用。
+> §4 的坑分成了两类：**已由自有绑定按构造消除**的，和**仍然成立**的，每条都标了。
 
 ## 0. 结论先行
 
@@ -14,7 +19,7 @@ Studio 的版本控制以 [Epic Games Lore](https://github.com/EpicGames/lore) �
 | 三路合并的 base 能拿到吗 | **Lore 不提供**，但 DAG 完整；LCA 已在 §9 的封装层里实现 |
 | 能纯离线吗 | **单机能**，已验证；团队场景首次读远端历史要联网 |
 | 原生库能进 Electron 吗 | **能**，Electron 38 直接可用，无需重编 |
-| 需要写服务端包装吗 | **P0 不需要**，见 §5 |
+| 需要写服务端包装吗 | **P0 不需要**，见 §5。局域网协作已实现，连接流程见 §5.3.1 |
 | Intel Mac 怎么办 | **VCS 做成可插拔可降级**，Studio 照常全平台分发，见 §7 |
 
 ## 1. Lore 架构（够用的最小认知）
@@ -33,20 +38,48 @@ Studio 的版本控制以 [Epic Games Lore](https://github.com/EpicGames/lore) �
 
 ## 2. Studio 如何依赖 Lore
 
-### 2.1 客户端：`@lore-vcs/sdk`
+### 2.1 客户端：自有 koffi 绑定
 
-**它是 optional 依赖，不是普通依赖：**
+**Studio 自己绑定 lorelib，不用 SDK 的运行时。**
 
 ```jsonc
 // package.json
-"optionalDependencies": {
-  "@lore-vcs/sdk": "0.8.5"   // 锁死版本（无 caret），见 §8
-}
+"dependencies":    { "koffi": "2.16.2" },
+"optionalDependencies": {          // 只要 DLL，不要 JS
+  "@lore-vcs/sdk-amd64-unknown-windows": "0.8.5",
+  "@lore-vcs/sdk-arm64-apple-darwin":    "0.8.5",
+  "@lore-vcs/sdk-amd64-unknown-linux":   "0.8.5",
+  "@lore-vcs/sdk-arm64-graviton-linux":  "0.8.5"
+},
+"devDependencies": { "@lore-vcs/sdk": "0.8.5" }   // 仅供 ABI 快照脚本
 ```
 
-SDK 自身再用 `optionalDependencies` + `os`/`cpu` 分发平台子包，npm/yarn 只装匹配当前平台的那个（已验证：Windows 上只装了 `sdk-amd64-unknown-windows`，29MB DLL）。
+四个平台包各自带 `os`/`cpu` 字段，包管理器只装匹配当前平台的那个（Windows 上只装
+`sdk-amd64-unknown-windows`，29MB DLL）。放进 `optionalDependencies` 是**故意的**：装不上
+（不支持的平台、`--no-optional`、网络失败）不能让 Studio 整个装不上。
 
-放进 `optionalDependencies` 是**故意的**：装不上（不支持的平台、`--no-optional`、网络失败）不能让 Studio 整个装不上。配合 §7 的降级，Studio 在任何平台都能装、能跑。
+**为什么丢掉 SDK 的 JS**——三条，都是硬的：
+
+1. **失败模式是静默数据损坏。** SDK 用一张 `convertOptions` 查找表转换参数，其中 `loreHash`
+   一类**没有实现 handler**。传错方向不报错，而是把定长字段零填充：调用成功，partition 全零。
+   自有绑定里结构体字段的声明类型**就是**编码规则（`LoreString` 收十六进制、`LoreHash` 收 32
+   字节），没有可查的表，也就没有可查错的表。
+2. **加载失败不可逆。** SDK 在模块求值期 `koffi.load()`，ESM 求值抛异常被 Node 永久缓存，
+   不支持的平台上一句静态 import 就让主进程启动期崩溃。自有绑定在**函数内**加载，用户修好
+   安装后可以 [`refreshVcsAvailability()`](../src/main/app/application/managers/vcs/backend.ts) 恢复，不必重启。
+3. **只用得上 27%。** 131 个 verb 里我们需要 ~35 个；SDK 为另外 96 个背了几百个事件结构体和
+   一整套通用转换层，我们承担全部风险却拿不到收益。
+
+**ABI 正确性怎么保证**——手写结构体写错布局 = 内存损坏，所以三道防线：
+
+| 防线 | 位置 |
+|---|---|
+| 与 SDK 生成的绑定**逐字段比对**（420 结构体 / 131 函数 / 226 事件 tag 的快照） | [`tools/lore-abi-extract.mjs`](../tools/lore-abi-extract.mjs) → `abi/upstream.json` |
+| 161 个断言：字段名/类型/顺序、别名、verb 签名、事件 tag 数值、声明顺序 | [`abi/definitions.test.ts`](../src/main/app/application/managers/vcs/lore/abi/definitions.test.ts) |
+| 打真 DLL 的往返测试（建库→暂存→提交→历史→读 blob→分支） | [`lore.integration.test.ts`](../src/main/app/application/managers/vcs/lore/lore.integration.test.ts) |
+
+快照**进版本库**，所以校验不需要装 SDK。升级 Lore 时重跑提取脚本，`upstream.json` 的 diff
+**就是升级报告**。
 
 **关键：lorelib 是普通共享库（.dll/.dylib/.so），不是 N-API addon。** 它不随 Electron ABI 变化，Electron 升级不需要重编——这比 [`@narraleaf/encryption`](../src/main/app/application/managers/security/packKeyService.ts) 的 node-gyp 路线省心得多。唯一 ABI 绑定的是 `koffi`，它自带各 ABI 的 prebuilt。
 
@@ -54,14 +87,42 @@ SDK 自身再用 `optionalDependencies` + `os`/`cpu` 分发平台子包，npm/ya
 
 ### 2.2 构建配置
 
-esbuild 必须把 SDK 和 koffi 标记为 external，与现有 `@narraleaf/encryption` 完全同构：
+esbuild 必须把 koffi 标记为 external，与现有 `@narraleaf/encryption` 同构：
 
 ```js
 // project/build/build-main.js 和 project/app/dev-electron.js
-external: ['electron', 'esbuild', '@narraleaf/encryption', '@lore-vcs/sdk', 'koffi']
+external: ['electron', 'esbuild', '@narraleaf/encryption', 'koffi']
 ```
 
+平台包**不用**列进 external：`library.ts` 用 `createRequire(__filename)` 做计算 require，
+esbuild 静态分析跟不进去，自然不会打包它。
+
+**打包后仍然惰性**这一条已用 metafile 证明，不是靠注释保证：
+[`pluggability.test.ts`](../src/main/app/application/managers/vcs/pluggability.test.ts) 从 `src/main/index.ts`
+走静态导入图（只跟 import 语句和 require，**不跟** `import()`），断言 `vcs/lore/` 一个文件都不在里面，
+同时断言 `VcsManager.ts` 和 `backend.ts` 在里面（否则这个断言是空的）。
+
 electron-builder **不需要改**：[electron-builder.yml](../electron-builder.yml) 已有 `asarUnpack: node_modules/**/*`，原生库不会被封进 asar。这是最容易翻车的一步，Studio 已经免疫。
+
+### 2.4 工作集：`.loreignore` 是 Lore 自己的能力
+
+**本文此前的隐含前提是「排除得由调用方解决」——那是错的。** Lore 支持 `.loreignore`，实测语义
+（v0.8.5，靠 DLL 字符串定位到 `lore-revision/src/filter.rs` + `glob-match`，再用真库逐条验证）：
+
+| 行为 | 实测 |
+|---|---|
+| 被排除的路径发 **`FILTER_EXCLUDE`(102)**，不是 `PATH_IGNORE`(130) | 所以 `stage` 不会因此抛错，§4.5 的仓库外守卫仍然完整 |
+| 单段模式**任意深度**匹配 | `dist` 也会排除 `sub/dist`；要锚定根就写 `/dist/` |
+| 多段模式根锚定；`*.ext` 任意深度 | |
+| `#` 注释与空行无效力；`!` 取反可用 | |
+| `.lore/` 天然排除；**点目录不天然排除** | `.nlstudio/plugins/x.js` 不写进忽略文件就会被提交——已用差分实测：**不写忽略文件时它确实进了提交** |
+| `repositoryStatus` 同样遵守 | |
+| 忽略文件自身进版本库 | 策略随 clone 传播 |
+
+所以 `stage(globals, [root])` 一次调用即可，**不需要传显式路径清单**，也就没有几千个路径塞进
+一个 `LoreStringArray` 的规模问题。策略表在
+[workingSet.ts](../src/main/app/application/managers/vcs/workingSet.ts)，谓词与忽略文件由**同一张表**生成，
+两者不可能漂移。
 
 ### 2.3 进程模型
 
@@ -72,9 +133,10 @@ P0 建议：**全放主进程**，作为一个新的 manager，与现有 [manage
 ```
 src/main/app/application/managers/vcs/
   backend.ts             # 可插拔边界：动态加载 + 可用性判定（见 §7）
-  loreClient.ts          # 唯一 import @lore-vcs/sdk 的文件（见 §3）
+  lore/                  # 自有 koffi 绑定（见 §3）
   revisionReader.ts      # blobAt / blobsAt / mergeBase / threeWay / changedPaths
-  VcsManager.ts          # 按项目 keying 的 session，flush-then-close
+  VcsManager.ts          # 按项目 keying 的 session，flush → close → release
+  documents/             # 文档模型与规范序列化（H1，待建）
   diff/                  # Studio 自己的 diff 引擎（待建）
 ```
 
@@ -82,21 +144,38 @@ Lore 的异步变体在自己的线程池上跑，`waitAsync()` 返回 Promise�
 
 因此：把 `VcsManager` 的对外接口设计成**可整体搬走**的形态。如果 profiling 显示 clone/sync 造成掉帧，再把批量传输挪进 `utilityProcess`（Studio 的 [buildWorker](../src/main/buildWorker/) 已有先例）。交互式读路径（status、打开文件时的 diff）留在主进程，省掉一次 IPC 往返。**不要预先加这个进程边界。**
 
-## 3. 必须自己封一层
+## 3. 边界在哪
 
-`@lore-vcs/sdk` **只允许被一个文件 import**（`loreClient.ts`）。理由有三，每条都是硬的：
+绑定全部关在 [`vcs/lore/`](../src/main/app/application/managers/vcs/lore/) 里，上面只有一个插拔口
+[`backend.ts`](../src/main/app/application/managers/vcs/backend.ts)。规则两条：
 
-1. Lore 是 0.x，**没有 semver 保护**，API 会变
-2. SDK 是用 Python + Jinja 从 `lore.h` **代码生成**的，header 一动 SDK 就动
-3. §4 那一堆坑必须被封死在一个地方，不能散落各处
+1. **`backend.ts` 之上不许静态引用 `lore/`**，直接间接都不行——只能 `import type` 或
+   `await import()`。这条由 §2.2 的导入图测试守着，不靠人记。
+2. **Studio 面向业务的类型里不许出现 `Lore` 前缀。** 往外暴露自己的 `Revision`、`BlobRef`、
+   `ChangeSet`。Lore 是 0.x，随时可能要换底层；名字描述能力，不描述供应商。
 
-Studio 面向业务的类型里**不许出现 `Lore` 前缀**。往外暴露自己的 `Revision`、`BlobRef`、`ChangeSet`。这样万一要换底层（或 Lore 1.0 破坏性变更），改动面是一个文件。
+`lore/` 内部分工：
+
+| 文件 | 职责 |
+|---|---|
+| `abi/definitions.ts` | 纯数据：结构体、别名、verb 表、事件 tag。不 import koffi，不碰原生库 |
+| `abi/upstream.json` | 从 SDK 生成物提取的 ABI 快照，`definitions.test.ts` 的比对基准 |
+| `library.ts` | 惰性 `koffi.load`、`LORE_LIB_PATH` 逃生舱、asar 解包、按需绑定 + 符号缺失探测 |
+| `values.ts` | 显式编码/解码：hex ↔ 定长字段（**非法即抛**）、字符串、字节、路径越界防护 |
+| `events.ts` | 事件解码表：**在回调内拷贝完**，没有借用内存能逃出去 |
+| `call.ts` | 唯一的 invoke：单 trampoline、异步 off-thread、注册/注销配对、错误富化、`PATH_IGNORE` 转异常 |
+| `verbs.ts` | ~22 个有类型的操作，Studio 唯一调用面 |
 
 ## 4. 坑（全部实测，不是推测）
 
 这一节是本文的核心。以下每条都在 v0.8.5 上复现过。
 
 ### 4.1 标识符编码：一个上游 bug，不是设计
+
+> **已按构造消除（2026-07-27）。** 自有绑定里没有转换表：结构体字段的声明类型就是编码规则，
+> `LoreHash`/`LorePartition`/`LoreContext` 字段收定长字节，长度不对**抛错**而不是补零
+> （[`values.ts` 的 `hashBytes`](../src/main/app/application/managers/vcs/lore/values.ts)）。
+> 下面保留原始推导，因为它解释了为什么「照抄清单」不是解法。
 
 **这条最初被误判过，值得记录推导过程。** 表面现象是「`storage*` 要十六进制字符串，`revisionTree*` 要 `{data:Uint8Array}`」——但这是错误归纳，照这个结论写封装层会埋下静默数据损坏。
 
@@ -128,19 +207,24 @@ Studio 的路径上只有 `revisionTreeLoad`。
 
 第二种是静默数据损坏。之所以在单仓库测试里没暴露，是因为 `revisionTreeLoad` 的 `repository` 会被 store handle 覆盖——一旦 Studio 用一个 store 跨多仓库（links/layers、多项目同开），它立刻变成数据路由 bug。
 
-**封装层的对策**：先按 hex 发；只有捕获到 `Unexpected String value` 且该调用声明了 `hashArgs` 时，才改写这些字段并锁存决定。这样在今天的 SDK 上自动降级，在上游修复后自动保持 hex，**不需要版本嗅探**，也永远不会把非 hash 字段改写成会零填充的形态。见 [loreClient.ts](../src/main/app/application/managers/vcs/loreClient.ts)。
+**当时封装层的对策**是自适应降级：先按 hex 发，捕获到 `Unexpected String value` 再改写并锁存决定。它能用，但正确性依赖上游一句错误文案不变。自有绑定不需要这套：`revisionTreeLoad` 的 `repository`/`revisionHash` 在头文件里**本来就是** `LorePartition`/`LoreHash`，按声明类型发定长字节即可，上游修不修 handler 都不影响我们。
 
 ### 4.2 `.callback()` 是替换，不是追加
 
-调两次 `.callback()`，第一个handler 被**静默丢弃**，调用照样返回 `rc=0`，你只是拿不到数据。这个坑极难 debug——没有报错，只有空结果。
+> **已消除**：SDK 专有行为。自有绑定注册**唯一一个** trampoline，事件在 JS 里分发给多个订阅者
+> （[`call.ts`](../src/main/app/application/managers/vcs/lore/call.ts)）。
 
-封装时只留一个 callback 入口，内部自己分发。
+调两次 `.callback()`，第一个 handler 被**静默丢弃**，调用照样返回 `rc=0`，你只是拿不到数据。
+这个坑极难 debug——没有报错，只有空结果。
 
 ### 4.3 事件数据是借来的 FFI 内存
 
-回调返回后 `event.data` 就失效。**想留住任何东西必须 `event.clone()`**，忘了就是随机内存垃圾且不报错。
+> **前半已消除**：自有绑定在回调内**立即完整解码并拷贝**，出了 `decodeEvent` 就没有借用内存
+> （[`events.ts`](../src/main/app/application/managers/vcs/lore/events.ts)），没有「忘记 clone」这回事。
+> **后半仍然成立**：回调里**不能重入调用 Lore**，这是进程级契约，`invoke` 先收集完再处理。
 
-另外：回调里**不能重入调用 Lore**，这是进程级契约。先收集事件，出了回调再处理。
+回调返回后 `event.data` 就失效。SDK 用一个惰性 `.data` getter 建模这件事，忘了 `clone()`
+就是随机内存垃圾且不报错。
 
 ### 4.4 路径按进程 CWD 解析，不是按 `repositoryPath`
 
@@ -206,6 +290,10 @@ store handle 开着的时候，第二个进程访问同一仓库会**一直等**
 
 ### 4.13 加载失败是不可逆的，整个进程都别想再用
 
+> **已消除**：自有绑定在**函数内**调 `koffi.load()`，失败只是一个异常。用户修好安装后
+> `refreshVcsAvailability()` 就能恢复，不必重启 Studio。下面是 SDK 的原始行为，保留是因为
+> 它解释了为什么可用性判定至今仍然缓存（探测一次要 dlopen 29MB，不是因为不能重试）。
+
 `@lore-vcs/sdk` 在**模块求值期**就调 `koffi.load()`。ESM 模块求值一旦抛异常，Node 会**永久缓存这个失败**——同一进程里再 import 多少次都是同一个错误，`vi.resetModules()` 也够不着（模块归 Node 的 loader 管，不归 vitest）。
 
 两个后果：
@@ -216,6 +304,404 @@ store handle 开着的时候，第二个进程访问同一仓库会**一直等**
 ### 4.14 revisionTree 读路径在 SDK 里零测试覆盖
 
 `lore-js` 自己的测试套件**没有任何 `revisionTree` 用例**。capi 有实现、绑定是自动生成的，但 JS 层没人验证过。Studio 会是早期用户——这条路径的回归测试得 Studio 自己写。
+
+### 4.15 关掉 store 不等于放开仓库
+
+`storageClose` 只关一个 store handle。**仓库本身还开着**（`storeKeepAlive` 默认保活若干秒），
+后果有两个：
+
+- Windows 上删不掉项目目录，`rmSync` 报 **EPERM**
+- 用户自己的 `lore` CLI 会**一直阻塞**在仓库锁上（§4.12 说的就是这个锁）
+
+必须显式调 `repositoryRelease`。这条是写绑定时被测试的 teardown 逼出来的：整套测试全绿，
+但删自己的临时目录失败。`VcsManager.closeProject` 现在是 **flush → closeStore → release** 三步。
+
+### 4.16 路径方向是不对称的，类型上看不出来
+
+| 调用 | 路径形态 |
+|---|---|
+| `fileStage` / `fileUnstage` 等**输入** | **绝对路径**。相对路径按进程 CWD 解析（§4.4），随后因为在仓库外被**静默忽略**（§4.5） |
+| `repositoryStatus` 的**输出** | **仓库相对路径** |
+
+也就是说「拿 status 的结果去 stage」这个最自然的写法，是坏的。任何把状态输出回喂给暂存的地方
+都必须转换。TypeScript 类型两边都是 `string`，不会拦你。
+
+### 4.17 `repositoryStatus(scan)` 不是纯读操作
+
+**扫描会写状态。** 扫描时发现一个**新目录**，Lore 会把它记进暂存状态；之后把该目录删掉，
+接下来整个 session 都会把它报成删除——尽管它从未被提交过。
+
+对照实验（同样的文件操作、同样的最终磁盘状态，只差中间一次扫描）：
+
+```
+不调用中间扫描 -> []
+调用了中间扫描 -> ["fresh:2", "fresh/inner.txt:2"]     // 2 = DELETE
+```
+
+新文件落在**已跟踪的目录**里不会有这个效果，是**目录**才会。
+
+后果是硬的：**状态查询不能挂定时器轮询。** 作者中途建了个临时目录又删掉，两次轮询之间就会在
+他的变更列表里留下不存在的删除项；他若照着提交，提交的是从未存在过的东西的删除。UI 只能按需
+扫描，V2 的定时检查点也不能靠"定时扫一遍看有没有变化"来判断是否需要提交。
+
+### 4.18 `LoreFileAction` 没有 MODIFY 这个成员
+
+```
+KEEP=0  ADD=1  DELETE=2  MOVE=3  COPY=4
+```
+
+**改过内容的文件报的是 `KEEP`(0)**，同时 `summary.modifies` 加一、`dirty` 为真。把 `action`
+读成"没变"会让**项目里每一处编辑从状态列表里消失**。实测确认。
+
+另外：重命名报成 delete + add，`summary.moves` 为 0 且 `fromPath` 为空——**不是** MOVE。
+MOVE/COPY 只有走显式的移动 verb 才会出现。
+
+### 4.19 §4.15 补充：暂存之后没有提交，release 之前还要 flush
+
+§4.15 说「关 store 不等于放开仓库，还得 `repositoryRelease`」。实测补充：**`stage` 之后若没有
+跟一次 commit，只调 `repositoryRelease` 仍然删不掉目录**，要先 `flushRepository`。带 commit 的
+同一串调用则正常释放。
+
+也就是说安全的收尾顺序是 **flush → closeStore → release**，而不是只在写路径末尾 flush。
+
+### 4.20 `REPOSITORY_CREATE` 事件里的 path 在 Windows 上是正斜杠
+
+`LoreRepositoryCreatePayload.path` 返回 `C:/Users/...` 形态，与 `path.join` 产出的根路径不可
+直接比较。当成展示值，别当成路径键。
+
+### 4.21 `revisionMetadataSet` 写的是**暂存修订**，不是 HEAD；且没暂存时会**泄漏到下一次提交**
+
+`LoreRevisionMetadataSetArgs` 没有 revision 字段，直觉上会以为它写当前 HEAD。**实测是写
+暂存修订**——也就是下一次 commit 将要产生的那个。
+
+按「commit 之后再打标记」写，结果是每个标记都落在**后一个**修订上：检查点读回来是 commit，
+下一次 commit 读回来是 checkpoint。对照实验（同一个库，`probe.kind`）：
+
+```
+stage → set(alpha) → commit          -> rev2 带 probe.kind=alpha    ✅
+stage → commit（不 set）              -> rev3 无 probe.kind          ✅ 不会继承
+（干净树）set(ghost) → commit 失败     -> 之后 stage → commit 产生的 rev4 带 probe.kind=ghost ❌
+```
+
+第三行是硬约束：**没有东西可提交时调 set 不会报错，它会等着贴到下一个提交上**。所以
+[`commitWorkingTree`](../src/main/app/application/managers/vcs/repository.ts) 的顺序是
+**stage → 确认有东西可提交 → set → commit → flush**，确认那一步用
+`repositoryStatus(scan:false, revisionOnly:true)`（纯读，不触发 §4.17）。另外每条提交路径都写
+这个键，所以万一泄漏也是被覆盖而不是被继承。
+
+顺带实测：Lore 自己也往同一张表里写 `branch` / `timestamp` / `message` / `created-by` /
+`committed-by`。所以 Studio 的键必须带前缀（`narraleaf.kind`），而**提交信息与作者名是读得回来的**。
+
+### 4.22 `repositoryFlush` 会等满 `storeKeepAliveSeconds`
+
+写路径末尾那一句强制的 flush（§4.11），耗时**不是**取决于要落盘多少东西，而是等前面那些
+带 `storeKeepAlive` 的调用把 store 放掉。实测同一条 stage→set→commit→flush 管线：
+
+| session globals | flush | 总计 |
+|---|---|---|
+| `storeKeepAlive: true`（默认 10 秒） | 9996 ms | 10012 ms |
+| `storeKeepAlive: true, storeKeepAliveSeconds: 1` | 988 ms | 1009 ms |
+| 不设 `storeKeepAlive` | 4 ms | 29 ms |
+
+stage / commit 本身在三种配置下都是 5–20 ms，**开销全在等待**。
+
+明显但**错误**的解法是只给 flush 那一次调用传 `storeKeepAlive: false`：完全无效（带 1029 ms
+/ 不带 1009 ms）。等待属于**之前那些读**，只有窗口长度能缩短它。所以
+[`VcsManager.globalsFor`](../src/main/app/application/managers/vcs/VcsManager.ts) 设
+`storeKeepAliveSeconds: 1` —— 保住 §6.3「连续调用不反复开关 store」的本意（一批 blob 读之间
+的间隔远小于 1 秒），同时把每次提交的代价从 10 秒压到 1 秒。
+
+---
+
+> **§4.23–§4.30 来自 2026-08-01 的合并实测**（卡 [2026-07-31-004](plans/2026-07-31-004-plan-vcs-diff-and-resolve.md) 的 D0）。
+> 此前仓库里**没有一行代码碰过 Lore 的合并面**，所以这八条全部是第一次测量。脚本是
+> `mergeSpike*.integration.test.ts`（打真 DLL，其中三条要真 loreserver 0.8.5）。
+> **§4.29 值得单独读**：它记的是一条真缺陷，也记着这条缺陷第一次被归因错了——错的那版会让
+> 我们在同步按钮旁边写一句根本不必要的「请重启 Studio」。
+
+### 4.23 automerge 把冲突标记写进 JSON —— 但它同时在旁边留下三份干净的副本
+
+同一个键两边都改，Lore 写的是 **diff3 三段式**标记（`<<<<<<< ours` / `||||||| original` /
+`=======` / `>>>>>>> theirs`），标记直接插在 JSON 结构里，于是**这份文档不再能 `JSON.parse`**：
+
+```
+SyntaxError: Expected double-quoted property name in JSON at position 423
+```
+
+本地 `branchMergeStart` 与远端 `revisionSync` 产出的**字节完全相同**（同一个 sha256），
+所以这是一套机制而不是两套。
+
+**但真正有用的发现是另一半**：同一次合并还会在冲突文件旁边写三个附属文件——
+
+| 文件 | 实测 |
+|---|---|
+| `doc.json~base` | 能 `JSON.parse`，无标记 |
+| `doc.json~mine` | 能 parse，sha256 **与 `blobAt(mine)` 逐字节相同** |
+| `doc.json~theirs` | 能 parse，sha256 **与 `blobAt(theirs)` 逐字节相同** |
+
+也就是说三路合并的三个输入**已经在磁盘上了**，各自是一份完整、可解析的文档。写回管线
+**既不需要读那份带标记的文件，也不需要从 DAG 重建**——计划 §6 里那个「若 automerge 破坏 JSON
+就改用 `threeWay` 重建」的备案，被一个更简单的答案取代了。
+
+**并且这三个附属文件不会进提交**：解决之后提交，修订里只有 `doc.json`（实测
+`sidecarsCommitted: []`）。Lore 自己排除它们，`.loreignore` 不需要为此加规则。
+
+**这条对 Studio 还差半步，已补测**（`sidecarStaging.integration.test.ts`）：上面那次测量是
+「解决完直接 commit」，而 Studio 的提交路径**先 `stage(globals, [root])` 整棵树**，那一刻三个
+附属文件正躺在工作树里。补测结论是 **`stage` 连报都不报它们**（`stagedSidecars: []`），提交里
+仍然只有 `doc.json`。所以 D6 的写回管线不需要为它们做任何排除——但这是**实测**来的，不是从
+上一段推的，两者的提交姿势不一样。
+
+### 4.24 冲突路径**只在事件流里出现一次**，`repositoryStatus` 永远不报
+
+一次冲突合并之后，四种 status 形态**全部返回空列表**：
+
+| 调用 | 结果 |
+|---|---|
+| `repositoryStatus({scan:true})` | `[]` |
+| `repositoryStatus({scan:true, checkDirty:true})` | `[]` |
+| `repositoryStatus({scan:false})` | `[]` |
+| `repositoryStatus({scan:true, paths:[冲突文件]})` | `[]` |
+
+原因是合并已经把结果**记进了暂存修订**，工作树与暂存修订一致，于是「没有变更」。
+`summary` 也全是 0。所以 §4.18 那套「靠 status 找出改了什么」的办法在合并态下完全失效。
+
+**唯一说出路径的地方是事件流**：`BRANCH_MERGE_CONFLICT_FILE`（tag **29**）。
+实测 `revisionSync` **也**发这个 tag（一次 sync 共 13 个事件，tag 直方图
+`{2:1, 5:1, 29:1, 44:1, 45:1, 176:1, 177:1, 178:5, 179:1}`，其中只有 `177`（sync file）和
+`29` 带路径）。
+
+> **既有缺陷，本条直接指出**：[`remote.ts`](../src/main/app/application/managers/vcs/remote.ts)
+> 从 `result.files` 里筛 `conflictUnresolved || conflict` 来列冲突文件，而
+> `REVISION_SYNC_FILE` 的解码器把这两个标志**写死成 `false`**
+> （[`events.ts`](../src/main/app/application/managers/vcs/lore/events.ts)，因为那个结构体
+> 根本没有这两个字段）。所以那个筛选**永远命中不了**，一次冲突同步只能落到 `["*"]` 占位符。
+> 正解是订阅 tag 29，不是查 status。
+
+### 4.25 `branchMergeResolve(paths)` 提交的就是工作树里的字节 —— 逐字节
+
+三个 resolve verb 各自在**独立仓库**里单独调用（三个混在一起调用会让结果不可归因，这是第一轮
+踩过的坑），结果分明：
+
+| verb | 对工作树做什么 | 提交进修订的内容 |
+|---|---|---|
+| `branch_merge_resolve` | **什么都不改**，接受现有字节 | **与我们写进去的第三份内容逐字节相同** |
+| `branch_merge_resolve_mine` | 用 mine **覆写**工作树 | mine |
+| `branch_merge_resolve_theirs` | 用 theirs **覆写**工作树 | theirs |
+
+**所以逐变更解决（计划的第二档）在机制上是通的**：先把合并结果写进工作树，再
+`branchMergeResolve([绝对路径])`，提交出来的就是它。
+
+两条附带实测：
+
+- **不需要 `fileStageMerge`。** 直接 `revisionCommit` 就成功（本地路径与同步路径都是），
+  计划 §1.4 里那个「暂存合并结果」的步骤是多余的。
+- `_mine` / `_theirs` **不发** `BRANCH_MERGE_RESOLVE_FILE` 事件（`files: []`），只有
+  `resolve` 发。想确认哪些路径被解决了，得看工作树，不能看事件。
+
+### 4.26 合并修订确实有两个 parent，但 **parent[0] 是哪一边取决于合并从哪来**
+
+`parents.length === 2` 在提交事件与 `readRevisionGraph` 两处一致，历史列表画合并点的前提成立。
+
+**但顺序不一致**，而 `flattenFirstParent` 只走 parent[0]：
+
+| 合并来源 | parent[0] |
+|---|---|
+| 本地 `branchMergeStart` | **本地分支的 tip**（`parent0IsLocalTip: true`） |
+| 远端 `revisionSync` | **拉下来的那一边**（`parent0IsIncomingTip: true`） |
+
+也就是说一次同步合并之后，「第一父线」是**对方的**线而不是作者自己的。历史列表照现在的写法
+会在同步之后换一条主干。
+
+### 4.27 `branchMergeAbort` 完整回滚工作树
+
+整棵工作树按内容哈希做清单，合并前 / 合并后 / abort 后三次对比：abort 后与合并前
+**逐文件相同**（`differsFromBeforeMerge: []`），三个附属文件也被删干净，status 回到合并前。
+
+**所以「取消合并」这个按钮可以存在**（计划 §4.4 把它挂在这条实测上）。
+
+### 4.28 仓库锁在**同一个进程内**同样是阻塞的
+
+§4.12 说的是「第二个进程会一直等」。实测补充：**同一个进程里**对已经持有的仓库再
+`openStore`，同样永远不返回——第一轮的实验挂死 240 秒就是这个，不是 Lore 慢。
+
+所以任何持有 store 的代码路径必须在下一个打开之前走完 flush → closeStore → release。
+
+### 4.29 ⚠️ **在线提交的内容，写它的那个进程读不回来**
+
+判据只有一个：**提交时 globals 上的 `offline` 标志**。一个已经在服务器上登记过的仓库，
+用 `offline: false` 提交出来的修订，**写它的那个进程取不到它的新内容**：
+
+```
+storageGet: 1/1 get items failed          ← 只针对这次提交新写的内容
+```
+
+三个对照，同一个仓库、同一个进程（`onlineCommitCheck.integration.test.ts`）：
+
+| 情形 | 读回来 |
+|---|---|
+| **没登记服务器**时在线提交 | ✅ 7 字节——所以**光有 `offline:false` 不是判据** |
+| 已登记，**离线**提交 | ✅ 26 字节 |
+| 已登记，**在线**提交 | ❌ `storageGet: 1/1 get items failed` |
+| 在那次在线修订上读**更早**的文件 | ✅ 6 字节 |
+
+最后一行划出了真正的爆炸半径：**坏的不是那个修订，是那次提交新写的片段**。修订树完全正常
+（`listFilesAt` 照给路径、大小、内容地址），同一棵树上更早的内容照读不误。
+`repositoryStatus` / `revisionHistory` 也全程正常——死的**只有 `storageGet`**。
+
+**换一个进程读同一个仓库立刻成功**，所以字节确实落了盘；像是在线会话在内存里把自己刚写的
+片段记成了「远端的」。为什么这样**不知道**。
+
+补救全部无效，别再试：`repositoryFlush`；`closeStore` + `openStore` 重开；等 15 秒 / 45 秒；
+读侧换 `offline:true` / `offline:false`；`storageOpen` 带 `hasRemoteConfig:1` + 真实
+`remoteUrl`；`blobAt` 的 resolve 路线与 `documentsAt` 的 walk 路线（同一个 `readAddress`，
+两条都失败）；`resetLoreLibraryForRetry()` 的两种调用顺序——它只丢掉 JS 侧的 `LoreLibrary`
+缓存，**从不 unload 那个 DLL**，第二次 `koffi.load` 拿到的是同一个 HMODULE。
+
+> **这一条曾被写成「同步毒死整个进程」，那是夹具造成的假象**，保留在此是因为它值得记住：
+> 当时每一次失败的读，读的都是 `commitAll(onlineGlobals, …)` 的产物，于是「同步之后连同步
+> 之前的提交也读不出」看起来成立——而那条「之前的提交」本身就是在线提交。**归因错了就会
+> 修错东西**：照那个版本，Studio 该在同步按钮旁边写「请重启」，而真相是同步一切正常。
+
+**对 Studio 的后果（按真实姿势实测，不是推断）**：`VcsManager.globalsFor` 是
+`offline: !options.online`，只有五个网络动词才 spread `offline:false`，**提交走的是离线
+globals**。所以：
+
+- 一次真同步之后，作者自己的提交**和从服务器收到的修订**都读得出来（收到的 `other.json`
+  69 字节，本地此前从没有过这份内容）——同步只是**下载**片段，不新写内容；
+- 两个互不相干的服务器仓库放在同一个进程里，published → 克隆 A → 同步 A → 同步 B 四个阶段
+  逐个读，**A、B 全程都读得出**——没有跨工程波及；
+- **已发布的 V5a 没有因此受损**，同步之后不需要让作者重启。
+
+**唯一会踩到它的是本卡自己**：冲突解决之后那次 commit 如果走在线 globals，作者刚解决出来的
+字节就会在当前进程里读不回来。所以 **D6 的写回管线必须用离线 globals 提交**——合并是在线
+动作，提交不是，这两件事在同一条管线里必须用不同的 globals。这条没有测过，因为那条管线还
+不存在；写它的时候按这条来，并在它的集成测试里钉住。
+
+### 4.30 `readRevisionGraph` 只覆盖当前分支，于是 `threeWay` 对任何跨分支合并都答「没有 base」
+
+这一条是 **Studio 侧的缺陷**，不是 Lore 的，但它是在测 Lore 的时候掉出来的。
+
+`readRevisionGraph(globals)` 走的是 `history(globals, {limit})`，**不传 branch 就只给当前分支**。
+实测一次 main/feature 的两侧合并：
+
+```
+currentBranchGraph:      ["#1 e40c23c2", "#2 3475cd9d"]     ← 只有 main
+featureBranchGraph:      ["#1 e40c23c2", "#2 18730fe6"]
+theirsTipInCurrentGraph: false
+baseFromCurrentGraph:    null          ← mergeBase 找不到，因为对面的 tip 不在图里
+baseFromUnionGraph:      e40c23c2…     ← 两个分支的图合起来就找到了，且就是真正的 base
+```
+
+于是 `threeWay` 返回 `base: undefined`。而 `threeWay` 的注释明写「base 缺失 = add/add，
+**绝不能当空文件**」——照这个契约，**每一次普通的跨分支冲突都会被判成 add/add**，
+逐变更合并会整个走错分支。
+
+修法有两个，都成立：把两边分支的 `history` 并起来再算 LCA；或者干脆**用 §4.23 的
+`~base` 附属文件**——合并态下它就在磁盘上，比重算 LCA 更直接也更便宜。
+
+> **已修（D7 模型半，2026-08-01）**：取的是第一种。`revisionReader.ts` 加了
+> `readMergeGraph(globals, tips)`（当前分支 → 每个未覆盖的 tip 走 `history({revision})` →
+> 仍有洞才并全部分支）与 `graphCoversAncestry(graph, tip)`，`threeWay` 改用前者。
+> **实测：`history(globals, {revision: theirs})` 一步就够**，它给的 2 个节点里就有真 base，
+> 分支兜底那步在普通两分支拓扑上不会跑到。
+>
+> **没用 `~base` 附属文件，理由是寻址方式不同**：`threeWay` 是按「两个修订」提问的，要对
+> 任意一对修订作答（历史里两点比较、还没开始的合并、Lore 自动合掉因而根本没写附属文件的
+> 路径）；附属文件只在合并进行中、且只为冲突路径存在，上面三种它一个都答不了，也分不出
+> 「add/add」和「Lore 干净合掉了」。附属文件仍是 D6 写回管线的正解——那条路径确实在合并态里。
+>
+> 同时补上的是**「找不到 base」的两种含义要分开**：`ThreeWay.baseStatus` 现在是
+> `found` / `absent-in-base` / `no-common-ancestor` / `indeterminate`。前两者之外，
+> **`indeterminate`（图没读全）绝不能当 add/add** —— 把它们拼成同一个 `base: undefined`
+> 正是本条缺陷发货时的样子。
+>
+> **还没修**：`VcsManager.getMergeBase` 仍旧走 `readRevisionGraph`，同一个洞原样还在
+> （`VcsManager.ts` 属于 D6 的地盘，本卡没碰）。
+
+### 4.31 ⚠️ 同步之后，`_mine` / `_theirs` 两个 verb **跟附属文件和冲突标记是反的**
+
+§4.25 是在**本地** `branchMergeStart` 上测的，那时 verb 与附属文件一致。**同步产生的合并上
+不一致**，同一个仓库、同一个冲突文件（真 loreserver，`merge.integration.test.ts` 里已钉住）：
+
+| 读什么 | 内容 |
+|---|---|
+| `doc.json` 的 `<<<<<<< ours` 段 | **作者自己的** |
+| `doc.json~mine` | **作者自己的** |
+| `doc.json~theirs` | 服务器那边的 |
+| `branch_merge_resolve_mine` 写进工作树的 | **服务器那边的** ← 跟上面两行相反 |
+| `branch_merge_resolve_theirs` 写进工作树的 | 作者自己的 |
+
+机理：**两个 verb 跟的是分支指针，而同步已经把分支指针挪到服务器的 tip 上了**（这也是 §4.26
+「同步之后 parent[0] 是拉下来的那一边」的同一件事）；附属文件与标记跟的是这次合并**记下来的
+两侧**，不随指针动。
+
+后果是这条必须写进文档的理由：**Studio 能产生的合并只有同步这一种**，所以照着 verb 名字做，
+「保留我的」每次都会丢掉作者自己的工作、「保留对方的」每次都会丢掉同伴的——两边都是静默的，
+而且本地测试全绿（本地两者一致）。
+
+所以 [`merge.ts`](../src/main/app/application/managers/vcs/merge.ts) 的 `resolveConflicts`
+**不调那两个 verb**：把 `~mine` / `~theirs` 拷到冲突文件上，再用**普通的**
+`branch_merge_resolve`（§4.25 实测逐字节提交工作树内容）。两种来源下都正确，而且仍然是「整份
+取一边」——全程不看文档内容，二进制与没有 spec 的文档同样成立。
+
+> 另有一个**未测**的边界：`readMergeState().incoming` 读的是 `revisionMerged`，同步态下它给的
+> 是**作者自己的 tip**（实测），与「收到的那一版」直觉相反。界面上那句「把从服务器拿到的版本
+> （xxxxxx）合并进来」因此**可能名字取反**；只是个展示用的短哈希，没有按它做任何决定。
+
+### 4.32 提交被拒时，**已经解决的路径不会回滚**，而且它们的附属文件已经没了
+
+`completeMerge` 的语义是「每条路径取一边，然后提交收尾」。若作者漏了一条，提交按 §4.25 的
+方式被拒（错误里带那条路径名）——**但前面几条已经落到工作树上了，并且提交里的 stage 那一步
+已经把它们的附属文件删掉**。实测（`merge.integration.test.ts`「refuses when a conflicted path
+was left undecided」）：
+
+- `doc.json` 已是所选那一边的内容，尽管**什么都没记进历史**；
+- `readMergeState().conflicts` 从 `[doc.json, other.json]` 缩成 `[other.json]`。
+
+两条派生结论：
+
+1. **渲染进程在失败路径上也必须重读文档。** 拒绝不是回滚，编辑器手上那份是合并前的字节，下一次
+   自动保存就会把它写回去、盖掉作者刚选的那一边。
+2. 这是唯一一处「已解决 vs 未解决」在仓库里读得出来的地方，但**只在一次被拒的提交之后**才成立，
+   §4.24 那条（附属文件在普通 resolve 之后照样在）没有被推翻。
+
+### 4.33 冲突文件让**整个工程打不开** —— 而这不是 Lore 的缺陷，是 §4.23 的直接后果
+
+真机复现（无需服务端）：一个留着未完成合并的工程用 Studio 打开，工作区**根本起不来**：
+
+```
+Failed to initialize workspace
+Failed to parse JSON from <project>/editor/story/index.json
+```
+
+链条是死的：§4.23 说 automerge 把 diff3 标记写进冲突文件 → 那份文件不再是合法 JSON →
+`editor/story/index.json` 在工作区启动时就要解析 → `Service.initializeAll` 抛错 → 失败屏。
+失败屏只提供「重试 / 打开启动器 / 打开别的工程」，**没有一条通向合并**。也就是说
+**一旦真的有东西要解决，解决界面就够不着了**——而「关掉窗口第二天再回来」正是 §4.24
+那套附属文件探测存在的理由。
+
+裁决按本卡计划 §6：**因为合并没做完而无法解析的文档，不是损坏文档**，把它挪进隔离区等于
+给一份好文件贴坏标签。而「有没有合并在进行」在**解析任何文档之前**就问得出来——
+`readMergeState` 只要状态头 + 一次附属文件遍历。
+
+修法（渲染进程，三处）：
+
+1. `workspaceProjectPreflight` 在 `Service.initializeAll` **之前**问一次 `getMergeState`；
+2. 有冲突路径时装上 `mergeConflictReads`：那几条路径的读改读 `<path>~mine`（作者自己那一边，
+   §4.23 保证逐字节等于他上次提交的内容），于是每份文档都能解析；
+3. 同时 `freezeProjectWrites({kind:"merge"})`。**冻结必须和替换同时装、且在第一次读之前**：
+   编辑器手上拿的不是磁盘上的东西，一次迁移或一次自动保存就会把合并前的内容盖到 automerge
+   的结果上。
+
+三条边界：**没有冲突路径的合并不装**（automerge 全合上了，磁盘上就是要提交的东西）；
+**版本控制答不上来就照常打开**（可选能力，不能让它挡住开工程）；**合并结束/放弃时必须先
+`clearMergeConflictReads()` 再重读**——提交会删掉附属文件，还挂着替换去重读会把每份冲突
+文档读成「不存在」，作者刚解决出来的东西会被默认值顶掉。
+
+> `kind: "merge"` 是第三种冻结原因。`WorkspaceFreezeKind` 的注释早就写着「加第三种会在上报处
+> 编译失败，那正是该被问『这种情况怎么说』的地方」——确实如此：构建/预览在合并态下同样要拒绝，
+> 但话术不是「解除冻结」而是「先把合并做完」。
 
 ## 5. 服务端策略
 
@@ -248,6 +734,48 @@ loreserver --config /opt/loreserver/config
 - 顺带做项目发现/列表
 
 loreserver 本身不动，它只负责验签。这是个几百行的服务，不是一个平台。
+
+### 5.3.1 把一个**已有的本地工程**连到服务器（已实现，2026-07-31）
+
+这是最常见的起点：作者先在本机启用了版本控制（离线建库），后来才有服务器。**它能连上，不需要重新
+clone**，但**连接是两件事，只做第一件会静默地半成功**。
+
+作者面的三步：
+
+1. 打开工程 → 版本轨道 → **连接服务器**；
+2. 填**一个字段**，形如 `lore://studio.example.lan:41337/my-game`。
+   **末尾那一段是工程在服务器上的名字**，也就是队友 clone 时要用的那一串（见下面第 2 条）；
+3. **上传到服务器**（push）。之后队友在启动器里用**从服务器获取工程**加同一个地址就能拿到。
+
+底下实际发生的（`VcsManager.setRemote` → `remote.ts`）：
+
+```
+写 .lore/config.toml 的 remote_url          # 纯本地，只改这一行
+  → 在一个临时空目录里 repositoryCreate(online, {repositoryUrl, id: 本工程的 repositoryId})
+                                            # ← 登记，没有它就是下面第 1 条
+  → 失败则把 remote_url 回滚               # 要么两件都成，要么一件都不留
+```
+
+**三条实测坑，每条都会让上面这段看起来可以省掉：**
+
+1. **只写 `remote_url` 会得到一个「推得上去、clone 不下来」的工程。**
+   push 返回成功、`repositoryStatus` 报 `remoteBranchExists: true`——而 `repositoryClone`
+   **按名字、按仓库 id、按仓库自己的 `name` 全部答 `Not found`**。
+   **只有 `repositoryCreate` 会在服务器上登记仓库，push 不会**，而 `repositoryCreate` 拒绝在已经是
+   仓库的目录里跑——所以才要那个临时目录 + 显式 `id`。
+   这条最危险的地方在于：**从设置它的那台机器上看，一切都是对的**。
+2. **URL 必须带一个非空路径段，而那一段就是仓库在服务器上的名字。**
+   `lore://host:41337` 和 `lore://host:41337/` 都报 `parsing repository URL: Invalid URL`。
+   存进 config 时路径段会被**剥掉只留源**，所以配置文件里看到的和填进去的不是同一个字符串。
+3. **建库必须离线。** `repositoryCreate` 在 `offline:false` 下会**连服务器建库**，同名不同 id 直接报错。
+   所以 `initRepository` 永远走 `offline: true`，连服务器是之后一个独立的、作者显式发起的动作。
+
+**断开**（`setRemote(null)`）是纯本地的：写回未配置占位符，服务器上的东西一概不动。
+
+> **占位符的历史包袱**：旧占位符是 `lore://127.0.0.1:41337/local`，剥掉路径之后就是
+> **loreserver 的默认地址**，而它写进了**每一个 Studio 建过的工程**。今天已换成
+> `lore://unconfigured.invalid/none`（RFC 2606，永远解析不了），并且
+> `isVcsRemoteConfigured` **把新旧两个占位符都当作「没配」**——老工程不迁移也不会被误判成已连接。
 
 ### 5.4 命名
 
@@ -354,16 +882,34 @@ getInfo         : {"success":false,"error":"Version control backend failed to lo
 
 | 文件 | 职责 |
 |---|---|
-| [backend.ts](../src/main/app/application/managers/vcs/backend.ts) | **插拔边界**。动态加载、平台闸门、可用性判定与缓存、`VcsUnavailableError` |
-| [loreClient.ts](../src/main/app/application/managers/vcs/loreClient.ts) | **唯一** import `@lore-vcs/sdk` 的地方。单 callback、自动 clone、hash 编码降级、`PATH_IGNORE` 转异常、错误带 Rust `file:line`、路径越界防护 |
-| [revisionReader.ts](../src/main/app/application/managers/vcs/revisionReader.ts) | `blobAt` / `blobsAt` / `readRevisionGraph` / `mergeBase` / `threeWay` / `changedPaths` / `flushRepository` |
-| [VcsManager.ts](../src/main/app/application/managers/vcs/VcsManager.ts) | **按项目路径 keying** 的 session（store handle 复用 + 每项目串行化），flush-then-close |
-| [vcsAction.ts](../src/main/app/application/managers/window/handlers/vcsAction.ts) | 8 个只读 IPC handler |
+| [backend.ts](../src/main/app/application/managers/vcs/backend.ts) | **插拔边界**。动态加载、平台闸门、可用性判定与缓存、`refreshVcsAvailability`、`VcsUnavailableError` |
+| [lore/abi/definitions.ts](../src/main/app/application/managers/vcs/lore/abi/definitions.ts) | 手写 ABI：结构体 / 别名 / verb 表 / 事件 tag。**纯数据**，不 import koffi |
+| [lore/abi/upstream.json](../src/main/app/application/managers/vcs/lore/abi/upstream.json) | 从 SDK 生成物提取的 ABI 快照（420 结构体 / 131 函数 / 226 tag），进版本库 |
+| [lore/library.ts](../src/main/app/application/managers/vcs/lore/library.ts) | 惰性 `koffi.load`、`LORE_LIB_PATH`、asar 解包、按需绑定 + `LoreCapabilityError` |
+| [lore/values.ts](../src/main/app/application/managers/vcs/lore/values.ts) | 显式编解码，非法标识符**抛错不补零**；路径越界防护 |
+| [lore/events.ts](../src/main/app/application/managers/vcs/lore/events.ts) | 32 个事件解码器，回调内即拷贝 |
+| [lore/call.ts](../src/main/app/application/managers/vcs/lore/call.ts) | 单 trampoline、异步 off-thread、注册/注销配对、`PATH_IGNORE` 转异常、错误带 Rust `file:line` |
+| [lore/verbs.ts](../src/main/app/application/managers/vcs/lore/verbs.ts) | 22 个有类型的操作：建库 / 状态 / 暂存 / 提交 / 历史 / diff / 读 blob / 分支 |
+| [revisionReader.ts](../src/main/app/application/managers/vcs/revisionReader.ts) | `blobAt` / `blobsAt` / `readRevisionGraph` / `mergeBase` / `threeWay` / `changedPaths` |
+| [VcsManager.ts](../src/main/app/application/managers/vcs/VcsManager.ts) | **按项目路径 keying** 的 session（store handle 复用 + 每项目串行化），flush → close → release |
+| [vcsAction.ts](../src/main/app/application/managers/window/handlers/vcsAction.ts) | 10 个 IPC handler：9 读 + `initRepository` |
+| [shared/vcs/workingSet.ts](../src/shared/vcs/workingSet.ts) | 工作集**策略**（谓词 + 忽略文件），两进程共用一份；走磁盘的遍历留在 main |
+| [VersionControlService.ts](../src/renderer/lib/workspace/services/core/VersionControlService.ts) | 渲染进程服务：可用性缓存、状态快照与订阅、历史缓存 |
 | [vcs.ts](../src/shared/types/vcs.ts) | 渲染进程类型 + 平台表 + `isVcsPlatformSupported()`，**不含任何 `Lore` 前缀** |
-| [backend.test.ts](../src/main/app/application/managers/vcs/backend.test.ts) | 6 个降级测试（含 Intel Mac / Windows ARM64 路径） |
-| [revisionReader.test.ts](../src/main/app/application/managers/vcs/revisionReader.test.ts) | 11 个集成测试，打真实原生库 |
 
-构建侧：`@lore-vcs/sdk` 和 `koffi` 在 [build-main.js](../project/build/build-main.js) 与 [dev-electron.js](../project/app/dev-electron.js) 里标了 external；`asarUnpack` 已有，没改。session 释放接在 [index.ts](../src/main/index.ts) 的 `window-closed` 上。
+测试（`yarn vitest run src/main/app/application/managers/vcs/`，201 个）：
+
+| 文件 | 覆盖 |
+|---|---|
+| [abi/definitions.test.ts](../src/main/app/application/managers/vcs/lore/abi/definitions.test.ts) | 161 断言，逐字段比对 `upstream.json` |
+| [lore.integration.test.ts](../src/main/app/application/managers/vcs/lore/lore.integration.test.ts) | 17 个，打真 DLL：写路径、读路径、编码拒绝、回调生命周期（250 次连续调用不耗尽 koffi 回调池） |
+| [revisionReader.integration.test.ts](../src/main/app/application/managers/vcs/revisionReader.integration.test.ts) | 8 个，打真 DLL：blob 字节精确、三路合并、add/add 的 base 缺失 |
+| [revisionReader.test.ts](../src/main/app/application/managers/vcs/revisionReader.test.ts) | 6 个纯逻辑：LCA，含 criss-cross 的稳定裁决 |
+| [backend.test.ts](../src/main/app/application/managers/vcs/backend.test.ts) | 6 个降级测试（含 Intel Mac / Windows ARM64 路径） |
+| [pluggability.test.ts](../src/main/app/application/managers/vcs/pluggability.test.ts) | 3 个：静态导入图里没有 `lore/`，且这个断言非空 |
+
+构建侧：`koffi` 在 [build-main.js](../project/build/build-main.js) 与 [dev-electron.js](../project/app/dev-electron.js) 里标了
+external；`asarUnpack` 已有，没改。session 释放接在 [index.ts](../src/main/index.ts) 的 `window-closed` 上。
 
 ### 渲染进程接口
 
@@ -375,32 +921,51 @@ window[RendererInterfaceKey].vcs
 |---|---|
 | `getAvailability()` | `{available}` 或 `{available:false, reason, detail}` — **先问这个** |
 | `isRepository(projectPath)` | `{isRepository}`；后端不可用时为 `false`，不抛 |
-| `getInfo(projectPath)` | `{root, repositoryId, head?, revisionCount}` |
+| `getInfo(projectPath)` | `{root, repositoryId, head?, headNumber, branch}` — **纯读**，走 `repositoryStatus(scan:false, revisionOnly:true)`，不触发 §4.17 |
+| `initRepository(projectPath, options?)` | `{root, repositoryId, head?, headNumber, branch}` — **唯一的写**，见下 |
+| `getStatus(projectPath)` | `VcsStatus`；**会扫描**，只能按需调，理由见 §4.17 |
+| `restoreRevision(projectPath, revision, options?)` | `{from, checkpoint, revision, filesWritten, filesRemoved}` — **唯一会覆写作者文件的调用**，见下 |
 | `getHistory(projectPath, limit?)` | `{entries: [{revision, number, parents}]}` |
 | `readBlob(projectPath, revision, path)` | `{contentBase64}` |
 | `getChangedPaths(projectPath, from, to)` | `{paths}` |
 | `getThreeWay(projectPath, mine, theirs, path)` | `{baseRevision?, base?, mine, theirs}`（均 base64） |
 | `getMergeBase(projectPath, a, b)` | `{base?}` |
 
-**写侧故意不做**：没有 resolve UI 之前放出提交入口，等于让渲染进程在没有冲突处理的情况下提交。
+**写侧现在有四个**：`initRepository`（V1）、`commit` / `checkpoint`（V2）、`restoreRevision`（V4）。前三个都只会
+**新增一个修订**，够不到冲突，所以不需要 resolve UI 先存在。`restoreRevision` 也不需要，理由不同且值得写下来：
+它**不合并**——把某个修订的内容写到工作树上，再把结果记成一个新修订，从头到尾只有一边。真正有两边的写
+（merge）仍然故意缺席。
+
+`restoreRevision` 的三条硬约束（细节见 [revisionRestore.ts](../src/main/app/application/managers/vcs/revisionRestore.ts)）：
+
+- **动手前先打检查点**，打不出来就**整个中止**（"没东西可记录"不算打不出来：干净树的恢复前状态就是 HEAD）；
+- **只增不退**：在 `#61` 上恢复 `#12` 得到 `#62`，`#13..#61` 一条都不消失；
+- **只碰工作集**：写和删两边都以 `isVersioned` 为判据，`.nlstudio/` / `editor/cache` / `dist` / `.lore/` 在两个
+  方向上都不在这个操作的范围里。删除是逐个文件 `rm(recursive:false)`，清空目录用 `rmdir`（非空即拒绝），
+  **模块里没有、也不许有任何 `recursive:true`**。修订路径是不可信输入，越界（`..` / 绝对路径）**拒绝而不是跳过**。
 
 **为什么 keying 是硬要求**：Studio 是 one-project-one-window，单例 runtime 会让第二个打开的项目和第一个抢同一个 store handle——而 Lore 的仓库锁是独占的（§4.12），后果不是数据竞争而是死等。DevMode 踩过这个坑。
 
 ### 升级绊线
 
-`loreClient` 的 hash 编码是**自适应**的，测试里有一条断言专门盯着它：
+升级 Lore 的流程是机械的，不需要审计：
 
-```ts
-check("fallback fired and latched to binary on v0.8.5",
-      __hashCodecForTests() === "binary");
-```
+1. 换平台包版本，重跑 `node tools/lore-abi-extract.mjs`
+2. 读 `abi/upstream.json` 的 diff——**那就是 ABI 变更报告**
+3. `definitions.test.ts` 会指出我们哪个结构体/别名/verb 签名/事件 tag 对不上，逐条改
+4. 跑打真库的集成测试
 
-上游一旦实现 `loreHash` handler，这条断言会失败——那不是回归，是**信号**：把断言翻成 `=== "hex"`，然后确认没有别处依赖旧行为。
+原来那条「hash 编码自适应」的绊线随 `loreClient.ts` 一起删掉了：自有绑定按字段声明类型编码，
+上游修不修 `loreHash` handler 都与我们无关。
 
 ## 10. 待解问题
 
-- **UI 尚未对接**。主进程侧完整可用，渲染进程还没有任何 VCS 界面。交接说明见 [plans/2026-07-18-001-handoff-vcs-integration.md](plans/2026-07-18-001-handoff-vcs-integration.md)
-- **仓库来源未定**：Studio 目前假设「项目目录 == 仓库根」，但没有任何地方**创建**仓库。用户怎么把一个项目变成 Lore 仓库（向导？菜单？自动？）是产品决策，未做
+- **界面尚未对接**。渲染进程的框架层已落（`VersionControlService`：可用性、状态快照、历史缓存、
+  变更订阅），但还没有任何 VCS 界面消费它。总体规划见
+  [plans/2026-07-27-001-plan-editor-data-and-version-control.md](plans/2026-07-27-001-plan-editor-data-and-version-control.md)
+- **仓库来源已定，尚未实现**：项目目录 == 仓库根（`repositoryCreate` 就在项目根建 `.lore/`，
+  没有第二种布局）。**不自动建库**——建库会在项目根写独占锁，必须是作者的显式决定。入口留在
+  项目设置 + 新建项目向导，属 V1
 - **LCA 的 criss-cross**：`mergeBase` 当前按 `revisionNumber` 取最高的共同祖先。两分支互相合并过时会有多个极小公共祖先，Git 用递归 merge base 解决。当前取舍写在 [revisionReader.ts](../src/main/app/application/managers/vcs/revisionReader.ts) 注释里：降级结果是「base 略差 → 用户多看到几个冲突」，不是错误合并
 - **取消/超时**：长操作（clone、sync）能否中途取消未验证。`offline` 不可靠（§4.6），封装层还没有超时机制
 - **多仓库 store 复用**：§4.1 的零填充风险只在一个 store 跨多仓库时才会咬人。links/layers 或多项目同开时要专门测 `repository` 参数确实生效

@@ -1,40 +1,44 @@
 import {
+    BlurDissolve,
     Character,
     Condition,
     Control,
+    Darkness,
     DevTools,
     Dissolve,
     FadeIn,
     Image,
     Lambda,
     Layer,
-    MaskTransition,
+    Mask,
     Menu,
     Narrator,
     Pause,
     Persistent,
+    Puppet,
+    Push,
+    Reveal,
     Scene,
     Script,
     Sound,
     Story,
     Text,
+    TextEvent,
+    ThroughColor,
     Transform,
+    Vfx,
     Video,
     Word,
 } from "narraleaf-react";
+import type { MaskPattern } from "narraleaf-react";
 import { blink, vignette } from "narraleaf-react/built-in";
-import {
-    Blinds,
-    BlurDissolve,
-    Slide,
-    SoftIris,
-    SoftWipe,
-    ThroughColor,
-    type BlindsOrientation,
-    type ThroughColorPattern,
-    type WipeDirection,
-} from "./transitions/customImageTransitions";
 import type { DevModeCharacterSummary } from "@shared/types/devMode";
+import type { DialogAvatarResolverContext } from "narraleaf-react";
+import { resolvePoseAssetId, resolveTagSelection } from "@shared/utils/characterVariant";
+import {
+    characterAvatarKeyFromTags,
+    resolveCharacterAvatarAssetId,
+} from "@shared/utils/characterAvatar";
 import type {
     StoryActionPayload,
     StoryAnimationAsset,
@@ -45,15 +49,17 @@ import type {
     StoryAnimationTrackProperty,
     StoryBlock,
     StoryBlockId,
-    StoryCharacterVariantSelection,
+    StoryCharacterTagSelection,
     StoryConditionRef,
     StoryControlPayload,
     StoryDisplayableTargetRef,
     StoryDocument,
     StoryExpr,
     StoryExpression,
+    StoryInlineEvent,
     StoryInterpolationRef,
     StoryLayerRef,
+    StoryRichRun,
     StoryLiteralValue,
     StoryScene,
     StorySceneId,
@@ -67,9 +73,14 @@ import type {
     StoryVariableRef,
 } from "@shared/types/story";
 import {
+    collectStoryExpressionInvocations,
     collectStoryExpressionVariables,
+    duplicateSceneLabels,
     isStoryExpressionEvaluable,
+    storyVisitedRefId,
     layerActionTargetRef,
+    listScenesInDocumentOrder,
+    sceneLabelNames,
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
     savedVariableDefs,
@@ -77,15 +88,33 @@ import {
     storyPersistentDefs,
     storyVariableRefKey,
 } from "@shared/types/story";
-import type { StoryExpressionReader } from "@shared/utils/storyExpressionEval";
-import { evaluateStoryExpression, isTruthy, toDisplayString } from "@shared/utils/storyExpressionEval";
+import type { StoryExpressionEnv } from "@shared/utils/storyExpressionEval";
+import { evaluateStoryExpression, isTruthy, strictEquals, toDisplayString } from "@shared/utils/storyExpressionEval";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
+import {
+    buildMergedPersistentView,
+    mergedPersistentStorageKeys,
+    type MergedPersistentView,
+} from "@shared/variables/mergedPersistentView";
 import type { GameLocalizationBundle } from "@shared/types/localization";
 import { resolveLocaleChain } from "@shared/types/localization";
 import type { GameVoiceBundle } from "@shared/types/voice";
+import type { AudioClipRegion } from "@shared/types/audio";
+import { audioClipRegionToSoundConfig } from "@shared/types/audio";
+import type { AudioTrackChannel, AudioTrackPlayback, ProjectAudioTrack } from "@shared/types/audioTrack";
+import {
+    AUDIO_TRACK_CHANNELS,
+    AUDIO_TRACK_ID_VOICE,
+    BUILTIN_AUDIO_TRACKS,
+    resolveAudioTrack,
+    resolveAudioTrackChain,
+    resolveAudioTrackPlayback,
+} from "@shared/types/audioTrack";
 import { parseTranslatedText } from "@shared/utils/localizationText";
 import {
     boolProp,
+    characterStageName,
     getCharacterStageObjectName,
     getInlineTransformProps as getInlineTransformPropsShared,
     getPresetPosition,
@@ -111,6 +140,14 @@ import {
     type CompileStoryActionScriptInput,
     type StoryActionFnCatalog,
 } from "./storyActionBlueprint";
+import {
+    createStoryVisitedPersistent,
+    isStoryVisited,
+    markStoryVisitedStatement,
+    STORY_VISITED_OPTIONS_KEY,
+    STORY_VISITED_SCENES_KEY,
+    type StoryVisitedContent,
+} from "./storyVisited";
 
 /**
  * App-level persistent variable bridge (shared with UI blueprints). `get` reads a cached snapshot
@@ -137,6 +174,37 @@ function collectPersistentDefaults(document: StoryDocument): Record<string, Stor
         }
     }
     return defaults;
+}
+
+/**
+ * Every declared persistent variable's storage key - the set a persistent reference is validated
+ * against (bible §3.3). Persistent variables come from two authoring surfaces until the project-level
+ * registry lands: story `//persis` declaration rows and the blueprint document's own persistent
+ * variables. Both key host persistence by `storageKey`, so the reference (also keyed by storageKey)
+ * checks membership here; a miss is an undeclared variable and gets the same diagnostic as a missing
+ * scene/saved one.
+ */
+/**
+ * The merged persistent view for a compile: the registry (blueprint-declared, baked into the bundle)
+ * unioned with the story `/persis` declaration rows (WI-3). Reference validation reads its storage
+ * keys; a display name declared in both surfaces is reported as a collision diagnostic.
+ */
+function collectPersistentView(document: StoryDocument, persistentVariables?: PersistentVariableRuntimeTable): MergedPersistentView {
+    return buildMergedPersistentView(
+        Object.values(persistentVariables ?? {}),
+        Object.values(storyPersistentDefs(document)),
+    );
+}
+
+function pushPersistentNameCollisionDiagnostics(diagnostics: NlrStoryCompileDiagnostic[], view: MergedPersistentView): void {
+    for (const collision of view.nameCollisions) {
+        pushDiagnostic(
+            diagnostics,
+            "warning",
+            undefined,
+            `Persistent variable "${collision.name}" is declared in both the variable registry and a story row; references are ambiguous.`,
+        );
+    }
 }
 
 /**
@@ -229,6 +297,54 @@ function voiceConfigForLine(ctx: SceneCompileContext, textId: string): { voiceId
     return ctx.voiceIdMap && ctx.voiceIdMap[textId] ? { voiceId: textId } : undefined;
 }
 
+/** Which character speaks each voice unit, so a take can be routed to that character's bus. */
+function speakerByTextId(document: StoryDocument): Map<string, string> {
+    const speakers = new Map<string, string>();
+    for (const scene of Object.values(document.scenes ?? {})) {
+        for (const block of Object.values(scene.blocks ?? {})) {
+            if (block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
+                continue;
+            }
+            const characterId = block.payload.characterId?.trim();
+            const textId = block.payload.text?.textId;
+            if (characterId && textId) {
+                speakers.set(textId, characterId);
+            }
+        }
+    }
+    return speakers;
+}
+
+/**
+ * The engine's `Scene.voices` table, with each take routed to its speaker's bus.
+ *
+ * The voice *module* is the pipeline a voiced game actually uses - takes keyed by unit id, one set
+ * per language - so per-character voice volume that only reached the per-line `voiceAssetId`
+ * fallback would be a feature that works in the demo and not in the game.
+ *
+ * A take whose speaker sits on the plain `voice` bus stays a bare URL, which is exactly what the
+ * table held before this existed: the engine wraps a string in `Sound.voice()` itself, so a project
+ * with no per-character track produces the same table it always did, entry for entry.
+ */
+function buildSceneVoices(input: {
+    document: StoryDocument;
+    voiceIdMap: Record<string, string>;
+    characters: ReadonlyMap<string, DevModeCharacterSummary>;
+    audioTracks: readonly ProjectAudioTrack[];
+}): Record<string, string | Sound> {
+    const speakers = speakerByTextId(input.document);
+    const voices: Record<string, string | Sound> = {};
+    for (const [unitId, url] of Object.entries(input.voiceIdMap)) {
+        const characterId = speakers.get(unitId);
+        const requested = characterId ? input.characters.get(characterId)?.voiceTrackId : undefined;
+        const busId = resolveVoiceBusId(input.audioTracks, requested);
+        voices[unitId] = busId === AUDIO_TRACK_ID_VOICE
+            ? url
+            : createBusSound(input.audioTracks, busId, AUDIO_TRACK_ID_VOICE, { src: url });
+    }
+    return voices;
+}
+
 export type NlrStoryCompileDiagnostic = {
     level: "warning" | "error";
     blockId?: string;
@@ -250,7 +366,12 @@ type NlrStatement = unknown;
 type NlrChainLike = {
     getActions: () => NlrAction[];
 };
-export type StoryAssetKind = "image" | "audio" | "video" | "font" | "other";
+/**
+ * `model` is the multi-file bundle a puppet draws — a manifest plus whatever it names. It resolves
+ * to the bundle's *entry file* URL, and the engine resolves the siblings off it (`resolveSibling`),
+ * so nothing here ever enumerates a bundle's members.
+ */
+export type StoryAssetKind = "image" | "audio" | "video" | "font" | "model" | "other";
 type NlrCondition = Lambda<boolean> | ((ctx: ScriptCtx) => boolean);
 
 /** Name-keyed NLR elements a compiled scene created; lets hosts look up live objects (e.g. a preview's transform target). */
@@ -258,6 +379,13 @@ export type CompiledSceneElements = {
     images: Map<string, Image>;
     texts: Map<string, Text>;
     layers: Map<string, Layer>;
+    /** Puppet-kind characters, keyed by the same stage name their image-backed siblings use. */
+    puppets: Map<string, Puppet>;
+    /**
+     * Named sounds this scene's compile built, keyed by the name the sound-control family addresses
+     * them by - `bgm` for the music channel, the derived object name for a `/sound`.
+     */
+    sounds: Map<string, Sound>;
 };
 
 export type CompiledNlrStory = {
@@ -267,7 +395,40 @@ export type CompiledNlrStory = {
     storyId: string;
     sceneId: string;
     actionIdBindings: NlrActionIdBinding[];
+    /**
+     * Storable namespace holding every "saved" (editor: Var) variable, resolved via
+     * {@link DevTools.getNamespaceName} so hosts read live values without depending on the engine's
+     * namespace-prefix convention. Empty when the compiled story has no saved namespace.
+     */
+    savedNamespaceName: string;
+    /**
+     * Storable namespace holding the visited record (see `./storyVisited`), resolved the same way as
+     * {@link CompiledNlrStory.savedNamespaceName}. Hosts read `Is Scene Visited` / `Is Option Picked`
+     * out of it. Empty when the compile builds no visited namespace (the boot-time empty story).
+     */
+    visitedNamespaceName: string;
+    /**
+     * Per-scene Storable namespace holding that scene's "scene" (editor: Local) variables, keyed by
+     * Studio scene id. A scene-local namespace only exists while its scene is the active one at
+     * runtime (it is re-seeded on entry and removed on exit).
+     */
+    sceneLocalNamespaceNames: Record<string, string>;
     diagnostics: NlrStoryCompileDiagnostic[];
+    /**
+     * The live NLR `Character` per Studio characterId, as this compile built them. Instances are
+     * valid only within this compile — a recompile mints new ones — so a host must resolve through
+     * the current session's `compiled` and never capture them.
+     */
+    characters: Map<string, Character>;
+    /**
+     * Dialog-avatar URL → the asset id it came from.
+     *
+     * The engine resolves an avatar to a *URL* (that is what an `<img>` takes), but a blueprint pin
+     * carries an `ImageAsset`, which is an asset id. This is the inverse of the resolution the
+     * compiler just performed, and it is kept deliberately narrow: only avatar URLs are in it, so
+     * it can never turn an arbitrary stage image back into an id.
+     */
+    avatarAssetIdByUrl: Map<string, string>;
     /** Per-scene element registries, keyed by scene id (normalized object name → element). */
     sceneElements?: Record<string, CompiledSceneElements>;
     /** Continuous stage previews only: why the compiled playback tail ends. */
@@ -289,7 +450,13 @@ export type StagePreviewCompileInput = {
     animations?: Record<string, StoryAnimationAsset>;
     resolveAssetUrl?: CompileInput["resolveAssetUrl"];
     blueprintDocument?: BlueprintDocument;
+    /** M-VAR: persistent variable registry table, baked into the bundle; replaces the old blueprint-doc field. */
+    persistentVariables?: PersistentVariableRuntimeTable;
     persistence?: StoryPersistenceBridge;
+    /** In/out points marked on audio assets; see {@link CompileInput.audioClips}. */
+    audioClips?: Record<string, AudioClipRegion>;
+    /** The project's audio tracks; see {@link CompileInput.audioTracks}. */
+    audioTracks?: readonly ProjectAudioTrack[];
     /**
      * Fires synchronously once the pre-posed stage state has been fully applied (elements
      * registered, residual effects settled) - the first frame at which the stage is a faithful
@@ -329,14 +496,39 @@ type SceneCompileContext = {
     previewEncounteredJump?: { blockId: StoryBlockId; targetSceneId: StorySceneId };
     characters: Map<string, Character>;
     characterSummaries: Map<string, DevModeCharacterSummary>;
+    /** Dialog-avatar lookups resolved to URLs, per character. Built on first portrait binding. */
+    characterAvatars?: Map<string, CompiledCharacterAvatars>;
+    /** Inverse of every avatar resolution this compile performed (url → asset id). */
+    avatarAssetIdByUrl: Map<string, string>;
+    /** Stage sprites already registered as portraits, so a second row does not register them twice. */
+    boundPortraits?: WeakSet<Image>;
+    /**
+     * Characters whose dialog avatar this compile has already decided — a stage sprite's resolver, or
+     * a puppet's flat url.
+     *
+     * Compile-wide, not per scene, and that is the whole point: `Character` instances are shared
+     * across the scenes of one compile, so a character staged in scene 1 must not have its live
+     * resolver overwritten by scene 2's "never appeared here, use the default" pass. Whoever gets
+     * here first wins, and the fallback pass ({@link bindOffstageDefaultAvatars}) runs last.
+     */
+    avatarBoundCharacterIds: Set<string>;
     /** Single NLR Persistent (Storable-backed, per-save) holding all "saved" variables. */
     savedPersistent: Persistent<Record<string, StoryLiteralValue>>;
+    /**
+     * The visited record's Persistent (see `./storyVisited`). Compile-wide like `savedPersistent`,
+     * because the record is: a scene entered from another scene must land in the same two sets.
+     */
+    visitedPersistent: Persistent<StoryVisitedContent>;
     /** Scene-scope declaration table of this scene (variableId → def), scanned once per compile. */
     sceneVariables: Record<string, StorySceneVariableDefinition>;
     /** Document-wide "saved" declaration table (variableId → def), scanned once per compile. */
     savedVariables: Record<string, StorySavedVariableDefinition>;
     /** Story-declared persistent defaults (storageKey → default), the fallback for host reads. */
     persistentDefaults: Record<string, StoryLiteralValue>;
+    /** Every declared persistent storage key (story rows + registry), for reference validation. */
+    persistentKeys: Set<string>;
+    /** M-VAR registry table (id → def), baked into the bundle; used to compile blueprint persistent GET/SET. */
+    persistentVariables: PersistentVariableRuntimeTable;
     /** App-level persistent bridge (shared with UI blueprints); absent outside Dev Mode host. */
     persistence?: StoryPersistenceBridge;
     /** Blueprint document for compiling story-action blueprints referenced by this scene. */
@@ -345,12 +537,28 @@ type SceneCompileContext = {
     localization?: SceneLocalizationResolver;
     /** Active voice language's unit id → clip URL map; absent when the project has no voice or the host passes none. */
     voiceIdMap?: Record<string, string>;
+    /** Asset id → marked in/out points, folded into every `Sound` this compile builds. */
+    audioClips?: Record<string, AudioClipRegion>;
+    /** The project's audio tracks; already defaulted to the built-ins by the caller. */
+    audioTracks: readonly ProjectAudioTrack[];
+    /**
+     * The track each named sound handle was created on, keyed the same way `sounds` is.
+     *
+     * Two rows may address one handle - `/sound piano` then `/vol piano 0.4` - and only the first
+     * creates it. Recording the track it was created on is what lets a later row resolve the SAME
+     * bus instead of the built-in fallback, and what lets a second creating row that names a
+     * *different* track be reported rather than silently ignored (see {@link getSound}).
+     */
+    soundTrackIds: Map<string, string>;
     /** Fn declarations shared across all story-action blueprints in this scene. */
     sceneFnCatalog: StoryActionFnCatalog;
     images: Map<string, Image>;
     texts: Map<string, Text>;
+    /** Puppet-kind characters. A separate map because a `Puppet` is not an `Image` and shares no API with one. */
+    puppets: Map<string, Puppet>;
     layers: Map<string, Layer>;
     videos: Map<string, Video>;
+    vfx: Map<string, Vfx>;
     sounds: Map<string, Sound>;
     animations: Map<string, StoryAnimationAsset>;
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
@@ -368,12 +576,32 @@ type CompileInput = {
     resolveAssetUrl?: (assetId: string, assetType?: StoryAssetKind) => Promise<string | null | undefined> | string | null | undefined;
     /** Blueprint document; enables Story Action Blueprints and shared Persistent resolution. */
     blueprintDocument?: BlueprintDocument;
+    /** M-VAR: persistent variable registry table, baked into the bundle; replaces the old blueprint-doc field. */
+    persistentVariables?: PersistentVariableRuntimeTable;
     /** App-level persistent bridge (shared with UI blueprints); from the Dev Mode scope-store bridge. */
     persistence?: StoryPersistenceBridge;
     /** Game localization (bundle payload + current-locale getter); see {@link StoryLocalizationRuntime}. */
     localization?: StoryLocalizationRuntime;
     /** Game voice (bundle payload + current voice-language getter); see {@link StoryVoiceRuntime}. */
     voice?: StoryVoiceRuntime;
+    /**
+     * In/out points marked on audio assets, keyed by asset id (the bundle's `audio.clips`).
+     *
+     * Every `Sound` this compile builds folds the region of its own asset in, so a clip loops where
+     * the author marked it rather than over the whole file. Absent means "no clip is marked", which
+     * plays everything whole.
+     */
+    audioClips?: Record<string, AudioClipRegion>;
+    /**
+     * The project's audio tracks (`editor/audio-tracks.json`), which every audio row resolves against
+     * for its bus, its gain multiplier and its fade/loop defaults.
+     *
+     * Optional so a host that has not been wired yet still compiles: absent means
+     * {@link BUILTIN_AUDIO_TRACKS}, i.e. the three seeded tracks, which reproduce exactly what this
+     * compiler hard-coded before tracks existed. A project that never opened the Audio surface has
+     * those three and nothing else, so for it the two are the same list.
+     */
+    audioTracks?: readonly ProjectAudioTrack[];
     /**
      * Row-precise launch ("play from here" in Dev Mode). When set, the entry scene is replaced by a
      * one-shot pre-posed scene: the stage arrives at `targetBlockId`'s settled state (from the
@@ -386,6 +614,12 @@ type CompileInput = {
 
 const EMPTY_IMAGE_SRC = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'></svg>";
 const SCENE_INITIAL_BACKGROUND_BLOCK_ID = "__scene_initial_background";
+const SCENE_BACKGROUND_MUSIC_BLOCK_ID = "__scene_background_music";
+/**
+ * The reserved registry name the sound-control family addresses when no target is given
+ * (`/vol 0.5` is the music channel). Mirrors `BGM_OBJECT_NAME` in the editor.
+ */
+const BGM_SOUND_NAME = "bgm";
 const EMPTY_STORY_ID = "__nlr_empty_story__";
 const EMPTY_SCENE_ID = "__nlr_empty_scene__";
 const UNKNOWN_CHARACTER_ID = "__unknown_character__";
@@ -409,7 +643,12 @@ export function createEmptyCompiledNlrStory(): CompiledNlrStory {
         scenes: { [EMPTY_SCENE_ID]: nlrScene },
         storyId: EMPTY_STORY_ID,
         sceneId: EMPTY_SCENE_ID,
+        characters: new Map(),
+        avatarAssetIdByUrl: new Map(),
         actionIdBindings: [],
+        savedNamespaceName: "",
+        visitedNamespaceName: "",
+        sceneLocalNamespaceNames: {},
         diagnostics: [],
     };
 }
@@ -425,6 +664,9 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     const actionIdBindings: NlrActionIdBinding[] = [];
     const sceneElements: Record<string, CompiledSceneElements> = {};
     const characters = new Map<string, Character>();
+    const avatarAssetIdByUrl = new Map<string, string>();
+    // Compile-wide, because `characters` is: see `SceneCompileContext.avatarBoundCharacterIds`.
+    const avatarBoundCharacterIds = new Set<string>();
     const characterSummaries = new Map((input.characters ?? []).map(character => [character.id, character]));
     const animations = new Map(Object.entries(input.animations ?? {}));
     const assetUrlCache = new Map<string, string | null>();
@@ -433,12 +675,18 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     const voiceIdMap = input.voice
         ? await buildSceneVoiceMap({ voice: input.voice, resolveAssetUrl, assetUrlCache, diagnostics })
         : undefined;
+    const audioTracks = input.audioTracks ?? BUILTIN_AUDIO_TRACKS;
+    const sceneBackgroundMusic = new Map<string, { sound: Sound; trackId: string }>();
     const allScenes = await createNlrScenes({
         document: input.document,
         resolveAssetUrl,
         assetUrlCache,
         diagnostics,
         voiceIdMap,
+        audioClips: input.audioClips,
+        audioTracks,
+        characters: characterSummaries,
+        backgroundMusic: sceneBackgroundMusic,
     });
 
     // Single Storable-backed namespace seeded with every saved variable's default.
@@ -453,11 +701,21 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         Object.assign(savedDefaults, input.launch.snapshot.savedVariables);
     }
     const savedPersistent = nlrStory.createPersistent(SAVED_PERSISTENT_NAMESPACE, savedDefaults);
+    // Deliberately NOT seeded from `input.launch`: a row-precise launch fabricates a starting state,
+    // and pretending the player had already walked the scenes on the way there would put fake
+    // entries in a record whose whole job is to say where the player has actually been.
+    const visitedPersistent = createStoryVisitedPersistent(nlrStory);
     const persistentDefaults = collectPersistentDefaults(input.document);
+    const persistentVariables = input.persistentVariables ?? {};
+    const persistentView = collectPersistentView(input.document, persistentVariables);
+    const persistentKeys = mergedPersistentStorageKeys(persistentView);
+    pushPersistentNameCollisionDiagnostics(diagnostics, persistentView);
     const localization = input.localization ? createSceneLocalizationResolver(input.localization) : undefined;
 
-    for (const scene of Object.values(input.document.scenes)) {
+    // Document order, so the Problems panel reads down the story instead of down a UUID sort.
+    for (const scene of listScenesInDocumentOrder(input.document)) {
         const nlrScene = allScenes[scene.id];
+        const sceneMusic = sceneBackgroundMusic.get(scene.id);
         const sceneFnCatalog = collectSceneStoryActionFns({
             document: input.document,
             blueprintDocument: input.blueprintDocument,
@@ -471,10 +729,15 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             allScenes,
             characters,
             characterSummaries,
+            avatarAssetIdByUrl,
+            avatarBoundCharacterIds,
             savedPersistent,
+            visitedPersistent,
             sceneVariables: sceneVariableDefs(scene),
             savedVariables,
             persistentDefaults,
+            persistentKeys,
+            persistentVariables,
             persistence: input.persistence,
             blueprintDocument: input.blueprintDocument,
             localization,
@@ -482,9 +745,16 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             sceneFnCatalog,
             images: new Map(),
             texts: new Map(),
+            puppets: new Map(),
             layers: new Map(),
             videos: new Map(),
-            sounds: new Map(),
+            vfx: new Map(),
+            // Seeded with the scene's configured track under the name the sound-control family
+            // defaults to, so `/vol 0.5` on a scene with music means what it looks like.
+            sounds: sceneMusic ? new Map([[BGM_SOUND_NAME, sceneMusic.sound]]) : new Map(),
+            soundTrackIds: sceneMusic ? new Map([[BGM_SOUND_NAME, sceneMusic.trackId]]) : new Map(),
+            audioClips: input.audioClips,
+            audioTracks,
             animations,
             resolveAssetUrl,
             assetUrlCache,
@@ -495,7 +765,15 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         // Seed declared scene-local defaults at the head of the scene's statement list. They must be
         // statements (not build-time sets): `Scene.local.init` resets the namespace on every scene
         // entry, so the seeds have to re-run each time the scene starts.
-        const seeds: NlrStatement[] = [];
+        //
+        // The visit is recorded from the same position, and for the same reason: it belongs to the
+        // moment the scene STARTS, and it must re-run on every entry (a re-entry after a load has to
+        // put the id back). Nothing an author writes is involved - Ink's `visited`, Ren'Py's
+        // `seen_label` and Yarn's `visited()` are all automatic, and a feature that needs a manual
+        // marker row on every scene is a feature nobody turns on.
+        const seeds: NlrStatement[] = [
+            markStoryVisitedStatement(visitedPersistent, STORY_VISITED_SCENES_KEY, scene.id),
+        ];
         for (const def of Object.values(ctx.sceneVariables)) {
             if (def.defaultValue !== undefined) {
                 seeds.push(nlrScene.local.set(def.storageKey, def.defaultValue as any));
@@ -503,7 +781,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         }
         const statements = await compileBlockList(ctx, scene.rootBlockIds);
         nlrScene.action([...seeds, ...statements] as unknown as Parameters<Scene["action"]>[0]);
-        sceneElements[scene.id] = { images: ctx.images, texts: ctx.texts, layers: ctx.layers };
+        sceneElements[scene.id] = { images: ctx.images, texts: ctx.texts, layers: ctx.layers, puppets: ctx.puppets, sounds: ctx.sounds };
     }
 
     // Row-precise launch: the story enters through a one-shot pre-posed scene that arrives at the
@@ -519,9 +797,14 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             diagnostics,
             characters,
             characterSummaries,
+            avatarAssetIdByUrl,
+            avatarBoundCharacterIds,
             savedPersistent,
+            visitedPersistent,
             savedVariables,
             persistentDefaults,
+            persistentKeys,
+            persistentVariables,
             animations,
             resolveAssetUrl,
             assetUrlCache,
@@ -532,6 +815,22 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         : allScenes[input.sceneId];
     nlrStory.entry(nlrEntryScene);
 
+    // Last, once every scene (and the launch tail) has had its say about who stood on stage.
+    await bindOffstageDefaultAvatars({
+        characters,
+        characterSummaries,
+        avatarBoundCharacterIds,
+        avatarAssetIdByUrl,
+        resolveAssetUrl,
+        assetUrlCache,
+        diagnostics,
+    });
+
+    const sceneLocalNamespaceNames: Record<string, string> = {};
+    for (const [sceneId, nlrScene] of Object.entries(allScenes)) {
+        sceneLocalNamespaceNames[sceneId] = DevTools.getNamespaceName(nlrScene.local);
+    }
+
     return {
         story: nlrStory,
         scene: nlrEntryScene,
@@ -539,7 +838,12 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         storyId: input.document.id,
         sceneId: entryScene.id,
         actionIdBindings,
+        savedNamespaceName: DevTools.getNamespaceName(savedPersistent),
+        visitedNamespaceName: DevTools.getNamespaceName(visitedPersistent),
+        sceneLocalNamespaceNames,
         diagnostics,
+        characters,
+        avatarAssetIdByUrl,
         sceneElements,
     };
 }
@@ -560,9 +864,14 @@ async function buildLaunchEntryScene(params: {
     diagnostics: NlrStoryCompileDiagnostic[];
     characters: Map<string, Character>;
     characterSummaries: Map<string, DevModeCharacterSummary>;
+    avatarAssetIdByUrl: Map<string, string>;
+    avatarBoundCharacterIds: Set<string>;
     savedPersistent: Persistent<Record<string, StoryLiteralValue>>;
+    visitedPersistent: Persistent<StoryVisitedContent>;
     savedVariables: Record<string, StorySavedVariableDefinition>;
     persistentDefaults: Record<string, StoryLiteralValue>;
+    persistentKeys: Set<string>;
+    persistentVariables: PersistentVariableRuntimeTable;
     animations: Map<string, StoryAnimationAsset>;
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
     assetUrlCache: Map<string, string | null>;
@@ -589,9 +898,23 @@ async function buildLaunchEntryScene(params: {
         })
         : snapshot.background?.color
             ?? await resolveSceneInitialBackground({ scene, resolveAssetUrl, assetUrlCache, diagnostics });
+    // A row-precise launch replaces the scene, so it has to carry the scene's own music too -
+    // otherwise "play from here" is the one way to enter a scene silently.
+    const audioTracks = input.audioTracks ?? BUILTIN_AUDIO_TRACKS;
+    const launchMusic = await resolveSceneBackgroundMusic({
+        scene,
+        audioClips: input.audioClips,
+        audioTracks,
+        resolveAssetUrl,
+        assetUrlCache,
+        diagnostics,
+    });
     const launchScene = new Scene(
         scene.runtimeName || scene.name || scene.id,
-        backgroundSrc ? { background: backgroundSrc } : undefined,
+        {
+            ...(backgroundSrc ? { background: backgroundSrc } : {}),
+            ...(launchMusic ? { backgroundMusic: launchMusic.sound, backgroundMusicFade: launchMusic.fadeMs } : {}),
+        },
     );
 
     const ctx: SceneCompileContext = {
@@ -603,10 +926,15 @@ async function buildLaunchEntryScene(params: {
         previewSingleScene: false,
         characters: params.characters,
         characterSummaries: params.characterSummaries,
+        avatarAssetIdByUrl: params.avatarAssetIdByUrl,
+        avatarBoundCharacterIds: params.avatarBoundCharacterIds,
         savedPersistent: params.savedPersistent,
+        visitedPersistent: params.visitedPersistent,
         sceneVariables: sceneVariableDefs(scene),
         savedVariables: params.savedVariables,
         persistentDefaults: params.persistentDefaults,
+        persistentKeys: params.persistentKeys,
+        persistentVariables: params.persistentVariables,
         persistence: input.persistence,
         blueprintDocument: input.blueprintDocument,
         localization: params.localization,
@@ -618,9 +946,14 @@ async function buildLaunchEntryScene(params: {
         }),
         images: new Map(),
         texts: new Map(),
+        puppets: new Map(),
         layers: new Map(),
         videos: new Map(),
-        sounds: new Map(),
+        vfx: new Map(),
+        sounds: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.sound]]) : new Map(),
+        soundTrackIds: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.trackId]]) : new Map(),
+        audioClips: input.audioClips,
+        audioTracks,
         animations: params.animations,
         resolveAssetUrl,
         assetUrlCache,
@@ -649,6 +982,12 @@ async function buildLaunchEntryScene(params: {
                 src: src ?? undefined,
                 initialProps: snapshotPoseProps(record),
             });
+            // A pre-posed character is on stage before any row of its own runs, so its portrait has
+            // to be registered here too - otherwise a row-precise launch shows the speaker with no
+            // avatar until they next enter or change expression.
+            if (record.source?.type === "character") {
+                await bindCharacterPortrait(ctx, record.source.characterId, image);
+            }
             registrations.push({ element: image, layer });
         } else {
             const text = getText(ctx, record.objectName, {
@@ -676,6 +1015,10 @@ async function buildLaunchEntryScene(params: {
     // One synchronous injection step: register the pre-posed elements and apply built-in-singleton props.
     const backgroundProps = snapshot.backgroundProps;
     const builtinLayerProps = snapshot.builtinLayerProps;
+    // The stage camera is a story-level singleton pre-posed exactly like the built-in layers: its pan/
+    // zoom/rotate settle instantly here so a launch that starts after a `/camera zoom` opens on the
+    // real shot, not a neutral one. Its darkness rides the residual-effects pass below.
+    const cameraProps = snapshot.camera?.props ?? {};
     statements.push(Script.execute(((scriptCtx: ScriptCtx) => {
         for (const registration of registrations) {
             DevTools.registerDisplayable(scriptCtx.gameState, registration.element as any, launchScene, registration.layer ?? null);
@@ -688,6 +1031,9 @@ async function buildLaunchEntryScene(params: {
         }
         if (Object.keys(builtinLayerProps.displayableLayer).length > 0) {
             DevTools.setDisplayableTransformProps(scriptCtx.gameState, launchScene.displayableLayer as any, builtinLayerProps.displayableLayer);
+        }
+        if (Object.keys(cameraProps).length > 0) {
+            DevTools.setDisplayableTransformProps(scriptCtx.gameState, nlrStory.camera as any, cameraProps);
         }
     }) as any));
 
@@ -703,6 +1049,10 @@ async function buildLaunchEntryScene(params: {
         }
     }
     statements.push(...await compileSnapshotEffects(ctx, launchScene.background, snapshot.backgroundEffects));
+    // Camera darkness settles through the same `darken(d, 0)` channel `/camera darken` uses.
+    if (snapshot.camera) {
+        statements.push(...await compileSnapshotEffects(ctx, nlrStory.camera, snapshot.camera.effects));
+    }
 
     // Play the real story forward from the target row, following jumps into the other scenes.
     const plan = collectStoryPlaybackPlan(scene, launch.targetBlockId, { followJumps: true });
@@ -756,6 +1106,10 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
     }
     Object.assign(savedDefaults, snapshot.savedVariables);
     const savedPersistent = nlrStory.createPersistent(SAVED_PERSISTENT_NAMESPACE, savedDefaults);
+    // The preview compiles a single row, not a playthrough, so nothing here ever records a visit -
+    // the namespace exists only because `SceneCompileContext` requires one and a choice row inside
+    // the previewed block still compiles its (never-taken) option branches.
+    const visitedPersistent = createStoryVisitedPersistent(nlrStory);
 
     // Snapshot background wins; otherwise the scene's default initial background.
     const backgroundSrc = snapshot.background?.assetId
@@ -774,6 +1128,8 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         backgroundSrc ? { background: backgroundSrc } : undefined,
     );
 
+    const previewPersistentView = collectPersistentView(input.document, input.persistentVariables);
+    pushPersistentNameCollisionDiagnostics(diagnostics, previewPersistentView);
     const ctx: SceneCompileContext = {
         document: input.document,
         nlrStory,
@@ -783,10 +1139,15 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         previewSingleScene: true,
         characters: new Map(),
         characterSummaries,
+        avatarAssetIdByUrl: new Map(),
+        avatarBoundCharacterIds: new Set(),
         savedPersistent,
+        visitedPersistent,
         sceneVariables: sceneVariableDefs(scene),
         savedVariables,
         persistentDefaults: collectPersistentDefaults(input.document),
+        persistentKeys: mergedPersistentStorageKeys(previewPersistentView),
+        persistentVariables: input.persistentVariables ?? {},
         persistence: input.persistence,
         blueprintDocument: input.blueprintDocument,
         sceneFnCatalog: collectSceneStoryActionFns({
@@ -796,9 +1157,14 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         }),
         images: new Map(),
         texts: new Map(),
+        puppets: new Map(),
         layers: new Map(),
         videos: new Map(),
+        vfx: new Map(),
         sounds: new Map(),
+        soundTrackIds: new Map(),
+        audioClips: input.audioClips,
+        audioTracks: input.audioTracks ?? BUILTIN_AUDIO_TRACKS,
         animations,
         resolveAssetUrl,
         assetUrlCache,
@@ -827,6 +1193,12 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
                 src: src ?? undefined,
                 initialProps: snapshotPoseProps(record),
             });
+            // A pre-posed character is on stage before any row of its own runs, so its portrait has
+            // to be registered here too - otherwise a row-precise launch shows the speaker with no
+            // avatar until they next enter or change expression.
+            if (record.source?.type === "character") {
+                await bindCharacterPortrait(ctx, record.source.characterId, image);
+            }
             registrations.push({ element: image, layer });
         } else {
             const text = getText(ctx, record.objectName, {
@@ -917,6 +1289,17 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
     }
     statements.push(previewMarker(input.onAfterTarget));
 
+    // Before the preload sweep below, so a fallback avatar this resolves is warmed with the rest.
+    await bindOffstageDefaultAvatars({
+        characters: ctx.characters,
+        characterSummaries,
+        avatarBoundCharacterIds: ctx.avatarBoundCharacterIds,
+        avatarAssetIdByUrl: ctx.avatarAssetIdByUrl,
+        resolveAssetUrl,
+        assetUrlCache,
+        diagnostics,
+    });
+
     // Register every image URL this compile resolved (snapshot poses AND the target's own
     // sources) with the scene's preloader - injected elements bypass NLR's usual preload
     // prediction, which would otherwise warn per image.
@@ -936,8 +1319,13 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         storyId: input.document.id,
         sceneId: scene.id,
         actionIdBindings,
+        savedNamespaceName: DevTools.getNamespaceName(savedPersistent),
+        visitedNamespaceName: DevTools.getNamespaceName(visitedPersistent),
+        sceneLocalNamespaceNames: { [scene.id]: DevTools.getNamespaceName(previewScene.local) },
         diagnostics,
-        sceneElements: { [scene.id]: { images: ctx.images, texts: ctx.texts, layers: ctx.layers } },
+        characters: ctx.characters,
+        avatarAssetIdByUrl: ctx.avatarAssetIdByUrl,
+        sceneElements: { [scene.id]: { images: ctx.images, texts: ctx.texts, layers: ctx.layers, puppets: ctx.puppets, sounds: ctx.sounds } },
         playbackStop,
     };
 }
@@ -1001,7 +1389,7 @@ async function resolveSnapshotImageSource(ctx: SceneCompileContext, record: Stag
     if (source.type === "color") {
         return source.color;
     }
-    return resolveCharacterImageUrl(ctx, source.characterId, source.formName, source.variants, blockId);
+    return resolveCharacterImageUrl(ctx, source.characterId, source.pose, blockId);
 }
 
 /** Re-apply a snapshot record's residual effects as instant (duration 0) statements. */
@@ -1039,25 +1427,85 @@ async function createNlrScenes(input: {
     diagnostics: NlrStoryCompileDiagnostic[];
     /** Active voice language's unit id → clip URL map, shared by every scene (voice ids are global). */
     voiceIdMap?: Record<string, string>;
+    /** Asset id → marked in/out points, so a scene's own track loops where the author marked it. */
+    audioClips?: Record<string, AudioClipRegion>;
+    /** The project's audio tracks, so a scene's music resolves its bus like every other row. */
+    audioTracks: readonly ProjectAudioTrack[];
+    /** Character summaries by id, so each voice take lands on its speaker's bus. */
+    characters: ReadonlyMap<string, DevModeCharacterSummary>;
+    /**
+     * Filled with each scene's configured track, keyed by Studio scene id.
+     *
+     * The caller seeds it into that scene's sound registry under the reserved name `bgm`, which is
+     * what makes `/vol 0.5` and `/seek bgm 30` address the scene's own music. Without it the control
+     * family would answer "no background music is set" on precisely the scene that has some. The
+     * audio track rides along for the same reason: a later `/vol` on that handle has to reach the
+     * gain the scene's music was built with, not the built-in fallback's.
+     */
+    backgroundMusic?: Map<string, { sound: Sound; trackId: string }>;
 }): Promise<Record<string, Scene>> {
     const scenes: Record<string, Scene> = {};
-    const voices = input.voiceIdMap && Object.keys(input.voiceIdMap).length > 0 ? input.voiceIdMap : undefined;
-    for (const scene of Object.values(input.document.scenes)) {
+    const voices = input.voiceIdMap && Object.keys(input.voiceIdMap).length > 0
+        ? buildSceneVoices({
+            document: input.document,
+            voiceIdMap: input.voiceIdMap,
+            characters: input.characters,
+            audioTracks: input.audioTracks,
+        })
+        : undefined;
+    // Two scenes with the same runtime name share one `Scene.local` namespace, so their scene-local
+    // variables would silently read and write each other's values. The name keys the namespace
+    // (`DevTools.getNamespaceName`), so a collision is a real data hazard, not cosmetic (bible §3.3).
+    // Document order decides WHICH of the two colliding scenes gets blamed - the later one, as with
+    // duplicate labels. Reading the record would hand that verdict to whichever id sorts lower.
+    const namesSeen = new Set<string>();
+    for (const scene of listScenesInDocumentOrder(input.document)) {
+        const runtimeName = scene.runtimeName || scene.name || scene.id;
+        if (namesSeen.has(runtimeName)) {
+            pushDiagnostic(
+                input.diagnostics,
+                "error",
+                undefined,
+                `Two scenes share the name "${runtimeName}"; their scene-local variables would collide. Rename one.`,
+            );
+        }
+        namesSeen.add(runtimeName);
         const background = await resolveSceneInitialBackground({
             scene,
             resolveAssetUrl: input.resolveAssetUrl,
             assetUrlCache: input.assetUrlCache,
             diagnostics: input.diagnostics,
         });
-        const config: { background?: string; voices?: Record<string, string> } = {};
+        const config: {
+            background?: string;
+            // `string | Sound` because a take on a per-character bus has to arrive as a built
+            // `Sound` - the engine wraps a bare string with `Sound.voice()`, which would put every
+            // take back on the plain `voice` bus.
+            voices?: Record<string, string | Sound>;
+            backgroundMusic?: Sound;
+            backgroundMusicFade?: number;
+        } = {};
         if (background) {
             config.background = background;
         }
         if (voices) {
             config.voices = voices;
         }
+        const music = await resolveSceneBackgroundMusic({
+            scene,
+            audioClips: input.audioClips,
+            audioTracks: input.audioTracks,
+            resolveAssetUrl: input.resolveAssetUrl,
+            assetUrlCache: input.assetUrlCache,
+            diagnostics: input.diagnostics,
+        });
+        if (music) {
+            config.backgroundMusic = music.sound;
+            config.backgroundMusicFade = music.fadeMs;
+            input.backgroundMusic?.set(scene.id, { sound: music.sound, trackId: music.trackId });
+        }
         scenes[scene.id] = new Scene(
-            scene.runtimeName || scene.name || scene.id,
+            runtimeName,
             Object.keys(config).length > 0 ? config : undefined,
         );
     }
@@ -1084,6 +1532,119 @@ async function resolveSceneInitialBackground(input: {
     });
 }
 
+/**
+ * The scene's own opening track, as engine scene config.
+ *
+ * Constructor config rather than a leading `setBackgroundMusic` statement, because the engine plays
+ * `backgroundMusic` during the scene's *init* - so it is already going when the first row runs, and
+ * it survives a load into the middle of the scene. A statement could do neither.
+ *
+ * The audio track supplies the bus and the loop default, resolved the same way an audio row resolves
+ * them - the `bgm` built-in when the scene names no track. The fade is the scene's own field and
+ * nothing else: a fade belongs to the moment, so an unstated one is a hard cut, which is what a
+ * scene's music did before tracks existed.
+ */
+async function resolveSceneBackgroundMusic(input: {
+    scene: StoryScene;
+    audioClips?: Record<string, AudioClipRegion>;
+    audioTracks: readonly ProjectAudioTrack[];
+    resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
+    assetUrlCache: Map<string, string | null>;
+    diagnostics: NlrStoryCompileDiagnostic[];
+}): Promise<{ sound: Sound; fadeMs: number; trackId: string } | null> {
+    const bgm = input.scene.bgm;
+    const assetId = bgm?.assetId?.trim();
+    if (!bgm || !assetId) {
+        return null;
+    }
+    const url = await resolveAssetUrlCached({
+        assetId,
+        assetType: "audio",
+        blockId: SCENE_BACKGROUND_MUSIC_BLOCK_ID,
+        resolveAssetUrl: input.resolveAssetUrl,
+        assetUrlCache: input.assetUrlCache,
+        diagnostics: input.diagnostics,
+    });
+    if (!url) {
+        return null;
+    }
+    const track = resolveAudioTrack(input.audioTracks, bgm.audioTrackId, "bgm");
+    const playback = resolveAudioTrackPlayback(track, {
+        volume: bgm.volume,
+        loop: bgm.loop,
+    });
+    return {
+        sound: createBusSound(input.audioTracks, playback.busId, "bgm", {
+            src: url,
+            loop: playback.loop,
+            volume: playback.volume,
+            ...audioClipRegionToSoundConfig(input.audioClips?.[assetId]),
+        }),
+        fadeMs: bgm.fadeMs ?? 0,
+        trackId: track.id,
+    };
+}
+
+/**
+ * Which of the three seeded buses a bus hangs beneath - the *root* of its chain, not its parent.
+ *
+ * The engine's two slot checks (a scene's `backgroundMusic`, a line's `voice`) are descendant tests
+ * against `bgm` / `voice`, so `voice/party/alice` has to answer `voice` however deep it sits. The
+ * chain is walked master-most-first here for exactly that reason: the seeded bus nearest the master
+ * output is the one the engine's own walk arrives at last and the one that decides the slot.
+ *
+ * A bus whose chain reaches master without passing through any of the three - an author's own root,
+ * `ambience` parented to null - answers the caller's own fallback instead. It is not an error: the
+ * clip plays on its declared bus either way, and the fallback only picks the factory, i.e. which
+ * slot the resulting `Sound` is allowed to occupy.
+ */
+function audioTrackSeededRoot(
+    tracks: readonly ProjectAudioTrack[],
+    busId: string,
+    fallbackChannel: AudioTrackChannel,
+): AudioTrackChannel {
+    const chain = resolveAudioTrackChain(tracks, busId, fallbackChannel);
+    for (let index = chain.length - 1; index >= 0; index -= 1) {
+        const id = chain[index].id;
+        if ((AUDIO_TRACK_CHANNELS as readonly string[]).includes(id)) {
+            return id as AudioTrackChannel;
+        }
+    }
+    return fallbackChannel;
+}
+
+/**
+ * A `Sound` on a given bus.
+ *
+ * `type` **is** the track's id now. The three factories no longer name three fixed channels - they
+ * default `type` and nothing else - so the bus travels in the config and the factory is chosen only
+ * to satisfy the engine's slot checks (see {@link audioTrackSeededRoot}).
+ *
+ * The clip's `volume` is the author's own number, never pre-multiplied by the bus gains above it:
+ * those live in the gain graph, where a player moving a slider reaches a clip that is already
+ * playing. Folding them in here would apply them twice and freeze them where no slider can reach.
+ *
+ * One function rather than a ternary at each site, because "which bus, therefore which player
+ * slider" is the entire mechanical content of the feature and three copies of it is three chances
+ * for one of them to keep hard-coding `Sound.sound`.
+ */
+function createBusSound(
+    tracks: readonly ProjectAudioTrack[],
+    busId: string,
+    fallbackChannel: AudioTrackChannel,
+    config: Exclude<Parameters<typeof Sound.sound>[0], string>,
+): Sound {
+    const withBus = { ...config, type: busId };
+    switch (audioTrackSeededRoot(tracks, busId, fallbackChannel)) {
+        case "bgm":
+            return Sound.bgm(withBus);
+        case "voice":
+            return Sound.voice(withBus);
+        case "sound":
+            return Sound.sound(withBus);
+    }
+}
+
 async function compileBlockList(ctx: SceneCompileContext, blockIds: readonly string[]): Promise<NlrStatement[]> {
     const statements: NlrStatement[] = [];
     for (const blockId of blockIds) {
@@ -1096,6 +1657,13 @@ async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<
     const block = ctx.scene.blocks[blockId];
     if (!block) {
         diagnostic(ctx, "warning", undefined, `Missing block: ${blockId}`);
+        return [];
+    }
+
+    // A disabled row (schema v7) is compiled out — with its whole subtree, since returning here never
+    // recurses into its children — and it is not an error (unlike `invalid`): the author chose to skip
+    // it, so at runtime it simply does not exist.
+    if (block.disabled) {
         return [];
     }
 
@@ -1127,6 +1695,12 @@ async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<
             diagnostic(ctx, "warning", block.id, "Condition branch is outside of a condition container.");
             return compileBlockList(ctx, block.childrenIds);
         }
+        if (block.payload.control === "label" || block.payload.control === "goto") {
+            return compileLabelControl(ctx, block, block.payload);
+        }
+        if (block.payload.control === "break") {
+            return compileBreak(ctx, block);
+        }
         return compileControlGroup(ctx, block);
     }
 
@@ -1152,11 +1726,6 @@ async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<
     if (block.kind === "declaration") {
         // Authoring metadata, not a runtime action: the scanned variable tables carry its meaning,
         // and the scene-head seeds carry its default. Nothing to emit, nothing to warn about.
-        return [];
-    }
-
-    if (block.kind === "code") {
-        diagnostic(ctx, "warning", block.id, "Code/Script blocks are not part of the NLR Story action surface and were skipped.");
         return [];
     }
 
@@ -1206,6 +1775,12 @@ async function compilePreviewTargetOwnStatements(ctx: SceneCompileContext, block
         if (block.payload.control === "conditionBranch") {
             return [];
         }
+        if (block.payload.control === "break") {
+            // The preview compiles this row on its own, without the loop it belongs to. Emitting
+            // `breakLoop()` there is an engine error at play time, so the preview holds instead.
+            diagnostic(ctx, "warning", block.id, "Preview holds at the break; it needs its loop to do anything.");
+            return [];
+        }
         return compileControlGroup(ctx, block);
     }
     return [];
@@ -1214,16 +1789,17 @@ async function compilePreviewTargetOwnStatements(ctx: SceneCompileContext, block
 async function compileNodeAction(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "nodeAction" }>): Promise<NlrStatement[]> {
     if (block.payload.action === "narration") {
         const segment = block.payload.text;
-        if (!segment.value.trim() && !segmentHasInterpolation(segment)) {
+        if (!segment.value.trim() && !segmentHasInterpolation(segment) && !segmentHasEvent(segment)) {
             return [];
         }
         const voiceConfig = voiceConfigForLine(ctx, segment.textId);
-        return [recordStatement(ctx, Narrator.say(buildLocalizedSentencePrompt(ctx, segment, block.id) as any, voiceConfig as any), block, segment.textId)];
+        const eventMap = await resolveSegmentEvents(ctx, segment, block.id);
+        return [recordStatement(ctx, Narrator.say(buildLocalizedSentencePrompt(ctx, segment, block.id, eventMap) as any, voiceConfig as any), block, segment.textId)];
     }
 
     if (block.payload.action === "dialogue") {
         const text = block.payload.text.value;
-        if (!text.trim() && !segmentHasInterpolation(block.payload.text)) {
+        if (!text.trim() && !segmentHasInterpolation(block.payload.text) && !segmentHasEvent(block.payload.text)) {
             return [];
         }
         const character = getCharacter(ctx, block.payload.characterId, block.payload.speakerName);
@@ -1239,21 +1815,30 @@ async function compileNodeAction(ctx: SceneCompileContext, block: Extract<StoryB
             config.voiceId = voiceConfig.voiceId;
         }
         if (voiceUrl) {
-            config.voice = Sound.voice(voiceUrl);
+            // On the speaker's own bus, not the bare `voice` one. That is the whole per-character
+            // voice feature: `voice/alice` gives the player a slider for Alice alone, and a
+            // character with no track of its own resolves to `voice`, i.e. to what this always was.
+            config.voice = createBusSound(
+                ctx.audioTracks,
+                characterVoiceBusId(ctx, block.payload.characterId),
+                AUDIO_TRACK_ID_VOICE,
+                { src: voiceUrl },
+            );
         }
         if (block.payload.pauseAfter !== undefined) {
             config.pause = block.payload.pauseAfter;
         }
         const sayConfig = Object.keys(config).length > 0 ? (config as any) : undefined;
-        return [recordStatement(ctx, character.say(buildLocalizedSentencePrompt(ctx, block.payload.text, block.id) as any, sayConfig), block, block.payload.text.textId)];
+        const eventMap = await resolveSegmentEvents(ctx, block.payload.text, block.id);
+        return [recordStatement(ctx, character.say(buildLocalizedSentencePrompt(ctx, block.payload.text, block.id, eventMap) as any, sayConfig), block, block.payload.text.textId)];
     }
 
     return [];
 }
 
 /** Build an NLR sentence prompt from a text segment: a plain string, or Word/Pause tokens. */
-function buildSentencePrompt(segment: StoryTextSegment, ctx: SceneCompileContext, blockId: string): string | unknown[] {
-    return buildSentenceParts(segment, ctx, blockId).prompt;
+function buildSentencePrompt(segment: StoryTextSegment, ctx: SceneCompileContext, blockId: string, eventMap?: Map<StoryRichRun, TextEvent>): string | unknown[] {
+    return buildSentenceParts(segment, ctx, blockId, eventMap).prompt;
 }
 
 /**
@@ -1264,6 +1849,7 @@ function buildSentenceParts(
     segment: StoryTextSegment,
     ctx: SceneCompileContext,
     blockId: string,
+    eventMap?: Map<StoryRichRun, TextEvent>,
 ): { prompt: string | unknown[]; interpolationWords: unknown[] } {
     if (!segment.rich || segment.rich.length === 0) {
         return { prompt: segment.value, interpolationWords: [] };
@@ -1273,6 +1859,17 @@ function buildSentenceParts(
     for (const run of segment.rich) {
         if ("pause" in run) {
             prompt.push(run.pause === true ? new Pause() : Pause.wait(run.pause));
+            continue;
+        }
+        if ("event" in run) {
+            // Reveal-time event token (zero-width, like Pause). It was resolved asynchronously by the
+            // caller (asset URLs) into a TextEvent; an unresolvable event was already diagnosed and is
+            // simply omitted here. It contributes no `{n}` placeholder, so interpolation indices stay
+            // aligned.
+            const event = eventMap?.get(run);
+            if (event) {
+                prompt.push(event);
+            }
             continue;
         }
         if ("interpolation" in run) {
@@ -1301,13 +1898,18 @@ function buildSentenceParts(
  * source-language prompt when no translation applies. Untranslated segments keep
  * their plain compiled form - zero overhead.
  */
-function buildLocalizedSentencePrompt(ctx: SceneCompileContext, segment: StoryTextSegment, blockId: string): string | unknown[] {
-    const { prompt, interpolationWords } = buildSentenceParts(segment, ctx, blockId);
+function buildLocalizedSentencePrompt(ctx: SceneCompileContext, segment: StoryTextSegment, blockId: string, eventMap?: Map<StoryRichRun, TextEvent>): string | unknown[] {
+    const { prompt, interpolationWords } = buildSentenceParts(segment, ctx, blockId, eventMap);
     const localization = ctx.localization;
     if (!localization || !localization.hasTranslation(segment.textId)) {
         return prompt;
     }
     const textId = segment.textId;
+    // KNOWN LIMITATION (Pause family): a translated line is rebuilt from the translation string, which
+    // carries only text and `{n}` interpolation placeholders. Zero-width reveal-time tokens - inline
+    // `Pause`s and inline events (`TextEvent`) - have no placeholder in the translation, so they are
+    // dropped from the translated rendering and survive only in the source-language prompt above. Not
+    // fixed here: recovering them needs a token-preserving translation format. See the migration report.
     const resolveDynamic = () => {
         const target = localization.resolve(textId);
         if (target === null) {
@@ -1325,6 +1927,91 @@ function segmentHasInterpolation(segment: StoryTextSegment): boolean {
     return Boolean(segment.rich?.some(run => "interpolation" in run));
 }
 
+/** True when a segment carries an inline reveal-time event run (so an empty plain value is intentional). */
+function segmentHasEvent(segment: StoryTextSegment): boolean {
+    return Boolean(segment.rich?.some(run => "event" in run));
+}
+
+/**
+ * Pre-resolve every inline event run in a segment into an engine `TextEvent`. Asset URLs (the
+ * expression's character image and the optional SE) resolve asynchronously, so this runs before the
+ * synchronous {@link buildSentenceParts}. An event that cannot be resolved is diagnosed and omitted
+ * (its run maps to nothing), leaving the surrounding text intact.
+ */
+async function resolveSegmentEvents(
+    ctx: SceneCompileContext,
+    segment: StoryTextSegment,
+    blockId: string,
+): Promise<Map<StoryRichRun, TextEvent>> {
+    const map = new Map<StoryRichRun, TextEvent>();
+    if (!segment.rich) {
+        return map;
+    }
+    for (const run of segment.rich) {
+        if (!("event" in run)) {
+            continue;
+        }
+        const event = await compileEventRun(ctx, run.event, blockId);
+        if (event) {
+            map.set(run, event);
+        }
+    }
+    return map;
+}
+
+/** Compile one inline event descriptor into a `TextEvent`, or null when nothing usable resolves. */
+async function compileEventRun(
+    ctx: SceneCompileContext,
+    event: StoryInlineEvent,
+    blockId: string,
+): Promise<TextEvent | null> {
+    let sound: Sound | undefined;
+    if (event.sound?.assetId) {
+        const url = await resolveAsset(ctx, event.sound.assetId, "audio", blockId);
+        if (url) {
+            sound = Sound.sound(url);
+        } else {
+            diagnostic(ctx, "warning", blockId, "Inline event: sound asset not found; sound skipped.");
+        }
+    }
+
+    if (event.expression) {
+        const { characterId, pose, tags } = event.expression;
+        if (!characterId) {
+            diagnostic(ctx, "warning", blockId, "Inline event: expression has no character; expression skipped.");
+        } else {
+            // A layered character switches by tag, which `TextEventAppearance` accepts alongside a
+            // src — and the tags stay partial here for the same reason a `/face` row's do.
+            const layeredTags = ctx.characterSummaries.get(characterId)?.appearance.kind === "layered"
+                ? Object.values(tags ?? {})
+                : null;
+            const src: string | string[] | null = layeredTags?.length
+                ? layeredTags
+                : await resolveCharacterImageUrl(ctx, characterId, pose, blockId);
+            if (src) {
+                // Address the portrait through the shared stage-name rule, exactly as the character's
+                // `/show` does (see `characterStageName`). An expression run carries only a characterId,
+                // so a character shown under a custom stage `objectName` is not reachable from here - and
+                // must not silently swap a phantom off-stage image. Require the target to already be on
+                // stage (a prior `/show` registered it) and warn with the family message otherwise, so a
+                // missed swap is diagnosed rather than lost. Do NOT seed a src: the appearance only
+                // switches when the token is revealed, not at line start.
+                const name = characterStageName(characterId);
+                const image = ctx.images.get(normalizeObjectName(name));
+                if (image) {
+                    return TextEvent.expression(image, src, sound ? { sound } : undefined);
+                }
+                diagnostic(ctx, "warning", blockId, `Inline event: character "${characterId}" is not on stage (show it before this line; a character shown under a custom stage name cannot be targeted by an inline expression); expression skipped.`);
+            } else {
+                diagnostic(ctx, "warning", blockId, `Inline event: character image source not found for ${characterId}.`);
+            }
+        }
+    }
+
+    // No (usable) expression: fall back to a sound-only event when an SE resolved.
+    return sound ? TextEvent.sound(sound) : null;
+}
+
 /**
  * Assemble the shared compile input for a scene's Story Action Blueprints - used by both block-level
  * actions (compiled to a `Script`) and inline interpolations (evaluated synchronously). Callers must
@@ -1337,6 +2024,7 @@ function buildStoryActionScriptInput(
 ): CompileStoryActionScriptInput {
     return {
         blueprintDocument: ctx.blueprintDocument as BlueprintDocument,
+        persistentVariables: ctx.persistentVariables,
         blueprintId,
         nlrScene: ctx.nlrScene,
         sceneFnCatalog: ctx.sceneFnCatalog,
@@ -1394,14 +2082,14 @@ function buildInterpolationWord(
             diagnostic(ctx, "warning", blockId, `Inline expression \`${expression.source}\` did not resolve; interpolation skipped.`);
             return null;
         }
-        const readerFor = buildExpressionReader(ctx, expression.ast, blockId);
-        if (!readerFor) {
+        const envFor = buildExpressionEnv(ctx, expression.ast, blockId);
+        if (!envFor) {
             return null;
         }
         // `toDisplayString`, not `String(...)`: a null variable renders as nothing rather than as the
         // word "null" in the middle of a line of dialogue.
         return applyInterpolationWordMarks(new Word((((scriptCtx: ScriptCtx) =>
-            toDisplayString(evaluateStoryExpression(expression.ast, readerFor(scriptCtx)))) as unknown) as any), marks);
+            toDisplayString(evaluateStoryExpression(expression.ast, envFor(scriptCtx)))) as unknown) as any), marks);
     }
     const target = interp.target;
     if (target.scope === "scene") {
@@ -1422,12 +2110,16 @@ function buildInterpolationWord(
     }
     // Persistent (app-level): a dynamic word reading the shared host snapshot synchronously,
     // falling back to the story-declared default while the host has never stored a value.
+    if (!ctx.persistentKeys.has(target.variableId)) {
+        diagnostic(ctx, "warning", blockId, "Persistent variable not found; interpolation skipped.");
+        return null;
+    }
     const persistence = ctx.persistence;
     if (!persistence) {
         diagnostic(ctx, "warning", blockId, "Persistent variables require Dev Mode host persistence; interpolation skipped.");
         return null;
     }
-    const storageKey = target.storageKey;
+    const storageKey = target.variableId;
     const persistentDefaults = ctx.persistentDefaults;
     return applyInterpolationWordMarks(new Word(((() => {
         const stored = persistence.get(storageKey);
@@ -1524,6 +2216,10 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
         return compileVideoAction(ctx, block, payload);
     }
 
+    if (payload.action === "vfx") {
+        return compileVfxAction(ctx, block, payload);
+    }
+
     if (payload.action === "screenEffect") {
         const options = {
             duration: payload.durationMs,
@@ -1540,7 +2236,72 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
         return [recordStatement(ctx, chain, block)];
     }
 
+    if (payload.action === "camera") {
+        return compileCameraAction(ctx, block, payload);
+    }
+
     return [];
+}
+
+/** Lower bound on camera zoom: 0 or a negative scale is not a shot, it is a broken transform. */
+const MIN_CAMERA_ZOOM = 0.05;
+
+/** A finite number, or the neutral fallback - a NaN reaching a Transform prop silently kills the whole animation. */
+function finiteOr(value: number | undefined, fallback: number): number {
+    return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+/**
+ * `story.camera` - the one stage camera, addressed straight off the compile context's story.
+ *
+ * Every numeric input is clamped here rather than trusted from the payload: the engine's `Darkness`
+ * does not clamp, so a `darkness` of 2 compiles to `brightness(-1)` and silently produces no visible
+ * change at all (the 0.16.1 defect that made this rule). The same reasoning covers zoom, where 0 or a
+ * negative value is not a shot the author meant.
+ */
+function compileCameraAction(
+    ctx: SceneCompileContext,
+    block: StoryBlock,
+    payload: Extract<StoryActionPayload, { action: "camera" }>,
+): NlrStatement[] {
+    const camera = ctx.nlrStory.camera;
+    const duration = Math.max(0, finiteOr(payload.durationMs, 0));
+    const easing = payload.easing as any;
+    switch (payload.operation) {
+        case "pan": {
+            const position = getPresetPosition("custom", {
+                xalign: payload.position?.xalign ?? 0.5,
+                yalign: payload.position?.yalign ?? 0.5,
+                ...(payload.position?.xoffset !== undefined ? { xoffset: payload.position.xoffset } : {}),
+                ...(payload.position?.yoffset !== undefined ? { yoffset: payload.position.yoffset } : {}),
+            });
+            return [recordStatement(ctx, camera.pan(position as any, duration, easing), block)];
+        }
+        case "zoom":
+            return [recordStatement(ctx, camera.zoom(Math.max(MIN_CAMERA_ZOOM, finiteOr(payload.zoom, 1)), duration, easing), block)];
+        case "rotate":
+            return [recordStatement(ctx, camera.rotate(finiteOr(payload.rotation, 0), duration, easing), block)];
+        case "darken":
+            return [recordStatement(ctx, camera.darken(Math.min(1, Math.max(0, finiteOr(payload.darkness, 0))), duration, easing), block)];
+        case "reset":
+            return [recordStatement(ctx, camera.reset(duration, easing), block)];
+        case "motion": {
+            // A whole keyframed shot rather than one settled pose. `Camera` is a `Displayable`, so it
+            // takes the same `Transform` a sprite does, built by the same function `/transform` uses -
+            // which also owns the missing-id / unknown-asset diagnostics. `durationMs` and `easing` are
+            // deliberately ignored: the timing is in the keyframes, and honouring the row's `d=` too
+            // would silently compete with them.
+            const motion = payload.motion;
+            if (!motion || motion.mode !== "animation") {
+                diagnostic(ctx, "warning", block.id, "Camera motion is missing a Story Motion binding.");
+                return [];
+            }
+            const transform = createAnimationTransform(motion, ctx, block.id, "none");
+            return transform ? [recordStatement(ctx, camera.transform(transform), block)] : [];
+        }
+        default:
+            return [];
+    }
 }
 
 async function compileCharacterStageAction(
@@ -1551,8 +2312,33 @@ async function compileCharacterStageAction(
     const name = getCharacterStageObjectName(payload);
     const statements: NlrStatement[] = [];
 
+    // The only operation that addresses the Character record rather than its portrait: it renames the
+    // speaker label from this row on ("？？？" → the real name), so it needs no image and no transform.
+    if (payload.operation === "setName") {
+        const character = getCharacter(ctx, payload.characterId);
+        return [recordStatement(ctx, character.setName(payload.displayName ?? ""), block)];
+    }
+
+    // A puppet character is a different element class, not a differently-sourced Image, so it
+    // branches before anything reaches `getImage`.
+    const characterAppearance = payload.characterId
+        ? ctx.characterSummaries.get(payload.characterId)?.appearance
+        : undefined;
+    if (characterAppearance?.kind === "puppet") {
+        return compileCharacterPuppetAction(ctx, block, payload, name, characterAppearance);
+    }
+
+    // Runtime state on a character Studio draws itself: there is no backend to ask, and the row was
+    // authored against the wrong character rather than being a no-op worth swallowing.
+    if (payload.operation === "setMotion" || payload.operation === "setSkin" || payload.operation === "setParams") {
+        const channel = payload.operation === "setMotion" ? "motion" : payload.operation === "setSkin" ? "skin" : "parameters";
+        diagnostic(ctx, "warning", block.id, `${payload.characterId || name} is not drawn by a runtime, so it has no ${channel} to set.`);
+        return statements;
+    }
+
     if (payload.operation === "exit") {
         const image = getImage(ctx, name, { autoFit: true });
+        await bindCharacterPortrait(ctx, payload.characterId, image);
         const chain = compileDisplayableOperation(image, "hide", payload.transform ?? { preset: "fadeOut", durationMs: 250 }, ctx, block.id);
         if (chain) statements.push(recordStatement(ctx, chain, block));
         return statements;
@@ -1560,20 +2346,49 @@ async function compileCharacterStageAction(
 
     if (payload.operation === "move") {
         const image = getImage(ctx, name, { autoFit: true });
+        await bindCharacterPortrait(ctx, payload.characterId, image);
         const chain = compileDisplayableOperation(image, "transform", payload.transform, ctx, block.id);
         if (chain) statements.push(recordStatement(ctx, chain, block));
         return statements;
     }
 
+    // A layered character is one Image built from its whole stack; what a row changes is the tags,
+    // never the src. `enter` resolves the selection out to every axis because it has to pose the
+    // whole character; `expression` sends only the axes the row touched, so switching the mood
+    // leaves the outfit exactly as an earlier row put it.
+    const layeredSrc = payload.assetId ? null : await resolveCharacterLayeredSrc(ctx, payload.characterId, block.id);
+    if (layeredSrc) {
+        const appearance = ctx.characterSummaries.get(payload.characterId!)?.appearance;
+        const image = getImage(ctx, name, { autoFit: true, src: layeredSrc as never });
+        await bindCharacterPortrait(ctx, payload.characterId, image);
+        const selection = payload.operation === "enter"
+            ? resolveTagSelection(appearance, payload.tags)
+            : payload.tags ?? {};
+        const tags = Object.values(selection);
+        if (payload.operation === "enter") {
+            const chain = image.char(tags as never).show(createShowTransform(payload.transform, ctx, block.id) as any);
+            statements.push(recordStatement(ctx, chain, block));
+            return statements;
+        }
+        if (tags.length === 0) {
+            diagnostic(ctx, "warning", block.id, `Expression for ${payload.characterId || name} selects no tag; nothing changes.`);
+            return statements;
+        }
+        const chain = image.char(tags as never, createTransition(payload.transition, ctx, block.id) as any);
+        statements.push(recordStatement(ctx, chain, block));
+        return statements;
+    }
+
     const src = payload.assetId
         ? await resolveAsset(ctx, payload.assetId, "image", block.id)
-        : await resolveCharacterImageUrl(ctx, payload.characterId, payload.formName, payload.variants, block.id);
+        : await resolveCharacterImageUrl(ctx, payload.characterId, payload.pose, block.id);
     if (!src) {
         diagnostic(ctx, "warning", block.id, `Character image source not found for ${payload.characterId || name}.`);
         return statements;
     }
 
     const image = getImage(ctx, name, { autoFit: true, src });
+    await bindCharacterPortrait(ctx, payload.characterId, image);
     if (payload.operation === "enter") {
         // An entering character has no prior image to transition from, so `enter` never uses a
         // transition - its entrance is driven entirely by the show transform. (A transition only
@@ -1589,6 +2404,270 @@ async function compileCharacterStageAction(
     return statements;
 }
 
+/**
+ * Compile a stage row for a character the author's own runtime draws.
+ *
+ * A puppet is a box: the engine owns where it sits, its layer, its transform and its place in a
+ * saved game, and hands the inside to a backend registered under `appearance.backend`. So the
+ * operations that mean something here are exactly the ones that address the box - enter / exit /
+ * move - and they are compiled through the same `compileDisplayableOperation` an Image row uses,
+ * which is the point: a puppet character participates in a scene the way any other character does.
+ *
+ * The other four - `expression`, `setMotion`, `setSkin`, `setParams` - address the INSIDE of the box,
+ * which no other character kind has. They are not a source swap: the row carries a name the backend
+ * owns (`puppetName`), handed over verbatim, and the engine remembers it as persistent state that a
+ * saved game restores. A row that names nothing clears that channel, which is the engine's own
+ * `null`: "the absence of a request", not "leave whatever is there".
+ *
+ * `setParams` is the one that is not a single name. Its payload is a map and the engine's `setParam`
+ * merges, so it compiles to one statement per entry - and a parameter has no `null`: an absent key
+ * means "keep the model's own default", which is why nothing here clears one.
+ */
+async function compileCharacterPuppetAction(
+    ctx: SceneCompileContext,
+    block: StoryBlock,
+    payload: Extract<StoryActionPayload, { action: "character" }>,
+    name: string,
+    appearance: Extract<DevModeCharacterSummary["appearance"], { kind: "puppet" }>,
+): Promise<NlrStatement[]> {
+    const puppet = await getPuppetElement(ctx, name, appearance, block.id);
+    if (!puppet) {
+        return [];
+    }
+    await bindPuppetAvatar(ctx, payload.characterId);
+
+    // Blank and absent both mean `null` - the row requests nothing on this channel, and the model
+    // visibly drops back to whatever it looks like with none applied.
+    const requested = payload.puppetName?.trim() || null;
+    if (payload.operation === "expression") {
+        return [recordStatement(ctx, puppet.setExpression(requested), block)];
+    }
+    if (payload.operation === "setMotion") {
+        return [recordStatement(ctx, puppet.setMotion(requested), block)];
+    }
+    if (payload.operation === "setSkin") {
+        return [recordStatement(ctx, puppet.setSkin(requested), block)];
+    }
+    if (payload.operation === "setParams") {
+        // One statement per entry. `Puppet.setParam` merges - it sets one id and leaves the others
+        // alone - so the row's whole map arrives as a run of calls with no read-modify-write in
+        // between, and the order among them cannot matter. A row asking for nothing compiles to
+        // nothing rather than to a no-op statement the timeline would then have to draw.
+        return Object.entries(payload.params ?? {})
+            .filter(([id, value]) => id.trim() !== "" && Number.isFinite(value))
+            .map(([id, value]) => recordStatement(ctx, puppet.setParam(id.trim(), value), block));
+    }
+
+    const operation = payload.operation === "exit" ? "hide" : payload.operation === "move" ? "transform" : "show";
+    const transform = payload.operation === "exit"
+        ? payload.transform ?? { preset: "fadeOut" as const, durationMs: 250 }
+        : payload.transform;
+    const chain = compileDisplayableOperation(puppet, operation, transform, ctx, block.id);
+    return chain ? [recordStatement(ctx, chain, block)] : [];
+}
+
+/**
+ * The scene's `Puppet` for a stage name, created on first use.
+ *
+ * Created once and never re-sourced, because a puppet **cannot** change its `src`: the backend's
+ * instance lives as long as the element is on stage, and swapping the model underneath it would
+ * tear that instance down while the engine's box, transform and saved state stayed put. Returns
+ * null when the character names no model - the engine's `src` is required, and an empty one would
+ * reach a backend as a resource descriptor pointing at nothing.
+ */
+async function getPuppetElement(
+    ctx: SceneCompileContext,
+    objectName: string,
+    appearance: Extract<DevModeCharacterSummary["appearance"], { kind: "puppet" }>,
+    blockId: string,
+): Promise<Puppet | null> {
+    const key = normalizeObjectName(objectName);
+    const existing = ctx.puppets.get(key);
+    if (existing) {
+        return existing;
+    }
+    if (!appearance.assetId) {
+        diagnostic(ctx, "warning", blockId, `Puppet character "${objectName}" has no model asset.`);
+        return null;
+    }
+    if (!appearance.backend) {
+        diagnostic(ctx, "warning", blockId, `Puppet character "${objectName}" names no runtime; nothing will draw it.`);
+        return null;
+    }
+    // The bundle's entry file. Studio resolves the asset and stops there: which siblings a model
+    // pulls in is knowable only after parsing this one, and the engine does that arithmetic itself
+    // (`PuppetMountContext.resolveSibling`) against exactly this URL.
+    const bundleUrl = await resolveAsset(ctx, appearance.assetId, "model", blockId);
+    if (!bundleUrl) {
+        diagnostic(ctx, "warning", blockId, `Puppet model not found for ${objectName}.`);
+        return null;
+    }
+    const src = appearance.entry ? resolveBundleEntry(bundleUrl, appearance.entry) : bundleUrl;
+    const puppet = new Puppet({
+        backend: appearance.backend,
+        src,
+        options: appearance.options,
+        // null is the engine's own default and means the stage size, so it is passed through
+        // rather than substituted with a guess at what the stage happens to be.
+        size: appearance.size,
+        // The pose the author chose in the inspector. It has to be constructor config rather than a
+        // first action: `IPuppetUserConfig` is what survives `reset()`, so a puppet restored from a
+        // save or re-entered after `newGame()` comes back wearing it. Each channel is independently
+        // optional, and `null` is a real value there - "nothing applied" - so an unset channel is
+        // omitted rather than sent as null, which would overwrite the model's own default.
+        ...(appearance.defaultState?.motion ? { motion: appearance.defaultState.motion } : {}),
+        ...(appearance.defaultState?.expression ? { expression: appearance.defaultState.expression } : {}),
+        ...(appearance.defaultState?.skin ? { skin: appearance.defaultState.skin } : {}),
+    });
+    ctx.puppets.set(key, puppet);
+    return puppet;
+}
+
+/**
+ * Resolve an entry override against the bundle URL, by the same rule the engine's `resolveSibling`
+ * applies: everything before the last `/` is the bundle root, `.` and `..` fold, an already-absolute
+ * path wins outright, and a backslash reads as `/`.
+ *
+ * Written out rather than delegated because the engine only offers this arithmetic to a *mounted*
+ * backend, and the entry has to be decided at compile time - and duplicated deliberately rather
+ * than approximated, so the two never disagree about where a bundle's root is.
+ */
+export function resolveBundleEntry(bundleUrl: string, entry: string): string {
+    const path = entry.replace(/\\/g, "/").trim();
+    if (!path) {
+        return bundleUrl;
+    }
+    if (/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(path) || path.startsWith("/")) {
+        return path;
+    }
+    const base = bundleUrl.replace(/\\/g, "/");
+    const cut = base.lastIndexOf("/");
+    const root = cut === -1 ? "" : base.slice(0, cut + 1);
+    const segments: string[] = [];
+    for (const segment of `${root}${path}`.split("/")) {
+        if (segment === ".") continue;
+        if (segment === ".." && segments.length > 0 && segments[segments.length - 1] !== "..") {
+            segments.pop();
+            continue;
+        }
+        segments.push(segment);
+    }
+    return segments.join("/");
+}
+
+/**
+ * Give a puppet character the dialog avatar its profile declares.
+ *
+ * Not `bindCharacterPortrait`: that one registers the *stage sprite* as a portrait so the engine
+ * can report which differential is on screen, and a puppet has neither a sprite nor differentials.
+ * What is left is the character-level default, which is set directly.
+ */
+async function bindPuppetAvatar(ctx: SceneCompileContext, characterId: string | undefined): Promise<void> {
+    const summary = characterId ? ctx.characterSummaries.get(characterId) : undefined;
+    const assetId = summary?.defaultAvatarAssetId?.trim();
+    if (!summary || !assetId) {
+        return;
+    }
+    if (ctx.avatarBoundCharacterIds.has(summary.id)) {
+        return;
+    }
+    ctx.avatarBoundCharacterIds.add(summary.id);
+    const url = await resolveAsset(ctx, assetId, "image", `avatar:${summary.id}`);
+    if (url) {
+        ctx.avatarAssetIdByUrl.set(url, assetId);
+        getCharacter(ctx, summary.id).setAvatar(url);
+    }
+}
+
+/**
+ * The bus an operation lands on when its row names no track.
+ *
+ * `setBgm` is music by construction, everything else is a sound effect - which is exactly the split
+ * this compiler used to hard-code as `Sound.bgm` / `Sound.sound`. It survives as the *fallback*
+ * rather than the rule, so a project with no tracks configured compiles to what it always did.
+ * (Dialogue voice is not here: it is not an audio row, and its bus comes off the speaking character
+ * - see {@link characterVoiceBusId}.)
+ */
+function audioActionFallbackChannel(
+    operation: Extract<StoryActionPayload, { action: "audio" }>["operation"],
+): AudioTrackChannel {
+    return operation === "setBgm" ? "bgm" : "sound";
+}
+
+/**
+ * The bus a voice clip may play on, given what a character asks for.
+ *
+ * Three ways to land back on plain `voice`, and all three are degradations rather than errors:
+ *
+ * - **Nothing asked for.** Every character until an author gives one a track, so a project that
+ *   never opens Project → Audio compiles the bytes it always did.
+ * - **A track that no longer exists.** `resolveAudioTrack`'s ordinary fallback. References are never
+ *   rewritten, so restoring the track restores the routing; losing the separate slider is a far
+ *   lesser harm than losing the line.
+ * - **A track that is not beneath `voice`.** Only reachable by re-parenting a bus in Project → Audio
+ *   after a character was pointed at it, since the character editor offers nothing else. It matters
+ *   because the engine *throws* on a voice that is not on the voice subtree, and it throws while
+ *   constructing the `Scene` - so honouring the stale id would not misroute one line, it would fail
+ *   the whole compile on a project the author can no longer see the problem in.
+ */
+function resolveVoiceBusId(
+    tracks: readonly ProjectAudioTrack[],
+    requested: string | null | undefined,
+): string {
+    const track = resolveAudioTrack(tracks, requested, AUDIO_TRACK_ID_VOICE);
+    const underVoice = resolveAudioTrackChain(tracks, track.id, AUDIO_TRACK_ID_VOICE)
+        .some(entry => entry.id === AUDIO_TRACK_ID_VOICE);
+    return underVoice ? track.id : AUDIO_TRACK_ID_VOICE;
+}
+
+/**
+ * The bus this line's speaker's voice plays on.
+ *
+ * A temp speaker (a bare name with no character behind it) has no track to read and lands on
+ * `voice` through the same path - `characterSummaries` simply does not have the id.
+ */
+function characterVoiceBusId(ctx: SceneCompileContext, characterId: string | undefined): string {
+    const id = characterId?.trim();
+    return resolveVoiceBusId(ctx.audioTracks, id ? ctx.characterSummaries.get(id)?.voiceTrackId : undefined);
+}
+
+/**
+ * The track a row plays on, and the resolved playback that follows from it.
+ *
+ * `payload.audioTrackId` wins when the row names one. Otherwise the handle's OWN track is used when
+ * it has one - the handle was built on that bus and there is only one of it, so a later row that
+ * resolved to a different one would describe a routing the game cannot perform. Only when neither
+ * exists does the operation's natural bus decide.
+ */
+function resolveRowPlayback(
+    ctx: SceneCompileContext,
+    payload: Extract<StoryActionPayload, { action: "audio" }>,
+    soundName: string | null,
+): { track: ProjectAudioTrack; playback: AudioTrackPlayback } {
+    const trackId = payload.audioTrackId?.trim()
+        || (soundName ? ctx.soundTrackIds.get(soundName) : undefined);
+    const track = resolveAudioTrack(ctx.audioTracks, trackId, audioActionFallbackChannel(payload.operation));
+    return {
+        track,
+        playback: resolveAudioTrackPlayback(track, {
+            volume: payload.volume,
+            loop: payload.loop,
+        }),
+    };
+}
+
+/**
+ * The fade a row asks for, in ms. Absent is a hard cut.
+ *
+ * It comes from the row and only from the row. A track used to carry a fade pair and hand it over
+ * whenever a row left the field empty, which invented a default that had never existed - the same
+ * `/bgm theme` meant a cut before and an ease after, with nothing on screen saying so. Every verb
+ * here already takes its own `fade`, so there was never anything for the track's to fill in.
+ */
+function rowFadeMs(payload: Extract<StoryActionPayload, { action: "audio" }>): number {
+    return payload.fadeMs ?? 0;
+}
+
 async function compileAudioAction(
     ctx: SceneCompileContext,
     block: StoryBlock,
@@ -1596,43 +2675,104 @@ async function compileAudioAction(
 ): Promise<NlrStatement[]> {
     if (payload.operation === "setBgm") {
         if (!payload.assetId) {
-            ctx.sounds.delete("bgm");
-            return [recordStatement(ctx, ctx.nlrScene.setBackgroundMusic(null, payload.fadeMs), block)];
+            // Clearing addresses the music that is PLAYING, so the handle goes with it. There is no
+            // track to resolve: nothing is being routed, only stopped, over this row's own fade.
+            ctx.sounds.delete(BGM_SOUND_NAME);
+            ctx.soundTrackIds.delete(BGM_SOUND_NAME);
+            return [recordStatement(ctx, ctx.nlrScene.setBackgroundMusic(null, rowFadeMs(payload)), block)];
         }
+        // A `/bgm` with an asset builds a NEW handle and replaces whatever was under `bgm`, so it
+        // resolves from its own row alone: inheriting the previous music's track would make the
+        // second `/bgm` in a scene mean something different from the first, invisibly. For the same
+        // reason there is no conflict check here - a re-point is not a dropped intent.
+        const { track, playback } = resolveRowPlayback(ctx, payload, null);
         const url = await resolveAsset(ctx, payload.assetId, "audio", block.id);
         if (!url) {
             return [];
         }
-        const sound = Sound.bgm({ src: url, loop: payload.loop ?? true, volume: payload.volume ?? 1 });
+        const sound = createBusSound(ctx.audioTracks, playback.busId, "bgm", {
+            src: url,
+            loop: playback.loop,
+            volume: playback.volume,
+            ...clipRegionConfig(ctx, payload.assetId),
+        });
         // The reserved name the sound-control family defaults to: `/vol 0.5` addresses the music
         // channel by registering the BGM handle under "bgm" (see BGM_OBJECT_NAME in the editor).
-        ctx.sounds.set("bgm", sound);
-        return [recordStatement(ctx, ctx.nlrScene.setBackgroundMusic(sound, payload.fadeMs), block)];
+        ctx.sounds.set(BGM_SOUND_NAME, sound);
+        ctx.soundTrackIds.set(BGM_SOUND_NAME, track.id);
+        return [recordStatement(ctx, ctx.nlrScene.setBackgroundMusic(sound, rowFadeMs(payload)), block)];
     }
 
-    const sound = await getSound(ctx, payload.objectName || payload.assetId || "sound", payload.assetId, block.id, payload);
+    const name = normalizeObjectName(payload.objectName || payload.assetId || "sound");
+    const sound = await getSound(ctx, name, payload.assetId, block.id, payload);
     if (!sound) {
         return [];
     }
+    // Resolved AFTER `getSound`, so a row that just created the handle reads back the track it was
+    // created on rather than the fallback - the two must agree or the row's diagnostic would name a
+    // different bus from the one the handle actually holds.
+    const { playback } = resolveRowPlayback(ctx, payload, name);
+    const fadeMs = rowFadeMs(payload);
 
     switch (payload.operation) {
         case "playSound":
-            return [recordStatement(ctx, sound.play(payload.fadeMs), block)];
+            return [recordStatement(ctx, sound.play(fadeMs), block)];
         case "stopSound":
-            return [recordStatement(ctx, sound.stop(payload.fadeMs), block)];
+            return [recordStatement(ctx, sound.stop(fadeMs), block)];
         case "pauseSound":
-            return [recordStatement(ctx, sound.pause(payload.fadeMs), block)];
+            return [recordStatement(ctx, sound.pause(fadeMs), block)];
         case "resumeSound":
-            return [recordStatement(ctx, sound.resume(payload.fadeMs), block)];
+            return [recordStatement(ctx, sound.resume(fadeMs), block)];
         case "setVolume":
-            return [recordStatement(ctx, sound.setVolume(payload.volume ?? 1, payload.fadeMs), block)];
+            // The clip's own level, unmultiplied - the buses above it apply live in the gain graph,
+            // so a `/vol piano 0.4` sets `piano` to 0.4 of whatever the player's sliders allow.
+            return [recordStatement(ctx, sound.setVolume(playback.volume, fadeMs), block)];
         case "setRate":
             return [recordStatement(ctx, sound.setRate(payload.rate ?? 1), block)];
         case "muteSound":
             return [recordStatement(ctx, sound.mute(payload.muted ?? true), block)];
+        case "seekSound":
+            // Seconds at the engine boundary, milliseconds in the payload - the same conversion
+            // every other time in this compiler makes.
+            return [recordStatement(ctx, sound.seek((payload.timeMs ?? 0) / 1000), block)];
         default:
             return [];
     }
+}
+
+/**
+ * Report a row that names a track for a sound handle that already has a different one.
+ *
+ * The handle is created once, by whichever row reaches it first, and every later row addressing that
+ * name inherits its bus - so a second `/sound piano track=Ambience` does nothing at all. That is two
+ * expressed intents and only one outcome, which is a diagnostic rather than a silent win: the author
+ * who typed the second track name would otherwise have no way to learn it was dropped.
+ *
+ * A row that names NO track is not a conflict. Inheriting is the normal case, and complaining about
+ * it would put a mark on every `/vol` line in the story.
+ */
+function reportTrackConflict(
+    ctx: SceneCompileContext,
+    blockId: string,
+    payload: Extract<StoryActionPayload, { action: "audio" }>,
+    name: string,
+): void {
+    const requested = payload.audioTrackId?.trim();
+    if (!requested) {
+        return;
+    }
+    const existing = ctx.soundTrackIds.get(name);
+    if (!existing || existing === requested) {
+        return;
+    }
+    const nameOf = (id: string): string => ctx.audioTracks.find(track => track.id === id)?.name ?? id;
+    diagnostic(
+        ctx,
+        "warning",
+        blockId,
+        `"${name}" is already playing on the "${nameOf(existing)}" track, so this row's "${nameOf(requested)}" `
+        + "is ignored. Use a different sound name, or set the track on the row that starts it.",
+    );
 }
 
 async function compileImageAction(
@@ -1735,7 +2875,89 @@ async function compileVideoAction(
     if (payload.operation === "play") {
         return [recordStatement(ctx, video.play(), block)];
     }
+    if (payload.operation === "pause") {
+        return [recordStatement(ctx, video.pause(), block)];
+    }
+    if (payload.operation === "resume") {
+        return [recordStatement(ctx, video.resume(), block)];
+    }
+    if (payload.operation === "stop") {
+        return [recordStatement(ctx, video.stop(), block)];
+    }
+    if (payload.operation === "seek") {
+        // The engine seeks in SECONDS; the payload stores milliseconds like every other time in this
+        // document. A negative position is not a frame, so it floors at the start of the clip.
+        return [recordStatement(ctx, video.seek(Math.max(0, finiteOr(payload.timeMs, 0)) / 1000), block)];
+    }
     return [];
+}
+
+/**
+ * `vfx` - the full-screen ambience overlay. Shaped like `compileVideoAction`, not like the displayable
+ * ops, because a `Vfx` is an `Actionable`: it has `show`/`hide`/`pause`/`resume`/`setPlaybackRate` and
+ * nothing else. `create` both constructs it and registers the name the later rows address.
+ */
+async function compileVfxAction(
+    ctx: SceneCompileContext,
+    block: StoryBlock,
+    payload: Extract<StoryActionPayload, { action: "vfx" }>,
+): Promise<NlrStatement[]> {
+    const vfx = await getVfx(ctx, payload, block.id);
+    if (!vfx) {
+        return [];
+    }
+    // A create shows the overlay: the row an author writes to "put petals on screen" must put them on
+    // screen, exactly as `/image` and `/video` do.
+    const fade = { duration: Math.max(0, finiteOr(payload.durationMs, 0)), ease: payload.easing as any };
+    switch (payload.operation) {
+        case "create":
+        case "show":
+            return [recordStatement(ctx, vfx.show(fade as any), block)];
+        case "hide":
+            return [recordStatement(ctx, vfx.hide(fade as any), block)];
+        case "pause":
+            return [recordStatement(ctx, vfx.pause(), block)];
+        case "resume":
+            return [recordStatement(ctx, vfx.resume(), block)];
+        case "setRate":
+            // A rate of 0 freezes the loop, which is what `pause` is for; a negative one is not a speed.
+            return [recordStatement(ctx, vfx.setPlaybackRate(Math.max(0, finiteOr(payload.rate, 1))), block)];
+        default:
+            return [];
+    }
+}
+
+async function getVfx(
+    ctx: SceneCompileContext,
+    payload: Extract<StoryActionPayload, { action: "vfx" }>,
+    blockId: string,
+): Promise<Vfx | null> {
+    const name = normalizeObjectName(payload.objectName);
+    const existing = ctx.vfx.get(name);
+    if (existing) {
+        return existing;
+    }
+    if (!payload.assetId) {
+        diagnostic(ctx, "warning", blockId, `Ambience effect "${name}" has no clip.`);
+        return null;
+    }
+    const url = await resolveAsset(ctx, payload.assetId, "video", blockId);
+    if (!url) {
+        return null;
+    }
+    const vfx = new Vfx({
+        src: url,
+        ...(payload.blendMode ? { blendMode: payload.blendMode } : {}),
+        ...(payload.opacity !== undefined ? { opacity: Math.min(1, Math.max(0, finiteOr(payload.opacity, 1))) } : {}),
+        ...(payload.loop !== undefined ? { loop: payload.loop } : {}),
+        ...(payload.fit ? { fit: payload.fit } : {}),
+        ...(payload.zIndex !== undefined ? { zIndex: payload.zIndex } : {}),
+        // A rate on the CREATE row is the loop's resting speed - and the only one that survives a save,
+        // since the engine does not persist a runtime `setPlaybackRate`.
+        ...(payload.rate !== undefined ? { playbackRate: Math.max(0, finiteOr(payload.rate, 1)) } : {}),
+    });
+    ctx.vfx.set(name, vfx);
+    return vfx;
 }
 
 async function compileChoice(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "nodeAction" }>): Promise<NlrStatement[]> {
@@ -1744,7 +2966,8 @@ async function compileChoice(ctx: SceneCompileContext, block: Extract<StoryBlock
     }
     const choiceBlocks = block.childrenIds
         .map(childId => ctx.scene.blocks[childId])
-        .filter((child): child is Extract<StoryBlock, { kind: "nodeAction" }> => child?.kind === "nodeAction" && child.payload.action === "choiceOption");
+        // A disabled option is compiled out like any other disabled row — the menu never offers it.
+        .filter((child): child is Extract<StoryBlock, { kind: "nodeAction" }> => child?.kind === "nodeAction" && child.payload.action === "choiceOption" && !child.disabled);
 
     if (choiceBlocks.length === 0) {
         diagnostic(ctx, "warning", block.id, "Choice has no options.");
@@ -1764,7 +2987,16 @@ async function compileChoice(ctx: SceneCompileContext, block: Extract<StoryBlock
             prompt: optionSegment.value || segmentHasInterpolation(optionSegment)
                 ? (buildLocalizedSentencePrompt(ctx, optionSegment, option.id) as any)
                 : "Option",
-            action: await compileBlockList(ctx, option.childrenIds) as any,
+            // The pick is recorded at the head of the option's OWN branch, which is the one place
+            // that runs if and only if the player chose this option. Recording anywhere else (with
+            // the menu, or via the engine's text-read record) would count an option the player only
+            // ever looked at - and "did they pick it" is the entire reason this record exists.
+            // It goes ahead of the option's authored rows so a `goto` in the first row cannot skip
+            // past it, and it survives an empty option (the branch is then just this one statement).
+            action: [
+                markStoryVisitedStatement(ctx.visitedPersistent, STORY_VISITED_OPTIONS_KEY, option.id),
+                ...await compileBlockList(ctx, option.childrenIds),
+            ] as any,
             config: {
                 hidden: conditionToLambda(ctx, option.payload.hiddenWhen, option.id),
                 disabled: conditionToLambda(ctx, option.payload.disabledWhen, option.id),
@@ -1777,7 +3009,8 @@ async function compileChoice(ctx: SceneCompileContext, block: Extract<StoryBlock
 async function compileCondition(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "control" }>): Promise<NlrStatement[]> {
     const branches = block.childrenIds
         .map(childId => ctx.scene.blocks[childId])
-        .filter((child): child is Extract<StoryBlock, { kind: "control" }> => child?.kind === "control" && child.payload.control === "conditionBranch");
+        // A disabled branch is compiled out — the condition behaves as if that branch were never written.
+        .filter((child): child is Extract<StoryBlock, { kind: "control" }> => child?.kind === "control" && child.payload.control === "conditionBranch" && !child.disabled);
 
     const firstBranch = branches.find(branch => branch.payload.control === "conditionBranch" && branch.payload.branch !== "else");
     if (!firstBranch || firstBranch.payload.control !== "conditionBranch") {
@@ -1807,10 +3040,150 @@ async function compileCondition(ctx: SceneCompileContext, block: Extract<StoryBl
     return [recordStatement(ctx, chain, block)];
 }
 
+/**
+ * `label` and `goto` - the in-scene play head, and the two ways an author can break it.
+ *
+ * Both faults are diagnosed HERE rather than left to the engine, because both make the engine's own
+ * `Story.build` throw: the author would get a build failure with no row to blame. `error` (not
+ * `warning`) is deliberate - a production build refuses on error diagnostics, which is exactly the
+ * outcome wanted, only reported against the row that caused it.
+ *
+ * Labels are matched by NAME, scene-scoped, so the same name may recur in another scene; the checks
+ * read the one shared scan (`listSceneLabels`) the command line's completion reads, so a name the
+ * editor offered can never be a name the compile then rejects.
+ */
+function compileLabelControl(
+    ctx: SceneCompileContext,
+    block: Extract<StoryBlock, { kind: "control" }>,
+    payload: Extract<StoryControlPayload, { control: "label" | "goto" }>,
+): NlrStatement[] {
+    if (payload.control === "label") {
+        const name = payload.name.trim();
+        if (!name) {
+            diagnostic(ctx, "error", block.id, "Label has no name.");
+            return [];
+        }
+        // The first declaration is the one that stands, so only the later rows are faulted.
+        if (duplicateSceneLabels(ctx.scene).some(duplicate => duplicate.blockId === block.id)) {
+            diagnostic(ctx, "error", block.id, `Label "${name}" is declared more than once in this scene.`);
+            return [];
+        }
+        return [recordStatement(ctx, Control.label(name), block)];
+    }
+
+    const target = payload.targetLabel.trim();
+    if (!target) {
+        diagnostic(ctx, "error", block.id, "Go to has no target label.");
+        return [];
+    }
+    // Exactly, case included - the engine matches a jump against a plain `Map` of declared names, so
+    // a `/goto start` left behind by a label renamed `Start` IS a broken jump and has to be said so.
+    if (!sceneLabelNames(ctx.scene).includes(target)) {
+        diagnostic(ctx, "error", block.id, `Go to target label not found in this scene: ${target}`);
+        return [];
+    }
+    return [recordStatement(ctx, Control.jump(target), block)];
+}
+
+/**
+ * `/break` - leave the innermost `repeat`.
+ *
+ * Faulted here rather than left to the engine when there is no loop above it. NLR's `breakLoop`
+ * outside a loop is a play-time error, which for a stray row means the author finds out on the
+ * player's screen; an `error` diagnostic finds them in the editor and refuses the production build.
+ */
+function compileBreak(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "control" }>): NlrStatement[] {
+    let parentId = block.parentId;
+    let insideLoop = false;
+    while (parentId) {
+        const parent = ctx.scene.blocks[parentId];
+        if (!parent) {
+            break;
+        }
+        if (parent.kind === "control" && parent.payload.control === "repeat") {
+            insideLoop = true;
+            break;
+        }
+        parentId = parent.parentId;
+    }
+    if (!insideLoop) {
+        diagnostic(ctx, "error", block.id, "Break is not inside a repeat group; there is no loop for it to leave.");
+        return [];
+    }
+    return [recordStatement(ctx, Control.breakLoop(), block)];
+}
+
+/**
+ * The ceiling an `until` loop is allowed to reach before it is cut off.
+ *
+ * A conditional loop needs one, and this language in particular. The expression language has no side
+ * effects a *condition* can produce, so a condition over variables the body never assigns is not a
+ * slow loop - it is an exactly-never-terminating one, with no error, no frame, and no way for the
+ * player to tell the game from a hang. Ten thousand iterations of a body that draws nothing costs
+ * milliseconds, and any real loop that legitimately wants more of them is a script, not a scene.
+ */
+export const STORY_WHILE_LOOP_MAX_ITERATIONS = 10000;
+
+/**
+ * The engine-facing lambda for a `/repeat until` group.
+ *
+ * Two inversions live here and both are easy to read past:
+ *
+ *  1. **The negation.** `until` is a STOP condition ("go round again until the door opens"), and
+ *     `Control.whileLoop` takes a CONTINUE condition. So the value handed to the engine is `!until`.
+ *     Written as an explicit `=== false`-style negation rather than folded into the condition builder,
+ *     because `conditionToLambda` is shared with `/if` and the branch there must NOT be inverted.
+ *  2. **The counter resets on exit, not on entry.** There is no "loop entered" hook - the condition
+ *     lambda is all we get - so the tally is cleared at the moment it answers "stop". A loop nested
+ *     inside another therefore starts fresh on every outer pass, instead of spending one shared
+ *     budget across all of them and cutting later passes short.
+ */
+function whileLoopCondition(until: (scriptCtx: ScriptCtx) => boolean, blockId: string): NlrCondition {
+    let iterations = 0;
+    return (scriptCtx: ScriptCtx) => {
+        if (iterations >= STORY_WHILE_LOOP_MAX_ITERATIONS) {
+            // Runtime, not compile time: the diagnostics array was handed back to the caller long ago,
+            // and nothing about the document says this loop will spin. The console is where a Dev Mode
+            // session reads it.
+            console.warn(
+                `[storyCompiler] Repeat-until loop (block ${blockId}) stopped after ${STORY_WHILE_LOOP_MAX_ITERATIONS} iterations; its condition never became true.`,
+            );
+            iterations = 0;
+            return false;
+        }
+        if (until(scriptCtx)) {
+            iterations = 0;
+            return false;
+        }
+        iterations += 1;
+        return true;
+    };
+}
+
 async function compileControlGroup(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "control" }>): Promise<NlrStatement[]> {
     const payload = block.payload as Extract<StoryControlPayload, { control: "sequence" | "parallel" | "race" | "repeat" }>;
     const children = await compileBlockList(ctx, block.childrenIds);
     const mode = payload.mode ?? (payload.control === "parallel" ? "all" : payload.control === "race" ? "any" : "do");
+    // `until` selects the conditional form. A group that carries one is never a counted repeat, even
+    // if a stale `times` rode along - the schema calls them mutually exclusive and this is where it
+    // has to be true.
+    if (payload.control === "repeat" && payload.until) {
+        const until = conditionToLambda(ctx, payload.until, block.id);
+        // `falseCondition` is the single value every unresolvable arm of `conditionToLambda` returns,
+        // so the identity check is exact. It matters here far more than it does for `/if`: a branch
+        // that tests false is a branch that does not run, while a STOP condition that can never
+        // become true is a loop that never ends. Refusing to emit the group is the only answer that
+        // is not "spin until the ceiling catches you".
+        if (!until || until === falseCondition) {
+            diagnostic(ctx, "error", block.id, "Repeat-until loop has no usable condition; the group was skipped.");
+            return [];
+        }
+        // The `Lambda` arm of `NlrCondition` is an empty class - structurally `{}`, so it neither
+        // narrows nor excludes anything - and no arm of `conditionToLambda` ever produces one. The
+        // assertion says that, rather than letting the vestigial arm block the call.
+        const untilFn = until as (scriptCtx: ScriptCtx) => boolean;
+        return [recordStatement(ctx, Control.whileLoop(whileLoopCondition(untilFn, block.id) as any, children as any), block)];
+    }
     const chain = payload.control === "repeat"
         ? Control.repeat(Math.max(0, payload.times ?? 1), children as any)
         : mode === "doAsync"
@@ -1863,13 +3236,42 @@ function getCharacter(ctx: SceneCompileContext, characterId: string | undefined,
     // `state.name === ""`), so `useDialog` reports a real character as `isNarrator` and the avatar
     // silently disappears. `normalizedId` is a characterId UUID, which must never reach the UI.
     // Identity is keyed on `normalizedId` above, so this string is cosmetic only.
-    const displayName = ctx.characterSummaries.get(normalizedId)?.name?.trim() || UNKNOWN_CHARACTER_NAME;
-    const character = new Character(displayName);
+    const summary = ctx.characterSummaries.get(normalizedId);
+    const displayName = summary?.name?.trim() || UNKNOWN_CHARACTER_NAME;
+    const character = new Character(displayName, characterNametagConfig(summary));
     ctx.characters.set(normalizedId, character);
     return character;
 }
 
-function getImage(ctx: SceneCompileContext, objectName: string, options?: { layer?: Layer; autoFit?: boolean; src?: string; initialProps?: Record<string, unknown> }): Image {
+/** `#rgb` or `#rrggbb`; anything else is not a colour Studio wrote and is not forwarded. */
+const CHARACTER_ACCENT_HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
+/**
+ * The engine-side half of the character accent: `CharacterConfig.color`, which NLR's `Nametag`
+ * applies as the CSS colour of the speaker's name. Absent config when the character has none, so the
+ * dialogue box keeps whatever its own theme says.
+ *
+ * **Deliberately NOT filtered through `isReadableAccentColor`.** That band exists so an accent stays
+ * legible on Studio's own two chrome surfaces, light and dark — it is a statement about the editor,
+ * not about the game. The dialogue box is the author's artwork: a near-white name over a dark box is
+ * an ordinary choice there, and Studio silently discarding it would ship a game that disagrees with
+ * the colour the author picked, with nothing anywhere to explain why. The band still governs every
+ * Studio surface (the story rows, the Dev Mode timeline), so the one place the two can differ is a
+ * colour Studio declines to draw in its own chrome and forwards to the game exactly as authored.
+ *
+ * The hex is validated, though — a malformed value would land in a CSS declaration.
+ */
+function characterNametagConfig(summary: DevModeCharacterSummary | undefined): { color: `#${string}` } | undefined {
+    const hex = summary?.color?.trim();
+    return hex && CHARACTER_ACCENT_HEX.test(hex) ? { color: hex as `#${string}` } : undefined;
+}
+
+/**
+ * `src` is either a url/colour or a layered definition — the engine takes both, and a layered
+ * character's stack has to reach the constructor because an Image's src shape is fixed there. What
+ * a later row changes is the tags, never the src.
+ */
+function getImage(ctx: SceneCompileContext, objectName: string, options?: { layer?: Layer; autoFit?: boolean; src?: string | { layers: unknown[]; defaults: string[] }; initialProps?: Record<string, unknown> }): Image {
     const name = normalizeObjectName(objectName);
     const existing = ctx.images.get(name);
     if (existing) {
@@ -1964,6 +3366,14 @@ async function getVideo(ctx: SceneCompileContext, objectName: string, assetId: s
     return video;
 }
 
+/**
+ * The named sound handle, created on first mention and reused after.
+ *
+ * **The cache is keyed by NAME, and the bus rides on the handle.** A row that names an existing
+ * sound and also names a different track cannot get its track - the handle it addresses was routed
+ * to the first row's bus, and there is only one of it. So that case is reported rather than passed
+ * over; see {@link reportTrackConflict}.
+ */
 async function getSound(
     ctx: SceneCompileContext,
     objectName: string,
@@ -1974,11 +3384,12 @@ async function getSound(
     const name = normalizeObjectName(objectName);
     const existing = ctx.sounds.get(name);
     if (existing) {
+        reportTrackConflict(ctx, blockId, payload, name);
         return existing;
     }
     if (!assetId) {
         diagnostic(ctx, "warning", blockId, name === "bgm"
-            ? "No background music is set before this row - /bgm has to run first."
+            ? "No background music is set before this row; /bgm has to run first."
             : `Sound "${name}" has no asset.`);
         return null;
     }
@@ -1986,14 +3397,34 @@ async function getSound(
     if (!url) {
         return null;
     }
-    const sound = Sound.sound({
+    const { track, playback } = resolveRowPlayback(ctx, payload, null);
+    const sound = createBusSound(ctx.audioTracks, playback.busId, audioActionFallbackChannel(payload.operation), {
         src: url,
-        loop: payload.loop ?? false,
-        volume: payload.volume ?? 1,
+        loop: playback.loop,
+        volume: playback.volume,
         rate: payload.rate ?? 1,
+        ...clipRegionConfig(ctx, assetId),
     });
     ctx.sounds.set(name, sound);
+    ctx.soundTrackIds.set(name, track.id);
     return sound;
+}
+
+/**
+ * The in/out points marked on an asset, as `Sound` config.
+ *
+ * Applied to every sound the compiler builds, not only background music: an out point trims a sound
+ * effect's tail as usefully as it loops a track's body, and the author marked one region per asset -
+ * asking them to mark it again per row would be a second source of truth.
+ *
+ * The return type is inferred rather than written out. It was written out once, and when
+ * `audioClipRegionToSoundConfig` grew `loopStart` the stale annotation statically widened the new key
+ * away again - every clip's intro→loop point silently dropped on its way into the `Sound` config,
+ * with nothing failing to say so. There is no second caller that needs the type named, so the fix is
+ * to stop naming it.
+ */
+function clipRegionConfig(ctx: SceneCompileContext, assetId: string | undefined) {
+    return audioClipRegionToSoundConfig(assetId ? ctx.audioClips?.[assetId] : undefined);
 }
 
 /**
@@ -2014,12 +3445,13 @@ function getDisplayable(ctx: SceneCompileContext, name: string, kind?: string): 
     if (kind === "image" || !kind) return ctx.images.get(normalized) ?? (!kind ? ctx.texts.get(normalized) ?? ctx.layers.get(normalized) ?? null : null);
     if (kind === "text") return ctx.texts.get(normalized) ?? null;
     if (kind === "layer") return ctx.layers.get(normalized) ?? null;
-    if (kind === "character") return ctx.images.get(normalized) ?? null;
+    // A character is one element or the other, never both, so the lookup can simply try each.
+    if (kind === "character") return ctx.images.get(normalized) ?? ctx.puppets.get(normalized) ?? null;
     return null;
 }
 
 const DISPLAYABLE_EFFECT_OPS = new Set([
-    "mask", "clearMask", "clip", "clearClip", "filter", "clearFilter", "darken", "circleReveal", "circleClose", "wipe",
+    "mask", "clearMask", "clip", "clearClip", "filter", "clearFilter", "backdrop", "blend", "darken", "circleReveal", "circleClose", "wipe",
 ]);
 
 function isDisplayableEffectOperation(operation: string): boolean {
@@ -2101,6 +3533,17 @@ async function compileDisplayableEffect(
         }
         case "clearFilter":
             return record(target.clearFilter(options));
+        case "backdrop": {
+            if (!payload.backdropFilter) {
+                diagnostic(ctx, "warning", block.id, "Backdrop effect has no CSS backdrop-filter.");
+                return [];
+            }
+            return record(target.backdrop(payload.backdropFilter, options));
+        }
+        case "blend":
+            // The full CSS type is what the engine takes; only the six curated modes ever reach here
+            // (the inspector offers no others), so "normal" is the safe reset when a payload has none.
+            return record(target.blend(payload.mixBlendMode ?? "normal", options));
         case "darken": {
             if (typeof target.darken !== "function") {
                 diagnostic(ctx, "warning", block.id, "Darken applies to image / character targets only.");
@@ -2257,84 +3700,79 @@ function createTransition(transition: StoryTransitionRef | undefined, ctx: Scene
     }
     const duration = Math.max(0, transition.durationMs ?? 300);
     const easing = transition.easing as any;
-    if (transition.kind === "dissolve") {
-        return new Dissolve(duration, easing);
+    const props = transition.props ?? {};
+
+    switch (transition.kind) {
+        case "dissolve":
+            return new Dissolve({ duration, easing });
+        case "fadeIn":
+            return new FadeIn({ duration, offset: [numberProp(props, "x", 0), numberProp(props, "y", 0)], easing });
+        case "slide":
+            // NLR keeps `TransformDefinitions.WipeDirection` off its public surface, so the literal
+            // union stands in for it - still a checked cast, unlike `as any`.
+            return new Push({ duration, direction: stringProp(props, "direction", "left") as "left" | "right" | "top" | "bottom", easing });
+        case "maskCircle":
+            // Hard-edged iris (feather 0) is the 0.16.0 equivalent of the removed `MaskTransition.circle`.
+            // The old partial from/to radii have no built-in equivalent; the `circle` word never set them.
+            return new Reveal({ duration, easing, pattern: Mask.iris({ center: stringProp(props, "center", "50% 50%"), feather: 0 }) });
+        case "maskWipe":
+            return new Reveal({ duration, easing, pattern: Mask.wipe({ direction: stringProp(props, "direction", "left") as any, feather: 0 }) });
+        case "softWipe":
+            return new Reveal({ duration, easing, pattern: Mask.wipe({ direction: stringProp(props, "direction", "left") as any, feather: numberProp(props, "feather", 12) }) });
+        case "blinds":
+            return new Reveal({ duration, easing, pattern: Mask.blinds({ orientation: stringProp(props, "orientation", "horizontal") as any, slats: numberProp(props, "slats", 8), feather: numberProp(props, "feather", 0) }) });
+        case "softIris":
+            return new Reveal({ duration, easing, pattern: Mask.iris({ center: stringProp(props, "center", "50% 50%"), feather: numberProp(props, "feather", 12), shape: stringProp(props, "shape", "circle") as any }) });
+        case "barnDoor":
+            return new Reveal({ duration, easing, pattern: Mask.barnDoor({ axis: stringProp(props, "axis", "horizontal") as any, feather: numberProp(props, "feather", 12) }) });
+        case "clock":
+            return new Reveal({ duration, easing, pattern: Mask.clock({ center: stringProp(props, "center", "50% 50%"), from: numberProp(props, "from", 0), feather: numberProp(props, "feather", 24), direction: stringProp(props, "direction", "clockwise") as any }) });
+        case "fan":
+            return new Reveal({ duration, easing, pattern: Mask.fan({ blades: numberProp(props, "blades", 4), center: stringProp(props, "center", "50% 50%"), from: numberProp(props, "from", 0), feather: numberProp(props, "feather", 10) }) });
+        case "dots":
+            return new Reveal({ duration, easing, pattern: Mask.dots({ rows: numberProp(props, "rows", 6), cols: numberProp(props, "cols", 10), feather: numberProp(props, "feather", 20), stagger: numberProp(props, "stagger", 0) }) });
+        case "blurDissolve":
+            return new BlurDissolve({ duration, blur: numberProp(props, "blur", 16), easing });
+        case "throughColor":
+            return new ThroughColor({
+                duration,
+                easing,
+                color: stringProp(props, "color", "#000"),
+                hold: numberProp(props, "hold", 30) / 100,
+                ...throughColorPattern(props),
+            });
+        case "darkness":
+            // The incoming image is swapped in at `from` darkness and lifted to `to` - so the default
+            // pair (1 → 0) reads as "the new frame emerges out of black". Clamped here because
+            // `Darkness` does not clamp the way `Image.darken` does: darkness `d` renders as
+            // `brightness(1 - d)`, so an out-of-range value emits invalid CSS that the browser drops
+            // whole - the transition would silently become a no-op rather than saturate.
+            return new Darkness({
+                duration,
+                easing,
+                from: Math.min(1, Math.max(0, numberProp(props, "from", 1))),
+                to: Math.min(1, Math.max(0, numberProp(props, "to", 0))),
+            });
+        default:
+            diagnostic(ctx, "warning", blockId, `Transition "${transition.kind}" is not supported by public NLR imports.`);
+            return undefined;
     }
-    if (transition.kind === "fadeIn") {
-        const props = transition.props ?? {};
-        return new FadeIn(duration, [numberProp(props, "x", 0), numberProp(props, "y", 0)], easing);
+}
+
+/** Map a stored `throughColor` pattern prop to the native `ThroughColor` `pattern`/`inverted` pair. */
+function throughColorPattern(props: Record<string, StoryLiteralValue>): { pattern?: MaskPattern; inverted?: boolean } {
+    switch (stringProp(props, "pattern", "plain")) {
+        case "linear":
+            return { pattern: Mask.wipe({ direction: stringProp(props, "direction", "left") as any, feather: numberProp(props, "feather", 12) }) };
+        case "blinds":
+            return { pattern: Mask.blinds({ orientation: stringProp(props, "orientation", "horizontal") as any, slats: numberProp(props, "slats", 8), feather: numberProp(props, "feather", 0) }) };
+        case "iris":
+            // The old iris pattern covered rim-in - the pattern's inverted orientation.
+            return { pattern: Mask.iris({ center: stringProp(props, "center", "50% 50%"), feather: numberProp(props, "feather", 12) }), inverted: true };
+        default:
+            // "plain" → no pattern: the colour simply fades in and out (flash with hold 0).
+            return {};
     }
-    if (transition.kind === "maskCircle") {
-        const props = transition.props ?? {};
-        return MaskTransition.circle({
-            duration,
-            easing,
-            center: stringProp(props, "center", "50% 50%"),
-            from: numberProp(props, "from", 0),
-            to: numberProp(props, "to", 150),
-        });
-    }
-    if (transition.kind === "maskWipe") {
-        const props = transition.props ?? {};
-        // NOTE: NLR's MaskTransition.wipe `reverse` does not flip the wipe
-        // direction - it wipes the *new* background out to nothing, which (since
-        // setBackground discards the old background) ends on a black frame. It is
-        // never a valid "reveal", so we always reveal (no reverse) here.
-        return MaskTransition.wipe({
-            duration,
-            easing,
-            direction: stringProp(props, "direction", "left") as any,
-        });
-    }
-    if (transition.kind === "softWipe") {
-        const props = transition.props ?? {};
-        return new SoftWipe(
-            duration,
-            stringProp(props, "direction", "left") as WipeDirection,
-            numberProp(props, "feather", 12),
-            easing,
-        );
-    }
-    if (transition.kind === "blinds") {
-        const props = transition.props ?? {};
-        return new Blinds(
-            duration,
-            stringProp(props, "orientation", "horizontal") as BlindsOrientation,
-            numberProp(props, "slats", 8),
-            easing,
-        );
-    }
-    if (transition.kind === "slide") {
-        const props = transition.props ?? {};
-        return new Slide(duration, stringProp(props, "direction", "left") as WipeDirection, easing);
-    }
-    if (transition.kind === "softIris") {
-        const props = transition.props ?? {};
-        return new SoftIris(duration, stringProp(props, "center", "50% 50%"), numberProp(props, "feather", 12), easing);
-    }
-    if (transition.kind === "blurDissolve") {
-        const props = transition.props ?? {};
-        return new BlurDissolve(duration, numberProp(props, "blur", 16), easing);
-    }
-    if (transition.kind === "throughColor") {
-        const props = transition.props ?? {};
-        return new ThroughColor(
-            duration,
-            stringProp(props, "pattern", "plain") as ThroughColorPattern,
-            stringProp(props, "color", "#000"),
-            numberProp(props, "hold", 30) / 100,
-            {
-                direction: stringProp(props, "direction", "left") as WipeDirection,
-                feather: numberProp(props, "feather", 12),
-                orientation: stringProp(props, "orientation", "horizontal") as BlindsOrientation,
-                slats: numberProp(props, "slats", 8),
-                center: stringProp(props, "center", "50% 50%"),
-            },
-            easing,
-        );
-    }
-    diagnostic(ctx, "warning", blockId, `Transition "${transition.kind}" is not supported by public NLR imports yet.`);
-    return undefined;
 }
 
 /**
@@ -2375,23 +3813,37 @@ function resolveVariableSlot(ctx: SceneCompileContext, ref: StoryVariableRef, bl
         }
         return { kind: "storable", namespace: DevTools.getNamespaceName(ctx.savedPersistent), key: def.storageKey };
     }
+    // Existence is checked before host availability: an undeclared persistent variable is a fault the
+    // author must fix regardless of whether Dev Mode host persistence is up (bible §3.3, same diagnostic
+    // as a missing scene/saved variable).
+    if (!ctx.persistentKeys.has(ref.variableId)) {
+        diagnostic(ctx, "warning", blockId, "Persistent variable not found; the assignment was skipped.");
+        return null;
+    }
     if (!ctx.persistence) {
         diagnostic(ctx, "warning", blockId, "Persistent variables require Dev Mode host persistence and were skipped.");
         return null;
     }
-    return { kind: "host", key: ref.storageKey };
+    return { kind: "host", key: ref.variableId };
 }
 
 /**
- * Build the reader an expression evaluates against, with every referenced variable's slot resolved up
- * front. Returns null when any of them fails to resolve: an expression that silently treated a
- * deleted variable as `0` would produce a plausible wrong number, which is worse than not running.
+ * Build the environment an expression evaluates against, with everything it reaches outside its own
+ * tree resolved up front: every referenced variable's slot, and every blueprint it calls.
+ *
+ * Returns null when any of them fails to resolve. That is the whole doctrine of this function - an
+ * expression that silently treated a deleted variable as `0`, or a deleted blueprint as `null`, would
+ * produce a plausible wrong number, which is worse than not running at all.
+ *
+ * The visited capability needs no resolution pass: the record is addressed by the very ids the
+ * `visited` node carries, so there is nothing that can fail to bind. An id naming a scene the author
+ * has since deleted simply never appears in the record, which is exactly "not visited".
  */
-function buildExpressionReader(
+function buildExpressionEnv(
     ctx: SceneCompileContext,
     expr: StoryExpr,
     blockId: string,
-): ((scriptCtx: ScriptCtx) => StoryExpressionReader) | null {
+): ((scriptCtx: ScriptCtx) => StoryExpressionEnv) | null {
     const slots = new Map<string, StoryVariableSlot>();
     for (const ref of collectStoryExpressionVariables(expr)) {
         const slot = resolveVariableSlot(ctx, ref, blockId);
@@ -2400,21 +3852,58 @@ function buildExpressionReader(
         }
         slots.set(storyVariableRefKey(ref), slot);
     }
+
+    // One compile input per callee, built here rather than per evaluation: `buildStoryActionScriptInput`
+    // is pure assembly, but doing it inside the lambda would rebuild it on every branch test and every
+    // dialogue repaint.
+    const invocations = new Map<string, CompileStoryActionScriptInput>();
+    for (const call of collectStoryExpressionInvocations(expr)) {
+        if (!ctx.blueprintDocument) {
+            diagnostic(ctx, "warning", blockId, `Expression calls \`${call.name}()\`, which needs the project blueprint document; the expression was skipped.`);
+            return null;
+        }
+        invocations.set(
+            call.blueprintId,
+            buildStoryActionScriptInput(ctx, call.blueprintId, message => diagnostic(ctx, "warning", blockId, message)),
+        );
+    }
+
     const persistence = ctx.persistence;
     const persistentDefaults = ctx.persistentDefaults;
+    // Resolved once at compile time like `savedNamespaceName`: the accessor is what keeps this in step
+    // with the engine's own prefix convention instead of reconstructing it (see `storyVisited.ts`).
+    const visitedNamespace = DevTools.getNamespaceName(ctx.visitedPersistent);
 
-    return (scriptCtx: ScriptCtx) => ref => {
-        const slot = slots.get(storyVariableRefKey(ref));
-        if (!slot) {
-            return undefined;
-        }
-        if (slot.kind === "host") {
-            const stored = persistence?.get(slot.key) as StoryLiteralValue | undefined;
-            // Declared persistent rows read as their default until the host first stores a value.
-            return stored === undefined ? persistentDefaults[slot.key] : stored;
-        }
-        return scriptCtx.storable.getNamespace(slot.namespace).get(slot.key) as StoryLiteralValue | undefined;
-    };
+    return (scriptCtx: ScriptCtx) => ({
+        read: ref => {
+            const slot = slots.get(storyVariableRefKey(ref));
+            if (!slot) {
+                return undefined;
+            }
+            if (slot.kind === "host") {
+                const stored = persistence?.get(slot.key) as StoryLiteralValue | undefined;
+                // Declared persistent rows read as their default until the host first stores a value.
+                return stored === undefined ? persistentDefaults[slot.key] : stored;
+            }
+            return scriptCtx.storable.getNamespace(slot.namespace).get(slot.key) as StoryLiteralValue | undefined;
+        },
+        // Read live off the storable on every test, not captured: a `repeat until picked(…)` and a
+        // choice option's `hiddenWhen` both have to see the record as it stands now.
+        visited: ref => isStoryVisited(
+            scriptCtx.storable,
+            visitedNamespace,
+            ref.kind === "scene" ? STORY_VISITED_SCENES_KEY : STORY_VISITED_OPTIONS_KEY,
+            storyVisitedRefId(ref),
+        ),
+        invoke: blueprintId => {
+            const input = invocations.get(blueprintId);
+            // Unreachable: every callee in the tree was collected above or this function returned
+            // null. Answering `undefined` rather than throwing keeps that true even if it stops being.
+            return input
+                ? evaluateStoryActionBlueprintValueSync(input, scriptCtx) as StoryLiteralValue | undefined
+                : undefined;
+        },
+    });
 }
 
 function setVariable(
@@ -2443,13 +3932,18 @@ function setVariable(
         }
         return ctx.savedPersistent.set(def.storageKey, value as any);
     }
-    // Persistent (app-level, host-managed, shared with UI blueprints).
+    // Persistent (app-level, host-managed, shared with UI blueprints). Existence is checked first, so
+    // an undeclared persistent target faults regardless of host availability (bible §3.3).
+    if (!ctx.persistentKeys.has(target.variableId)) {
+        diagnostic(ctx, "warning", blockId, "Persistent variable not found; the assignment was skipped.");
+        return null;
+    }
     const persistence = ctx.persistence;
     if (!persistence) {
         diagnostic(ctx, "warning", blockId, "Persistent variables require Dev Mode host persistence and were skipped.");
         return null;
     }
-    const storageKey = target.storageKey;
+    const storageKey = target.variableId;
     return Script.execute(() => {
         void persistence.set(storageKey, value);
     });
@@ -2473,15 +3967,15 @@ function setVariableFromExpression(
         diagnostic(ctx, "warning", blockId, `Expression \`${expression.source}\` did not resolve; the assignment was skipped.`);
         return null;
     }
-    const readerFor = buildExpressionReader(ctx, expression.ast, blockId);
+    const envFor = buildExpressionEnv(ctx, expression.ast, blockId);
     const slot = resolveVariableSlot(ctx, target, blockId);
-    if (!readerFor || !slot) {
+    if (!envFor || !slot) {
         return null;
     }
     const persistence = ctx.persistence;
 
     return Script.execute(scriptCtx => {
-        const result = evaluateStoryExpression(expression.ast, readerFor(scriptCtx));
+        const result = evaluateStoryExpression(expression.ast, envFor(scriptCtx));
         if (slot.kind === "host") {
             void persistence?.set(slot.key, result);
             return;
@@ -2500,13 +3994,13 @@ function conditionToLambda(ctx: SceneCompileContext, condition: StoryConditionRe
             diagnostic(ctx, "warning", blockId, `Condition \`${expression.source}\` did not resolve; it evaluates false.`);
             return falseCondition;
         }
-        const readerFor = buildExpressionReader(ctx, expression.ast, blockId);
-        if (!readerFor) {
+        const envFor = buildExpressionEnv(ctx, expression.ast, blockId);
+        if (!envFor) {
             return falseCondition;
         }
         // Re-read on every test, like the blueprint condition beside it: a branch inside a loop must
         // see the value as it stands now, not as it stood when the scene compiled.
-        return (scriptCtx: ScriptCtx) => isTruthy(evaluateStoryExpression(expression.ast, readerFor(scriptCtx)));
+        return (scriptCtx: ScriptCtx) => isTruthy(evaluateStoryExpression(expression.ast, envFor(scriptCtx)));
     }
     if (condition.kind === "blueprint") {
         if (!ctx.blueprintDocument) {
@@ -2528,7 +4022,11 @@ function conditionToLambda(ctx: SceneCompileContext, condition: StoryConditionRe
     }
     const target = condition.target;
     if (target.scope === "persistent") {
-        return persistentCondition(ctx, target.storageKey, condition.operator, condition.value);
+        if (!ctx.persistentKeys.has(target.variableId)) {
+            diagnostic(ctx, "warning", blockId, "Persistent variable not found; condition evaluates false.");
+            return falseCondition;
+        }
+        return persistentCondition(ctx, target.variableId, condition.operator, condition.value);
     }
     let persistent: Persistent<any>;
     let storageKey: string;
@@ -2577,19 +4075,25 @@ function persistentCondition(
         return falseCondition;
     }
     const persistentDefaults = ctx.persistentDefaults;
+    // Structural equality (`strictEquals`), the same rule `/if` expressions use — so a json/array
+    // persistent variable compares by shape, not by reference identity, matching scene/saved conditions
+    // which go through NLR's `persistent.equals()` (bible §3.3). The undefined guard keeps the old
+    // "both absent" behaviour: a not-yet-stored, default-less variable equals only an undefined target.
+    const equals = (a: StoryLiteralValue | undefined, b: StoryLiteralValue | undefined): boolean =>
+        a === undefined || b === undefined ? a === b : strictEquals(a, b);
     return () => {
         const stored = persistence.get(storageKey);
         // Declared persistent rows test against their default until the host first stores a value.
-        const current = stored === undefined ? persistentDefaults[storageKey] : stored;
+        const current = (stored === undefined ? persistentDefaults[storageKey] : stored) as StoryLiteralValue | undefined;
         switch (operator) {
             case "isTrue":
                 return current === true;
             case "isFalse":
                 return current === false;
             case "equals":
-                return current === value;
+                return equals(current, value);
             case "notEquals":
-                return current !== value;
+                return !equals(current, value);
             case "exists":
                 return current !== null && current !== undefined;
             default:
@@ -2602,51 +4106,259 @@ function falseCondition(): boolean {
     return false;
 }
 
+/**
+ * The single image a `preset` character's pose selection resolves to.
+ *
+ * Null when the pose names nothing — deliberately, and unlike the model this replaced, which fell
+ * back to any image the character happened to own and so made a missing differential look like a
+ * working one. Callers turn null into a diagnostic.
+ *
+ * A layered character has no single image; see {@link resolveCharacterLayeredSrc}.
+ */
 async function resolveCharacterImageUrl(
     ctx: SceneCompileContext,
     characterId: string | undefined,
-    formName: string | undefined,
-    variants: StoryCharacterVariantSelection | undefined,
+    pose: string | undefined,
     blockId: string,
 ): Promise<string | null> {
     if (!characterId) {
         return null;
     }
-    const summary = ctx.characterSummaries.get(characterId);
-    const forms = summary?.forms ?? [];
-    const form = forms.find(candidate => candidate.name === formName)
-        ?? forms.find(candidate => candidate.name === summary?.defaultForm)
-        ?? forms[0];
-    if (!form) {
-        return null;
-    }
-    const variantNames = selectCharacterVariantNames(form, variants);
-    for (const variantName of variantNames) {
-        const assetId = form.variantAssets?.[variantName]?.assetId;
-        if (assetId) {
-            return resolveAsset(ctx, assetId, "image", blockId);
-        }
-    }
-    const firstAsset = Object.values(form.variantAssets ?? {}).find(asset => asset.assetId)?.assetId;
-    return firstAsset ? resolveAsset(ctx, firstAsset, "image", blockId) : null;
+    const appearance = ctx.characterSummaries.get(characterId)?.appearance;
+    const assetId = resolvePoseAssetId(appearance, pose);
+    return assetId ? resolveAsset(ctx, assetId, "image", blockId) : null;
 }
 
-function selectCharacterVariantNames(
-    form: NonNullable<DevModeCharacterSummary["forms"]>[number],
-    variants: StoryCharacterVariantSelection | undefined,
-): string[] {
-    if (Array.isArray(variants)) {
-        return variants;
+/**
+ * A layered character's stack as the engine's `src`, or null when the character is not layered (or
+ * has no layer that draws anything).
+ *
+ * Every layer bound to an axis becomes a variants map keyed by tag id. The engine identifies a tag
+ * group by its tag *set*, so all the layers on one axis collapse onto that axis's single group —
+ * which is exactly what makes one `char(["angry"])` move the brows and the mouth together, and why
+ * the appearance model keeps each bound layer's option map complete.
+ */
+async function resolveCharacterLayeredSrc(
+    ctx: SceneCompileContext,
+    characterId: string | undefined,
+    blockId: string,
+): Promise<{ layers: (string | null | Record<string, string | null>)[]; defaults: string[] } | null> {
+    const appearance = characterId ? ctx.characterSummaries.get(characterId)?.appearance : undefined;
+    if (appearance?.kind !== "layered") {
+        return null;
     }
-    const selected: string[] = [];
-    for (const group of form.groups ?? []) {
-        const explicit = variants?.[group.name];
-        const fallback = group.defaultVariant ?? group.variants?.[0]?.name;
-        if (explicit || fallback) {
-            selected.push(explicit || fallback);
+
+    const layers: (string | null | Record<string, string | null>)[] = [];
+    for (const layer of appearance.layers) {
+        if (layer.hidden) continue;
+        if (!layer.axisId) {
+            const url = layer.assetId ? await resolveAsset(ctx, layer.assetId, "image", blockId) : null;
+            if (url) {
+                layers.push(url);
+            }
+            continue;
+        }
+        const axis = appearance.axes.find(candidate => candidate.id === layer.axisId);
+        if (!axis || axis.tags.length === 0) continue;
+        const variants: Record<string, string | null> = {};
+        for (const tag of axis.tags) {
+            const assetId = layer.options?.[tag.id] ?? null;
+            variants[tag.id] = assetId ? await resolveAsset(ctx, assetId, "image", blockId) : null;
+        }
+        layers.push(variants);
+    }
+    if (layers.length === 0) {
+        return null;
+    }
+
+    // A default naming a group no layer emitted is a tag the engine has never heard of, and it
+    // rejects the whole image for it.
+    const emitted = new Set(
+        layers.flatMap(layer => (typeof layer === "object" && layer !== null ? Object.keys(layer) : [])),
+    );
+    const defaults = Object.values(resolveTagSelection(appearance, undefined)).filter(tagId => emitted.has(tagId));
+    return { layers, defaults };
+}
+
+/**
+ * Everything the dialog-avatar resolver can possibly answer with, resolved to URLs up front.
+ *
+ * The resolver runs inside the dialog's own render and cannot await anything, so nothing may be
+ * resolved lazily. Resolving it all here is also what makes the avatars preloadable — see
+ * {@link bindCharacterPortrait}.
+ */
+type CompiledCharacterAvatars = {
+    /** Avatar key → avatar image URL. */
+    byKey: Map<string, string>;
+    /** Pose sprite URL → pose id: how a preset character's current differential is read back. */
+    poseByUrl: Map<string, string>;
+    /** Shown when no differential resolves an avatar (off-stage, or nothing baked for this look). */
+    fallback: string | null;
+};
+
+async function compileCharacterAvatars(
+    ctx: SceneCompileContext,
+    summary: DevModeCharacterSummary,
+): Promise<CompiledCharacterAvatars> {
+    // Not a block id: avatar assets belong to the character, not to any one row. Diagnostics about
+    // them should point at the character, and `resolveSnapshotImageSource` already sets the
+    // precedent of passing a non-block label here.
+    const blockId = `avatar:${summary.id}`;
+    const byKey = new Map<string, string>();
+    const poseByUrl = new Map<string, string>();
+
+    // Only keys with an entry are worth resolving: a key with neither a bake nor an override
+    // resolves to the character default, which `fallback` already holds.
+    // A puppet carries no avatar table: it has no differentials to key one on (see
+    // `bindPuppetAvatar`, which sets the character-level default instead).
+    const avatarTable = summary.appearance.kind === "puppet" ? undefined : summary.appearance.avatars;
+    for (const key of Object.keys(avatarTable ?? {})) {
+        const assetId = resolveCharacterAvatarAssetId(summary, key);
+        const url = assetId ? await resolveAsset(ctx, assetId, "image", blockId) : null;
+        if (url && assetId) {
+            byKey.set(key, url);
+            ctx.avatarAssetIdByUrl.set(url, assetId);
         }
     }
-    return selected;
+
+    if (summary.appearance.kind === "preset") {
+        for (const pose of summary.appearance.poses) {
+            const url = pose.assetId ? await resolveAsset(ctx, pose.assetId, "image", blockId) : null;
+            // Two poses sharing one sprite are indistinguishable at runtime - the engine reports a
+            // src, not a pose. First wins; their avatars would have to picture the same thing anyway.
+            if (url && !poseByUrl.has(url)) {
+                poseByUrl.set(url, pose.id);
+            }
+        }
+    }
+
+    const defaultAvatarAssetId = summary.defaultAvatarAssetId?.trim();
+    const fallback = defaultAvatarAssetId
+        ? await resolveAsset(ctx, defaultAvatarAssetId, "image", blockId)
+        : null;
+    if (fallback && defaultAvatarAssetId) {
+        ctx.avatarAssetIdByUrl.set(fallback, defaultAvatarAssetId);
+    }
+    return { byKey, poseByUrl, fallback };
+}
+
+/**
+ * Turn the engine's report of what the character is currently wearing into an avatar URL.
+ *
+ * The two kinds report differently, because they *are* different: a preset character has one src
+ * and the engine hands back that URL; a layered one has no single src (`Image.getSrcURL` returns
+ * null for it) and the engine hands back the active tags instead.
+ */
+function resolveCompiledAvatar(
+    summary: DevModeCharacterSummary,
+    avatars: CompiledCharacterAvatars,
+    context: Pick<DialogAvatarResolverContext, "currentSrc" | "tags">,
+): string | null {
+    const key = summary.appearance.kind === "layered"
+        ? characterAvatarKeyFromTags(summary.appearance, context.tags)
+        : context.currentSrc
+            ? avatars.poseByUrl.get(context.currentSrc) ?? null
+            : null;
+    return (key ? avatars.byKey.get(key) : undefined) ?? avatars.fallback;
+}
+
+/**
+ * Register a character's stage sprite as an NLR portrait and install its dialog-avatar resolver.
+ *
+ * This is the whole of "which differential is the speaker wearing right now". The engine finds the
+ * character's topmost *visible* portrait and hands the resolver that image's live state, so the
+ * answer survives undo, load and skip — which a Studio-side mirror of the story's rows would not,
+ * for exactly the reasons the Is Speaking plan documented about `onCharacterPrompt`.
+ *
+ * A character with no summary (an unnamed temp speaker) is skipped: it has no appearance to key an
+ * avatar on, and `getCharacter` hands those a name-keyed instance that outlives no differential.
+ */
+async function bindCharacterPortrait(
+    ctx: SceneCompileContext,
+    characterId: string | undefined,
+    image: Image,
+): Promise<void> {
+    const summary = characterId ? ctx.characterSummaries.get(characterId) : undefined;
+    if (!summary) {
+        return;
+    }
+    const bound = ctx.boundPortraits ?? (ctx.boundPortraits = new WeakSet());
+    if (bound.has(image)) {
+        return;
+    }
+    bound.add(image);
+
+    const cache = ctx.characterAvatars ?? (ctx.characterAvatars = new Map());
+    let avatars = cache.get(summary.id);
+    if (!avatars) {
+        avatars = await compileCharacterAvatars(ctx, summary);
+        cache.set(summary.id, avatars);
+    }
+    const resolved = avatars;
+
+    const character = getCharacter(ctx, summary.id);
+    character.addPortrait(image);
+    character.setAvatar(context => resolveCompiledAvatar(summary, resolved, context));
+    // Claim the character so the off-stage fallback pass leaves this resolver alone. It must: the
+    // resolver reads the engine's *live* Image (`currentSrc` / `tags`), which is what keeps the
+    // avatar right through undo, load and skip, and a flat url would freeze it at compile time.
+    ctx.avatarBoundCharacterIds.add(summary.id);
+
+    // Deliberately NOT registered with `ctx.nlrScene.preloadImage`. That warms `ImageCacheManager`,
+    // which stores a base64 re-encoding and decodes *that*, reachable only through
+    // `cacheManager.get(url)` — which the engine's `<Image>` uses but its `<Avatar>` does not, and
+    // a Studio Image widget certainly does not. Registering avatars there would buy a fetch, a
+    // base64 blowup, a decode and a retained full-resolution bitmap that every consumer then
+    // ignores. The warm that actually helps is keyed to the URL the widget renders and lives in
+    // `characterAvatarAssets.warmAvatarDecode`, run when the session mounts this compile's table.
+}
+
+/**
+ * Give every character that spoke but never stood on stage the dialog avatar its profile declares.
+ *
+ * `defaultAvatarAssetId` is documented as "shown when no differential resolves one — the character is
+ * speaking from off-stage". That promise was only ever kept for characters who *had* been on stage:
+ * the resolver holding the fallback is installed by {@link bindCharacterPortrait}, which only stage
+ * rows call, so a preset or layered character who talks from off-stage for a whole scene got no
+ * resolver and therefore no avatar at all — while a puppet, which never stages, got one
+ * unconditionally ({@link bindPuppetAvatar}). Two paths, opposite answers to the same question.
+ *
+ * This closes it from the other end, and only from the other end: it runs after everything is
+ * compiled and skips every character already claimed, so a staged character keeps the resolver that
+ * reads the live `Image`. Studio never mirrors story state — it only fills in the case where there is
+ * no story state to read.
+ */
+async function bindOffstageDefaultAvatars(params: {
+    characters: Map<string, Character>;
+    characterSummaries: Map<string, DevModeCharacterSummary>;
+    avatarBoundCharacterIds: Set<string>;
+    avatarAssetIdByUrl: Map<string, string>;
+    resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
+    assetUrlCache: Map<string, string | null>;
+    diagnostics: NlrStoryCompileDiagnostic[];
+}): Promise<void> {
+    for (const [key, character] of params.characters) {
+        // Temp speakers are keyed `name:<name>` and have no profile behind them; `UNKNOWN_CHARACTER_ID`
+        // resolves to no summary either. Both fall out here.
+        const summary = params.characterSummaries.get(key);
+        const assetId = summary?.defaultAvatarAssetId?.trim();
+        if (!summary || !assetId || params.avatarBoundCharacterIds.has(summary.id)) {
+            continue;
+        }
+        params.avatarBoundCharacterIds.add(summary.id);
+        const url = await resolveAssetUrlCached({
+            assetId,
+            assetType: "image",
+            blockId: `avatar:${summary.id}`,
+            resolveAssetUrl: params.resolveAssetUrl,
+            assetUrlCache: params.assetUrlCache,
+            diagnostics: params.diagnostics,
+        });
+        if (url) {
+            params.avatarAssetIdByUrl.set(url, assetId);
+            character.setAvatar(url);
+        }
+    }
 }
 
 async function resolveAsset(ctx: SceneCompileContext, assetId: string, assetType: StoryAssetKind, blockId: string): Promise<string | null> {

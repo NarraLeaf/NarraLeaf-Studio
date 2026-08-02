@@ -9,10 +9,19 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, Ellipsis, Mic, Plus } from "lucide-react";
+import { Check, Ellipsis, Plus } from "lucide-react";
 import type { PanelComponentProps } from "../types";
 import { ContextMenu, Progress, type ContextMenuDef } from "@/lib/components/elements";
 import { useWorkspace } from "../../context";
+import { freezeContextMenuRows, useFreezeGuard } from "../../components/ui/freezeGuard";
+
+/**
+ * The voice locale menu rows that keep working while frozen: the two exports.
+ *
+ * They write a CSV to a path the author picks, which is outside the project - the freeze is about the
+ * project, not about the author's desktop. Import and Remove Language write the project and are off.
+ */
+const FREEZE_READ_ONLY_VOICE_MENU_IDS: ReadonlySet<string> = new Set(["export-script", "export-pickup"]);
 import { useRegistry } from "../../registry";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
@@ -54,10 +63,10 @@ type LocaleMenuState = {
 };
 
 const INPUT_CLASS =
-    "h-7 min-w-0 flex-1 rounded border border-edge bg-surface-raised px-2 text-xs text-fg outline-none placeholder:text-fg-subtle focus:border-primary/50";
+    "h-7 min-w-0 flex-1 rounded-md border border-edge bg-surface-raised px-2 text-xs text-fg outline-none placeholder:text-fg-subtle focus:border-primary/50";
 
 const GHOST_ROW_CLASS =
-    "flex h-7 w-full items-center justify-center gap-1 rounded border border-dashed border-edge text-2xs text-fg-subtle transition-colors hover:border-edge-strong hover:text-fg";
+    "flex h-7 w-full items-center justify-center gap-1 rounded-md border border-dashed border-edge text-2xs text-fg-subtle transition-colors hover:border-edge-strong hover:text-fg disabled:cursor-not-allowed disabled:opacity-40";
 
 /** Autonym for a language code via Intl (e.g. "ja" → "日本語"); falls back to the code. */
 function autonymFor(code: string): string {
@@ -73,6 +82,9 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
     const { t } = useTranslation();
+    // Adding and removing a voice language, and importing audio, write the project. Auditioning,
+    // switching locale and exporting a recording script do not.
+    const freeze = useFreezeGuard();
 
     const voiceService = useMemo(
         () => (context && isInitialized ? context.services.get<VoiceService>(Services.Voice) : null),
@@ -384,6 +396,10 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
             },
         ];
     }, [localeMenu, handleExportScript, handleImportAudio, handleRemoveLocale, t]);
+    const frozenLocaleMenuItems = useMemo(
+        () => freezeContextMenuRows(localeMenuItems, freeze.frozen, FREEZE_READ_ONLY_VOICE_MENU_IDS, freeze.reason),
+        [freeze, localeMenuItems],
+    );
 
     const locales = config?.voicedLocales ?? [];
 
@@ -397,12 +413,9 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                     <p className="text-2xs leading-snug text-fg-subtle">
                         {t("workspace.voice.panel.languagesHint")}
                     </p>
-                    {locales.length === 0 ? (
-                        <div className="flex flex-col items-center gap-2 rounded border border-edge-subtle px-3 py-6 text-center text-2xs text-fg-subtle">
-                            <Mic className="h-5 w-5" />
-                            {t("workspace.voice.panel.empty")}
-                        </div>
-                    ) : (
+                    {/* No voice languages: no list. The "+ Add voice language" row directly below is
+                        the action, so a bordered box repeating it is that button twice. */}
+                    {locales.length === 0 ? null : (
                         <div className="flex flex-col gap-1">
                             {locales.map(locale => {
                                 const progress = progressByLocale[locale.code];
@@ -413,7 +426,7 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                                         role="button"
                                         tabIndex={0}
                                         title={t("workspace.voice.panel.openTable")}
-                                        className="group flex cursor-pointer flex-col gap-1.5 rounded border border-edge-subtle px-2.5 py-2 text-left hover:border-edge focus-visible:border-primary/50 focus-visible:outline-none"
+                                        className="group flex cursor-pointer flex-col gap-1.5 rounded-md border border-edge-subtle px-2.5 py-2 text-left hover:border-edge focus-visible:border-primary/50 focus-visible:outline-none"
                                         onClick={() => handleOpenTable(locale.code, locale.displayName)}
                                         onKeyDown={event => {
                                             if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
@@ -424,7 +437,7 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                                     >
                                         <div className="flex items-center gap-2">
                                             <span className="truncate text-xs text-fg">{locale.displayName}</span>
-                                            <span className="rounded border border-edge px-1 py-px text-2xs text-fg-subtle">
+                                            <span className="rounded-md border border-edge px-1 py-px text-2xs text-fg-subtle">
                                                 {locale.code}
                                             </span>
                                             <button
@@ -432,7 +445,7 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                                                 aria-haspopup="menu"
                                                 aria-expanded={menuOpen}
                                                 title={t("workspace.voice.panel.more")}
-                                                className={`ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded text-fg-subtle transition-opacity hover:bg-fill hover:text-fg focus-visible:opacity-100 group-hover:opacity-100 ${
+                                                className={`ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-subtle transition-opacity hover:bg-fill hover:text-fg focus-visible:opacity-100 group-hover:opacity-100 ${
                                                     menuOpen ? "opacity-100" : "opacity-0"
                                                 }`}
                                                 onClick={event => {
@@ -477,6 +490,7 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                             type="button"
                             className={`mt-1 ${GHOST_ROW_CLASS}`}
                             onClick={() => setAddingLocale(true)}
+                            {...freeze.writes()}
                         >
                             <Plus className="h-3 w-3" /> {t("workspace.voice.panel.addLanguage")}
                         </button>
@@ -524,7 +538,7 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                             />
                             <button
                                 type="button"
-                                className="flex h-7 w-7 flex-none items-center justify-center rounded border border-edge text-fg-muted hover:border-primary/50 hover:text-fg"
+                                className="flex h-7 w-7 flex-none items-center justify-center rounded-md border border-edge text-fg-muted hover:border-primary/50 hover:text-fg"
                                 onClick={() => void handleAddLocale()}
                                 title={t("workspace.voice.panel.confirm")}
                             >
@@ -536,7 +550,7 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
             </div>
             {localeMenu ? (
                 <ContextMenu
-                    items={localeMenuItems}
+                    items={frozenLocaleMenuItems}
                     position={localeMenu.position}
                     onClose={() => setLocaleMenu(null)}
                 />

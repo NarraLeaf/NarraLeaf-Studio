@@ -1,9 +1,16 @@
 ---
 title: "handoff: 版本控制主进程层已就绪，交接 Studio 内对接"
 type: handoff
-status: ready
+status: superseded
 date: 2026-07-18
+superseded-by: 2026-07-27-001-plan-editor-data-and-version-control.md
 ---
+
+> **已被取代（2026-07-27）。** 本文描述的只读封装层（`loreClient.ts`）已经删除，换成 Studio
+> 自有的 koffi 绑定（`vcs/lore/`），写侧也已打通。总体规划与里程碑见
+> [2026-07-27-001](2026-07-27-001-plan-editor-data-and-version-control.md)。
+> 下面的内容仍然值得读的部分是**第一节的五条规则**（可用性先问、边界、按项目 keying、
+> `base` 缺失 ≠ 空文件、Lore 自带 diff 没用），它们全部仍然成立。
 
 版本控制的**主进程层已经完整落地并验证过**，渲染进程一侧一行都还没写。你的任务是 Studio 内的对接：历史视图、diff 视图、冲突解决界面。
 

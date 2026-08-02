@@ -2,13 +2,13 @@ import type {
     StoryActionPayload,
     StoryBlock,
     StoryBlockId,
-    StoryCodePayload,
     StoryConditionRef,
     StoryControlPayload,
     StoryDeclarationPayload,
     StoryDocument,
     StoryDisplayableTargetKind,
     StoryLiteralValue,
+    StoryScene,
     StorySceneId,
     StoryTransitionRef,
     StoryTransformRef,
@@ -17,26 +17,37 @@ import type {
     StoryVariableRef,
     StoryVariableScope,
     StoryVariableValueType,
+    StoryVfxBlendMode,
 } from "@shared/types/story";
 import {
+    characterStageName,
     isStoryExpressionEvaluable,
     layerActionTargetRef,
+    listScenesInDocumentOrder,
+    normalizeStageObjectName,
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
     savedVariableDefs,
+    sceneLabelNames,
     sceneVariableDefs,
 } from "@shared/types/story";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
+import type { AudioTrackChannel, ProjectAudioTrack } from "@shared/types/audioTrack";
+import { resolveAudioTrack } from "@shared/types/audioTrack";
+import { audioBusStatusLine } from "@/lib/story/audioBusStatus";
+import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
+import { BGM_OBJECT_NAME } from "./storyCommandValues";
 import { useTranslation } from "@/lib/i18n";
-import type { Translator } from "@shared/i18n";
+import type { Translator, TranslationKey } from "@shared/i18n";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ChevronRight, Image as ImageIcon, Music, Palette, Trash2, Video, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Copy, ExternalLink, Image as ImageIcon, Mic, Music, Palette, Play, RefreshCw, Square, Trash2, Video } from "lucide-react";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { useWorkspace } from "@/apps/workspace/context";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import type { Character } from "@/lib/workspace/services/character/Character";
-import { Select, type SelectOption } from "@/lib/components/elements";
+import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
+import { Select, Slider, type SelectOption } from "@/lib/components/elements";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
@@ -47,19 +58,38 @@ import { Services } from "@/lib/workspace/services/services";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { StoryActionBlueprintPreviewCard } from "./StoryActionBlueprintPreviewCard";
-import { ConditionEditor } from "./ConditionEditor";
+import { ConditionEditor, EMPTY_EXPRESSION_CONDITION } from "./ConditionEditor";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
-import { describeBlock, getBlockBadgeInfo } from "./storySceneBlockUtils";
+import { describeBlockSubject, getBlockBadgeInfo } from "./storySceneBlockUtils";
+import { useStoryMotionNames } from "./useStoryMotionNames";
+import { useStoryVoiceState } from "./useStoryVoiceState";
 import { CharacterAppearancePicker } from "./CharacterAppearancePicker";
 import { DisplayableTargetField } from "./DisplayableTargetField";
 import { StoryLayerField } from "./StoryLayerField";
 import { MotionField } from "../../story-motion";
+import { PuppetPreview } from "@/apps/workspace/modules/characters/editors/components/PuppetPreview";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import {
+    puppetDescribeStatusKey,
+    puppetDescriptionRequestFor,
+    usePuppetDescription,
+} from "@/lib/workspace/hooks/usePuppetDescription";
+import { puppetChoiceOptions } from "@/lib/workspace/services/puppet/puppetDescriptionModel";
+import { CameraActionEditor } from "./CameraActionEditor";
+import {
+    Disclosure,
+    FIELD_LABEL_CLASS,
+    FieldGrid,
+    NumberField,
+    SecondsField,
+    SegToggle,
+    SelectField,
+    Section,
+    easingOptions,
+    type TFunc,
+} from "./inspectorFieldKit";
 
-const FIELD_LABEL_CLASS = "block text-xs font-medium text-fg-muted mb-1";
 const TEXTAREA_CLASS = "w-full resize-none rounded-md border border-edge bg-surface-raised px-3 py-2 text-sm text-fg-muted outline-none transition-colors focus:border-primary/50 disabled:cursor-not-allowed disabled:opacity-50";
-const SELECT_CLASS = "[&>button]:h-9 [&>button]:min-h-[34px] [&>button]:py-0";
-
-type TFunc = Translator["t"];
 
 const variableScopeOptions = (t: TFunc): SelectOption[] => [
     { value: "scene", label: t("storyInspector.variableScope.scene") },
@@ -83,12 +113,11 @@ function useStoryVariableOptions(document: StoryDocument, sceneId: StorySceneId)
         if (!context || !isInitialized) return;
         const service = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
         const read = () => {
-            const bpDoc = service.getBlueprintDocument();
             setPersistent(
-                Object.values(bpDoc.persistentVariables ?? {}).map(variable => ({
+                service.listPersistentVariables().map(variable => ({
                     id: variable.storageKey,
                     name: variable.name,
-                    valueType: (variable.valueType as StoryVariableValueType) ?? "string",
+                    valueType: variable.valueType,
                 })),
             );
         };
@@ -112,11 +141,11 @@ function useStoryVariableOptions(document: StoryDocument, sceneId: StorySceneId)
 }
 
 function refVariableId(ref: StoryVariableRef): string {
-    return ref.scope === "persistent" ? ref.storageKey : ref.variableId;
+    return ref.variableId;
 }
 
 function makeVariableRef(scope: StoryVariableScope, id: string): StoryVariableRef {
-    return scope === "persistent" ? { scope: "persistent", storageKey: id } : { scope, variableId: id };
+    return { scope, variableId: id };
 }
 
 function resolveRefValueType(ref: StoryVariableRef, options: StoryVariableOptions): StoryVariableValueType {
@@ -215,21 +244,6 @@ const transformPresetOptions = (t: TFunc): SelectOption[] => [
     { value: "wipe", label: t("storyInspector.transformPreset.slideReveal") },
 ];
 
-const easingOptions = (t: TFunc): SelectOption[] => [
-    { value: "", label: t("storyInspector.easing.default") },
-    { value: "linear", label: t("storyInspector.easing.linear") },
-    { value: "easeIn", label: t("storyInspector.easing.easeIn") },
-    { value: "easeOut", label: t("storyInspector.easing.easeOut") },
-    { value: "easeInOut", label: t("storyInspector.easing.easeInOut") },
-    { value: "circIn", label: t("storyInspector.easing.circIn") },
-    { value: "circOut", label: t("storyInspector.easing.circOut") },
-    { value: "circInOut", label: t("storyInspector.easing.circInOut") },
-    { value: "backIn", label: t("storyInspector.easing.backIn") },
-    { value: "backOut", label: t("storyInspector.easing.backOut") },
-    { value: "backInOut", label: t("storyInspector.easing.backInOut") },
-    { value: "anticipate", label: t("storyInspector.easing.anticipate") },
-];
-
 const transitionOptions = (t: TFunc): SelectOption[] => [
     { value: "none", label: t("common.none") },
     { value: "dissolve", label: t("storyInspector.transition.dissolve") },
@@ -240,8 +254,13 @@ const transitionOptions = (t: TFunc): SelectOption[] => [
     { value: "maskWipe", label: t("storyInspector.transition.maskWipe") },
     { value: "softWipe", label: t("storyInspector.transition.softWipe") },
     { value: "blinds", label: t("storyInspector.transition.blinds") },
+    { value: "barnDoor", label: t("storyInspector.transition.barnDoor") },
+    { value: "clock", label: t("storyInspector.transition.clock") },
+    { value: "fan", label: t("storyInspector.transition.fan") },
+    { value: "dots", label: t("storyInspector.transition.dots") },
     { value: "slide", label: t("storyInspector.transition.slide") },
     { value: "throughColor", label: t("storyInspector.transition.throughColor") },
+    { value: "darkness", label: t("storyInspector.transition.darkness") },
 ];
 
 const wipeDirectionOptions = (t: TFunc): SelectOption[] => [
@@ -254,6 +273,16 @@ const wipeDirectionOptions = (t: TFunc): SelectOption[] => [
 const blindsOrientationOptions = (t: TFunc): SelectOption[] => [
     { value: "horizontal", label: t("storyInspector.blindsOrientation.horizontal") },
     { value: "vertical", label: t("storyInspector.blindsOrientation.vertical") },
+];
+
+const clockDirectionOptions = (t: TFunc): SelectOption[] => [
+    { value: "clockwise", label: t("storyInspector.clockDirection.clockwise") },
+    { value: "counterclockwise", label: t("storyInspector.clockDirection.counterclockwise") },
+];
+
+const irisShapeOptions = (t: TFunc): SelectOption[] => [
+    { value: "circle", label: t("storyInspector.irisShape.circle") },
+    { value: "ellipse", label: t("storyInspector.irisShape.ellipse") },
 ];
 
 const throughColorPatternOptions = (t: TFunc): SelectOption[] => [
@@ -272,8 +301,13 @@ const transitionHints = (t: TFunc): Record<string, string> => ({
     maskWipe: t("storyInspector.transitionHint.maskWipe"),
     softWipe: t("storyInspector.transitionHint.softWipe"),
     blinds: t("storyInspector.transitionHint.blinds"),
+    barnDoor: t("storyInspector.transitionHint.barnDoor"),
+    clock: t("storyInspector.transitionHint.clock"),
+    fan: t("storyInspector.transitionHint.fan"),
+    dots: t("storyInspector.transitionHint.dots"),
     slide: t("storyInspector.transitionHint.slide"),
     throughColor: t("storyInspector.transitionHint.throughColor"),
+    darkness: t("storyInspector.transitionHint.darkness"),
 });
 
 const imageOperationOptions = (t: TFunc): SelectOption[] => [
@@ -293,6 +327,8 @@ const displayableOperationOptions = (t: TFunc): SelectOption[] => [
     { value: "clearClip", label: t("storyInspector.displayableOperation.clearClip") },
     { value: "filter", label: t("storyInspector.displayableOperation.filter") },
     { value: "clearFilter", label: t("storyInspector.displayableOperation.clearFilter") },
+    { value: "backdrop", label: t("storyInspector.displayableOperation.backdrop") },
+    { value: "blend", label: t("storyInspector.displayableOperation.blend") },
     { value: "darken", label: t("storyInspector.displayableOperation.darken") },
     { value: "circleReveal", label: t("storyInspector.displayableOperation.circleReveal") },
     { value: "circleClose", label: t("storyInspector.displayableOperation.circleClose") },
@@ -300,7 +336,7 @@ const displayableOperationOptions = (t: TFunc): SelectOption[] => [
 ];
 
 const DISPLAYABLE_EFFECT_OPERATIONS = new Set([
-    "mask", "clearMask", "clip", "clearClip", "filter", "clearFilter", "darken", "circleReveal", "circleClose", "wipe",
+    "mask", "clearMask", "clip", "clearClip", "filter", "clearFilter", "backdrop", "blend", "darken", "circleReveal", "circleClose", "wipe",
 ]);
 
 const displayableEffectHints = (t: TFunc): Record<string, string> => ({
@@ -310,6 +346,8 @@ const displayableEffectHints = (t: TFunc): Record<string, string> => ({
     clearClip: t("storyInspector.displayableEffectHint.clearClip"),
     filter: t("storyInspector.displayableEffectHint.filter"),
     clearFilter: t("storyInspector.displayableEffectHint.clearFilter"),
+    backdrop: t("storyInspector.displayableEffectHint.backdrop"),
+    blend: t("storyInspector.displayableEffectHint.blend"),
     darken: t("storyInspector.displayableEffectHint.darken"),
     circleReveal: t("storyInspector.displayableEffectHint.circleReveal"),
     circleClose: t("storyInspector.displayableEffectHint.circleClose"),
@@ -340,7 +378,13 @@ const videoOperationOptions = (t: TFunc): SelectOption[] => [
     { value: "create", label: t("common.create") },
     { value: "show", label: t("common.show") },
     { value: "hide", label: t("common.hide") },
+    // `play` waits for the clip to end, `resume` does not - the labels have to carry that, since the
+    // two are otherwise indistinguishable in a list.
     { value: "play", label: t("storyInspector.videoOperation.play") },
+    { value: "pause", label: t("storyInspector.videoOperation.pause") },
+    { value: "resume", label: t("storyInspector.videoOperation.resume") },
+    { value: "stop", label: t("storyInspector.videoOperation.stop") },
+    { value: "seek", label: t("storyInspector.videoOperation.seek") },
 ];
 
 const audioOperationOptions = (t: TFunc): SelectOption[] => [
@@ -352,6 +396,7 @@ const audioOperationOptions = (t: TFunc): SelectOption[] => [
     { value: "setVolume", label: t("storyInspector.audioOperation.setVolume") },
     { value: "setRate", label: t("storyInspector.audioOperation.setRate") },
     { value: "muteSound", label: t("storyInspector.audioOperation.muteSound") },
+    { value: "seekSound", label: t("storyInspector.audioOperation.seekSound") },
 ];
 
 const screenEffectOptions = (t: TFunc): SelectOption[] => [
@@ -370,13 +415,6 @@ const branchOptions = (t: TFunc): SelectOption[] => [
     { value: "else", label: t("storyInspector.branch.else") },
 ];
 
-// Language names are product / technology proper nouns and are not translated.
-const CODE_LANGUAGE_OPTIONS: SelectOption[] = [
-    { value: "narraleaf", label: "NarraLeaf" },
-    { value: "typescript", label: "TypeScript" },
-    { value: "javascript", label: "JavaScript" },
-];
-
 export function ActionInspector(props: {
     block: StoryBlock;
     document: StoryDocument;
@@ -388,15 +426,72 @@ export function ActionInspector(props: {
     generateTextId: () => string;
     onCreateLayer: (beforeBlockId: StoryBlockId) => string | null;
 }) {
-    const { t } = useTranslation();
+    const { context, isInitialized } = useWorkspace();
     const block = props.block;
     const { label, icon: Icon, iconColor } = getBlockBadgeInfo(block);
+    const assetsService = useMemo(
+        () => (context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null),
+        [context, isInitialized],
+    );
+    /** Names, not ids: an asset id in the heading tells the author nothing about what they picked. */
+    const resolveAssetName = useCallback((assetId: string): string | null => {
+        const table = assetsService?.getAssets();
+        if (!table) {
+            return null;
+        }
+        for (const byId of Object.values(table)) {
+            const asset = (byId as Record<string, { name?: string }> | undefined)?.[assetId];
+            if (asset?.name) {
+                return asset.name;
+            }
+        }
+        return null;
+    }, [assetsService]);
+    const resolveMotionName = useStoryMotionNames();
+    const subject = describeBlockSubject(
+        block,
+        props.characters,
+        resolveAssetName,
+        props.document.scenes[props.sceneId],
+        props.document.scenes,
+        resolveMotionName,
+    );
+    const freeze = useFreezeGuard();
+
+    /**
+     * The read-only clamp for a frozen workspace, and the reason it is one `<fieldset>` rather than
+     * a `freeze.writes()` on each control: this inspector is two and a half thousand lines of
+     * per-action editors - forty-odd `Select`s, the numeric grids, the expression and condition
+     * entries - written by whoever added each action kind, and it reaches the panel WITHOUT going
+     * through `FieldRenderer`, so it had inherited none of the framework's read-only work. Measured
+     * on a frozen project: every field accepted input and every change was discarded on thaw.
+     *
+     * `display: contents` keeps it out of the layout, and per HTML every form control beneath it is
+     * disabled without knowing this exists - including the ones in an action editor written after
+     * this line.
+     *
+     * The two things here that are NOT form controls are exactly the two that should keep working:
+     * `Disclosure` is a `<details>`/`<summary>`, so sections still open, and the blueprint entry
+     * card steps out on its own (see `StoryActionBlueprintPreviewCard`).
+     */
+    const fields = (
+        <InspectorFields
+            block={block}
+            document={props.document}
+            sceneId={props.sceneId}
+            characters={props.characters}
+            onUpdatePayload={props.onUpdatePayload}
+            onSetDialogueCharacter={props.onSetDialogueCharacter}
+            generateTextId={props.generateTextId}
+            onCreateLayer={props.onCreateLayer}
+        />
+    );
 
     return (
+        // The body of the properties panel: no floating-card chrome, and no close button either — the
+        // rail follows the selection now, so there is nothing here to dismiss. Escape still reaches the
+        // controller (the row keeps its selection, the editor leaves inspector mode).
         <div
-            className="mt-2 max-w-3xl animate-scale-in rounded-xl border border-edge bg-surface-raised p-3 shadow-lg"
-            onClick={event => event.stopPropagation()}
-            onMouseDown={event => event.stopPropagation()}
             onKeyDown={event => {
                 if (event.key === "Escape") {
                     event.stopPropagation();
@@ -413,27 +508,16 @@ export function ActionInspector(props: {
                 </span>
                 <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium text-fg">{label}</div>
-                    <div className="truncate text-xs text-fg-subtle">{describeBlock(block, props.characters, props.document.scenes[props.sceneId], props.document.scenes)}</div>
+                    <div className="truncate text-xs text-fg-subtle">{subject}</div>
                 </div>
-                <button
-                    type="button"
-                    className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted transition-colors hover:border-edge-strong hover:text-fg"
-                    title={t("storyInspector.closeEditor")}
-                    onClick={props.onClose}
-                >
-                    <X className="h-3.5 w-3.5" />
-                </button>
             </div>
-            <InspectorFields
-                block={block}
-                document={props.document}
-                sceneId={props.sceneId}
-                characters={props.characters}
-                onUpdatePayload={props.onUpdatePayload}
-                onSetDialogueCharacter={props.onSetDialogueCharacter}
-                generateTextId={props.generateTextId}
-                onCreateLayer={props.onCreateLayer}
-            />
+            {freeze.frozen ? (
+                <fieldset disabled aria-readonly style={{ display: "contents" }}>
+                    {fields}
+                </fieldset>
+            ) : (
+                fields
+            )}
         </div>
     );
 }
@@ -457,6 +541,7 @@ function InspectorFields(props: {
                 <div className="grid grid-cols-1 gap-2">
                     <div className="text-xs text-fg-subtle">{t("storyInspector.narration.editHint")}</div>
                     <TextIdReadout text={payload.text} />
+                    <VoiceInspectorSection block={block} />
                 </div>
             );
         }
@@ -497,6 +582,7 @@ function InspectorFields(props: {
                             ) : null}
                         </FieldGrid>
                     </Section>
+                    <VoiceInspectorSection block={block} />
                 </div>
             );
         }
@@ -566,7 +652,7 @@ function InspectorFields(props: {
     }
     if (block.kind === "jump") {
         const payload = block.payload;
-        const sceneOptions = Object.values(props.document.scenes).map(scene => ({
+        const sceneOptions = listScenesInDocumentOrder(props.document).map(scene => ({
             value: scene.id,
             label: scene.name,
         }));
@@ -587,9 +673,6 @@ function InspectorFields(props: {
             </div>
         );
     }
-    if (block.kind === "code") {
-        return <CodePayloadFields payload={block.payload} onChange={props.onUpdatePayload} />;
-    }
     if (block.kind === "note") {
         return (
             <TextSegmentEditor
@@ -604,7 +687,9 @@ function InspectorFields(props: {
     if (block.kind === "declaration") {
         return <DeclarationPayloadFields payload={block.payload} onChange={props.onUpdatePayload} />;
     }
-    return <div className="text-sm text-fg-muted">{t("storyInspector.noEditableFields")}</div>;
+    // A block kind with no fields of its own contributes no field stack. The inspector's header
+    // already names the row; a line reporting that there is nothing to edit is that fact twice.
+    return null;
 }
 
 const declarationTypeOptions = (t: TFunc): SelectOption[] => [
@@ -745,28 +830,12 @@ function ActionPayloadFields(props: {
     }
     if (payload.action === "audio") {
         return (
-            <div className="grid grid-cols-1 gap-3">
-                <div className="nl-field-grid">
-                    <SelectField
-                        label={t("storyInspector.field.operation")}
-                        options={audioOperationOptions(t)}
-                        value={payload.operation}
-                        onChange={operation => props.onChange({ ...payload, operation: operation as Extract<StoryActionPayload, { action: "audio" }>["operation"] })}
-                    />
-                    <TextField label={t("storyInspector.audio.soundName")} value={payload.objectName ?? ""} onChange={objectName => props.onChange({ ...payload, objectName })} />
-                    <AssetField
-                        label={payload.operation === "setBgm" ? t("storyInspector.audio.bgmAsset") : t("storyInspector.audio.soundAsset")}
-                        assetType={AssetType.Audio}
-                        assetId={payload.assetId}
-                        onChange={assetId => props.onChange({ ...payload, assetId })}
-                    />
-                    <SecondsField label={t("storyInspector.audio.fade")} value={payload.fadeMs} onChange={fadeMs => props.onChange({ ...payload, fadeMs })} />
-                    <NumberField label={t("storyInspector.audio.volume")} value={payload.volume} onChange={volume => props.onChange({ ...payload, volume })} />
-                    <NumberField label={t("storyInspector.audio.rate")} value={payload.rate} onChange={rate => props.onChange({ ...payload, rate })} />
-                    <CheckboxField label={t("storyInspector.audio.loop")} checked={Boolean(payload.loop)} onChange={loop => props.onChange({ ...payload, loop })} />
-                    <CheckboxField label={t("storyInspector.field.muted")} checked={Boolean(payload.muted)} onChange={muted => props.onChange({ ...payload, muted })} />
-                </div>
-            </div>
+            <AudioActionEditor
+                payload={payload}
+                scene={props.document.scenes[props.sceneId] ?? null}
+                blockId={props.block.id}
+                onChange={props.onChange}
+            />
         );
     }
     if (payload.action === "setVariable") {
@@ -972,8 +1041,18 @@ function ActionPayloadFields(props: {
                     onChange={assetId => props.onChange({ ...payload, assetId })}
                 />
                 <CheckboxField label={t("storyInspector.field.muted")} checked={Boolean(payload.muted)} onChange={muted => props.onChange({ ...payload, muted })} />
+                {payload.operation === "seek" ? (
+                    <SecondsField
+                        label={t("storyInspector.video.seekTime")}
+                        value={payload.timeMs}
+                        onChange={timeMs => props.onChange({ ...payload, timeMs: timeMs === undefined ? undefined : Math.max(0, timeMs) })}
+                    />
+                ) : null}
             </div>
         );
+    }
+    if (payload.action === "vfx") {
+        return <VfxActionEditor payload={payload} onChange={props.onChange} />;
     }
     if (payload.action === "nvl") {
         return (
@@ -990,6 +1069,18 @@ function ActionPayloadFields(props: {
                     onChange={transition => props.onChange({ ...payload, transition })}
                 />
             </div>
+        );
+    }
+    if (payload.action === "camera") {
+        return (
+            <CameraActionEditor
+                payload={payload}
+                storyId={props.document.id}
+                sceneId={props.sceneId}
+                blockId={props.block.id}
+                storyName={props.document.name}
+                onChange={props.onChange}
+            />
         );
     }
     if (payload.action === "screenEffect") {
@@ -1015,6 +1106,612 @@ function ActionPayloadFields(props: {
         );
     }
     return null;
+}
+
+type AudioActionPayload = Extract<StoryActionPayload, { action: "audio" }>;
+
+/** The knobs an audio row can carry. Names, not components - the table below is data, not layout. */
+type AudioField = "track" | "name" | "asset" | "fade" | "volume" | "rate" | "loop" | "muted" | "seekTime";
+
+/**
+ * Which fields each audio operation actually consumes.
+ *
+ * **One table, because the alternative was nine fields on all nine operations.** Picking "Stop sound"
+ * used to show Seek Time, Volume, Rate, Loop and Muted - five controls the compiler never reads on
+ * that row, so editing them looked like an edit and changed nothing. A declarative table is what
+ * keeps this honest as the compiler moves: `compileAudioAction`'s switch and these rows are the same
+ * list written twice, and a divergence is visible here rather than buried in inline ternaries.
+ *
+ * `track` sits only on the two operations that CREATE a handle. A later `/vol piano` addresses a
+ * sound that already has a track, and the compiler reports a second, different one as a conflict
+ * rather than honouring it - so offering the select there would be a control that cannot work.
+ * `asset` follows the same rule for the same reason: the control family addresses by name.
+ */
+const AUDIO_OPERATION_FIELDS: Record<AudioActionPayload["operation"], readonly AudioField[]> = {
+    setBgm: ["track", "asset", "fade", "volume", "loop"],
+    playSound: ["track", "name", "asset", "fade", "volume", "rate", "loop"],
+    stopSound: ["name", "fade"],
+    pauseSound: ["name", "fade"],
+    resumeSound: ["name", "fade"],
+    setVolume: ["name", "volume", "fade"],
+    setRate: ["name", "rate"],
+    muteSound: ["name", "muted"],
+    seekSound: ["name", "seekTime"],
+};
+
+/** The bus an operation falls back to - the same split the compiler applies (`setBgm` is music). */
+function audioRowFallbackChannel(operation: AudioActionPayload["operation"]): AudioTrackChannel {
+    return operation === "setBgm" ? "bgm" : "sound";
+}
+
+/** The registry name a row addresses: `bgm` is reserved for the music channel (see BGM_OBJECT_NAME). */
+function audioRowSoundName(payload: AudioActionPayload): string {
+    return payload.operation === "setBgm"
+        ? BGM_OBJECT_NAME
+        : normalizeStageObjectName(payload.objectName || payload.assetId);
+}
+
+/** Every block of a scene in document order - the order the compiler walks, so first-match agrees. */
+function* sceneBlocksInOrder(scene: StoryScene, blockIds: readonly StoryBlockId[]): Generator<StoryBlock> {
+    for (const blockId of blockIds) {
+        const block = scene.blocks[blockId];
+        if (!block) {
+            continue;
+        }
+        yield block;
+        yield* sceneBlocksInOrder(scene, block.childrenIds);
+    }
+}
+
+/**
+ * The track this row's sound actually plays on - resolved by the compiler's own rule, so the bus
+ * shown is the bus the game routes to.
+ *
+ * The rule has two arms because the compiler has two. A `/bgm` row builds a NEW handle and replaces
+ * whatever was under the reserved name, so it answers from itself alone. Every other row addresses a
+ * handle *by name*, and that handle is created once by whichever row reaches it first - routed to
+ * that row's bus. So a later row inherits, and a later row that names a *different* track still
+ * inherits (the compiler reports that as a conflict rather than honouring it). Showing the requested
+ * track there would name a bus no playback ever uses.
+ *
+ * The scan is this scene only, first mention in document order - which is exactly the order the
+ * compiler walks. A handle created in another scene is out of reach of any static scan, and falls
+ * back to the operation's bus here for the same reason it does there.
+ */
+function resolveAudioRowTrack(
+    tracks: readonly ProjectAudioTrack[],
+    scene: StoryScene | null,
+    payload: AudioActionPayload,
+    blockId: StoryBlockId,
+): ProjectAudioTrack {
+    if (payload.operation === "setBgm") {
+        return resolveAudioTrack(tracks, payload.audioTrackId, "bgm");
+    }
+    if (scene) {
+        const name = audioRowSoundName(payload);
+        for (const block of sceneBlocksInOrder(scene, scene.rootBlockIds)) {
+            if (block.disabled || block.kind !== "action" || block.payload.action !== "audio") {
+                continue;
+            }
+            const creator = block.payload;
+            if (creator.operation !== "setBgm" && creator.operation !== "playSound") {
+                continue;
+            }
+            if (audioRowSoundName(creator) !== name) {
+                continue;
+            }
+            // This row IS the creator - fall through and answer from its own field, so an edit to the
+            // select updates the readout instead of reading back the value it just replaced.
+            return block.id === blockId
+                ? resolveAudioTrack(tracks, payload.audioTrackId, "sound")
+                : resolveAudioTrack(tracks, creator.audioTrackId, audioRowFallbackChannel(creator.operation));
+        }
+    }
+    return resolveAudioTrack(tracks, payload.audioTrackId, "sound");
+}
+
+/**
+ * The audio row's editor.
+ *
+ * Two things it carries rather than explains. The field grid shows only what the chosen operation
+ * consumes, from {@link AUDIO_OPERATION_FIELDS}. And the status line under it says where this row's
+ * sound goes - the bus chain, then the player slider that governs it - which is the one thing about
+ * the row that no field on screen can show. See {@link audioBusStatusLine}. Values only, one line,
+ * no labels.
+ */
+function AudioActionEditor(props: {
+    payload: AudioActionPayload;
+    scene: StoryScene | null;
+    blockId: StoryBlockId;
+    onChange: (payload: StoryBlock["payload"]) => void;
+}) {
+    const { t } = useTranslation();
+    const payload = props.payload;
+    const tracks = useProjectAudioTracks();
+    const fields = AUDIO_OPERATION_FIELDS[payload.operation] ?? [];
+    const has = (field: AudioField): boolean => fields.includes(field);
+
+    const track = resolveAudioRowTrack(tracks, props.scene, payload, props.blockId);
+    const trackOptions: SelectOption[] = [
+        {
+            value: "",
+            label: t("storyInspector.audio.trackDefault", {
+                name: resolveAudioTrack(tracks, undefined, audioRowFallbackChannel(payload.operation)).name,
+            }),
+        },
+        ...tracks.map(entry => ({ value: entry.id, label: entry.name })),
+    ];
+    const status = audioBusStatusLine(t, tracks, track.id, audioRowFallbackChannel(payload.operation));
+
+    return (
+        <div className="grid grid-cols-1 gap-3">
+            <div className="nl-field-grid">
+                <SelectField
+                    label={t("storyInspector.field.operation")}
+                    options={audioOperationOptions(t)}
+                    value={payload.operation}
+                    onChange={operation => props.onChange({ ...payload, operation: operation as AudioActionPayload["operation"] })}
+                />
+                {has("track") ? (
+                    <SelectField
+                        label={t("storyInspector.audio.track")}
+                        options={trackOptions}
+                        value={payload.audioTrackId ?? ""}
+                        onChange={value => props.onChange({ ...payload, audioTrackId: String(value) || undefined })}
+                    />
+                ) : null}
+                {has("name") ? (
+                    <TextField
+                        label={t("storyInspector.audio.soundName")}
+                        value={payload.objectName ?? ""}
+                        onChange={objectName => props.onChange({ ...payload, objectName })}
+                    />
+                ) : null}
+                {has("asset") ? (
+                    <AssetField
+                        label={payload.operation === "setBgm" ? t("storyInspector.audio.bgmAsset") : t("storyInspector.audio.soundAsset")}
+                        assetType={AssetType.Audio}
+                        assetId={payload.assetId}
+                        onChange={assetId => props.onChange({ ...payload, assetId })}
+                    />
+                ) : null}
+                {has("fade") ? (
+                    <SecondsField
+                        label={t("storyInspector.audio.fade")}
+                        value={payload.fadeMs}
+                        onChange={fadeMs => props.onChange({ ...payload, fadeMs: fadeMs === undefined ? undefined : Math.max(0, fadeMs) })}
+                    />
+                ) : null}
+                {has("seekTime") ? (
+                    <SecondsField
+                        label={t("storyInspector.audio.seekTime")}
+                        value={payload.timeMs}
+                        onChange={timeMs => props.onChange({ ...payload, timeMs: timeMs === undefined ? undefined : Math.max(0, timeMs) })}
+                    />
+                ) : null}
+                {has("volume") ? (
+                    <NumberField
+                        label={t("storyInspector.audio.volume")}
+                        value={payload.volume}
+                        // Clamped on commit: a gain node takes 0..1, and an authored 3 used to be
+                        // stored, shown back, and silently floored by the engine. Nothing in the mixer
+                        // amplifies either - a bus attenuates - so 1 is the loudest a clip can be.
+                        onChange={volume => props.onChange({ ...payload, volume: volume === undefined ? undefined : Math.min(1, Math.max(0, volume)) })}
+                    />
+                ) : null}
+                {has("rate") ? (
+                    <NumberField
+                        label={t("storyInspector.audio.rate")}
+                        value={payload.rate}
+                        onChange={rate => props.onChange({ ...payload, rate: rate === undefined ? undefined : Math.max(0, rate) })}
+                    />
+                ) : null}
+                {has("loop") ? (
+                    <CheckboxField
+                        label={t("storyInspector.audio.loop")}
+                        // The resolved answer, not the raw field: a row on a non-looping track whose
+                        // box read "on" because the field is empty would be lying about the game.
+                        checked={payload.loop ?? track.loop}
+                        onChange={loop => props.onChange({ ...payload, loop })}
+                    />
+                ) : null}
+                {has("muted") ? (
+                    <CheckboxField
+                        label={t("storyInspector.field.muted")}
+                        checked={Boolean(payload.muted)}
+                        onChange={muted => props.onChange({ ...payload, muted })}
+                    />
+                ) : null}
+            </div>
+            <div className="text-2xs tabular-nums text-fg-subtle">{status}</div>
+        </div>
+    );
+}
+
+type VfxActionPayload = Extract<StoryActionPayload, { action: "vfx" }>;
+
+const vfxOperationOptions = (t: TFunc): SelectOption[] => [
+    { value: "create", label: t("common.create") },
+    { value: "show", label: t("common.show") },
+    { value: "hide", label: t("common.hide") },
+    { value: "pause", label: t("storyInspector.vfxOperation.pause") },
+    { value: "resume", label: t("storyInspector.vfxOperation.resume") },
+    { value: "setRate", label: t("storyInspector.vfxOperation.setRate") },
+];
+
+/**
+ * Blend mode, named by the MATERIAL it belongs to rather than by the CSS keyword.
+ *
+ * An author picking here is not expressing a preference, they are declaring which of two production
+ * routes their clip came down: a true-alpha WebM composites plainly, glow rendered on black has to be
+ * added. Naming the routes is what makes the choice answerable without a paragraph of explanation
+ * (M3 card §1) - the keyword alone tells someone who already knows the answer.
+ */
+const vfxBlendOptions = (t: TFunc): SelectOption[] => [
+    { value: "normal", label: t("storyInspector.vfxBlend.normal") },
+    { value: "screen", label: t("storyInspector.vfxBlend.screen") },
+    { value: "multiply", label: t("storyInspector.vfxBlend.multiply") },
+    { value: "lighten", label: t("storyInspector.vfxBlend.lighten") },
+    { value: "color-dodge", label: t("storyInspector.vfxBlend.colorDodge") },
+    { value: "overlay", label: t("storyInspector.vfxBlend.overlay") },
+];
+
+const vfxFitOptions = (t: TFunc): SelectOption[] => [
+    { value: "cover", label: t("storyInspector.vfxFit.cover") },
+    { value: "contain", label: t("storyInspector.vfxFit.contain") },
+    { value: "fill", label: t("storyInspector.vfxFit.fill") },
+];
+
+/**
+ * An ambience overlay's knobs. Two things the layout carries rather than explains:
+ *  - the placement knobs (clip, blend, opacity, fit, z, loop) only appear on the row that CREATES the
+ *    overlay - a later `/hide petals` row cannot change how it composites;
+ *  - there is no transform section at all, because a `Vfx` is not a Displayable and has no transform
+ *    pipeline to offer.
+ */
+function VfxActionEditor(props: { payload: VfxActionPayload; onChange: (payload: StoryBlock["payload"]) => void }) {
+    const { t } = useTranslation();
+    const payload = props.payload;
+    const isCreate = payload.operation === "create";
+    const fades = payload.operation === "show" || payload.operation === "hide" || isCreate;
+    return (
+        <Section title={t("storyInspector.section.vfx")}>
+            <FieldGrid cols={2}>
+                <SelectField
+                    label={t("storyInspector.field.operation")}
+                    options={vfxOperationOptions(t)}
+                    value={payload.operation}
+                    onChange={operation => props.onChange({ ...payload, operation: operation as VfxActionPayload["operation"] })}
+                />
+                <TextField
+                    label={t("storyInspector.vfx.name")}
+                    value={payload.objectName}
+                    onChange={objectName => props.onChange({ ...payload, objectName })}
+                />
+                {isCreate ? (
+                    <>
+                        <AssetField
+                            label={t("storyInspector.vfx.clip")}
+                            assetType={AssetType.Video}
+                            assetId={payload.assetId}
+                            onChange={assetId => props.onChange({ ...payload, assetId })}
+                        />
+                        <SelectField
+                            label={t("storyInspector.vfx.blendMode")}
+                            options={vfxBlendOptions(t)}
+                            value={payload.blendMode ?? "normal"}
+                            onChange={blendMode => props.onChange({ ...payload, blendMode: blendMode as VfxActionPayload["blendMode"] })}
+                        />
+                        <NumberField
+                            label={t("storyInspector.vfx.opacity")}
+                            value={payload.opacity}
+                            onChange={opacity => props.onChange({ ...payload, opacity: opacity === undefined ? undefined : Math.min(1, Math.max(0, opacity)) })}
+                        />
+                        <SelectField
+                            label={t("storyInspector.vfx.fit")}
+                            options={vfxFitOptions(t)}
+                            value={payload.fit ?? "cover"}
+                            onChange={fit => props.onChange({ ...payload, fit: fit as VfxActionPayload["fit"] })}
+                        />
+                        <NumberField
+                            label={t("storyInspector.vfx.zIndex")}
+                            value={payload.zIndex}
+                            onChange={zIndex => props.onChange({ ...payload, zIndex })}
+                        />
+                        <CheckboxField
+                            label={t("storyInspector.vfx.loop")}
+                            checked={payload.loop !== false}
+                            onChange={loop => props.onChange({ ...payload, loop })}
+                        />
+                    </>
+                ) : null}
+                {isCreate || payload.operation === "setRate" ? (
+                    <NumberField
+                        label={t("storyInspector.vfx.rate")}
+                        value={payload.rate}
+                        onChange={rate => props.onChange({ ...payload, rate: rate === undefined ? undefined : Math.max(0, rate) })}
+                    />
+                ) : null}
+                {fades ? (
+                    <SecondsField
+                        label={t("storyInspector.vfx.fade")}
+                        value={payload.durationMs}
+                        onChange={durationMs => props.onChange({ ...payload, durationMs: durationMs === undefined ? undefined : Math.max(0, durationMs) })}
+                    />
+                ) : null}
+                {fades ? (
+                    <SelectField
+                        label={t("storyInspector.field.easing")}
+                        options={easingOptions(t)}
+                        value={payload.easing ?? ""}
+                        onChange={easing => props.onChange({ ...payload, easing: String(easing) || undefined })}
+                    />
+                ) : null}
+            </FieldGrid>
+        </Section>
+    );
+}
+
+/** The three channels of `PuppetState` a character row can address, and which list fills each one. */
+type PuppetChannel = "motion" | "expression" | "skin";
+
+const PUPPET_CHANNEL_LABEL: Record<PuppetChannel, TranslationKey> = {
+    motion: "storyInspector.character.puppetMotion",
+    expression: "storyInspector.character.puppetExpression",
+    skin: "storyInspector.character.puppetSkin",
+};
+
+/**
+ * Blank means the engine's `null` on every channel, but `null` does not *look* the same on each: a
+ * cleared motion is the model at rest, a cleared expression is whatever the motion and skin make, a
+ * cleared skin is the model's own default. Naming the outcome is the difference between a field that
+ * reads as unfilled and one that reads as a choice.
+ */
+const PUPPET_CHANNEL_NONE: Record<PuppetChannel, TranslationKey> = {
+    motion: "storyInspector.character.puppetNone",
+    expression: "storyInspector.character.puppetNone",
+    skin: "storyInspector.character.puppetSkinDefault",
+};
+
+/**
+ * The control for one puppet channel: the names the model reported, the model itself, and where the
+ * list came from.
+ *
+ * The reason this is not a plain text field. A puppet's motions, expressions and skins are named by
+ * the model, not enumerated in the project — so for a while the honest control looked like free text,
+ * and the author typed a name from memory that nothing could check. That stopped being true when the
+ * engine's `PuppetInstance.describe()` landed and `PuppetDescriptionService` began mounting the
+ * author's own runtime to ask: the names exist, in the editor, synchronously, and every other action
+ * in this inspector picks from a list.
+ *
+ * It still degrades to free text, per field and not per model — a skeleton with eleven animations and
+ * no expressions gets a list for its animations and a text box for its face — because a backend is
+ * free to implement no `describe()` at all and a project written on one machine opens on another that
+ * never installed the runtime. The status line is what tells those two apart; without it "no options"
+ * and "not asked" look identical.
+ */
+function PuppetChannelControl(props: {
+    character: Character;
+    channel: PuppetChannel;
+    value: string;
+    onChange: (value: string) => void;
+}) {
+    const { t } = useTranslation();
+    const appearance = props.character.profile.appearance;
+    const puppet = appearance.getKind() === "puppet" ? appearance.getPuppet() : null;
+    // Memoised on the puppet's individual fields: the appearance object is mutable and keeps the same
+    // reference across an edit, so depending on it alone would never re-ask.
+    const request = useMemo(
+        () => puppetDescriptionRequestFor(appearance),
+        [appearance, puppet?.assetId, puppet?.backend, puppet?.entry, puppet?.options, puppet?.size],
+    );
+    const { result, loading, refresh } = usePuppetDescription(request);
+    const description = result?.status === "ok" ? result.description : null;
+    const available = props.channel === "motion"
+        ? description?.motions
+        : props.channel === "expression"
+            ? description?.expressions
+            : description?.skins;
+
+    const placeholder = t(PUPPET_CHANNEL_NONE[props.channel]);
+    // A name the model no longer lists is kept at the head of the options rather than dropped, so a
+    // re-exported model shows the author what went missing instead of silently rewriting the row.
+    const names = puppetChoiceOptions(available ?? [], props.value || null);
+    const options: SelectOption[] | undefined = names.length > 0
+        ? [{ value: "", label: placeholder }, ...names.map(name => ({ value: name, label: name }))]
+        : undefined;
+
+    /** The state the preview is put in: the character's resting pose with this row's channel applied. */
+    const previewState = useMemo(() => ({
+        ...appearance.getPuppetDefaultState(),
+        [props.channel]: props.value || null,
+    }), [appearance, props.channel, props.value]);
+
+    return (
+        <div className="grid grid-cols-1 gap-2">
+            <div className="max-w-sm">
+                <TextField
+                    label={t(PUPPET_CHANNEL_LABEL[props.channel])}
+                    value={props.value}
+                    placeholder={placeholder}
+                    options={options}
+                    onChange={props.onChange}
+                />
+            </div>
+            <PuppetPreview request={request} state={previewState} />
+            {request ? (
+                <div className="flex items-center gap-2 text-2xs text-fg-subtle">
+                    <span className="min-w-0 flex-1 truncate">
+                        {loading
+                            ? t("characters.editor.puppet.describing")
+                            : t(puppetDescribeStatusKey(result?.status === "unavailable" ? result.reason : null))}
+                    </span>
+                    <button
+                        type="button"
+                        className="rounded-md p-1 text-fg-muted transition-colors hover:bg-fill hover:text-fg"
+                        aria-label={t("characters.editor.puppet.redescribe")}
+                        title={t("characters.editor.puppet.redescribe")}
+                        onClick={refresh}
+                    >
+                        <RefreshCw className={`h-3 w-3${loading ? " animate-spin" : ""}`} />
+                    </button>
+                </div>
+            ) : null}
+        </div>
+    );
+}
+
+/**
+ * The numeric-parameter rows of a `setParams` block.
+ *
+ * A parameter is the one free channel a model describes with a *shape* — an id, a range and a default
+ * — which is why it earns controls rather than a text box: the id is picked from what the model
+ * reported, and the value rides a slider that cannot leave the range. Where the model said nothing,
+ * both degrade (a text id, an unbounded number) rather than disappearing.
+ *
+ * The row holds a **map**, not one pair, because one authorial gesture is several parameters — turning
+ * a head is three of them moving together. `Puppet.setParam` merges, so the compiler emitting one call
+ * per entry is exactly equivalent to the row's intent.
+ */
+function PuppetParamRows(props: {
+    character: Character;
+    params: Record<string, number>;
+    onChange: (params: Record<string, number>) => void;
+}) {
+    const { t } = useTranslation();
+    const appearance = props.character.profile.appearance;
+    const puppet = appearance.getKind() === "puppet" ? appearance.getPuppet() : null;
+    const request = useMemo(
+        () => puppetDescriptionRequestFor(appearance),
+        [appearance, puppet?.assetId, puppet?.backend, puppet?.entry, puppet?.options, puppet?.size],
+    );
+    const { result, loading, refresh } = usePuppetDescription(request);
+    const specs = result?.status === "ok" ? result.description.params : [];
+    const entries = Object.entries(props.params);
+
+    /** Rename a key while keeping its position, so the list does not reorder under the author's cursor. */
+    const renameKey = (from: string, to: string) => {
+        const next: Record<string, number> = {};
+        for (const [id, value] of entries) {
+            next[id === from ? to : id] = value;
+        }
+        delete next[""];
+        props.onChange(next);
+    };
+
+    /** The first id the model reported that this row does not already carry. */
+    const nextUnusedId = specs.find(spec => !(spec.id in props.params));
+
+    return (
+        <div className="grid grid-cols-1 gap-2">
+            {entries.length === 0 ? (
+                <div className="text-xs text-fg-subtle">{t("storyInspector.character.puppetNoParams")}</div>
+            ) : null}
+            {entries.map(([id, value]) => {
+                const spec = specs.find(entry => entry.id === id);
+                // Ids the model listed, plus this row's own even when the model no longer lists it, minus
+                // the ones already spoken for on other rows - picking a duplicate would silently merge two.
+                const options: SelectOption[] | undefined = specs.length > 0
+                    ? [
+                        ...(spec ? [] : [{ value: id, label: id }]),
+                        ...specs.filter(entry => entry.id === id || !(entry.id in props.params)).map(entry => ({ value: entry.id, label: entry.id })),
+                    ]
+                    : undefined;
+                return (
+                    // Two lines per parameter, not one. The inspector is a ~360px column, and an
+                    // id + slider + number + delete on one row overflowed it: the id select collapsed
+                    // to its chevron, the number field left the panel, and the whole pane grew a
+                    // horizontal scrollbar. `min-w-0` on each flex child is the other half of the fix -
+                    // a flex item's default `min-width:auto` refuses to shrink below its content.
+                    <div key={id} className="rounded-md border border-edge/60 p-1.5">
+                        <div className="flex items-end gap-1.5">
+                            <div className="min-w-0 flex-1">
+                                <TextField
+                                    label={t("storyInspector.character.puppetParamId")}
+                                    value={id}
+                                    options={options}
+                                    onChange={next => renameKey(id, next.trim())}
+                                />
+                            </div>
+                            <button
+                                type="button"
+                                className="mb-1 shrink-0 rounded-md p-1 text-fg-subtle transition-colors hover:bg-fill hover:text-fg"
+                                aria-label={t("storyInspector.character.puppetParamRemove")}
+                                title={t("storyInspector.character.puppetParamRemove")}
+                                onClick={() => {
+                                    const next = { ...props.params };
+                                    delete next[id];
+                                    props.onChange(next);
+                                }}
+                            >
+                                <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                        </div>
+                        <div className="mt-1.5 flex items-center gap-2">
+                            {spec ? (
+                                <Slider
+                                    className="min-w-0 flex-1"
+                                    min={spec.min}
+                                    max={spec.max}
+                                    // A rig parameter is continuous and its range may be a fraction of
+                                    // one unit, so the step is derived from the range, not left at 1.
+                                    step={Math.max((spec.max - spec.min) / 200, 0.001)}
+                                    value={value}
+                                    onValueChange={next => props.onChange({ ...props.params, [id]: next })}
+                                />
+                            ) : null}
+                            <NumericDraftEnhancedInput
+                                committedDisplay={String(value)}
+                                onFiniteNumber={next => props.onChange({ ...props.params, [id]: next })}
+                                onEmpty={() => props.onChange({ ...props.params, [id]: 0 })}
+                                type="text"
+                                inputMode="decimal"
+                                popoverWhenNarrow={false}
+                                className={spec ? "w-14 shrink-0" : "min-w-0 flex-1"}
+                                inputClassName="h-7 w-full rounded-md border border-edge bg-surface-raised px-1.5 text-right text-xs text-fg outline-none focus:border-primary/50"
+                            />
+                            {spec ? (
+                                // The range the model gave. Without it the slider is a knob with no
+                                // scale - `-30…30` says what dragging it all the way will do.
+                                <span className="shrink-0 text-2xs tabular-nums text-fg-subtle">{spec.min}…{spec.max}</span>
+                            ) : null}
+                        </div>
+                    </div>
+                );
+            })}
+            <div className="flex items-center gap-2">
+                <button
+                    type="button"
+                    className="rounded-md border border-edge px-2 py-1 text-2xs text-fg-muted transition-colors hover:bg-fill hover:text-fg"
+                    onClick={() => props.onChange({
+                        ...props.params,
+                        // The model's own default for the parameter, which is the value that changes
+                        // nothing - so a freshly added row is visible without having moved the model yet.
+                        [nextUnusedId?.id ?? ""]: nextUnusedId?.default ?? 0,
+                    })}
+                    // Every id the model has is already on the row, and an un-described model has no id
+                    // to invent - in both cases there is nothing left to add.
+                    disabled={specs.length > 0 && !nextUnusedId}
+                >
+                    {t("storyInspector.character.puppetParamAdd")}
+                </button>
+                <span className="min-w-0 flex-1 truncate text-2xs text-fg-subtle">
+                    {loading
+                        ? t("characters.editor.puppet.describing")
+                        : t(puppetDescribeStatusKey(result?.status === "unavailable" ? result.reason : null))}
+                </span>
+                <button
+                    type="button"
+                    className="rounded-md p-1 text-fg-muted transition-colors hover:bg-fill hover:text-fg"
+                    aria-label={t("characters.editor.puppet.redescribe")}
+                    title={t("characters.editor.puppet.redescribe")}
+                    onClick={refresh}
+                >
+                    <RefreshCw className={`h-3 w-3${loading ? " animate-spin" : ""}`} />
+                </button>
+            </div>
+        </div>
+    );
 }
 
 type CharacterActionPayload = Extract<StoryActionPayload, { action: "character" }>;
@@ -1047,8 +1744,113 @@ function CharacterActionEditor(props: {
         // Auto-fill the stage name with the character's name, unless the author set a custom one.
         const autofill = !payload.objectName || payload.objectName === previousName || payload.objectName === payload.characterId;
         const objectName = autofill ? nextCharacter?.profile.getName() ?? payload.objectName : payload.objectName;
-        onChange({ ...payload, characterId, objectName, formName: undefined, variants: undefined });
+        onChange({ ...payload, characterId, objectName, pose: undefined, tags: undefined });
     }, [onChange, payload, props.characters]);
+
+    /**
+     * The name later commands use to reach this character on stage. Two things put a value in there
+     * without anyone typing it: the bare block's literal `"character"`, and the auto-fill from the
+     * profile above. Neither is authored content, so neither prints as a value — they show as a
+     * placeholder, and only a name the author actually chose reads as one.
+     *
+     * "Is this authored?" is `characterStageName`'s question, not a second opinion: that rule
+     * discards `"character"` and keys on the id instead, so a stage key that is not the trimmed
+     * text means the text was never a name.
+     *
+     * Display only. Whatever the payload already carries stays exactly as it is, and typing still
+     * writes exactly what was typed.
+     */
+    const derivedObjectName = selectedCharacter?.profile.getName() ?? "";
+    const authoredObjectName = (payload.objectName ?? "").trim();
+    const objectNameIsDerived = !authoredObjectName
+        || authoredObjectName === derivedObjectName
+        || characterStageName(payload.characterId, payload.objectName) !== authoredObjectName;
+
+    // The free numeric channel. Its own arm rather than a third `PuppetChannelControl` because it is
+    // the one that is not a single name: a map of ids to numbers, each with the range the model gave.
+    if (payload.operation === "setParams") {
+        return (
+            <div className="grid grid-cols-1 gap-3">
+                <FieldGrid cols={2}>
+                    <SelectField
+                        label={t("storyInspector.field.character")}
+                        options={characterOptions}
+                        value={payload.characterId ?? ""}
+                        onChange={updateCharacter}
+                    />
+                </FieldGrid>
+                {selectedCharacter && selectedCharacter.profile.appearance.getKind() === "puppet" ? (
+                    <Section title={t("storyInspector.character.puppetParams")}>
+                        <PuppetParamRows
+                            character={selectedCharacter}
+                            params={payload.params ?? {}}
+                            onChange={params => onChange({ ...payload, params })}
+                        />
+                    </Section>
+                ) : selectedCharacter ? (
+                    <div className="text-xs text-fg-subtle">{t("storyInspector.character.notPuppetHint")}</div>
+                ) : (
+                    <div className="text-xs text-fg-subtle">{t("storyInspector.character.chooseHint")}</div>
+                )}
+            </div>
+        );
+    }
+
+    // A puppet state row addresses the inside of the box: no stage name, no transform, no transition.
+    // What it does get is the model - the names it reported and a picture of it in the state this row
+    // asks for. Blank is not "unfilled": it is the engine's `null`, the request to clear.
+    if (payload.operation === "setMotion" || payload.operation === "setSkin") {
+        const channel = payload.operation === "setMotion" ? "motion" : "skin";
+        return (
+            <div className="grid grid-cols-1 gap-3">
+                <FieldGrid cols={2}>
+                    <SelectField
+                        label={t("storyInspector.field.character")}
+                        options={characterOptions}
+                        value={payload.characterId ?? ""}
+                        onChange={updateCharacter}
+                    />
+                </FieldGrid>
+                {selectedCharacter && selectedCharacter.profile.appearance.getKind() === "puppet" ? (
+                    <Section title={t("storyInspector.section.appearance")}>
+                        <PuppetChannelControl
+                            character={selectedCharacter}
+                            channel={channel}
+                            value={payload.puppetName ?? ""}
+                            onChange={puppetName => onChange({ ...payload, puppetName })}
+                        />
+                    </Section>
+                ) : selectedCharacter ? (
+                    // A character Studio draws itself has no runtime state to ask for. The command line
+                    // refuses the line outright (`notPuppetCharacter`); a row that got here through the
+                    // inspector says the same thing rather than offering a field the compile ignores.
+                    <div className="text-xs text-fg-subtle">{t("storyInspector.character.notPuppetHint")}</div>
+                ) : (
+                    <div className="text-xs text-fg-subtle">{t("storyInspector.character.chooseHint")}</div>
+                )}
+            </div>
+        );
+    }
+
+    // A rename touches the speaker label and nothing else - no portrait, so no stage name, appearance,
+    // transform or transition. Offering those would be offering to edit fields the compile never reads.
+    if (payload.operation === "setName") {
+        return (
+            <FieldGrid cols={2}>
+                <SelectField
+                    label={t("storyInspector.field.character")}
+                    options={characterOptions}
+                    value={payload.characterId ?? ""}
+                    onChange={updateCharacter}
+                />
+                <TextField
+                    label={t("storyInspector.character.displayName")}
+                    value={payload.displayName ?? ""}
+                    onChange={displayName => onChange({ ...payload, displayName })}
+                />
+            </FieldGrid>
+        );
+    }
 
     return (
         <div className="grid grid-cols-1 gap-3">
@@ -1060,18 +1862,30 @@ function CharacterActionEditor(props: {
                     onChange={updateCharacter}
                 />
                 <TextField
-                    label={t("storyInspector.character.stageName")}
-                    value={payload.objectName ?? ""}
+                    label={t("storyInspector.character.objectName")}
+                    value={objectNameIsDerived ? "" : payload.objectName ?? ""}
+                    placeholder={derivedObjectName}
                     onChange={objectName => onChange({ ...payload, objectName })}
                 />
             </FieldGrid>
-            {selectedCharacter ? (
+            {selectedCharacter && isPuppetAppearanceKind(selectedCharacter.profile.appearance.getKind()) ? (
+                // The three runtime-drawn kinds answer "which look" with a name only the model knows - so
+                // the project-side picker has nothing to show, and the model is asked instead.
+                <Section title={t("storyInspector.section.appearance")}>
+                    <PuppetChannelControl
+                        character={selectedCharacter}
+                        channel="expression"
+                        value={payload.puppetName ?? ""}
+                        onChange={puppetName => onChange({ ...payload, puppetName })}
+                    />
+                </Section>
+            ) : selectedCharacter ? (
                 <Section title={t("storyInspector.section.appearance")}>
                     <CharacterAppearancePicker
                         character={selectedCharacter}
-                        formName={payload.formName}
-                        variants={payload.variants}
-                        onChange={next => onChange({ ...payload, formName: next.formName, variants: next.variants })}
+                        pose={payload.pose}
+                        tags={payload.tags}
+                        onChange={next => onChange({ ...payload, pose: next.pose, tags: next.tags })}
                     />
                 </Section>
             ) : (
@@ -1150,7 +1964,7 @@ function setTransformNumberProp(
     };
 }
 
-function AssetField(props: {
+export function AssetField(props: {
     label: string;
     assetType: AssetType;
     assetId: string | undefined;
@@ -1245,6 +2059,24 @@ function DisplayableEffectEditor(props: {
                 ) : null}
                 {op === "filter" ? (
                     <TextField label={t("storyInspector.displayableEffect.cssFilter")} value={payload.filter ?? ""} onChange={filter => props.onChange({ ...payload, filter: filter || undefined })} />
+                ) : null}
+                {op === "backdrop" ? (
+                    // Sibling of the CSS-filter field: a raw backdrop-filter string (`blur(8px)` for
+                    // frosted glass), edited exactly as `filter` is - the hint below carries the example.
+                    <TextField
+                        label={t("storyInspector.displayableEffect.backdropFilter")}
+                        value={payload.backdropFilter ?? ""}
+                        onChange={backdropFilter => props.onChange({ ...payload, backdropFilter: backdropFilter || undefined })}
+                    />
+                ) : null}
+                {op === "blend" ? (
+                    // The same six curated modes the ambience overlay offers, not the CSS catalogue.
+                    <SelectField
+                        label={t("storyInspector.displayableEffect.blendMode")}
+                        options={vfxBlendOptions(t)}
+                        value={payload.mixBlendMode ?? "normal"}
+                        onChange={mixBlendMode => props.onChange({ ...payload, mixBlendMode: mixBlendMode as StoryVfxBlendMode })}
+                    />
                 ) : null}
                 {op === "darken" ? (
                     <NumberField label={t("storyInspector.displayableEffect.darkness")} value={payload.darkness} onChange={darkness => props.onChange({ ...payload, darkness })} />
@@ -1408,11 +2240,9 @@ function TransitionEditor(props: {
                     </>
                 ) : null}
                 {kind === "maskCircle" ? (
-                    <>
-                        <TextField label={t("storyInspector.field.center")} value={paramString(value.props, "center", "50% 50%")} onChange={center => setParam({ center: center || undefined })} />
-                        <NumberField label={t("storyInspector.field.fromRadius")} value={paramNumber(value.props, "from")} onChange={from => setParam({ from })} />
-                        <NumberField label={t("storyInspector.field.toRadius")} value={paramNumber(value.props, "to")} onChange={to => setParam({ to })} />
-                    </>
+                    // 0.16.0: a hard iris (Mask.iris feather 0). The old partial from/to radii have no
+                    // engine equivalent and are no longer offered - only the centre is adjustable.
+                    <TextField label={t("storyInspector.field.center")} value={paramString(value.props, "center", "50% 50%")} onChange={center => setParam({ center: center || undefined })} />
                 ) : null}
                 {kind === "maskWipe" ? (
                     <SelectField
@@ -1456,6 +2286,52 @@ function TransitionEditor(props: {
                     <>
                         <TextField label={t("storyInspector.field.center")} value={paramString(value.props, "center", "50% 50%")} onChange={center => setParam({ center: center || undefined })} />
                         <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                        <SelectField
+                            label={t("storyInspector.field.shape")}
+                            options={irisShapeOptions(t)}
+                            value={paramString(value.props, "shape", "circle")}
+                            onChange={shape => setParam({ shape: String(shape) })}
+                        />
+                    </>
+                ) : null}
+                {kind === "barnDoor" ? (
+                    <>
+                        <SelectField
+                            label={t("storyInspector.field.axis")}
+                            options={blindsOrientationOptions(t)}
+                            value={paramString(value.props, "axis", "horizontal")}
+                            onChange={axis => setParam({ axis: String(axis) })}
+                        />
+                        <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                    </>
+                ) : null}
+                {kind === "clock" ? (
+                    <>
+                        <TextField label={t("storyInspector.field.center")} value={paramString(value.props, "center", "50% 50%")} onChange={center => setParam({ center: center || undefined })} />
+                        <NumberField label={t("storyInspector.field.fromAngle")} value={paramNumber(value.props, "from")} onChange={from => setParam({ from })} />
+                        <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                        <SelectField
+                            label={t("storyInspector.field.direction")}
+                            options={clockDirectionOptions(t)}
+                            value={paramString(value.props, "direction", "clockwise")}
+                            onChange={direction => setParam({ direction: String(direction) })}
+                        />
+                    </>
+                ) : null}
+                {kind === "fan" ? (
+                    <>
+                        <NumberField label={t("storyInspector.field.blades")} value={paramNumber(value.props, "blades")} onChange={blades => setParam({ blades })} />
+                        <TextField label={t("storyInspector.field.center")} value={paramString(value.props, "center", "50% 50%")} onChange={center => setParam({ center: center || undefined })} />
+                        <NumberField label={t("storyInspector.field.fromAngle")} value={paramNumber(value.props, "from")} onChange={from => setParam({ from })} />
+                        <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                    </>
+                ) : null}
+                {kind === "dots" ? (
+                    <>
+                        <NumberField label={t("storyInspector.field.rows")} value={paramNumber(value.props, "rows")} onChange={rows => setParam({ rows })} />
+                        <NumberField label={t("storyInspector.field.cols")} value={paramNumber(value.props, "cols")} onChange={cols => setParam({ cols })} />
+                        <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                        <NumberField label={t("storyInspector.field.stagger")} value={paramNumber(value.props, "stagger")} onChange={stagger => setParam({ stagger })} />
                     </>
                 ) : null}
                 {kind === "blurDissolve" ? (
@@ -1499,6 +2375,14 @@ function TransitionEditor(props: {
                     <>
                         <TextField label={t("storyInspector.field.center")} value={paramString(value.props, "center", "50% 50%")} onChange={center => setParam({ center: center || undefined })} />
                         <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                    </>
+                ) : null}
+                {kind === "darkness" ? (
+                    // Left empty, the compiler applies the 1 → 0 pair: the new frame emerges out of
+                    // black. Values outside 0-1 are clamped by the compiler, not by this field.
+                    <>
+                        <NumberField label={t("storyInspector.transition.darknessFrom")} value={paramNumber(value.props, "from")} onChange={from => setParam({ from })} />
+                        <NumberField label={t("storyInspector.transition.darknessTo")} value={paramNumber(value.props, "to")} onChange={to => setParam({ to })} />
                     </>
                 ) : null}
             </FieldGrid>
@@ -1784,34 +2668,109 @@ function ControlPayloadFields(props: { document: StoryDocument; sceneId: StorySc
     if (props.payload.control === "condition") {
         return <div className="text-sm text-fg-muted">{t("storyInspector.control.conditionContainer")}</div>;
     }
+    if (props.payload.control === "label") {
+        const labelPayload = props.payload;
+        return (
+            <div className="max-w-sm">
+                <TextField
+                    label={t("storyInspector.control.labelName")}
+                    value={labelPayload.name}
+                    onChange={name => props.onChange({ ...labelPayload, name })}
+                />
+            </div>
+        );
+    }
+    if (props.payload.control === "goto") {
+        const gotoPayload = props.payload;
+        // A picker, not a free field: the target must be a label declared in THIS scene or the build
+        // fails, so offering the scene's own labels is the difference between a choice and a guess.
+        // Any dangling value already stored stays selectable, or switching rows would silently rewrite it.
+        const names = sceneLabelNames(props.document.scenes[props.sceneId]);
+        const options: SelectOption[] = names.map(name => ({ value: name, label: name }));
+        if (gotoPayload.targetLabel && !names.includes(gotoPayload.targetLabel)) {
+            options.unshift({ value: gotoPayload.targetLabel, label: gotoPayload.targetLabel });
+        }
+        return (
+            <div className="max-w-sm">
+                <SelectField
+                    label={t("storyInspector.control.gotoTarget")}
+                    options={options.length > 0 ? options : [{ value: "", label: t("storyInspector.control.noLabels") }]}
+                    value={gotoPayload.targetLabel}
+                    onChange={targetLabel => props.onChange({ ...gotoPayload, targetLabel: String(targetLabel) })}
+                />
+            </div>
+        );
+    }
+    if (props.payload.control === "break") {
+        return <div className="text-sm text-fg-muted">{t("storyInspector.control.breakHint")}</div>;
+    }
     if (props.payload.control !== "conditionBranch") {
         const groupPayload = props.payload as Extract<StoryControlPayload, { control: "sequence" | "parallel" | "race" | "repeat" }>;
+        const isRepeat = groupPayload.control === "repeat";
+        const conditional = isRepeat && groupPayload.until !== undefined;
         return (
-            <div className="nl-field-grid">
-                <SelectField
-                    label={t("storyInspector.control.control")}
-                    options={[
-                        { value: "sequence", label: t("storyInspector.control.sequence") },
-                        { value: "parallel", label: t("storyInspector.control.parallel") },
-                        { value: "race", label: t("storyInspector.control.race") },
-                        { value: "repeat", label: t("storyInspector.control.repeat") },
-                    ]}
-                    value={groupPayload.control}
-                    onChange={control => props.onChange({ ...groupPayload, control: control as "sequence" | "parallel" | "race" | "repeat" })}
-                />
-                <SelectField
-                    label={t("storyInspector.field.mode")}
-                    options={[
-                        { value: "do", label: t("storyInspector.control.mode.do") },
-                        { value: "doAsync", label: t("storyInspector.control.mode.doAsync") },
-                        { value: "all", label: t("storyInspector.control.mode.all") },
-                        { value: "allAsync", label: t("storyInspector.control.mode.allAsync") },
-                        { value: "any", label: t("storyInspector.control.mode.any") },
-                    ]}
-                    value={groupPayload.mode ?? "do"}
-                    onChange={mode => props.onChange({ ...groupPayload, mode: mode as "do" | "doAsync" | "all" | "allAsync" | "any" })}
-                />
-                <NumberField label={t("storyInspector.control.times")} value={groupPayload.times} onChange={times => props.onChange({ ...groupPayload, times })} />
+            <div className="grid grid-cols-1 gap-3">
+                <div className="nl-field-grid">
+                    <SelectField
+                        label={t("storyInspector.control.control")}
+                        options={[
+                            { value: "sequence", label: t("storyInspector.control.sequence") },
+                            { value: "parallel", label: t("storyInspector.control.parallel") },
+                            { value: "race", label: t("storyInspector.control.race") },
+                            { value: "repeat", label: t("storyInspector.control.repeat") },
+                        ]}
+                        value={groupPayload.control}
+                        onChange={control => {
+                            const next = control as "sequence" | "parallel" | "race" | "repeat";
+                            // `until` belongs to `repeat` alone - a sequence that kept one would be a
+                            // field no path reads and every future reader has to explain away.
+                            props.onChange(next === "repeat" ? { ...groupPayload, control: next } : { ...groupPayload, control: next, until: undefined });
+                        }}
+                    />
+                    <SelectField
+                        label={t("storyInspector.field.mode")}
+                        options={[
+                            { value: "do", label: t("storyInspector.control.mode.do") },
+                            { value: "doAsync", label: t("storyInspector.control.mode.doAsync") },
+                            { value: "all", label: t("storyInspector.control.mode.all") },
+                            { value: "allAsync", label: t("storyInspector.control.mode.allAsync") },
+                            { value: "any", label: t("storyInspector.control.mode.any") },
+                        ]}
+                        value={groupPayload.mode ?? "do"}
+                        onChange={mode => props.onChange({ ...groupPayload, mode: mode as "do" | "doAsync" | "all" | "allAsync" | "any" })}
+                    />
+                    {isRepeat ? (
+                        <SelectField
+                            label={t("storyInspector.control.loopKind")}
+                            options={[
+                                { value: "times", label: t("storyInspector.control.loopKindTimes") },
+                                { value: "until", label: t("storyInspector.control.loopKindUntil") },
+                            ]}
+                            value={conditional ? "until" : "times"}
+                            // The switch is a swap, not an overlay: the form it leaves keeps no field
+                            // behind, because a stored `times` under an `until` loop is a number the
+                            // header would offer to edit and the compiler would never read.
+                            onChange={kind => props.onChange(kind === "until"
+                                ? { ...groupPayload, times: undefined, until: groupPayload.until ?? EMPTY_EXPRESSION_CONDITION }
+                                : { ...groupPayload, until: undefined, times: groupPayload.times ?? 2 })}
+                        />
+                    ) : null}
+                    {isRepeat && !conditional ? (
+                        <NumberField label={t("storyInspector.control.times")} value={groupPayload.times} onChange={times => props.onChange({ ...groupPayload, times })} />
+                    ) : null}
+                </div>
+                {conditional ? (
+                    <div className="flex flex-col gap-2">
+                        <div className={FIELD_LABEL_CLASS}>{t("storyInspector.control.until")}</div>
+                        <ConditionEditor
+                            document={props.document}
+                            sceneId={props.sceneId}
+                            value={groupPayload.until}
+                            onChange={until => props.onChange({ ...groupPayload, until: until ?? EMPTY_EXPRESSION_CONDITION })}
+                        />
+                        <div className="text-2xs text-fg-subtle">{t("storyInspector.control.untilHint")}</div>
+                    </div>
+                ) : null}
             </div>
         );
     }
@@ -1857,28 +2816,6 @@ function ControlPayloadFields(props: { document: StoryDocument; sceneId: StorySc
     );
 }
 
-function CodePayloadFields(props: { payload: StoryCodePayload; onChange: (payload: StoryBlock["payload"]) => void }) {
-    const { t } = useTranslation();
-    return (
-        <div className="grid grid-cols-1 gap-2">
-            <div className="max-w-xs">
-                <SelectField
-                    label={t("storyInspector.code.language")}
-                    options={CODE_LANGUAGE_OPTIONS}
-                    value={props.payload.language}
-                    onChange={language => props.onChange({ ...props.payload, language: language as StoryCodePayload["language"] })}
-                />
-            </div>
-            <LabeledTextarea
-                label={t("storyInspector.code.source")}
-                className="min-h-28 font-mono"
-                value={props.payload.source}
-                onChange={source => props.onChange({ ...props.payload, source })}
-            />
-        </div>
-    );
-}
-
 function TextSegmentEditor(props: {
     label: string;
     text: StoryTextSegment | undefined;
@@ -1900,35 +2837,53 @@ function TextSegmentEditor(props: {
     );
 }
 
+/**
+ * The line's localization key: the id translation and voice-over file this line under. It is a uuid,
+ * which is nothing an author reads — so it stays folded away and copies in one click, the same shape
+ * the asset overview's storage row uses for hashes and shard paths (U3a).
+ */
 function TextIdReadout(props: { text: StoryTextSegment }) {
     const { t } = useTranslation();
+    const [open, setOpen] = useState(false);
     return (
         <div>
-            <div className={FIELD_LABEL_CLASS}>{t("storyInspector.textId")}</div>
-            <div className="flex h-9 min-h-[34px] min-w-0 items-center rounded-md border border-edge bg-surface-raised px-3 text-xs text-fg-muted">
-                <span className="truncate font-mono">{props.text.textId}</span>
-            </div>
+            <button
+                type="button"
+                onClick={() => setOpen(value => !value)}
+                aria-expanded={open}
+                className="flex items-center gap-1 rounded-md text-2xs text-fg-subtle transition-colors hover:text-fg-muted"
+            >
+                <ChevronDown className={`h-3 w-3 transition-transform ${open ? "" : "-rotate-90"}`} />
+                {t("storyInspector.textId")}
+            </button>
+            {open && (
+                <div className="mt-1 flex items-center gap-2 rounded-md border border-edge bg-surface-raised px-2.5 py-1.5">
+                    <span className="min-w-0 flex-1 truncate font-mono text-2xs text-fg-muted" title={props.text.textId}>
+                        {props.text.textId}
+                    </span>
+                    <button
+                        type="button"
+                        title={t("common.copy")}
+                        aria-label={t("common.copy")}
+                        onClick={() => void navigator.clipboard?.writeText(props.text.textId)}
+                        className="shrink-0 rounded-md p-0.5 text-fg-subtle transition-colors hover:bg-fill hover:text-fg-muted"
+                    >
+                        <Copy className="h-3 w-3" />
+                    </button>
+                </div>
+            )}
         </div>
     );
 }
 
-function SelectField(props: { label: string; options: SelectOption[]; value: string | number; onChange: (value: string | number) => void }) {
-    return (
-        <div>
-            <label className={FIELD_LABEL_CLASS}>{props.label}</label>
-            <Select
-                fullWidth
-                portalMenu
-                className={SELECT_CLASS}
-                options={props.options}
-                value={props.value}
-                onChange={props.onChange}
-            />
-        </div>
-    );
-}
-
-function TextField(props: { label: string; value: string; onChange: (value: string) => void; options?: SelectOption[] }) {
+function TextField(props: {
+    label: string;
+    value: string;
+    onChange: (value: string) => void;
+    options?: SelectOption[];
+    /** Shown when `value` is empty — used for a derived default, which is not authored content. */
+    placeholder?: string;
+}) {
     if (props.options) {
         return (
             <SelectField
@@ -1944,41 +2899,8 @@ function TextField(props: { label: string; value: string; onChange: (value: stri
             <label className={FIELD_LABEL_CLASS}>{props.label}</label>
             <EnhancedInput
                 value={props.value}
+                placeholder={props.placeholder}
                 onChange={props.onChange}
-            />
-        </div>
-    );
-}
-
-function NumberField(props: { label: string; value: number | undefined; onChange: (value: number | undefined) => void }) {
-    return (
-        <div>
-            <label className={FIELD_LABEL_CLASS}>{props.label}</label>
-            <NumericDraftEnhancedInput
-                committedDisplay={props.value === undefined ? "" : String(props.value)}
-                onFiniteNumber={props.onChange}
-                onEmpty={() => props.onChange(undefined)}
-                type="text"
-                inputMode="decimal"
-            />
-        </div>
-    );
-}
-
-/**
- * Edits a millisecond-backed timing field in seconds. `value` and `onChange` both speak the
- * stored milliseconds; only the text the author reads and types is seconds.
- */
-function SecondsField(props: { label: string; value: number | undefined; onChange: (ms: number | undefined) => void }) {
-    return (
-        <div>
-            <label className={FIELD_LABEL_CLASS}>{props.label}</label>
-            <NumericDraftEnhancedInput
-                committedDisplay={formatStorySecondsValue(props.value)}
-                onFiniteNumber={seconds => props.onChange(storySecondsToMs(seconds))}
-                onEmpty={() => props.onChange(undefined)}
-                type="text"
-                inputMode="decimal"
             />
         </div>
     );
@@ -2001,65 +2923,54 @@ function LabeledTextarea(props: { label: string; value: string; onChange: (value
  * A titled, boxed group used to organise the compact action editor into scannable
  * sections (Basics / Appearance / Motion / Transition / Timing / ...).
  */
-function Section(props: { title?: string; right?: ReactNode; className?: string; children: ReactNode }) {
-    return (
-        <section className={["rounded-lg border border-edge bg-fill-subtle p-2.5", props.className ?? ""].join(" ")}>
-            {props.title || props.right ? (
-                <div className="mb-2 flex items-center justify-between gap-2">
-                    {props.title ? (
-                        <div className="min-w-0 truncate text-2xs font-medium tracking-wide text-fg-muted">{props.title}</div>
-                    ) : <span />}
-                    {props.right ? <div className="shrink-0">{props.right}</div> : null}
-                </div>
-            ) : null}
-            {props.children}
-        </section>
-    );
-}
-
-/** Collapsible disclosure using the project chevron (matches the story panel accordion). */
-function Disclosure(props: { title: string; children: ReactNode }) {
-    return (
-        <details className="group">
-            <summary className="flex cursor-pointer select-none list-none items-center gap-1 text-2xs font-medium tracking-wide text-fg-subtle transition-colors hover:text-fg-muted [&::-webkit-details-marker]:hidden">
-                <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
-                {props.title}
-            </summary>
-            <div className="mt-2">{props.children}</div>
-        </details>
-    );
-}
-
 /**
- * Standard dense field grid used across every action editor. Columns respond to
- * the property card's own width (see `.nl-field-grid` in styles.css), so a narrow
- * editor pane collapses to fewer columns instead of overflowing horizontally.
+ * The inspector's voice region (WI-4): the current take's state in the primary locale, an audition
+ * play/stop button when a take exists, and a jump to the voice table where binding lives. Assignment
+ * stays import-first in the voice table (no inline assignment, `dialogue.voiceAssetId` is not revived).
+ * Hidden when the project has no voiced language or the block carries no voiceable line.
  */
-function FieldGrid(props: { cols?: 2 | 3 | 4; className?: string; children: ReactNode }) {
-    const cols = props.cols ?? 3;
-    const colClass = cols === 2 ? "nl-field-grid-2" : cols === 4 ? "nl-field-grid-4" : "";
-    return <div className={["nl-field-grid", colClass, props.className ?? ""].join(" ")}>{props.children}</div>;
-}
-
-/** Compact inline segmented toggle (e.g. Preset / Motion). */
-function SegToggle<T extends string>(props: { value: T; options: { value: T; label: string }[]; onChange: (value: T) => void }) {
+function VoiceInspectorSection({ block }: { block: StoryBlock }) {
+    const { t } = useTranslation();
+    const voice = useStoryVoiceState(block);
+    if (!voice.segment || !voice.primary) {
+        return null;
+    }
+    const statusLabel = voice.stale
+        ? t("storyInspector.voice.stale")
+        : voice.hasTake
+            ? t("storyInspector.voice.voiced")
+            : t("storyInspector.voice.none");
+    const statusClass = voice.stale ? "text-warning" : voice.hasTake ? "text-fg" : "text-fg-subtle";
     return (
-        <div className="inline-flex overflow-hidden rounded-md border border-edge bg-surface">
-            {props.options.map((option, index) => (
+        <Section
+            title={t("storyInspector.section.voice")}
+            right={
                 <button
-                    key={option.value}
                     type="button"
-                    className={[
-                        "h-7 px-2.5 text-xs transition-colors",
-                        index > 0 ? "border-l border-edge" : "",
-                        props.value === option.value ? "bg-primary/20 text-primary" : "text-fg-muted hover:bg-fill-subtle hover:text-fg",
-                    ].join(" ")}
-                    onClick={() => props.onChange(option.value)}
+                    className="grid h-6 w-6 place-items-center rounded-md text-fg-muted transition-colors hover:bg-fill hover:text-fg"
+                    title={t("storyInspector.voice.openTable")}
+                    onClick={voice.openVoiceTable}
                 >
-                    {option.label}
+                    <ExternalLink className="h-3.5 w-3.5" />
                 </button>
-            ))}
-        </div>
+            }
+        >
+            <div className="flex items-center gap-2">
+                <Mic className={`h-4 w-4 shrink-0 ${statusClass}`} />
+                <span className={`min-w-0 flex-1 truncate text-sm ${statusClass}`}>{statusLabel}</span>
+                {voice.hasTake ? (
+                    <button
+                        type="button"
+                        className={`grid h-7 w-7 shrink-0 place-items-center rounded-md border border-edge bg-surface-raised transition-colors hover:text-fg ${voice.isPlaying ? "text-primary" : "text-fg-muted"}`}
+                        title={voice.isPlaying ? t("story.rows.voiceStop") : t("story.rows.voicePlay")}
+                        aria-label={voice.isPlaying ? t("story.rows.voiceStop") : t("story.rows.voicePlay")}
+                        onClick={voice.toggleAudition}
+                    >
+                        {voice.isPlaying ? <Square className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                    </button>
+                ) : null}
+            </div>
+        </Section>
     );
 }
 

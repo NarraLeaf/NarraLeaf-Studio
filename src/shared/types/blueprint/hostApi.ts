@@ -1,8 +1,54 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 25 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 31 as const;
 
 /** Global runtime state key mirrored from the active NarraLeaf dialog hook. */
 export const BLUEPRINT_GAME_NAMETAG_STATE_KEY = "game.dialog.nametag" as const;
+
+/**
+ * Global runtime state key holding the speaking character's authored accent colour, as a
+ * {@link BlueprintRGBAColor}.
+ *
+ * Written on the same beat as the nametag (that write is also the value-graph re-evaluation clock),
+ * so a nametag widget that tints itself from this key repaints with the line it belongs to. Null
+ * when nobody is speaking, when the narrator is, or when the character has no colour set - readers
+ * fall back to the default opaque white every colour pin uses.
+ */
+export const BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY = "game.dialog.color" as const;
+
+/**
+ * Global runtime state key holding the *id* of the speaking character, staged by the host when the
+ * speaker changes.
+ *
+ * Exists because the nametag cannot be used as an identity. The engine reports the authored
+ * (source-language) name, hosts translate it before publishing it, and two characters may share a
+ * display name - so anything that needs to look a speaker up in the character table needs this
+ * instead. Null when nobody is speaking or the speaker is not a project character (a `/temp` name).
+ *
+ * Written by the host on the speaker-change callback and only ever *read* on the dialog beat, which
+ * is what lets a narrator line blank the derived colour without destroying who spoke last.
+ */
+export const BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY = "game.dialog.characterId" as const;
+
+/**
+ * Global runtime state key holding the project's character table as
+ * `BlueprintCharacterInfo[]` (see `./characterInfo`).
+ *
+ * Mirrored once per bundle rather than fetched per read: the table already ships inside the Dev Mode
+ * bundle, it does not change while a game runs, and going through global state means every host that
+ * shares a scope bridge - the app surfaces, each Game UI slot surface, the workspace story preview -
+ * gets `Get Character` for free without its own callback wiring.
+ */
+export const BLUEPRINT_GAME_CHARACTERS_STATE_KEY = "game.characters" as const;
+
+/**
+ * Global runtime state key holding the speaking character's dialog avatar, as an asset id.
+ *
+ * Mirrored from the engine's own avatar resolution (`useAvatar`), which reads the live portrait
+ * element - so it already accounts for the differential the character is currently wearing, and
+ * for undo, load and skip. Null when nobody is speaking, when the narrator is, or when the current
+ * differential resolves no avatar.
+ */
+export const BLUEPRINT_GAME_SPEAKER_AVATAR_STATE_KEY = "game.dialog.avatar" as const;
 
 /** Global runtime state key mirrored from the NarraLeaf notification slot bridge. */
 export const BLUEPRINT_GAME_NOTIFICATIONS_STATE_KEY = "game.notifications" as const;
@@ -65,6 +111,7 @@ export type BlueprintHostApiContract = {
     persistence: BlueprintHostApiFamily;
     frame: BlueprintHostApiFamily;
     game: BlueprintHostApiFamily;
+    sound: BlueprintHostApiFamily;
     devtools: BlueprintHostApiFamily;
 };
 
@@ -331,6 +378,22 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             input: { id: "" },
             output: null,
         },
+        writeAutoSave: {
+            capabilityId: "game.writeAutoSave",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: null,
+        },
+        listAutoSaves: {
+            capabilityId: "game.listAutoSaves",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: [],
+        },
         getHistory: {
             capabilityId: "game.getHistory",
             purity: "effectful",
@@ -353,6 +416,30 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: true,
             async: false,
             input: {},
+            output: null,
+        },
+        getSpeakerAvatar: {
+            capabilityId: "game.getSpeakerAvatar",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: {},
+            output: null,
+        },
+        getSpeakerColor: {
+            capabilityId: "game.getSpeakerColor",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: {},
+            output: null,
+        },
+        getCharacter: {
+            capabilityId: "game.getCharacter",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: { characterId: "" },
             output: null,
         },
         getNotifications: {
@@ -387,11 +474,43 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             input: {},
             output: false,
         },
+        isTextRead: {
+            capabilityId: "game.isTextRead",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: { textId: "" },
+            output: false,
+        },
         clearTextRead: {
             capabilityId: "game.clearTextRead",
             purity: "effectful",
             callableFromBinding: false,
             async: true,
+            input: {},
+            output: null,
+        },
+        isSceneVisited: {
+            capabilityId: "game.isSceneVisited",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: { sceneId: "" },
+            output: false,
+        },
+        isOptionPicked: {
+            capabilityId: "game.isOptionPicked",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: { optionId: "" },
+            output: false,
+        },
+        clearVisited: {
+            capabilityId: "game.clearVisited",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: false,
             input: {},
             output: null,
         },
@@ -465,6 +584,100 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: false,
             async: true,
             input: { key: "", value: null },
+            output: null,
+        },
+    },
+    /**
+     * Audio playback for authored UI, routed through the engine's own audio
+     * path (`LiveGame.playSound`) rather than a host-side Web Audio backend.
+     *
+     * Going through the engine is the whole point: it owns the per-channel
+     * mixer, so a clip played on the `bgm` channel obeys the player's BGM
+     * volume, the master volume and mute for free. A host that played audio
+     * itself would produce sound the player's settings cannot touch.
+     *
+     * Needed far beyond the gallery - before this family, an authored title
+     * screen could not play a button click.
+     */
+    sound: {
+        play: {
+            capabilityId: "sound.play",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            // `audioTrackId` replaced the old `channel`: the track names the bus *and* supplies the
+            // gain and the fade/loop defaults, so the three overrides below are all nullable - unset
+            // means "whatever the track says", which is not the same request as an explicit 0.
+            input: { assetId: "", audioTrackId: null, loop: null, volume: null, fadeInMs: null },
+            output: { kind: "soundHandle", id: "" },
+        },
+        stop: {
+            capabilityId: "sound.stop",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { handle: null, fadeMs: 0 },
+            output: null,
+        },
+        pause: {
+            capabilityId: "sound.pause",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { handle: null },
+            output: null,
+        },
+        resume: {
+            capabilityId: "sound.resume",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { handle: null },
+            output: null,
+        },
+        setVolume: {
+            capabilityId: "sound.setVolume",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { handle: null, volume: 1, fadeMs: 0 },
+            output: null,
+        },
+        seek: {
+            capabilityId: "sound.seek",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { handle: null, timeMs: 0 },
+            output: null,
+        },
+        isPlaying: {
+            capabilityId: "sound.isPlaying",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: false,
+            input: { handle: null },
+            output: false,
+        },
+        /**
+         * For host-owned media elements (the `nl.video` widget's `<video>`), which sit outside the
+         * engine's audio graph and would otherwise obey no player volume at all. Pure reads, so
+         * both are callable from a binding.
+         */
+        resolveElementVolume: {
+            capabilityId: "sound.resolveElementVolume",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: { audioTrackId: null, volume: null },
+            output: 1,
+        },
+        subscribeMixerChanges: {
+            capabilityId: "sound.subscribeMixerChanges",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: {},
             output: null,
         },
     },

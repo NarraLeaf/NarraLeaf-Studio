@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
     extractAssetEntries,
     extractBlueprintEntries,
+    extractCharacterEntries,
     extractLocalizationKeyEntries,
     extractStoryEntries,
+    extractSurfaceEntries,
     indexEntries,
     parseSearchQuery,
     querySearchIndex,
@@ -73,9 +75,6 @@ function blueprintDoc(): BlueprintDocument {
             globalMain: { activeBlueprintId: "bp-global", privateBlueprintIds: ["bp-global"] },
             "surfaceMain:surf-1": { activeBlueprintId: "bp-1", privateBlueprintIds: ["bp-1"] },
         },
-        persistentVariables: {
-            pv1: { id: "pv1", name: "Total Playtime" } as never,
-        },
         blueprints: {
             "bp-global": {
                 id: "bp-global",
@@ -99,7 +98,34 @@ function blueprintDoc(): BlueprintDocument {
                     kind: "graph",
                     graphs: {
                         events: {
-                            "ev-1": { graph: { nodes: { n1: { id: "n1", type: "flow.branch" } } } } as never,
+                            "ev-1": {
+                                name: "On Click",
+                                graph: {
+                                    nodes: {
+                                        n1: { id: "n1", type: "flow.branch" },
+                                        // Three of a kind: two indistinguishable, one carrying a literal.
+                                        s1: { id: "s1", type: "image.setAsset" },
+                                        s2: { id: "s2", type: "image.setAsset" },
+                                        s3: {
+                                            id: "s3",
+                                            type: "image.setAsset",
+                                            params: {
+                                                slot: 3,
+                                                loop: true,
+                                                assetId: "6f1c9a2e-2b7d-4c5e-9a10-77b3c0d1e2f4",
+                                                label: "forest at dusk",
+                                                note: "second pass",
+                                            },
+                                        },
+                                    },
+                                },
+                            } as never,
+                            // A sibling layer with the SAME name — the shape that survived a
+                            // per-graph dedup and put four identical rows on screen.
+                            "ev-2": {
+                                name: "On Click",
+                                graph: { nodes: { s4: { id: "s4", type: "image.setAsset" } } },
+                            } as never,
                         },
                         functions: {
                             "fn-1": { graph: { nodes: { n2: { id: "n2", type: "custom.unknown" } } } } as never,
@@ -132,7 +158,7 @@ describe("extractStoryEntries", () => {
     const entries = extractStoryEntries(storyDoc());
 
     it("indexes block prose with story › scene context and a block jump target", () => {
-        const prose = entries.find(e => e.group === "story");
+        const prose = entries.find(e => e.group === "storyText");
         expect(prose).toMatchObject({
             text: "Good morning, Inko!",
             detail: "Main Story › Opening",
@@ -141,7 +167,34 @@ describe("extractStoryEntries", () => {
     });
 
     it("skips blocks without a text segment", () => {
-        expect(entries.filter(e => e.group === "story")).toHaveLength(1);
+        expect(entries.filter(e => e.group === "storyText")).toHaveLength(1);
+    });
+
+    // The reported failure: typing a scene's name returned the lines inside it and never the scene.
+    it("indexes the scene itself, so its name navigates to the scene", () => {
+        const scene = entries.find(e => e.group === "scene");
+        expect(scene).toMatchObject({
+            text: "Opening",
+            detail: "Main Story",
+            target: { kind: "storyScene", storyId: "story-1", sceneId: "scene-1" },
+        });
+    });
+
+    it("keeps the runtime name searchable without showing it", () => {
+        const scene = entries.find(e => e.group === "scene");
+        expect(scene?.aux).toBe("opening");
+    });
+
+    it("indexes the story itself, landing on its flow map", () => {
+        expect(entries.find(e => e.group === "story")).toMatchObject({
+            text: "Main Story",
+            target: { kind: "storyFlow", storyId: "story-1" },
+        });
+    });
+
+    it("ranks the scene above its own lines for a query that matches both", () => {
+        const groups = querySearchIndex(indexEntries(entries), "opening");
+        expect(groups[0]?.group).toBe("scene");
     });
 
     it("indexes scene variable declarations as variable entries jumping to their row", () => {
@@ -162,15 +215,34 @@ describe("extractStoryEntries", () => {
 });
 
 describe("extractBlueprintEntries", () => {
-    const entries = extractBlueprintEntries(blueprintDoc(), type =>
-        type === "flow.branch" ? "Branch" : undefined,
-    );
+    const labels = { unnamedEvent: "Unnamed event", unnamedFunction: "Unnamed function" };
+    const resolveNodeLabel = (type: string) => {
+        if (type === "flow.branch") return "Branch";
+        if (type === "image.setAsset") return "Set Image Asset";
+        return undefined;
+    };
+    const extract = (resolveOwnerLabel?: (ownerKey: string) => string | undefined) =>
+        extractBlueprintEntries(blueprintDoc(), {
+            resolveNodeLabel,
+            resolveOwnerLabel,
+            persistentVariables: [{ id: "pv1", name: "Total Playtime", valueType: "json", storageKey: "pv1" }],
+            labels,
+        });
+    const entries = extract(ownerKey => (ownerKey === "surfaceMain:surf-1" ? "Main Menu › Portrait" : undefined));
+
+    it("indexes the blueprint itself, named by what it hangs on", () => {
+        expect(entries.find(e => e.group === "blueprint" && e.text === "Main Menu Logic")).toMatchObject({
+            text: "Main Menu Logic",
+            detail: "Main Menu › Portrait",
+            target: { kind: "blueprint", blueprintId: "bp-1", ownerKey: "surfaceMain:surf-1" },
+        });
+    });
 
     it("indexes member variables with the owner key for jumping", () => {
         const memberVar = entries.find(e => e.text === "Menu Open");
         expect(memberVar).toMatchObject({
             group: "variable",
-            detail: "Main Menu Logic",
+            detail: "Main Menu Logic › Main Menu › Portrait",
             target: { kind: "blueprint", blueprintId: "bp-1", ownerKey: "surfaceMain:surf-1" },
         });
     });
@@ -191,8 +263,93 @@ describe("extractBlueprintEntries", () => {
         });
     });
 
+    it("says where a node lives: owner › graph, not just the blueprint's name", () => {
+        expect(entries.find(e => e.group === "blueprintNode" && e.text === "Branch")?.detail)
+            .toBe("Main Menu › Portrait › On Click");
+    });
+
+    it("falls back to the blueprint name when the owner cannot be named", () => {
+        const anonymous = extract();
+        expect(anonymous.find(e => e.group === "blueprintNode" && e.text === "Branch")?.detail)
+            .toBe("Main Menu Logic › On Click");
+    });
+
+    // The reported failure: eight identical "Set Image Asset · Blueprint Nodes" rows.
+    it("collapses indistinguishable nodes into one row carrying the count", () => {
+        const setters = entries.filter(e => e.group === "blueprintNode" && e.text === "Set Image Asset");
+        expect(setters).toHaveLength(2);
+        const collapsed = setters.find(e => e.detail === "Main Menu › Portrait › On Click");
+        // s1 + s2 in "On Click", plus s4 in the identically-named sibling layer.
+        expect(collapsed?.count).toBe(3);
+        expect(collapsed?.target).toMatchObject({ focusNodeId: "s1" });
+    });
+
+    it("never emits two rows a person could not tell apart", () => {
+        const shown = entries
+            .filter(e => e.group === "blueprintNode")
+            .map(e => `${e.text}|${e.detail}`);
+        expect(new Set(shown).size).toBe(shown.length);
+    });
+
+    it("keeps a node whose own literals tell it apart, and shows them", () => {
+        const distinct = entries.find(e => e.group === "blueprintNode" && e.detail?.startsWith("forest at dusk"));
+        expect(distinct).toMatchObject({
+            text: "Set Image Asset",
+            detail: "forest at dusk · Main Menu › Portrait › On Click",
+            // Remaining literals stay searchable without crowding the row.
+            aux: "second pass",
+        });
+        // It stands for itself alone, so no count badge.
+        expect(distinct?.count).toBeUndefined();
+    });
+
+    it("ignores ids, numbers and booleans when looking for a distinguishing literal", () => {
+        const distinct = entries.find(e => e.group === "blueprintNode" && e.detail?.startsWith("forest at dusk"));
+        expect(distinct?.aux).not.toContain("6f1c9a2e");
+        expect(distinct?.aux).not.toContain("true");
+    });
+
+    it("names an unnamed graph rather than showing its id", () => {
+        expect(entries.find(e => e.text === "custom.unknown")?.detail)
+            .toBe("Main Menu › Portrait › Unnamed function");
+    });
+
     it("skips blueprints without an owner record", () => {
         expect(entries.find(e => e.text === "Unreachable")).toBeUndefined();
+        expect(entries.find(e => e.text === "Orphan")).toBeUndefined();
+    });
+});
+
+describe("extractCharacterEntries", () => {
+    it("indexes the cast by name with their group as context", () => {
+        const entries = extractCharacterEntries([
+            { id: "c1", name: "Inko", groupName: "Main Cast", aux: "childhood friend" },
+            { id: "c2", name: "" },
+        ]);
+        expect(entries).toHaveLength(1);
+        expect(entries[0]).toMatchObject({
+            group: "character",
+            text: "Inko",
+            detail: "Main Cast",
+            aux: "childhood friend",
+            target: { kind: "character", characterId: "c1" },
+        });
+    });
+});
+
+describe("extractSurfaceEntries", () => {
+    it("indexes surfaces by name with their kind as context", () => {
+        const entries = extractSurfaceEntries([
+            { id: "s1", name: "Main Menu", kindLabel: "Page" },
+            { id: "s2", name: "" },
+        ]);
+        expect(entries).toHaveLength(1);
+        expect(entries[0]).toMatchObject({
+            group: "uiSurface",
+            text: "Main Menu",
+            detail: "Page",
+            target: { kind: "uiSurface", surfaceId: "s1" },
+        });
     });
 });
 
@@ -239,10 +396,10 @@ describe("parseSearchQuery", () => {
     });
 
     it("pulls known key:value pairs out as filters", () => {
-        const parsed = parseSearchQuery("morning type:story scene:Opening speaker:Inko");
+        const parsed = parseSearchQuery("morning type:storyText scene:Opening speaker:Inko");
         expect(parsed.terms).toEqual(["morning"]);
         expect(parsed.filters).toMatchObject({
-            groups: ["story"],
+            groups: ["storyText"],
             sceneName: "opening",
             speaker: "inko",
         });
@@ -262,8 +419,8 @@ describe("parseSearchQuery", () => {
 
 describe("querySearchIndex", () => {
     const entries = indexEntries([
-        { id: "1", group: "story", text: "Good morning, Inko!", detail: "Main Story › Opening", fields: { sceneName: "Opening", speaker: "Inko" }, target: { kind: "localizationKey", keyName: "x" } },
-        { id: "2", group: "story", text: "It is a fine morning.", detail: "Main Story › Opening", fields: { sceneName: "Opening" }, target: { kind: "localizationKey", keyName: "x" } },
+        { id: "1", group: "storyText", text: "Good morning, Inko!", detail: "Main Story › Opening", fields: { sceneName: "Opening", speaker: "Inko" }, target: { kind: "localizationKey", keyName: "x" } },
+        { id: "2", group: "storyText", text: "It is a fine morning.", detail: "Main Story › Opening", fields: { sceneName: "Opening" }, target: { kind: "localizationKey", keyName: "x" } },
         { id: "3", group: "variable", text: "MorningFlag", target: { kind: "localizationKey", keyName: "x" } },
         { id: "4", group: "uiTextKey", text: "menu.start", detail: "Start the morning", target: { kind: "localizationKey", keyName: "x" } },
         { id: "5", group: "asset", text: "bgm-dawn.ogg", aux: "morning theme", fields: { assetType: "audio" }, target: { kind: "localizationKey", keyName: "x" } },
@@ -275,7 +432,7 @@ describe("querySearchIndex", () => {
 
     it("matches case-insensitively and reports the highlight range", () => {
         const groups = querySearchIndex(entries, "MORNING");
-        const story = groups.find(g => g.group === "story");
+        const story = groups.find(g => g.group === "storyText");
         expect(story?.hits).toHaveLength(2);
         const hit = story?.hits.find(h => h.entry.id === "1");
         // "morning" in "Good morning, Inko!" starts at index 5
@@ -284,7 +441,8 @@ describe("querySearchIndex", () => {
 
     it("groups results in the fixed group order", () => {
         const groups = querySearchIndex(entries, "morning");
-        expect(groups.map(g => g.group)).toEqual(["story", "asset", "variable", "uiTextKey"]);
+        // Entities (assets here) lead; content follows.
+        expect(groups.map(g => g.group)).toEqual(["asset", "storyText", "variable", "uiTextKey"]);
     });
 
     it("matches detail at a lower score without a title highlight", () => {
@@ -304,7 +462,7 @@ describe("querySearchIndex", () => {
     });
 
     it("ranks a word-boundary start above a mid-word occurrence", () => {
-        const boundary = querySearchIndex(entries, "morning").find(g => g.group === "story");
+        const boundary = querySearchIndex(entries, "morning").find(g => g.group === "storyText");
         // "morning" at word boundary in both; id 2's match is later in the text → lower score
         expect(boundary?.hits[0]?.entry.id).toBe("1");
     });
@@ -312,10 +470,10 @@ describe("querySearchIndex", () => {
     it("ANDs terms regardless of word order, across text and detail", () => {
         const forward = querySearchIndex(entries, "good morning");
         const reversed = querySearchIndex(entries, "morning good");
-        expect(forward.find(g => g.group === "story")?.hits.map(h => h.entry.id)).toEqual(["1"]);
-        expect(reversed.find(g => g.group === "story")?.hits.map(h => h.entry.id)).toEqual(["1"]);
+        expect(forward.find(g => g.group === "storyText")?.hits.map(h => h.entry.id)).toEqual(["1"]);
+        expect(reversed.find(g => g.group === "storyText")?.hits.map(h => h.entry.id)).toEqual(["1"]);
         // "inko" is in the title, "opening" only in the detail line - both must still match.
-        expect(querySearchIndex(entries, "inko opening").find(g => g.group === "story")?.hits).toHaveLength(1);
+        expect(querySearchIndex(entries, "inko opening").find(g => g.group === "storyText")?.hits).toHaveLength(1);
     });
 
     it("drops an entry when any term is missing", () => {
@@ -323,12 +481,12 @@ describe("querySearchIndex", () => {
     });
 
     it("highlights every matched term in the title", () => {
-        const hit = querySearchIndex(entries, "good inko").find(g => g.group === "story")?.hits[0];
+        const hit = querySearchIndex(entries, "good inko").find(g => g.group === "storyText")?.hits[0];
         expect(hit?.titleRanges).toEqual([[0, 4], [14, 18]]);
     });
 
     it("honours a quoted phrase as a single term", () => {
-        expect(querySearchIndex(entries, '"fine morning"').find(g => g.group === "story")?.hits.map(h => h.entry.id))
+        expect(querySearchIndex(entries, '"fine morning"').find(g => g.group === "storyText")?.hits.map(h => h.entry.id))
             .toEqual(["2"]);
         expect(querySearchIndex(entries, '"morning fine"')).toEqual([]);
     });
@@ -339,25 +497,25 @@ describe("querySearchIndex", () => {
     });
 
     it("narrows by a field filter from query syntax", () => {
-        expect(querySearchIndex(entries, "morning speaker:inko").find(g => g.group === "story")?.hits.map(h => h.entry.id))
+        expect(querySearchIndex(entries, "morning speaker:inko").find(g => g.group === "storyText")?.hits.map(h => h.entry.id))
             .toEqual(["1"]);
         expect(querySearchIndex(entries, "morning speaker:nobody")).toEqual([]);
     });
 
     it("intersects supplied filters with query-syntax filters", () => {
-        const groups = querySearchIndex(entries, "morning type:story", { filters: { groups: ["variable"] } });
+        const groups = querySearchIndex(entries, "morning type:storyText", { filters: { groups: ["variable"] } });
         expect(groups).toEqual([]);
     });
 
     it("returns nothing for a facet-only query", () => {
-        expect(querySearchIndex(entries, "type:story")).toEqual([]);
+        expect(querySearchIndex(entries, "type:storyText")).toEqual([]);
     });
 
     it("caps per group and reports the uncapped total", () => {
         const many = indexEntries(
             Array.from({ length: 30 }, (_, i) => ({
                 id: `m${i}`,
-                group: "story" as const,
+                group: "storyText" as const,
                 text: `morning line ${i}`,
                 target: { kind: "localizationKey" as const, keyName: "x" },
             })),
@@ -371,7 +529,7 @@ describe("querySearchIndex", () => {
         const many = indexEntries([
             ...Array.from({ length: 30 }, (_, i) => ({
                 id: `s${i}`,
-                group: "story" as const,
+                group: "storyText" as const,
                 text: `morning line ${i}`,
                 target: { kind: "localizationKey" as const, keyName: "x" },
             })),
@@ -382,8 +540,8 @@ describe("querySearchIndex", () => {
                 target: { kind: "localizationKey" as const, keyName: "x" },
             })),
         ]);
-        const groups = querySearchIndex(many, "morning", { maxPerGroup: 5, expandedGroups: ["story"] });
-        expect(groups.find(g => g.group === "story")?.hits).toHaveLength(30);
+        const groups = querySearchIndex(many, "morning", { maxPerGroup: 5, expandedGroups: ["storyText"] });
+        expect(groups.find(g => g.group === "storyText")?.hits).toHaveLength(30);
         expect(groups.find(g => g.group === "variable")?.hits).toHaveLength(5);
     });
 });
@@ -391,7 +549,7 @@ describe("querySearchIndex", () => {
 describe("indexEntries", () => {
     it("precomputes case-folded haystacks", () => {
         const [entry] = indexEntries([
-            { id: "1", group: "story", text: "Good Morning", detail: "Ch. ONE", aux: "TAG", target: { kind: "localizationKey", keyName: "x" } },
+            { id: "1", group: "storyText", text:"Good Morning", detail: "Ch. ONE", aux: "TAG", target: { kind: "localizationKey", keyName: "x" } },
         ]);
         expect(entry.textLower).toBe("good morning");
         expect(entry.detailLower).toBe("ch. one");
@@ -402,7 +560,7 @@ describe("indexEntries", () => {
     it("flags text whose folding is not length-preserving so ranges are not misreported", () => {
         // "İ" (U+0130) folds to two code units, desyncing folded indices from the original.
         const [entry] = indexEntries([
-            { id: "1", group: "story", text: "İstanbul", target: { kind: "localizationKey", keyName: "x" } },
+            { id: "1", group: "storyText", text:"İstanbul", target: { kind: "localizationKey", keyName: "x" } },
         ]);
         expect(entry.textFoldable).toBe(false);
         const hit = querySearchIndex([entry], "stanbul")[0]?.hits[0];

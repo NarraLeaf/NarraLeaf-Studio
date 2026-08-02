@@ -1,9 +1,35 @@
 import fs from "fs/promises";
 import { constants as fsConstants } from "fs";
 import path from "path";
-import type { GameBuildDesktopPlatform, GameBuildMobilePlatform } from "@shared/types/gameBuild";
+import type {
+    BuildPreflightCode,
+    GameBuildArch,
+    GameBuildDesktopPlatform,
+    GameBuildMobilePlatform,
+    GameBuildPlatform,
+} from "@shared/types/gameBuild";
+import { readProjectIconSet, resolveIconFile } from "@shared/types/projectIcons";
+import { signingNotarizes } from "@shared/types/signing";
+import type {
+    SigningCertificateExpiry,
+    SigningCredential,
+    SigningCredentialKind,
+    SigningPlatform,
+} from "@shared/types/signing";
+import type {
+    NormalizedPluginManifestV2,
+    PluginBuildDependencyTargetContribution,
+    PluginSidecarContribution,
+    PluginSidecarTargetContribution,
+} from "@shared/types/plugins";
 import type { ProjectConfigData } from "@shared/utils/nlproj";
 import type { MobileShellOrientation } from "@/buildWorker/mobile/mobileShellManifest";
+// Relative rather than "@/": preflight is unit-tested, and the test runner only
+// aliases "@" to the renderer tree - a value import through it would not resolve.
+import {
+    buildDependencySourcePath,
+    probePluginBuildDependency,
+} from "../../../../buildWorker/pluginBuildDependencies";
 
 /**
  * The checks a production build applies to a project, factored out of
@@ -58,14 +84,17 @@ export function readMobileOrientation(projectConfig: ProjectConfigData | null): 
  */
 export type GameBuildIconPlatform = GameBuildDesktopPlatform | GameBuildMobilePlatform;
 
-/** Read the configured icon path for a platform from project metadata. */
+/**
+ * The icon file a platform ships: its baked PNG, or the author's raw source
+ * when the project has never baked. Reads through the shared icon model, so a
+ * project still holding the legacy five-slot shape resolves the same way here,
+ * in the artifact compiler, and in the panel.
+ */
 export function readIconPath(
     projectConfig: ProjectConfigData | null,
     platform: GameBuildIconPlatform,
 ): string | undefined {
-    const icons = (projectConfig?.metadata as { icons?: Record<string, { path?: unknown }> } | undefined)?.icons;
-    const raw = icons?.[platform]?.path;
-    return typeof raw === "string" && raw.trim() ? raw.trim() : undefined;
+    return resolveIconFile(readProjectIconSet(projectConfig), platform)?.path;
 }
 
 /** Resolve a project-relative path, refusing to escape the project root. */
@@ -79,49 +108,67 @@ export function resolveInsideProject(projectPath: string, relativePath: string):
 }
 
 export type IconCheck =
-    | { status: "ok"; iconPath: string }
+    | {
+        status: "ok";
+        iconPath: string;
+        /** Below the packager's floor: it ships, upscaled, and preflight says so. */
+        lowResolution: boolean;
+        /** Whether the file came from the authoring bake rather than the raw source. */
+        baked: boolean;
+    }
     | { status: "missing" }
     | { status: "unusable" };
 
 /**
- * Whether a platform's configured icon is usable. "missing" covers both "none
- * configured" and "configured but not on disk"; "unusable" means present but
- * too small or corrupt. Neither fails a build - the desktop packager ships the
- * default Electron icon and a mobile repack leaves the shell's placeholder - so
- * both surface as warnings.
+ * Whether a platform's configured icon can be shipped. "missing" covers both
+ * "none configured" and "configured but not on disk"; "unusable" means present
+ * but corrupt.
+ *
+ * A small-but-readable icon is deliberately *not* one of those. It used to be,
+ * and the build then quietly swapped in Electron's default - which is how a
+ * project could carry an app icon the author had set, could show it in the
+ * dialog, and could still ship a packaged game with the Electron logo on it.
+ * Shipping the author's own icon upscaled is the lesser wrong, and the warning
+ * carries the news.
  */
 export async function checkIcon(
     projectPath: string,
     projectConfig: ProjectConfigData | null,
     platform: GameBuildIconPlatform,
 ): Promise<IconCheck> {
-    const configuredPath = readIconPath(projectConfig, platform);
-    if (!configuredPath) {
+    const configured = resolveIconFile(readProjectIconSet(projectConfig), platform);
+    if (!configured) {
         return { status: "missing" };
     }
     let iconPath: string;
     try {
-        iconPath = resolveInsideProject(projectPath, configuredPath);
+        iconPath = resolveInsideProject(projectPath, configured.path);
         await fs.access(iconPath);
     } catch {
         return { status: "missing" };
     }
-    if (await pngIconIsUnusable(iconPath)) {
+    const size = await readPngIconSize(iconPath);
+    if (size === "unreadable") {
         return { status: "unusable" };
     }
-    return { status: "ok", iconPath };
+    return {
+        status: "ok",
+        iconPath,
+        baked: configured.baked,
+        lowResolution: size !== null && Math.max(size.width, size.height) < MIN_ICON_SIZE,
+    };
 }
 
 /**
- * Whether a PNG icon is unusable for electron-builder's conversion - either
- * smaller than its 512×512 minimum, or corrupt/truncated so its dimensions
- * cannot be read. Both cases warn + fall back rather than hand a bad file to
- * electron-builder (which would hard-fail the whole build). Non-PNG files
- * (.ico/.icns are native, multi-resolution) are assumed fine.
+ * A PNG's dimensions from its IHDR chunk: null for a non-PNG (.ico/.icns are
+ * native multi-resolution containers, and their size cannot be read this way),
+ * "unreadable" for a file that claims to be a PNG but is corrupt or truncated.
  */
-export async function pngIconIsUnusable(iconPath: string): Promise<boolean> {
+export async function readPngIconSize(
+    iconPath: string,
+): Promise<{ width: number; height: number } | null | "unreadable"> {
     if (path.extname(iconPath).toLowerCase() !== ".png") {
-        return false;
+        return null;
     }
     let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
     try {
@@ -130,17 +177,336 @@ export async function pngIconIsUnusable(iconPath: string): Promise<boolean> {
         const { bytesRead } = await handle.read(header, 0, 24, 0);
         // PNG signature (8) + IHDR length/type (8) + width (4) + height (4).
         if (bytesRead < 24 || header.toString("ascii", 12, 16) !== "IHDR") {
-            return true;
+            return "unreadable";
         }
         const width = header.readUInt32BE(16);
         const height = header.readUInt32BE(20);
-        return width < MIN_ICON_SIZE || height < MIN_ICON_SIZE;
+        return width > 0 && height > 0 ? { width, height } : "unreadable";
     } catch {
-        return true;
+        return "unreadable";
     } finally {
         await handle?.close();
     }
 }
+
+/** One external binary a shipping plugin needs for one platform being built. */
+export type BuildDependencyRequirement = {
+    pluginId: string;
+    dependencyId: string;
+    /** `<platform>-<arch>`, the key the plugin declared the target under. */
+    platformKey: string;
+    target: PluginBuildDependencyTargetContribution;
+};
+
+/** A requirement this host can neither find cached nor fetch. */
+export type BuildDependencyGap = BuildDependencyRequirement & {
+    /** Why the fetch could not happen (transport error, HTTP 404, …). */
+    reason: string;
+    /** Where the author saves the file by hand to build with no network. */
+    cachePath: string;
+};
+
+/**
+ * The build dependencies the shipping plugins declare for the platforms being
+ * built. A plugin that declares nothing for a platform simply has no dependency
+ * there - that is a supported shape, not an omission, so it yields nothing.
+ */
+export function collectBuildDependencyRequirements(
+    manifests: NormalizedPluginManifestV2[],
+    platformKeys: string[],
+): BuildDependencyRequirement[] {
+    const requirements: BuildDependencyRequirement[] = [];
+    for (const manifest of manifests) {
+        for (const dependency of manifest.contributes.buildDependencies) {
+            for (const platformKey of platformKeys) {
+                const target = dependency.targets[platformKey];
+                if (target) {
+                    requirements.push({
+                        pluginId: manifest.id,
+                        dependencyId: dependency.id,
+                        platformKey,
+                        target,
+                    });
+                }
+            }
+        }
+    }
+    return requirements;
+}
+
+/** The platform key a desktop target's binaries are declared under. */
+export function buildDependencyPlatformKey(platform: GameBuildDesktopPlatform, arch: GameBuildArch): string {
+    return `${platform}-${arch}`;
+}
+
+/**
+ * Which required dependencies this host could not obtain. Probes rather than
+ * downloads: preflight runs while the build dialog is open, and pulling tens of
+ * megabytes to render it would be worse than the problem it reports.
+ */
+export async function checkBuildDependencies(
+    userDataDir: string,
+    requirements: BuildDependencyRequirement[],
+): Promise<BuildDependencyGap[]> {
+    // Probed together: each probe can sit out its own timeout, and a project
+    // with several dependencies would otherwise stall the dialog by their sum.
+    const probes = await Promise.all(requirements.map(async requirement => ({
+        requirement,
+        availability: await probePluginBuildDependency({ userDataDir, target: requirement.target }),
+    })));
+    return probes.flatMap(({ requirement, availability }) => availability.status === "unavailable"
+        ? [{
+            ...requirement,
+            reason: availability.reason,
+            cachePath: buildDependencySourcePath(userDataDir, requirement.target.sha256),
+        }]
+        : []);
+}
+
+/** One sidecar a shipping plugin would contribute to one platform being built. */
+export type SidecarRequirement = {
+    pluginId: string;
+    sidecarId: string;
+    kind: PluginSidecarContribution["kind"];
+    /** `<platform>-<arch>`, the key the sidecar's binaries are declared under. */
+    platformKey: string;
+    /** Absent when the plugin ships no binaries for this platform key. */
+    target?: PluginSidecarTargetContribution;
+};
+
+/**
+ * Every (sidecar, platform being built) pair the shipping plugins imply -
+ * including the pairs a plugin declares nothing for.
+ *
+ * Deliberately unlike collectBuildDependencyRequirements, which yields only
+ * declared targets: a missing build dependency is nothing to report, while a
+ * missing sidecar target IS the finding. A plugin whose sidecar exists on
+ * Windows and not on Linux still packages, and the game still runs - whatever
+ * that sidecar provided is simply gone from the Linux build, silently, unless
+ * somebody says so before the author ships it.
+ */
+export function collectSidecarRequirements(
+    manifests: NormalizedPluginManifestV2[],
+    platformKeys: string[],
+): SidecarRequirement[] {
+    const requirements: SidecarRequirement[] = [];
+    for (const manifest of manifests) {
+        for (const sidecar of manifest.contributes.sidecars) {
+            for (const platformKey of platformKeys) {
+                const target = sidecar.targets[platformKey];
+                requirements.push({
+                    pluginId: manifest.id,
+                    sidecarId: sidecar.id,
+                    kind: sidecar.kind,
+                    platformKey,
+                    ...(target ? { target } : {}),
+                });
+            }
+        }
+    }
+    return requirements;
+}
+
+/**
+ * Whether packaging this sidecar on `hostPlatform` would strip its executable
+ * bit, leaving an artifact whose sidecar cannot run.
+ *
+ * NTFS carries no POSIX mode: Node reports 0666 for every file, and
+ * electron-builder writes that straight into the dmg/AppImage it produces. The
+ * binary ships intact and unrunnable, and nothing about the build says so - the
+ * failure surfaces on a player's machine as a feature that never starts. There
+ * is no fix from a Windows host for the formats the packager owns, so this is
+ * an error rather than a warning; the way through is to build that target on
+ * that platform.
+ *
+ * `kind: "node"` sidecars are exempt: they run under the game's own Electron as
+ * Node, which needs no executable bit on the .js file.
+ */
+export function sidecarLosesExecBit(
+    requirement: SidecarRequirement,
+    hostPlatform: GameBuildDesktopPlatform,
+): boolean {
+    if (hostPlatform !== "windows" || requirement.kind !== "executable" || !requirement.target) {
+        return false;
+    }
+    const targetPlatform = sidecarTargetPlatform(requirement.platformKey);
+    return targetPlatform === "macos" || targetPlatform === "linux";
+}
+
+/** The platform half of a `<platform>-<arch>` key. */
+export function sidecarTargetPlatform(platformKey: string): string {
+    const separator = platformKey.indexOf("-");
+    return separator === -1 ? platformKey : platformKey.slice(0, separator);
+}
+
+/**
+ * Which signing credential the project uses per platform - ids only, exactly as
+ * `SigningConfiguration` stores them (see the renderer's project/configuration).
+ */
+export type ProjectSigningIds = Partial<Record<SigningPlatform, string>>;
+
+/**
+ * Keyed rather than listed so a new signable platform has to be given an answer
+ * here before it compiles. Mirrors the renderer's SIGNING_PLATFORMS; main cannot
+ * import from the renderer tree, and the shape is four words long.
+ */
+const SIGNING_PLATFORM_KEYS: Record<SigningPlatform, true> = {
+    windows: true,
+    macos: true,
+    linux: true,
+    android: true,
+    ios: true,
+};
+
+const SIGNING_PLATFORMS = Object.keys(SIGNING_PLATFORM_KEYS) as SigningPlatform[];
+
+/**
+ * The project's signing selection as the build will read it. Read defensively
+ * through an untyped view for the same reason readMobileOrientation is: the file
+ * is on the author's disk and may predate the setting, be hand-edited, or come
+ * from a newer Studio. A blank or non-string entry means "unsigned", which is
+ * also what an absent one means, so both simply do not appear.
+ */
+export function readProjectSigningIds(projectConfig: ProjectConfigData | null): ProjectSigningIds {
+    const configured = (projectConfig?.app as { signing?: unknown } | undefined)?.signing;
+    if (!configured || typeof configured !== "object") {
+        return {};
+    }
+    const record = configured as Record<string, unknown>;
+    const ids: ProjectSigningIds = {};
+    for (const platform of SIGNING_PLATFORMS) {
+        const id = record[platform];
+        if (typeof id === "string" && id.trim()) {
+            ids[platform] = id.trim();
+        }
+    }
+    return ids;
+}
+
+/**
+ * The signing slot a build target draws its credential from, or null when the
+ * target has none to draw. Only a web export has none: it is files on a server,
+ * with nothing to sign and nothing to check a signature.
+ *
+ * Exhaustive on purpose - the next platform addition must answer this question
+ * rather than fall through to "unsigned" unnoticed.
+ */
+export function signingPlatformForTarget(platform: GameBuildPlatform): SigningPlatform | null {
+    switch (platform) {
+        case "windows":
+            return "windows";
+        case "macos":
+            return "macos";
+        case "linux":
+            return "linux";
+        case "android":
+            return "android";
+        case "ios":
+            return "ios";
+        case "web":
+            return null;
+    }
+}
+
+/**
+ * Whether this host can sign with a credential of this kind at all.
+ *
+ * Three kinds are host-bound, all for the same underlying reason: the private
+ * key is held by an OS service rather than by a file we could carry anywhere.
+ * A certificate in the Windows certificate store (typically a hardware token or
+ * HSM) is reachable through the Windows CryptoAPI and nothing else, and both
+ * macOS kinds need Apple's `codesign`, which exists only on macOS - the .p12
+ * route included, since a certificate file still has to be imported into a
+ * keychain to be used. electron-builder refuses each of these off its own
+ * platform rather than producing an unsigned artifact.
+ *
+ * A Windows PFX file signs from any host - app-builder-lib signs through
+ * osslsigncode when it is not on Windows - and Azure Trusted Signing runs
+ * remotely.
+ */
+export function signingCredentialSupportedOnHost(
+    kind: SigningCredentialKind,
+    hostPlatform: GameBuildDesktopPlatform,
+): boolean {
+    if (kind === "windows-store") {
+        return hostPlatform === "windows";
+    }
+    if (kind === "macos-keychain" || kind === "macos-apple") {
+        return hostPlatform === "macos";
+    }
+    return true;
+}
+
+/**
+ * Whether signing with this credential reaches the network. It matters because
+ * every other part of a build is deliberately offline, and an author who builds
+ * on an air-gapped machine has to hear about it before the build, not from a
+ * timeout.
+ *
+ * Both Windows file/store paths do: the signature is timestamped by a
+ * certificate authority (without which it stops verifying the day the
+ * certificate expires), and a host with no Windows SDK also downloads the
+ * signing tool. Azure signs remotely by definition. Notarizing a macOS build
+ * uploads it to Apple and waits for a verdict, so it does too - but only when
+ * the credential carries a notary key, which is why this takes the credential
+ * and not just its kind. Signing a Mac build without notarizing is local, as are
+ * the keystore, iOS and gpg paths.
+ */
+export function signingReachesNetwork(credential: SigningCredential): boolean {
+    switch (credential.kind) {
+        case "windows-pfx":
+        case "windows-store":
+        case "windows-azure":
+            return true;
+        case "macos-keychain":
+        case "macos-apple":
+            return signingNotarizes(credential);
+        default:
+            return false;
+    }
+}
+
+/**
+ * The finding a certificate's validity window earns, or null when it is fine.
+ *
+ * A certificate whose start date has not arrived is reported as the same
+ * blocking code as an expired one: both mean "signing will fail today", and the
+ * message names the whole window rather than one edge of it.
+ */
+export function signingExpiryCode(expiry: SigningCertificateExpiry): BuildPreflightCode | null {
+    switch (expiry) {
+        case "expired":
+        case "not-yet-valid":
+            return "signing-credential-expired";
+        case "expiring":
+            return "signing-credential-expiring";
+        case "valid":
+            return null;
+    }
+}
+
+/** Whole days from now until `notAfter`, floored at 0. For the expiry warning. */
+export function daysUntil(notAfter: string, now: Date = new Date()): number {
+    const at = Date.parse(notAfter);
+    if (Number.isNaN(at)) {
+        return 0;
+    }
+    return Math.max(0, Math.floor((at - now.getTime()) / (24 * 60 * 60 * 1000)));
+}
+
+/**
+ * Locate the gpg binary that will produce the detached signatures. Studio never
+ * holds a GPG private key - it stays in the host's gpg-agent - so the whole
+ * Linux signing path depends on the host having gpg, and preflight has to say so
+ * before the build rather than after every artifact is already written.
+ *
+ * Deliberately re-exported from the worker rather than reimplemented here.
+ * Preflight and the signing step must agree to the letter: a second, slightly
+ * different search is how you get "gpg is missing" blocking a build that would
+ * have signed perfectly - which is exactly what happened when this file carried
+ * its own copy that could not find the gpg inside a Git for Windows install.
+ */
+export { findGpg as findGpgBinary } from "../../../../buildWorker/gpgSign";
 
 export type OutputDirCheck = "ok" | "not-writable" | "not-empty";
 

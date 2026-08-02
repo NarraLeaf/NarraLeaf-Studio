@@ -63,8 +63,6 @@ export type BlueprintDocument = {
     schemaVersion: BlueprintDocumentSchemaVersion;
     blueprints: Record<string, Blueprint>;
     ownerRecords: Record<string, BlueprintPrivateOwnerRecord>;
-    /** Project-level persistent variables; definitions are authored assets, values live in host-managed storage. */
-    persistentVariables: Record<string, BlueprintPersistentVariable>;
     meta?: {
         createdAt?: string;
         updatedAt?: string;
@@ -110,6 +108,11 @@ export type BlueprintVariable = {
     meta?: Record<string, unknown>;
 };
 
+/**
+ * Legacy shape, retained only as migration input. Project-level persistent variables left the
+ * blueprint document for the project-level variable registry (M-VAR); the v8→v9 migration reads this
+ * off the raw document and seeds `editor/variables.json`.
+ */
 export type BlueprintPersistentVariable = BlueprintVariable & {
     /** Stable storage key used for host persistence. Defaults to id and is not changed by rename. */
     storageKey: string;
@@ -164,8 +167,38 @@ export type BlueprintProgram =
       };
 
 export type BlueprintGraphIndex = {
+    /**
+     * The order the author arranged the event layers in, and the only place that order lives.
+     *
+     * `events` was an ordered map until v10: its key order was the layer list in the member
+     * tree, and `eventIds[0]` is which layer the editor opens. Key order is not a property
+     * any document format can rely on - canonical serialization sorts keys, and the keys
+     * here are UUIDs, so sorting presents the layers in an order related to neither creation
+     * nor naming. Nothing about it needed version control to break either: one
+     * `{...spread}` rebuild that reinserted a key would have done it.
+     *
+     * Optional because it is reconciled against `events` on every read (see
+     * `listBlueprintEventIds`), which has to cope with the two disagreeing anyway - so a
+     * document that has not been migrated is just the degenerate case where nothing is
+     * listed. Write it through the service, never by hand.
+     */
+    eventIds?: string[];
     events: Record<string, BlueprintEventGraph>;
+    /**
+     * Authored order of {@link functions}, on the same terms as {@link eventIds}.
+     *
+     * The stake is smaller but real: there is no function list in the member tree, yet
+     * `functionIds[0]` is the graph the editor opens for a blueprint that has no event
+     * layers. Sorted keys would make that a UUID lottery, re-rolled by nothing the author
+     * did.
+     */
+    functionIds?: string[];
     functions: Record<string, BlueprintFunctionGraph>;
+    /**
+     * No `macroIds` companion, because nothing writes this record: it is read defensively in
+     * half a dozen walkers and populated by none of them. Whoever makes macros real needs a
+     * carrier too - see `blueprintEventOrder.ts` - and a schema bump to add it.
+     */
     macros?: Record<string, BlueprintMacroGraph>;
 };
 

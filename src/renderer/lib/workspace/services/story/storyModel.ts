@@ -1,9 +1,13 @@
 import {
+    deriveUnassignedSceneIds,
+    listSceneBlocksInDocumentOrder,
+    listScenesInDocumentOrder,
     STORY_ANIMATION_SCHEMA_VERSION,
     STORY_DOCUMENT_SCHEMA_VERSION,
     STORY_LIBRARY_INDEX_SCHEMA_VERSION,
     StoryAnimationAsset,
     StoryAnimationAssetId,
+    StoryAnimationConfig,
     StoryAnimationIndex,
     StoryAnimationIndexEntry,
     StoryAnimationKeyframe,
@@ -38,6 +42,7 @@ import {
     StoryVariableValueType,
 } from "@shared/types/story";
 import { assertValidStoryEntityId, assertValidStoryId, isValidStoryEntityId, isValidStoryId } from "@shared/utils/storyId";
+import { legacyPoseId } from "../character/migrateAppearance";
 import type { StoryExpressionScope } from "@shared/utils/storyExpressionParser";
 import { createStoryExpressionScope, parseStoryExpression } from "@shared/utils/storyExpressionParser";
 
@@ -105,6 +110,8 @@ export function createStoryAnimationAsset(input: {
     targetKind: StoryAnimationAsset["targetKind"];
     timeline?: StoryAnimationTimeline;
     sequences?: StoryAnimationSequence[];
+    /** Seeded by the preset library — a looping idle motion is its repeat count, not just its keyframes. */
+    config?: StoryAnimationConfig;
     now: string;
 }): StoryAnimationAsset {
     assertValidStoryEntityId(input.id, "Story animation id");
@@ -116,7 +123,7 @@ export function createStoryAnimationAsset(input: {
         targetKind: input.targetKind,
         timeline: normalizeAnimationTimeline(input.timeline, sequences, input.id),
         sequences,
-        config: {},
+        config: input.config ?? {},
         meta: {
             createdAt: input.now,
             updatedAt: input.now,
@@ -324,8 +331,28 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
     if (version < 6) {
         migrated = migrateStoryDocumentV5toV6(migrated);
     }
-    // v4 (the `invalid` block kind and dialogue's `speakerName`) is purely additive: a v3 document is
-    // already a valid v4 one, so there is no step for it - only the stamp.
+    if (version < 9) {
+        migrated = migrateStoryDocumentV8toV9(migrated);
+    }
+    if (version < 10) {
+        migrated = migrateStoryDocumentV9toV10(migrated);
+    }
+    if (version < 12) {
+        migrated = migrateStoryDocumentV11toV12(migrated);
+    }
+    if (version < 13) {
+        migrated = migrateStoryDocumentV12toV13(migrated);
+    }
+    // v4 (the `invalid` block kind and dialogue's `speakerName`), v7 (the block-level `disabled`
+    // flag), v8 (the `event` rich-text run), v11 (a withdrawn marker block - see the version
+    // history in document.ts), v14 (the expression language's `array`/`index` nodes) and v15 (its
+    // `visited`/`invoke` nodes) are purely additive: an older document is already valid at the new
+    // version - it cannot contain a node kind that did not exist to be written - so there is no step
+    // for any of them, only the stamp (a v7 document falls through every step above and is stamped
+    // v15). v9 (M-VAR, the persistent `StoryVariableRef` rename),
+    // v10 (the character appearance rework - `formName`/`variants` become `pose`/`tags`), v12
+    // (the explicit order of chapter-less scenes) and v13 (the `code` block kind's removal) are NOT
+    // additive, so each has a real step.
     //
     // The stamp is unconditional, and has to be. Each migrator above ends by writing
     // STORY_DOCUMENT_SCHEMA_VERSION rather than the version it actually produces, so the ladder only
@@ -334,6 +361,193 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
     // v2 tests kept passing because V2toV3 stamps whatever the constant currently says. Landing the
     // stamp here means the next additive bump cannot reopen that hole.
     return { ...migrated, schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION };
+}
+
+/**
+ * v12→v13: the `code` block kind is gone; every one of its rows becomes a `note` carrying the source.
+ *
+ * The source is copied byte for byte, at the end of the note, after one header line naming the
+ * language the row declared. Nothing about the block ever ran - the compiler skipped it with a
+ * warning - so there is no behaviour to preserve; what there IS is text an author typed, sometimes
+ * real code, and deleting the row would be silent data loss on a save the author did not ask for.
+ * A note is the only kind that stores arbitrary prose and compiles to nothing, which is what a code
+ * block already was in practice.
+ *
+ * The `textId` is derived from the block id rather than generated, for two reasons: this function has
+ * no id service (it runs on a parsed object, off any React tree), and a derived id makes the step
+ * idempotent - running it twice cannot mint a second translation unit for the same row.
+ */
+function migrateStoryDocumentV12toV13(document: StoryDocument): StoryDocument {
+    const scenes: Record<StorySceneId, StoryScene> = {};
+    for (const [sceneId, scene] of Object.entries(document.scenes ?? {})) {
+        const blocks: Record<StoryBlockId, StoryBlock> = {};
+        for (const [blockId, block] of Object.entries(scene.blocks ?? {})) {
+            blocks[blockId] = migrateCodeBlockToNote(block);
+        }
+        scenes[sceneId] = { ...scene, blocks };
+    }
+    return { ...document, scenes };
+}
+
+/** The legacy `code` payload, as it survives only in documents on disk. */
+type LegacyCodePayload = {
+    language?: unknown;
+    source?: unknown;
+};
+
+function migrateCodeBlockToNote(block: StoryBlock): StoryBlock {
+    if ((block.kind as string) !== "code") {
+        return block;
+    }
+    const payload = block.payload as LegacyCodePayload;
+    const source = typeof payload.source === "string" ? payload.source : "";
+    const language = typeof payload.language === "string" && payload.language.trim() ? payload.language.trim() : "narraleaf";
+    // Header first, source last and untouched: `endsWith(source)` is the property the migration test
+    // pins, so a future edit to the header cannot start reformatting what the author wrote.
+    const value = `[code block (${language}), no longer supported]\n${source}`;
+    return {
+        id: block.id,
+        kind: "note",
+        parentId: block.parentId,
+        childrenIds: block.childrenIds,
+        ...(block.disabled ? { disabled: block.disabled } : {}),
+        payload: { text: { textId: `code_${block.id}`, role: "note", value } },
+    };
+}
+
+/**
+ * v11→v12: the order of the scenes no chapter claims becomes `unassignedSceneIds`.
+ *
+ * This step exists for one moment and cannot be deferred. `chapters[].sceneIds` orders scenes inside
+ * a chapter; an unclaimed scene's only position was its slot in the `scenes` record, and `JSON.parse`
+ * hands that back in the file's key order - which is the order the author arranged. The canonical
+ * serializer this milestone adopts sorts keys, so the FIRST canonical write of a v11 document
+ * destroys that order permanently. Reading it here, on the object as parsed and before anything has
+ * rebuilt the record, is the only chance to capture it.
+ *
+ * Two caveats worth stating rather than papering over. Integer-like keys (`"0"`, `"12"`) are
+ * reordered ahead of string keys by the engine itself, so a document carrying them lost its order
+ * before this ran - scene ids are UUID v4, so Studio never produces one, but a hand-written document
+ * could. And a document already canonically written by some path that skipped this ladder is past
+ * saving too; that is why the step is gated on the version and not on the field being absent.
+ *
+ * Idempotent by construction: `deriveUnassignedSceneIds` leads with whatever the document already
+ * declares and only falls back to key order for scenes it never mentioned, so running it on a
+ * migrated document reproduces the same array.
+ */
+function migrateStoryDocumentV11toV12(document: StoryDocument): StoryDocument {
+    const unassignedSceneIds = deriveUnassignedSceneIds(document);
+    if (unassignedSceneIds.length === 0) {
+        return document;
+    }
+    return { ...document, unassignedSceneIds };
+}
+
+/**
+ * v9→v10: a character no longer has forms, so `formName` + `variants` become `pose`.
+ *
+ * The pose id is *derived* from the old `(formName, variantName)` pair by the same function the
+ * character-store migration used, so this step never has to read the character store — the two
+ * migrations are independent and can run in either order, or in different sessions.
+ *
+ * Which variant becomes the pose: the first one the old selection named. That is not quite what the
+ * old resolver did — it took the first variant that happened to *have an asset*, which needs the
+ * character to know — but it is closer to what the author wrote, and where the two disagree the
+ * compiler now reports a missing pose instead of quietly drawing a different differential.
+ *
+ * Rows on a layered character are not translated: a stack cannot be inferred from a form name. They
+ * migrate to a pose id that resolves to nothing, and the compiler says so.
+ */
+function migrateStoryDocumentV9toV10(document: StoryDocument): StoryDocument {
+    return migrateCharacterFormsToPose(document) as StoryDocument;
+}
+
+type LegacyCharacterSelection = {
+    formName?: unknown;
+    variants?: unknown;
+    pose?: unknown;
+};
+
+/** The first variant an old selection named, in the order the old resolver would have walked. */
+function firstLegacyVariant(variants: unknown): string | null {
+    if (Array.isArray(variants)) {
+        const first = variants.find(entry => typeof entry === "string" && entry.trim());
+        return typeof first === "string" ? first.trim() : null;
+    }
+    if (variants && typeof variants === "object") {
+        for (const value of Object.values(variants as Record<string, unknown>)) {
+            if (typeof value === "string" && value.trim()) {
+                return value.trim();
+            }
+        }
+    }
+    return null;
+}
+
+function migrateCharacterFormsToPose(node: unknown): unknown {
+    if (Array.isArray(node)) {
+        return node.map(migrateCharacterFormsToPose);
+    }
+    if (!node || typeof node !== "object") {
+        return node;
+    }
+    const record = node as Record<string, unknown>;
+    const legacy = record as LegacyCharacterSelection;
+    const hasLegacy = "formName" in record || "variants" in record;
+    if (!hasLegacy || legacy.pose !== undefined) {
+        return Object.fromEntries(
+            Object.entries(record).map(([key, value]) => [key, migrateCharacterFormsToPose(value)]),
+        );
+    }
+
+    const formName = typeof legacy.formName === "string" ? legacy.formName.trim() : "";
+    const variantName = firstLegacyVariant(legacy.variants);
+    const migrated: Record<string, unknown> = Object.fromEntries(
+        Object.entries(record)
+            .filter(([key]) => key !== "formName" && key !== "variants")
+            .map(([key, value]) => [key, migrateCharacterFormsToPose(value)]),
+    );
+    if (formName && variantName) {
+        migrated.pose = legacyPoseId(formName, variantName);
+    }
+    return migrated;
+}
+
+/**
+ * v8→v9 (M-VAR): the persistent `StoryVariableRef` arm changes from `{ storageKey }` to
+ * `{ variableId }`, symmetric with the scene/saved arms. The value is unchanged - a persistent
+ * variable's `variableId` equals its `storageKey` - so this is a pure field rename with zero semantic
+ * change. Refs are nested everywhere (setVariable targets, conditions, expression `var` nodes, inline
+ * interpolations, snapshot keys are already `persistent:<value>`), so a generic deep walk rewrites
+ * every one; the guard (`scope:"persistent"` + `storageKey`, no declaration-payload `name`/`valueType`)
+ * distinguishes a ref arm from a `/persis` declaration payload, which keeps its `storageKey`.
+ */
+function migrateStoryDocumentV8toV9(document: StoryDocument): StoryDocument {
+    return migratePersistentRefsToVariableId(document) as StoryDocument;
+}
+
+function migratePersistentRefsToVariableId(node: unknown): unknown {
+    if (Array.isArray(node)) {
+        return node.map(migratePersistentRefsToVariableId);
+    }
+    if (node !== null && typeof node === "object") {
+        const obj = node as Record<string, unknown>;
+        if (
+            obj.scope === "persistent" &&
+            typeof obj.storageKey === "string" &&
+            !("variableId" in obj) &&
+            !("valueType" in obj) &&
+            !("name" in obj)
+        ) {
+            return { scope: "persistent", variableId: obj.storageKey };
+        }
+        const out: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(obj)) {
+            out[key] = migratePersistentRefsToVariableId(value);
+        }
+        return out;
+    }
+    return node;
 }
 
 function migrateStoryDocumentV1toV2(document: StoryDocument): StoryDocument {
@@ -688,11 +902,20 @@ export function normalizeStoryDocument(document: StoryDocument, now: string): St
     const entrySceneId = migrated.entrySceneId && scenes[migrated.entrySceneId]
         ? migrated.entrySceneId
         : firstSceneId(chapters);
+    // The only writer of `unassignedSceneIds`. Recomputing here rather than having every chapter
+    // mutation maintain it is the difference between a stale id that self-heals on the next load and
+    // a missed call site that loses an order nothing can reconstruct. It is omitted when empty -
+    // which is nearly every document - so a project that never had a chapter-less scene carries no
+    // trace of the field and no diff line for it.
+    const normalized: StoryDocument = { ...migrated, chapters, scenes, entrySceneId };
+    const unassignedSceneIds = deriveUnassignedSceneIds(normalized);
+    if (unassignedSceneIds.length > 0) {
+        normalized.unassignedSceneIds = unassignedSceneIds;
+    } else {
+        delete normalized.unassignedSceneIds;
+    }
     return {
-        ...migrated,
-        chapters,
-        scenes,
-        entrySceneId,
+        ...normalized,
         meta: {
             ...migrated.meta,
             updatedAt: migrated.meta?.updatedAt ?? now,
@@ -867,12 +1090,40 @@ function normalizeScene(scene: StoryScene): StoryScene {
             block.childrenIds = [];
         }
     }
+    const bgm = normalizeSceneBgm(scene.bgm);
     return {
         ...scene,
         description: typeof scene.description === "string" ? scene.description : "",
         defaultBackgroundAssetId: normalizeOptionalString(scene.defaultBackgroundAssetId),
+        ...(bgm ? { bgm } : { bgm: undefined }),
         rootBlockIds,
         blocks,
+    };
+}
+
+/**
+ * The scene's opening track. A record with no asset id names nothing playable, so it is dropped
+ * rather than carried - which also means a cleared picker leaves no residue in the document.
+ */
+function normalizeSceneBgm(value: StoryScene["bgm"]): StoryScene["bgm"] {
+    const assetId = normalizeOptionalString(value?.assetId);
+    if (!value || !assetId) {
+        return undefined;
+    }
+    const volume = typeof value.volume === "number" && Number.isFinite(value.volume)
+        ? Math.min(1, Math.max(0, value.volume))
+        : undefined;
+    const fadeMs = normalizeOptionalNonNegativeNumber(value.fadeMs);
+    const audioTrackId = normalizeOptionalString(value.audioTrackId);
+    return {
+        assetId,
+        // Kept as authored even when no track of that id exists: a reference to a deleted track
+        // resolves to its bus's built-in at compile time, and dropping the id here would silently
+        // discard the author's choice the moment they deleted a track they meant to re-create.
+        ...(audioTrackId !== undefined ? { audioTrackId } : {}),
+        ...(volume !== undefined ? { volume } : {}),
+        ...(typeof value.loop === "boolean" ? { loop: value.loop } : {}),
+        ...(fadeMs !== undefined ? { fadeMs } : {}),
     };
 }
 
@@ -889,8 +1140,15 @@ function normalizeOptionalPositiveNumber(value: unknown): number | undefined {
     return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
+/**
+ * Unknown kinds fall back to `image`, which is also what a Studio older than the camera-motion
+ * change does when it reads a `camera` asset — so this list is the one place a new motion target
+ * kind has to be registered, and forgetting it silently reassigns the asset rather than failing.
+ */
 function normalizeAnimationTargetKind(value: unknown): StoryAnimationIndexEntry["targetKind"] {
-    return value === "image" || value === "text" || value === "layer" || value === "character" ? value : "image";
+    return value === "image" || value === "text" || value === "layer" || value === "character" || value === "camera"
+        ? value
+        : "image";
 }
 
 const DEFAULT_ANIMATION_DURATION_MS = 300;
@@ -1312,11 +1570,35 @@ export type InvalidStoryBlockRef = {
  * writing), which is exactly why the build has to be the thing that refuses them - otherwise an
  * unfinished line ships, and the whole point of making it a distinct block kind is lost.
  */
+/**
+ * Whether a block is compiled out (schema v7): disabled itself, or nested inside a disabled ancestor.
+ * A disabled container skips its whole subtree, so a child is effectively disabled when any ancestor
+ * is. Ancestor-walk (bounded by a seen-set against a malformed cycle) rather than tree-descent, so it
+ * suits callers that iterate the flat block map.
+ */
+export function isBlockDisabled(scene: StoryScene, block: StoryBlock): boolean {
+    let current: StoryBlock | undefined = block;
+    const seen = new Set<StoryBlockId>();
+    while (current) {
+        if (current.disabled) {
+            return true;
+        }
+        if (!current.parentId || seen.has(current.id)) {
+            break;
+        }
+        seen.add(current.id);
+        current = scene.blocks[current.parentId];
+    }
+    return false;
+}
+
 export function collectInvalidBlocks(document: StoryDocument): InvalidStoryBlockRef[] {
     const found: InvalidStoryBlockRef[] = [];
-    for (const scene of Object.values(document.scenes)) {
-        for (const block of Object.values(scene.blocks)) {
-            if (block.kind === "invalid") {
+    for (const scene of listScenesInDocumentOrder(document)) {
+        for (const block of listSceneBlocksInDocumentOrder(scene)) {
+            // A disabled invalid row (or one under a disabled container) is compiled out, so the build
+            // does not gate on it — that is exactly what disabling a half-written line is for.
+            if (block.kind === "invalid" && !isBlockDisabled(scene, block)) {
                 found.push({
                     storyId: document.id,
                     storyName: document.name,
@@ -1349,8 +1631,11 @@ export type TempSpeakerRef = {
  */
 export function collectTempSpeakers(document: StoryDocument): TempSpeakerRef[] {
     const byName = new Map<string, TempSpeakerRef>();
-    for (const scene of Object.values(document.scenes)) {
-        for (const block of Object.values(scene.blocks)) {
+    // "First appearance" is a claim about the script, so both loops have to walk the declared order.
+    // Read out of the records instead and the first line to name a speaker is whichever one the JSON
+    // happened to hold first, which after a canonical write means whichever block has the lowest id.
+    for (const scene of listScenesInDocumentOrder(document)) {
+        for (const block of listSceneBlocksInDocumentOrder(scene)) {
             if (block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
                 continue;
             }

@@ -9,21 +9,43 @@
  * Each target supplies its own catalog reader: the studio entry reads the live
  * panel store, the runtime entry reads the copy published with the game.
  *
+ * ## Node shape
+ *
+ * The primary nodes return a whole **array** of rows - `Get Gallery`,
+ * `Get Gallery Variants`, `Get Gallery Groups`. That is the platform's idiom for
+ * screens built out of data (see the built-in `Get History`): one node feeds
+ * `Set List Content`, and the item template reads each field with
+ * `Get List Item Props` + `Get JSON Field`. The older count/index nodes are still
+ * registered for graphs that use them, but they are hidden from the palette:
+ * hand-rolling a for-loop over `Get Gallery Artwork Count` is exactly the
+ * authoring cost these array nodes exist to remove.
+ *
  * Note every value-producing node is `isPure: false` with exec pins. Pure nodes
  * are resolved by the host's own data resolver, which only knows built-in node
  * types - a pure plugin node's execute would never run and its outputs would
- * always be empty.
+ * always be empty. Rows therefore carry every field a cell needs (`unlocked`,
+ * `image`, `name`), so an item template never needs a per-cell gallery lookup.
+ *
+ * The unlock record is read and written through `app.game.store`, the
+ * capability-gated plugin storage declared as `store` in the manifest. No other
+ * host power is touched.
  */
 
-import type { BlueprintNodeDef } from "narraleaf-studio/plugin";
+import type { PluginBlueprintNodeDef } from "narraleaf-studio/plugin";
 import {
+    computeGalleryStats,
     findArtwork,
     isArtworkUnlocked,
-    normalizeGalleryCatalog,
+    normalizeGalleryStore,
+    GALLERY_ENTRY_KINDS,
+    type GalleryEntryKind,
+    projectGalleryEntries,
+    projectGalleryVariants,
     readUnlockedVariantIds,
     resolveCoverVariant,
     toImageAssetValue,
     type GalleryArtwork,
+    type GalleryStoreData,
     type GalleryVariant,
     PLUGIN_ID,
     RUNTIME_UNLOCKED_KEY,
@@ -34,6 +56,7 @@ export { PLUGIN_ID, RUNTIME_UNLOCKED_KEY, GALLERY_STORE_NAMESPACE } from "./cata
 /** Dynamic select option source ids, provided by the studio entry. */
 export const DYNAMIC_OPTIONS_SOURCE = `${PLUGIN_ID}.items`;
 export const VARIANT_OPTIONS_SOURCE = `${PLUGIN_ID}.variants`;
+export const GROUP_OPTIONS_SOURCE = `${PLUGIN_ID}.groups`;
 
 /**
  * Host value type tags. Written literally because plugins cannot import the
@@ -41,13 +64,19 @@ export const VARIANT_OPTIONS_SOURCE = `${PLUGIN_ID}.variants`;
  * imageless variant yields null, and every built-in image consumer accepts it.
  */
 const VALUE_TYPE_IMAGE_ASSET_NULLABLE = "ImageAsset|null";
+const VALUE_TYPE_ARRAY = "array";
 
 const PARAM_ARTWORK = "galleryItemId";
 const PARAM_VARIANT = "galleryVariantId";
+const PARAM_GROUP = "galleryGroupId";
+const PARAM_KIND = "galleryKind";
 const PIN_ARTWORK_ID = "artworkId";
+const PIN_VARIANT_ID = "variantId";
+const PIN_GROUP_ID = "groupId";
+const PIN_ONLY_UNLOCKED = "onlyUnlocked";
 const PIN_INDEX = "index";
 
-type ExecuteCtx = Parameters<BlueprintNodeDef["execute"]>[0];
+type ExecuteCtx = Parameters<PluginBlueprintNodeDef["execute"]>[0];
 
 /** Reads the authored catalog. Target-specific; see the module comment. */
 export type GalleryCatalogReader = () => unknown;
@@ -69,6 +98,40 @@ const artworkIdIn = {
     optional: true,
 } as const;
 
+/**
+ * Same override for the variant. This is what lets a CG viewer unlock or inspect
+ * the differential the player is actually looking at: the id comes off the list
+ * row, not out of a dropdown fixed at author time.
+ */
+const variantIdIn = {
+    id: PIN_VARIANT_ID,
+    kind: "input",
+    semantic: "data",
+    valueType: "string",
+    label: "Variant Id",
+    optional: true,
+} as const;
+
+const groupIdIn = {
+    id: PIN_GROUP_ID,
+    kind: "input",
+    semantic: "data",
+    valueType: "string",
+    label: "Group Id",
+    optional: true,
+} as const;
+
+/** Inline literal so the common case is a checkbox on the card, not a wired Boolean node. */
+const onlyUnlockedIn = {
+    id: PIN_ONLY_UNLOCKED,
+    kind: "input",
+    semantic: "data",
+    valueType: "boolean",
+    label: "Only Unlocked",
+    optional: true,
+    allowInlineLiteral: true,
+} as const;
+
 const indexIn = {
     id: PIN_INDEX,
     kind: "input",
@@ -78,10 +141,27 @@ const indexIn = {
     allowInlineLiteral: true,
 } as const;
 
-function artworkParam() {
+const entriesOut = {
+    id: "entries",
+    kind: "output",
+    semantic: "data",
+    valueType: VALUE_TYPE_ARRAY,
+    label: "Entries",
+} as const;
+
+const countOut = { id: "count", kind: "output", semantic: "data", valueType: "integer", label: "Count" } as const;
+const unlockedCountOut = {
+    id: "unlockedCount",
+    kind: "output",
+    semantic: "data",
+    valueType: "integer",
+    label: "Unlocked Count",
+} as const;
+
+function artworkParam(label = "Artwork") {
     return {
         key: PARAM_ARTWORK,
-        label: "Artwork",
+        label,
         kind: "select" as const,
         dynamicOptionsSource: DYNAMIC_OPTIONS_SOURCE,
     };
@@ -102,6 +182,35 @@ function variantParam(emptyOptionLabel: string) {
     };
 }
 
+function groupParam() {
+    return {
+        key: PARAM_GROUP,
+        label: "Group",
+        kind: "select" as const,
+        dynamicOptionsSource: GROUP_OPTIONS_SOURCE,
+        emptyOptionLabel: "All groups",
+    };
+}
+
+/**
+ * Which EXTRA column this node reads. Static options rather than a dynamic
+ * source: the kinds are a closed set in the plugin's own code, not project data.
+ */
+function kindParam() {
+    return {
+        key: PARAM_KIND,
+        label: "Kind",
+        kind: "select" as const,
+        emptyOptionLabel: "All kinds",
+        options: [
+            { value: "cg", label: "CG" },
+            { value: "scene", label: "Recollection" },
+            { value: "music", label: "Music" },
+            { value: "voice", label: "Voice" },
+        ],
+    };
+}
+
 function readString(value: unknown): string {
     return typeof value === "string" ? value.trim() : "";
 }
@@ -114,20 +223,52 @@ function readIndex(value: unknown): number {
     return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function getHostApi(ctx: ExecuteCtx) {
-    const hostApi = ctx.hostAdapter.blueprintRuntime?.hostApi;
-    if (!hostApi) {
-        throw new Error("Gallery nodes require game host APIs");
+/**
+ * Read the persisted unlock record.
+ *
+ * `app.game.store` is the plugin's own persistent area beside the player's saves
+ * - it survives starting a new game, which is exactly what unlocked CGs need. It
+ * is absent wherever the environment cannot back the `store` capability, notably
+ * the editor, where there is no player at all. Reading then degrades to "nothing
+ * unlocked" so a gallery previews as a locked grid instead of throwing.
+ */
+async function readStoredUnlocked(ctx: ExecuteCtx): Promise<unknown> {
+    return ctx.game.store ? await ctx.game.store.get(RUNTIME_UNLOCKED_KEY) : null;
+}
+
+/** Writes are dropped with a warning when the store is absent; see readStoredUnlocked. */
+async function writeStoredUnlocked(ctx: ExecuteCtx, variantIds: string[]): Promise<void> {
+    if (!ctx.game.store) {
+        ctx.game.log("warning", "gallery unlocks are not persisted here: plugin storage is unavailable");
+        return;
     }
-    return hostApi;
+    await ctx.game.store.set(RUNTIME_UNLOCKED_KEY, variantIds);
 }
 
 /**
- * The wired Artwork Id pin wins over the inspector selection, so a graph can
- * drive these nodes dynamically while still reading well when authored by hand.
+ * The wired pin wins over the inspector selection, so a graph can drive these
+ * nodes dynamically while still reading well when authored by hand.
  */
 function resolveArtworkId(ctx: ExecuteCtx): string {
     return readString(ctx.resolveInput?.(PIN_ARTWORK_ID)) || readString(ctx.params[PARAM_ARTWORK]);
+}
+
+function resolveVariantId(ctx: ExecuteCtx): string {
+    return readString(ctx.resolveInput?.(PIN_VARIANT_ID)) || readString(ctx.params[PARAM_VARIANT]);
+}
+
+function resolveGroupId(ctx: ExecuteCtx): string {
+    return readString(ctx.resolveInput?.(PIN_GROUP_ID)) || readString(ctx.params[PARAM_GROUP]);
+}
+
+/** Unknown or empty means every kind, so a stale param never empties a gallery. */
+function resolveKind(ctx: ExecuteCtx): GalleryEntryKind | null {
+    const raw = readString(ctx.params[PARAM_KIND]);
+    return GALLERY_ENTRY_KINDS.includes(raw as GalleryEntryKind) ? raw as GalleryEntryKind : null;
+}
+
+function resolveOnlyUnlocked(ctx: ExecuteCtx): boolean {
+    return ctx.resolveInput?.(PIN_ONLY_UNLOCKED) === true;
 }
 
 function requireArtwork(ctx: ExecuteCtx, artworks: GalleryArtwork[]): GalleryArtwork {
@@ -144,11 +285,12 @@ function requireArtwork(ctx: ExecuteCtx, artworks: GalleryArtwork[]): GalleryArt
 
 /**
  * Variants targeted by a lock/unlock node: the chosen one, or every variant of
- * the artwork when the picker is left empty. The empty case preserves the
- * pre-split behaviour of these nodes, whose param used to mean "the artwork".
+ * the artwork when neither the pin nor the picker names one. The empty case
+ * preserves the pre-split behaviour of these nodes, whose param used to mean
+ * "the artwork".
  */
 function resolveTargetVariants(ctx: ExecuteCtx, artwork: GalleryArtwork): GalleryVariant[] {
-    const variantId = readString(ctx.params[PARAM_VARIANT]);
+    const variantId = resolveVariantId(ctx);
     if (!variantId) {
         return artwork.variants;
     }
@@ -156,24 +298,27 @@ function resolveTargetVariants(ctx: ExecuteCtx, artwork: GalleryArtwork): Galler
     return variant ? [variant] : [];
 }
 
-export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): BlueprintNodeDef[] {
-    const catalog = (): GalleryArtwork[] => normalizeGalleryCatalog(readCatalog());
+function countUnlockedRows(rows: readonly { unlocked: boolean }[]): number {
+    return rows.reduce((total, row) => total + (row.unlocked ? 1 : 0), 0);
+}
+
+export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): PluginBlueprintNodeDef[] {
+    const store = (): GalleryStoreData => normalizeGalleryStore(readCatalog());
 
     /** Unlock reads are always catalog-aware; see readUnlockedVariantIds. */
     const readUnlocked = async (ctx: ExecuteCtx, artworks: GalleryArtwork[]): Promise<Set<string>> => {
-        const stored = await getHostApi(ctx).persistence.get(RUNTIME_UNLOCKED_KEY);
-        return readUnlockedVariantIds(stored, artworks);
+        return readUnlockedVariantIds(await readStoredUnlocked(ctx), artworks);
     };
 
     const writeUnlocked = async (ctx: ExecuteCtx, unlocked: Set<string>): Promise<void> => {
-        await getHostApi(ctx).persistence.set(RUNTIME_UNLOCKED_KEY, Array.from(unlocked));
+        await writeStoredUnlocked(ctx, Array.from(unlocked));
     };
 
     const setVariantsLocked = async (ctx: ExecuteCtx, mode: "add" | "remove") => {
-        const artworks = catalog();
-        const artwork = requireArtwork(ctx, artworks);
+        const data = store();
+        const artwork = requireArtwork(ctx, data.items);
         const targets = resolveTargetVariants(ctx, artwork);
-        const unlocked = await readUnlocked(ctx, artworks);
+        const unlocked = await readUnlocked(ctx, data.items);
         for (const variant of targets) {
             if (mode === "add") {
                 unlocked.add(variant.id);
@@ -185,15 +330,156 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
     };
 
     return [
+        // ---------------------------------------------------------------
+        // Primary: whole-collection reads that feed a List widget directly.
+        // ---------------------------------------------------------------
         {
-            type: `${PLUGIN_ID}.add`,
-            displayName: "Unlock Gallery Variant",
+            type: `${PLUGIN_ID}.getEntries`,
+            displayName: "Get Gallery",
             category: "Gallery",
-            keywords: ["gallery", "unlock", "add", "cg", "variant"],
+            keywords: ["gallery", "cg", "entries", "items", "list", "grid", "array", "artworks"],
             graphKinds: ["event", "macro"],
             isPure: false,
             isLatent: true,
-            pins: [execIn, artworkIdIn, execNext],
+            pins: [
+                execIn,
+                groupIdIn,
+                onlyUnlockedIn,
+                execNext,
+                entriesOut,
+                countOut,
+                unlockedCountOut,
+            ],
+            inspectorParams: [kindParam(), groupParam()],
+            // Wire Entries into Set List Content; each row already carries its
+            // own lock state and resolved art, so the item template needs no
+            // further gallery node. Kind picks the EXTRA column: CG grid,
+            // recollection list, music player, voice list.
+            execute: async ctx => {
+                const data = store();
+                const unlocked = await readUnlocked(ctx, data.items);
+                const entries = projectGalleryEntries(data, unlocked, {
+                    groupId: resolveGroupId(ctx),
+                    kind: resolveKind(ctx),
+                    onlyUnlocked: resolveOnlyUnlocked(ctx),
+                });
+                return {
+                    nextPort: "next",
+                    outputValues: {
+                        entries,
+                        count: entries.length,
+                        unlockedCount: countUnlockedRows(entries),
+                    },
+                };
+            },
+        },
+        {
+            type: `${PLUGIN_ID}.getVariants`,
+            displayName: "Get Gallery Variants",
+            category: "Gallery",
+            keywords: ["gallery", "variant", "differential", "cg", "list", "array", "strip"],
+            graphKinds: ["event", "macro"],
+            isPure: false,
+            isLatent: true,
+            pins: [
+                execIn,
+                artworkIdIn,
+                onlyUnlockedIn,
+                execNext,
+                entriesOut,
+                countOut,
+                unlockedCountOut,
+            ],
+            inspectorParams: [artworkParam()],
+            // The differential strip of a CG viewer: same row shape as Get
+            // Gallery, scoped to one artwork.
+            execute: async ctx => {
+                const data = store();
+                const artwork = requireArtwork(ctx, data.items);
+                const unlocked = await readUnlocked(ctx, data.items);
+                const entries = projectGalleryVariants(data, artwork, unlocked, {
+                    onlyUnlocked: resolveOnlyUnlocked(ctx),
+                });
+                return {
+                    nextPort: "next",
+                    outputValues: {
+                        entries,
+                        count: entries.length,
+                        unlockedCount: countUnlockedRows(entries),
+                    },
+                };
+            },
+        },
+        {
+            type: `${PLUGIN_ID}.getGroups`,
+            displayName: "Get Gallery Groups",
+            category: "Gallery",
+            keywords: ["gallery", "group", "category", "chapter", "tab", "section", "array"],
+            graphKinds: ["event", "macro"],
+            isPure: false,
+            pins: [execIn, execNext, { ...entriesOut, id: "groups", label: "Groups" }, countOut],
+            // Feeds a category tab bar; each row's `id` goes back into Get
+            // Gallery's Group Id pin.
+            execute: () => {
+                const groups = store().groups.map((group, index) => ({
+                    index,
+                    id: group.id,
+                    name: group.name,
+                }));
+                return {
+                    nextPort: "next",
+                    outputValues: { groups, count: groups.length },
+                };
+            },
+        },
+        {
+            type: `${PLUGIN_ID}.getStats`,
+            displayName: "Get Gallery Progress",
+            category: "Gallery",
+            keywords: ["gallery", "progress", "completion", "percent", "stats", "count", "total"],
+            graphKinds: ["event", "macro"],
+            isPure: false,
+            isLatent: true,
+            pins: [
+                execIn,
+                groupIdIn,
+                execNext,
+                { id: "total", kind: "output", semantic: "data", valueType: "integer", label: "Total" },
+                { id: "unlocked", kind: "output", semantic: "data", valueType: "integer", label: "Unlocked" },
+                { id: "percent", kind: "output", semantic: "data", valueType: "integer", label: "Percent" },
+                { id: "variantTotal", kind: "output", semantic: "data", valueType: "integer", label: "Variant Total" },
+                {
+                    id: "variantUnlocked",
+                    kind: "output",
+                    semantic: "data",
+                    valueType: "integer",
+                    label: "Variant Unlocked",
+                },
+            ],
+            inspectorParams: [kindParam(), groupParam()],
+            execute: async ctx => {
+                const data = store();
+                const unlocked = await readUnlocked(ctx, data.items);
+                const stats = computeGalleryStats(data, unlocked, {
+                    groupId: resolveGroupId(ctx),
+                    kind: resolveKind(ctx),
+                });
+                return { nextPort: "next", outputValues: { ...stats } };
+            },
+        },
+
+        // ---------------------------------------------------------------
+        // Unlock record.
+        // ---------------------------------------------------------------
+        {
+            type: `${PLUGIN_ID}.add`,
+            displayName: "Unlock Gallery",
+            category: "Gallery",
+            keywords: ["gallery", "unlock", "add", "cg", "variant", "collect"],
+            graphKinds: ["event", "macro"],
+            isPure: false,
+            isLatent: true,
+            pins: [execIn, artworkIdIn, variantIdIn, execNext],
             inspectorParams: [artworkParam(), variantParam("All variants")],
             execute: async ctx => {
                 await setVariantsLocked(ctx, "add");
@@ -202,13 +488,13 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
         },
         {
             type: `${PLUGIN_ID}.remove`,
-            displayName: "Lock Gallery Variant",
+            displayName: "Lock Gallery",
             category: "Gallery",
             keywords: ["gallery", "lock", "remove", "cg", "variant"],
             graphKinds: ["event", "macro"],
             isPure: false,
             isLatent: true,
-            pins: [execIn, artworkIdIn, execNext],
+            pins: [execIn, artworkIdIn, variantIdIn, execNext],
             inspectorParams: [artworkParam(), variantParam("All variants")],
             execute: async ctx => {
                 await setVariantsLocked(ctx, "remove");
@@ -216,16 +502,36 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
             },
         },
         {
-            type: `${PLUGIN_ID}.clear`,
-            displayName: "Clear Gallery",
+            type: `${PLUGIN_ID}.unlockAll`,
+            displayName: "Unlock Whole Gallery",
             category: "Gallery",
-            keywords: ["gallery", "clear", "reset"],
+            keywords: ["gallery", "unlock", "all", "everything", "complete", "extras", "reward"],
+            graphKinds: ["event", "macro"],
+            isPure: false,
+            isLatent: true,
+            pins: [execIn, execNext],
+            // The "you cleared the game, here is everything" reward, and the
+            // fastest way to eyeball a gallery screen while building it.
+            execute: async ctx => {
+                const data = store();
+                await writeStoredUnlocked(
+                    ctx,
+                    data.items.flatMap(artwork => artwork.variants.map(variant => variant.id)),
+                );
+                return { nextPort: "next" };
+            },
+        },
+        {
+            type: `${PLUGIN_ID}.clear`,
+            displayName: "Lock Whole Gallery",
+            category: "Gallery",
+            keywords: ["gallery", "clear", "reset", "lock", "all", "wipe"],
             graphKinds: ["event", "macro"],
             isPure: false,
             isLatent: true,
             pins: [execIn, execNext],
             execute: async ctx => {
-                await getHostApi(ctx).persistence.set(RUNTIME_UNLOCKED_KEY, []);
+                await writeStoredUnlocked(ctx, []);
                 return { nextPort: "next" };
             },
         },
@@ -233,13 +539,14 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
             type: `${PLUGIN_ID}.isUnlocked`,
             displayName: "Is Gallery Unlocked",
             category: "Gallery",
-            keywords: ["gallery", "unlocked", "has", "cg", "variant"],
+            keywords: ["gallery", "unlocked", "has", "cg", "variant", "check"],
             graphKinds: ["event", "macro"],
             isPure: false,
             isLatent: true,
             pins: [
                 execIn,
                 artworkIdIn,
+                variantIdIn,
                 execNext,
                 { id: "unlocked", kind: "output", semantic: "data", valueType: "boolean", label: "Unlocked" },
             ],
@@ -247,10 +554,10 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
             // common case for graying out a gallery grid cell.
             inspectorParams: [artworkParam(), variantParam("Any variant")],
             execute: async ctx => {
-                const artworks = catalog();
-                const artwork = requireArtwork(ctx, artworks);
-                const unlocked = await readUnlocked(ctx, artworks);
-                const variantId = readString(ctx.params[PARAM_VARIANT]);
+                const data = store();
+                const artwork = requireArtwork(ctx, data.items);
+                const unlocked = await readUnlocked(ctx, data.items);
+                const variantId = resolveVariantId(ctx);
                 return {
                     nextPort: "next",
                     outputValues: {
@@ -261,32 +568,16 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
                 };
             },
         },
-        {
-            type: `${PLUGIN_ID}.getVariantCount`,
-            displayName: "Get Gallery Variant Count",
-            category: "Gallery",
-            keywords: ["gallery", "variant", "count", "length", "cg"],
-            graphKinds: ["event", "macro"],
-            isPure: false,
-            pins: [
-                execIn,
-                artworkIdIn,
-                execNext,
-                { id: "count", kind: "output", semantic: "data", valueType: "integer", label: "Count" },
-            ],
-            inspectorParams: [artworkParam()],
-            // Counts every authored variant, locked ones included, so a gallery
-            // can render placeholder slots for what the player has not found.
-            execute: ctx => ({
-                nextPort: "next",
-                outputValues: { count: requireArtwork(ctx, catalog()).variants.length },
-            }),
-        },
+
+        // ---------------------------------------------------------------
+        // Single-item read. Still useful for a viewer stepping prev/next
+        // through one artwork's differentials.
+        // ---------------------------------------------------------------
         {
             type: `${PLUGIN_ID}.getVariant`,
-            displayName: "Get Gallery Variant",
+            displayName: "Get Gallery Variant At",
             category: "Gallery",
-            keywords: ["gallery", "variant", "image", "cg", "differential"],
+            keywords: ["gallery", "variant", "image", "cg", "differential", "index", "step"],
             graphKinds: ["event", "macro"],
             isPure: false,
             isLatent: true,
@@ -308,8 +599,8 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
             ],
             inspectorParams: [artworkParam()],
             execute: async ctx => {
-                const artworks = catalog();
-                const artwork = requireArtwork(ctx, artworks);
+                const data = store();
+                const artwork = requireArtwork(ctx, data.items);
                 const variant = artwork.variants[readIndex(ctx.resolveInput?.(PIN_INDEX))];
                 if (!variant) {
                     return {
@@ -317,7 +608,7 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
                         outputValues: { image: null, unlocked: false, name: "", variantId: "" },
                     };
                 }
-                const unlocked = await readUnlocked(ctx, artworks);
+                const unlocked = await readUnlocked(ctx, data.items);
                 const isUnlocked = unlocked.has(variant.id);
                 return {
                     nextPort: "next",
@@ -332,12 +623,35 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
                 };
             },
         },
+
+        // ---------------------------------------------------------------
+        // Superseded by the array nodes above. Kept registered so existing
+        // graphs keep running, hidden so new graphs are not built on them.
+        // ---------------------------------------------------------------
+        {
+            type: `${PLUGIN_ID}.getVariantCount`,
+            displayName: "Get Gallery Variant Count",
+            category: "Gallery",
+            keywords: ["gallery", "variant", "count", "length", "cg"],
+            graphKinds: ["event", "macro"],
+            hideInPalette: true,
+            isPure: false,
+            pins: [execIn, artworkIdIn, execNext, countOut],
+            inspectorParams: [artworkParam()],
+            // Counts every authored variant, locked ones included, so a gallery
+            // can render placeholder slots for what the player has not found.
+            execute: ctx => ({
+                nextPort: "next",
+                outputValues: { count: requireArtwork(ctx, store().items).variants.length },
+            }),
+        },
         {
             type: `${PLUGIN_ID}.getCover`,
             displayName: "Get Gallery Cover",
             category: "Gallery",
             keywords: ["gallery", "cover", "thumbnail", "image", "cg"],
             graphKinds: ["event", "macro"],
+            hideInPalette: true,
             isPure: false,
             isLatent: true,
             pins: [
@@ -356,10 +670,10 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
             ],
             inspectorParams: [artworkParam()],
             execute: async ctx => {
-                const artworks = catalog();
-                const artwork = requireArtwork(ctx, artworks);
+                const data = store();
+                const artwork = requireArtwork(ctx, data.items);
                 const cover = resolveCoverVariant(artwork);
-                const unlocked = await readUnlocked(ctx, artworks);
+                const unlocked = await readUnlocked(ctx, data.items);
                 const isUnlocked = Boolean(cover && unlocked.has(cover.id));
                 return {
                     nextPort: "next",
@@ -377,15 +691,12 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
             category: "Gallery",
             keywords: ["gallery", "artwork", "count", "length", "cg"],
             graphKinds: ["event", "macro"],
+            hideInPalette: true,
             isPure: false,
-            pins: [
-                execIn,
-                execNext,
-                { id: "count", kind: "output", semantic: "data", valueType: "integer", label: "Count" },
-            ],
+            pins: [execIn, execNext, countOut],
             execute: () => ({
                 nextPort: "next",
-                outputValues: { count: catalog().length },
+                outputValues: { count: store().items.length },
             }),
         },
         {
@@ -394,6 +705,7 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
             category: "Gallery",
             keywords: ["gallery", "artwork", "index", "iterate", "cg"],
             graphKinds: ["event", "macro"],
+            hideInPalette: true,
             isPure: false,
             isLatent: true,
             pins: [
@@ -405,18 +717,16 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
                 { id: "unlocked", kind: "output", semantic: "data", valueType: "boolean", label: "Unlocked" },
                 { id: "variantCount", kind: "output", semantic: "data", valueType: "integer", label: "Variant Count" },
             ],
-            // Pairs with Get Gallery Artwork Count to walk the whole gallery;
-            // feed artworkId into the artwork-scoped nodes above.
             execute: async ctx => {
-                const artworks = catalog();
-                const artwork = artworks[readIndex(ctx.resolveInput?.(PIN_INDEX))];
+                const data = store();
+                const artwork = data.items[readIndex(ctx.resolveInput?.(PIN_INDEX))];
                 if (!artwork) {
                     return {
                         nextPort: "next",
                         outputValues: { artworkId: "", name: "", unlocked: false, variantCount: 0 },
                     };
                 }
-                const unlocked = await readUnlocked(ctx, artworks);
+                const unlocked = await readUnlocked(ctx, data.items);
                 return {
                     nextPort: "next",
                     outputValues: {

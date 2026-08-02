@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { AutoSaveEntry } from "@shared/types/saves";
 import {
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
     BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
@@ -99,12 +100,18 @@ import {
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE,
     BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD,
+    BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LATEST,
+    BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST,
+    BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_WRITE,
     BLUEPRINT_NODE_TYPE_GAME_CHOOSE,
     BLUEPRINT_NODE_TYPE_GAME_GET_BGM_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT,
     BLUEPRINT_NODE_TYPE_GAME_GET_GAME_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_GET_GLOBAL_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+    BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR,
     BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS,
     BLUEPRINT_NODE_TYPE_GAME_CLEAR_TEXT_READ,
     BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE,
@@ -226,6 +233,11 @@ import {
     BLUEPRINT_NODE_TYPE_SLIDER_GET_VALUE,
     BLUEPRINT_NODE_TYPE_SLIDER_SET_RANGE,
     BLUEPRINT_NODE_TYPE_SLIDER_SET_VALUE,
+    BLUEPRINT_NODE_TYPE_SOUND_PLAY,
+    BLUEPRINT_NODE_TYPE_SOUND_SEEK,
+    BLUEPRINT_NODE_TYPE_SOUND_SET_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_TRACK_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_SET_TRACK_VOLUME,
     BLUEPRINT_NODE_TYPE_STRING_LENGTH,
     BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT,
     BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT_COLOR,
@@ -237,7 +249,17 @@ import { blueprintNodeRegistry } from "../BlueprintNodeRegistry";
 import { registerCoreBlueprintNodes } from "../registerCoreBlueprintNodes";
 import { isValidBlueprintPinConnection } from "../connectionPolicy";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
-import type { BlueprintPersistentVariable } from "@shared/types/blueprint/document";
+import {
+    normalizeBlueprintRGBAColor,
+    toBlueprintImageAsset,
+    type BlueprintImageAsset,
+} from "@shared/types/blueprint/valueTypes";
+import {
+    findBlueprintCharacterInfo,
+    toBlueprintCharacterInfo,
+    type BlueprintCharacterInfo,
+} from "@shared/types/blueprint/characterInfo";
+import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
 import { resolveSliderRuntimeValue, type UISliderRuntimeValue } from "@shared/types/ui-editor/slider";
 import { executeGraph } from "../../behavior-graph/GraphExecutor";
 import { listBlueprintNodePaletteEntries } from "../../behavior-graph/nodeEditorCatalog";
@@ -264,7 +286,6 @@ import { BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE } from "../frameTargetSur
 import { sliderBlueprintNodes } from "./sliderNodes";
 import { stringBlueprintNodes } from "./stringNodes";
 import { textBlueprintNodes } from "./textNodes";
-import { widgetHostBlueprintNodes } from "./widget/widgetHostNodes";
 import { imageAssetBlueprintNodes, widgetPropertyBlueprintNodes } from "./widgetPropertyNodes";
 import {
     BLUEPRINT_VALUE_TYPE_ANIMATION_TOKEN,
@@ -272,8 +293,24 @@ import {
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
     BLUEPRINT_VALUE_TYPE_TIMER,
 } from "@shared/types/blueprint/valueTypes";
+import type { BlueprintHostApiRuntime } from "../../blueprint-runtime/BlueprintHostApiBridge";
 import { BLUEPRINT_NODE_PARAM_DISPLAYABLE_ANIMATION_FROM_EXPLICIT } from "../types";
 import { resolveEffectiveBlueprintCatalogEntry, resolveEffectiveBlueprintNodePins } from "../effectivePins";
+
+/** No host in these tests backs audio; the family's documented degrade is silence, not an error. */
+const SILENT_SOUND_HOST: BlueprintHostApiRuntime["sound"] = {
+    play: async () => null,
+    stop: async () => undefined,
+    pause: async () => undefined,
+    resume: async () => undefined,
+    setVolume: async () => undefined,
+    seek: async () => undefined,
+    isPlaying: () => false,
+    resolveElementVolume: input => input.volume ?? 1,
+    subscribeMixerChanges: () => () => undefined,
+    getTrackVolume: () => 1,
+    setTrackVolume: async () => undefined,
+};
 
 function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAdapter {
     return {
@@ -328,14 +365,23 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     listSaveIds: async () => [],
                     getSaveMetadata: async () => ({}),
                     getSavePreview: async () => null,
+                    writeAutoSave: async () => undefined,
+                    listAutoSaves: async () => [],
                     getHistory: async () => [],
                     restoreHistory: async () => undefined,
                     getNametag: () => null,
+                    getSpeakerAvatar: () => null,
+                    getSpeakerColor: () => ({ r: 255, g: 255, b: 255, a: 1 }),
+                    getCharacter: () => null,
                     getNotifications: () => [],
                     getChoiceCount: () => 0,
                     isNvlMode: () => false,
                     isCurrentTextRead: () => false,
+                    isTextRead: () => false,
                     clearTextRead: async () => undefined,
+                    isSceneVisited: () => false,
+                    isOptionPicked: () => false,
+                    clearVisited: () => undefined,
                     choose: async () => undefined,
                     next: async () => undefined,
                     skip: async () => undefined,
@@ -346,6 +392,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     getPreference: () => 0,
                     setPreference: async () => undefined,
                 },
+                sound: SILENT_SOUND_HOST,
                 devtools: {
                     log: () => undefined,
                 },
@@ -447,14 +494,23 @@ function createPageNavigationHostAdapter(
                     listSaveIds: async () => [],
                     getSaveMetadata: async () => ({}),
                     getSavePreview: async () => null,
+                    writeAutoSave: async () => undefined,
+                    listAutoSaves: async () => [],
                     getHistory: async () => [],
                     restoreHistory: async () => undefined,
                     getNametag: () => null,
+                    getSpeakerAvatar: () => null,
+                    getSpeakerColor: () => ({ r: 255, g: 255, b: 255, a: 1 }),
+                    getCharacter: () => null,
                     getNotifications: () => [],
                     getChoiceCount: () => 0,
                     isNvlMode: () => false,
                     isCurrentTextRead: () => false,
+                    isTextRead: () => false,
                     clearTextRead: async () => undefined,
+                    isSceneVisited: () => false,
+                    isOptionPicked: () => false,
+                    clearVisited: () => undefined,
                     choose: async () => undefined,
                     next: async () => undefined,
                     skip: async () => undefined,
@@ -465,6 +521,7 @@ function createPageNavigationHostAdapter(
                     getPreference: () => 0,
                     setPreference: async () => undefined,
                 },
+                sound: SILENT_SOUND_HOST,
                 devtools: {
                     log: () => undefined,
                 },
@@ -484,7 +541,13 @@ function createGameSaveHostAdapter(options: {
     previews?: Record<string, unknown>;
     history?: Array<Record<string, unknown>>;
     restoredIds?: Array<string | undefined>;
+    autoSaveWrites?: boolean[];
+    autoSaves?: AutoSaveEntry[];
     nametag?: string | null;
+    speakerAvatar?: BlueprintImageAsset | null;
+    /** Raw profile hex, as the mirror carries it - the bridge parses it. */
+    speakerColor?: string | null;
+    characters?: BlueprintCharacterInfo[];
     notifications?: Array<{ id: string; message: string }>;
     choiceCount?: number;
     nvlMode?: boolean;
@@ -559,18 +622,31 @@ function createGameSaveHostAdapter(options: {
                     listSaveIds: async () => options.listedIds ?? [],
                     getSaveMetadata: async () => options.metadata ?? {},
                     getSavePreview: async (id: string) => options.previews?.[id] as any ?? null,
+                    writeAutoSave: async () => {
+                        options.autoSaveWrites?.push(true);
+                    },
+                    listAutoSaves: async () => options.autoSaves ?? [],
                     getHistory: async () => (options.history ?? []) as any,
                     restoreHistory: async (id?: string) => {
                         options.restoredIds?.push(id);
                     },
                     getNametag: () => options.nametag ?? null,
+                    getSpeakerAvatar: () => options.speakerAvatar ?? null,
+                    getSpeakerColor: () =>
+                        normalizeBlueprintRGBAColor(options.speakerColor ?? null),
+                    getCharacter: (characterId: string) =>
+                        findBlueprintCharacterInfo(options.characters ?? [], characterId),
                     getNotifications: () => options.notifications ?? [],
                     getChoiceCount: () => options.choiceCount ?? 0,
                     isNvlMode: () => options.nvlMode ?? false,
                     isCurrentTextRead: () => options.textRead ?? false,
+                    isTextRead: () => false,
                     clearTextRead: async () => {
                         options.clearTextReadCalls?.push(true);
                     },
+                    isSceneVisited: () => false,
+                    isOptionPicked: () => false,
+                    clearVisited: () => undefined,
                     choose: async (index: number) => {
                         options.chosenIndexes?.push(index);
                     },
@@ -597,6 +673,7 @@ function createGameSaveHostAdapter(options: {
                         options.preferenceWrites?.push({ key, value });
                     },
                 },
+                sound: SILENT_SOUND_HOST,
                 devtools: {
                     log: () => undefined,
                 },
@@ -995,7 +1072,7 @@ describe("built-in blueprint nodes", () => {
     it("executes persistent variable get/set through the host store", async () => {
         registerCoreBlueprintNodes();
 
-        const persistentVariables: Record<string, BlueprintPersistentVariable> = {
+        const persistentVariables: PersistentVariableRuntimeTable = {
             volume: {
                 id: "volume",
                 name: "Volume",
@@ -1531,6 +1608,48 @@ describe("built-in blueprint nodes", () => {
         });
         expect(localsFromNametag.nametag).toBe("Alice");
 
+        // Get Speaker Avatar is a PURE node, so its `execute` is never called - the value comes from
+        // the resolver branch alone. Without that branch the pin silently reads `undefined` and the
+        // dialog quietly shows no avatar, which is why this asserts through `resolveDataPinValue`.
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        avatar: {
+                            type: BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR,
+                            params: {},
+                        },
+                    },
+                    edges: [],
+                },
+                "avatar",
+                "avatar",
+                {},
+                undefined,
+                0,
+                { hostAdapter: createGameSaveHostAdapter({ speakerAvatar: toBlueprintImageAsset("asset-avatar-angry") }) },
+            ),
+        ).toEqual({ kind: "imageAsset", assetId: "asset-avatar-angry" });
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        avatar: {
+                            type: BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR,
+                            params: {},
+                        },
+                    },
+                    edges: [],
+                },
+                "avatar",
+                "avatar",
+                {},
+                undefined,
+                0,
+                { hostAdapter: createGameSaveHostAdapter({}) },
+            ),
+        ).toBeNull();
+
         expect(
             resolveDataPinValue(
                 {
@@ -1743,6 +1862,104 @@ describe("built-in blueprint nodes", () => {
             hostAdapter: createGameSaveHostAdapter({ sentenceCpsValues }),
         });
         expect(sentenceCpsValues).toEqual([32]);
+    });
+
+    it("reads pure Game state nodes through a wired data pin", async () => {
+        registerCoreBlueprintNodes();
+
+        // These readers are PURE, so `execute` never runs when the pin is read - the value comes from
+        // the resolver branch alone. A test that merely executes the node still passes when that branch
+        // is missing and the wired pin silently reads `undefined`, so every case reads through an edge.
+        async function readThroughEdge(
+            variableId: string,
+            nodeType: string,
+            portId: string,
+            hostAdapter: UIHostAdapter,
+        ): Promise<unknown> {
+            const locals: Record<string, unknown> = {};
+            await executeGraph({
+                graph: {
+                    id: variableId,
+                    entries: { main: { start: { nodeId: "capture", port: "in" } } },
+                    nodes: {
+                        read: {
+                            id: "read",
+                            type: nodeType,
+                            params: {},
+                        },
+                        capture: {
+                            id: "capture",
+                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                            params: { variableId },
+                        },
+                    },
+                    edges: [
+                        { from: { nodeId: "read", port: portId }, to: { nodeId: "capture", port: "value" } },
+                    ],
+                },
+                entry: { start: { nodeId: "capture", port: "in" } },
+                hostAdapter,
+                blueprintLocals: locals,
+            });
+            return locals[variableId];
+        }
+
+        expect(
+            await readThroughEdge(
+                "notifications",
+                BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS,
+                "notifications",
+                createGameSaveHostAdapter({ notifications: [{ id: "toast-1", message: "Saved" }] }),
+            ),
+        ).toEqual([{ id: "toast-1", message: "Saved" }]);
+        expect(
+            await readThroughEdge(
+                "choiceCount",
+                BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT,
+                "count",
+                createGameSaveHostAdapter({ choiceCount: 3 }),
+            ),
+        ).toBe(3);
+        expect(
+            await readThroughEdge(
+                "nvlMode",
+                BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE,
+                "isNvlMode",
+                createGameSaveHostAdapter({ nvlMode: true }),
+            ),
+        ).toBe(true);
+        expect(
+            await readThroughEdge(
+                "textRead",
+                BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ,
+                "isRead",
+                createGameSaveHostAdapter({ textRead: true }),
+            ),
+        ).toBe(true);
+
+        const withoutHostApi = (nodeType: string, portId: string): unknown =>
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        read: {
+                            type: nodeType,
+                            params: {},
+                        },
+                    },
+                    edges: [],
+                },
+                "read",
+                portId,
+                {},
+                undefined,
+                0,
+                {},
+            );
+
+        expect(withoutHostApi(BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS, "notifications")).toEqual([]);
+        expect(withoutHostApi(BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT, "count")).toBe(0);
+        expect(withoutHostApi(BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE, "isNvlMode")).toBe(false);
+        expect(withoutHostApi(BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ, "isRead")).toBe(false);
     });
 
     it("executes game preference getter and setter nodes through host APIs", async () => {
@@ -2074,6 +2291,138 @@ describe("built-in blueprint nodes", () => {
         expect(localsAfterLoad).not.toHaveProperty("afterLoad");
     });
 
+    it("executes the auto save nodes through host APIs", async () => {
+        registerCoreBlueprintNodes();
+
+        const autoSaveWrites: boolean[] = [];
+        const localsAfterAutoSave: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "autoSave",
+                entries: { main: { start: { nodeId: "auto", port: "in" } } },
+                nodes: {
+                    auto: { id: "auto", type: BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_WRITE, params: {} },
+                    after: {
+                        id: "after",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "afterAutoSave" },
+                    },
+                    literal: {
+                        id: "literal",
+                        type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                        params: { value: "continued" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "auto", port: "next" }, to: { nodeId: "after", port: "in" } },
+                    { from: { nodeId: "literal", port: "value" }, to: { nodeId: "after", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "auto", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ autoSaveWrites }),
+            blueprintLocals: localsAfterAutoSave,
+        });
+        expect(autoSaveWrites).toEqual([true]);
+        // Unlike Load Save, an autosave leaves the playthrough running, so the
+        // graph continues past it.
+        expect(localsAfterAutoSave.afterAutoSave).toBe("continued");
+
+        const autoSaves: AutoSaveEntry[] = [
+            { id: "@autosave.1", slot: 1, timestamp: 2_000, createdAt: 1_000, metadata: { chapter: 2 } },
+            { id: "@autosave.0", slot: 0, timestamp: 1_500, createdAt: 500, metadata: null },
+        ];
+        const localsFromAutoList: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "listAutoSaves",
+                entries: { main: { start: { nodeId: "autoList", port: "in" } } },
+                nodes: {
+                    autoList: { id: "autoList", type: BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST, params: {} },
+                    captureEntries: {
+                        id: "captureEntries",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "entries" },
+                    },
+                    captureCount: {
+                        id: "captureCount",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "count" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "autoList", port: "next" }, to: { nodeId: "captureEntries", port: "in" } },
+                    { from: { nodeId: "autoList", port: "entries" }, to: { nodeId: "captureEntries", port: "value" } },
+                    { from: { nodeId: "captureEntries", port: "next" }, to: { nodeId: "captureCount", port: "in" } },
+                    { from: { nodeId: "autoList", port: "count" }, to: { nodeId: "captureCount", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "autoList", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ autoSaves }),
+            blueprintLocals: localsFromAutoList,
+        });
+        expect(localsFromAutoList.entries).toEqual(autoSaves);
+        expect(localsFromAutoList.count).toBe(2);
+
+        // The Continue button: newest id, straight into Load Save.
+        const localsFromLatest: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "latestAutoSave",
+                entries: { main: { start: { nodeId: "latest", port: "in" } } },
+                nodes: {
+                    latest: { id: "latest", type: BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LATEST, params: {} },
+                    captureId: {
+                        id: "captureId",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "latestId" },
+                    },
+                    captureHas: {
+                        id: "captureHas",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "hasAutoSave" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "latest", port: "next" }, to: { nodeId: "captureId", port: "in" } },
+                    { from: { nodeId: "latest", port: "id" }, to: { nodeId: "captureId", port: "value" } },
+                    { from: { nodeId: "captureId", port: "next" }, to: { nodeId: "captureHas", port: "in" } },
+                    { from: { nodeId: "latest", port: "hasAutoSave" }, to: { nodeId: "captureHas", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "latest", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ autoSaves }),
+            blueprintLocals: localsFromLatest,
+        });
+        expect(localsFromLatest.latestId).toBe("@autosave.1");
+        expect(localsFromLatest.hasAutoSave).toBe(true);
+
+        // A fresh install has no autosaves; the Continue button has to be able
+        // to tell, rather than trying to load "".
+        const localsFromEmpty: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "latestAutoSaveEmpty",
+                entries: { main: { start: { nodeId: "latest", port: "in" } } },
+                nodes: {
+                    latest: { id: "latest", type: BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LATEST, params: {} },
+                    captureHas: {
+                        id: "captureHas",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "hasAutoSave" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "latest", port: "next" }, to: { nodeId: "captureHas", port: "in" } },
+                    { from: { nodeId: "latest", port: "hasAutoSave" }, to: { nodeId: "captureHas", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "latest", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ autoSaves: [] }),
+            blueprintLocals: localsFromEmpty,
+        });
+        expect(localsFromEmpty.hasAutoSave).toBe(false);
+    });
+
     it("reads the dialogue backlog and restores the game from a history entry", async () => {
         registerCoreBlueprintNodes();
 
@@ -2201,9 +2550,17 @@ describe("built-in blueprint nodes", () => {
         expect(gameReadyHead?.role).toBe("eventHead");
         expect(gameReadyHead?.scope).toEqual({ ownerKinds: ["globalMain"] });
         expect(gameReadyHead?.pins.map(pin => pin.id)).toEqual(["then"]);
-        expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_START_STORY)?.pins.map(pin => pin.id)).toEqual([
+        // The three optional target pins are what let a data-driven screen (a
+        // recollection list) pick the scene at runtime; the pickers stay for the
+        // hand-authored "New Game" case.
+        const startStory = gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_START_STORY);
+        expect(startStory?.pins.map(pin => pin.id)).toEqual([
             "in",
+            "storyId",
+            "sceneId",
+            "startBlockId",
         ]);
+        expect(startStory?.pins.filter(pin => pin.id !== "in").every(pin => pin.optional)).toBe(true);
         expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG)?.pins.map(pin => pin.id)).toEqual([
             "nametag",
         ]);
@@ -2313,12 +2670,15 @@ describe("built-in blueprint nodes", () => {
                 valueType: "float",
             },
             {
+                // Labelled "SFX", not "Sound": `Set Sound Volume` used to be this node *and* the
+                // sound-transport one. The type id and the pin id are untouched, which is what
+                // keeps every graph that already uses it loading.
                 getterType: BLUEPRINT_NODE_TYPE_GAME_GET_SOUND_VOLUME,
                 setterType: BLUEPRINT_NODE_TYPE_GAME_SET_SOUND_VOLUME,
-                getterName: "Get Sound Volume",
-                setterName: "Set Sound Volume",
+                getterName: "Get SFX Volume",
+                setterName: "Set SFX Volume",
                 pinId: "soundVolume",
-                pinLabel: "Sound Volume",
+                pinLabel: "SFX Volume",
                 valueType: "float",
             },
             {
@@ -2775,11 +3135,6 @@ describe("built-in blueprint nodes", () => {
             .filter(def => def.type.endsWith(".setVariant"))
             .flatMap(def => def.pins)
             .some(pin => pin.id === "variantId")).toBe(false);
-
-        const legacyHostSetVariant = widgetHostBlueprintNodes.find(def => def.type === "blueprint.widget.setVariant");
-        expect(legacyHostSetVariant?.hideInPalette).toBe(true);
-        expect(legacyHostSetVariant?.pins.map(pin => pin.id)).toEqual(["in", "next"]);
-        expect(legacyHostSetVariant?.inspectorParams?.some(param => param.key === "variantId")).toBe(false);
 
         const animate = elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY);
         expect(animate?.inspectorParams?.map(param => param.key)).toEqual([
@@ -6865,5 +7220,313 @@ describe("fn blueprint nodes", () => {
         expect(valuePaletteTypes.has(FN_CALL_TYPE)).toBe(true);
         expect(valuePaletteTypes.has(FN_HEAD_TYPE)).toBe(false);
         expect(valuePaletteTypes.has(FN_RETURN_TYPE)).toBe(false);
+    });
+});
+
+/**
+ * The sound family through the graph executor.
+ *
+ * The interesting part is the handle: `Play Sound` publishes it as an output of a *latent* node, so
+ * it only reaches a downstream transport node if the node type is registered in
+ * `graphParamResolvers`. Forgetting that registration is silent - the pin reads `undefined` and the
+ * transport addresses nothing.
+ */
+describe("sound node transport", () => {
+    function soundHostAdapter(log: { play: unknown[]; ops: unknown[] }): UIHostAdapter {
+        const adapter = createPersistenceHostAdapter({});
+        const hostApi = adapter.blueprintRuntime!.hostApi!;
+        hostApi.sound = {
+            play: async input => {
+                log.play.push(input);
+                return { kind: "soundHandle", id: "sound:0" };
+            },
+            stop: async (handle, fadeMs) => void log.ops.push({ op: "stop", handle, fadeMs }),
+            pause: async handle => void log.ops.push({ op: "pause", handle }),
+            resume: async handle => void log.ops.push({ op: "resume", handle }),
+            setVolume: async (handle, volume, fadeMs) => void log.ops.push({ op: "setVolume", handle, volume, fadeMs }),
+            seek: async (handle, timeMs) => void log.ops.push({ op: "seek", handle, timeMs }),
+            isPlaying: () => true,
+            resolveElementVolume: input => input.volume ?? 1,
+            subscribeMixerChanges: () => () => undefined,
+            getTrackVolume: trackId => (trackId === "alice" ? 0.3 : 1),
+            setTrackVolume: async (trackId, volume) => void log.ops.push({ op: "setTrackVolume", trackId, volume }),
+        };
+        return adapter;
+    }
+
+    it("carries the handle from Play Sound into Set Sound Volume and Seek Sound", async () => {
+        const log = { play: [] as unknown[], ops: [] as unknown[] };
+        await executeGraph({
+            graph: {
+                id: "sound",
+                entries: { main: { start: { nodeId: "play", port: "in" } } },
+                nodes: {
+                    play: {
+                        id: "play",
+                        type: BLUEPRINT_NODE_TYPE_SOUND_PLAY,
+                        params: { soundAssetId: "asset-theme", soundChannel: "bgm" },
+                    },
+                    duck: {
+                        id: "duck",
+                        type: BLUEPRINT_NODE_TYPE_SOUND_SET_VOLUME,
+                        // Seconds on the pin, milliseconds at the host capability - the same boundary
+                        // `Delay`'s `Duration (s)` and every story line's time sit on.
+                        params: { volume: 0.25, fade: 0.8 },
+                    },
+                    jump: { id: "jump", type: BLUEPRINT_NODE_TYPE_SOUND_SEEK, params: { time: 30 } },
+                },
+                edges: [
+                    { from: { nodeId: "play", port: "next" }, to: { nodeId: "duck", port: "in" } },
+                    { from: { nodeId: "play", port: "handle" }, to: { nodeId: "duck", port: "handle" } },
+                    { from: { nodeId: "duck", port: "next" }, to: { nodeId: "jump", port: "in" } },
+                    { from: { nodeId: "play", port: "handle" }, to: { nodeId: "jump", port: "handle" } },
+                ],
+            },
+            entry: { start: { nodeId: "play", port: "in" } },
+            hostAdapter: soundHostAdapter(log),
+            blueprintLocals: {},
+        });
+
+        // The node stores the pre-track "soundChannel"; resolveTrackId maps it to that channel's
+        // seeded bus so a graph written before tracks existed still plays on the BGM bus. Every
+        // unwired override travels as undefined, which is what lets the track supply the default.
+        expect(log.play).toEqual([{
+            assetId: "asset-theme",
+            audioTrackId: "bgm",
+            loop: undefined,
+            volume: undefined,
+            fadeInMs: undefined,
+        }]);
+        const handle = { kind: "soundHandle", id: "sound:0" };
+        expect(log.ops).toEqual([
+            { op: "setVolume", handle, volume: 0.25, fadeMs: 800 },
+            { op: "seek", handle, timeMs: 30000 },
+        ]);
+    });
+});
+
+/**
+ * The player-facing mixer: `Get / Set Track Volume`.
+ *
+ * These are the general form of the four fixed volume nodes, which can only address the three buses
+ * the engine seeds - so before them a project that added `voice/alice` had a fader no settings page
+ * could bind to. The getter is PURE, which means `execute()` is never called on the data path: the
+ * pin is served by `graphParamResolvers`, and the node type has to be registered there or it reads
+ * `undefined` with no error at all. That is what the first test here is really guarding.
+ */
+describe("track volume nodes", () => {
+    function mixerHostAdapter(ops: unknown[]): UIHostAdapter {
+        const adapter = createPersistenceHostAdapter({});
+        const hostApi = adapter.blueprintRuntime!.hostApi!;
+        hostApi.sound = {
+            ...SILENT_SOUND_HOST,
+            getTrackVolume: trackId => (trackId === "alice" ? 0.3 : 1),
+            setTrackVolume: async (trackId, volume) => void ops.push({ trackId, volume }),
+        };
+        return adapter;
+    }
+
+    it("serves Get Track Volume's pin through the resolver, keyed by the picked track", () => {
+        registerCoreBlueprintNodes();
+        const read = (params: Record<string, unknown>): unknown => resolveDataPinValue(
+            { nodes: { get: { type: BLUEPRINT_NODE_TYPE_GAME_GET_TRACK_VOLUME, params } }, edges: [] },
+            "get",
+            "volume",
+            params,
+            undefined,
+            0,
+            { hostAdapter: mixerHostAdapter([]) },
+        );
+
+        expect(read({ audioTrackId: "alice" })).toBeCloseTo(0.3);
+        // Nothing picked yet, and a track that was deleted: both read as unity rather than as
+        // undefined or zero, so a slider bound to it sits at the top instead of reading as muted.
+        expect(read({})).toBe(1);
+        expect(read({ audioTrackId: "gone" })).toBe(1);
+    });
+
+    it("writes the picked track through Set Track Volume", async () => {
+        const ops: unknown[] = [];
+        await executeGraph({
+            graph: {
+                id: "mixer",
+                entries: { main: { start: { nodeId: "set", port: "in" } } },
+                nodes: {
+                    set: {
+                        id: "set",
+                        type: BLUEPRINT_NODE_TYPE_GAME_SET_TRACK_VOLUME,
+                        params: { audioTrackId: "alice", volume: 0.25 },
+                    },
+                },
+                edges: [],
+            },
+            entry: { start: { nodeId: "set", port: "in" } },
+            hostAdapter: mixerHostAdapter(ops),
+            blueprintLocals: {},
+        });
+
+        expect(ops).toEqual([{ trackId: "alice", volume: 0.25 }]);
+    });
+
+    it("no longer offers two different nodes called Set Sound Volume", () => {
+        // The collision: the sound-transport node changes one playing clip by handle, the
+        // preference node moves the player's SFX slider, and both were labelled `Set Sound Volume`.
+        // An author building a settings page met the pair in one palette with nothing to tell them
+        // apart. The sweep is over one palette listing rather than the whole registry because the
+        // registry legitimately holds same-named pairs that can never appear together - every
+        // widget node has a self-scoped and an addressable form (`Set Image Flip X`), and the
+        // palette is exactly what decides which one an author is offered.
+        registerCoreBlueprintNodes();
+        const entries = listBlueprintNodePaletteEntries({
+            graphKind: "event",
+            owner: { kind: "globalMain" },
+        });
+        const byName = new Map<string, string[]>();
+        for (const entry of entries) {
+            byName.set(entry.displayName, [...(byName.get(entry.displayName) ?? []), entry.type]);
+        }
+        expect([...byName].filter(([, types]) => types.length > 1)).toEqual([]);
+        expect(byName.get("Set Sound Volume")).toEqual([BLUEPRINT_NODE_TYPE_SOUND_SET_VOLUME]);
+        expect(byName.get("Set SFX Volume")).toEqual([BLUEPRINT_NODE_TYPE_GAME_SET_SOUND_VOLUME]);
+        // And the new pair is reachable from the same page an author builds their settings on.
+        expect(byName.get("Set Track Volume")).toEqual([BLUEPRINT_NODE_TYPE_GAME_SET_TRACK_VOLUME]);
+        expect(byName.get("Get Track Volume")).toEqual([BLUEPRINT_NODE_TYPE_GAME_GET_TRACK_VOLUME]);
+    });
+
+    it("keeps the SFX preference node's type id while renaming its label", () => {
+        // The rename must not cost an existing graph its node: type ids are what a saved document
+        // stores, display names are not.
+        registerCoreBlueprintNodes();
+        const sfx = blueprintNodeRegistry.get(BLUEPRINT_NODE_TYPE_GAME_SET_SOUND_VOLUME);
+        expect(sfx?.displayName).toBe("Set SFX Volume");
+        // Still findable by what an author would type.
+        expect(sfx?.keywords).toContain("sound");
+        expect(sfx?.keywords).toContain("sfx");
+    });
+});
+
+/**
+ * Reading character data from a graph.
+ *
+ * Both nodes are PURE, so `execute()` is never called on the data path - every value comes from
+ * `resolveDataPinValue`, which reaches them only if the node type is registered in BOTH places in
+ * `graphParamResolvers` (the per-type whitelist and a port branch). Miss either and the pin reads
+ * `undefined` with no error, so these assert through the resolver rather than through the executor.
+ */
+describe("character data nodes", () => {
+    const ALICE = toBlueprintCharacterInfo({
+        id: "char-alice",
+        name: "Alice",
+        color: "#40a8c4",
+        avatarAssetId: "asset-alice-avatar",
+    })!;
+    const MUTE = toBlueprintCharacterInfo({ id: "char-mute", name: "Mute" })!;
+
+    function resolveCharacterPin(
+        portId: string,
+        params: Record<string, unknown>,
+        characters: BlueprintCharacterInfo[],
+    ): unknown {
+        registerCoreBlueprintNodes();
+        return resolveDataPinValue(
+            { nodes: { character: { type: BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER, params } }, edges: [] },
+            "character",
+            portId,
+            params,
+            undefined,
+            0,
+            { hostAdapter: createGameSaveHostAdapter({ characters }) },
+        );
+    }
+
+    function resolveSpeakerColor(speakerColor?: string | null): unknown {
+        registerCoreBlueprintNodes();
+        return resolveDataPinValue(
+            { nodes: { speaker: { type: BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR, params: {} } }, edges: [] },
+            "speaker",
+            "color",
+            {},
+            undefined,
+            0,
+            { hostAdapter: createGameSaveHostAdapter({ speakerColor }) },
+        );
+    }
+
+    it("parses the speaker's profile hex into an RGBAColor pin", () => {
+        expect(resolveSpeakerColor("#40a8c4")).toEqual({ r: 64, g: 168, b: 196, a: 1 });
+        // Shorthand and alpha are the colour control's parser, not a second one written here.
+        expect(resolveSpeakerColor("#fff")).toEqual({ r: 255, g: 255, b: 255, a: 1 });
+    });
+
+    it("yields opaque white for a speaker with no colour, a narrator, and a broken value", () => {
+        const white = { r: 255, g: 255, b: 255, a: 1 };
+        // The three ways "no colour" reaches the pin: unset on the profile, nobody speaking, garbage.
+        expect(resolveSpeakerColor(null)).toEqual(white);
+        expect(resolveSpeakerColor(undefined)).toEqual(white);
+        expect(resolveSpeakerColor("not-a-colour")).toEqual(white);
+    });
+
+    it("reads a named character's name, colour and avatar", () => {
+        const params = { characterId: "char-alice" };
+        expect(resolveCharacterPin("name", params, [ALICE])).toBe("Alice");
+        expect(resolveCharacterPin("characterColor", params, [ALICE])).toEqual({ r: 64, g: 168, b: 196, a: 1 });
+        expect(resolveCharacterPin("characterAvatar", params, [ALICE]))
+            .toEqual({ kind: "imageAsset", assetId: "asset-alice-avatar" });
+        expect(resolveCharacterPin("found", params, [ALICE])).toBe(true);
+    });
+
+    it("does not let Get Character's avatar pin fall through to the speaker's avatar", () => {
+        // `Get Speaker Avatar` owns the port id `avatar`, and `resolveGameNodeOutput` matches port
+        // ids across the whole game family. If Get Character's outputs were named the same, this
+        // node would answer with whoever is speaking instead of the character it points at.
+        const avatarPins = gameBlueprintNodes
+            .find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER)!
+            .pins.filter(pin => pin.id === "avatar" || pin.id === "color");
+        expect(avatarPins).toEqual([]);
+    });
+
+    it("degrades visibly when the referenced character is gone", () => {
+        const params = { characterId: "char-alice" };
+        // Deleted: the table no longer has it.
+        expect(resolveCharacterPin("found", params, [])).toBe(false);
+        expect(resolveCharacterPin("name", params, [])).toBe("");
+        expect(resolveCharacterPin("characterAvatar", params, [])).toBeNull();
+        expect(resolveCharacterPin("characterColor", params, [])).toEqual({ r: 255, g: 255, b: 255, a: 1 });
+        // Never picked at all reads the same on the value pins, which is exactly why `found` exists.
+        expect(resolveCharacterPin("found", {}, [ALICE])).toBe(false);
+    });
+
+    it("separates a character with no colour from one that is missing", () => {
+        const params = { characterId: "char-mute" };
+        expect(resolveCharacterPin("found", params, [MUTE])).toBe(true);
+        expect(resolveCharacterPin("name", params, [MUTE])).toBe("Mute");
+        expect(resolveCharacterPin("characterColor", params, [MUTE])).toEqual({ r: 255, g: 255, b: 255, a: 1 });
+    });
+
+    it("registers both nodes in the Game category and offers them to value graphs", () => {
+        registerCoreBlueprintNodes();
+        const valuePaletteTypes = new Set(
+            listBlueprintNodePaletteEntries({
+                graphKind: "event",
+                owner: { kind: "widgetValue", surfaceId: "surface", elementId: "text", propPath: "text" },
+                widgetElementType: "nl.text",
+                isBlueprintValueGraph: true,
+            }).map(entry => entry.type),
+        );
+        // A colour that cannot be bound to a widget property is useless, so both must be pure and
+        // reachable from a Blueprint Value graph.
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER)).toBe(true);
+
+        const speaker = gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR)!;
+        expect(speaker.isPure).toBe(true);
+        expect(speaker.pins.map(pin => pin.id)).toEqual(["color"]);
+
+        const character = gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER)!;
+        expect(character.isPure).toBe(true);
+        expect(character.pins.map(pin => pin.id)).toEqual(["name", "characterColor", "characterAvatar", "found"]);
+        expect(character.inspectorParams).toEqual([
+            { key: "characterId", label: "Character", kind: "select", dynamicOptionsSource: "characters" },
+        ]);
     });
 });

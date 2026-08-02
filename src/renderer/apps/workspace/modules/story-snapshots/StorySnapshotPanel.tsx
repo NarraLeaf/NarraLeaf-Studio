@@ -12,6 +12,7 @@ import type { PanelComponentProps } from "../types";
 import { useTranslation } from "@/lib/i18n";
 import { Select, type SelectOption } from "@/lib/components/elements";
 import { useWorkspace } from "@/apps/workspace/context";
+import { useFreezeGuard, type FreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { Services } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
@@ -27,7 +28,7 @@ import { savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shar
 import type { StorySnapshotPanelPayload } from "./storySnapshotPanelId";
 
 const INPUT_CLASS =
-    "h-7 min-w-0 flex-1 rounded border border-edge bg-surface-raised px-2 text-xs text-fg outline-none focus:border-primary/50";
+    "h-7 min-w-0 flex-1 rounded-md border border-edge bg-surface-raised px-2 text-xs text-fg outline-none focus:border-primary/50";
 
 function asStoryValueType(valueType: string | undefined): StoryVariableValueType {
     return valueType === "boolean" || valueType === "number" || valueType === "string" ? valueType : "json";
@@ -69,37 +70,51 @@ function SnapshotValueRow(props: {
     onChange: (raw: string) => void;
     onClear: () => void;
     booleanOptions: SelectOption[];
+    /**
+     * The panel's guard, handed down. Every control on this row edits the snapshot, which is part of
+     * the story document, and the row had no guard of its own: on a frozen project the author could
+     * set an override, watch the box take it, and lose it on thaw.
+     */
+    freeze: FreezeGuard;
 }) {
-    const { entry, value } = props;
+    const { entry, value, freeze } = props;
     const overridden = value !== undefined;
     const shown = overridden ? formatValue(value, entry.valueType) : "";
     return (
         <div className="flex items-center gap-1.5">
             <span className="min-w-0 flex-1 truncate text-xs text-fg" title={entry.name}>{entry.name}</span>
             {entry.valueType === "boolean" ? (
+                // `readOnly` rather than `disabled`: which way a boolean was pinned, and that true and
+                // false are the only choices, is what the reader came for, so the list still opens.
                 <Select
                     options={props.booleanOptions}
                     value={overridden ? String(value === true) : ""}
                     onChange={next => props.onChange(String(next))}
                     size="sm"
                     portalMenu
+                    readOnly={freeze.frozen}
                     className="w-28 shrink-0"
                 />
             ) : (
+                // Likewise the value box: the override is the thing being read, and a disabled input
+                // is dimmed past reading.
                 <input
                     className={`${INPUT_CLASS} max-w-[9rem] ${overridden ? "" : "border-dashed"}`}
                     value={shown}
                     placeholder={formatValue(entry.defaultValue, entry.valueType)}
                     inputMode={entry.valueType === "number" ? "decimal" : undefined}
                     onChange={event => props.onChange(event.target.value)}
+                    readOnly={freeze.frozen}
+                    title={freeze.frozen ? freeze.reason : undefined}
                 />
             )}
+            {/* Dropping an override rewrites the snapshot as much as setting one does. */}
             <button
                 type="button"
-                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-fg-subtle transition ${overridden ? "hover:bg-fill hover:text-danger" : "pointer-events-none opacity-0"}`}
+                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-subtle transition disabled:cursor-not-allowed disabled:opacity-40 ${overridden ? "hover:bg-fill hover:text-danger" : "pointer-events-none opacity-0"}`}
                 onClick={props.onClear}
-                title={props.entry.name}
                 aria-label="clear"
+                {...freeze.writes(false, props.entry.name)}
             >
                 <Trash2 className="h-3.5 w-3.5" />
             </button>
@@ -110,6 +125,9 @@ function SnapshotValueRow(props: {
 export function StorySnapshotPanel({ payload }: PanelComponentProps<StorySnapshotPanelPayload>) {
     const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
+    // A snapshot is authored content (it ships in the story document), so making and deleting one is a
+    // write. Picking which snapshot is shown is not, and stays live.
+    const freeze = useFreezeGuard();
     const storyId = payload?.storyId;
     const sceneId = payload?.sceneId;
 
@@ -255,23 +273,25 @@ export function StorySnapshotPanel({ payload }: PanelComponentProps<StorySnapsho
                         className="min-w-0 flex-1"
                     />
                 ) : (
-                    <span className="min-w-0 flex-1 truncate text-xs italic text-fg-subtle">{t("storySnapshot.none")}</span>
+                    // No snapshots: no picker, and nothing in its place. The Add button at the end of
+                    // this same row is the way to make the first one.
+                    <span className="min-w-0 flex-1" />
                 )}
                 {selected ? (
                     <button
                         type="button"
-                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-edge text-fg-subtle hover:border-danger/50 hover:text-danger"
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-edge text-fg-subtle hover:border-danger/50 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40"
                         onClick={() => storyService?.deleteSceneSnapshot(storyId, sceneId, selected.id)}
-                        title={t("storySnapshot.delete")}
+                        {...freeze.writes(false, t("storySnapshot.delete"))}
                     >
                         <Trash2 className="h-3.5 w-3.5" />
                     </button>
                 ) : null}
                 <button
                     type="button"
-                    className="flex h-7 shrink-0 items-center gap-1 rounded border border-edge px-2 text-2xs text-fg-muted hover:border-primary/50 hover:text-fg"
+                    className="flex h-7 shrink-0 items-center gap-1 rounded-md border border-edge px-2 text-2xs text-fg-muted hover:border-primary/50 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
                     onClick={addSnapshot}
-                    title={t("storySnapshot.add")}
+                    {...freeze.writes(false, t("storySnapshot.add"))}
                 >
                     <Plus className="h-3 w-3" /> {t("common.add")}
                 </button>
@@ -280,10 +300,16 @@ export function StorySnapshotPanel({ payload }: PanelComponentProps<StorySnapsho
             {selected ? (
                 <div className="min-h-0 flex-1 overflow-y-auto p-3">
                     {selected.name !== undefined ? (
+                        // Renaming a snapshot writes the story document, and until this pass only the
+                        // Add and Delete buttons above knew about the freeze: on a frozen project the
+                        // box accepted a new name, showed it, and discarded it on thaw. `readOnly`
+                        // rather than `disabled` - the name is what the reader is here to see.
                         <input
                             className={`${INPUT_CLASS} mb-3 h-8`}
                             value={selected.name}
                             onChange={event => storyService?.renameSceneSnapshot(storyId, sceneId, selected.id, event.target.value)}
+                            readOnly={freeze.frozen}
+                            title={freeze.frozen ? freeze.reason : undefined}
                             aria-label={t("storySnapshot.nameAria")}
                         />
                     ) : null}
@@ -297,6 +323,7 @@ export function StorySnapshotPanel({ payload }: PanelComponentProps<StorySnapsho
                                     entry={entry}
                                     value={selected.values[entry.refKey]}
                                     booleanOptions={booleanOptions}
+                                    freeze={freeze}
                                     onChange={raw => storyService?.setSceneSnapshotValue(storyId, sceneId, selected.id, entry.refKey, parseValue(raw, entry.valueType))}
                                     onClear={() => storyService?.clearSceneSnapshotValue(storyId, sceneId, selected.id, entry.refKey)}
                                 />

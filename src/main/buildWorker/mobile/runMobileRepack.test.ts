@@ -1,14 +1,30 @@
 import { constants as bufferConstants } from "buffer";
+import { execFileSync } from "child_process";
+import crypto from "crypto";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
+import { derivePackEncryptionKey, isProtectedPayload } from "@narraleaf/encryption";
 import { parseBinaryManifest } from "./axml";
 import { parseArscPackageNames } from "./arsc";
 import { verifyApkV2 } from "./apkSigningV2";
 import { validateMobileShellManifest, type MobileShellManifest } from "./mobileShellManifest";
 import { MAX_PAYLOAD_BYTES, payloadExceedsLimit, runMobileRepack } from "./runMobileRepack";
 import { generateSigningIdentity } from "./signingIdentity";
+import {
+    ANDROID_KEYSTORE_ALIAS,
+    ANDROID_KEYSTORE_PASSWORD,
+    ANDROID_RELEASE_JKS_SHA256,
+    ANDROID_RELEASE_P12_SHA256,
+    ANDROID_RELEASE_P12_SUBJECT,
+    APPLE_IDENTITY_PASSWORD,
+    APPLE_PROFILE_BUNDLE_ID,
+    androidReleaseJks,
+    androidReleaseP12,
+    appleIdentityP12,
+    appleProvisioningProfile,
+} from "./signingFixtures";
 import { findMisalignedStoredEntries, parseZipIndex, readEntryBytes, ZIP_METHOD_STORE } from "./zipModel";
 import type { GameBuildWorkerMobileJob } from "../protocol";
 
@@ -128,6 +144,105 @@ describe("runMobileRepack against the real shell templates", () => {
         // The mobile entry document replaces the web one.
         const indexEntry = index.entries.find(entry => entry.name === `${wwwRoot}index.html`)!;
         expect(readEntryBytes(apk, indexEntry).toString("utf8")).toContain("mobile variant");
+
+        // Without a content key, the payload is plain: a known file's bytes come
+        // back verbatim and the package's own detector agrees.
+        const bgm = readEntryBytes(apk, index.entries.find(entry => entry.name === `${wwwRoot}assets/bgm.ogg`)!);
+        expect(Buffer.compare(bgm, Buffer.alloc(4096, 7))).toBe(0);
+        expect(isProtectedPayload(bgm)).toBe(false);
+    });
+
+    it("protects every payload file under a content key, and leaves shell-config plain", async () => {
+        // A real key of the kind the packer hands the repack; the exact value
+        // does not matter here, only that the repack protects under it.
+        const contentKey = derivePackEncryptionKey(Buffer.alloc(32, 1), Buffer.alloc(16, 2));
+        const job = await makeJob({
+            contentKey,
+            // The manager writes the key into shell-config; mirror that here so
+            // the worker-level test reflects the real job it is handed.
+            shellConfigJson: JSON.stringify({
+                schemaVersion: 1,
+                orientation: "landscape",
+                backgroundColor: "#000000",
+                contentKey,
+            }),
+        });
+        const outputDir = await tempDir("nls-out-");
+        await runMobileRepack(job, outputDir, log, MTIME);
+        const apk = await fs.readFile(path.join(outputDir, "MyGame-1.2.3-android.apk"));
+
+        const index = parseZipIndex(apk);
+        const { wwwRoot, shellConfigPath } = job.templateManifest.android;
+
+        // Every payload file under wwwRoot is protected (all-or-nothing): the
+        // package's own detector says so, checked with an independent parser
+        // reading the real entry bytes back out of the APK.
+        const wwwEntries = index.entries.filter(entry => entry.name.startsWith(wwwRoot) && !entry.name.endsWith("/"));
+        expect(wwwEntries.length).toBeGreaterThan(0);
+        for (const entry of wwwEntries) {
+            expect(isProtectedPayload(readEntryBytes(apk, entry))).toBe(true);
+        }
+
+        // A known plaintext file is not shipped as its plaintext.
+        const bgm = readEntryBytes(apk, index.entries.find(entry => entry.name === `${wwwRoot}assets/bgm.ogg`)!);
+        expect(Buffer.compare(bgm, Buffer.alloc(4096, 7))).not.toBe(0);
+
+        // The entry-document override is protected too, not served as HTML.
+        const indexBytes = readEntryBytes(apk, index.entries.find(entry => entry.name === `${wwwRoot}index.html`)!);
+        expect(isProtectedPayload(indexBytes)).toBe(true);
+        expect(indexBytes.toString("utf8")).not.toContain("mobile variant");
+
+        // shell-config.json stays plain: it is the bootstrap the decoder reads,
+        // and it carries the key the shell hands to that decoder.
+        const cfgBytes = readEntryBytes(apk, index.entries.find(entry => entry.name === shellConfigPath)!);
+        expect(isProtectedPayload(cfgBytes)).toBe(false);
+        expect(JSON.parse(cfgBytes.toString("utf8")).contentKey).toBe(contentKey);
+
+        // Still a valid, installable package.
+        expect(verifyApkV2(apk)).toEqual(expect.objectContaining({ verified: true }));
+    });
+
+    it("an external unzip confirms the payload is ciphertext under a key, plaintext without one", async () => {
+        // The judge is the system `unzip`, not Studio's own zip parser or its
+        // protected-payload detector: a bug that made both the writer and the
+        // reader agree on plaintext would still be caught here.
+        const contentKey = derivePackEncryptionKey(Buffer.alloc(32, 3), Buffer.alloc(16, 4));
+        const marker = Buffer.alloc(4096, 7); // the bgm.ogg bytes makeSiteDir writes
+        const wwwRoot = (await readManifest()).android.wwwRoot;
+        const bgmEntry = `${wwwRoot}assets/bgm.ogg`;
+
+        const buildApk = async (key: string | undefined): Promise<string> => {
+            const job = await makeJob({
+                ...(key ? { contentKey: key } : {}),
+                shellConfigJson: JSON.stringify({
+                    schemaVersion: 1,
+                    orientation: "landscape",
+                    backgroundColor: "#000000",
+                    ...(key ? { contentKey: key } : {}),
+                }),
+            });
+            const outputDir = await tempDir("nls-out-");
+            await runMobileRepack(job, outputDir, log, MTIME);
+            return path.join(outputDir, "MyGame-1.2.3-android.apk");
+        };
+
+        const unzipEntry = (apkPath: string, entry: string): Buffer =>
+            execFileSync("unzip", ["-p", apkPath, entry], { maxBuffer: 64 * 1024 * 1024 });
+
+        // Without a key: the external tool reads back the exact plaintext.
+        const plainApk = await buildApk(undefined);
+        expect(Buffer.compare(unzipEntry(plainApk, bgmEntry), marker)).toBe(0);
+
+        // With a key: the external tool reads back bytes that are NOT the
+        // plaintext, while shell-config.json stays plain JSON carrying the key.
+        const protectedApk = await buildApk(contentKey);
+        const protectedBgm = unzipEntry(protectedApk, bgmEntry);
+        expect(protectedBgm.length).toBeGreaterThan(0);
+        expect(Buffer.compare(protectedBgm, marker)).not.toBe(0);
+        expect(protectedBgm.includes(marker)).toBe(false);
+
+        const cfg = JSON.parse(unzipEntry(protectedApk, (await readManifest()).android.shellConfigPath).toString("utf8"));
+        expect(cfg.contentKey).toBe(contentKey);
     });
 
     it("produces an IPA laid out as iOS expects, with the executable still executable", async () => {
@@ -223,3 +338,119 @@ describe("runMobileRepack against the real shell templates", () => {
             .rejects.toThrow(/not present in the template/);
     });
 });
+
+/**
+ * The release-keystore fork. The question these answer is not "did signing
+ * succeed" but "*whose* signature is on the package" - and the judge is
+ * keytool's own SHA-256 of the certificate, recorded when the fixture keystore
+ * was made, so a signature by anything else cannot pass.
+ */
+describe("runMobileRepack with an author's release keystore", () => {
+    /** The SHA-256 of the certificate the APK's v2 signature actually carries. */
+    function signerFingerprint(apk: Buffer): string {
+        const result = verifyApkV2(apk);
+        expect(result.verified).toBe(true);
+        return new crypto.X509Certificate(result.certificatesDer![0]).fingerprint256;
+    }
+
+    async function buildWithKeystore(keystore: Buffer, name: string): Promise<Buffer> {
+        const materialDir = await tempDir("nls-keystore-");
+        const keystoreFile = path.join(materialDir, name);
+        await fs.writeFile(keystoreFile, keystore);
+
+        const job = await makeJob();
+        delete job.ios;
+        job.android!.signing = {
+            keystoreFile,
+            alias: ANDROID_KEYSTORE_ALIAS,
+            storePassword: ANDROID_KEYSTORE_PASSWORD,
+            keyPassword: ANDROID_KEYSTORE_PASSWORD,
+        };
+        const outputDir = await tempDir("nls-out-");
+        await runMobileRepack(job, outputDir, log, MTIME);
+        return fs.readFile(path.join(outputDir, "MyGame-1.2.3-android.apk"));
+    }
+
+    it("signs with the PKCS#12 keystore's key, not the machine identity", async () => {
+        const apk = await buildWithKeystore(androidReleaseP12(), "release.p12");
+        expect(signerFingerprint(apk)).toBe(ANDROID_RELEASE_P12_SHA256);
+    });
+
+    it("signs with a JKS keystore's key just as well", async () => {
+        // Format is decided by the file's magic, not its extension - so the same
+        // path has to work for the other container authors actually hold.
+        const apk = await buildWithKeystore(androidReleaseJks(), "release.jks");
+        expect(signerFingerprint(apk)).toBe(ANDROID_RELEASE_JKS_SHA256);
+    });
+
+    it("puts the release certificate's subject into the package", async () => {
+        const apk = await buildWithKeystore(androidReleaseP12(), "release.p12");
+        const certificate = new crypto.X509Certificate(verifyApkV2(apk).certificatesDer![0]);
+        expect(certificate.subject).toContain(ANDROID_RELEASE_P12_SUBJECT);
+    });
+
+    it("uses the machine identity when no release keystore is configured", async () => {
+        const job = await makeJob();
+        delete job.ios;
+        const outputDir = await tempDir("nls-out-");
+        await runMobileRepack(job, outputDir, log, MTIME);
+        const apk = await fs.readFile(path.join(outputDir, "MyGame-1.2.3-android.apk"));
+
+        const expected = new crypto.X509Certificate(
+            Buffer.from(job.android!.signingIdentity.certificateDerBase64, "base64"),
+        ).fingerprint256;
+        expect(signerFingerprint(apk)).toBe(expected);
+        // ...and that is emphatically not the release key.
+        expect(signerFingerprint(apk)).not.toBe(ANDROID_RELEASE_P12_SHA256);
+    });
+
+    it("warns that switching identity breaks installing over an existing copy", async () => {
+        // Android keys an installed app on package name and signature together.
+        // Nobody guesses that from "App not installed", so the build has to say
+        // it - loudly enough to be a warning, not a line of noise.
+        logs.length = 0;
+        await buildWithKeystore(androidReleaseP12(), "release.p12");
+        const warnings = logs.filter(line => line.startsWith("warning:"));
+        expect(warnings.some(line => /uninstall/.test(line))).toBe(true);
+        expect(warnings.some(line => line.includes("App not installed"))).toBe(true);
+        expect(logs.some(line => line.includes(ANDROID_RELEASE_P12_SHA256))).toBe(true);
+        expect(logs.some(line => line.includes(ANDROID_KEYSTORE_ALIAS))).toBe(true);
+    });
+
+    it("never writes a password or a key into the log", async () => {
+        logs.length = 0;
+        await buildWithKeystore(androidReleaseP12(), "release.p12");
+        expect(logs.some(line => line.includes(ANDROID_KEYSTORE_PASSWORD))).toBe(false);
+        expect(logs.some(line => line.includes("PRIVATE KEY"))).toBe(false);
+    });
+
+    it("still detects tampering after release signing", async () => {
+        // The reverse control for every assertion above: if the signature did
+        // not actually cover the payload, matching the fingerprint would mean
+        // nothing.
+        const apk = await buildWithKeystore(androidReleaseP12(), "release.p12");
+        const tampered = Buffer.from(apk);
+        const marker = tampered.indexOf(Buffer.alloc(4096, 7)); // the bgm.ogg payload
+        expect(marker, "payload bytes not found in the APK").toBeGreaterThan(0);
+        tampered[marker] ^= 0xff;
+        expect(verifyApkV2(tampered).verified).toBe(false);
+    });
+
+    it("says which key it could not open, rather than failing anonymously", async () => {
+        const materialDir = await tempDir("nls-keystore-");
+        const keystoreFile = path.join(materialDir, "release.p12");
+        await fs.writeFile(keystoreFile, androidReleaseP12());
+        const job = await makeJob();
+        delete job.ios;
+        job.android!.signing = {
+            keystoreFile,
+            alias: ANDROID_KEYSTORE_ALIAS,
+            storePassword: "wrong",
+            keyPassword: "wrong",
+        };
+        await expect(runMobileRepack(job, await tempDir("nls-out-"), log, MTIME))
+            .rejects.toThrow(/keystore password is incorrect/);
+    });
+});
+
+

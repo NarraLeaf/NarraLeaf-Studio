@@ -31,6 +31,10 @@ export const settings = {
             label: "Sync",
             description: "Local backup cadence and synchronization helpers.",
         },
+        plugins: {
+            label: "Plugins",
+            description: "Plugin store and registry.",
+        },
         advanced: {
             label: "Advanced",
             description: "Telemetry, developer helpers and experimental toggles.",
@@ -44,7 +48,7 @@ export const settings = {
         },
         themeMode: {
             label: "Theme",
-            description: "Color theme for the Studio interface. \"Follow system\" switches with the operating system.",
+            description: "Color theme for the Studio interface.",
             options: {
                 auto: "Follow system",
                 light: "Light",
@@ -53,7 +57,7 @@ export const settings = {
         },
         accentColor: {
             label: "Accent color",
-            description: "Color used for selection, focus rings, and primary buttons across the Studio interface.",
+            description: "Color used for selection, focus rings, and primary buttons.",
             options: {
                 teal: "Leaf teal",
                 sky: "Sky",
@@ -64,7 +68,7 @@ export const settings = {
         },
         reduceMotion: {
             label: "Reduce motion",
-            description: "Turn off animated transitions in the Studio interface. Your game's own animations are unaffected, in the editor and when it ships.",
+            description: "Turn off animated transitions in the Studio interface. Your game's own animations are unaffected.",
         },
         zoomPercent: {
             label: "Interface zoom",
@@ -72,22 +76,65 @@ export const settings = {
         },
         editorFontSize: {
             label: "Story editor font size",
-            description:
-                "Font size (px) for dialogue, narration, and choice text in the story scene editor ({min}–{max}).",
+            description: "Font size (px) for story text in the scene editor ({min}-{max}).",
         },
         editorFontFamily: {
             label: "Story editor font",
             description: "Typeface used for story text in the scene editor.",
         },
+        editorSurfaceOpacity: {
+            label: "Editor surface opacity",
+            description: "Opacity of the surfaces behind story text and inspector fields.",
+        },
         maxActiveEditors: {
             label: "Maximum active editors",
             description:
-                "How many editor tabs stay loaded at once so their scroll position and focus are preserved when you switch between them ({min}–{max}). Tabs beyond this reload when reopened.",
+                "How many editor tabs stay loaded at once, keeping their scroll position and focus ({min}-{max}). The rest reload when reopened.",
+        },
+        blueprintDragConnectExecOutput: {
+            label: "Drag from execution output pins to create nodes",
+            description: "Drop on empty canvas to pick a node; it is wired in after that pin.",
+        },
+        blueprintDragConnectDataOutput: {
+            label: "Drag from data output pins to create nodes",
+            description: "Drop on empty canvas to pick a node; only nodes that accept that value type are listed.",
+        },
+        blueprintDragConnectInput: {
+            label: "Drag from input pins to create nodes",
+            description: "Drop on empty canvas to pick a node; its output is wired into that pin.",
+        },
+        slashAtAlias: {
+            label: "Use “@” to open the action creator",
+            description: "Avoids the clash between / and 、 in Chinese input methods.",
         },
         electronMirror: {
             label: "Electron download mirror",
+            description: "Mirror for downloading Electron. Leave empty to use the official source.",
+        },
+        pluginRegistryUrl: {
+            label: "Registry URL",
+            description: "Where the plugin store looks. Leave empty to use the official NarraLeaf registry.",
+        },
+        uiTemplateRegistryUrl: {
+            label: "UI template registry URL",
+            description: "Where the template store looks. Leave empty to use the official NarraLeaf registry.",
+        },
+        checkpointInterval: {
+            label: "Automatic checkpoint interval",
             description:
-                "Mirror URL for downloading Electron when building games for other platforms. Leave empty to use the official source.",
+                "How long to wait before recording a checkpoint, and only when something changed. Set to 0 to turn them off.",
+        },
+        checkpointOnClose: {
+            label: "Record a checkpoint when a workspace closes",
+            description: "Records on closing the window, independent of the interval above.",
+        },
+        versionControlAuthor: {
+            label: "Author name",
+            description: "Recorded on commits and checkpoints. Leave empty to record NarraLeaf Studio instead.",
+        },
+        versionControlAuthorEmail: {
+            label: "Author email",
+            description: "Recorded next to the author name, as \"Name <email>\". Leave empty to record no address.",
         },
         confirmBeforeClose: {
             label: "Confirm before closing a workspace",
@@ -95,32 +142,30 @@ export const settings = {
         },
         returnToLauncherOnClose: {
             label: "Return to the home screen when closing a workspace",
-            description:
-                "Closing a workspace goes back to the home screen. Turn this off to quit NarraLeaf Studio instead when no other window is open.",
+            description: "Turn this off to quit NarraLeaf Studio instead when no other window is open.",
         },
         dashboardOnOpen: {
             label: "Show the project dashboard by default",
-            description:
-                "Whether projects you haven't decided about open their dashboard on entering the workspace. Each project can override this from its own dashboard.",
+            description: "Applies to projects you haven't decided about. Each project can override it.",
         },
         clearAllStats: {
             label: "Clear all statistics data",
             description:
-                "Erase the recorded writing history, active time, and build history of every project. Counts derived from your projects are unaffected.",
+                "Erase the writing history, active time, and build history of every project. Counts read from your projects are unaffected.",
             action: "Clear",
             confirm: "Clear everything",
         },
         statusBarVisible: {
             label: "Show status bar",
-            description: "The slim strip along the bottom of the workspace (runtime status, word count, quick toggles).",
+            description: "The strip along the bottom of the workspace.",
         },
         titleBarSearchVisible: {
             label: "Show title bar search box",
-            description: "The search pill in the middle of the title bar, which opens search and the command palette.",
+            description: "The search box in the middle of the title bar.",
         },
         backgroundImage: {
             label: "Custom background image",
-            description: "Overlay a picture of your choice across the workspace, watermark-style.",
+            description: "Show a picture of your choice behind the workspace.",
             action: "Configure…",
             needsWorkspace: "Open a workspace to configure the background image.",
         },

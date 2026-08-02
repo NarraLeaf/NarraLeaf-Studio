@@ -1,8 +1,8 @@
 /** `storyInspector` - the per-action-type inspector in the story scene editor. */
 export const storyInspector = {
-    closeEditor: "Close editor",
-    noEditableFields: "No editable fields for this action yet.",
-    textId: "Text ID",
+    // The disclosure that hides this line's translation/voice unit id. The id itself is a uuid, so
+    // the label names what it is FOR rather than what it is.
+    textId: "Localization key",
     advanced: "Advanced",
     advancedParams: "Advanced params",
     noVariablesDeclared: "No variables declared",
@@ -16,6 +16,18 @@ export const storyInspector = {
         effect: "Effect",
         transform: "Transform",
         transition: "Transition",
+        voice: "Voice",
+        // Names the scope the camera has, which no field can: the pose outlives the scene.
+        camera: "Camera · story-wide",
+        // Says the scope no field can: an overlay sits above the whole stage, not inside a layer.
+        vfx: "Ambience · full-screen overlay",
+    },
+
+    voice: {
+        voiced: "Voiced",
+        none: "No take",
+        stale: "Outdated",
+        openTable: "Open voice table",
     },
 
     field: {
@@ -38,6 +50,13 @@ export const storyInspector = {
         feather: "Feather %",
         orientation: "Orientation",
         slats: "Slats",
+        axis: "Axis",
+        blades: "Blades",
+        fromAngle: "From angle °",
+        rows: "Rows",
+        cols: "Columns",
+        stagger: "Stagger",
+        shape: "Shape",
         pattern: "Pattern",
         kind: "Kind",
         effect: "Effect",
@@ -52,6 +71,7 @@ export const storyInspector = {
         layer: "Layer",
         character: "Character",
         displayable: "Displayable",
+        camera: "Stage camera",
     },
 
     variableScope: {
@@ -104,25 +124,37 @@ export const storyInspector = {
         maskWipe: "Slide reveal",
         softWipe: "Soft wipe",
         blinds: "Blinds",
+        barnDoor: "Barn door",
+        clock: "Clock",
+        fan: "Fan",
+        dots: "Dots",
         slide: "Push",
         throughColor: "Through color",
+        darkness: "Darkness",
         startX: "Start X",
         startY: "Start Y",
         blurPx: "Blur px",
         holdPct: "Hold %",
+        darknessFrom: "From darkness 0-1",
+        darknessTo: "To darkness 0-1",
     },
 
     transitionHint: {
         dissolve: "Crossfades from the previous image to the new one.",
-        blurDissolve: "Crossfades while blurring, a dreamy flashback / dream-state dissolve.",
+        blurDissolve: "Crossfades while blurring, for flashbacks and dream states.",
         fadeIn: "Fades the new image in from a start position offset.",
-        maskCircle: "Circular reveal / close driven by an animated mask radius.",
-        softIris: "Feathered circular reveal, the soft-edged counterpart of Mask circle.",
-        maskWipe: "Hard-edged directional reveal. The new image is uncovered by a sweeping straight edge (no feather).",
-        softWipe: "Feathered directional wipe. The new image erases in with a soft gradient edge.",
-        blinds: "Venetian blinds reveal. Slats widen to uncover the new image.",
-        slide: "Push. The new image slides in from one edge as the old one slides out.",
-        throughColor: "Covers the frame with a solid colour (using the chosen pattern), holds, then uncovers on the new image. The target appears only after the colour hold. Covers fade-to-black/white, soft wipe through black, blinds black hold, iris to black, and flash (hold 0).",
+        maskCircle: "A hard-edged circle opens or closes over the frame.",
+        softIris: "The same circle with a feathered edge.",
+        maskWipe: "A straight edge sweeps across, uncovering the new image.",
+        softWipe: "The same sweep with a soft gradient edge.",
+        blinds: "Slats widen to uncover the new image.",
+        barnDoor: "Two soft edges close from opposite sides toward the centre.",
+        clock: "A radial edge sweeps a full turn around the centre.",
+        fan: "Several blades sweep in parallel around the centre.",
+        dots: "A grid of dots grows until the cells flood together.",
+        slide: "The new image slides in from one edge as the old one slides out.",
+        darkness: "Swaps images at the starting darkness, then animates to the ending one. 1 → 0 emerges out of black, 0 → 1 dims into it.",
+        throughColor: "Covers the frame with a colour, holds, then uncovers on the new image. Use it for fade to black or white, iris to black, and flash (hold 0).",
     },
 
     wipeDirection: {
@@ -137,6 +169,16 @@ export const storyInspector = {
         vertical: "Vertical",
     },
 
+    clockDirection: {
+        clockwise: "Clockwise",
+        counterclockwise: "Counter-clockwise",
+    },
+
+    irisShape: {
+        circle: "Circle",
+        ellipse: "Ellipse",
+    },
+
     throughColorPattern: {
         plain: "Plain (fade)",
         linear: "Soft edge",
@@ -149,6 +191,70 @@ export const storyInspector = {
         setSource: "Set source",
     },
 
+    vfxOperation: {
+        pause: "Freeze",
+        resume: "Continue",
+        setRate: "Set speed",
+    },
+
+    // Named by the material each mode is FOR, not by the CSS keyword: the choice is a production fact
+    // about the clip, and the keyword alone only helps someone who already knows the answer.
+    vfxBlend: {
+        normal: "Normal (transparent alpha WebM)",
+        screen: "Screen (glow on black)",
+        multiply: "Multiply (shadow on white)",
+        lighten: "Lighten",
+        colorDodge: "Color dodge",
+        overlay: "Overlay",
+    },
+
+    vfxFit: {
+        cover: "Cover",
+        contain: "Contain",
+        fill: "Fill",
+    },
+
+    vfx: {
+        name: "Effect name",
+        clip: "Looping clip",
+        blendMode: "Blend",
+        opacity: "Opacity (0-1)",
+        fit: "Fit",
+        zIndex: "Z-index",
+        loop: "Loop",
+        rate: "Speed (1 = normal)",
+        fade: "Fade (s)",
+    },
+
+    cameraOperation: {
+        zoom: "Zoom",
+        pan: "Pan",
+        rotate: "Rotate",
+        // "stage", not "screen": this is the camera's brightness, not `/vignette`'s in-scene mask.
+        darken: "Darken stage",
+        motion: "Camera motion",
+        reset: "Reset camera",
+    },
+
+    // The picker labels: short enough that six fit side by side. The full names above stay as each
+    // button's tooltip, so `Darken stage` still gets to say *stage* where it matters.
+    cameraOperationShort: {
+        zoom: "Zoom",
+        pan: "Pan",
+        rotate: "Rotate",
+        darken: "Darken",
+        motion: "Motion",
+        reset: "Reset",
+    },
+
+    camera: {
+        zoom: "Zoom (1 = neutral)",
+        rotation: "Rotation °",
+        darkness: "Stage darkness (0-1)",
+        xalign: "X align (0-1)",
+        yalign: "Y align (0-1)",
+    },
+
     displayableOperation: {
         transform: "Transform",
         mask: "Mask",
@@ -157,6 +263,8 @@ export const storyInspector = {
         clearClip: "Clear clip",
         filter: "Filter",
         clearFilter: "Clear filter",
+        backdrop: "Backdrop",
+        blend: "Blend mode",
         darken: "Darken",
         circleReveal: "Circle reveal",
         circleClose: "Circle close",
@@ -170,6 +278,8 @@ export const storyInspector = {
         clearClip: "Removes the current clip-path.",
         filter: "Applies a CSS filter (e.g. blur(4px) grayscale(1)).",
         clearFilter: "Removes the current filter.",
+        backdrop: "Frosts what shows through via CSS backdrop-filter (e.g. blur(8px)).",
+        blend: "Blends with what is behind via mix-blend-mode.",
         darken: "Fades a darkness overlay 0..1 (image / character targets only).",
         circleReveal: "Circular reveal via an animated mask.",
         circleClose: "Circular close via an animated mask.",
@@ -188,7 +298,12 @@ export const storyInspector = {
     },
 
     videoOperation: {
-        play: "Play",
+        // "Play" waits for the clip to finish before the story continues; "Resume" does not.
+        play: "Play (wait for end)",
+        pause: "Pause",
+        resume: "Resume",
+        stop: "Stop",
+        seek: "Seek to",
     },
 
     audioOperation: {
@@ -200,6 +315,7 @@ export const storyInspector = {
         setVolume: "Set volume",
         setRate: "Set rate",
         muteSound: "Mute / unmute",
+        seekSound: "Seek",
     },
 
     screenEffectOption: {
@@ -251,10 +367,14 @@ export const storyInspector = {
     },
 
     audio: {
+        track: "Track",
+        // The name of the track an unset reference lands on, so the empty choice is not a blank.
+        trackDefault: "Default ({name})",
         soundName: "Sound name",
         bgmAsset: "BGM asset",
         soundAsset: "Sound asset",
         fade: "Fade (s)",
+        seekTime: "Seek to (s)",
         volume: "Volume",
         rate: "Rate",
         loop: "Loop",
@@ -281,6 +401,7 @@ export const storyInspector = {
     video: {
         videoName: "Video name",
         videoAsset: "Video asset",
+        seekTime: "Seek to",
     },
 
     nvl: {
@@ -289,9 +410,29 @@ export const storyInspector = {
     },
 
     character: {
-        stageName: "Stage name",
+        // The handle later rows use to reach this character — `/move Nattou`, `/hide Nattou`. Named
+        // for what the author does with it; "stage name" was the engine's word for the object.
+        objectName: "Refer to as",
+        // Named for what the player reads, not for the field it writes: this is the speaker label from
+        // this row on, which is what makes "？？？" become a name.
+        displayName: "Speaks as",
         chooseHint: "Choose a character to pick its appearance.",
         overrideImage: "Override image",
+        // A character its own runtime draws: the names come from the model, so these fields are filled
+        // from what the model reported about itself, and empty is a request (clear it) rather than an
+        // unfilled slot - which is why each channel names what clearing it looks like.
+        puppetMotion: "Motion",
+        puppetExpression: "Expression",
+        puppetSkin: "Skin",
+        puppetNone: "none",
+        puppetSkinDefault: "model default",
+        puppetParams: "Parameters",
+        puppetParamId: "Parameter",
+        puppetParamValue: "Value",
+        puppetParamAdd: "Add parameter",
+        puppetParamRemove: "Remove parameter",
+        puppetNoParams: "This row sets no parameters yet.",
+        notPuppetHint: "This character is drawn by Studio, so it has no runtime state to set.",
     },
 
     asset: {
@@ -305,6 +446,8 @@ export const storyInspector = {
         maskImage: "Mask image",
         clipPath: "Clip path",
         cssFilter: "CSS filter",
+        backdropFilter: "CSS backdrop-filter",
+        blendMode: "Blend mode",
         darkness: "Darkness 0-1",
     },
 
@@ -331,6 +474,9 @@ export const storyInspector = {
     },
 
     control: {
+        labelName: "Label name",
+        gotoTarget: "Go to label",
+        noLabels: "No labels in this scene",
         conditionContainer: "Condition container. Add condition branches as children.",
         control: "Control",
         sequence: "Sequence",
@@ -345,18 +491,21 @@ export const storyInspector = {
             any: "Any",
         },
         times: "Times",
+        loopKind: "Loop",
+        loopKindTimes: "A number of times",
+        loopKindUntil: "Until a condition",
+        until: "Stop when",
+        // Spells out the two things the token itself does not: it is a STOP condition, and it is
+        // tested before the body, so a condition already true means the group never runs.
+        untilHint: "The group repeats while this is false, and stops the moment it becomes true. Checked before each pass.",
+        breakHint: "Leaves the repeat group around this row. It does nothing outside one.",
         branch: "Branch",
         elseHint: "Else branch runs when previous branches do not match.",
     },
 
     condition: {
-        brokenExpression: "This expression no longer resolves - a variable it reads may have been renamed or deleted. The branch evaluates false until it is fixed.",
+        brokenExpression: "This expression no longer resolves; a variable it reads may have been renamed or deleted. The branch stays false until it is fixed.",
         clear: "Clear condition",
-    },
-
-    code: {
-        language: "Language",
-        source: "Source",
     },
 
     declaration: {

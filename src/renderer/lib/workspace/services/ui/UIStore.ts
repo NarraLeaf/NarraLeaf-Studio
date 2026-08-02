@@ -24,6 +24,11 @@ import {
     EditorTabDefinition,
     ActionSeparator,
 } from "@/apps/workspace/registry/types";
+import type {
+    PluginTextEditorActionDef,
+    PluginTextEditorLanguageDef,
+    PluginTextEditorPreviewDef,
+} from "./textEditorContributions";
 
 /**
  * Hard floor/ceiling for a split ratio - a backstop against a zero-width pane, not a usability
@@ -31,8 +36,16 @@ import {
  */
 export const EDITOR_SPLIT_RATIO_EPSILON = 0.02;
 
+/**
+ * What the app considers "the thing the inspector is about".
+ *
+ * Members are literals rather than a shared enum because each one is owned by the editor that
+ * publishes it (see `storyMotionKeyframe` / `storyBlock`), and the store only has to name them. Note
+ * that nothing in the app switches on this union: every consumer tests it with `if`, so ADDING a
+ * member compiles everywhere and changes nothing — the dispatch sites have to be found by hand.
+ */
 export interface SelectionState {
-    type: "asset" | "character" | "element" | "scene" | "storyMotionKeyframe" | null;
+    type: "asset" | "character" | "element" | "scene" | "storyMotionKeyframe" | "storyBlock" | null;
     data: any | UIElementSelection | null;
 }
 
@@ -49,6 +62,8 @@ export interface UIState {
     panels: PanelDefinition[];
     /** User-defined panel ordering per position (panel ids). Overrides the static `order` field. */
     panelOrder: Record<string, string[]>;
+    /** Panel ids folded into a dock's collapse group, per position (see sidebarPanelGroup.ts). */
+    collapsedPanels: Record<string, string[]>;
     panelVisibility: Record<string, boolean>;
     editorTabs: EditorTab[];
     activeEditorTabId: string | null;
@@ -59,6 +74,10 @@ export interface UIState {
     actionGroups: ActionGroup[];
     editorLayout: EditorLayout;
     selection: SelectionState;
+    /** Plugin contributions to the built-in text editor; see `textEditorContributions`. */
+    textEditorLanguages: PluginTextEditorLanguageDef[];
+    textEditorPreviews: PluginTextEditorPreviewDef[];
+    textEditorActions: PluginTextEditorActionDef[];
 }
 
 /**
@@ -77,6 +96,7 @@ export interface UIStateEvents {
     panelUnregistered: string; // panel id
     panelVisibilityChanged: { panelId: string; visible: boolean };
     panelOrderChanged: { position: string; order: string[] };
+    collapsedPanelsChanged: { position: string; collapsed: string[] };
     
     editorTabOpened: EditorTab;
     editorTabClosed: string; // tab id
@@ -134,6 +154,7 @@ export class UIStore {
             actionBarItems: [],
             panels: [],
             panelOrder: {},
+            collapsedPanels: {},
             panelVisibility: {},
             editorTabs: [],
             activeEditorTabId: null,
@@ -148,6 +169,9 @@ export class UIStore {
                 focus: null,
             },
             selection: { type: null, data: null },
+            textEditorLanguages: [],
+            textEditorPreviews: [],
+            textEditorActions: [],
         };
         this.events = new EventEmitter<UIStateEvents>();
     }
@@ -342,6 +366,88 @@ export class UIStore {
             copy[position] = [...ids];
         }
         return copy;
+    }
+
+    /**
+     * Fold a set of panels into a dock's collapse group (list of panel ids). Membership is
+     * independent of visibility and of the order override: a collapsed panel keeps its slot in the
+     * order, it is just rendered inside the group's flyout instead of directly on the rail.
+     */
+    public setCollapsedPanels(position: PanelPosition, panelIds: string[]): void {
+        this.state.collapsedPanels = { ...this.state.collapsedPanels, [position]: [...panelIds] };
+        this.events.emit("collapsedPanelsChanged", { position, collapsed: [...panelIds] });
+        this.events.emit("stateChanged", { collapsedPanels: { ...this.state.collapsedPanels } });
+    }
+
+    public getCollapsedPanels(): Record<string, string[]> {
+        const copy: Record<string, string[]> = {};
+        for (const [position, ids] of Object.entries(this.state.collapsedPanels)) {
+            copy[position] = [...ids];
+        }
+        return copy;
+    }
+
+    // === Text editor contributions ===
+    //
+    // Three flat, id-keyed lists, deliberately as dumb as the panel list above: every mutation goes
+    // out on `stateChanged`, so the open text tabs pick it up through the same hook mechanism every
+    // other UI registry uses.
+    //
+    // The order is registration order, and it carries meaning:
+    // `TextEditorContributionService.languageForExtension` resolves a contested extension by taking
+    // the first entry that claims it. Re-registering an id does not replace it in place - it drops
+    // the old entry and appends the new one - so a plugin that re-registers moves itself behind
+    // everyone else and hands a contested extension to whoever is now in front.
+
+    public registerTextEditorLanguage(def: PluginTextEditorLanguageDef): void {
+        this.state.textEditorLanguages = [
+            ...this.state.textEditorLanguages.filter(entry => entry.id !== def.id),
+            def,
+        ];
+        this.events.emit("stateChanged", { textEditorLanguages: [...this.state.textEditorLanguages] });
+    }
+
+    public unregisterTextEditorLanguage(id: string): void {
+        this.state.textEditorLanguages = this.state.textEditorLanguages.filter(entry => entry.id !== id);
+        this.events.emit("stateChanged", { textEditorLanguages: [...this.state.textEditorLanguages] });
+    }
+
+    public getTextEditorLanguages(): PluginTextEditorLanguageDef[] {
+        return [...this.state.textEditorLanguages];
+    }
+
+    public registerTextEditorPreview(def: PluginTextEditorPreviewDef): void {
+        this.state.textEditorPreviews = [
+            ...this.state.textEditorPreviews.filter(entry => entry.id !== def.id),
+            def,
+        ];
+        this.events.emit("stateChanged", { textEditorPreviews: [...this.state.textEditorPreviews] });
+    }
+
+    public unregisterTextEditorPreview(id: string): void {
+        this.state.textEditorPreviews = this.state.textEditorPreviews.filter(entry => entry.id !== id);
+        this.events.emit("stateChanged", { textEditorPreviews: [...this.state.textEditorPreviews] });
+    }
+
+    public getTextEditorPreviews(): PluginTextEditorPreviewDef[] {
+        return [...this.state.textEditorPreviews];
+    }
+
+    public registerTextEditorAction(def: PluginTextEditorActionDef): void {
+        this.state.textEditorActions = [
+            ...this.state.textEditorActions.filter(entry => entry.id !== def.id),
+            def,
+        ];
+        this.events.emit("stateChanged", { textEditorActions: [...this.state.textEditorActions] });
+    }
+
+    public unregisterTextEditorAction(id: string): void {
+        this.state.textEditorActions = this.state.textEditorActions.filter(entry => entry.id !== id);
+        this.events.emit("stateChanged", { textEditorActions: [...this.state.textEditorActions] });
+    }
+
+    public getTextEditorActions(): PluginTextEditorActionDef[] {
+        return [...this.state.textEditorActions];
     }
 
     // === Editor Tabs ===
@@ -1310,6 +1416,40 @@ export class UIStore {
     }
 
     /**
+     * Every open editor tab, ordered most-recently-focused first, across all split groups. Resolves
+     * through the layout's own per-group focus history (the focus keys embed colon-bearing tab ids,
+     * so they can only be resolved in here where the structured entries live). Tabs not yet in the
+     * focus history - e.g. right after a layout restore - are appended in layout order so the list
+     * is always complete.
+     */
+    public getEditorTabsByRecency(): EditorTab[] {
+        const groups = this.collectGroups();
+        const entriesByKey = new Map(this.collectEditorTabFocusEntries().map((entry) => [entry.key, entry]));
+        const findTab = (groupId: string, tabId: string): EditorTab | undefined =>
+            groups.find((group) => group.id === groupId)?.tabs.find((tab) => tab.id === tabId);
+
+        const ordered: EditorTab[] = [];
+        const seen = new Set<string>();
+        for (const key of this.getEditorTabFocusHistoryKeys()) {
+            const entry = entriesByKey.get(key);
+            const tab = entry && findTab(entry.groupId, entry.tabId);
+            if (tab && !seen.has(tab.id)) {
+                ordered.push(tab);
+                seen.add(tab.id);
+            }
+        }
+        for (const group of groups) {
+            for (const tab of group.tabs) {
+                if (!seen.has(tab.id)) {
+                    ordered.push(tab);
+                    seen.add(tab.id);
+                }
+            }
+        }
+        return ordered;
+    }
+
+    /**
      * Flatten all ActionDefinition objects contained in an ActionGroup (recursively).
      */
     private static flattenGroupActions(group: ActionGroup): (ModuleAction | ActionSeparator)[] {
@@ -1381,6 +1521,7 @@ export class UIStore {
             actionBarItems: [],
             panels: [],
             panelOrder: {},
+            collapsedPanels: {},
             panelVisibility: {},
             editorTabs: [],
             activeEditorTabId: null,
@@ -1395,6 +1536,9 @@ export class UIStore {
                 focus: null,
             },
             selection: { type: null, data: null },
+            textEditorLanguages: [],
+            textEditorPreviews: [],
+            textEditorActions: [],
         };
         this.editorTabFocusHistory = [];
         this.events.clear();

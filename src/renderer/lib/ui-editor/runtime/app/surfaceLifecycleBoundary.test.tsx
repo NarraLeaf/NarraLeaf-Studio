@@ -57,6 +57,7 @@ function mountBoundary(input: {
         <SurfaceLifecycleBoundary
             core={core}
             blueprintDocument={blueprintDocument}
+            persistentVariables={{}}
             surface={makeTestSurface("surface-a")}
             runtimeScopeId="scope-1"
             hostAdapter={makeBlueprintHostAdapter()}
@@ -136,6 +137,7 @@ describe("SurfaceLifecycleBoundary dispatch order", () => {
             <SurfaceLifecycleBoundary
                 core={core}
                 blueprintDocument={blueprintDocument}
+            persistentVariables={{}}
                 surface={makeTestSurface("surface-a")}
                 runtimeScopeId="scope-1"
                 hostAdapter={makeBlueprintHostAdapter()}

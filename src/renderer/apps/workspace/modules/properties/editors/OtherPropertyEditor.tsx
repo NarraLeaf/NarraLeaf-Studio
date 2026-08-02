@@ -51,7 +51,7 @@ export function OtherPropertyEditor({ asset, onChange }: PropertyEditorProps<Ass
                         <File className="w-4 h-4 text-fg-muted" />
                         <span className="text-sm font-medium text-fg-muted">{t("properties.asset.other.preview")}</span>
                     </div>
-                    <div className="flex items-center justify-center bg-surface rounded p-2">
+                    <div className="flex items-center justify-center bg-surface rounded-md p-2">
                         <div className="text-xs text-fg-subtle text-center">
                             {t("properties.asset.other.fileSuffix", { ext: getFileExtension(asset.name) })}
                             <br />

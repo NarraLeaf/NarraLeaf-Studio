@@ -92,13 +92,12 @@ describe("collectStoryPlaybackPlan", () => {
         expect(plan.stop).toMatchObject({ reason: "jump", targetSceneId: "scene-2" });
     });
 
-    it("drops note and code rows, which have no runtime behaviour", () => {
+    it("drops note rows, which have no runtime behaviour", () => {
         const scene = makeScene({
             a: say("a"),
             note: block("note", "note", { text: { textId: "n", value: "Remember", role: "note" } }),
-            code: block("code", "code", { language: "narraleaf", source: "x" }),
             b: say("b"),
-        }, ["a", "note", "code", "b"]);
+        }, ["a", "note", "b"]);
         expect(ids(scene, "a")).toEqual(["a", "b"]);
     });
 

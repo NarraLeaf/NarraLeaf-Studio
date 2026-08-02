@@ -49,6 +49,9 @@ export const dialogs = {
     noun: {
         item: "项目",
         layer: "图层",
+        pose: "姿态",
+        axis: "差分轴",
+        tag: "标签",
         character: "角色",
         group: "分组",
         story: "故事",
@@ -61,6 +64,9 @@ export const dialogs = {
         json: "JSON",
         blueprint: "蓝图",
         font: "字体",
+        model: "模型",
         other: "其他",
+        media: "媒体",
+        data: "数据",
     },
 } satisfies LocaleNamespace<"dialogs">;

@@ -4,11 +4,15 @@ import { findProjectConfigFileName } from "@shared/utils/nlproj";
 import type { RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
 
 /**
- * The launcher's "new project" and "open project" flows.
+ * The launcher's "add project" and "open project" flows.
  *
  * Extracted from the Projects tab so the macOS File menu can drive the same code: the menu is
  * handled at the app level (a tab can be unmounted when the user is on another tab), and two
  * copies of these flows would drift.
+ *
+ * **Two, and there used to be four.** Getting a project off a server and unpacking one from a
+ * package were separate entry points here; they are now cards on the wizard's first page, so the
+ * only two questions left are "somewhere on this disk" and "bring one in".
  *
  * Each returns an error message to display, or null when it succeeded or the user cancelled.
  */

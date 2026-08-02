@@ -2,13 +2,26 @@ import { useMemo } from "react";
 import { useStatusBarItems } from "../../hooks/useUIService";
 import { useTranslation } from "@/lib/i18n";
 import { StatusBarAlignment, type StatusBarItem } from "@/lib/workspace/services/ui/types";
-import { builtInStatusBarEntries, StatusEntry } from "../../modules/status-bar";
+import {
+    builtInStatusBarEntries,
+    StatusEntry,
+    StatusBarEntryIdContext,
+    StatusBarRunningContext,
+    useActiveRunMode,
+} from "../../modules/status-bar";
 import type { StatusBarEntryModule } from "../../modules/types";
 import { orderStatusBarEntries } from "./statusBarEntryOrder";
 import { useStatusBarContextMenu } from "./useStatusBarContextMenu";
 
 /** Fixed bar height; the dock solver subtracts this from the viewport it lays out into. */
 export const STATUS_BAR_HEIGHT = 24;
+
+/**
+ * Breathing room at both ends of the strip. The bar runs flush into the bottom corners of the
+ * window, which the OS rounds off, so the outermost cell would otherwise have its icon and its hover
+ * fill crowded by the curve. Insetting the row keeps both clear of it.
+ */
+const STATUS_BAR_EDGE_GAP = 6;
 
 /**
  * A resolved cell: either a built-in module (renders its own component) or an item registered at
@@ -31,6 +44,10 @@ type ResolvedEntry =
 export function StatusBar() {
     const { t } = useTranslation();
     const serviceItems = useStatusBarItems();
+    // While any mode runs the whole strip switches to the theme colour; cells read this through
+    // StatusBarRunningContext and flip to on-primary ink. The wash IS the "running" signal — there
+    // is no separate status dot.
+    const running = useActiveRunMode() !== null;
 
     // Built-ins first, then runtime registrations — so plugin entries pack closest to the centre.
     const entries: ResolvedEntry[] = useMemo(
@@ -67,14 +84,22 @@ export function StatusBar() {
     );
     const { hiddenIds, openMenu, menu } = useStatusBarContextMenu(menuEntries);
 
+    // Every cell that actually draws something carries its registry id, the same way tabs carry
+    // `data-editor-tab-id` and asset sections carry `data-asset-category`. It names a cell whose
+    // visible text is often a bare value ("LF", "UTF-8", "120%") and would otherwise only be
+    // findable by guessing at that text. The id rides a context down onto `StatusEntry` rather than
+    // sitting on the wrapper here, so an entry that is currently rendering `null` - which is most of
+    // them, most of the time - leaves no element behind claiming to be a cell.
     const renderEntry = (entry: ResolvedEntry) => {
         const onContextMenu = (event: React.MouseEvent) => openMenu(event, entry.id);
         if (entry.kind === "module") {
             const Component = entry.module.component;
             return (
-                <div key={entry.id} className="flex items-stretch" onContextMenu={onContextMenu}>
-                    <Component />
-                </div>
+                <StatusBarEntryIdContext.Provider key={entry.id} value={entry.id}>
+                    <div className="flex items-stretch" onContextMenu={onContextMenu}>
+                        <Component />
+                    </div>
+                </StatusBarEntryIdContext.Provider>
             );
         }
         const { item } = entry;
@@ -82,12 +107,14 @@ export function StatusBar() {
             return null;
         }
         return (
-            <div key={entry.id} className="flex min-w-0 items-stretch" onContextMenu={onContextMenu}>
-                <StatusEntry onClick={item.command} title={item.tooltip}>
-                    {item.icon}
-                    <span className="truncate">{item.text}</span>
-                </StatusEntry>
-            </div>
+            <StatusBarEntryIdContext.Provider key={entry.id} value={entry.id}>
+                <div className="flex min-w-0 items-stretch" onContextMenu={onContextMenu}>
+                    <StatusEntry onClick={item.command} title={item.tooltip}>
+                        {item.icon}
+                        <span className="truncate">{item.text}</span>
+                    </StatusEntry>
+                </div>
+            </StatusBarEntryIdContext.Provider>
         );
     };
 
@@ -95,14 +122,23 @@ export function StatusBar() {
         orderStatusBarEntries(entries, alignment, hiddenIds).map(renderEntry);
 
     return (
-        <div
-            className="flex shrink-0 items-stretch justify-between overflow-hidden border-t border-edge bg-surface-sunken"
-            style={{ height: STATUS_BAR_HEIGHT }}
-            onContextMenu={event => openMenu(event)}
-        >
-            <div className="flex min-w-0 items-stretch">{renderSide(StatusBarAlignment.Left)}</div>
-            <div className="flex min-w-0 items-stretch">{renderSide(StatusBarAlignment.Right)}</div>
-            {menu}
-        </div>
+        <StatusBarRunningContext.Provider value={running}>
+            <div
+                data-status-bar
+                className={`flex shrink-0 items-stretch justify-between overflow-hidden border-t transition-colors duration-300 ${
+                    running ? "border-primary bg-primary" : "border-edge bg-surface-sunken"
+                }`}
+                style={{
+                    height: STATUS_BAR_HEIGHT,
+                    paddingLeft: STATUS_BAR_EDGE_GAP,
+                    paddingRight: STATUS_BAR_EDGE_GAP,
+                }}
+                onContextMenu={event => openMenu(event)}
+            >
+                <div className="flex min-w-0 items-stretch">{renderSide(StatusBarAlignment.Left)}</div>
+                <div className="flex min-w-0 items-stretch">{renderSide(StatusBarAlignment.Right)}</div>
+                {menu}
+            </div>
+        </StatusBarRunningContext.Provider>
     );
 }

@@ -8,10 +8,19 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, Ellipsis, Languages, Plus } from "lucide-react";
+import { Check, Ellipsis, Plus } from "lucide-react";
 import type { PanelComponentProps } from "../types";
 import { ContextMenu, Progress, type ContextMenuDef } from "@/lib/components/elements";
 import { useWorkspace } from "../../context";
+import { freezeContextMenuRows, useFreezeGuard } from "../../components/ui/freezeGuard";
+
+/**
+ * The localization locale menu row that keeps working while frozen: the CSV export.
+ *
+ * It writes to a path the author picks, outside the project. Set-as-source, Import CSV and Remove
+ * Language all write the project and are off.
+ */
+const FREEZE_READ_ONLY_LOCALIZATION_MENU_IDS: ReadonlySet<string> = new Set(["export-csv"]);
 import { useRegistry } from "../../registry";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
@@ -53,10 +62,10 @@ type LocaleMenuState = {
 };
 
 const INPUT_CLASS =
-    "h-7 min-w-0 flex-1 rounded border border-edge bg-surface-raised px-2 text-xs text-fg outline-none placeholder:text-fg-subtle focus:border-primary/50";
+    "h-7 min-w-0 flex-1 rounded-md border border-edge bg-surface-raised px-2 text-xs text-fg outline-none placeholder:text-fg-subtle focus:border-primary/50";
 
 const GHOST_ROW_CLASS =
-    "flex h-7 w-full items-center justify-center gap-1 rounded border border-dashed border-edge text-2xs text-fg-subtle transition-colors hover:border-edge-strong hover:text-fg";
+    "flex h-7 w-full items-center justify-center gap-1 rounded-md border border-dashed border-edge text-2xs text-fg-subtle transition-colors hover:border-edge-strong hover:text-fg disabled:cursor-not-allowed disabled:opacity-40";
 
 /** Autonym for a language code via Intl (e.g. "ja" → "日本語"); falls back to the code. */
 function autonymFor(code: string): string {
@@ -72,6 +81,9 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
     const { t } = useTranslation();
+    // Adding, removing and re-sourcing a language, and importing a CSV, write the project. Reading the
+    // tables, switching locale and exporting a CSV do not.
+    const freeze = useFreezeGuard();
 
     const localizationService = useMemo(
         () => (context && isInitialized ? context.services.get<LocalizationService>(Services.Localization) : null),
@@ -378,6 +390,10 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
         );
         return items;
     }, [localeMenu, handleSetSource, handleExportCsv, handleImportCsv, handleRemoveLocale, t]);
+    const frozenLocaleMenuItems = useMemo(
+        () => freezeContextMenuRows(localeMenuItems, freeze.frozen, FREEZE_READ_ONLY_LOCALIZATION_MENU_IDS, freeze.reason),
+        [freeze, localeMenuItems],
+    );
 
     const locales = config?.locales ?? [];
 
@@ -391,12 +407,9 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                     <p className="text-2xs leading-snug text-fg-subtle">
                         {t("workspace.localization.panel.languagesHint")}
                     </p>
-                    {locales.length === 0 ? (
-                        <div className="flex flex-col items-center gap-2 rounded border border-edge-subtle px-3 py-6 text-center text-2xs text-fg-subtle">
-                            <Languages className="h-5 w-5" />
-                            {t("workspace.localization.panel.empty")}
-                        </div>
-                    ) : (
+                    {/* No languages: no list. The "+ Add language" row directly below is the action,
+                        so a bordered box repeating it is a second copy of the same button. */}
+                    {locales.length === 0 ? null : (
                         <div className="flex flex-col gap-1">
                             {locales.map(locale => {
                                 const isSource = locale.code === config?.sourceLocale;
@@ -408,7 +421,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                                         role="button"
                                         tabIndex={0}
                                         title={t("workspace.localization.panel.openTable")}
-                                        className="group flex cursor-pointer flex-col gap-1.5 rounded border border-edge-subtle px-2.5 py-2 text-left hover:border-edge focus-visible:border-primary/50 focus-visible:outline-none"
+                                        className="group flex cursor-pointer flex-col gap-1.5 rounded-md border border-edge-subtle px-2.5 py-2 text-left hover:border-edge focus-visible:border-primary/50 focus-visible:outline-none"
                                         onClick={() => handleOpenTable(locale.code, locale.displayName)}
                                         onKeyDown={event => {
                                             if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
@@ -419,11 +432,11 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                                     >
                                         <div className="flex items-center gap-2">
                                             <span className="truncate text-xs text-fg">{locale.displayName}</span>
-                                            <span className="rounded border border-edge px-1 py-px text-2xs text-fg-subtle">
+                                            <span className="rounded-md border border-edge px-1 py-px text-2xs text-fg-subtle">
                                                 {locale.code}
                                             </span>
                                             {isSource ? (
-                                                <span className="rounded border border-primary/40 px-1 py-px text-2xs text-primary">
+                                                <span className="rounded-md border border-primary/40 px-1 py-px text-2xs text-primary">
                                                     {t("workspace.localization.panel.sourceBadge")}
                                                 </span>
                                             ) : null}
@@ -432,7 +445,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                                                 aria-haspopup="menu"
                                                 aria-expanded={menuOpen}
                                                 title={t("workspace.localization.panel.more")}
-                                                className={`ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded text-fg-subtle transition-opacity hover:bg-fill hover:text-fg focus-visible:opacity-100 group-hover:opacity-100 ${
+                                                className={`ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-subtle transition-opacity hover:bg-fill hover:text-fg focus-visible:opacity-100 group-hover:opacity-100 ${
                                                     menuOpen ? "opacity-100" : "opacity-0"
                                                 }`}
                                                 onClick={event => {
@@ -480,6 +493,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                             type="button"
                             className={`mt-1 ${GHOST_ROW_CLASS}`}
                             onClick={() => setAddingLocale(true)}
+                            {...freeze.writes()}
                         >
                             <Plus className="h-3 w-3" /> {t("workspace.localization.panel.addLanguage")}
                         </button>
@@ -527,7 +541,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                             />
                             <button
                                 type="button"
-                                className="flex h-7 w-7 flex-none items-center justify-center rounded border border-edge text-fg-muted hover:border-primary/50 hover:text-fg"
+                                className="flex h-7 w-7 flex-none items-center justify-center rounded-md border border-edge text-fg-muted hover:border-primary/50 hover:text-fg"
                                 onClick={() => void handleAddLocale()}
                                 title={t("workspace.localization.panel.confirm")}
                             >
@@ -539,7 +553,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
             </div>
             {localeMenu ? (
                 <ContextMenu
-                    items={localeMenuItems}
+                    items={frozenLocaleMenuItems}
                     position={localeMenu.position}
                     onClose={() => setLocaleMenu(null)}
                 />

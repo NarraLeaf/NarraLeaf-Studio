@@ -3,6 +3,9 @@ import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument } from "@shared/types/ui-ed
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import type { EditorGroup, EditorLayout } from "@/apps/workspace/registry/types";
 import { EDITOR_SPLIT_RATIO_EPSILON } from "@/lib/workspace/services/ui/UIStore";
+// The real sentinel, not a copy of its current value: globalMain stores this in `surfaceId`, and a
+// rename must fail here rather than quietly turn these tests into a test of a stale string.
+import { GLOBAL_MAIN_OWNER_KEY } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
 import {
     getWorkspaceEditorSessionSettingsKey,
     parseWorkspaceEditorSession,
@@ -265,6 +268,107 @@ describe("workspace editor session", () => {
         expect(uiService.focus.setFocus).toHaveBeenCalledWith(expect.anything(), "story-motion:motion-1");
     });
 
+    // Surface-less blueprint owners used to be judged by the same surface-existence check as
+    // surface-backed ones. Since their `surfaceId` is a sentinel, a pseudo id, or absent entirely,
+    // that check never matched and their tabs were silently dropped on every single restore.
+    // These assert the tabs are *present in the restored layout* - a non-throwing restore that
+    // quietly returns fewer tabs is exactly the bug.
+    it("restores blueprint tabs whose owner kind has no surface", () => {
+        const { context, store, uiService } = createRestoreHarness({
+            blueprints: {
+                "story-action-bp": { id: "story-action-bp" },
+                "global-bp": { id: "global-bp" },
+                "component-widget-bp": { id: "component-widget-bp" },
+            },
+        });
+        const session: WorkspaceEditorSessionV2 = {
+            version: 2,
+            activeGroupId: "main",
+            layout: {
+                kind: "group",
+                id: "main",
+                focus: null,
+                tabs: [
+                    {
+                        kind: "blueprint",
+                        title: "Story Action Logic",
+                        // No `surfaceId` at all - a story action is not on a surface.
+                        payload: { blueprintId: "story-action-bp", ownerKind: "storyAction" },
+                    },
+                    {
+                        kind: "blueprint",
+                        title: "Global Logic",
+                        payload: {
+                            blueprintId: "global-bp",
+                            ownerKind: "globalMain",
+                            surfaceId: GLOBAL_MAIN_OWNER_KEY,
+                        },
+                    },
+                    {
+                        kind: "blueprint",
+                        title: "Component Widget Logic",
+                        // A `component-editor:` pseudo id, which is never a document surface.
+                        payload: {
+                            blueprintId: "component-widget-bp",
+                            ownerKind: "componentWidgetMain",
+                            surfaceId: "component-editor:component-1",
+                            componentId: "component-1",
+                            elementId: "component-widget-1",
+                        },
+                    },
+                ],
+            },
+        };
+
+        expect(restoreWorkspaceEditorSession(context, session, uiService as any)).toBe(3);
+        expect(restoredGroups(store)[0].tabs.map(tab => tab.id)).toEqual([
+            "blueprint-entry:story-action-bp:~:~:~",
+            `blueprint-entry:global-bp:${GLOBAL_MAIN_OWNER_KEY}:~:~`,
+            "blueprint-entry:component-widget-bp:component-editor:component-1:component-widget-1:~",
+        ]);
+    });
+
+    // The control group: the surface check still has a job to do. Widening the gate far enough to
+    // let a genuinely dangling surface reference through would defeat the point of having it.
+    it("still drops surface-backed blueprint tabs whose surface is gone", () => {
+        const { context, store, uiService } = createRestoreHarness({
+            blueprints: { "widget-bp": { id: "widget-bp" }, "surface-bp": { id: "surface-bp" } },
+        });
+        const session: WorkspaceEditorSessionV2 = {
+            version: 2,
+            activeGroupId: "main",
+            layout: {
+                kind: "group",
+                id: "main",
+                focus: null,
+                tabs: [
+                    {
+                        kind: "blueprint",
+                        title: "Widget On A Deleted Surface",
+                        payload: {
+                            blueprintId: "widget-bp",
+                            ownerKind: "widgetMain",
+                            surfaceId: "deleted-surface",
+                            elementId: "widget-1",
+                        },
+                    },
+                    {
+                        kind: "blueprint",
+                        title: "Logic Of A Deleted Surface",
+                        payload: {
+                            blueprintId: "surface-bp",
+                            ownerKind: "surfaceMain",
+                            surfaceId: "deleted-surface",
+                        },
+                    },
+                ],
+            },
+        };
+
+        expect(restoreWorkspaceEditorSession(context, session, uiService as any)).toBe(0);
+        expect(store.restoreEditorLayout).not.toHaveBeenCalled();
+    });
+
     it("collapses a restored pane whose tabs all failed to resolve", () => {
         const { context, store, uiService } = createRestoreHarness({ motionExists: true });
         const session: WorkspaceEditorSessionV2 = {
@@ -322,6 +426,60 @@ describe("workspace editor session serialization", () => {
             ratio: 0.35,
             first: { kind: "group", id: "main", focus: "story-motion:a" },
             second: { kind: "group", id: "group-1", focus: "story-motion:b" },
+        });
+    });
+
+    it("round-trips blank new-tab pages, keeping each one's identity", () => {
+        const layout: EditorLayout = {
+            id: "main",
+            tabs: [
+                { id: "narraleaf-studio:new-tab-t1", title: "New Tab", component: (() => null) as never },
+                { id: "narraleaf-studio:new-tab-t2", title: "New Tab", component: (() => null) as never },
+            ],
+            focus: "narraleaf-studio:new-tab-t2",
+        };
+
+        const parsed = parseWorkspaceEditorSession(JSON.parse(JSON.stringify(serializeEditorSession(layout))));
+
+        expect(parsed!.layout).toMatchObject({
+            kind: "group",
+            focus: "narraleaf-studio:new-tab-t2",
+            tabs: [
+                { kind: "newTab", token: "t1" },
+                { kind: "newTab", token: "t2" },
+            ],
+        });
+    });
+
+    // The other half of the surface-less bug, and the earlier one: a story-action tab failed the
+    // payload guard on the way *out*, so it was never written to the session file in the first
+    // place. Restoring it correctly is moot if saving silently discards it.
+    it("round-trips a surface-less blueprint tab through serialize and parse", () => {
+        const layout: EditorLayout = {
+            id: "main",
+            tabs: [
+                {
+                    id: "blueprint-entry:story-action-bp:~:~:~",
+                    title: "Story Action Logic",
+                    component: (() => null) as never,
+                    payload: { blueprintId: "story-action-bp", ownerKind: "storyAction" },
+                },
+            ],
+            focus: "blueprint-entry:story-action-bp:~:~:~",
+        };
+
+        const parsed = parseWorkspaceEditorSession(JSON.parse(JSON.stringify(serializeEditorSession(layout, "main"))));
+
+        expect(parsed!.layout).toMatchObject({
+            kind: "group",
+            focus: "blueprint-entry:story-action-bp:~:~:~",
+            tabs: [
+                {
+                    kind: "blueprint",
+                    title: "Story Action Logic",
+                    payload: { blueprintId: "story-action-bp", ownerKind: "storyAction" },
+                },
+            ],
         });
     });
 

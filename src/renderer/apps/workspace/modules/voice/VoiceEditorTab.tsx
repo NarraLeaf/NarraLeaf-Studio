@@ -18,6 +18,7 @@ import type { EditorComponentProps } from "../types";
 import { Select, type SelectOption } from "@/lib/components/elements";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { useWorkspace } from "../../context";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import { VoiceService } from "@/lib/workspace/services/voice/VoiceService";
@@ -46,6 +47,9 @@ type TableRow = VoiceTableRow & { speaker: string };
 export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEditorTabPayload | undefined>) {
     const { context, isInitialized } = useWorkspace();
     const { t } = useTranslation();
+    // The rows guard themselves (see `VoiceRows`); the cast name in the group header is the one
+    // writing control this shell owns.
+    const freeze = useFreezeGuard();
     const locale = payload?.locale ?? "";
 
     const voiceService = useMemo(
@@ -432,7 +436,7 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
                 <div className="flex min-w-0 items-center gap-2">
                     <Mic className="h-4 w-4 shrink-0 text-fg-muted" />
                     <span className="truncate text-sm font-medium text-fg">{localeDisplayName}</span>
-                    <span className="rounded border border-edge px-1.5 py-0.5 text-2xs text-fg-subtle">{locale}</span>
+                    <span className="rounded-md border border-edge px-1.5 py-0.5 text-2xs text-fg-subtle">{locale}</span>
                 </div>
                 <div className="ml-auto flex items-center gap-3">
                     <div className="flex items-center gap-2">
@@ -454,7 +458,7 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
                                 aria-pressed={groupAxis === option.key}
                                 onClick={() => setGroupAxis(option.key)}
                                 title={option.label}
-                                className={`flex h-6 items-center gap-1.5 rounded px-2 text-xs transition-colors ${
+                                className={`flex h-6 items-center gap-1.5 rounded-md px-2 text-xs transition-colors ${
                                     groupAxis === option.key ? "bg-surface-raised text-fg shadow-sm" : "text-fg-muted hover:text-fg"
                                 }`}
                             >
@@ -489,7 +493,7 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
                                 type="button"
                                 aria-pressed={mode === option.key}
                                 onClick={() => setMode(option.key)}
-                                className={`flex h-6 items-center gap-1.5 rounded px-2.5 text-xs transition-colors ${
+                                className={`flex h-6 items-center gap-1.5 rounded-md px-2.5 text-xs transition-colors ${
                                     mode === option.key ? "bg-surface-raised text-fg shadow-sm" : "text-fg-muted hover:text-fg"
                                 }`}
                             >
@@ -515,8 +519,15 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
                             <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-edge-subtle bg-surface-sunken px-4 py-1.5 text-2xs font-medium text-fg-muted">
                                 <span>{group.name}</span>
                                 {group.characterId ? (
+                                    // Who voices this character is voice-configuration data, so the box
+                                    // is `readOnly` rather than `disabled`: the name is what a reader of
+                                    // a past version came for. It commits on blur, which is what made it
+                                    // worth guarding - a frozen project accepted the new cast name,
+                                    // showed it, and dropped it the moment the field lost focus.
                                     <input
-                                        className="ml-auto h-5 w-40 rounded border border-transparent bg-transparent px-1 text-2xs text-fg-subtle outline-none hover:border-edge focus:border-primary/50 focus:text-fg"
+                                        className="ml-auto h-5 w-40 rounded-md border border-transparent bg-transparent px-1 text-2xs text-fg-subtle outline-none hover:border-edge focus:border-primary/50 focus:text-fg"
+                                        readOnly={freeze.frozen}
+                                        title={freeze.frozen ? freeze.reason : undefined}
                                         placeholder={t("workspace.voice.table.castPlaceholder")}
                                         defaultValue={config?.cast[group.characterId]?.[locale] ?? ""}
                                         key={`${group.characterId}:${config?.cast[group.characterId]?.[locale] ?? ""}`}

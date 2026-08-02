@@ -5,6 +5,7 @@ import type { StoryExpressionScope } from "@shared/utils/storyExpressionParser";
 import { createStoryExpressionScope, formatStoryExpressionName, parseStoryExpression } from "@shared/utils/storyExpressionParser";
 import {
     allowsFreeValue,
+    freeTargetKind,
     paramTypes,
     matchEnumOption,
     type StoryCommandParam,
@@ -14,6 +15,7 @@ import type { StoryCommandLine, StoryCommandSpan } from "./storyCommandParser";
 import { getCommandSpec } from "./commands/registry";
 import type {
     StoryCommandContext,
+    StoryCommandAppearanceRef,
     StoryCommandNamedRef,
     StoryCommandResolution,
     StoryCommandResolutionIssue,
@@ -38,6 +40,7 @@ import { BGM_OBJECT_NAME } from "./storyCommandValues";
 
 export type {
     StoryCommandContext,
+    StoryCommandAppearanceRef,
     StoryCommandNamedRef,
     StoryCommandResolution,
     StoryCommandResolutionIssue,
@@ -65,7 +68,19 @@ function findByName(entries: readonly StoryCommandNamedRef[], raw: string): Stor
     return matches.length > 1 ? "ambiguous" : matches[0];
 }
 
-/** Parse a bare token into the scalar it denotes: `true` / `12` / anything else stays a string. */
+/**
+ * Parse a bare token into the scalar it denotes: `true` / `12` / anything else stays a string.
+ *
+ * A value that *opens* like JSON is additionally offered to `JSON.parse`, so a declaration can carry a
+ * list or an object as its default. Without it `/local inv "[1, 2]" type=json` declared a json
+ * variable holding the STRING `"[1, 2]"` - the declared type and the stored value disagreeing in the
+ * one place the author has no way to see it.
+ *
+ * Two properties keep this from guessing. The attempt is gated on the FIRST character rather than on
+ * "contains a bracket", so `min(1, 2)` and ordinary prose are never candidates - a constant must not
+ * read or compute anything, and a lenient gate is how that rule would erode. And a failed parse falls
+ * back to the raw text instead of throwing, so `/local note "[draft]"` is still the string it reads as.
+ */
 export function parseLiteral(raw: string): StoryLiteralValue {
     const trimmed = raw.trim();
     if (trimmed === "true") {
@@ -76,6 +91,13 @@ export function parseLiteral(raw: string): StoryLiteralValue {
     }
     if (trimmed !== "" && Number.isFinite(Number(trimmed))) {
         return Number(trimmed);
+    }
+    if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+        try {
+            return JSON.parse(trimmed) as StoryLiteralValue;
+        } catch {
+            // Looked like JSON, is not. The author typed words that begin with a bracket.
+        }
     }
     return raw;
 }
@@ -141,12 +163,11 @@ function resolveTarget(
         return { value: { kind: "target", target: matches[0] } };
     }
 
-    // Nothing on stage answers. A free-typed name can stand only where exactly one object kind is
-    // possible (made dynamically, or in another scene); with several kinds there is nothing to
-    // dispatch the block type on.
-    const stageKinds = type.accepts.filter((kind): kind is StoryCommandStageObjectKind => kind !== "character");
-    if (stageKinds.length === 1 && value.trim() !== "") {
-        return { value: { kind: "target", target: { type: "stageObject", objectKind: stageKinds[0], name: value.trim(), known: false } } };
+    // Nothing on stage answers. A free-typed name can stand only where its kind is knowable anyway
+    // (made dynamically, or in another scene) - one possible kind, or a declared fallback.
+    const freeKind = freeTargetKind(type);
+    if (freeKind && value.trim() !== "") {
+        return { value: { kind: "target", target: { type: "stageObject", objectKind: freeKind, name: value.trim(), known: false } } };
     }
     return { issue: { code: "unknownTarget", span, value } };
 }
@@ -218,15 +239,39 @@ function resolveAgainstType(
                 // The owner is unresolved, a temp speaker, or a stage object - there are no forms to
                 // check against. Not this param's error to report; the owner's own issue (or the
                 // spec's validate) already stands.
-                return { value: { kind: "characterForm", formName: value.trim() } };
+                return { value: { kind: "characterForm", refId: null, label: value.trim() } };
             }
-            const forms = context.formsByCharacterId[characterId] ?? [];
-            const match = forms.find(form => form.trim().toLowerCase() === value.trim().toLowerCase());
+            const refs = context.appearanceByCharacterId[characterId] ?? [];
+            const match = refs.find(ref => ref.name.trim().toLowerCase() === value.trim().toLowerCase());
             if (match) {
-                return { value: { kind: "characterForm", formName: match } };
+                // The row stores the id, so renaming a pose or a tag later leaves it resolving.
+                return { value: { kind: "characterForm", refId: match.id, label: match.name, axisId: match.axisId } };
             }
             const characterName = context.characters.find(entry => entry.id === characterId)?.name ?? "";
             return { issue: { code: "unknownForm", span, value, characterName } };
+        }
+        case "puppetName": {
+            const characterId = ownerCharacterId(resolved[type.dependsOn]);
+            // Decline rather than complain when the owner is not a runtime-drawn character: on `/face`
+            // this is the second branch of a union whose first branch has already reported (or
+            // resolved) properly, and on `/motion` / `/skin` the fault is the CHARACTER, which the
+            // spec's `validate` reports against the slot the author actually got wrong.
+            if (!characterId || !context.puppetCharacterIds.includes(characterId)) {
+                return null;
+            }
+            const name = value.trim();
+            return name === "" ? null : { value: { kind: "puppetName", channel: type.channel, name } };
+        }
+        case "puppetParam": {
+            // Same rule as `puppetName` one arm above, for the same reason: the ids belong to the model,
+            // so an unknown one is not a resolution failure. What can fail is the character, and the
+            // spec's `validate` reports that on the character's own slot.
+            const characterId = ownerCharacterId(resolved[type.dependsOn]);
+            if (!characterId || !context.puppetCharacterIds.includes(characterId)) {
+                return null;
+            }
+            const id = value.trim();
+            return id === "" ? null : { value: { kind: "puppetParam", id } };
         }
         case "scene": {
             const found = findByName(context.scenes, value);
@@ -234,6 +279,26 @@ function resolveAgainstType(
                 return { issue: { code: "ambiguousName", span, value } };
             }
             return found ? { value: { kind: "scene", sceneId: found.id } } : { issue: { code: "unknownScene", span, value } };
+        }
+        case "audioTrack": {
+            const found = findByName(context.audioTracks, value);
+            if (found === "ambiguous") {
+                return { issue: { code: "ambiguousName", span, value } };
+            }
+            return found
+                ? { value: { kind: "audioTrack", trackId: found.id } }
+                : { issue: { code: "unknownAudioTrack", span, value } };
+        }
+        case "label": {
+            // The engine matches labels exactly, so an exact hit always wins - with both `start` and
+            // `Start` declared (which the engine allows), folding first would silently aim the jump at
+            // whichever was declared earlier. A fold is only a typing convenience for the case where
+            // nothing matched exactly, and it still STORES the declared spelling, so the payload always
+            // spells the name the engine will match.
+            const exact = context.labels.find(name => name.trim() === value.trim());
+            const needle = value.trim().toLowerCase();
+            const found = exact ?? context.labels.find(name => name.trim().toLowerCase() === needle);
+            return found ? { value: { kind: "label", name: found } } : { issue: { code: "unknownLabel", span, value } };
         }
         case "variable": {
             const needle = value.trim().toLowerCase();
@@ -279,7 +344,7 @@ function resolveAgainstType(
         // A constant resolves exactly like a literal - the difference between them is what each
         // *offers* and what each *forbids*, both of which are settled before we get here.
         case "constant":
-            return { value: { kind: "literal", value: parseLiteral(value) } };
+            return { value: { kind: "literal", value: parseLiteral(value), source: value } };
         case "expression":
             return resolveExpression(type, value, span, context, resolved);
         case "text":
@@ -338,9 +403,20 @@ function matchCompoundAssignment(value: string): { op: "+" | "-" | "*" | "/"; re
     return match && match[2].trim() !== "" ? { op: match[1] as "+" | "-" | "*" | "/", rest: match[2] } : null;
 }
 
-/** The scope chain an expression's identifiers resolve through, built from the same context everything else reads. */
+/**
+ * The scope chain an expression's identifiers resolve through, built from the same context everything
+ * else reads - now including the three name tables that are not variables at all: scenes for
+ * `visited(…)`, choice options for `picked(…)`, and value blueprints for a call.
+ *
+ * One builder for all four, rather than a second resolution pass, for the reason this whole module
+ * exists: the candidate list reads the same context, so the menu can never offer a scene name that
+ * then fails to resolve.
+ */
 export function expressionScope(context: StoryCommandContext): StoryExpressionScope {
-    return createStoryExpressionScope(context.variables.map(entry => ({ name: entry.name, ref: entry.ref })));
+    return createStoryExpressionScope(
+        context.variables.map(entry => ({ name: entry.name, ref: entry.ref })),
+        { scenes: context.scenes, options: context.choiceOptions, blueprints: context.valueBlueprints },
+    );
 }
 
 function variableTypeOf(context: StoryCommandContext, ref: StoryVariableRef): StoryVariableValueType | undefined {
@@ -425,6 +501,10 @@ function issueForUnresolvable(type: StoryCommandParamType, value: string, span: 
             return { code: "unknownAsset", span, value, assetType: type.assetType };
         case "scene":
             return { code: "unknownScene", span, value };
+        case "audioTrack":
+            return { code: "unknownAudioTrack", span, value };
+        case "label":
+            return { code: "unknownLabel", span, value };
         case "variable":
             return { code: "unknownVariable", span, value };
         case "target":

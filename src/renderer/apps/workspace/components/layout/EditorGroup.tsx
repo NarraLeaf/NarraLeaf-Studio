@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef } from "react";
-import { X, Circle } from "lucide-react";
+import { X, Circle, Plus } from "lucide-react";
 import { useRegistry } from "../../registry";
 import { useWorkspace } from "../../context";
 import { EditorGroup as EditorGroupType } from "../../registry/types";
@@ -10,6 +10,7 @@ import type { FocusContext } from "@/lib/workspace/services/ui/types";
 import { useKeybinding, contextual, whenEditorTabsFocused, useMaxActiveEditors } from "../../hooks";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { hasClosedTabs, reopenLastClosedTab } from "../../session/workspaceClosedTabsStore";
+import { openNewTab } from "../../modules/new-tab/openNewTab";
 import { useEditorGroupDrop } from "./useEditorGroupDrop";
 import { EditorGroupDropOverlay } from "./EditorGroupDropOverlay";
 import { tabStripRevealScrollLeft } from "./tabStripReveal";
@@ -20,6 +21,7 @@ import {
     endEditorTabDrag,
 } from "@/apps/workspace/dnd/editorTabDragContract";
 import { WorkspacePanelErrorBoundary } from "../WorkspacePanelErrorBoundary";
+import { useWorkspaceReloadGeneration } from "@/lib/workspace/hooks/useWorkspaceReloadGeneration";
 import { useTranslation } from "@/lib/i18n";
 
 /** px of breathing room left beside the active tab when it is scrolled into view. */
@@ -52,6 +54,10 @@ export function EditorGroup({ group }: EditorGroupProps) {
     const activeTab = group.tabs.find((tab) => tab.id === group.focus);
 
     const maxActiveEditors = useMaxActiveEditors();
+    // Part of every mounted tab's key. A working-tree reload replaces the documents under these tabs,
+    // so a tab whose scene/graph/asset is gone has to re-resolve rather than keep rendering what it
+    // loaded before; see useWorkspaceReloadGeneration.
+    const reloadGeneration = useWorkspaceReloadGeneration(context);
 
     // Keep-alive: keep up to `maxActiveEditors` most-recently-active tabs mounted (hidden with
     // display:none) so their DOM scroll position, focus, and in-memory state survive a tab switch
@@ -159,6 +165,14 @@ export function EditorGroup({ group }: EditorGroupProps) {
         const uiService = context.services.get<UIService>(Services.UI);
         uiService.focus.setFocus(FocusArea.EditorTabs, group.id);
     }, [context, group.id]);
+
+    // The "+" at the end of the strip works like a browser's: it opens a fresh blank tab in this
+    // group, showing the same idle canvas as an empty editor pane.
+    const handleNewTab = useCallback(() => {
+        if (!context) return;
+        openNewTab(context, group.id);
+        focusTabStrip();
+    }, [context, focusTabStrip, group.id]);
 
     const handleCloseTab = (tabId: string, e: React.MouseEvent) => {
         e.stopPropagation();
@@ -364,6 +378,8 @@ export function EditorGroup({ group }: EditorGroupProps) {
     // Close shortcut: tab strip closes multi-selection (or active if none selected)
     useKeybinding({
         id: `editor-group-${group.id}-close-tabs-strip`,
+        // Registration is per group; the catalog id is what the palette and any rebind key on.
+        catalogId: "editor.close-selected-tabs",
         key: closeTabShortcut,
         description: "Close selected editor tabs",
         handler: handleCloseTabStripSelection,
@@ -374,6 +390,7 @@ export function EditorGroup({ group }: EditorGroupProps) {
     // Close shortcut: editor body closes active tab only
     useKeybinding({
         id: `editor-group-${group.id}-close-tab-editor-body`,
+        catalogId: "editor.close-active-tab",
         key: closeTabShortcut,
         description: "Close active editor tab",
         handler: handleCloseActiveTab,
@@ -484,7 +501,7 @@ export function EditorGroup({ group }: EditorGroupProps) {
                                             type="button"
                                             onClick={(e) => handleCloseTab(tab.id, e)}
                                             className={`
-                                                w-4 h-4 rounded flex items-center justify-center transition-colors
+                                                w-4 h-4 cursor-default rounded-md flex items-center justify-center transition-colors
                                                 ${
                                                     isActive
                                                         ? "hover:bg-fill-strong"
@@ -499,6 +516,18 @@ export function EditorGroup({ group }: EditorGroupProps) {
                                 </div>
                             );
                         })}
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleNewTab();
+                            }}
+                            className="flex cursor-default items-center justify-center w-9 h-9 flex-shrink-0 text-fg-subtle hover:text-fg hover:bg-surface transition-colors"
+                            aria-label={t("workspace.shell.newTab")}
+                            title={t("workspace.shell.newTab")}
+                        >
+                            <Plus className="w-4 h-4" />
+                        </button>
                     </div>
                     <ContextMenu
                         items={tabMenuItems}
@@ -509,9 +538,13 @@ export function EditorGroup({ group }: EditorGroupProps) {
                 </div>
             )}
 
-            {/* Editor Content with payload support */}
+            {/* Editor Content with payload support. Every editor tab sizes itself to h-full and
+                brings its own scroller, so this host must never scroll: a scrollbar here steals ~8px
+                of client width from the tab, which re-clamps any absolutely-positioned overlay inside
+                it, which removes the scrollbar again — a self-sustaining oscillation that ends with
+                Chrome's ResizeObserver loop guard stranding the overlay outside its container. */}
             <div
-                className="flex-1 min-h-0 overflow-auto outline-none"
+                className="flex-1 min-h-0 overflow-hidden outline-none"
                 tabIndex={-1}
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={handleEditorBodyClick}
@@ -523,7 +556,7 @@ export function EditorGroup({ group }: EditorGroupProps) {
                     const isActive = tab.id === group.focus;
                     return (
                         <div
-                            key={tab.id}
+                            key={`${tab.id}:${reloadGeneration}`}
                             className="h-full w-full"
                             style={{ display: isActive ? undefined : "none" }}
                             aria-hidden={isActive ? undefined : true}
@@ -538,8 +571,19 @@ export function EditorGroup({ group }: EditorGroupProps) {
                     );
                 })}
                 {!activeTab && (
-                    <div className="h-full flex items-center justify-center text-fg-subtle">
+                    <div className="h-full flex flex-col items-center justify-center gap-3 text-fg-subtle">
                         <p>{t("workspace.shell.noActiveEditor")}</p>
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleNewTab();
+                            }}
+                            className="flex items-center gap-2 px-3 h-9 rounded-md border border-edge text-sm text-fg-muted hover:text-fg hover:bg-surface transition-colors"
+                        >
+                            <Plus className="w-4 h-4" />
+                            <span>{t("workspace.shell.newTab")}</span>
+                        </button>
                     </div>
                 )}
             </div>

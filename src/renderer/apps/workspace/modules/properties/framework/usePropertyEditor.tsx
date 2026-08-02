@@ -192,7 +192,7 @@ export function usePropertyEditor<TData = any>(): UsePropertyEditorResult<TData>
 
     return {
         data: selection.data as TData | null,
-        selectionType: selection.type as SelectionType,
+        selectionType: selection.type,
         schema,
         hasSelection: selection.type !== null && selection.data !== null,
         setSelection,

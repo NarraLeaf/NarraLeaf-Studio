@@ -403,21 +403,34 @@ export class ReferenceService extends Service<ReferenceService> {
     private rebuildCharacterSlice(): void {
         const characterService = this.getContext().services.get<CharacterService>(Services.Character);
         try {
-            const characters: ReferenceScannableCharacter[] = characterService.listCharacter().map(character => ({
-                id: character.profile.getId(),
-                name: character.profile.getName(),
-                thumbnailAssetId: character.profile.getThumbnail(),
-                forms: character.profile.appearance.getForms().map(form => ({
-                    name: form.name,
-                    // Variant slots embed the whole `Asset`; the id sits one level deeper.
-                    variantAssetIds: Object.fromEntries(
-                        Object.entries(form.variantAssets).map(([variantName, variantData]) => [
-                            variantName,
-                            variantData?.data?.id ?? null,
-                        ]),
-                    ),
-                })),
-            }));
+            const characters: ReferenceScannableCharacter[] = characterService.listCharacter().map(character => {
+                const appearance = character.profile.appearance;
+                const appearanceAssets = appearance.getKind() === "preset"
+                    ? appearance.getPoses().map(pose => ({
+                        slot: `pose:${pose.id}`,
+                        detail: pose.name,
+                        assetId: pose.assetId,
+                    }))
+                    // A layered character references one image per layer *per tag*, so the slot key
+                    // has to name both — a layer alone would collide across its own options.
+                    : appearance.getLayers().flatMap(layer => {
+                        if (!layer.axisId) {
+                            return [{ slot: `layer:${layer.id}`, detail: layer.name, assetId: layer.assetId }];
+                        }
+                        const axis = appearance.getAxis(layer.axisId);
+                        return Object.entries(layer.options ?? {}).map(([tagId, assetId]) => ({
+                            slot: `layer:${layer.id}:${tagId}`,
+                            detail: `${layer.name} › ${axis?.tags.find(tag => tag.id === tagId)?.name ?? tagId}`,
+                            assetId,
+                        }));
+                    });
+                return {
+                    id: character.profile.getId(),
+                    name: character.profile.getName(),
+                    thumbnailAssetId: character.profile.getThumbnail(),
+                    appearanceAssets,
+                };
+            });
             this.characterReferences = extractCharacterAssetReferences(characters);
         } catch (error) {
             console.warn("[ReferenceService] Failed to scan characters:", error);

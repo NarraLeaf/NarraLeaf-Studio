@@ -1,7 +1,11 @@
 import fs from "fs/promises";
 import path from "path";
 import { UserDataNamespace, AppHost, AppProtocol } from "@shared/types/constants";
-import type { PluginPermissionGrantResult, PluginPermissionRequest } from "@shared/types/pluginPermissions";
+import type {
+    PluginInstallPermission,
+    PluginPermissionGrantResult,
+    PluginPermissionRequest,
+} from "@shared/types/pluginPermissions";
 import {
     type NormalizedPluginManifestV2,
     type PluginApproveResult,
@@ -15,6 +19,9 @@ import {
 import { PersistentState } from "@shared/utils/persistentState";
 import type { PersistentStateConfig } from "@shared/types/persistentState";
 import { validatePluginManifest } from "@shared/utils/pluginManifest";
+import { validatePluginIconBytes } from "@shared/utils/pluginIcon";
+import { PLUGIN_ICON_MAX_BYTES } from "@shared/constants/pluginIcon";
+import { isPermissionSubset } from "@shared/utils/pluginInstallPermissions";
 import { flattenCatalog, type LocaleContribution } from "@shared/i18n";
 import { PluginPermissionManager } from "./pluginPermissionManager";
 
@@ -35,9 +42,29 @@ const DEFAULT_STATE: PluginRegistryState = {
     "plugin.records": {},
 };
 
+/**
+ * Where package swaps are assembled. It lives inside the plugins root (so the
+ * final rename never crosses a volume) but is dot-prefixed, and the scan skips
+ * dot-prefixed entries - a half-finished copy can therefore never be mistaken
+ * for an installed package.
+ */
+const STAGING_DIR_NAME = ".staging";
+
+/**
+ * Names older builds staged next to the install path (`<id>.builtin-tmp-<ts>`,
+ * `<id>.tmp-<ts>`, and the dev script's `<id>.builtin-dev-tmp-<ts>`). A swap
+ * interrupted by a locked file left one behind for good, and because it carries
+ * the *same* manifest id and sorts after the real directory, the scan built its
+ * record from the leftover instead - pinning that plugin to a stale version on
+ * every launch, rebuild after rebuild. They are garbage: recognise and delete.
+ */
+const LEGACY_STAGING_DIR = /\.(?:builtin-tmp|builtin-dev-tmp|tmp)-\d{13}(?:-[a-z0-9]+)?$/;
+
 export class PluginManager {
     private readonly state: PersistentState<PluginRegistryState>;
     private readonly pluginsDir: string;
+    /** Staged copies a swap is filling right now, so cleanup leaves them alone. */
+    private readonly stagingInFlight = new Set<string>();
     private initialized: Promise<void> | null = null;
 
     constructor(
@@ -59,6 +86,24 @@ export class PluginManager {
             this.initialized = this.scanInstalledPlugins();
         }
         return this.initialized;
+    }
+
+    /**
+     * Re-sync the shipping built-in packages and rebuild the registry from disk.
+     *
+     * Start-up is the only other time this runs, which is fine for a packaged
+     * app but not in development: `yarn dev` rebuilds built-in plugins into
+     * `dist/builtin-plugins` while Studio is running, and without a re-sync the
+     * app would keep serving the copy it took at launch until the next restart.
+     */
+    public async refreshBuiltInPlugins(): Promise<void> {
+        const scan = this.initialize()
+            .catch(() => undefined)
+            .then(() => this.scanInstalledPlugins());
+        // A failed refresh must not poison the memo - the records from the last
+        // good scan stay serviceable, and the caller still sees the error.
+        this.initialized = scan.catch(() => undefined);
+        return scan;
     }
 
     public async listPlugins(): Promise<PluginListItem[]> {
@@ -83,16 +128,21 @@ export class PluginManager {
         manifest: NormalizedPluginManifestV2;
         entry: string;
         entryPath: string;
+        installPath: string;
     }>> {
         await this.initialize();
         return Object.values(this.getRecords())
             .filter(record => this.toListItem(record).status === "enabled" && record.manifest.entries.runtime)
             .map(record => {
                 const entry = record.manifest.entries.runtime!.replace(/\\/g, "/");
+                const installPath = path.resolve(record.installPath);
                 return {
                     manifest: record.manifest,
                     entry,
-                    entryPath: path.resolve(record.installPath, ...entry.split("/")),
+                    entryPath: path.resolve(installPath, ...entry.split("/")),
+                    // Sidecar `include` paths are package-relative, so the pack
+                    // compiler needs the package root, not just the entry file.
+                    installPath,
                 };
             });
     }
@@ -159,11 +209,14 @@ export class PluginManager {
                     publisher: plugin.manifest.publisher,
                 },
                 manifest: plugin.manifest,
-                entryUrl: this.getPluginEntryUrl(plugin.manifest, plugin.manifest.entries[target]!),
+                entryUrl: this.getPluginFileUrl(plugin.manifest, plugin.manifest.entries[target]!),
             }));
     }
 
-    public async installFromDirectory(sourceDir: string): Promise<PluginInstallResult> {
+    public async installFromDirectory(
+        sourceDir: string,
+        sourceOverride?: PluginInstallSource,
+    ): Promise<PluginInstallResult> {
         await this.initialize();
         const sourceManifest = await this.readManifest(sourceDir);
         const installPath = this.getInstallPath(sourceManifest.id);
@@ -175,27 +228,28 @@ export class PluginManager {
         await fs.mkdir(this.pluginsDir, { recursive: true });
         const samePath = path.resolve(sourceDir) === path.resolve(installPath);
         if (!samePath) {
-            const tempPath = `${installPath}.tmp-${Date.now()}`;
-            await fs.rm(tempPath, { recursive: true, force: true });
-            await fs.cp(sourceDir, tempPath, { recursive: true });
-            await fs.rm(installPath, { recursive: true, force: true });
-            await fs.rename(tempPath, installPath);
+            await this.swapPluginDirectory(installPath, staged => fs.cp(sourceDir, staged, { recursive: true }));
         }
 
         const manifest = samePath ? sourceManifest : await this.readManifest(installPath);
         const now = Date.now();
+        // An update inherits the existing grant when it asks for no more than the
+        // user already approved. Re-prompting on a version bump that widens
+        // nothing is pure friction - the permission set is the security boundary,
+        // not the version number.
+        const granted = this.grantedPermissionsOf(existing);
+        const inheritsGrant = granted !== null && isPermissionSubset(manifest.permissions, granted);
         const record: PluginInstallRecord = {
             pluginId: manifest.id,
             installPath,
             enabled: existing?.enabled ?? false,
             builtIn: false,
             manifest,
-            installSource: { kind: "local-directory", path: sourceDir },
+            installSource: sourceOverride ?? { kind: "local-directory", path: sourceDir },
             installedAt: existing?.installedAt ?? now,
             updatedAt: now,
-            grantedManifestVersion: existing?.grantedManifestVersion === manifest.version
-                ? existing.grantedManifestVersion
-                : null,
+            grantedManifestVersion: inheritsGrant ? manifest.version : null,
+            grantedPermissions: inheritsGrant ? granted : null,
             lastError: null,
         };
 
@@ -218,6 +272,15 @@ export class PluginManager {
         await this.initialize();
         const record = this.getRecord(pluginId);
         if (!grant?.approved) {
+            // Declining leaves an unauthorized plugin, so it must not stay flagged
+            // enabled: nothing loads it, and consumers that read `enabled`
+            // directly (dependency resolution, the pack compiler) would otherwise
+            // count a plugin that is not running.
+            if (this.needsAuthorization(record) && record.enabled) {
+                const disabled = { ...record, enabled: false, updatedAt: Date.now() };
+                this.saveRecord(disabled);
+                return { plugin: this.toListItem(disabled), approved: false };
+            }
             return { plugin: this.toListItem(record), approved: false };
         }
 
@@ -225,6 +288,7 @@ export class PluginManager {
             ...record,
             enabled: true,
             grantedManifestVersion: record.manifest.version,
+            grantedPermissions: record.manifest.permissions,
             updatedAt: Date.now(),
             lastError: null,
         };
@@ -253,6 +317,7 @@ export class PluginManager {
             ...record,
             enabled: false,
             grantedManifestVersion: null,
+            grantedPermissions: null,
             updatedAt: Date.now(),
         };
         this.saveRecord(next);
@@ -318,8 +383,41 @@ export class PluginManager {
         return target;
     }
 
+    /**
+     * The declared icon file behind an `app://plugins/<id>/<version>/<icon>`
+     * request, or `null`.
+     *
+     * Unlike an entry, this deliberately does not require the plugin to be
+     * enabled: the Launcher shows icons for disabled and not-yet-authorized
+     * plugins too, and those rows are exactly where the user is deciding what
+     * the plugin is. Serving a static image to Studio's own list is not a
+     * capability the enable switch is there to gate.
+     */
+    public async resolvePluginIconFile(url: URL): Promise<string | null> {
+        await this.initialize();
+        const segments = url.pathname.split("/").filter(Boolean).map(segment => decodeURIComponent(segment));
+        if (segments.length < 3) {
+            return null;
+        }
+        const [pluginId, version, ...iconSegments] = segments;
+        const record = this.getRecords()[pluginId];
+        if (!record || record.manifest.version !== version) {
+            return null;
+        }
+        const icon = record.manifest.icon?.replace(/\\/g, "/");
+        if (!icon || iconSegments.join("/") !== icon) {
+            return null;
+        }
+        const target = path.resolve(record.installPath, ...iconSegments);
+        if (!this.isSameOrChild(target, path.resolve(record.installPath))) {
+            return null;
+        }
+        return target;
+    }
+
     private async scanInstalledPlugins(): Promise<void> {
         await fs.mkdir(this.pluginsDir, { recursive: true });
+        await this.discardStagingLeftovers();
         const records = this.getRecords();
         const builtInSources = await this.syncBuiltInPlugins(records);
         const nextRecords: Record<string, PluginInstallRecord> = {};
@@ -327,7 +425,7 @@ export class PluginManager {
         const now = Date.now();
 
         for (const entry of entries) {
-            if (!entry.isDirectory()) {
+            if (!entry.isDirectory() || entry.name.startsWith(".") || LEGACY_STAGING_DIR.test(entry.name)) {
                 continue;
             }
             const installPath = path.join(this.pluginsDir, entry.name);
@@ -337,11 +435,12 @@ export class PluginManager {
                 const builtInSource = builtInSources.get(manifest.id);
                 const previous = records[manifest.id] ?? existing;
                 const builtIn = Boolean(builtInSource) || previous?.builtIn === true;
-                const grantedManifestVersion = builtIn
-                    ? manifest.version
-                    : previous?.grantedManifestVersion === manifest.version
-                    ? previous.grantedManifestVersion
-                    : null;
+                // A manifest that changed under us (built-in sync, a swapped
+                // folder) keeps its grant only while it asks for no more than was
+                // approved - the same rule installFromDirectory applies.
+                const priorGrant = builtIn ? null : this.grantedPermissionsOf(previous);
+                const inheritsGrant = priorGrant !== null && isPermissionSubset(manifest.permissions, priorGrant);
+                const grantedManifestVersion = builtIn || inheritsGrant ? manifest.version : null;
                 nextRecords[manifest.id] = {
                     pluginId: manifest.id,
                     installPath,
@@ -354,6 +453,9 @@ export class PluginManager {
                     installedAt: previous?.installedAt ?? now,
                     updatedAt: previous?.updatedAt ?? now,
                     grantedManifestVersion,
+                    grantedPermissions: builtIn
+                        ? manifest.permissions
+                        : inheritsGrant ? priorGrant : null,
                     lastError: builtIn ? null : previous?.lastError ?? null,
                 };
             } catch (error) {
@@ -415,12 +517,67 @@ export class PluginManager {
     }
 
     private async replacePluginDirectory(sourcePath: string, installPath: string): Promise<void> {
-        await fs.mkdir(this.pluginsDir, { recursive: true });
-        const tempPath = `${installPath}.builtin-tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        await fs.rm(tempPath, { recursive: true, force: true });
-        await this.copyDirectoryFromAsar(sourcePath, tempPath);
-        await fs.rm(installPath, { recursive: true, force: true });
-        await fs.rename(tempPath, installPath);
+        await this.swapPluginDirectory(installPath, staged => this.copyDirectoryFromAsar(sourcePath, staged));
+    }
+
+    /**
+     * Replace a package directory by assembling the new copy under
+     * `plugins/.staging` and renaming it into place.
+     *
+     * The staged copy used to sit *next to* the install path, which turned a
+     * failed rename (a locked file, a crash mid-swap) into a permanent shadow:
+     * the leftover declared the same plugin id, the scan read it like any other
+     * package, and whichever of the two `readdir` returned last won. Staging out
+     * of the scan's sight keeps a failure loud and local - the swap throws, the
+     * caller logs it, and the previously installed package is what remains.
+     */
+    private async swapPluginDirectory(
+        installPath: string,
+        assemble: (stagedPath: string) => Promise<unknown>,
+    ): Promise<void> {
+        const stagingRoot = path.join(this.pluginsDir, STAGING_DIR_NAME);
+        await fs.mkdir(stagingRoot, { recursive: true });
+        const stagedPath = path.join(
+            stagingRoot,
+            `${path.basename(installPath)}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        );
+        this.stagingInFlight.add(stagedPath);
+        try {
+            await assemble(stagedPath);
+            await fs.rm(installPath, { recursive: true, force: true });
+            await fs.rename(stagedPath, installPath);
+        } finally {
+            this.stagingInFlight.delete(stagedPath);
+            // A no-op once the rename lands; the point is the failure path.
+            await fs.rm(stagedPath, { recursive: true, force: true }).catch(() => undefined);
+        }
+    }
+
+    /** Drop staged copies nobody is filling, plus any pre-fix sibling leftovers. */
+    private async discardStagingLeftovers(): Promise<void> {
+        const entries = await fs.readdir(this.pluginsDir, { withFileTypes: true }).catch(() => []);
+        for (const entry of entries) {
+            if (!entry.isDirectory()) {
+                continue;
+            }
+            const target = path.join(this.pluginsDir, entry.name);
+            if (entry.name === STAGING_DIR_NAME) {
+                for (const staged of await fs.readdir(target).catch(() => [])) {
+                    const stagedPath = path.join(target, staged);
+                    // An install running alongside this scan owns its staged copy.
+                    if (!this.stagingInFlight.has(stagedPath)) {
+                        await this.discard(stagedPath);
+                    }
+                }
+            } else if (LEGACY_STAGING_DIR.test(entry.name)) {
+                await this.discard(target);
+            }
+        }
+    }
+
+    private async discard(target: string): Promise<void> {
+        await fs.rm(target, { recursive: true, force: true })
+            .catch(error => console.warn(`[PluginManager] Failed to remove stale staging directory ${target}:`, error));
     }
 
     /**
@@ -498,10 +655,42 @@ export class PluginManager {
                 throw new Error(`Plugin ${target} entry file not found: ${entry}`);
             }
         }
+        if (result.manifest.icon) {
+            await this.verifyIconFile(pluginDir, result.manifest.icon);
+        }
         return result.manifest;
     }
 
-    private getPluginEntryUrl(manifest: NormalizedPluginManifestV2, entry: string): string {
+    /**
+     * Hold a declared icon to the shipping rules: inside the package, actually
+     * an image of the format its name claims, square, and small.
+     *
+     * Failing the whole manifest is deliberate. The alternative — install, drop
+     * the icon, show the monogram — produces a plugin that looks fine to the
+     * user and wrong to its author, with nothing anywhere saying why.
+     */
+    private async verifyIconFile(pluginDir: string, icon: string): Promise<void> {
+        const root = path.resolve(pluginDir);
+        const iconPath = path.resolve(pluginDir, ...icon.split(/[\\/]+/));
+        if (!this.isSameOrChild(iconPath, root)) {
+            throw new Error("Plugin icon must stay inside the plugin package");
+        }
+        const stat = await fs.stat(iconPath).catch(() => null);
+        if (!stat?.isFile()) {
+            throw new Error(`Plugin icon file not found: ${icon}`);
+        }
+        // Checked before reading, so an oversized file is refused rather than
+        // pulled into memory to be refused.
+        if (stat.size > PLUGIN_ICON_MAX_BYTES) {
+            throw new Error(`Plugin icon must be at most ${Math.floor(PLUGIN_ICON_MAX_BYTES / 1024)} KB`);
+        }
+        const error = validatePluginIconBytes(await fs.readFile(iconPath), icon);
+        if (error) {
+            throw new Error(error);
+        }
+    }
+
+    private getPluginFileUrl(manifest: NormalizedPluginManifestV2, entry: string): string {
         const encodedEntry = entry
             .split(/[\\/]+/)
             .map(segment => encodeURIComponent(segment))
@@ -546,6 +735,9 @@ export class PluginManager {
         return {
             pluginId: record.pluginId,
             manifest: record.manifest,
+            ...(record.manifest.icon
+                ? { iconUrl: this.getPluginFileUrl(record.manifest, record.manifest.icon) }
+                : {}),
             installPath: record.installPath,
             enabled: record.enabled,
             builtIn: record.builtIn,
@@ -562,8 +754,34 @@ export class PluginManager {
         return record.grantedManifestVersion !== record.manifest.version;
     }
 
+    /**
+     * The permission set the user approved for this plugin, or `null` if there is
+     * no grant to reason about. Records written before `grantedPermissions` was
+     * tracked fall back to the manifest that was authorized — sound only while
+     * that manifest is still the installed one, which `grantedManifestVersion`
+     * proves.
+     */
+    private grantedPermissionsOf(record: PluginInstallRecord | undefined): PluginInstallPermission[] | null {
+        if (!record || !record.grantedManifestVersion) {
+            return null;
+        }
+        if (record.grantedPermissions) {
+            return record.grantedPermissions;
+        }
+        return record.grantedManifestVersion === record.manifest.version
+            ? record.manifest.permissions
+            : null;
+    }
+
     private formatInstallSource(source: PluginInstallSource): string {
-        return source.kind === "builtin" ? `builtin:${source.path}` : source.path;
+        switch (source.kind) {
+            case "builtin":
+                return `builtin:${source.path}`;
+            case "registry":
+                return source.url;
+            default:
+                return source.path;
+        }
     }
 
     private isSameOrChild(target: string, root: string): boolean {

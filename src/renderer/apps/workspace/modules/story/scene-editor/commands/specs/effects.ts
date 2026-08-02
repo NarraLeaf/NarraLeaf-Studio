@@ -3,7 +3,14 @@ import { createBlockForCommand } from "../../storyActionCommands";
 import type { StoryCommandValue } from "../../storyCommandValues";
 import { asColor, asDurationMs, asNumber, asTarget, defineStoryCommand, secondsParam, targetParam } from "../spec";
 
-/** Screen and displayable effects: `/blink`, `/vignette`, `/fx`, `/transform`. */
+/**
+ * Screen and displayable effects: `/blink`, `/vignette`, `/fx`, `/transform`.
+ *
+ * The `effects` category these four shared is gone (§4.1): it cut by material domain while every other
+ * category cut by subject, so "fade the portrait out" could argue for three different sections. They
+ * split by what they act on - the screen-wide pair is a property of the SCENE, the displayable pair
+ * acts on stage objects and reaches every subject its `accepts` lists.
+ */
 
 function screenEffectBuild(commandId: "screenBlink" | "screenVignette") {
     return (
@@ -43,7 +50,8 @@ function screenEffectBuild(commandId: "screenBlink" | "screenVignette") {
 export const blink = defineStoryCommand({
     id: "blink",
     token: "blink",
-    category: "effects",
+    category: "scene",
+    examples: ["/blink", "/blink d=0.2 hold=0.1"],
     params: {
         d: secondsParam(),
         hold: { hint: "hold", type: { kind: "number", min: 0 } },
@@ -56,7 +64,8 @@ export const vignette = defineStoryCommand({
     id: "vignette",
     token: "vignette",
     aliases: ["vig"],
-    category: "effects",
+    category: "scene",
+    examples: ["/vignette", "/vignette d=0.5 opacity=0.6"],
     params: {
         d: secondsParam(),
         hold: { hint: "hold", type: { kind: "number", min: 0 } },
@@ -74,8 +83,10 @@ function displayableTargetRef(target: ReturnType<typeof asTarget>): StoryDisplay
     if (target.type === "character") {
         return { kind: "character", name: target.name };
     }
-    // Audio and video objects are not displayables; the target param never accepts them here.
-    if (target.objectKind === "audio" || target.objectKind === "video") {
+    // Audio, video and vfx are not displayables; the target param never accepts them here. (The
+    // payload type says so too - `StoryDisplayableTargetKind` excludes them - so this arm exists only
+    // to keep the function total, not because a line can reach it.)
+    if (target.objectKind === "audio" || target.objectKind === "video" || target.objectKind === "vfx") {
         return { name: target.name };
     }
     return { kind: target.objectKind, name: target.name };
@@ -85,7 +96,9 @@ export const fx = defineStoryCommand({
     id: "fx",
     token: "fx",
     aliases: ["effect"],
-    category: "effects",
+    // Only the flat surfaces read this; the sidebar files `/fx` under all four subjects it accepts.
+    category: "image",
+    examples: ["/fx hero"],
     params: {
         target: targetParam(["image", "text", "layer", "character"], { core: true }),
     },
@@ -106,6 +119,7 @@ export const transform = defineStoryCommand({
     token: "transform",
     aliases: ["displayabletransform"],
     category: "image",
+    examples: ["/transform hero", "/transform hero d=0.5"],
     params: {
         target: targetParam(["image", "text", "layer", "character"], { core: true }),
         d: secondsParam(),

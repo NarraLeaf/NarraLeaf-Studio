@@ -1,18 +1,25 @@
 import type { ReactNode } from "react";
+import type { LiveGame } from "narraleaf-react";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { BlueprintPersistentStoreAdapter } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
-import type { StoryAssetKind } from "@/lib/ui-editor/runtime/game/storyCompiler";
+import type { NlrActionIdBinding, StoryAssetKind } from "@/lib/ui-editor/runtime/game/storyCompiler";
+import type { PuppetBackendModuleSource } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
 
 export type GameAppLogLevel = "info" | "warning" | "error";
 
 /** Raw save record as stored by the host (Studio IPC or the game runtime bridge). */
 export type GameAppSaveRecord = {
     savedGame: unknown;
-    metadata: { user?: unknown };
+    metadata: {
+        user?: unknown;
+        /** ISO timestamps written by the store; absent on records it could not stamp. */
+        createdAt?: string;
+        updatedAt?: string;
+    };
 };
 
 /** Host-side raw save storage. Game-level logic (serialize, capture, reveal) stays in GameApp. */
@@ -68,6 +75,17 @@ export type GameAppHost = {
         assetType?: StoryAssetKind,
     ) => Promise<string | null | undefined> | string | null | undefined;
     saveStore: GameAppSaveStore;
+    /**
+     * The author-supplied drawing backends for the engine's puppet seam, if this host can serve
+     * any. Studio ships no renderer for animated characters and cannot: the ones authors want are
+     * licensed in terms a source-available application cannot meet, so the author brings their own
+     * and the host's only job is to find it. Where it looks is the host's business — a Dev Mode
+     * window reads the open project, a packaged game reads what was published with it.
+     *
+     * Omitted by hosts with nowhere to look. Rejecting is fine: the game starts without puppets,
+     * and any puppet on stage degrades to an empty box (see `loadPuppetBackends`).
+     */
+    listPuppetBackendModules?: () => Promise<PuppetBackendModuleSource[]>;
     quitApplication: () => Promise<void>;
     /** Application window fullscreen. Hosts without a real window (story preview) omit these. */
     getFullscreen?: () => Promise<boolean>;
@@ -83,11 +101,75 @@ export type GameAppHost = {
     subscribeCloseRequested?: (listener: () => Promise<boolean> | boolean) => () => void;
 };
 
+/** A read-only view of the current execution stacks (root + in-flight async branches). */
+export type StoryRuntimeStackView = ReturnType<LiveGame["getStackSnapshot"]>;
+
+/**
+ * Read/write bridge over the running story's live runtime, handed to host debug overlays (the Dev
+ * Mode story-runtime panel). Modeled on the blueprint `scopeBridge`: the overlay reads snapshots and
+ * subscribes rather than touching the engine directly. All methods degrade to null / no-op when no
+ * story game is currently running, and stay valid across in-window relaunches (the bridge follows
+ * whichever LiveGame is live).
+ */
+export type GameAppStoryRuntimeBridge = {
+    /** The running story's launch request (id, scene, and the row/snapshot it entered at), or null. */
+    getStoryContext: () => {
+        storyId: string;
+        sceneId: string;
+        startBlockId?: string;
+        snapshotId?: string;
+    } | null;
+    /** action↔block bindings of the running compiled story (empty when none). */
+    getActionIdBindings: () => readonly NlrActionIdBinding[];
+    /** Resolved Storable namespace names for the running story's variable scopes. */
+    getVariableNamespaces: () => { saved: string | null; sceneLocal: Record<string, string> };
+    /** Most recently executed action id (engine play head), or null before the first action. */
+    getCurrentActionId: () => string | null;
+    /**
+     * Subscribe to the play head (`event:action.current`). Fires for every action, branch actions
+     * included; filter by your own id set. Returns an unsubscribe function. Stable across relaunches.
+     */
+    subscribeCurrentAction: (listener: (actionId: string | null) => void) => () => void;
+    /** Read-only execution-stack snapshot, or null when no game is running. */
+    getStackSnapshot: () => StoryRuntimeStackView | null;
+    /** Read a Storable namespace as a plain record of raw values, or null if absent / no game. */
+    readStorableNamespace: (namespaceName: string) => Record<string, unknown> | null;
+    /** Write a raw value into a Storable namespace (scene/saved scopes). No-op if the ns is absent. */
+    writeStorableValue: (namespaceName: string, key: string, value: unknown) => boolean;
+    /**
+     * Studio block id → backlog token, for every line this session has actually played and that
+     * the engine kept a restore snapshot for. Read from the live backlog on each call (it is the
+     * single source of truth: it accumulates as playback advances and is trimmed by a restore), and
+     * keyed back to blocks through the compiled action bindings. Empty when no game is running.
+     */
+    getPlayedBlockTokens: () => Record<string, string>;
+    /**
+     * Restore the running game to a played backlog line (see {@link getPlayedBlockTokens}): exact,
+     * immediate and replay-free, because the entry carries its own state snapshot. Returns false
+     * when no game runs, the token is unknown, or the engine build has no snapshot restore — the
+     * caller then falls back to a cold {@link relaunch}.
+     */
+    restoreToHistoryToken: (token: string) => boolean;
+    /**
+     * Relaunch the current story in-window (cold jump, snapshot switch, scene launch). `sceneId`
+     * defaults to the running scene; omitted `startBlockId` enters at the scene top; omitted
+     * `snapshotId` uses declared defaults.
+     */
+    relaunch: (options: { sceneId?: string; startBlockId?: string; snapshotId?: string }) => Promise<void>;
+};
+
 /** Context handed to host-rendered overlays (e.g. the Dev Mode debug panel). */
 export type GameAppOverlayContext = {
     core: BlueprintRuntimeCore | null;
     activeSurface: UISurface | null;
     widgetRuntimeStore: WidgetRuntimeStateStore;
+    /**
+     * Fast-forward the running game to the next menu, keeping full history. Rejects if no game is
+     * currently running (see `requireActiveLiveGame`).
+     */
+    fastForwardToNextChoice: () => Promise<void>;
+    /** Read/write bridge over the running story runtime for the story-runtime debug panel. */
+    storyRuntime: GameAppStoryRuntimeBridge;
 };
 
 /** Context handed to the host frame around the game content. */

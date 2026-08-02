@@ -3,3 +3,5 @@ export * from "./expression";
 export * from "./displayableTarget";
 export * from "./layerRef";
 export * from "./declarations";
+export * from "./labels";
+export * from "./order";

@@ -2,18 +2,34 @@ import { describe, expect, it } from "vitest";
 import { getCommandCandidates, hasCandidateSource } from "./storyCommandCandidates";
 import { getCommandDef } from "./commands/registry";
 import { completionFor, defaultHighlights, getCommandCursor, type StoryCommandCursor } from "./storyCommandCursor";
+import { argMenuOffer } from "./StorySceneEditorRows";
 import type { StoryCommandContext } from "./storyCommandResolution";
 
 const CONTEXT: StoryCommandContext = {
     images: [{ id: "i1", name: "forest_day" }, { id: "i2", name: "forest_night" }, { id: "i3", name: "city rain" }],
     audio: [{ id: "a1", name: "theme" }],
     videos: [],
-    characters: [{ id: "c1", name: "Alice" }, { id: "c2", name: "Bob" }],
+    // Doll is drawn by a runtime the author supplied and her model has answered; Ghost is a puppet too
+    // but nobody could ask hers (no runtime on this machine) - the pair is what the puppet arms need.
+    characters: [{ id: "c1", name: "Alice" }, { id: "c2", name: "Bob" }, { id: "c3", name: "Doll" }, { id: "c4", name: "Ghost" }],
     tempSpeakers: ["Zoe"],
     scenes: [{ id: "s1", name: "Chapter 2" }],
+    choiceOptions: [{ id: "o1", name: "Refuse her" }, { id: "o2", name: "Say yes" }],
+    valueBlueprints: [{ id: "bp1", name: "Bonus" }, { id: "bp2", name: "Story Value" }],
+    audioTracks: [{ id: "bgm", name: "Music" }, { id: "sound", name: "SFX" }, { id: "t_amb", name: "Ambience" }],
+    labels: ["intro", "retry"],
     variables: [{ name: "gold", ref: { scope: "scene", variableId: "v1" }, valueType: "number" }],
-    formsByCharacterId: { c1: ["smile", "angry"] },
-    stageObjects: { image: ["hero", "portrait"], text: ["title"], layer: ["fx"], video: ["intro"], audio: ["sound", "music"] },
+    appearanceByCharacterId: { c1: [{ id: "t1", name: "smile" }, { id: "t2", name: "angry" }] },
+    puppetCharacterIds: ["c3", "c4"],
+    puppetByCharacterId: {
+        c3: {
+            motions: ["idle", "run", "sit idle"],
+            expressions: ["smile"],
+            skins: [],
+            params: [{ id: "ParamAngleX", min: -30, max: 30, default: 0 }],
+        },
+    },
+    stageObjects: { image: ["hero", "portrait"], text: ["title"], layer: ["fx"], video: ["intro"], audio: ["sound", "music"], vfx: ["rain"] },
 };
 
 /** Caret marked with `|`. */
@@ -107,6 +123,19 @@ describe("getCommandCursor", () => {
         // An apostrophe inside a double-quoted string is data, not an opening quote.
         expect(at("/set gold \"don't\" + go|")).toMatchObject({ kind: "expression", query: "go" });
     });
+
+    it("knows when the caret is inside a visited / picked argument", () => {
+        // The one piece of enclosing syntax the cursor tracks, because inside those two calls the
+        // vocabulary is entirely different - an entity name, never a variable or a function.
+        expect(at("/set flag visited(Chap|)")).toMatchObject({ kind: "expression", query: "Chap", call: "visited" });
+        expect(at("/set flag picked( Ref|")).toMatchObject({ kind: "expression", query: "Ref", call: "picked" });
+        // Quoted argument: the region rule still applies, and the enclosing call is still known.
+        expect(at("/set flag visited('Chap|ter 2')")).toMatchObject({ kind: "expression", query: "Chap", call: "visited" });
+        // A real function call is not one of the two, and a bare fragment has no enclosing call.
+        const enclosing = (marked: string) => (at(marked) as { call?: string }).call;
+        expect(enclosing("/set gold min(go|)")).toBeUndefined();
+        expect(enclosing("/set gold go|")).toBeUndefined();
+    });
 });
 
 describe("defaultHighlights", () => {
@@ -153,6 +182,57 @@ describe("defaultHighlights", () => {
         // ...but a real match still wins: `/say Ali` puts Alice first, so Enter picks Alice.
         expect(defaultHighlights(at("/say Ali|"), items(real(), freeEcho()))).toBe(true);
     });
+
+    it("never highlights inside an expression, whatever it is offering", () => {
+        // A ruling, not a gap in the rule: in an expression the author is writing rather than picking,
+        // so Enter has to keep meaning "commit this line". Asserted with a full, real-looking list
+        // precisely because every other reason this function returns false (nothing typed, nothing
+        // offered, the top offer is an echo) is absent here - the arm itself is the reason.
+        expect(defaultHighlights(at("/set gold go|"), items(real(), real()))).toBe(false);
+        expect(defaultHighlights(at("/set flag visited(Chap|)"), items(real()))).toBe(false);
+    });
+});
+
+describe("argMenuOffer", () => {
+    const offer = (marked: string, resolved = {}) => argMenuOffer(at(marked), CONTEXT, resolved);
+
+    // The defect this exists to pin: `getCommandCursor` answers `expression` for every `/set`, `/if`
+    // and `/until` right-hand side, and the render gate used to admit `positional` / `paramValue` /
+    // `paramName` only - so the candidates the model had ready never reached a menu, in any expression
+    // slot, ever. The model was right and had no way out.
+    it("opens with candidates in an expression slot", () => {
+        const inCall = offer("/set flag visited(Chap|)");
+        expect(inCall.open).toBe(true);
+        expect(inCall.candidates.map(candidate => candidate.value)).toEqual(["Chapter 2"]);
+
+        const bare = offer("/set gold go|");
+        expect(bare.open).toBe(true);
+        expect(bare.candidates.map(candidate => candidate.value)).toContain("gold");
+    });
+
+    it("still opens the positional slot it always opened", () => {
+        // The control from the bug report: `/set g` worked all along, because that caret is
+        // `positional`. If this ever goes red the fix has traded one arm for another.
+        const positional = offer("/set g|");
+        expect(positional.open).toBe(true);
+        expect(positional.candidates.map(candidate => candidate.value)).toContain("gold");
+    });
+
+    it("leaves an expression slot with NOTHING highlighted, so Enter still commits the line", () => {
+        // The core of the ruling, kept here as well as on `defaultHighlights` because this is the
+        // value the component actually feeds the menu. Flip it to true and `/set gold gold + 1` +
+        // Enter stops submitting and inserts whatever the menu happened to be showing instead.
+        expect(offer("/set gold go|").autoHighlight).toBe(false);
+        expect(offer("/set flag visited(Chap|)").autoHighlight).toBe(false);
+        // ...and the positional beside it does highlight, so the two above are not both false for some
+        // unrelated reason (an empty list, say) that would hide a regression.
+        expect(offer("/set g|").autoHighlight).toBe(true);
+    });
+
+    it("stays shut where there is nothing to offer", () => {
+        expect(offer("/say Alice hello |").open).toBe(false);
+        expect(offer("he said |so").open).toBe(false);
+    });
 });
 
 describe("getCommandCandidates", () => {
@@ -170,7 +250,9 @@ describe("getCommandCandidates", () => {
 
     it("offers transitions by the alias an author would type", () => {
         expect(values("/bg forest_day t=|")).toContain("fade");
-        expect(values("/bg forest_day t=fa|")).toEqual(["fade"]);
+        // "fa" prefixes both `fade` and the 0.16.0 `fan` transition; a longer prefix narrows to one.
+        expect(values("/bg forest_day t=fa|")).toEqual(["fade", "fan"]);
+        expect(values("/bg forest_day t=fad|")).toEqual(["fade"]);
     });
 
     it("offers the remaining param names", () => {
@@ -202,16 +284,29 @@ describe("getCommandCandidates", () => {
 
     it("offers a generic verb everything it accepts: characters first, then each object kind", () => {
         // The headline of the generic verbs (bible B3): `/show` is one pick from everything on stage.
-        expect(values("/show |")).toEqual(["Alice", "Bob", "hero", "portrait", "title", "intro", "fx"]);
+        // Puppet characters are in the list like any other: `/show` puts a model on stage the same way
+        // it puts a sprite there, and the box is the engine's regardless of who draws its inside.
+        expect(values("/show |")).toEqual(["Alice", "Bob", "Doll", "Ghost", "hero", "portrait", "title", "intro", "fx", "rain"]);
         expect(values("/show he|")).toEqual(["hero"]);
         expect(values("/swap |")).toEqual(["hero", "portrait", "title"]);
-        // The sound controls lead with the reserved BGM channel - the explicit spelling of the default.
-        expect(values("/stop |")).toEqual(["bgm", "sound", "music"]);
+        // The sound controls lead with the reserved BGM channel - the explicit spelling of the default -
+        // and reach video too, since `/stop` `/pause` `/resume` are the transport verbs for both.
+        expect(values("/stop |")).toEqual(["bgm", "sound", "music", "intro"]);
     });
 
-    it("offers a typed name back only where one object kind is possible", () => {
-        // `/play new` can only mean a video, so the reference stays valid (never-empty invariant);
-        // `/show new` has nothing to dispatch the block type on, so nothing is offered.
+    it("says which world a name lives in when the slot spans several", () => {
+        // `/pause intro` pausing a clip rather than the music is only right if "intro" was visibly a
+        // video. Read off `accepts`, so a single-kind slot stays label-free. The KIND is carried, not a
+        // display string - the menu translates it, so a zh author never sees a bare "audio".
+        const details = (marked: string) => getCommandCandidates(at(marked), CONTEXT, {}).map(c => `${c.value}:${c.detailKind ?? ""}`);
+        expect(details("/stop |")).toEqual(["bgm:audio", "sound:audio", "music:audio", "intro:video"]);
+        expect(details("/play |")).toEqual(["intro:"]);
+    });
+
+    it("offers a typed name back where the kind is knowable without the stage", () => {
+        // `/play new` can only mean a video; `/stop other` spans two kinds but declares audio as the
+        // fallback, so a sound made elsewhere stays addressable. `/show new` declares neither, and has
+        // nothing to dispatch the block type on, so nothing is offered.
         expect(values("/play new|")).toEqual(["new"]);
         expect(values("/stop other|")).toEqual(["other"]);
         expect(values("/show new|")).toEqual([]);
@@ -229,13 +324,39 @@ describe("getCommandCandidates", () => {
             variable: { kind: "variable" as const, ref: { scope: "scene" as const, variableId: "v1" }, valueType, name: "gold" },
         });
         // Every slot in the command line should be a pick rather than a memory test, and an
-        // expression's operands are names - so the variable list is always on offer.
-        expect(values("/set gold |")).toEqual(["gold"]);
-        expect(values("/set gold |", variable("number"))).toEqual(["gold"]);
+        // expression's operands are names - so the variable list is always on offer, and with it the
+        // two other things a bare identifier position accepts: a value blueprint (a name the project
+        // declares, offered like a variable) and the two record reads (syntax nobody can guess at).
+        // The whitelist stays hidden until something is typed - see the next test for why.
+        expect(values("/set gold |")).toEqual(["gold", "Bonus()", "'Story Value'()", "visited(", "picked("]);
+        expect(values("/set gold |", variable("number"))).toEqual(["gold", "Bonus()", "'Story Value'()", "visited(", "picked("]);
         // A boolean target leads with its constants: setting a flag to true is the common case, and
         // it must not sit below a list of variable names. This is the behaviour the old dependent
         // literal slot had, kept intact.
-        expect(values("/set gold |", variable("boolean"))).toEqual(["true", "false", "gold"]);
+        expect(values("/set gold |", variable("boolean"))[0]).toBe("true");
+        expect(values("/set gold |", variable("boolean"))[1]).toBe("false");
+    });
+
+    it("swaps the whole vocabulary inside visited( / picked(", () => {
+        // Not "adds scenes to the list": a variable name cannot go there at all, so offering one
+        // would be offering a line that then refuses to resolve.
+        expect(values("/set flag visited(|)")).toEqual(["Chapter 2"]);
+        expect(values("/set flag picked(|)")).toEqual(["Refuse her", "Say yes"]);
+        expect(values("/set flag picked(Say|)")).toEqual(["Say yes"]);
+    });
+
+    it("completes a blueprint call whole, quoting the name only where the lexer needs it", () => {
+        // `'Story Value'()` must be taken verbatim; the expression slot's usual "quote a value with a
+        // space" rule would wrap it a second time and produce `''Story Value'()'`.
+        expect(completionFor(at("/set gold Sto|"), "'Story Value'()")).toEqual({
+            text: "'Story Value'()",
+            replace: { start: 10, end: 13 },
+        });
+        // A scene name with spaces, inside `visited(`, still goes through the quoting rule.
+        expect(completionFor(at("/set flag visited(Chap|)"), "Chapter 2")).toEqual({
+            text: "'Chapter 2'",
+            replace: { start: 18, end: 22 },
+        });
     });
 
     it("offers the function whitelist once the author starts typing one", () => {
@@ -249,6 +370,49 @@ describe("getCommandCandidates", () => {
 
     it("offers nothing inside a greedy body", () => {
         expect(values("/say Alice hello |")).toEqual([]);
+    });
+
+    /**
+     * The names a puppet character's model reported. Before this the arm was a hard `return []` and the
+     * author typed a motion name from memory - which is the one thing about these rows that made them
+     * unlike every other action in the editor.
+     */
+    describe("a puppet's own vocabulary", () => {
+        const doll = { character: { kind: "character" as const, characterId: "c3" } };
+        const ghost = { character: { kind: "character" as const, characterId: "c4" } };
+
+        it("offers the channel the command asked for, and only that channel", () => {
+            expect(values("/motion Doll |", doll)).toEqual(["idle", "run", "sit idle"]);
+            expect(values("/face Doll |", doll)).toEqual(["smile"]);
+            // The model reported no skins at all. Not a failure and not free text either - there is
+            // simply nothing on that channel to offer.
+            expect(values("/skin Doll |", doll)).toEqual([]);
+        });
+
+        it("puts prefix matches first, the way every other name list does", () => {
+            expect(values("/motion Doll i|", doll)).toEqual(["idle", "sit idle"]);
+            expect(values("/motion Doll ru|", doll)).toEqual(["run"]);
+        });
+
+        it("offers nothing the model did not name - a typo is not dressed up as a choice", () => {
+            // The row still commits (an empty menu leaves Enter meaning submit); it is the row's
+            // `unknownPuppetName` mark that says the name is wrong, not the completion menu.
+            expect(values("/motion Doll runn|", doll)).toEqual([]);
+        });
+
+        it("says nothing at all for a model nobody could ask", () => {
+            // Ghost is a puppet, but her runtime is not installed here. Every name is plausible, so
+            // offering none of them is the honest answer - and `hasCandidateSource` keeps the menu shut
+            // rather than telling the author their name "does not match".
+            expect(values("/motion Ghost |", ghost)).toEqual([]);
+            expect(values("/motion Ghost id|", ghost)).toEqual([]);
+        });
+
+        it("offers nothing until the line has named a character", () => {
+            // The caret is on the name slot, but nothing has resolved into the owner slot - offering
+            // every motion of every puppet in the project would be worse than offering none.
+            expect(values("/motion Nobody |")).toEqual([]);
+        });
     });
 });
 
@@ -282,6 +446,24 @@ describe("hasCandidateSource", () => {
     it("counts a union enumerable when any branch is", () => {
         // `/wait` is `click` or a number: `click` is worth offering.
         expect(hasCandidateSource(param("wait", "seconds"))).toBe(true);
+    });
+
+    /**
+     * The one param whose answer is not a property of the grammar: whether a model has been asked and
+     * answered. Getting this wrong is visible - `true` for an undescribed model shows "no matches" for
+     * every name the author types, which reads as "your name is wrong" when the truth is "Studio never
+     * loaded your runtime".
+     */
+    it("asks the model, not the grammar, whether a puppet name has a source", () => {
+        const motion = param("motion", "name");
+        expect(hasCandidateSource(motion, CONTEXT, { character: { kind: "character", characterId: "c3" } })).toBe(true);
+        // Described, but with nothing on this channel: no list, so no empty state either.
+        expect(hasCandidateSource(param("skin", "name"), CONTEXT, { character: { kind: "character", characterId: "c3" } })).toBe(false);
+        // A puppet nobody could ask, and a line that has not named anyone yet.
+        expect(hasCandidateSource(motion, CONTEXT, { character: { kind: "character", characterId: "c4" } })).toBe(false);
+        expect(hasCandidateSource(motion, CONTEXT)).toBe(false);
+        // No context at all (a caller that has none) must not claim a source.
+        expect(hasCandidateSource(motion)).toBe(false);
     });
 });
 

@@ -1,7 +1,10 @@
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintDocument, SharedBlueprintAsset } from "./blueprint/document";
+import type { PersistentVariableRuntimeTable } from "./variables/registry";
 import type { GameLocalizationBundle } from "./localization";
+import type { AutoSaveConfiguration } from "./saves";
 import type { GameVoiceBundle } from "./voice";
+import type { GameAudioBundle } from "./audio";
 import type { UIDocument } from "./ui-editor/document";
 import type { UIGraphDocument } from "./ui-editor/graph";
 import type { UISurfaceId } from "./ui-editor/document";
@@ -55,31 +58,130 @@ export type DevModeBlueprintDebugEventPayload = {
     event: BlueprintDebugEvent;
 };
 
+/** Play-head row forwarded from a Dev Mode window to its project's workspace (WI-2 editor sync). */
+export type DevModeStoryRowPayload = {
+    projectPath: string;
+    storyId: string;
+    sceneId: string;
+    blockId: string;
+};
+
+/** The workspace-side story-row highlight, forwarded from Dev Mode (no projectPath on delivery). */
+export type DevModeStoryRowHighlight = {
+    storyId: string;
+    sceneId: string;
+    blockId: string;
+};
+
 export type DevModeCharacterSummary = {
     id: string;
     /** Author-facing display name. Empty when the character is unnamed - never falls back to `id`, which is a UUID. */
     name: string;
-    defaultForm?: string | null;
-    forms?: DevModeCharacterFormSummary[];
+    appearance: CharacterAppearanceSummary;
+    /** Dialog avatar used when no differential resolves one (speaking off-stage, or nothing baked). */
+    defaultAvatarAssetId?: string | null;
+    /**
+     * The audio bus this character's voice lines play on - a project audio track id, absent when the
+     * character sits on the seeded `voice` bus like every character always did.
+     *
+     * Carried unresolved, exactly as authored: which bus a dangling id degrades to is
+     * `resolveAudioTrack`'s answer and depends on the track list the compile is running against, so
+     * resolving it here would freeze one answer into the bundle.
+     */
+    voiceTrackId?: string;
+    /**
+     * The author's accent colour for this character, verbatim from the profile (a hex string, e.g.
+     * `#40A8C4`) and absent when none is set. Two very different surfaces read it, so it is carried
+     * unfiltered and each side decides for itself:
+     *
+     *  - Studio chrome (the story rows, the Dev Mode timeline) puts it through
+     *    `isReadableAccentColor` first, because that chrome renders on both themes' surfaces;
+     *  - the runtime nametag takes it as authored — the dialogue box is the author's own art, so
+     *    Studio has no standing to call a colour unreadable there.
+     */
+    color?: string;
 };
 
-export type DevModeCharacterFormSummary = {
-    name: string;
-    groups: DevModeCharacterVariantGroupSummary[];
-    variantAssets: Record<string, { assetId: string; name?: string }>;
+/**
+ * One differential's dialog avatar as the compiler sees it. `baked` present means a derived PNG
+ * exists under `resources/characters/avatars/` for this key; `overrideAssetId` is the author's own
+ * artwork and wins over it.
+ */
+export type CharacterAvatarSummaryEntry = {
+    baked?: boolean;
+    overrideAssetId?: string | null;
 };
 
-export type DevModeCharacterVariantGroupSummary = {
-    name: string;
-    defaultVariant: string | null;
-    variants: { name: string }[];
-};
+/**
+ * A character's appearance as everything outside the character service sees it: the compiler, the
+ * story editor's badges, the dev-mode bundle. Ids are what rows store and what the engine receives
+ * as tags; `name` is only ever displayed.
+ */
+export type CharacterAppearanceSummary =
+    | {
+          kind: "preset";
+          poses: { id: string; name: string; assetId: string | null }[];
+          defaultPoseId: string | null;
+          /** Dialog avatars keyed by pose id. */
+          avatars?: Record<string, CharacterAvatarSummaryEntry>;
+      }
+    | {
+          kind: "layered";
+          canvas: { width: number; height: number } | null;
+          axes: { id: string; name: string; tags: { id: string; name: string }[]; defaultTagId: string | null }[];
+          /** Axes the avatar varies with; absent means every axis. */
+          avatarAxisIds?: string[];
+          /** Dialog avatars keyed by the tag combination (see `characterAvatarKey`). */
+          avatars?: Record<string, CharacterAvatarSummaryEntry>;
+          /** Bottom to top, matching the stacking order the engine draws. */
+          layers: {
+              id: string;
+              name: string;
+              axisId: string | null;
+              assetId?: string | null;
+              options?: Record<string, string | null>;
+              hidden?: boolean;
+          }[];
+      }
+    | {
+          /**
+           * A box the author's own runtime draws inside. Studio ships no backend and reads none of
+           * `options` — see `PuppetAppearance` for why that is a licensing requirement rather than
+           * a simplification. No avatar table: a puppet has no authoring-time differentials to key
+           * one on, so `defaultAvatarAssetId` is its dialog avatar.
+           */
+          kind: "puppet";
+          /** The model bundle; resolved to its entry-file URL, siblings resolved off it by the engine. */
+          assetId: string | null;
+          /** Backend name, matching a folder under the project's `runtimes/puppet/`. */
+          backend: string;
+          /** A sibling of the bundle's declared entry to use instead of it; null = that entry. */
+          entry: string | null;
+          /** Stage box size in logical pixels; null = the stage size. */
+          size: { width: number; height: number } | null;
+          /** Handed to the backend verbatim. */
+          options: Record<string, unknown>;
+          /**
+           * The pose the character rests in, in the engine's own `PuppetState` vocabulary — the
+           * three values `IPuppetUserConfig` takes as a puppet's *initial* state. Absent when the
+           * author set none, and `null` on a field is the absence of a request rather than "leave
+           * whatever is there".
+           */
+          defaultState?: { motion: string | null; expression: string | null; skin: string | null };
+      };
 
 export type DevModeStoryLibrary = {
     index: StoryLibraryIndex;
     documents: Record<StoryId, StoryDocument>;
     characters: DevModeCharacterSummary[];
     animations: Record<StoryAnimationAssetId, StoryAnimationAsset>;
+    /**
+     * `assetId → author-facing asset name`, for the media types a story row can name (image / audio /
+     * video). Names only — the bytes travel through the compiler, and this table exists so the Dev
+     * Mode debug panel can read a row the way the editor does: `Set background outside_s.jpg` rather
+     * than `Set background 4b645b59-1723-4ac9-98ab-e6859b837bef` (U4 WI-1).
+     */
+    assetNames: Record<string, string>;
 };
 
 export type DevModeStartStoryRequest = {
@@ -103,6 +205,13 @@ export type DevModeBundle = {
         localBlueprints: BlueprintDocument;
         /** Shared blueprint assets loaded from project asset metadata + content files. */
         sharedBlueprints: SharedBlueprintAsset[];
+        /**
+         * Project-level persistent variables (M-VAR registry), baked from `editor/variables.json`.
+         * The runtime reads persistent definitions from here, not from `localBlueprints` - the field
+         * left the blueprint document when the registry landed. Keyed by variable id (= the node
+         * `persistentVariableId`).
+         */
+        persistentVariables: PersistentVariableRuntimeTable;
     };
     story?: StoryDocument;
     storyLibrary?: DevModeStoryLibrary;
@@ -121,6 +230,26 @@ export type DevModeBundle = {
      * voice set up.
      */
     voice?: GameVoiceBundle;
+    /**
+     * Audio payload: the clip regions (in/out/loop points) marked on audio
+     * assets, baked from the `assets/assets.metadata.audio.json` shard, plus the
+     * project's audio tracks from `editor/audio-tracks.json`.
+     *
+     * Carried by the bundle so Dev Mode and the packaged runtime share one
+     * channel: the story compiler folds a region into the `Sound` it builds and
+     * resolves a row's track to (bus, gain, fades), and the blueprint sound
+     * family plus the video widget resolve the same way for what a Surface
+     * plays. Optional only for bundles that predate the field; every bundle this
+     * Studio assembles carries it, with the built-in tracks when the project has
+     * no track file.
+     */
+    audio?: GameAudioBundle;
+    /**
+     * Automatic saving, baked from `.nlproj` `app.autoSave`. Always present on a
+     * freshly assembled bundle; absent only on ones that predate the feature,
+     * which the game app reads as "the defaults" (autosaving is on by default).
+     */
+    autoSave?: AutoSaveConfiguration;
     scripts?: Record<string, unknown>;
     compiled?: Record<string, unknown>;
     meta?: Record<string, unknown>;

@@ -1,8 +1,8 @@
 import type { StoryLiteralValue, StoryVariableRef } from "@shared/types/story";
-import { collectStoryExpressionVariables, isStoryExpressionEvaluable } from "@shared/types/story/expression";
+import { collectStoryExpressionInvocations, collectStoryExpressionVariables, isStoryExpressionEvaluable } from "@shared/types/story/expression";
 import { describe, expect, it } from "vitest";
 import { evaluateStoryExpression, inferStoryExpressionType, storyExprTypeFits } from "./storyExpressionEval";
-import { createStoryExpressionScope, formatStoryExpressionName, parseStoryExpression } from "./storyExpressionParser";
+import { createStoryExpressionScope, formatStoryExpr, formatStoryExpressionName, parseStoryExpression } from "./storyExpressionParser";
 
 /**
  * The expression language's contract, tested at the level an author experiences it: type a line, get
@@ -17,8 +17,13 @@ const VARIABLES = [
     // Deliberately shadowed: a `chapter` in every scope, to pin the scope-chain order.
     { name: "chapter", ref: { scope: "scene", variableId: "v_chapter_scene" } as StoryVariableRef },
     { name: "chapter", ref: { scope: "saved", variableId: "v_chapter_saved" } as StoryVariableRef },
-    { name: "chapter", ref: { scope: "persistent", storageKey: "chapter_global" } as StoryVariableRef },
-    { name: "endings", ref: { scope: "persistent", storageKey: "endings_seen" } as StoryVariableRef },
+    { name: "chapter", ref: { scope: "persistent", variableId: "chapter_global" } as StoryVariableRef },
+    { name: "endings", ref: { scope: "persistent", variableId: "endings_seen" } as StoryVariableRef },
+    // The `json` shapes the collection half of the language exists for: a list, a flag bag, and a
+    // number to subscript with.
+    { name: "inv", ref: { scope: "saved", variableId: "v_inv" } as StoryVariableRef },
+    { name: "flags", ref: { scope: "saved", variableId: "v_flags" } as StoryVariableRef },
+    { name: "slot", ref: { scope: "scene", variableId: "v_slot" } as StoryVariableRef },
 ];
 
 const SCOPE = createStoryExpressionScope(VARIABLES);
@@ -31,6 +36,9 @@ const VALUES: Record<string, StoryLiteralValue> = {
     v_chapter_saved: 2,
     chapter_global: 3,
     endings_seen: ["a", "b"],
+    v_inv: ["sword", "potion"],
+    v_flags: { ch1: true, ch2: false },
+    v_slot: 1,
 };
 
 const TYPES: Record<string, "boolean" | "number" | "string" | "json"> = {
@@ -41,16 +49,19 @@ const TYPES: Record<string, "boolean" | "number" | "string" | "json"> = {
     v_chapter_saved: "number",
     chapter_global: "number",
     endings_seen: "json",
+    v_inv: "json",
+    v_flags: "json",
+    v_slot: "number",
 };
 
 function keyOf(ref: StoryVariableRef): string {
-    return ref.scope === "persistent" ? ref.storageKey : ref.variableId;
+    return ref.variableId;
 }
 
 function evaluate(source: string): StoryLiteralValue {
     const { expression, issues } = parseStoryExpression(source, SCOPE);
     expect(issues, `unexpected issues parsing \`${source}\`: ${JSON.stringify(issues)}`).toEqual([]);
-    return evaluateStoryExpression(expression.ast, ref => VALUES[keyOf(ref)]);
+    return evaluateStoryExpression(expression.ast, { read: ref => VALUES[keyOf(ref)] });
 }
 
 function issueCodes(source: string): string[] {
@@ -101,7 +112,7 @@ describe("parseStoryExpression", () => {
         ]);
         const { expression, issues } = parseStoryExpression("金币 + 1", scope);
         expect(issues).toEqual([]);
-        expect(evaluateStoryExpression(expression.ast, ref => VALUES[keyOf(ref)])).toBe(101);
+        expect(evaluateStoryExpression(expression.ast, { read: ref => VALUES[keyOf(ref)] })).toBe(101);
     });
 });
 
@@ -115,11 +126,11 @@ describe("quoted identifiers", () => {
 
     it("resolves a name with spaces - the whole reason quoting exists", () => {
         const scope = createStoryExpressionScope([
-            { name: "Complex Var Name", ref: { scope: "persistent", storageKey: "complex" } },
+            { name: "Complex Var Name", ref: { scope: "persistent", variableId: "complex" } },
         ]);
         const { expression, issues } = parseStoryExpression("'Complex Var Name' + 1", scope);
         expect(issues).toEqual([]);
-        expect(evaluateStoryExpression(expression.ast, () => 41)).toBe(42);
+        expect(evaluateStoryExpression(expression.ast, { read: () => 41 })).toBe(42);
     });
 
     it("takes the quoted name verbatim: no keyword reading, no scope-prefix split", () => {
@@ -197,9 +208,11 @@ describe("ternary", () => {
         // this is really a statement that evaluation is lazy, which matters once reads have cost.
         let reads = 0;
         const { expression } = parseStoryExpression("met ? 1 : gold", SCOPE);
-        evaluateStoryExpression(expression.ast, ref => {
-            reads += 1;
-            return VALUES[keyOf(ref)];
+        evaluateStoryExpression(expression.ast, {
+            read: ref => {
+                reads += 1;
+                return VALUES[keyOf(ref)];
+            },
         });
         expect(reads).toBe(1);
     });
@@ -225,9 +238,11 @@ describe("evaluation semantics", () => {
     it("short-circuits && and ||", () => {
         const seen: string[] = [];
         const { expression } = parseStoryExpression("false && gold", SCOPE);
-        evaluateStoryExpression(expression.ast, ref => {
-            seen.push(keyOf(ref));
-            return VALUES[keyOf(ref)];
+        evaluateStoryExpression(expression.ast, {
+            read: ref => {
+                seen.push(keyOf(ref));
+                return VALUES[keyOf(ref)];
+            },
         });
         expect(seen).toEqual([]);
     });
@@ -239,7 +254,7 @@ describe("evaluation semantics", () => {
 
     it("treats a missing variable as null", () => {
         const { expression } = parseStoryExpression("gold + 1", SCOPE);
-        expect(evaluateStoryExpression(expression.ast, () => undefined)).toBe(1);
+        expect(evaluateStoryExpression(expression.ast, { read: () => undefined })).toBe(1);
     });
 
     it("compares strings lexicographically and everything else numerically", () => {
@@ -287,13 +302,207 @@ describe("functions", () => {
     });
 });
 
+/**
+ * The collection half of the language, tested at the level that made it necessary: a `json` variable
+ * could always be *stored* and, before the `array` and `index` nodes, never read back.
+ */
+describe("list literals and subscripts", () => {
+    it("builds a list, including nested and from variables", () => {
+        expect(evaluate("[1, 2, 3]")).toEqual([1, 2, 3]);
+        expect(evaluate("[]")).toEqual([]);
+        expect(evaluate("[[1, 2], [3]]")).toEqual([[1, 2], [3]]);
+        expect(evaluate("[gold, chapter]")).toEqual([100, 1]);
+    });
+
+    it("subscripts a list, a dictionary and a string", () => {
+        expect(evaluate("inv[0]")).toBe("sword");
+        expect(evaluate("flags[\"ch1\"]")).toBe(true);
+        // Strings index by code point, the same unit `len` and `slice` count in.
+        expect(evaluate("playerName[0]")).toBe("Z");
+    });
+
+    it("chains subscripts and accepts a computed index", () => {
+        expect(evaluate("[[1, 2], [3]][0][1]")).toBe(2);
+        expect(evaluate("inv[slot]")).toBe("potion");
+        expect(evaluate("inv[slot - 1]")).toBe("sword");
+        // A call is a primary too, so a subscript follows one without parentheses.
+        expect(evaluate("keys(flags)[1]")).toBe("ch2");
+    });
+
+    it("binds tighter than a unary operator", () => {
+        // `-[3, 5][1]` negates the element, not the list.
+        expect(evaluate("-[3, 5][1]")).toBe(-5);
+    });
+
+    it("answers null for every miss instead of throwing", () => {
+        expect(evaluate("inv[9]")).toBe(null);
+        // No negative indexing on a subscript: an arithmetic slip must not hand back the last item.
+        expect(evaluate("inv[-1]")).toBe(null);
+        expect(evaluate("flags[\"nope\"]")).toBe(null);
+        expect(evaluate("gold[0]")).toBe(null);
+        expect(evaluate("playerName[9]")).toBe(null);
+    });
+
+    it("faults an unclosed bracket", () => {
+        expect(issueCodes("[1, 2")).toEqual(["unbalancedParen"]);
+        expect(issueCodes("inv[0")).toEqual(["unbalancedParen"]);
+    });
+});
+
+describe("collection functions", () => {
+    it("constructs", () => {
+        expect(evaluate("list(1, \"a\", true)")).toEqual([1, "a", true]);
+        expect(evaluate("list()")).toEqual([]);
+        expect(evaluate("dict()")).toEqual({});
+    });
+
+    it("gets, with an explicit miss value", () => {
+        expect(evaluate("get(inv, 1)")).toBe("potion");
+        expect(evaluate("get(flags, \"ch1\")")).toBe(true);
+        expect(evaluate("get(inv, 9)")).toBe(null);
+        expect(evaluate("get(inv, 9, \"none\")")).toBe("none");
+        expect(evaluate("get(flags, \"nope\", false)")).toBe(false);
+        // Not a collection at all: still the default, not an error.
+        expect(evaluate("get(gold, 0, \"none\")")).toBe("none");
+    });
+
+    it("lists a dictionary's keys, and nothing else's", () => {
+        expect(evaluate("keys(flags)")).toEqual(["ch1", "ch2"]);
+        expect(evaluate("keys(inv)")).toEqual([]);
+        expect(evaluate("keys(gold)")).toEqual([]);
+    });
+
+    it("rebuilds a list with push and removeAt", () => {
+        expect(evaluate("push(inv, \"shield\")")).toEqual(["sword", "potion", "shield"]);
+        expect(evaluate("push(gold, 1)")).toEqual([1]);
+        expect(evaluate("removeAt(inv, 0)")).toEqual(["potion"]);
+        // Out of range removes nothing rather than the last item.
+        expect(evaluate("removeAt(inv, 9)")).toEqual(["sword", "potion"]);
+        expect(evaluate("removeAt(gold, 0)")).toEqual([]);
+    });
+
+    it("rebuilds a dictionary with setKey, removeKey and hasKey", () => {
+        expect(evaluate("setKey(flags, \"ch3\", true)")).toEqual({ ch1: true, ch2: false, ch3: true });
+        expect(evaluate("setKey(gold, \"a\", 1)")).toEqual({ a: 1 });
+        expect(evaluate("removeKey(flags, \"ch2\")")).toEqual({ ch1: true });
+        expect(evaluate("removeKey(flags, \"nope\")")).toEqual({ ch1: true, ch2: false });
+        expect(evaluate("hasKey(flags, \"ch2\")")).toBe(true);
+        expect(evaluate("hasKey(flags, \"nope\")")).toBe(false);
+        // Keys are a dictionary concept; a list is asked with indexOf/contains.
+        expect(evaluate("hasKey(inv, 0)")).toBe(false);
+    });
+
+    it("searches with indexOf and contains", () => {
+        expect(evaluate("indexOf(inv, \"potion\")")).toBe(1);
+        expect(evaluate("indexOf(inv, \"nope\")")).toBe(-1);
+        expect(evaluate("indexOf(playerName, \"oe\")")).toBe(1);
+        expect(evaluate("indexOf(gold, 1)")).toBe(-1);
+        expect(evaluate("contains(inv, \"sword\")")).toBe(true);
+        expect(evaluate("contains(playerName, \"Zo\")")).toBe(true);
+        // A dictionary's contents are its values; `hasKey` is the question about its keys.
+        expect(evaluate("contains(flags, false)")).toBe(true);
+        expect(evaluate("contains(gold, 1)")).toBe(false);
+    });
+
+    it("joins, slices and concatenates", () => {
+        expect(evaluate("join(inv, \", \")")).toBe("sword, potion");
+        expect(evaluate("join(gold, \",\")")).toBe("");
+        expect(evaluate("slice(inv, 1)")).toEqual(["potion"]);
+        expect(evaluate("slice(inv, 0, 1)")).toEqual(["sword"]);
+        expect(evaluate("slice(playerName, 0, 2)")).toBe("Zo");
+        // Unlike a subscript, slice counts a negative offset from the end - "the last one".
+        expect(evaluate("slice(inv, -1)")).toEqual(["potion"]);
+        expect(evaluate("slice(inv, 9)")).toEqual([]);
+        expect(evaluate("slice(gold, 0)")).toEqual([]);
+        expect(evaluate("concat(inv, list(\"shield\"))")).toEqual(["sword", "potion", "shield"]);
+        expect(evaluate("concat(flags, dict())")).toEqual({ ch1: true, ch2: false });
+        expect(evaluate("concat(inv, \"shield\")")).toEqual(["sword", "potion", "shield"]);
+        // Neither side a collection: this is the string case.
+        expect(evaluate("concat(\"a\", 1)")).toBe("a1");
+    });
+
+    it("measures every shape with len", () => {
+        expect(evaluate("len(inv)")).toBe(2);
+        expect(evaluate("len(flags)")).toBe(2);
+        expect(evaluate("len(playerName)")).toBe(3);
+        expect(evaluate("len(gold)")).toBe(0);
+    });
+
+    it("rewrites without touching the value it was given", () => {
+        // The purity rule: an expression is a value, not a statement. The originals below are the
+        // live storable's objects - mutating them would write a change nobody asked for, and would
+        // also reach the snapshot copies the scene preview holds, which share structure with them.
+        const inv: StoryLiteralValue = ["sword", "potion"];
+        const flags: StoryLiteralValue = { ch1: true, ch2: false };
+        const values: Record<string, StoryLiteralValue> = { ...VALUES, v_inv: inv, v_flags: flags };
+        const run = (source: string): StoryLiteralValue => {
+            const { expression, issues } = parseStoryExpression(source, SCOPE);
+            expect(issues, source).toEqual([]);
+            return evaluateStoryExpression(expression.ast, { read: ref => values[keyOf(ref)] });
+        };
+
+        for (const source of ["push(inv, \"shield\")", "removeAt(inv, 0)", "removeAt(inv, 9)"]) {
+            expect(run(source), source).not.toBe(inv);
+        }
+        for (const source of ["setKey(flags, \"ch3\", true)", "removeKey(flags, \"ch1\")", "removeKey(flags, \"nope\")"]) {
+            expect(run(source), source).not.toBe(flags);
+        }
+        expect(inv).toEqual(["sword", "potion"]);
+        expect(flags).toEqual({ ch1: true, ch2: false });
+    });
+});
+
+describe("string functions", () => {
+    it("cases and trims, coercing a non-string the way the operators do", () => {
+        expect(evaluate("upper(playerName)")).toBe("ZOE");
+        expect(evaluate("lower(playerName)")).toBe("zoe");
+        expect(evaluate("trim(\"  x  \")")).toBe("x");
+        expect(evaluate("upper(gold)")).toBe("100");
+        expect(evaluate("trim(null)")).toBe("");
+    });
+
+    it("replaces every occurrence, and leaves an empty needle alone", () => {
+        expect(evaluate("replace(\"a-b-c\", \"-\", \"+\")")).toBe("a+b+c");
+        expect(evaluate("replace(\"abc\", \"z\", \"x\")")).toBe("abc");
+        // JS would splice the replacement between every character; that is a `split("")` artifact,
+        // not anything an author half-way through typing the needle asked for.
+        expect(evaluate("replace(\"abc\", \"\", \"x\")")).toBe("abc");
+    });
+
+    it("splits, including into code points", () => {
+        expect(evaluate("split(\"a,b\", \",\")")).toEqual(["a", "b"]);
+        expect(evaluate("split(\"ab\", \"\")")).toEqual(["a", "b"]);
+        expect(evaluate("split(gold, \",\")")).toEqual(["100"]);
+    });
+
+    it("pads on the left, and cannot be made to build an unbounded string", () => {
+        expect(evaluate("pad(7, 3)")).toBe("007");
+        expect(evaluate("pad(\"12\", 5, \" \")")).toBe("   12");
+        expect(evaluate("pad(12345, 3)")).toBe("12345");
+        expect(evaluate("pad(1, 0)")).toBe("1");
+        expect(evaluate("pad(7, 5, \"ab\")")).toBe("abab7");
+        // No fill character means nothing to pad with - not an infinite loop.
+        expect(evaluate("pad(1, 5, \"\")")).toBe("1");
+        // Totality is not only "does not throw": an absurd width must not hang the scene either.
+        expect((evaluate("pad(1, 999999999)") as string).length).toBe(4096);
+    });
+
+    it("converts explicitly", () => {
+        expect(evaluate("str(gold)")).toBe("100");
+        expect(evaluate("str(null)")).toBe("");
+        expect(evaluate("num(\"12\")")).toBe(12);
+        expect(evaluate("num(\"nope\")")).toBe(0);
+        expect(evaluate("num(inv)")).toBe(0);
+    });
+});
+
 describe("failure handling", () => {
     it("never throws, and marks an unparseable tree as non-evaluable", () => {
-        for (const source of ["", "+", "1 +", "(1", "1)", "\"unterminated", "gold gold", "?:"]) {
+        for (const source of ["", "+", "1 +", "(1", "1)", "\"unterminated", "gold gold", "?:", "[1, 2", "inv[0", "inv[]", "[", "]"]) {
             const { expression, issues } = parseStoryExpression(source, SCOPE);
             expect(issues.length, `expected an issue for \`${source}\``).toBeGreaterThan(0);
             expect(isStoryExpressionEvaluable(expression.ast)).toBe(false);
-            expect(() => evaluateStoryExpression(expression.ast, () => undefined)).not.toThrow();
+            expect(() => evaluateStoryExpression(expression.ast, { read: () => undefined })).not.toThrow();
         }
     });
 
@@ -305,6 +514,7 @@ describe("failure handling", () => {
             "", "+", "1 +", "(1", "1)", "\"unterminated", "gold gold", "?:", "met ? 1",
             "mystery", "saved.mystery", "nope.chapter", "eval(\"1\")", "abs(1, 2)", "gold + 1 oops", "gold @ 1",
             "'mystery'", "'gold", "''",
+            "[1, 2", "inv[0", "inv[]", "[", "]", "[mystery]", "inv[mystery]", "list(1,",
         ];
         for (const source of sources) {
             const { expression, issues } = parseStoryExpression(source, SCOPE);
@@ -342,7 +552,7 @@ describe("formatStoryExpressionName", () => {
         const source = `${formatStoryExpressionName("Complex Var Name")} + 1`;
         const { expression, issues } = parseStoryExpression(source, scope);
         expect(issues).toEqual([]);
-        expect(evaluateStoryExpression(expression.ast, () => 1)).toBe(2);
+        expect(evaluateStoryExpression(expression.ast, { read: () => 1 })).toBe(2);
     });
 });
 
@@ -358,6 +568,208 @@ describe("collectStoryExpressionVariables", () => {
     it("reaches into every branch, including untaken ones", () => {
         const { expression } = parseStoryExpression("met ? gold : persis.chapter", SCOPE);
         expect(collectStoryExpressionVariables(expression.ast)).toHaveLength(3);
+    });
+
+    it("descends into a list literal and into both halves of a subscript", () => {
+        // Missing either half is silent: the compiler builds its reader from exactly this list, so a
+        // ref it never saw evaluates as `undefined` at runtime rather than failing the build.
+        const list = parseStoryExpression("[gold, saved.chapter]", SCOPE);
+        expect(collectStoryExpressionVariables(list.expression.ast)).toEqual([
+            { scope: "scene", variableId: "v_gold" },
+            { scope: "saved", variableId: "v_chapter_saved" },
+        ]);
+        const subscript = parseStoryExpression("inv[slot]", SCOPE);
+        expect(collectStoryExpressionVariables(subscript.expression.ast)).toEqual([
+            { scope: "saved", variableId: "v_inv" },
+            { scope: "scene", variableId: "v_slot" },
+        ]);
+    });
+});
+
+/**
+ * The two reference nodes and the blueprint call (schema v15).
+ *
+ * Their own scope, because they are the only part of the language that resolves against something
+ * other than variables - and the point of every test here is that what the tree stores is an ID: a
+ * scene rename, an option reword or a blueprint rename must not be able to break a committed line.
+ */
+describe("visited / picked / invoke", () => {
+    const ENTITIES = {
+        scenes: [{ id: "sc_prologue", name: "序章" }, { id: "sc_two", name: "第 二 章" }],
+        options: [
+            { id: "opt_refuse", name: "那句拒绝" },
+            // Two options reading "Yes", which is what any real project looks like - the case the
+            // ambiguity answer exists for.
+            { id: "opt_yes_a", name: "Yes" },
+            { id: "opt_yes_b", name: "Yes" },
+        ],
+        blueprints: [{ id: "bp_bonus", name: "bonus" }, { id: "bp_default", name: "Story Value" }, { id: "bp_min", name: "min" }],
+    };
+    const WORLD = createStoryExpressionScope(VARIABLES, ENTITIES);
+
+    const parse = (source: string) => parseStoryExpression(source, WORLD);
+    const codes = (source: string) => parse(source).issues.map(issue => issue.code);
+
+    it("stores the id, never the name", () => {
+        const { expression, issues } = parse("visited(序章)");
+        expect(issues).toEqual([]);
+        expect(expression.ast).toEqual({ kind: "visited", target: { kind: "scene", sceneId: "sc_prologue" }, name: "序章" });
+
+        const picked = parse("picked(那句拒绝)");
+        expect(picked.issues).toEqual([]);
+        expect(picked.expression.ast).toEqual({ kind: "visited", target: { kind: "option", blockId: "opt_refuse" }, name: "那句拒绝" });
+    });
+
+    it("keeps hitting the same id after the scene is renamed and the option reworded", () => {
+        // The whole reason this is a node and not `visited("序章")`. Parse against today's names,
+        // then evaluate the STORED tree against a record that only knows ids - which is what the
+        // compiler does at runtime - with the name tables since rewritten out from under it.
+        const { expression } = parse("visited(序章) && picked(那句拒绝)");
+        const renamed = createStoryExpressionScope(VARIABLES, {
+            scenes: [{ id: "sc_prologue", name: "Prologue (rewritten)" }],
+            options: [{ id: "opt_refuse", name: "I would rather not." }],
+        });
+        // The old spelling no longer resolves - as it should not, for a NEW line...
+        expect(parseStoryExpression("visited(序章)", renamed).issues.map(i => i.code)).toEqual(["unknownVisitedTarget"]);
+        // ...while the committed tree is untouched and still answers about the same two ids.
+        const seen = new Set(["sc_prologue", "opt_refuse"]);
+        expect(evaluateStoryExpression(expression.ast, {
+            read: () => undefined,
+            visited: ref => seen.has(ref.kind === "scene" ? ref.sceneId : ref.blockId),
+        })).toBe(true);
+    });
+
+    it("reports an unknown name and leaves an invalid tree", () => {
+        expect(codes("visited(没有这个场景)")).toEqual(["unknownVisitedTarget"]);
+        expect(isStoryExpressionEvaluable(parse("visited(没有这个场景)").expression.ast)).toBe(false);
+        // The name is looked up in the table the CALL names: a scene is not an option.
+        expect(codes("picked(序章)")).toEqual(["unknownVisitedTarget"]);
+    });
+
+    it("refuses to guess between two things with the same name", () => {
+        expect(codes("picked(Yes)")).toEqual(["ambiguousReference"]);
+        expect(isStoryExpressionEvaluable(parse("picked(Yes)").expression.ast)).toBe(false);
+    });
+
+    it("takes a quoted entity name, so a name with spaces is addressable", () => {
+        const { expression, issues } = parse("visited('第 二 章')");
+        expect(issues).toEqual([]);
+        expect(expression.ast).toEqual({ kind: "visited", target: { kind: "scene", sceneId: "sc_two" }, name: "第 二 章" });
+    });
+
+    it("reads as false where the host cannot answer", () => {
+        // An env with no `visited` capability is a host that does not track the record (the document
+        // migration, a test), and "not visited" is the same answer an empty record gives.
+        const { expression } = parse("visited(序章)");
+        expect(evaluateStoryExpression(expression.ast, { read: () => undefined })).toBe(false);
+    });
+
+    it("lets the built-in win its name, and says so", () => {
+        // `min` names both a whitelisted function and a blueprint here. The tree is the BUILT-IN, so
+        // an already-committed `min(1, 2)` keeps meaning what it meant...
+        const { expression, issues } = parse("min(1, 2)");
+        expect(expression.ast).toEqual({
+            kind: "call",
+            fn: "min",
+            args: [{ kind: "literal", value: 1 }, { kind: "literal", value: 2 }],
+        });
+        // ...but the collision is reported rather than resolved in silence.
+        expect(issues.map(issue => issue.code)).toEqual(["blueprintShadowsFunction"]);
+        // A function with no blueprint behind it is untouched.
+        expect(codes("max(1, 2)")).toEqual([]);
+    });
+
+    it("calls a blueprint whose name is quoted, including one shadowing a built-in", () => {
+        expect(parse("'Story Value'()").expression.ast).toEqual({ kind: "invoke", blueprintId: "bp_default", name: "Story Value" });
+        // The escape from the collision above, without renaming anything.
+        expect(parse("'min'()").expression.ast).toEqual({ kind: "invoke", blueprintId: "bp_min", name: "min" });
+        expect(parse("'min'()").issues).toEqual([]);
+    });
+
+    it("composes into a larger expression", () => {
+        // `/set x bonus() * 2` - the slot that could not name a blueprint at all before v15.
+        const { expression, issues } = parse("bonus() * 2");
+        expect(issues).toEqual([]);
+        expect(expression.ast).toEqual({
+            kind: "binary",
+            op: "*",
+            left: { kind: "invoke", blueprintId: "bp_bonus", name: "bonus" },
+            right: { kind: "literal", value: 2 },
+        });
+        expect(evaluateStoryExpression(expression.ast, { read: () => undefined, invoke: () => 21 })).toBe(42);
+    });
+
+    it("reports a call that names nothing, and a call given arguments", () => {
+        expect(codes("nope()")).toEqual(["unknownFunction"]);
+        expect(codes("'nope'()")).toEqual(["unknownBlueprint"]);
+        expect(codes("bonus(1)")).toEqual(["blueprintTakesNoArguments"]);
+    });
+
+    it("stays total when the blueprint throws", () => {
+        // Graph execution throws freely (`BlueprintGraphExecutionError`, `executeGraphSync`), and the
+        // catch lives inside the node precisely so this invariant survives it. A throw escaping here
+        // would take down a compiled Script mid-scene.
+        const { expression } = parse("bonus() + 1");
+        const explode = (): never => { throw new Error("graph blew up"); };
+        expect(() => evaluateStoryExpression(expression.ast, { read: () => undefined, invoke: explode })).not.toThrow();
+        expect(evaluateStoryExpression(expression.ast, { read: () => undefined, invoke: explode })).toBe(1);
+        // And with no invoker at all, the same zero.
+        expect(evaluateStoryExpression(parse("bonus()").expression.ast, { read: () => undefined })).toBe(null);
+    });
+
+    it("infers boolean for a record read and unknown for a call", () => {
+        const infer = (source: string) => inferStoryExpressionType(parse(source).expression.ast, ref => TYPES[keyOf(ref)]);
+        expect(infer("visited(序章)")).toBe("boolean");
+        expect(infer("picked(那句拒绝)")).toBe("boolean");
+        // NOT the graph's declared return type: the author may change it with nothing rechecking
+        // the expressions that call it, so claiming a type here would be a check that lies.
+        expect(infer("bonus()")).toBe("unknown");
+    });
+
+    it("collects the blueprints a tree calls, and no variables", () => {
+        const { expression } = parse("visited(序章) ? bonus() : gold");
+        expect(collectStoryExpressionInvocations(expression.ast)).toEqual([{ blueprintId: "bp_bonus", name: "bonus" }]);
+        // The reference nodes contribute no variable reads - `gold` is the only one here.
+        expect(collectStoryExpressionVariables(expression.ast)).toEqual([{ scope: "scene", variableId: "v_gold" }]);
+    });
+
+    it("prints back to source that re-parses to the same tree", () => {
+        const sources = [
+            "visited(序章)", "visited('第 二 章')", "picked(那句拒绝)",
+            "'Story Value'()", "bonus()",
+            "(visited(序章) && picked(那句拒绝))", "(bonus() * 2)",
+        ];
+        for (const source of sources) {
+            const first = parseStoryExpression(source, WORLD);
+            expect(first.issues, source).toEqual([]);
+            // Through the printer, not through the stored source - this is the path a desugared
+            // `/inc` takes, and the only one where a mis-quoted name would silently change meaning.
+            const printed = formatStoryExpr(first.expression.ast);
+            expect(printed, source).toBe(source);
+            expect(parseStoryExpression(printed, WORLD).expression.ast, source).toEqual(first.expression.ast);
+        }
+    });
+});
+
+describe("source round trip", () => {
+    it("re-parses a stored source to the identical tree", () => {
+        // The document stores the tree AND the author's source; re-opening a row re-parses the
+        // source, so the two must agree or an untouched row would commit a different expression.
+        // The spellings below include the exact shapes `formatExpr` (storySceneProjection) emits for
+        // the new nodes - `[a, b]`, `t[i]`, parenthesized binaries - so printing stays inside the
+        // grammar that parses.
+        const sources = [
+            "[1, 2, 3]", "[]", "[[1, 2], [3]]", "inv[0]", "flags[\"ch1\"]",
+            "[[1, 2], [3]][0][1]", "inv[slot]", "inv[(slot - 1)]", "-inv[0]",
+            "push(inv, \"shield\")", "get(flags, \"ch1\", false)",
+            "join(slice(inv, 0, 1), \", \")", "(len(keys(flags)) > 1)",
+        ];
+        for (const source of sources) {
+            const first = parseStoryExpression(source, SCOPE);
+            expect(first.issues, source).toEqual([]);
+            const second = parseStoryExpression(first.expression.source, SCOPE);
+            expect(second.expression.ast, source).toEqual(first.expression.ast);
+        }
     });
 });
 
@@ -392,5 +804,28 @@ describe("inferStoryExpressionType", () => {
         expect(storyExprTypeFits("string", "number")).toBe(false);
         expect(storyExprTypeFits("number", "number")).toBe(true);
         expect(storyExprTypeFits("string", "json")).toBe(true);
+    });
+
+    it("types a function by what it returns", () => {
+        // A blanket `number` was true while every function was arithmetic; `/set gold upper(name)`
+        // is the case that made it a lie.
+        expect(infer("upper(playerName)")).toBe("string");
+        expect(infer("join(inv, \",\")")).toBe("string");
+        expect(infer("hasKey(flags, \"ch1\")")).toBe("boolean");
+        expect(infer("contains(inv, \"sword\")")).toBe("boolean");
+        expect(infer("indexOf(inv, \"sword\")")).toBe("number");
+        expect(infer("num(playerName)")).toBe("number");
+        expect(storyExprTypeFits(infer("upper(playerName)"), "number")).toBe(false);
+    });
+
+    it("declines to type a collection, which is what lets one into a json variable", () => {
+        // `StoryExprType` has no list arm, and `unknown` is read as "allow" - so a rewrite commits
+        // to a `json` variable without the lattice needing to grow.
+        expect(infer("[1, 2]")).toBe("unknown");
+        expect(infer("inv[0]")).toBe("unknown");
+        expect(infer("list(1, 2)")).toBe("unknown");
+        expect(infer("push(inv, \"x\")")).toBe("unknown");
+        expect(storyExprTypeFits(infer("push(inv, \"x\")"), "json")).toBe(true);
+        expect(storyExprTypeFits(infer("[1, 2]"), "json")).toBe(true);
     });
 });

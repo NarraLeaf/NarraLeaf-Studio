@@ -11,10 +11,12 @@ import { Services } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { useWorkspace } from "../../../context";
 import { useRegistry } from "../../../registry";
+import { useFreezeGuard } from "../../../components/ui/freezeGuard";
 import type { PanelComponentProps } from "../../types";
 import { createStorySceneEditorTab } from "../scene-editor/openStorySceneEditorTab";
 import { openSceneFlowTab } from "../../story-flow/openSceneFlowTab";
 import { buildStorySceneTextProjection } from "../projection/storySceneProjection";
+import { useStoryScriptIo } from "../script/useStoryScriptIo";
 
 interface StoryPanelState {
     selectedStoryId?: string;
@@ -45,6 +47,11 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
     const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
+    // Creating, renaming and deleting write the story document; opening a scene, opening the flow,
+    // exporting a script and picking which story is selected do not, and stay live so a frozen
+    // project can still be read.
+    const freeze = useFreezeGuard();
+    const { beginExport: beginScriptExport, beginImport: beginScriptImport, dialogs: scriptDialogs } = useStoryScriptIo();
     const [stories, setStories] = useState<StoryLibraryEntry[]>([]);
     const [defaultStoryId, setDefaultStoryId] = useState<StoryId | undefined>();
     const [selectedStoryId, setSelectedStoryId] = useState<StoryId | null>(null);
@@ -297,7 +304,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             {
                 id: "set-default-story",
                 label: t("story.panel.setDefault"),
-                disabled: isDefault,
+                ...freeze.menuRow(isDefault),
                 onClick: () => handleSetDefaultStory(entry),
             },
             {
@@ -308,20 +315,34 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             {
                 id: "rename-story",
                 label: t("common.rename"),
+                ...freeze.menuRow(),
                 onClick: () => {
                     void handleRenameStory(entry);
                 },
+            },
+            { id: "story-script-separator", separator: true },
+            {
+                id: "export-story-script",
+                label: t("story.script.exportStory"),
+                onClick: () => beginScriptExport({ storyId: entry.id, sceneIds: null }),
+            },
+            {
+                id: "import-story-script",
+                label: t("story.script.import"),
+                ...freeze.menuRow(),
+                onClick: () => beginScriptImport(entry.id),
             },
             { id: "story-actions-separator", separator: true },
             {
                 id: "delete-story",
                 label: t("common.delete"),
+                ...freeze.menuRow(),
                 onClick: () => {
                     void handleDeleteStory(entry);
                 },
             },
         ];
-    }, [defaultStoryId, handleDeleteStory, handleOpenSceneFlow, handleRenameStory, handleSetDefaultStory, t]);
+    }, [beginScriptExport, beginScriptImport, defaultStoryId, freeze, handleDeleteStory, handleOpenSceneFlow, handleRenameStory, handleSetDefaultStory, t]);
 
     const handleOpenStoryMenu = useCallback((event: React.MouseEvent, entry: StoryLibraryEntry) => {
         event.stopPropagation();
@@ -414,13 +435,36 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             {
                 id: "set-entry-scene",
                 label: t("story.panel.setEntryScene"),
-                disabled: isEntry,
+                ...freeze.menuRow(isEntry),
                 onClick: () => handleSetEntryScene(scene),
+            },
+            { id: "scene-script-separator", separator: true },
+            {
+                id: "export-scene-script",
+                label: t("story.script.exportScene"),
+                onClick: () => {
+                    if (selectedStoryId) {
+                        beginScriptExport({ storyId: selectedStoryId, sceneIds: [scene.id] });
+                    }
+                },
+            },
+            {
+                // Story-scoped despite sitting on a scene row: the file decides which scenes it
+                // carries, and the confirm dialog names every one of them before anything is written.
+                id: "import-scene-script",
+                label: t("story.script.import"),
+                ...freeze.menuRow(),
+                onClick: () => {
+                    if (selectedStoryId) {
+                        beginScriptImport(selectedStoryId);
+                    }
+                },
             },
             { id: "scene-actions-separator", separator: true },
             {
                 id: "rename-scene",
                 label: t("common.rename"),
+                ...freeze.menuRow(),
                 onClick: () => {
                     void handleRenameScene(scene);
                 },
@@ -428,12 +472,13 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             {
                 id: "delete-scene",
                 label: t("common.delete"),
+                ...freeze.menuRow(),
                 onClick: () => {
                     void handleDeleteScene(scene);
                 },
             },
         ];
-    }, [document?.entrySceneId, handleDeleteScene, handleOpenScene, handleRenameScene, handleSetEntryScene, t]);
+    }, [beginScriptExport, beginScriptImport, document?.entrySceneId, freeze, handleDeleteScene, handleOpenScene, handleRenameScene, handleSetEntryScene, selectedStoryId, t]);
 
     const handleOpenSceneMenu = useCallback((event: React.MouseEvent, scene: StoryScene) => {
         event.preventDefault();
@@ -483,8 +528,8 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                 </button>
                                 <button
                                     type="button"
-                                    className="p-1 hover:text-primary"
-                                    title={t("story.panel.newStory")}
+                                    className="p-1 hover:text-primary disabled:text-fg-subtle disabled:hover:text-fg-subtle"
+                                    {...freeze.writes(false, t("story.panel.newStory"))}
                                     onClick={() => {
                                         void handleCreateStory();
                                     }}
@@ -518,7 +563,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                             <span className="min-w-0 flex-1 truncate text-sm text-fg">{entry.name}</span>
                                             <button
                                                 type="button"
-                                                className="rounded p-1 text-fg-muted opacity-0 hover:bg-fill hover:text-fg group-hover/story:opacity-100"
+                                                className="rounded-md p-1 text-fg-muted opacity-0 hover:bg-fill hover:text-fg group-hover/story:opacity-100"
                                                 title={t("story.panel.storyActions")}
                                                 onClick={event => handleOpenStoryMenu(event, entry)}
                                             >
@@ -553,8 +598,8 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                     </button>
                                     <button
                                         type="button"
-                                        className="p-1 hover:text-primary"
-                                        title={t("story.panel.newChapter")}
+                                        className="p-1 hover:text-primary disabled:text-fg-subtle disabled:hover:text-fg-subtle"
+                                        {...freeze.writes(false, t("story.panel.newChapter"))}
                                         onClick={handleCreateChapter}
                                     >
                                         <Plus className="h-3 w-3" />
@@ -586,8 +631,8 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                             actions={
                                                 <button
                                                     type="button"
-                                                    className="p-1 hover:text-primary"
-                                                    title={t("story.panel.newSceneInChapter")}
+                                                    className="p-1 hover:text-primary disabled:text-fg-subtle disabled:hover:text-fg-subtle"
+                                                    {...freeze.writes(false, t("story.panel.newSceneInChapter"))}
                                                     onClick={() => handleCreateScene(chapter.id)}
                                                 >
                                                     <Plus className="h-3 w-3" />
@@ -627,7 +672,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                                             </div>
                                                             <button
                                                                 type="button"
-                                                                className="rounded p-1 text-fg-muted opacity-0 hover:bg-fill hover:text-fg group-hover/scene:opacity-100"
+                                                                className="rounded-md p-1 text-fg-muted opacity-0 hover:bg-fill hover:text-fg group-hover/scene:opacity-100"
                                                                 title={t("story.panel.sceneActions")}
                                                                 onClick={event => handleOpenSceneMenu(event, scene)}
                                                             >
@@ -653,6 +698,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 visible={menuState.visible}
                 onClose={hideMenu}
             />
+            {scriptDialogs}
         </div>
     );
 }

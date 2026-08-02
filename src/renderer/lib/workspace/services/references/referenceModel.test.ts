@@ -115,6 +115,21 @@ describe("extractStoryAssetReferences", () => {
 
         expect(extractStoryAssetReferences(document, "Main Story")[0].target).toMatchObject({ kind: "storyScene" });
     });
+
+    it("counts a scene's own music as a use of that audio asset", () => {
+        const document = storyDoc({});
+        document.scenes["scene-1"].bgm = { assetId: "scene-theme" };
+
+        // Without this, deleting the track a scene opens with would report it as unused - and the
+        // scene would go silent with no warning at all.
+        const references = extractStoryAssetReferences(document, "Main Story");
+        expect(references).toHaveLength(1);
+        expect(references[0]).toMatchObject({
+            assetId: "scene-theme",
+            field: "scene.bgm.assetId",
+            target: { kind: "storyScene" },
+        });
+    });
 });
 
 describe("extractStoryAnimationAssetReferences", () => {
@@ -312,6 +327,31 @@ describe("extractUIDocumentAssetReferences", () => {
         expect(references[0]).toMatchObject({ assetId: "legacy-1", dormant: true });
     });
 
+    it("reads a widget's bare assetId and posterAssetId", () => {
+        // Before `nl.video` this walk knew `imageFill`, `fontAssetId`, and `nl.image`'s legacy bare
+        // id - nothing else. A widget naming its prop `assetId` was preloaded by the shipped game
+        // (`surfaceResourcePreload.ts` matches that literal name) and simultaneously absent from
+        // "what uses this asset", which is the one place an author looks before deleting it.
+        const references = extractUIDocumentAssetReferences(
+            doc([uiElement("e1", "nl.video", { assetId: "clip-1", posterAssetId: "poster-1" })]),
+        );
+
+        expect(references.map(reference => reference.field).sort()).toEqual(["assetId", "posterAssetId"]);
+        expect(references.map(reference => reference.assetId).sort()).toEqual(["clip-1", "poster-1"]);
+        expect(references.every(reference => reference.dormant === undefined)).toBe(true);
+    });
+
+    it("reports the nl.image legacy assetId exactly once", () => {
+        // The generic `assetId` arm and the nl.image legacy branch push the same reference id; if
+        // both fired, the delete dialog would list the same site twice under one key.
+        const references = extractUIDocumentAssetReferences(
+            doc([uiElement("e1", "nl.image", { assetId: "legacy-1" })]),
+        );
+
+        expect(references).toHaveLength(1);
+        expect(references[0].id).toBe("ui:e1:assetId");
+    });
+
     it("descends into arrays so a fill in a list prop is still found", () => {
         const references = extractUIDocumentAssetReferences(
             doc([uiElement("e1", "nl.list", {
@@ -417,18 +457,37 @@ describe("extractVoiceAssetReferences", () => {
 });
 
 describe("extractCharacterAssetReferences", () => {
-    it("covers the profile thumbnail and every form variant", () => {
+    it("covers the profile thumbnail and every appearance image", () => {
         const references = extractCharacterAssetReferences([
             {
                 id: "c1",
                 name: "Inko",
                 thumbnailAssetId: "thumb-1",
-                forms: [{ name: "School", variantAssetIds: { happy: "happy-1", sad: null } }],
+                appearanceAssets: [
+                    { slot: "pose:p1", detail: "Happy", assetId: "happy-1" },
+                    { slot: "pose:p2", detail: "Sad", assetId: null },
+                ],
             },
         ]);
 
         expect(references.map(reference => reference.assetId).sort()).toEqual(["happy-1", "thumb-1"]);
-        expect(references.find(reference => reference.assetId === "happy-1")?.detail).toBe("School › happy");
+        expect(references.find(reference => reference.assetId === "happy-1")?.detail).toBe("Happy");
+    });
+
+    it("keeps a layered character's per-tag images apart", () => {
+        const references = extractCharacterAssetReferences([
+            {
+                id: "c1",
+                name: "Inko",
+                appearanceAssets: [
+                    { slot: "layer:l1:t1", detail: "Mouth › Happy", assetId: "mouth-happy" },
+                    { slot: "layer:l1:t2", detail: "Mouth › Angry", assetId: "mouth-angry" },
+                ],
+            },
+        ]);
+
+        // One layer, two tags, two references — a slot key naming only the layer would collapse them.
+        expect(references.map(reference => reference.id)).toEqual(["char:c1:layer:l1:t1", "char:c1:layer:l1:t2"]);
     });
 });
 

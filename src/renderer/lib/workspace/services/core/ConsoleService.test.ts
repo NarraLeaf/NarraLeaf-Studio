@@ -159,7 +159,7 @@ describe("ConsoleService", () => {
 
     it("exposes the built-in channels by default", () => {
         const service = new ConsoleService();
-        expect(service.getChannels().map(channel => channel.id)).toEqual(["blueprint", "build"]);
+        expect(service.getChannels().map(channel => channel.id)).toEqual(["blueprint", "build", "storage"]);
     });
 
     it("registers a runtime channel and emits a channelsChanged event", () => {
@@ -169,14 +169,14 @@ describe("ConsoleService", () => {
 
         const dispose = service.registerChannel({ id: "story", label: "Story", description: "" });
 
-        expect(service.getChannels().map(channel => channel.id)).toEqual(["blueprint", "build", "story"]);
+        expect(service.getChannels().map(channel => channel.id)).toEqual(["blueprint", "build", "storage", "story"]);
         expect(changed).toHaveBeenCalledTimes(1);
 
         const entry = service.append("story", { level: "warning", message: "dangling ref" });
         expect(service.getEntries("story")).toEqual([entry]);
 
         dispose();
-        expect(service.getChannels().map(channel => channel.id)).toEqual(["blueprint", "build"]);
+        expect(service.getChannels().map(channel => channel.id)).toEqual(["blueprint", "build", "storage"]);
         expect(service.getEntries("story")).toEqual([]);
         expect(changed).toHaveBeenCalledTimes(2);
     });
@@ -203,7 +203,7 @@ describe("ConsoleService", () => {
         const service = new ConsoleService();
         const dispose = service.registerChannel({ id: "build", label: "Build", description: "" });
         dispose();
-        expect(service.getChannels().map(channel => channel.id)).toEqual(["blueprint", "build"]);
+        expect(service.getChannels().map(channel => channel.id)).toEqual(["blueprint", "build", "storage"]);
     });
 
     it("routes forwarded Dev Mode blueprint debug events into the blueprint channel", async () => {

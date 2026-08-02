@@ -4,25 +4,49 @@ import { isVcsPlatformSupported } from "@shared/types/vcs";
 /**
  * The plug in "pluggable version control".
  *
- * Everything Lore-shaped lives behind this module, and nothing above it imports
- * `@lore-vcs/sdk` - directly or transitively - at module scope. That constraint
- * is load-bearing, not stylistic:
+ * Everything Lore-shaped lives behind this module. Studio ships on every platform;
+ * version control is simply absent on the ones Epic has no native build for (macOS
+ * Intel, Windows ARM64 - see docs/version-control.md §7), and a host without it
+ * loses one feature rather than failing to start.
  *
- *   `@lore-vcs/sdk`'s entry point calls `koffi.load()` at MODULE LOAD TIME.
- *   A static import on a host with no native build therefore throws while
- *   Studio's main process is still starting up, taking the whole app down
- *   rather than degrading one feature. Verified by removing the platform
- *   package: "Failed to load shared library".
+ * Two things changed when Studio replaced the generated SDK with its own binding
+ * (`lore/`), and both relax constraints that used to be absolute:
  *
- * So the backend is imported dynamically, once, behind a platform check, and a
- * failure is converted into a reason code the UI can act on. Studio keeps
- * shipping on every platform; version control is simply absent on the ones Epic
- * has no build for (macOS Intel, Windows ARM64 - see docs/version-control.md).
+ *  - **Loading is lazy.** The SDK called `koffi.load()` while its entry module was
+ *    being evaluated, so a single static import anywhere in the reachable graph
+ *    crashed main-process startup on an unsupported host. Studio's binding loads
+ *    inside a function, so the dynamic import below is now defence in depth rather
+ *    than the only thing standing between an Intel Mac and a dead app.
+ *  - **Failure is no longer permanent.** A module that throws during ESM evaluation
+ *    is cached as failed by Node for the life of the process; a failed
+ *    `koffi.load()` inside a function is just an exception. A user who repairs a
+ *    broken install can now recover without restarting - see
+ *    {@link refreshVcsAvailability}.
+ *
+ * The verdict is still cached by default, because probing costs a 29MB dlopen and
+ * the answer does not change on its own.
  */
 
-export type VcsBackend = typeof import("./revisionReader") & {
-    readonly client: typeof import("./loreClient");
-};
+/**
+ * The whole Lore-facing surface, as one object.
+ *
+ * Four modules rather than one because reading history, creating a repository, talking
+ * to a server and settling a merge are genuinely different jobs, but they share a
+ * single plug: adding a second dynamic import elsewhere would give the "never reach the
+ * binding at startup" rule a second place to be broken.
+ */
+export type VcsBackend =
+    & typeof import("./revisionReader")
+    & typeof import("./repository")
+    & typeof import("./remote")
+    & typeof import("./merge")
+    /**
+     * Per-change resolution. Reaches no native code at all - it is `fs` plus the document
+     * registry - and is behind the plug anyway because it is only ever called on a repository
+     * whose merge the modules above opened, and because a second way into `vcs/` would give the
+     * "never reach the binding at startup" rule a second place to be broken.
+     */
+    & typeof import("./mergeDocument");
 
 let cached: VcsBackend | null = null;
 let availability: VcsAvailability | null = null;
@@ -57,12 +81,21 @@ export async function loadVcsBackend(): Promise<VcsBackend | null> {
             return null;
         }
         try {
-            // Dynamic on purpose. Both modules reach the native library on load.
-            const [reader, client] = await Promise.all([
+            // Dynamic on purpose: these imports are what reach the native library, and
+            // a static one would run `koffi.load()` during main-process startup.
+            const [reader, repository, remote, merge, mergeDocument] = await Promise.all([
                 import("./revisionReader"),
-                import("./loreClient"),
+                import("./repository"),
+                import("./remote"),
+                import("./merge"),
+                import("./mergeDocument"),
             ]);
-            cached = Object.assign(Object.create(null), reader, { client }) as VcsBackend;
+            // Force the load now rather than at first use, so availability reflects
+            // whether the library actually opened rather than merely whether the
+            // module resolved.
+            const { loadLoreLibrary } = await import("./lore");
+            loadLoreLibrary();
+            cached = { ...reader, ...repository, ...remote, ...merge, ...mergeDocument };
             availability = { available: true };
             return cached;
         } catch (error) {
@@ -110,6 +143,23 @@ export async function requireVcsBackend(): Promise<VcsBackend> {
     throw new VcsUnavailableError(
         current.available ? { available: false, reason: "backend-load-failed" } : current,
     );
+}
+
+/**
+ * Re-probe after a host-side repair (a reinstall, or `LORE_LIB_PATH` being set).
+ *
+ * Possible only because Studio's binding loads the library inside a function; with
+ * the generated SDK a first failure was permanent for the process and this would
+ * have been a lie. Nothing calls it automatically - retrying on a schedule would
+ * re-dlopen 29MB to learn what the user has not changed.
+ */
+export async function refreshVcsAvailability(): Promise<VcsAvailability> {
+    cached = null;
+    availability = null;
+    inFlight = null;
+    const { resetLoreLibraryForRetry } = await import("./lore");
+    resetLoreLibraryForRetry();
+    return getVcsAvailability();
 }
 
 /** Test seam: forget the cached backend and availability verdict. */

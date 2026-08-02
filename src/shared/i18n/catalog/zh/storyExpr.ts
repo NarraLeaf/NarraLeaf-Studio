@@ -1,3 +1,5 @@
+import type { LocaleNamespace } from "../types";
+
 export const storyExpr = {
     issue: {
         unexpectedToken: "此处不应出现「{text}」",
@@ -9,11 +11,16 @@ export const storyExpr = {
         unknownScopePrefix: "「{prefix}」不是作用域，可用 scene、saved 或 persis",
         unknownFunction: "没有「{name}」这个函数",
         badArity: "{fn} 需要 {expected} 个参数，而不是 {received} 个",
+        unknownVisitedTarget: "{call} 找不到名为「{name}」的对象",
+        unknownBlueprint: "没有名为「{name}」的故事取值蓝图",
+        blueprintTakesNoArguments: "「{name}」是蓝图，蓝图调用不接受参数",
+        ambiguousReference: "有不止一个东西叫「{name}」，请改名其中之一",
+        blueprintShadowsFunction: "「{name}」是内建函数，蓝图不能同名。请给蓝图改名，或写成 '{name}'() 来调用它",
     },
     check: {
         notBoolean: "条件必须是真假判断，例如 gold >= 100",
         typeMismatch: "这里得到的是 {received}，而变量存放的是 {expected}",
-        notConstant: "默认值不能引用其他变量——它在所有变量存在之前就已确定",
+        notConstant: "默认值不能引用其他变量，它在所有变量存在之前就已确定",
         duplicateVariable: "该作用域下已存在同名变量",
         compoundWithoutTarget: "这里没有可供累加的变量",
     },
@@ -27,16 +34,20 @@ export const storyExpr = {
         unknownAsset: "没有名为「{value}」的{assetType}资源",
         unknownCharacter: "没有名为「{value}」的角色",
         unknownScene: "没有名为「{value}」的场景",
+        unknownAudioTrack: "没有名为「{value}」的音轨",
+        unknownLabel: "本场景中没有名为「{value}」的标签",
         unknownVariable: "没有名为「{value}」的变量",
         unknownForm: "{characterName} 没有「{value}」这个表情",
+        notPuppetCharacter: "{value} 不是由运行时绘制的角色，没有动作或皮肤可设置",
         ambiguousName: "有多个东西叫「{value}」，请重命名其中一个",
         conflictingParams: "{keys} 不能写在同一行，请拆成两行",
+        repeatTimesAndUntil: "重复要么按次数，要么到条件成立为止，不能同时写。请去掉其中一个",
         expressionError: "{message}",
         expressionNotBoolean: "条件必须是真假判断，例如 gold >= 100",
-        expressionTypeMismatch: "这里得到的是 {received}，而「{value}」存放的是 {expected}",
-        duplicateVariable: "「{value}」已存在——换个名字，或用 /set 修改它的值",
+        expressionTypeMismatch: "「{variable}」存放的是 {expected}，无法存入 {received}",
+        duplicateVariable: "「{value}」已存在，换个名字，或用 /set 修改它的值",
         unknownTarget: "舞台上没有名为「{value}」的对象",
         unsupportedOption: "「{value}」不适用于此处，可用：{allowed}",
         missingCore: "/{token} 还缺少{slot}",
     },
-};
+} satisfies LocaleNamespace<"storyExpr">;

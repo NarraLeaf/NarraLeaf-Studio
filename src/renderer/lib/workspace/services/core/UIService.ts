@@ -8,6 +8,8 @@ import { PanelService } from "../ui/PanelService";
 import { EditorService } from "../ui/EditorService";
 import { DialogService } from "../ui/DialogService";
 import { StatusBarService } from "../ui/StatusBarService";
+import { TextEditorContributionService } from "../ui/TextEditorContributionService";
+import { TextDocumentStatusService } from "../ui/TextDocumentStatusService";
 import { FocusManager } from "../ui/FocusManager";
 import {
     KeybindingService,
@@ -35,6 +37,8 @@ import type { AppEventToken } from "@shared/types/app";
  * - statusBar: Status bar items
  * - focus: Focus management
  * - keybindings: Keyboard shortcuts
+ * - textEditor: Plugin contributions to the built-in text editor
+ * - textDocumentStatus: What the open text tabs report to the status bar
  */
 export class UIService extends Service<UIService> implements IUIService {
     private store: UIStore;
@@ -48,6 +52,8 @@ export class UIService extends Service<UIService> implements IUIService {
     private _editor: EditorService;
     private _dialogs: DialogService;
     private _statusBar: StatusBarService;
+    private _textEditor: TextEditorContributionService;
+    private _textDocumentStatus: TextDocumentStatusService;
     private _focus: FocusManager;
     private _keybindings: KeybindingService;
 
@@ -61,6 +67,8 @@ export class UIService extends Service<UIService> implements IUIService {
         this._editor = new EditorService(this.store);
         this._dialogs = new DialogService(this.store, this._focus);
         this._statusBar = new StatusBarService(this.store);
+        this._textEditor = new TextEditorContributionService(this.store);
+        this._textDocumentStatus = new TextDocumentStatusService();
         this._keybindings = new KeybindingService(this._focus, this.store);
         this.store.setKeybindingService(this._keybindings);
     }
@@ -211,6 +219,26 @@ export class UIService extends Service<UIService> implements IUIService {
     }
 
     /**
+     * Plugin contributions to the built-in text editor
+     * Usage: services.get<UIService>(Services.UI).textEditor.registerPreview({...})
+     *
+     * Studio itself registers nothing here - this registry exists so a plugin can add the
+     * Markdown grammar, preview and commands the built-in editor deliberately does not ship.
+     */
+    public get textEditor(): TextEditorContributionService {
+        return this._textEditor;
+    }
+
+    /**
+     * What the open text tabs are reporting about themselves, for the status bar.
+     *
+     * Host-internal and not part of any plugin surface; see {@link TextDocumentStatusService}.
+     */
+    public get textDocumentStatus(): TextDocumentStatusService {
+        return this._textDocumentStatus;
+    }
+
+    /**
      * Focus manager
      * Usage: services.get<UIService>(Services.UI).focus.setFocus(...)
      */
@@ -233,6 +261,14 @@ export class UIService extends Service<UIService> implements IUIService {
      */
     public async showConfirm(message: string, detail?: string): Promise<boolean> {
         return this._dialogs.confirm(message, detail);
+    }
+
+    /**
+     * Confirm an irreversible action. Cancel is the primary button and the keyboard default; the
+     * destructive one is a danger-coloured secondary. See {@link DialogService.confirmDestructive}.
+     */
+    public async showDestructiveConfirm(message: string, detail: string | undefined, confirmLabel: string): Promise<boolean> {
+        return this._dialogs.confirmDestructive(message, detail, confirmLabel);
     }
 
     /**

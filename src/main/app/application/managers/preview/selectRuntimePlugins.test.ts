@@ -11,7 +11,16 @@ function manifest(id: string, version: string, blueprintNodes: string[] = [], wi
         name: id,
         version,
         entries: { runtime: "runtime.js" },
-        contributes: { blueprintNodes, widgets, runtimeData: [], locales: [] },
+        contributes: {
+            blueprintNodes,
+            widgets,
+            tests: [],
+            runtimeData: [],
+            locales: [],
+            runtimeCapabilities: [],
+            sidecars: [],
+            buildDependencies: [],
+        },
         permissions: [],
     };
 }
@@ -21,6 +30,7 @@ function source(id: string, version: string, blueprintNodes: string[] = [], widg
         manifest: manifest(id, version, blueprintNodes, widgets),
         entry: "runtime.js",
         entryPath: `/plugins/${id}/runtime.js`,
+        installPath: `/plugins/${id}`,
     };
 }
 

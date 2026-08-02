@@ -1,7 +1,13 @@
 import path from "path";
 import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
 import { parseSharedBlueprintAssetJson } from "@shared/blueprint/parseSharedBlueprintAsset";
-import type { SharedBlueprintAsset } from "@shared/types/blueprint/document";
+import type { BlueprintPersistentVariable, SharedBlueprintAsset } from "@shared/types/blueprint/document";
+import type { PersistentVariableRuntimeTable, VariableRegistry } from "@shared/types/variables/registry";
+import {
+    buildPersistentRuntimeTable,
+    migrateVariableRegistryToLatest,
+    seedRegistryEntriesFromBlueprintPersistent,
+} from "@shared/variables/variableRegistryModel";
 import type { DevModeBundle, DevModeCharacterSummary, DevModeStoryLibrary } from "@shared/types/devMode";
 import type { GameLocalizationBundle } from "@shared/types/localization";
 import {
@@ -9,8 +15,14 @@ import {
     normalizeLocalizationDocument,
     normalizeLocalizationKeysDocument,
 } from "@shared/types/localization";
+import type { AutoSaveConfiguration } from "@shared/types/saves";
+import { normalizeAutoSaveConfiguration } from "@shared/types/saves";
 import type { GameVoiceBundle } from "@shared/types/voice";
 import { normalizeVoiceConfiguration, normalizeVoiceDocument } from "@shared/types/voice";
+import type { AudioClipRegion, GameAudioBundle } from "@shared/types/audio";
+import { normalizeAudioClipRegion } from "@shared/types/audio";
+import type { ProjectAudioTrack } from "@shared/types/audioTrack";
+import { migrateProjectAudioTrackDocument, normalizeProjectAudioTracks } from "@shared/types/audioTrack";
 import type { StoryAnimationAsset, StoryAnimationIndex, StoryDocument, StoryLibraryEntry, StoryLibraryIndex } from "@shared/types/story";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
@@ -34,11 +46,14 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         blueprintDocument: migrateBlueprintDocumentToLatest(uigraphsRaw.blueprintDocument),
     };
     const localBlueprints = uigraphs.blueprintDocument;
+    const persistentVariables = await loadPersistentVariableTable(context.projectPath, uigraphsRaw.blueprintDocument);
     const sharedBlueprints = await loadSharedBlueprints(context.projectPath);
     const projectIdentifier = await readProjectIdentifier(context.projectPath);
     const storyLibrary = await loadStoryLibrary(context.projectPath);
     const localization = await loadGameLocalization(context.projectPath);
     const voice = await loadGameVoice(context.projectPath);
+    const audio = await loadGameAudio(context.projectPath);
+    const autoSave = await loadAutoSaveConfiguration(context.projectPath);
     return {
         bundleId: context.bundleId,
         revision: context.revision,
@@ -48,10 +63,13 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
             uigraphs,
             localBlueprints,
             sharedBlueprints,
+            persistentVariables,
         },
         storyLibrary,
         localization,
         voice,
+        audio,
+        autoSave,
         compiled: context.compiled,
         blueprintCompiledScripts: context.blueprintCompiledScripts,
         blueprintScriptsCompileOk: context.blueprintScriptsCompileOk ?? true,
@@ -89,6 +107,38 @@ async function readJsonFile<T>(filePath: string): Promise<T> {
 /**
  * Load blueprint-type assets from metadata shard + content shards (same layout as renderer Assets pipeline).
  */
+/**
+ * Load the project-level persistent variable registry (M-VAR) and project it to the runtime table the
+ * bundle carries. Prefers `editor/variables.json`; if that file is absent (a project opened only in a
+ * pre-M-VAR Studio, or a Dev Mode start before the renderer migrated), it seeds from the legacy
+ * `persistentVariables` still on the raw blueprint document, so Dev Mode never loses persistent vars.
+ */
+async function loadPersistentVariableTable(
+    projectPath: string,
+    rawBlueprintDocument: unknown,
+): Promise<PersistentVariableRuntimeTable> {
+    const registryPath = path.join(projectPath, "editor", "variables.json");
+    const raw = await readOptionalJsonFile<unknown>(registryPath);
+    if (raw) {
+        return buildPersistentRuntimeTable(migrateVariableRegistryToLatest(raw));
+    }
+    const legacy = readRawPersistentVariables(rawBlueprintDocument);
+    const { entries } = seedRegistryEntriesFromBlueprintPersistent(legacy);
+    const registry: VariableRegistry = { schemaVersion: 1, entries };
+    return buildPersistentRuntimeTable(registry);
+}
+
+function readRawPersistentVariables(blueprintDocument: unknown): Record<string, BlueprintPersistentVariable> | undefined {
+    if (typeof blueprintDocument !== "object" || blueprintDocument === null) {
+        return undefined;
+    }
+    const raw = (blueprintDocument as { persistentVariables?: unknown }).persistentVariables;
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+        return undefined;
+    }
+    return raw as Record<string, BlueprintPersistentVariable>;
+}
+
 async function loadSharedBlueprints(projectPath: string): Promise<SharedBlueprintAsset[]> {
     const shardPath = path.join(projectPath, "assets", "assets.metadata.blueprint.json");
     const shardResult = await Fs.read(shardPath, "utf-8");
@@ -162,7 +212,105 @@ async function loadStoryLibrary(projectPath: string): Promise<DevModeStoryLibrar
         documents,
         characters: await loadCharacterSummaries(projectPath),
         animations: await loadStoryAnimations(projectPath),
+        assetNames: await loadAssetNames(projectPath),
     };
+}
+
+/** The media types a story row can name; a font or a blueprint never appears in a row's sentence. */
+const NAMED_ASSET_TYPES = ["image", "audio", "video", "model"] as const;
+
+/**
+ * `assetId → name` for the media a story row names (U4 WI-1).
+ *
+ * Read from the same flat `assets/assets.metadata.<type>.json` shards the renderer's asset service
+ * owns — `{ id: { id, name, ... } }` — and reduced to names alone: this table exists so a Dev Mode
+ * row reads `Set background outside_s.jpg`, not so anything downstream can resolve an asset. A
+ * missing or broken shard degrades to "no name for that id", which prints the id exactly as before.
+ */
+async function loadAssetNames(projectPath: string): Promise<Record<string, string>> {
+    const names: Record<string, string> = {};
+    for (const type of NAMED_ASSET_TYPES) {
+        const shardPath = path.join(projectPath, "assets", `assets.metadata.${type}.json`);
+        let record: Record<string, unknown> | undefined;
+        try {
+            record = await readOptionalJsonFile<Record<string, unknown>>(shardPath);
+        } catch {
+            continue;
+        }
+        if (!record || typeof record !== "object") {
+            continue;
+        }
+        for (const [assetId, raw] of Object.entries(record)) {
+            const name = raw && typeof raw === "object" ? (raw as { name?: unknown }).name : undefined;
+            if (typeof name === "string" && name) {
+                names[assetId] = name;
+            }
+        }
+    }
+    return names;
+}
+
+/**
+ * The audio payload: the in/out points marked on audio assets, plus the project's audio tracks.
+ *
+ * Regions come from the same audio shard `loadAssetNames` walks; only marked clips are carried, so
+ * a project whose author never opened the audio preview contributes an empty table rather than a
+ * row per sound effect. A missing or broken shard degrades to "no regions", which plays every clip
+ * whole - exactly the behaviour before regions existed.
+ *
+ * Tracks come from `editor/audio-tracks.json`, and since v2 they are a **tree**: each one carries a
+ * `parentId` and its own live gain, and the game app hands the whole shape to the engine as
+ * `GameConfig.audioBuses` at boot. So this is not a lookup table the runtime consults per play - it
+ * is the mixer, and losing it means losing every bus the author invented.
+ *
+ * Absent or unreadable seeds the three built-ins, which is what the renderer's `AudioTrackService`
+ * does with the same file: a project that has never opened the Audio surface must play exactly as it
+ * did before tracks existed, not silently lose every play. Never returns `undefined` any more -
+ * there is always a track list to carry, and the audio bundle is the channel it travels on.
+ * Exported for tests.
+ */
+export async function loadGameAudio(projectPath: string): Promise<GameAudioBundle> {
+    const shardPath = path.join(projectPath, "assets", "assets.metadata.audio.json");
+    let record: Record<string, unknown> | undefined;
+    try {
+        record = await readOptionalJsonFile<Record<string, unknown>>(shardPath);
+    } catch {
+        record = undefined;
+    }
+    const clips: Record<string, AudioClipRegion> = {};
+    if (record && typeof record === "object") {
+        for (const [assetId, raw] of Object.entries(record)) {
+            const extras = raw && typeof raw === "object" ? (raw as { extras?: unknown }).extras : undefined;
+            const region = normalizeAudioClipRegion(extras);
+            if (region) {
+                clips[assetId] = region;
+            }
+        }
+    }
+    return { clips, tracks: await loadProjectAudioTracks(projectPath) };
+}
+
+/**
+ * `editor/audio-tracks.json`, migrated to v2 and normalized through the same reducer the renderer
+ * service uses.
+ *
+ * The normalizer is load-bearing here rather than cosmetic: the engine's `AudioBusTree.resolve`
+ * **throws** on an unknown parent, a duplicate id or a cycle, and it throws lazily - the first time
+ * something plays. Repairing the tree on the way in is what keeps a hand-edited file from becoming
+ * a game that boots and then goes silent.
+ *
+ * Every failure path lands on the seeded built-ins rather than propagating: a hand-corrupted track
+ * file must not be the reason a build cannot be produced or a Dev Mode session cannot start, and
+ * the built-ins are precisely the fallback every unresolved reference already takes.
+ */
+async function loadProjectAudioTracks(projectPath: string): Promise<ProjectAudioTrack[]> {
+    const tracksPath = path.join(projectPath, "editor", "audio-tracks.json");
+    try {
+        const raw = await readOptionalJsonFile<unknown>(tracksPath);
+        return migrateProjectAudioTrackDocument(raw ?? {}).tracks;
+    } catch {
+        return normalizeProjectAudioTracks([]);
+    }
 }
 
 export function resolveStoryDocumentPathForIndexEntry(projectPath: string, entry: Pick<StoryLibraryEntry, "id">): string | null {
@@ -347,6 +495,18 @@ export async function loadGameVoice(projectPath: string): Promise<GameVoiceBundl
         voicedLocales: voice.voicedLocales,
         tables,
     };
+}
+
+/**
+ * Load the automatic-saving configuration from `.nlproj` `app.autoSave`. Unlike
+ * localization and voice this never returns undefined: autosaving is on by
+ * default, so a project that never configured it must still get the defaults
+ * rather than nothing. Exported for tests.
+ */
+export async function loadAutoSaveConfiguration(projectPath: string): Promise<AutoSaveConfiguration> {
+    const config = await readProjectConfigRecord(projectPath);
+    const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
+    return normalizeAutoSaveConfiguration(app?.autoSave);
 }
 
 function resolveAssetContentPath(projectPath: string, assetId: string): string | null {

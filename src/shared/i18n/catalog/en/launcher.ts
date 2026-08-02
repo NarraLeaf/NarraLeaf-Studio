@@ -8,13 +8,12 @@ export const launcher = {
     },
     projects: {
         title: "Projects",
-        newProject: "New Project",
+        // "Add", not "New": the wizard behind this button also unpacks a package and clones from
+        // a server, and neither of those creates anything.
+        addProject: "Add Project",
         openProject: "Open Project",
-        import: "Import",
         recentTitle: "Recent Projects",
-        empty: "No recent projects yet.",
         openFolder: "Open Folder",
-        importProject: "Import Project",
         openNamed: "Open {name}",
         search: {
             placeholder: "Search projects",
@@ -25,9 +24,8 @@ export const launcher = {
         moreActions: "More actions",
         moreActionsNamed: "More actions for {name}",
         removeNamedFromRecent: "Remove {name} from recent projects",
-        errorCreate: "Failed to create project.",
+        errorCreate: "Failed to add project.",
         errorOpenFolder: "Failed to open folder.",
-        errorImport: "Failed to import project.",
         // Startup sweep over the recent list - see useMissingRecentProjects.
         missing: {
             reasonFolderMissing: "This project folder was deleted or moved",
@@ -45,16 +43,34 @@ export const launcher = {
         other: "{count} recent projects",
     },
     plugins: {
-        installLocal: "Install local plugin",
+        installLocal: "Install from folder",
+        search: {
+            placeholder: "Search plugins",
+            clear: "Clear search",
+        },
+        tab: {
+            installed: "Installed",
+            store: "Store",
+        },
         emptyList: "No plugins installed",
-        noneSelected: "No plugin selected",
+        emptyFiltered: "No plugins match “{query}”.",
         authorize: "Authorize",
         uninstall: "Uninstall",
         builtIn: "Built-in",
         permissions: "Permissions",
+        noPermissions: "No special permissions",
+        updateAvailable: "Update available",
+        // Shown when the entry's studioVersion range excludes this build, so the
+        // install/update button is withheld rather than failing in the main process.
+        requiresStudio: "This plugin requires Studio {range}. You are running {version}.",
+        openReleasePage: "View release notes",
+        homepage: "Homepage",
         field: {
             status: "Status",
+            version: "Version",
+            publisher: "Publisher",
             entries: "Entries",
+            categories: "Categories",
             installed: "Installed",
             updated: "Updated",
         },
@@ -63,8 +79,18 @@ export const launcher = {
             disabled: "Disabled",
             needsAuthorization: "Needs authorization",
         },
+        store: {
+            install: "Install",
+            installed: "Installed",
+            update: "Update",
+            needsStudio: "Needs Studio {range}",
+            emptyList: "No plugins available in the registry.",
+            offline: "Couldn't reach the plugin registry.",
+            retry: "Try again",
+        },
         task: {
             installing: "Installing plugin…",
+            downloading: "Downloading plugin…",
             installed: "Plugin installed.",
             authorizing: "Waiting for authorization…",
             authorized: "Plugin authorized.",
@@ -81,10 +107,12 @@ export const launcher = {
             approve: "Failed to approve plugin",
             update: "Failed to update plugin",
             uninstall: "Failed to uninstall plugin",
+            registry: "Failed to reach the plugin registry",
+            download: "Failed to download plugin",
         },
     },
     learning: {
-        hint: "Tutorials, examples, and documentation for building with NarraLeaf. Links open in your browser.",
+        hint: "Tutorials, examples and documentation. Links open in your browser.",
         openInBrowser: "Open {name} in your browser",
         categories: {
             tutorials: "Tutorials",

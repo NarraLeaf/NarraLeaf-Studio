@@ -12,9 +12,13 @@ import {
     type NlrStageSession,
 } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
 import { createWorkspaceBlobUrlResolver, type WorkspaceBlobUrlResolver } from "@/lib/workspace/assets/resolveWorkspaceAssetUrl";
+import { collectAudioClipRegions } from "@/lib/workspace/assets/audioClipRegions";
 import { Services, WorkspaceContext } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
+import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import type { AudioTrackService } from "@/lib/workspace/services/audio/AudioTrackService";
+import { registerCharacterAvatarAssets } from "@/lib/ui-editor/runtime/characterAvatarAssets";
 import { useStoryPreviewGameUi, type StoryPreviewIssue } from "./useStoryPreviewGameUi";
 import { resolvePreviewTargetBlockId } from "./storyScenePreviewTarget";
 import { STORY_CONSOLE_CHANNEL_ID } from "./storyPreviewConsole";
@@ -184,6 +188,22 @@ export function useStoryScenePreviewController(input: {
             return resolver ? resolver.resolve(assetId, assetType) : null;
         };
     }, [context]);
+
+    // Recomputed per open rather than per render: the preview recompiles on a debounce anyway, and a
+    // marker edited while the pane is open lands on the next rebuild.
+    const audioClips = useMemo(
+        () => (context && open ? collectAudioClipRegions(context.services.get<AssetsService>(Services.Assets)) : undefined),
+        [context, open],
+    );
+
+    // Read on the same schedule as the clip regions, and for the same reason: a track edited while
+    // the pane is open lands on the next rebuild. Without this the preview would resolve every row
+    // against the three built-ins while the game resolves it against the project's own tracks - the
+    // one difference an author would never think to look for.
+    const audioTracks = useMemo(
+        () => (context && open ? context.services.get<AudioTrackService>(Services.AudioTracks).listTracks() : undefined),
+        [context, open],
+    );
 
     const resolvedTargetId = useMemo(
         () => (scene ? resolvePreviewTargetBlockId(scene, activeBlockId) : null),
@@ -391,6 +411,8 @@ export function useStoryScenePreviewController(input: {
                 characters: host.characters,
                 animations,
                 resolveAssetUrl,
+                audioClips,
+                audioTracks,
                 blueprintDocument: host.blueprintDocument,
                 persistence: host.persistence,
                 onStagePosed: () => handleStagePosed(runId),
@@ -426,7 +448,11 @@ export function useStoryScenePreviewController(input: {
                     return liveGame;
                 },
                 getLiveGame: () => findRunBySessionId(sessionId)?.liveGame ?? null,
+                resolveAvatarAssetId: url => compiled.avatarAssetIdByUrl.get(url) ?? null,
             });
+            // The preview's Image widgets resolve avatar ids through the same synchronous table the
+            // packaged runtime uses, so a swap here costs a map read rather than an asset fetch.
+            registerCharacterAvatarAssets(compiled.avatarAssetIdByUrl);
             const session: NlrStageSession = {
                 id: sessionId,
                 game: previewGame.game,

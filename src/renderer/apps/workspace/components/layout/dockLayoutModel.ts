@@ -58,6 +58,41 @@ export const EDITOR_FLOOR = { width: 480, height: 240 } as const;
 export const TITLE_BAR_HEIGHT = 40;
 export const RAIL_SELECTOR_WIDTH = 48;
 
+/**
+ * Horizontal padding inside a selector rail (`px-1`), so a rail ITEM's x can be derived rather than
+ * eyeballed. Both selector rails centre a 40px item in the 48px column.
+ */
+export const RAIL_ITEM_INSET = 4;
+
+/**
+ * Where each fixed column of the horizontal chain starts, in window px.
+ *
+ * The flex row places the top-docked columns implicitly, by stacking them. The BOTTOM dock's selector
+ * cannot be in that row - it has to sit in the same column as the left selector, just above the
+ * status bar - so it is absolutely positioned and therefore has to be TOLD. It was told `left: 0`,
+ * which was correct until a column appeared to the left of the selector rail: measured in the running
+ * app, the bottom triggers had drifted into the version rail's column while the left dock's own
+ * triggers stayed in the selector rail, one column over.
+ *
+ * So both come from here. One column holds all of the selector rail's items, top-docked and
+ * bottom-docked; the version rail is a column of its own and does not adopt them.
+ */
+export interface RailColumnOffsets {
+    /** The version rail, when it is a column at all. Always the window's left edge. */
+    versionRail: number;
+    /** The selector column: the left dock's rail AND the bottom dock's, at one x. */
+    sidebarRail: number;
+}
+
+export function railColumnOffsets(env: Pick<DockEnv, "versionRailWidth">): RailColumnOffsets {
+    return { versionRail: 0, sidebarRail: env.versionRailWidth };
+}
+
+/** Where a rail item's left edge lands, given the x of the column holding it. */
+export function railItemLeft(columnLeft: number): number {
+    return columnLeft + RAIL_ITEM_INSET;
+}
+
 export const DOCK_REGIONS: Record<DockRegion, RegionSpec> = {
     left: { min: 240, default: 320, axis: "horizontal", overflow: "clamp" },
     right: { min: 240, default: 320, axis: "horizontal", overflow: "clamp" },
@@ -71,6 +106,19 @@ export interface DockEnv {
     windowHeight: number;
     leftVisible: boolean;
     rightVisible: boolean;
+    /**
+     * Width of the version rail, the fixed column left of the left selector rail - 0 when it is not
+     * shown at all, {@link VERSION_RAIL_COLLAPSED_WIDTH} collapsed, {@link VERSION_RAIL_EXPANDED_WIDTH}
+     * expanded (see ./versionRailModel).
+     *
+     * **Required, not optional.** A column the solver does not know about is the exact failure this
+     * field exists to prevent: the sidebars would size themselves as if the space were theirs, push
+     * the editor below {@link EDITOR_FLOOR}, and the editor's CSS floor would then overflow its
+     * container - which produces a scrollbar, which shrinks the container, which re-clamps the
+     * overlay, which loops (docs/plans/2026-07-28-002 §3). Making it optional would let a future
+     * caller reintroduce that silently; making it required means the compiler asks.
+     */
+    versionRailWidth: number;
 }
 
 export interface DockSizes {
@@ -85,14 +133,37 @@ function clamp(value: number, lo: number, hi: number): number {
 }
 
 /**
+ * Every fixed column in the horizontal chain: both selector rails plus the version rail. The one
+ * place the count lives, so a new fixed column is added once instead of in three ceilings.
+ */
+function fixedColumnsWidth(env: DockEnv): number {
+    return 2 * RAIL_SELECTOR_WIDTH + env.versionRailWidth;
+}
+
+/**
  * Largest a sidebar may be while still leaving the editor its floor width (and the other
  * sidebar its space, when visible). Never returns below the region's own `min`.
  */
 export function maxSidebarWidth(side: "left" | "right", env: DockEnv, otherEffective: number): number {
     const otherVisible = side === "left" ? env.rightVisible : env.leftVisible;
     const other = otherVisible ? otherEffective : 0;
-    const available = env.windowWidth - 2 * RAIL_SELECTOR_WIDTH - EDITOR_FLOOR.width - other;
+    const available = env.windowWidth - fixedColumnsWidth(env) - EDITOR_FLOOR.width - other;
     return Math.max(DOCK_REGIONS[side].min, available);
+}
+
+/**
+ * What the editor's layout box is actually given, once every fixed column and both visible sidebars
+ * have taken theirs. Negative when the region minima alone no longer fit - which is when the CSS
+ * floor takes over and crops instead of squishing.
+ *
+ * Exported because it is how the accounting gets PROVEN rather than asserted: a test can feed it the
+ * solver's own output and check the floor holds at every rail width, which is the balance §3 of the
+ * plan says has to hold before a new leftmost column is allowed to exist.
+ */
+export function residualEditorWidth(env: DockEnv, sizes: DockSizes): number {
+    const left = env.leftVisible ? sizes.left : 0;
+    const right = env.rightVisible ? sizes.right : 0;
+    return env.windowWidth - fixedColumnsWidth(env) - left - right;
 }
 
 /**
@@ -112,7 +183,7 @@ export function maxBottomHeight(env: DockEnv): number {
 export function resolveDock(intent: DockSizes, env: DockEnv): DockSizes {
     const rightCeiling = Math.max(
         DOCK_REGIONS.right.min,
-        env.windowWidth - 2 * RAIL_SELECTOR_WIDTH - EDITOR_FLOOR.width,
+        env.windowWidth - fixedColumnsWidth(env) - EDITOR_FLOOR.width,
     );
     const right = clamp(intent.right, DOCK_REGIONS.right.min, rightCeiling);
     const left = clamp(intent.left, DOCK_REGIONS.left.min, maxSidebarWidth("left", env, right));

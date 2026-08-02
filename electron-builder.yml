@@ -49,12 +49,33 @@ extraResources:
     to: resources
     filter:
       - '**/*'
+      # The vendored code-signing tools are excluded here and added back per
+      # platform below. project/build/prepare-codesign-tools.js stages one
+      # native binary per host under resources/codesign/<platform>/, and an
+      # installer must carry only the one that can actually run on it —
+      # copying the whole tree would put a Mach-O binary inside the Windows
+      # installer. Platform-specific extraResources are appended to these, not
+      # substituted for them (app-builder-lib/out/fileMatcher.js:getFileMatchers),
+      # so the two blocks compose.
+      - '!codesign{,/**/*}'
 mac:
   target: dmg
   icon: resources/app-icon.icns
+  # Apple Silicon only: zsign publishes no macOS x64 asset, so nothing is staged
+  # on an Intel mac and this mapping copies nothing there (electron-builder logs
+  # "file source doesn't exist" and carries on).
+  extraResources:
+    - from: ./resources/codesign/darwin
+      to: resources/codesign/darwin
 win:
   target: nsis
   icon: resources/app-icon.ico
+  extraResources:
+    - from: ./resources/codesign/win32
+      to: resources/codesign/win32
 linux:
   target: AppImage
   icon: resources/app-icon.png
+  extraResources:
+    - from: ./resources/codesign/linux
+      to: resources/codesign/linux

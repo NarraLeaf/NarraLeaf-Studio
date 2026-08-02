@@ -1,6 +1,8 @@
 import { useCallback, useMemo, useState } from "react";
-import { HintPopover, Select, Switch, type SelectOption } from "@/lib/components/elements";
+import { Select, type SelectOption } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { SettingRow, SettingShell } from "./settingRows";
 import {
     MOBILE_ORIENTATIONS,
     normalizeMobileConfiguration,
@@ -15,6 +17,9 @@ import type { ProjectSectionProps } from "./types";
 
 export function ProjectSettingsSection({ projectService, uiService, config, onConfigChange }: ProjectSectionProps) {
     const { t } = useTranslation();
+    // `SettingRow` reads the freeze itself; the orientation dropdown sits in a bare `SettingShell`, so
+    // it needs its own.
+    const freeze = useFreezeGuard();
     const [network, setNetwork] = useState<NetworkConfiguration>(() => normalizeNetworkConfiguration(config.app?.network));
     const [security, setSecurity] = useState<SecurityConfiguration>(() => normalizeSecurityConfiguration(config.app?.security));
     const [mobile, setMobile] = useState<MobileConfiguration>(() => normalizeMobileConfiguration(config.app?.mobile));
@@ -108,11 +113,12 @@ export function ProjectSettingsSection({ projectService, uiService, config, onCo
             <SettingShell
                 title={t("project.settings.orientationTitle")}
                 description={t("project.settings.orientationDescription")}
+                titleAttr={freeze.writes(savingOrientation).title}
             >
                 <Select
                     options={orientationOptions}
                     value={mobile.orientation}
-                    disabled={savingOrientation}
+                    disabled={freeze.writes(savingOrientation).disabled}
                     onChange={value => void setOrientation(value as MobileOrientation)}
                     size="sm"
                     portalMenu
@@ -121,61 +127,6 @@ export function ProjectSettingsSection({ projectService, uiService, config, onCo
                 />
             </SettingShell>
         </div>
-    );
-}
-
-/** The row frame every setting shares: title, description, and its control. */
-function SettingShell({
-    title,
-    description,
-    hint,
-    children,
-}: {
-    title: string;
-    description: string;
-    /** Optional caveat shown behind a small info icon next to the title. */
-    hint?: string;
-    children: React.ReactNode;
-}) {
-    return (
-        <section className="flex items-start justify-between gap-3 rounded-md border border-edge bg-fill-subtle p-3">
-            <div className="min-w-0">
-                <div className="flex items-center gap-1.5 text-sm font-medium text-fg">
-                    <span>{title}</span>
-                    {hint && <HintPopover text={hint} />}
-                </div>
-                <div className="mt-1 text-2xs leading-relaxed text-fg-subtle">{description}</div>
-            </div>
-            {children}
-        </section>
-    );
-}
-
-function SettingRow({
-    title,
-    description,
-    hint,
-    checked,
-    loading,
-    onChange,
-}: {
-    title: string;
-    description: string;
-    hint?: string;
-    checked: boolean;
-    loading: boolean;
-    onChange: (value: boolean) => void;
-}) {
-    return (
-        <SettingShell title={title} description={description} hint={hint}>
-            <Switch
-                size="sm"
-                checked={checked}
-                loading={loading}
-                onCheckedChange={onChange}
-                aria-label={title}
-            />
-        </SettingShell>
     );
 }
 

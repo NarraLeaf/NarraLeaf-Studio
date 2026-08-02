@@ -1,5 +1,6 @@
 import path from "path";
 import { describe, expect, it } from "vitest";
+import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import { resolveInsideRoot, resolveRuntimeAssetPath, resolveRuntimeStaticPath } from "./runtimeProtocol";
 
@@ -32,19 +33,18 @@ function createPack(): GameRuntimePackV1 {
                     schemaVersion: 2,
                     graphs: {},
                     blueprintDocument: {
-                        schemaVersion: 8,
+                        schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
                         blueprints: {},
                         ownerRecords: {},
-                        persistentVariables: {},
                     },
                 },
                 localBlueprints: {
-                    schemaVersion: 8,
+                    schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
                     blueprints: {},
                     ownerRecords: {},
-                    persistentVariables: {},
                 },
                 sharedBlueprints: [],
+                persistentVariables: {},
             },
             blueprintCompiledScripts: {},
             blueprintScriptsCompileOk: true,

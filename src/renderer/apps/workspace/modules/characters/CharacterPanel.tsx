@@ -7,20 +7,29 @@ import { SearchBox } from "../assets/components/SearchBox";
 import { FilterSystem, FilterConfig, ActiveFilter } from "../assets/components/FilterSystem";
 import { PanelComponentProps } from "../types";
 import { useWorkspace } from "../../context";
+import { freezeContextMenuRows, useFreezeGuard } from "../../components/ui/freezeGuard";
 import { Character } from "@/lib/workspace/services/character/Character";
-import { CharacterGroup } from "@/lib/workspace/services/character/types";
+import { CharacterAppearanceKind, CharacterGroup } from "@/lib/workspace/services/character/types";
+import { listKnownPuppetRuntimes } from "@shared/utils/puppetRuntimes";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
+import { useCharacterAvatarBake } from "./useCharacterAvatarBake";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import { Services } from "@/lib/workspace/services/services";
 import { FolderPlus, MoreVertical, RefreshCw, Tag, User, UserPlus, Users } from "lucide-react";
-import { useCharacterFocus } from "./state/useCharacterFocus";
+import { isReadableAccentColor } from "../story/scene-editor/storySceneBlockUtils";
+import { syncCharacterEditorTabTitle, useCharacterFocus } from "./state/useCharacterFocus";
+
+/** The one character-panel menu row that only reads: re-reading the character list off disk. */
+const FREEZE_READ_ONLY_CHARACTER_MENU_IDS: ReadonlySet<string> = new Set(["panel-refresh"]);
 
 type MenuTarget =
     | { type: "panel" }
     | { type: "character"; character: Character }
-    | { type: "group"; group: CharacterGroup };
+    | { type: "group"; group: CharacterGroup }
+    /** The kind picker that stands in front of "new character" - see {@link kindItems}. */
+    | { type: "new-character"; groupId?: string };
 
 type CharacterItem = {
     id: string;
@@ -29,6 +38,12 @@ type CharacterItem = {
     thumbnailId: string | null;
     nicknames: string[];
     tags: string[];
+    /**
+     * The editor accent, already through the readability guard — `undefined` when there is none or
+     * when the one set would vanish into one of the two themes' surfaces. Resolved here rather than
+     * at the row so the row cannot forget the guard.
+     */
+    color?: string;
     source: Character;
 };
 
@@ -38,6 +53,7 @@ interface CharacterPanelState {
 
 export function CharacterPanel({ panelId }: PanelComponentProps) {
     const { t } = useTranslation();
+    const freeze = useFreezeGuard();
     const { context, isInitialized } = useWorkspace();
     const { focusedCharacterId, handleCharacterClick, setFocusToPanel } = useCharacterFocus({ context, panelId });
 
@@ -66,6 +82,10 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         if (!context || !isInitialized) return null;
         return context.services.get<CharacterService>(Services.Character);
     }, [context, isInitialized]);
+
+    // Reconcile the baked dialog avatars when the panel opens. An up-to-date project performs
+    // reads only, so the common case leaves the working tree untouched.
+    useCharacterAvatarBake(Boolean(characterService));
 
     const loadCharacters = useCallback(() => {
         if (!characterService) return;
@@ -97,6 +117,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                 thumbnailId: profile.thumbnail,
                 nicknames: profile.nicknames,
                 tags: profile.tags,
+                color: profile.color && isReadableAccentColor(profile.color) ? profile.color : undefined,
                 source: character,
             };
         });
@@ -281,7 +302,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         setMenuState(prev => ({ ...prev, visible: false }));
     }, []);
 
-    const handleCreateCharacter = useCallback(async (groupId?: string) => {
+    const handleCreateCharacter = useCallback(async (kind: CharacterAppearanceKind, groupId?: string) => {
         if (!characterService || !inputDialog) return;
         const name = await inputDialog.show({
             title: t("characters.panel.newCharacter"),
@@ -291,7 +312,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
             description: t("characters.panel.newCharacterDescription"),
         });
         if (!name) return;
-        const character = characterService.createCharacter(name);
+        const character = characterService.createCharacter(name, kind);
         if (groupId) {
             characterService.assignCharacterToGroup(character.profile.getId(), groupId);
         }
@@ -314,13 +335,16 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
     }, [characterService, inputDialog, loadCharacters, closeMenu, t]);
 
     const handleRenameCharacter = useCallback(async (item: CharacterItem) => {
-        if (!characterService || !inputDialog) return;
+        if (!characterService || !inputDialog || !context) return;
         const nextName = await inputDialog.showRenameDialog(item.name, "character");
         if (!nextName) return;
         characterService.renameCharacter(item.id, nextName);
+        // The tab's title was a snapshot taken at open time, so a rename left it on the old name
+        // until the tab was closed and reopened.
+        syncCharacterEditorTabTitle(context.services.get<UIService>(Services.UI), item.id, nextName);
         loadCharacters();
         closeMenu();
-    }, [characterService, inputDialog, loadCharacters, closeMenu]);
+    }, [characterService, context, inputDialog, loadCharacters, closeMenu]);
 
     const handleDeleteCharacter = useCallback(async (item: CharacterItem) => {
         if (!characterService || !context) return;
@@ -390,7 +414,44 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         closeMenu();
     }, [characterService, context, loadCharacters, closeMenu, t]);
 
+    // The appearance kind is fixed when the character is created and the kinds share no data, so it
+    // has to be asked before the name rather than switched afterwards.
+    //
+    // The runtimes Studio knows are named here rather than hidden behind one "external runtime" row.
+    // That row was the whole problem: an author looking for Live2D had no way to tell that this was
+    // where it lived, and picking it left them with an empty free-text field naming a folder they
+    // were expected to have created already. Naming the products costs nothing and ships none of
+    // their code — the row still only creates a character; installing a runtime is a separate,
+    // guided act (see PuppetRuntimeInstaller).
+    const kindItems = useCallback((groupId?: string): ContextMenuItemDef[] => ([
+        {
+            id: "new-character-preset",
+            label: t("characters.editor.kind.preset"),
+            onClick: () => handleCreateCharacter("preset", groupId),
+        },
+        {
+            id: "new-character-layered",
+            label: t("characters.editor.kind.layered"),
+            onClick: () => handleCreateCharacter("layered", groupId),
+        },
+        ...listKnownPuppetRuntimes().map(runtime => ({
+            id: `new-character-${runtime.id}`,
+            label: runtime.productName,
+            onClick: () => handleCreateCharacter(runtime.id, groupId),
+        })),
+        {
+            // Last, and worded as the escape hatch it is: a runtime the author wrote themselves.
+            id: "new-character-puppet",
+            label: t("characters.editor.kind.puppet"),
+            onClick: () => handleCreateCharacter("puppet", groupId),
+        },
+    ]), [handleCreateCharacter, t]);
+
     const buildContextMenu = useCallback((target: MenuTarget): ContextMenuDef => {
+        if (target.type === "new-character") {
+            return kindItems(target.groupId);
+        }
+
         if (target.type === "character") {
             const profile = target.character.profile.getProfile();
             const item = filteredCharacters.find(c => c.id === profile.id);
@@ -434,7 +495,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                 {
                     id: "create-character-in-group",
                     label: t("characters.panel.addCharacter"),
-                    onClick: () => handleCreateCharacter(target.group.id),
+                    submenu: kindItems(target.group.id),
                 },
                 {
                     id: "rename-group",
@@ -454,7 +515,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
             {
                 id: "panel-new-character",
                 label: t("characters.panel.newCharacter"),
-                onClick: () => handleCreateCharacter(),
+                submenu: kindItems(),
             },
             {
                 id: "panel-new-group",
@@ -474,9 +535,12 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         event.stopPropagation();
         const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
         const items = buildContextMenu(target);
-        setMenuItems(items);
+        // Every row here creates, renames, moves or deletes a character or a group - all writes - except
+        // the one that re-reads the list. Menus still open and still list what exists, so a frozen
+        // project can be browsed; the rows are simply inert.
+        setMenuItems(freezeContextMenuRows(items, freeze.frozen, FREEZE_READ_ONLY_CHARACTER_MENU_IDS, freeze.reason));
         setMenuState({ visible: true, position: { x: rect.right, y: rect.bottom } });
-    }, [buildContextMenu]);
+    }, [buildContextMenu, freeze]);
 
     const renderCharacterRow = useCallback((item: CharacterItem) => {
         const thumbnailUrl = thumbnails[item.id];
@@ -498,13 +562,17 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                     )}
                 </div>
                 <div className="min-w-0 flex-1">
-                    <div className="text-sm text-fg truncate">{item.name}</div>
+                    {/* The accent is a real field the story editor already renders on nametags; the
+                        list was the one place a character's colour could be set and never seen. */}
+                    <div className="text-sm text-fg truncate" style={item.color ? { color: item.color } : undefined}>
+                        {item.name}
+                    </div>
                     {item.nicknames.length > 0 && (
                         <div className="text-xs text-fg-subtle truncate">{item.nicknames.join(", ")}</div>
                     )}
                 </div>
                 <button
-                    className="p-1 rounded hover:bg-fill text-fg-muted opacity-0 group-hover:opacity-100"
+                    className="p-1 rounded-md hover:bg-fill text-fg-muted opacity-0 group-hover:opacity-100"
                     onClick={(event) => { event.stopPropagation(); handleMenuOpen(event, { type: "character", character: item.source }); }}
                     title={t("characters.panel.rowActions")}
                 >
@@ -527,16 +595,17 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                 />
                 <div className="flex items-center gap-2">
                     <button
-                        onClick={(event) => { event.stopPropagation(); handleCreateCharacter(); }}
-                        className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors"
-                        title={t("characters.panel.addCharacter")}
+                        onClick={(event) => { event.stopPropagation(); handleMenuOpen(event, { type: "new-character" }); }}
+                        className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                        aria-label={t("characters.panel.addCharacter")}
+                        {...freeze.writes(false, t("characters.panel.addCharacter"))}
                     >
                         <UserPlus className="w-4 h-4" />
                     </button>
                     <button
                         onClick={(event) => { event.stopPropagation(); handleCreateGroup(); }}
-                        className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border border-edge-strong bg-fill-subtle text-fg hover:bg-fill transition-colors"
-                        title={t("characters.panel.addGroup")}
+                        className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border border-edge-strong bg-fill-subtle text-fg hover:bg-fill transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                        {...freeze.writes(false, t("characters.panel.addGroup"))}
                     >
                         <FolderPlus className="w-4 h-4" />
                     </button>
@@ -552,7 +621,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                     {/* Count removed per request */}
                     <button
                         onClick={loadCharacters}
-                        className="p-2 rounded hover:bg-fill text-fg-muted"
+                        className="p-2 rounded-md hover:bg-fill text-fg-muted"
                         title={t("common.refresh")}
                     >
                         <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -606,16 +675,16 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                                                     <button
                                                         onClick={(event) => {
                                                             event.stopPropagation();
-                                                            handleCreateCharacter(group.id);
+                                                            handleMenuOpen(event, { type: "new-character", groupId: group.id });
                                                         }}
                                                         className="inline-flex items-center justify-center p-1.5 rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors"
-                                                        title={t("characters.panel.addCharacter")}
+                                                        aria-label={t("characters.panel.addCharacter")}
                                                     >
                                                         <UserPlus className="w-3 h-3" />
                                                     </button>
                                                     <button
                                                         onClick={(event) => handleMenuOpen(event, { type: "group", group })}
-                                                        className="p-1 rounded hover:bg-fill"
+                                                        className="p-1 rounded-md hover:bg-fill"
                                                         title={t("characters.panel.groupActions")}
                                                     >
                                                         <MoreVertical className="w-3 h-3" />

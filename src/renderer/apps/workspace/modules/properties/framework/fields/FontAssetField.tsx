@@ -18,6 +18,7 @@ import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import type { FontAssetFieldDefinition } from "../types";
 import { FieldLayout } from "./FieldLayout";
+import { makeFreezeGuard, useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 
 const FONT_ASSET_SELECTOR_VIRTUAL_GROUPS: AssetSelectorVirtualGroup[] = [EDITOR_BUILTIN_FONT_VIRTUAL_GROUP];
 
@@ -46,6 +47,23 @@ export function FontAssetField<TData extends UIInspectorData>({
 
     const [selectorOpen, setSelectorOpen] = useState(false);
     const previewRef = useRef<HTMLButtonElement | null>(null);
+
+    /**
+     * The tile is a preview, but pressing it opens the font picker whose choice is written straight
+     * back through `setValue`, and the Clear nested in it drops the binding outright. On a frozen
+     * project both went through and the widget's typography changed until the thaw threw it away.
+     *
+     * Read off the definition's own `readOnly` flag rather than the workspace, because
+     * `fieldReadOnlyStrategy` lists `"fontAsset"` among the types that make themselves read-only -
+     * `FieldRenderer` sets the flag and renders no clamp around this field, so nothing else is coming.
+     * The workspace guard is here for the hover string alone. Only the buttons go dead; the sample
+     * text and the family name keep their own colours, which is what the author came to read.
+     */
+    const workspaceFreeze = useFreezeGuard();
+    const freeze = useMemo(
+        () => makeFreezeGuard(field.readOnly === true, workspaceFreeze.reason),
+        [field.readOnly, workspaceFreeze.reason],
+    );
 
     const assetName = useMemo(() => {
         if (!assetId) {
@@ -103,6 +121,7 @@ export function FontAssetField<TData extends UIInspectorData>({
                     ref={previewRef}
                     onClick={() => setSelectorOpen(true)}
                     className="relative mt-1 w-full rounded-xl border border-edge bg-surface px-3 py-3 text-left focus:outline-none focus:ring-2 focus:ring-primary/70"
+                    {...freeze.writes()}
                 >
                     <div className="flex items-center gap-2 text-xs text-fg-muted tracking-widest">
                         <Type className="h-3.5 w-3.5 shrink-0" />
@@ -120,7 +139,8 @@ export function FontAssetField<TData extends UIInspectorData>({
                             <button
                                 type="button"
                                 onClick={handleClear}
-                                className="shrink-0 rounded px-2 py-0.5 text-2xs tracking-wider text-fg-subtle hover:bg-fill hover:text-fg-muted"
+                                className="shrink-0 rounded-md px-2 py-0.5 text-2xs tracking-wider text-fg-subtle hover:bg-fill hover:text-fg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+                                {...freeze.writes()}
                             >
                                 {t("common.clear")}
                             </button>

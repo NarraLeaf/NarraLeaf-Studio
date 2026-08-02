@@ -1,19 +1,38 @@
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import {
     normalizeBlueprintImageAssetValue,
+    normalizeBlueprintRGBAColor,
     toBlueprintImageAsset,
     type BlueprintElementRef,
     type BlueprintImageAsset,
+    type BlueprintRGBAColor,
+    type BlueprintSoundHandle,
 } from "@shared/types/blueprint/valueTypes";
+import {
+    findBlueprintCharacterInfo,
+    normalizeBlueprintCharacterInfo,
+    type BlueprintCharacterInfo,
+} from "@shared/types/blueprint/characterInfo";
 import { truncateDebugEventMessage } from "./DebugBridge";
 import {
+    BLUEPRINT_GAME_CHARACTERS_STATE_KEY,
     BLUEPRINT_GAME_CHOICE_COUNT_STATE_KEY,
     BLUEPRINT_GAME_NAMETAG_STATE_KEY,
     BLUEPRINT_GAME_NOTIFICATIONS_STATE_KEY,
+    BLUEPRINT_GAME_SPEAKER_AVATAR_STATE_KEY,
+    BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY,
     BLUEPRINT_GAME_NVL_MODE_STATE_KEY,
     BLUEPRINT_GAME_TEXT_READ_STATE_KEY,
     BLUEPRINT_TEXT_READ_PERSISTENCE_KEY,
 } from "@shared/types/blueprint/hostApi";
+import {
+    BUILTIN_AUDIO_TRACKS,
+    resolveAudioTrack,
+    resolveAudioTrackPlayback,
+    resolveMixedElementVolume,
+    type AudioMixPreferences,
+    type ProjectAudioTrack,
+} from "@shared/types/audioTrack";
 import { LOCALE_STORAGE_KEY, type GameLocalizationBundle } from "@shared/types/localization";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
@@ -50,6 +69,7 @@ import { resolveSliderRuntimeValue } from "@shared/types/ui-editor/slider";
 import type { UITextInputRuntimeValue, UITextInputWidgetProps } from "@shared/types/ui-editor/textInput";
 import { normalizeTextInputProps, resolveTextInputRuntimeValue } from "@shared/types/ui-editor/textInput";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
+import type { AutoSaveEntry } from "@shared/types/saves";
 import {
     isButtonCursorValue,
     type AppearanceFieldTransition,
@@ -274,17 +294,60 @@ export type BlueprintHostApiRuntime = {
         listSaveIds: () => Promise<string[]>;
         getSaveMetadata: (id: string) => Promise<unknown>;
         getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
+        /** Write an autosave into the reserved ring now, regardless of the timer. */
+        writeAutoSave: () => Promise<void>;
+        /** The reserved autosave ring, newest first. Never overlaps `listSaveIds`. */
+        listAutoSaves: () => Promise<AutoSaveEntry[]>;
         getHistory: () => Promise<BlueprintGameHistoryEntry[]>;
         /** Jump back to a history entry by id; omit the id to undo the last entry. */
         restoreHistory: (id?: string) => Promise<void>;
         getNametag: () => string | null;
+        /**
+         * The speaking character's dialog avatar, or null. Already keyed on the differential the
+         * character is currently wearing - the engine resolves it off the live portrait element.
+         */
+        getSpeakerAvatar: () => BlueprintImageAsset | null;
+        /**
+         * The speaking character's authored accent colour, already in pin shape. Opaque white when
+         * nobody is speaking, the narrator is, or the character has no colour - the pin it feeds is
+         * a non-nullable RGBAColor, so "no colour" and "the default colour" are the same answer.
+         */
+        getSpeakerColor: () => BlueprintRGBAColor;
+        /**
+         * Any character by id, from the table mirrored into global state - the addressable read the
+         * speaker-scoped getters above cannot do. Null when the id is empty, or names a character
+         * that is not (or is no longer) in the project.
+         */
+        getCharacter: (characterId: string) => BlueprintCharacterInfo | null;
         getNotifications: () => BlueprintGameNotification[];
         getChoiceCount: () => number;
         isNvlMode: () => boolean;
         /** True while a dialog line is on screen and its message is marked read. */
         isCurrentTextRead: () => boolean;
+        isTextRead: (textId: string) => boolean;
         /** Wipe the persisted text-read record (all stories). */
         clearTextRead: () => Promise<void>;
+        /**
+         * Has the player ever ENTERED this scene, by Studio scene id.
+         *
+         * Not the same question as `isTextRead`: that record is written when a line is displayed,
+         * this one when a scene actually starts. Saved-domain, so loading an older save rewinds it.
+         */
+        isSceneVisited: (sceneId: string) => boolean;
+        /**
+         * Has the player ever PICKED this choice option, by the option row's Studio block id. The
+         * one thing the text-read record structurally cannot answer - a menu that merely appeared
+         * marks every option of it read.
+         */
+        isOptionPicked: (optionId: string) => boolean;
+        /**
+         * Wipe the visited record of the running game.
+         *
+         * Synchronous, unlike `clearTextRead`: the record lives in the live `Storable`, not in host
+         * persistence, so there is nothing to await. It is also scoped to the running session - with
+         * no game up there is no record, and the call is a no-op instead of an error.
+         */
+        clearVisited: () => void;
         choose: (index: number) => Promise<void>;
         next: () => Promise<void>;
         skip: () => Promise<void>;
@@ -295,9 +358,118 @@ export type BlueprintHostApiRuntime = {
         getPreference: (key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue;
         setPreference: (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => Promise<void>;
     };
+    sound: {
+        play: (input: BlueprintSoundPlayInput) => Promise<BlueprintSoundHandle | null>;
+        stop: (handle: BlueprintSoundHandle | null, fadeMs?: number) => Promise<void>;
+        pause: (handle: BlueprintSoundHandle) => Promise<void>;
+        resume: (handle: BlueprintSoundHandle) => Promise<void>;
+        /** Ramp rather than jump when `fadeMs` is set - this is also the fade-out/duck node. */
+        setVolume: (handle: BlueprintSoundHandle, volume: number, fadeMs?: number) => Promise<void>;
+        /** Milliseconds from the start of the file, not from the clip's in point. */
+        seek: (handle: BlueprintSoundHandle, timeMs: number) => Promise<void>;
+        isPlaying: (handle: BlueprintSoundHandle) => boolean;
+        /**
+         * The volume a **host-owned** media element (the `nl.video` widget's `<video>`) must be set
+         * to so it obeys the same mixer everything else does.
+         *
+         * A DOM element the host created sits on none of the engine's gain nodes, so the whole
+         * product has to be computed and written to `element.volume`: the authored volume, times
+         * every bus in the track's chain, times the player's slider for whichever seeded bus that
+         * chain runs through, times master. Without this a muted game keeps playing video at full
+         * volume. Pair it with {@link subscribeMixerChanges} - a value read once goes stale the
+         * moment the player drags a slider, bus faders included.
+         */
+        resolveElementVolume: (input: { audioTrackId?: string | null; volume?: number | null }) => number;
+        /** Fires when any preference feeding `resolveElementVolume` changes. Returns a disposer. */
+        subscribeMixerChanges: (listener: () => void) => () => void;
+        /**
+         * An audio **track**'s own volume, 0..1 - one strip of the player's mixer.
+         *
+         * The player-facing counterpart of {@link setVolume}, which addresses one playing clip by
+         * handle. A track is a bus every clip beneath it is routed through, so setting one applies
+         * live to everything already playing and survives the clip that provoked it. This is what
+         * makes "turn Alice down" expressible at all: the four fixed volume preferences can only
+         * reach the three buses the engine seeds.
+         *
+         * An unknown or deleted track id reads as unity and writes nowhere, so a settings page
+         * built against a track the author later removed degrades to an inert slider.
+         */
+        getTrackVolume: (trackId: string) => number;
+        setTrackVolume: (trackId: string, volume: number) => Promise<void>;
+    };
     devtools: {
         log: (level: string, message: string) => void;
     };
+};
+
+/**
+ * Read the four volume preferences off whatever preference reader the host supplied.
+ *
+ * Still four, and still only four: they are aliases onto the three seeded buses plus master, which
+ * is all `Preference` can express (its value type forbids a nested map). Everything the author
+ * invented is reached through the bus mixer instead - see `sound.getTrackVolume`.
+ *
+ * Every read is guarded because `onGetGamePreference` is backed by `requireLiveGame`, which throws
+ * when no game is running - and a video widget rendering on a title screen before the story boots
+ * must get a number, not an exception. A missing value reads as unity, not silence.
+ */
+function readMixPreferences(
+    onGetGamePreference: ((key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue) | undefined,
+): AudioMixPreferences {
+    if (!onGetGamePreference) {
+        return {};
+    }
+    const read = (key: BlueprintGamePreferenceKey): number | null => {
+        try {
+            const value = onGetGamePreference(key);
+            return typeof value === "number" ? value : null;
+        } catch {
+            return null;
+        }
+    };
+    return {
+        globalVolume: read("globalVolume"),
+        bgmVolume: read("bgmVolume"),
+        soundVolume: read("soundVolume"),
+        voiceVolume: read("voiceVolume"),
+    };
+}
+
+/**
+ * Which mixer channel a clip plays on. These are the engine's own `SoundType`
+ * values, so the player's per-channel volume preference applies without the
+ * host doing anything.
+ */
+export const BLUEPRINT_SOUND_CHANNELS = ["bgm", "sound", "voice"] as const;
+export type BlueprintSoundChannel = (typeof BLUEPRINT_SOUND_CHANNELS)[number];
+
+export function normalizeBlueprintSoundChannel(value: unknown): BlueprintSoundChannel {
+    return BLUEPRINT_SOUND_CHANNELS.includes(value as BlueprintSoundChannel)
+        ? value as BlueprintSoundChannel
+        : "sound";
+}
+
+export type BlueprintSoundPlayInput = {
+    assetId: string;
+    /**
+     * Project audio track (`ProjectAudioTrack.id`), which **is** the engine bus this clip is routed
+     * into, and whose own gain is applied live by the gain graph rather than folded in here. It also
+     * supplies the loop default below. Absent resolves to the seeded SFX bus, which is what an
+     * unqualified "play this clip" has always meant.
+     */
+    audioTrackId?: string | null;
+    /** Author override; absent means the track's own default. */
+    loop?: boolean | null;
+    /** Author override, 0..1 as authored; absent means unity. Never pre-multiplied by a bus gain. */
+    volume?: number | null;
+    /** Fade-in in milliseconds; absent means a hard start (a fade belongs to the moment). */
+    fadeInMs?: number | null;
+    /**
+     * The pre-track channel select, kept only so a graph or a host call written before tracks
+     * existed still plays on the bus it named. Read only when `audioTrackId` is unset, and mapped
+     * to that channel's built-in track by the transport. Nothing writes it any more.
+     */
+    channel?: BlueprintSoundChannel;
 };
 
 /**
@@ -327,14 +499,35 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onListSaveIds?: () => Promise<string[]> | string[];
     onGetSaveMetadata?: (id: string) => Promise<unknown> | unknown;
     onGetSavePreview?: (id: string) => Promise<BlueprintImageAsset | null> | BlueprintImageAsset | null;
+    onWriteAutoSave?: () => Promise<void> | void;
+    onListAutoSaves?: () => Promise<AutoSaveEntry[]> | AutoSaveEntry[];
     onGetHistory?: () => Promise<BlueprintGameHistoryEntry[]> | BlueprintGameHistoryEntry[];
     onRestoreHistory?: (id?: string) => Promise<void> | void;
     onGetNametag?: () => string | null;
+    onGetSpeakerAvatar?: () => BlueprintImageAsset | null;
+    /** Optional override; without it the speaker colour comes from the mirrored dialog state key. */
+    onGetSpeakerColor?: () => unknown;
+    /**
+     * Optional override; without it `getCharacter` looks the id up in the character table mirrored
+     * into global state. Left unset by every real host - the mirror is the whole point, since it
+     * reaches Game UI slot surfaces without each of them wiring a callback.
+     */
+    onGetCharacter?: (characterId: string) => unknown;
     onGetNotifications?: () => BlueprintGameNotification[];
     onGetChoiceCount?: () => number;
     onIsNvlMode?: () => boolean;
     onIsCurrentTextRead?: () => boolean;
+    /** Per-id read check. Absent without a tracker (story preview); reads as false. */
+    onIsTextRead?: (textId: string) => boolean;
     onClearTextRead?: () => Promise<void> | void;
+    /**
+     * The visited record (see `runtime/game/storyVisited`). Absent when no story is running - a
+     * settings page or a main menu opened before the first game reads everything as "not visited",
+     * which is the correct answer there rather than an error.
+     */
+    onIsSceneVisited?: (sceneId: string) => boolean;
+    onIsOptionPicked?: (optionId: string) => boolean;
+    onClearVisited?: () => void;
     onSelectChoice?: (index: number) => Promise<void> | void;
     onNext?: () => Promise<void> | void;
     onSkip?: () => Promise<void> | void;
@@ -344,6 +537,36 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onSetSentenceSpeed?: (cps: number) => Promise<void> | void;
     onGetGamePreference?: (key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue;
     onSetGamePreference?: (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => Promise<void> | void;
+    /**
+     * Sound transport, backed by the engine's audio path. Absent in environments
+     * with no running game (the editor preview), where the sound nodes degrade
+     * to a warned no-op rather than throwing - a Page previewed in Studio should
+     * still lay out, just silently.
+     */
+    onPlaySound?: (input: BlueprintSoundPlayInput) => Promise<BlueprintSoundHandle | null> | BlueprintSoundHandle | null;
+    onStopSound?: (handle: BlueprintSoundHandle | null, fadeMs: number) => Promise<void> | void;
+    onPauseSound?: (handle: BlueprintSoundHandle) => Promise<void> | void;
+    onResumeSound?: (handle: BlueprintSoundHandle) => Promise<void> | void;
+    onSetSoundVolume?: (handle: BlueprintSoundHandle, volume: number, fadeMs: number) => Promise<void> | void;
+    onSeekSound?: (handle: BlueprintSoundHandle, timeMs: number) => Promise<void> | void;
+    onIsSoundPlaying?: (handle: BlueprintSoundHandle) => boolean;
+    /**
+     * Per-bus volume, backed by the engine's mixer. Absent in an environment with no running game,
+     * where `Get Track Volume` reads unity and `Set Track Volume` is a no-op - the same degradation
+     * the rest of this family takes.
+     */
+    onGetTrackVolume?: (trackId: string) => number;
+    onSetTrackVolume?: (trackId: string, volume: number) => Promise<void> | void;
+    /**
+     * The project's audio tracks (from the bundle). Absent falls back to the built-ins, so a host
+     * assembled from a bundle that predates tracks resolves exactly as it did before they existed.
+     */
+    audioTracks?: readonly ProjectAudioTrack[];
+    /**
+     * Subscribe to the player's preference changes. Backs `sound.subscribeMixerChanges`; hosts with
+     * no running game (the editor preview) leave it unset and the subscription is a no-op.
+     */
+    onSubscribeGamePreferences?: (listener: () => void) => () => void;
     emit: (event: BlueprintDebugEvent) => void;
     onOpenSurface: (surfaceId: string, props?: Record<string, unknown>) => void | Promise<void>;
     onCloseLayer: () => void | Promise<void>;
@@ -1075,6 +1298,36 @@ function normalizeBlueprintGameHistory(value: unknown): BlueprintGameHistoryEntr
     return out;
 }
 
+/**
+ * Clamp the autosave ring to plain JSON a graph can bind to, newest first.
+ * Sorting here rather than at the source is what lets "the latest autosave" be
+ * `entries[0]` in every graph that reads it.
+ */
+function normalizeAutoSaveEntries(value: unknown): AutoSaveEntry[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    const out: AutoSaveEntry[] = [];
+    for (const item of value) {
+        if (!item || typeof item !== "object") {
+            continue;
+        }
+        const record = item as Record<string, unknown>;
+        const id = String(record.id ?? "");
+        if (!id) {
+            continue;
+        }
+        out.push({
+            id,
+            slot: Number.isFinite(Number(record.slot)) ? Math.trunc(Number(record.slot)) : 0,
+            timestamp: Number.isFinite(Number(record.timestamp)) ? Number(record.timestamp) : 0,
+            createdAt: Number.isFinite(Number(record.createdAt)) ? Number(record.createdAt) : 0,
+            metadata: normalizeJsonValue(record.metadata),
+        });
+    }
+    return out.sort((a, b) => b.timestamp - a.timestamp);
+}
+
 function normalizeBlueprintChoiceCount(value: unknown): number {
     const count = Number(value);
     return Number.isInteger(count) && count > 0 ? count : 0;
@@ -1369,14 +1622,23 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onListSaveIds,
         onGetSaveMetadata,
         onGetSavePreview,
+        onWriteAutoSave,
+        onListAutoSaves,
         onGetHistory,
         onRestoreHistory,
         onGetNametag,
+        onGetSpeakerAvatar,
+        onGetSpeakerColor,
+        onGetCharacter,
         onGetNotifications,
         onGetChoiceCount,
         onIsNvlMode,
         onIsCurrentTextRead,
+        onIsTextRead,
         onClearTextRead,
+        onIsSceneVisited,
+        onIsOptionPicked,
+        onClearVisited,
         onSelectChoice,
         onNext,
         onSkip,
@@ -1386,6 +1648,17 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onSetSentenceSpeed,
         onGetGamePreference,
         onSetGamePreference,
+        onPlaySound,
+        onStopSound,
+        onPauseSound,
+        onResumeSound,
+        onSetSoundVolume,
+        onSeekSound,
+        onIsSoundPlaying,
+        onGetTrackVolume,
+        onSetTrackVolume,
+        audioTracks,
+        onSubscribeGamePreferences,
         emit,
         onOpenSurface,
         onCloseLayer,
@@ -2537,6 +2810,30 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     emitHostCall(emit, cap, "return");
                 }
             },
+            writeAutoSave: async () => {
+                const cap = "game.writeAutoSave";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onWriteAutoSave) {
+                        throw new Error("writeAutoSave: game save runtime is not available");
+                    }
+                    await onWriteAutoSave();
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            listAutoSaves: async () => {
+                const cap = "game.listAutoSaves";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onListAutoSaves) {
+                        throw new Error("listAutoSaves: game save runtime is not available");
+                    }
+                    return normalizeAutoSaveEntries(await onListAutoSaves());
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
             getHistory: async () => {
                 const cap = "game.getHistory";
                 emitHostCall(emit, cap, "call");
@@ -2568,6 +2865,48 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 try {
                     const value = onGetNametag ? onGetNametag() : scope.globalGet(BLUEPRINT_GAME_NAMETAG_STATE_KEY);
                     return normalizeBlueprintNametag(value);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getSpeakerAvatar: () => {
+                const cap = "game.getSpeakerAvatar";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const value = onGetSpeakerAvatar
+                        ? onGetSpeakerAvatar()
+                        : scope.globalGet(BLUEPRINT_GAME_SPEAKER_AVATAR_STATE_KEY);
+                    return normalizeBlueprintImageAssetValue(value);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getSpeakerColor: () => {
+                const cap = "game.getSpeakerColor";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const value = onGetSpeakerColor
+                        ? onGetSpeakerColor()
+                        : scope.globalGet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY);
+                    // `normalizeBlueprintRGBAColor` accepts the record the mirror writes *and* a raw
+                    // hex string, and turns null/undefined into the default white.
+                    return normalizeBlueprintRGBAColor(value);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getCharacter: (characterId: string) => {
+                const cap = "game.getCharacter";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const id = String(characterId ?? "").trim();
+                    if (!id) {
+                        return null;
+                    }
+                    if (onGetCharacter) {
+                        return normalizeBlueprintCharacterInfo(onGetCharacter(id));
+                    }
+                    return findBlueprintCharacterInfo(scope.globalGet(BLUEPRINT_GAME_CHARACTERS_STATE_KEY), id);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -2620,6 +2959,15 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     emitHostCall(emit, cap, "return");
                 }
             },
+            isTextRead: (textId: string) => {
+                const cap = "game.isTextRead";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return onIsTextRead ? onIsTextRead(textId) : false;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
             clearTextRead: async () => {
                 const cap = "game.clearTextRead";
                 emitHostCall(emit, cap, "call");
@@ -2632,6 +2980,35 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     // directly and drop the mirrored flag.
                     await scope.persistenceSetAsync(BLUEPRINT_TEXT_READ_PERSISTENCE_KEY, []);
                     scope.globalSet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY, false);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            isSceneVisited: (sceneId: string) => {
+                const cap = "game.isSceneVisited";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // No running story is "nothing visited", not an error: a main menu asking
+                    // whether a route is unlocked must render, and the honest answer there is false.
+                    return onIsSceneVisited ? onIsSceneVisited(sceneId) : false;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            isOptionPicked: (optionId: string) => {
+                const cap = "game.isOptionPicked";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return onIsOptionPicked ? onIsOptionPicked(optionId) : false;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            clearVisited: () => {
+                const cap = "game.clearVisited";
+                emitHostCall(emit, cap, "call");
+                try {
+                    onClearVisited?.();
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -2748,6 +3125,120 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         throw new Error("setPreference: game runtime is not available");
                     }
                     await onSetGamePreference(safeKey, safeValue);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+        },
+        sound: {
+            /**
+             * Absent backend = no running game (editor preview). A warned no-op
+             * beats throwing: the author is looking at layout, not listening.
+             */
+            play: async (input: BlueprintSoundPlayInput) => {
+                const cap = "sound.play";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onPlaySound) {
+                        return null;
+                    }
+                    return await onPlaySound(input) ?? null;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            stop: async (handle: BlueprintSoundHandle | null, fadeMs = 0) => {
+                const cap = "sound.stop";
+                emitHostCall(emit, cap, "call");
+                try {
+                    await onStopSound?.(handle, Math.max(0, fadeMs));
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            pause: async (handle: BlueprintSoundHandle) => {
+                const cap = "sound.pause";
+                emitHostCall(emit, cap, "call");
+                try {
+                    await onPauseSound?.(handle);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            resume: async (handle: BlueprintSoundHandle) => {
+                const cap = "sound.resume";
+                emitHostCall(emit, cap, "call");
+                try {
+                    await onResumeSound?.(handle);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setVolume: async (handle: BlueprintSoundHandle, volume: number, fadeMs = 0) => {
+                const cap = "sound.setVolume";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // Clamped, not rejected: a slider bound to the wrong range asking for 1.2 means
+                    // "as loud as it goes", and a dead control is the worse answer.
+                    const safeVolume = Number.isFinite(volume) ? Math.min(1, Math.max(0, volume)) : 1;
+                    await onSetSoundVolume?.(handle, safeVolume, Math.max(0, fadeMs));
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            seek: async (handle: BlueprintSoundHandle, timeMs: number) => {
+                const cap = "sound.seek";
+                emitHostCall(emit, cap, "call");
+                try {
+                    await onSeekSound?.(handle, Number.isFinite(timeMs) ? Math.max(0, timeMs) : 0);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            isPlaying: (handle: BlueprintSoundHandle) => {
+                const cap = "sound.isPlaying";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return onIsSoundPlaying?.(handle) ?? false;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            /**
+             * Deliberately not instrumented with `emitHostCall`: this runs on every render of every
+             * video widget and on every slider tick, and a debug event per read would drown the
+             * blueprint event stream in noise that describes nothing an author did.
+             */
+            resolveElementVolume: input => {
+                const tracks = audioTracks && audioTracks.length > 0 ? audioTracks : BUILTIN_AUDIO_TRACKS;
+                const track = resolveAudioTrack(tracks, input.audioTrackId, "sound");
+                const playback = resolveAudioTrackPlayback(track, { volume: input.volume });
+                // The whole chain, not one channel: with a bus tree a clip on `voice/alice` is
+                // attenuated by `alice`, then by `voice`, then by the player's Voice slider, then by
+                // master. Reading a single channel's preference - which is what this did when a
+                // track was a preset on one of three fixed channels - would leave every bus the
+                // author invented inaudible to the element.
+                return resolveMixedElementVolume(playback, tracks, readMixPreferences(onGetGamePreference));
+            },
+            subscribeMixerChanges: listener => onSubscribeGamePreferences?.(listener) ?? (() => undefined),
+            getTrackVolume: (trackId: string) => {
+                const cap = "sound.getTrackVolume";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return onGetTrackVolume?.(String(trackId ?? "").trim()) ?? 1;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setTrackVolume: async (trackId: string, volume: number) => {
+                const cap = "sound.setTrackVolume";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // Clamped rather than rejected, exactly as `setVolume` above: a slider bound to
+                    // the wrong range asking for 1.2 means "as loud as it goes", and the engine's
+                    // own bus gain clamps to 0..1 anyway.
+                    const safeVolume = Number.isFinite(volume) ? Math.min(1, Math.max(0, volume)) : 1;
+                    await onSetTrackVolume?.(String(trackId ?? "").trim(), safeVolume);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

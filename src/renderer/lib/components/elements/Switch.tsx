@@ -62,7 +62,7 @@ export function Switch({
             disabled={disabled || loading}
             onClick={handleClick}
             className={cn(
-                "relative inline-flex shrink-0 items-center rounded-full border p-0 transition-colors duration-200",
+                "relative inline-flex shrink-0 cursor-default items-center rounded-full border p-0 transition-colors duration-200",
                 "appearance-none",
                 "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                 disabled && !loading && "opacity-50 cursor-not-allowed",

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { DevModeBundle } from "@shared/types/devMode";
-import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
+import type { GameRuntimePackV1, GameRuntimePreloadBridge } from "@shared/types/gameRuntime";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
@@ -11,6 +11,10 @@ import { GameApp } from "@/lib/ui-editor/runtime/app/GameApp";
 import type { GameAppFrameContext, GameAppHost, GameAppSaveStore } from "@/lib/ui-editor/runtime/app/GameAppHost";
 import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFrame";
 import { loadRuntimePlugins } from "@/lib/ui-editor/runtime/plugins/loadRuntimePlugins";
+import { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
+import { RuntimeSidecarBackend } from "./runtimeSidecarBackend";
+import { readRuntimeTestSignalReporter } from "../gameTestSignal";
+import { listPackPuppetBackendSources, resolvePackModelBundleUrl } from "@/lib/ui-editor/runtime/game/puppetPackRuntimes";
 import {
     preloadRuntimePackAssets,
     type RuntimeSurfacePreloadResult,
@@ -166,7 +170,11 @@ function useRuntimePackPreload(input: {
  * game boots. A failing plugin never blocks the game; errors go to the
  * runtime log. loadRuntimePlugins is idempotent per plugin id+version+entry.
  */
-function useRuntimePlugins(pack: GameRuntimePackV1 | null, rendererRegistry: ElementRendererRegistry): boolean {
+function useRuntimePlugins(
+    pack: GameRuntimePackV1 | null,
+    rendererRegistry: ElementRendererRegistry,
+    pluginHost: RuntimePluginHostController,
+): boolean {
     const [ready, setReady] = useState(false);
 
     useEffect(() => {
@@ -198,7 +206,11 @@ function useRuntimePlugins(pack: GameRuntimePackV1 | null, rendererRegistry: Ele
                 ?? `nlgame://runtime/${entry.entryRelativePath}`,
             ...(entry.data ? { data: entry.data } : {}),
         }));
-        void loadRuntimePlugins(descriptors, { log, elementRenderers: rendererRegistry }).finally(() => {
+        void loadRuntimePlugins(descriptors, {
+            log,
+            elementRenderers: rendererRegistry,
+            host: pluginHost.host,
+        }).finally(() => {
             if (!disposed) {
                 setReady(true);
             }
@@ -206,9 +218,72 @@ function useRuntimePlugins(pack: GameRuntimePackV1 | null, rendererRegistry: Ele
         return () => {
             disposed = true;
         };
-    }, [pack, rendererRegistry]);
+    }, [pack, pluginHost, rendererRegistry]);
 
     return ready;
+}
+
+/**
+ * Capability backends this shell can serve, built from the runtime bridge alone
+ * so it is identical on desktop and web except where the bridge itself differs
+ * (`capabilities.closeRequested`). Created once per process: plugin `setup()`
+ * captures these objects and they have to outlive every game session.
+ */
+function createRuntimePluginHost(
+    bridge: GameRuntimePreloadBridge | null,
+    sidecar: RuntimeSidecarBackend | null,
+): RuntimePluginHostController {
+    if (!bridge) {
+        // No bridge means nothing can load anyway; an empty shell keeps the
+        // capability gating honest instead of handing out backends that throw.
+        return new RuntimePluginHostController({});
+    }
+    return new RuntimePluginHostController({
+        persistence: {
+            getAll: () => bridge.persistence.getAll(),
+            getValue: key => bridge.persistence.getValue(key),
+            setValue: (key, value) => bridge.persistence.setValue(key, value),
+            removeValue: key => bridge.persistence.removeValue(key),
+        },
+        saves: {
+            // This shell always mounts a game app, which attaches the write and
+            // load paths once it is up.
+            writable: true,
+            listIds: () => bridge.save.listIds(),
+            readMetadata: async id => {
+                // readPreview would be cheaper but only yields the screenshot;
+                // the record is the only place the timestamps and the game's own
+                // metadata live.
+                const record = await bridge.save.read(id);
+                if (!record) {
+                    return null;
+                }
+                const updatedAt = Date.parse(record.metadata.updatedAt ?? "");
+                return {
+                    id: record.metadata.id ?? id,
+                    ...(Number.isFinite(updatedAt) ? { updatedAt } : {}),
+                    ...(record.metadata.user === undefined ? {} : { metadata: record.metadata.user }),
+                };
+            },
+        },
+        assetUrl: assetId => bridge.assetUrl(assetId),
+        subscribeFullscreenChanged: listener => bridge.onFullscreenChanged(listener),
+        // Observers only: a plugin watching the close never gets to veto it, so
+        // this handler always agrees and the blueprint decider stays the only
+        // thing that can cancel a close.
+        ...(bridge.capabilities?.closeRequested
+            ? {
+                subscribeCloseRequested: (listener: () => void) => bridge.onCloseRequested(() => {
+                    listener();
+                    return true;
+                }),
+            }
+            : {}),
+        // Present on desktop, absent on the web export - see web.ts. The loader
+        // turns that absence into "no app.game.sidecar here".
+        ...(sidecar ? { sidecar } : {}),
+        log: (level, message) => bridge.log(level, message),
+    });
 }
 
 export function GameRuntimeApp() {
@@ -217,10 +292,50 @@ export function GameRuntimeApp() {
     const bridge = getGameRuntimeBridge();
     const rendererRegistry = useMemo(() => new ElementRendererRegistry(BuiltinElementRenderers), []);
 
+    const sidecarBackend = useMemo(
+        () => (bridge?.sidecar ? new RuntimeSidecarBackend(bridge.sidecar, bridge.log) : null),
+        [bridge],
+    );
+    const pluginHost = useMemo(
+        () => createRuntimePluginHost(bridge, sidecarBackend),
+        [bridge, sidecarBackend],
+    );
+    useEffect(() => pluginHost.bindShellEvents(), [pluginHost]);
+    /**
+     * The engine reaching an ending, on its way out of the process.
+     *
+     * `event:state.end` is already observed - the plugin host maps it to `gameEnd` and re-binds it
+     * for every relaunch and hot reload - but it had no exit from this renderer, so "does this game
+     * reach an ending" was unanswerable from outside. Riding the existing hub rather than binding
+     * the engine event a second time keeps one subscription per session and means a relaunch does
+     * not need remembering here.
+     *
+     * Inert unless a test is watching: the reporter is absent on the web export and on any pack
+     * with no control server, which is every shipped game.
+     */
+    useEffect(() => {
+        const report = readRuntimeTestSignalReporter(bridge);
+        const events = pluginHost.host.events;
+        if (!report || !events) {
+            return;
+        }
+        return events.on("gameEnd", () => {
+            report({ kind: "game-end" });
+        });
+    }, [bridge, pluginHost]);
+    // Before useRuntimePlugins' effect, which is what makes `available()` a real
+    // answer by the time any plugin's setup() can ask: effects run in the order
+    // their hooks were called, and this hook is declared above that one.
+    useEffect(() => {
+        if (pack) {
+            sidecarBackend?.applyPack(pack);
+        }
+    }, [pack, sidecarBackend]);
+
     const entrySurfaceId = pack?.entry.surfaceId ?? undefined;
     const entrySurface = pack ? findSurface(pack.bundle, entrySurfaceId) : null;
     const preload = useRuntimePackPreload({ pack, firstSurface: entrySurface });
-    const pluginsReady = useRuntimePlugins(pack, rendererRegistry);
+    const pluginsReady = useRuntimePlugins(pack, rendererRegistry, pluginHost);
     const runtimeReady = preload.ready && pluginsReady;
 
     const persistenceAdapter = useMemo(() => {
@@ -251,9 +366,26 @@ export function GameRuntimeApp() {
         bridge?.log(level, message);
     }, [bridge]);
 
+    /**
+     * A model bundle resolves to the URL of its *entry file*, not of the asset id.
+     *
+     * The engine's `PuppetMountContext.resolveSibling(rel)` does URL arithmetic against whatever
+     * this returns to find the bundle's textures and motions, which the model's own manifest names
+     * by relative path. `.../asset/{id}` would make every one of those resolve to a sibling of the
+     * id; `.../asset/{id}/{entry}` makes them resolve to `{id}/{rel}`, which is exactly the key the
+     * packer wrote for each file.
+     */
     const resolveStoryAssetUrl = useCallback(
-        (assetId: string) => bridge?.assetUrl(assetId) ?? assetId,
-        [bridge],
+        (assetId: string) => {
+            if (!bridge) {
+                return assetId;
+            }
+            // Shared with the puppet widget's seam so the two cannot disagree about where a bundle's
+            // root is. An id the pack does not list is still handed to `assetUrl` - the shell's own
+            // 404 says more than a silent empty string would.
+            return resolvePackModelBundleUrl(bridge, pack, assetId) ?? bridge.assetUrl(assetId);
+        },
+        [bridge, pack],
     );
 
     const saveStore = useMemo<GameAppSaveStore>(() => ({
@@ -310,6 +442,20 @@ export function GameRuntimeApp() {
         return bridge?.onCloseRequested(listener) ?? (() => undefined);
     }, [bridge]);
 
+    /**
+     * The puppet backends published with this game.
+     *
+     * Shared with the Surface `nl.puppet` widget's mounting seam (see
+     * `puppetPackRuntimes.ts`) rather than derived here: both need the same
+     * module URL and the same confined `resolveFile`, and a stage that loads a
+     * backend one way while a widget loads it another is a difference nobody
+     * would notice until one of them stopped drawing.
+     */
+    const listPuppetBackendModules = useCallback(
+        async () => listPackPuppetBackendSources(bridge, pack),
+        [bridge, pack],
+    );
+
     const host = useMemo<GameAppHost | null>(() => {
         if (!pack) {
             return null;
@@ -334,10 +480,12 @@ export function GameRuntimeApp() {
             setFullscreen,
             subscribeFullscreenChanged,
             subscribeCloseRequested,
+            listPuppetBackendModules,
         };
     }, [
         entrySurfaceId,
         getFullscreen,
+        listPuppetBackendModules,
         log,
         onDebugEvent,
         pack,
@@ -386,6 +534,7 @@ export function GameRuntimeApp() {
             getScale={getScale}
             renderFrame={renderFrame}
             renderPlaceholder={renderPlaceholder}
+            pluginHost={pluginHost}
         />
     );
 }

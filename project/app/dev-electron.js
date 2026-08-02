@@ -16,7 +16,6 @@ const { watchBuild } = require('../build/watch');
 const { postcssPlugin } = require('../build/postCss-plugin');
 const {
     buildBuiltInPlugins,
-    copyBuiltInPluginsToDevUserData,
     sourceRoot: builtInPluginsSourceRoot,
 } = require('../build/builtin-plugins');
 
@@ -30,6 +29,24 @@ const runtimeSourceRoots = [
     path.join(rootDir, 'src', 'renderer', 'apps', 'dev-mode', 'nlr'),
     path.join(rootDir, 'src', 'renderer', 'lib', 'ui-editor'),
 ];
+
+/**
+ * chokidar tests `ignored` against absolute paths, so the usual
+ * `/(^|[\/\\])\../` also matches every checkout that itself lives under a dot
+ * directory - a git worktree in `.claude/`, say. The watch root matched its own
+ * ignore rule there, the watcher observed nothing at all, and edits looked like
+ * they simply did not trigger a rebuild. Only dot-segments *below* a watch root
+ * are junk worth skipping.
+ */
+function ignoreDotSegmentsBelow(roots) {
+    const bases = (Array.isArray(roots) ? roots : [roots]).map((root) => path.resolve(root));
+    return (target) => {
+        const resolved = path.resolve(target);
+        const base = bases.find((candidate) => resolved === candidate || resolved.startsWith(candidate + path.sep));
+        const relative = base ? path.relative(base, resolved) : path.basename(resolved);
+        return relative.split(path.sep).some((segment) => segment.startsWith('.'));
+    };
+}
 
 // Bind the reload port BEFORE clearing `dist`. This used to be a `rimraf dist`
 // in the npm script, so a second `yarn dev` against a live session wiped the
@@ -68,6 +85,7 @@ function broadcastReload(target = 'all') {
     fs.mkdirSync(distWindows, { recursive: true });
 
     const distDir = distRoot;
+    const startedAt = Date.now();
 
     /** Restart electron process */
     let electronProcess = null;
@@ -94,7 +112,7 @@ function broadcastReload(target = 'all') {
             initialBuiltInPluginsBuilt
         ) {
             appStarted = true;
-            console.log('[dev] all initial builds completed. starting electron...');
+            console.log(`[dev] all initial builds completed in ${((Date.now() - startedAt) / 1000).toFixed(1)}s. starting electron...`);
             restartElectron();
         }
     }
@@ -124,7 +142,17 @@ function broadcastReload(target = 'all') {
         const electronBinary = require('electron');
         const mainEntry = path.join(distDir, 'main', 'index.js');
         console.log('[dev] starting electron process...');
-        electronProcess = spawn(electronBinary, [mainEntry, '--dev', ...forwardedElectronArgs], {
+        // Tell the app which reload socket is ours. Without it the main process
+        // falls back to 5588, so a session on NLS_DEV_RELOAD_PORT either found
+        // nothing there or — worse — attached to the default-port session owned by
+        // another checkout and reloaded on its rebuilds. Forwarded args come last
+        // so an explicit --dev-reload-port on the command line still wins.
+        electronProcess = spawn(electronBinary, [
+            mainEntry,
+            '--dev',
+            `--dev-reload-port=${DEV_RELOAD_PORT}`,
+            ...forwardedElectronArgs,
+        ], {
             stdio: 'inherit',
         });
 
@@ -192,7 +220,7 @@ function broadcastReload(target = 'all') {
     void rebuildRuntimeForDev();
 
     const runtimeWatcher = chokidar.watch(runtimeSourceRoots, {
-        ignored: /(^|[\/\\])\../,
+        ignored: ignoreDotSegmentsBelow(runtimeSourceRoots),
         ignoreInitial: true,
     });
 
@@ -205,15 +233,23 @@ function broadcastReload(target = 'all') {
         }, 150);
     });
 
+    // Every initial build below is independent: main, the two utility-process
+    // workers, preload, the renderer apps and the built-in plugins share no
+    // inputs. They used to run as a chain of sequential `await`s, which stranded
+    // the small builds (~0.7s of main chain + plugins) on either side of the
+    // renderer phase for no reason. Each is now started as a thunk and awaited
+    // together at the end; tryStartElectronOnce() already gates Electron on the
+    // completion flags, so finishing order does not matter.
+
     // Build & watch main process
     const mainEntry = path.join(rootDir, 'src', 'main', 'index.ts');
-    const mainCtx = await watchBuild({
+    const buildMainProcess = () => watchBuild({
         entryPoints: [mainEntry],
         outfile: path.join(distDir, 'main', 'index.js'),
         platform: 'node',
         bundle: true,
         format: 'cjs',
-        external: ['electron', '@narraleaf/encryption', '@lore-vcs/sdk', 'koffi'],
+        external: ['electron', '@narraleaf/encryption', 'koffi'],
         sourcemap: true,
         target: ['node18'],
     }, () => {
@@ -231,7 +267,7 @@ function broadcastReload(target = 'all') {
     // Fallback watcher: ensure rebuild when any file in src/main changes
     // Note: The esbuild watcher should handle most changes, this is just a fallback
     const mainWatcher = chokidar.watch(path.join(rootDir, 'src', 'main'), {
-        ignored: /(^|[\/\\])\../,
+        ignored: ignoreDotSegmentsBelow(path.join(rootDir, 'src', 'main')),
         ignoreInitial: true,
     });
 
@@ -242,16 +278,17 @@ function broadcastReload(target = 'all') {
     });
 
     /** Build & watch the game build worker (forked by utilityProcess). */
-    await watchBuild({
+    const buildGameBuildWorker = () => watchBuild({
         entryPoints: [path.join(rootDir, 'src', 'main', 'buildWorker', 'buildWorker.ts')],
         outfile: path.join(distDir, 'main', 'buildWorker.js'),
         platform: 'node',
         format: 'cjs',
         bundle: true,
         // electron-builder reads template files relative to itself at runtime;
-        // 7zip-bin resolves its 7za binary relative to its own __dirname. Both
-        // break if inlined, so keep this list in sync with build-main.js.
-        external: ['electron', 'electron-builder', '7zip-bin'],
+        // 7zip-bin resolves its 7za binary relative to its own __dirname;
+        // @narraleaf/encryption loads a platform-specific native addon by path.
+        // All break if inlined, so keep this list in sync with build-main.js.
+        external: ['electron', 'electron-builder', '7zip-bin', '@narraleaf/encryption'],
         sourcemap: true,
         target: ['node18'],
     }, () => {
@@ -259,9 +296,59 @@ function broadcastReload(target = 'all') {
         console.log('[buildWorker] built.');
     });
 
+    /**
+     * Build & watch the PSD import worker (forked by utilityProcess by the
+     * character editor's import wizard). Without this, `yarn dev` leaves
+     * dist/main/psdWorker.js missing and every import fails with
+     * "PSD worker exited before answering" — the same shape of hole the
+     * compile worker below documents.
+     */
+    const buildPsdImportWorker = () => watchBuild({
+        entryPoints: [path.join(rootDir, 'src', 'main', 'buildWorker', 'psdWorker.ts')],
+        outfile: path.join(distDir, 'main', 'psdWorker.js'),
+        platform: 'node',
+        format: 'cjs',
+        bundle: true,
+        // ag-psd is pure JS and bundles fine; keep this list in sync with build-main.js.
+        external: ['electron'],
+        sourcemap: true,
+        target: ['node18'],
+    }, () => {
+        // No Electron restart: the worker is spawned fresh per job.
+        console.log('[psdWorker] built.');
+    });
+
+    /**
+     * Build & watch the artifact compile worker (forked by utilityProcess for
+     * preview launches and the pre-package compile). Without this, `yarn dev`
+     * leaves dist/main/compileWorker.js missing and every preview launch fails
+     * with "Artifact compile worker exited unexpectedly (code 1)".
+     */
+    const buildArtifactCompileWorker = () => watchBuild({
+        entryPoints: [path.join(rootDir, 'src', 'main', 'buildWorker', 'compileWorker.ts')],
+        outfile: path.join(distDir, 'main', 'compileWorker.js'),
+        platform: 'node',
+        format: 'cjs',
+        bundle: true,
+        // @narraleaf/encryption and koffi both resolve their own binaries by path
+        // at runtime; keep this list in sync with build-main.js.
+        external: ['electron', '@narraleaf/encryption', 'koffi'],
+        sourcemap: true,
+        target: ['node18'],
+    }, () => {
+        // No Electron restart: the worker is spawned fresh per compile.
+        console.log('[compileWorker] built.');
+    });
+
     /** Build & watch preload script */
     const preloadEntry = path.join(rootDir, 'src', 'main', 'preload', 'preload.ts');
-    if (fs.existsSync(preloadEntry)) {
+    const buildPreloadScript = async () => {
+        if (!fs.existsSync(preloadEntry)) {
+            console.warn('[preload] Entry "src/main/preload/preload.ts" not found. Skipping preload build.');
+            initialPreloadBuilt = true;
+            tryStartElectronOnce();
+            return;
+        }
         await watchBuild({
             entryPoints: [preloadEntry],
             outfile: path.join(distDir, 'main', 'preload.js'),
@@ -281,16 +368,12 @@ function broadcastReload(target = 'all') {
                 if (appStarted) restartElectron();
             }
         });
-    } else {
-        console.warn('[preload] Entry "src/main/preload/preload.ts" not found. Skipping preload build.');
-        initialPreloadBuilt = true;
-        tryStartElectronOnce();
-    }
+    };
 
     // Build & watch renderer apps
     const apps = getRendererApps();
 
-    await Promise.all(apps.map(async (appName) => {
+    const buildRenderers = () => Promise.all(apps.map(async (appName) => {
         const entryFile = path.join(rootDir, 'src', 'renderer', 'apps', appName, 'index.tsx');
         const outDir = path.join(distWindows, appName);
         fs.mkdirSync(outDir, { recursive: true });
@@ -305,6 +388,8 @@ function broadcastReload(target = 'all') {
             sourcemap: true,
             jsx: 'automatic',
             target: ['chrome114'],
+            // `yarn dev` is always a development build.
+            define: { __NLS_STUDIO_DEV__: 'true' },
             // narraleaf-react is linked from a sibling checkout whose own node_modules also
             // contains these packages; pin them to THIS repo's copies so the bundle never
             // carries two React (or motion) instances (see build-apps.js).
@@ -334,26 +419,38 @@ function broadcastReload(target = 'all') {
         // write html
         const html = await renderHtml(appName);
         fs.writeFileSync(path.join(outDir, 'index.html'), html, 'utf-8');
-    }));
+    })).then(() => {
+        // Mark all renderers as built after HTML written
+        initialRenderersBuilt = true;
+        tryStartElectronOnce();
+    });
 
-    // Mark all renderers as built after HTML written
-    initialRenderersBuilt = true;
-    tryStartElectronOnce();
+    // Only the build runs here. Installing the result is the main process's job
+    // (PluginManager syncs `dist/builtin-plugins` into userData on start-up and
+    // on the `builtin-plugins` reload below) - this script used to copy the
+    // packages in as well, and the two writers racing on the same directory is
+    // what left `<id>.builtin-tmp-*` leftovers behind, which then shadowed the
+    // real package and pinned the plugin to a stale version for good.
+    const buildInitialBuiltInPlugins = async () => {
+        const builtInPluginResults = await buildBuiltInPlugins({ dev: true });
+        initialBuiltInPluginsBuilt = true;
+        console.log(`[builtin-plugins] initial build complete (${builtInPluginResults.length}).`);
+        tryStartElectronOnce();
+    };
 
-    async function rebuildBuiltInPluginsForDev() {
-        const results = await buildBuiltInPlugins({ dev: true });
-        await copyBuiltInPluginsToDevUserData();
-        return results;
-    }
-
-    const builtInPluginResults = await rebuildBuiltInPluginsForDev();
-    initialBuiltInPluginsBuilt = true;
-    console.log(`[builtin-plugins] initial build complete (${builtInPluginResults.length}).`);
-    tryStartElectronOnce();
+    await Promise.all([
+        buildMainProcess(),
+        buildGameBuildWorker(),
+        buildPsdImportWorker(),
+        buildArtifactCompileWorker(),
+        buildPreloadScript(),
+        buildRenderers(),
+        buildInitialBuiltInPlugins(),
+    ]);
 
     let builtInPluginRebuildTimer = null;
     const builtInPluginWatcher = chokidar.watch(builtInPluginsSourceRoot, {
-        ignored: /(^|[\/\\])\../,
+        ignored: ignoreDotSegmentsBelow(builtInPluginsSourceRoot),
         ignoreInitial: true,
     });
 
@@ -363,11 +460,11 @@ function broadcastReload(target = 'all') {
         }
         builtInPluginRebuildTimer = setTimeout(async () => {
             try {
-                const results = await rebuildBuiltInPluginsForDev();
+                const results = await buildBuiltInPlugins({ dev: true });
                 console.log(`[builtin-plugins] rebuilt (${results.length}).`);
                 if (appStarted) {
-                    console.log('[builtin-plugins] broadcasting workspace reload...');
-                    broadcastReload('workspace');
+                    console.log('[builtin-plugins] broadcasting re-sync + workspace reload...');
+                    broadcastReload('builtin-plugins');
                 }
             } catch (error) {
                 console.error('[builtin-plugins] rebuild failed:', error);

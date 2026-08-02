@@ -38,6 +38,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { StoryActionBlueprintPreviewCard } from "./StoryActionBlueprintPreviewCard";
+import { choiceOptionRefs, valueBlueprintRefs } from "./storyCommandContext";
 import { collectStoryVariableOptions, type PersistentVariableOption, type StoryVariableOption } from "./storyInterpolation";
 
 type ConditionKind = "expression" | "variable" | "blueprint";
@@ -50,8 +51,14 @@ const DEFAULT_VARIABLE_CONDITION: VariableCondition = {
     operator: "isTrue",
 };
 
-/** An empty expression condition — `invalid` until the author types something that parses. */
-const EMPTY_EXPRESSION_CONDITION: StoryConditionRef = {
+/**
+ * An empty expression condition — `invalid` until the author types something that parses.
+ *
+ * Exported because a `/repeat until` loop needs a value that means "conditional form, condition not
+ * written yet": dropping the field instead would turn the row back into a counted loop, which is a
+ * different construct, chosen silently.
+ */
+export const EMPTY_EXPRESSION_CONDITION: StoryConditionRef = {
     kind: "expression",
     expression: { source: "", ast: { kind: "invalid", source: "" } },
 };
@@ -112,11 +119,11 @@ function flattenVariables(options: {
 }
 
 function variableRefKey(ref: StoryVariableRef): string {
-    return ref.scope === "persistent" ? `persistent:${ref.storageKey}` : `${ref.scope}:${ref.variableId}`;
+    return `${ref.scope}:${ref.variableId}`;
 }
 
 function makeVariableRef(scope: "scene" | "saved" | "persistent", id: string): StoryVariableRef {
-    return scope === "persistent" ? { scope: "persistent", storageKey: id } : { scope, variableId: id };
+    return { scope, variableId: id };
 }
 
 export function ConditionEditor(props: {
@@ -163,10 +170,25 @@ export function ConditionEditor(props: {
     const blueprintId = props.value?.kind === "blueprint" ? props.value.blueprintId : "";
     const expressionSource = props.value?.kind === "expression" ? props.value.expression.source : "";
 
-    /** The scope an expression's identifiers resolve through — the same three scopes, same precedence. */
+    /**
+     * The scope an expression's identifiers resolve through — the same three variable scopes and same
+     * precedence, plus the three name tables that are not variables: scenes for `visited(…)`, choice
+     * options for `picked(…)`, and value blueprints for a call.
+     *
+     * Built from the same collectors `buildStoryCommandContext` uses, so a name that resolves in this
+     * panel resolves identically on the command line. A panel with its own smaller table would let an
+     * author write `visited(序章)` in one surface and be told it does not exist in the other.
+     */
     const expressionScope = useMemo(
-        () => createStoryExpressionScope(allVariables.map(option => ({ name: option.name, ref: makeVariableRef(option.scope, option.id) }))),
-        [allVariables],
+        () => createStoryExpressionScope(
+            allVariables.map(option => ({ name: option.name, ref: makeVariableRef(option.scope, option.id) })),
+            {
+                scenes: Object.values(props.document.scenes ?? {}).map(scene => ({ id: scene.id, name: scene.name })),
+                options: choiceOptionRefs(props.document),
+                blueprints: valueBlueprintRefs(blueprintService?.getBlueprintDocument()),
+            },
+        ),
+        [allVariables, blueprintService, props.document],
     );
 
     const currentValueType: StoryVariableValueType =

@@ -4,8 +4,7 @@ export const workspace = {
     localization: {
         panel: {
             languagesTitle: "语言",
-            languagesHint: "游戏本体的语言：源语言是你所使用的编写语言，其他所有语言都会以此为基准进行翻译",
-            empty: "还没有语言，先添加源语言",
+            languagesHint: "游戏本体的语言。源语言是你编写时用的那一种，其余都以它为基准翻译",
             addLanguage: "添加语言",
             codePlaceholder: "代码（en、ja、zh-CN…）",
             namePlaceholder: "显示名称",
@@ -30,7 +29,6 @@ export const workspace = {
             storyLabel: "范围",
             sourceUi: "界面文本",
             sourceKeys: "通用文本",
-            emptyUi: "尚未标记任何界面文本用于本地化，请在文本或按钮控件上启用\"本地化文本\"选项",
             modeTranslate: "翻译",
             modeReview: "审校",
             filterAll: "全部",
@@ -74,8 +72,7 @@ export const workspace = {
     voice: {
         panel: {
             languagesTitle: "配音语言",
-            languagesHint: "游戏已有配音的语言。与文本语言相互独立，你可以在文本保持英文的同时录制日语配音。",
-            empty: "还没有配音语言。添加一个，再把导入的音频指派到台词上。",
+            languagesHint: "游戏已有配音的语言，与文本语言相互独立。",
             addLanguage: "添加配音语言",
             codePlaceholder: "代码（ja、en、zh-CN…）",
             namePlaceholder: "显示名称",
@@ -137,8 +134,15 @@ export const workspace = {
     shell: {
         errorTitle: "工作区初始化失败",
         showStackTrace: "显示堆栈跟踪",
-        errorConsoleHint: "如果问题持续存在，请查看控制台以获取详细信息",
         retry: "重试",
+        openOtherProject: "打开其他项目",
+        errorCopyDetails: "复制详情",
+        errorCopied: "错误详情已复制到剪贴板",
+        errorCopyFailed: "复制失败：{error}",
+        errorExportLogs: "导出日志",
+        errorExported: "日志已保存到 {path}",
+        errorExportFailed: "导出日志失败：{error}",
+        errorOpenFailed: "无法打开该文件夹：{error}",
         initializing: "正在初始化工作区…",
         notAProjectTitle: "此文件夹不是 NarraLeaf 项目",
         notAProjectDetail: "未找到 .nlproj 文件",
@@ -149,6 +153,11 @@ export const workspace = {
         noActiveEditor: "没有活动的编辑器",
         closePanel: "关闭面板",
         closeTab: "关闭 {name}",
+        newTab: "新建标签页",
+        // 标签条"+"打开的浏览器式空白标签页。
+        newTabPage: {
+            title: "新标签页",
+        },
         tabMenu: {
             close: "关闭",
             closeOthers: "关闭其他",
@@ -164,6 +173,11 @@ export const workspace = {
         toggleBottomPanel: "切换底部面板",
         panelMenu: {
             removeItem: "移除此项目",
+            collapseItem: "折叠到折叠项",
+        },
+        // 左侧导轨的折叠项：一个图标代表被折叠进去的面板，点击后在导轨旁展开列表。
+        panelGroup: {
+            title: "折叠项",
         },
         openSettings: "打开设置",
         stopDevMode: "停止开发模式",
@@ -181,8 +195,18 @@ export const workspace = {
             categoryView: "视图",
             // 编辑器标签命令的分类与标题（作用于当前活动标签）。
             categoryEditor: "编辑器",
+            // 没有声明分类的命令用它兜底（浏览模式按分类分组）。
+            categoryOther: "其他",
+            categoryGo: "跳转",
+            categoryStory: "剧情",
+            categoryRun: "运行",
+            categoryProject: "项目",
+            categoryPreferences: "偏好设置",
+            // 版本控制命令的分类（冻结，以及后续的提交、历史）。
+            categoryVersionControl: "版本控制",
             editor: {
                 closeTab: "关闭标签页",
+                closeSelectedTabs: "关闭选中的标签页",
                 closeOthers: "关闭其他标签页",
                 closeToRight: "关闭右侧标签页",
                 closeAll: "关闭全部标签页",
@@ -194,7 +218,6 @@ export const workspace = {
         // 通知中心（控制栏铃铛；所有 toast 的环形历史）。
         notifications: {
             title: "通知",
-            empty: "暂无通知",
             clearAll: "清空",
         },
         // 自定义背景对话框（从设置或命令面板打开）。
@@ -235,29 +258,296 @@ export const workspace = {
         },
         // 底部状态条。各信号只在有意义时出现（运行中/构建中/未保存）。
         statusBar: {
+            // 统一「运行状态」单元格的模式名称，格式为「模式 | 阶段」，任一模式运行时整条状态栏都会染成主题色。
             devMode: "开发模式",
-            devModeRunning: "开发模式运行中",
             preview: "预览",
-            previewRunning: "预览运行中",
-            building: "构建中…",
+            production: "生产构建",
+            // 分隔符之后的阶段文案。并非每个阶段都适用于每种模式。
+            phase: {
+                starting: "启动中…",
+                preparing: "准备中…",
+                compiling: "编译中…",
+                launching: "启动中…",
+                packaging: "打包中…",
+                running: "运行中",
+                reloading: "重载中…",
+                stopping: "停止中…",
+            },
+            openConsole: "打开控制台",
             unsavedChanges: "未保存的更改",
             saveNow: "立即保存",
+            saving: "保存中…",
+            saveFailed: "保存失败",
+            retrySave: "立即重试保存",
             resetZoom: "重置缩放到 100%",
             shortcuts: "快捷键速查",
             words: "{count} 字",
+            lines: "{count} 行",
+            noStoryOpen: "未打开故事",
             openDashboard: "打开项目仪表盘",
+            openCurrentScene: "打开当前场景",
             // 已注册状态栏项目的名称，仅在状态栏右键开关菜单中显示。
             entries: {
-                devMode: "开发模式状态",
-                preview: "预览状态",
-                build: "构建状态",
+                runStatus: "运行状态",
                 unsavedChanges: "未保存的更改",
-                wordCount: "字数统计",
+                wordCount: "故事统计",
                 shortcuts: "快捷键速查",
                 notifications: "通知",
                 theme: "主题切换",
                 zoom: "缩放比例",
+                version: "版本",
+                textFileName: "文本文件名",
+                textEncoding: "文本编码",
+                textLineEnding: "行尾符号",
+                textSelection: "光标位置",
             },
+        },
+        // 保存反馈：文件写不进去时弹出的常驻提示，以及「存储」控制台频道的日志行。
+        // 失败的写入会按退避阶梯一直重试、永不放弃，所以文案说的是「仍在重试」而不是「已丢失」。
+        save: {
+            failedTitle: "无法保存 {file}",
+            failedDetailTransient: "正在后台继续重试。{error}",
+            failedDetailPermanent: "在修复之前重试也无济于事。{error}",
+            retry: "立即重试",
+            consoleFailed: "写入失败（{code}，第 {attempt} 次尝试）：{path} · {error}",
+            consoleRecovered: "写入成功：{path}",
+            flushFailed: "{label} 刷盘失败：{error}",
+            // 读取侧：文件在盘上，但读不懂。文案先说「没发生什么」——这时作者最怕的是「Studio 把我的东西吃了」。
+            unreadableTitle: "无法读取 {file}",
+            unreadableDetail: "{reason} 文件保持原样，没有任何内容被覆盖。",
+            unreadableDetailQuarantined: "{reason} 文件保持原样，其副本已保存在 {path}。",
+            consoleUnreadable: "读取失败（{kind}）：{path} · {reason}",
+            consoleQuarantined: "已保留无法读取的文件副本：{path}",
+            // 因工作区冻结而被拒绝的写入。这不是失败：没有出错，也不会重试。文案必须说清原因，
+            // 否则读起来就是个 bug。
+            frozenTitle: "当前不会保存任何改动",
+            frozenDetailRevision: "你正在查看版本 {version}。在回到当前版本之前，项目文件不会被改动。",
+            frozenDetailManual: "工作区已冻结，解除冻结后才会重新保存。",
+            // 合并没有「解除冻结」这一步：工作树里同时放着两边，只有把合并做完才行。
+            frozenDetailMerge: "有一次合并还没做完，到版本面板把合并完成后才会重新保存。",
+            consoleFrozen: "写入被拒绝，工作区已冻结（{reason}）：{path}",
+            // 持有项目数据的各方名称：刷盘失败时用，重读工作树失败时也用。
+            stores: {
+                uiDocument: "界面文档",
+                uiGraph: "界面蓝图",
+                story: "故事",
+                localization: "本地化",
+                voice: "语音库",
+                variables: "变量注册表",
+                audioTracks: "音频轨道",
+                characters: "角色",
+                project: "项目设置",
+                assets: "资产库",
+            },
+        },
+        // 重读工作树：磁盘上的内容不再是编辑器显示的内容（解除冻结、恢复版本）。正常情况下作者
+        // 什么都不该看到——只有某一部分读不回来时才出声，因为那时面板里是旧内容。
+        reload: {
+            failedTitle: "项目没有完整重新读取",
+            failedDetail: "以下内容仍是重读之前的：{stores}。重新打开项目可再试一次。",
+            console: "已从磁盘重读项目（{cause}）：{count} 项",
+            consoleFailed: "无法重读 {label}：{error}",
+        },
+        // 冻结工作区：项目数据停止写入，编辑器状态照常。命名按作者能感知的效果（「停止保存」）来，
+        // 而不是按机制来。
+        freeze: {
+            command: "冻结项目（停止保存改动）",
+            release: "解除冻结（恢复保存改动）",
+            enteredTitle: "项目已冻结",
+            enteredDetail: "在解除冻结之前，项目文件不会被改动。",
+            leftTitle: "已解除冻结",
+            leftDetail: "改动会重新写入项目。",
+            // 顶栏中被冻结关掉的每一个控件的悬浮提示。故意所有控件共用一句：作者只需要认一次
+            // 「冻结的项目就是这个样子」，而不是在每个按钮上读一套不同的说辞。控件是禁用而不是
+            // 隐藏，正是为了给这句话留一个可悬浮的落点。
+            unavailable: "项目冻结期间不可用，解除冻结后即可继续使用。",
+        },
+        // 用真编辑器浏览历史，在版本轨道做出来之前的入口。故意只做「上一个版本」而不是选择器：
+        // 选版本需要一份列表，那份列表就是轨道本身；而一个人手上够不着的里程碑没法验收。
+        revisionView: {
+            showPrevious: "查看上一个版本（只读）",
+            leave: "回到当前版本",
+            loadingTitle: "正在读取上一个版本…",
+            loadingDetail: "首次读取某个版本可能需要从远端取回。",
+            shownTitle: "正在查看版本 {revision}",
+            shownDetail: "编辑器为只读，磁盘上的文件不会被改动。",
+            noneTitle: "没有更早的版本",
+            noneDetail: "这个项目只有一个版本，没有更早的内容可看。",
+            failedTitle: "无法显示该版本",
+        },
+        // 版本控制的三个界面：最左侧的版本轨道、项目切换器菜单里的版本那一段、状态栏那一位。三者一律只说
+        // 「哪个版本」，绝不显示变更数——数变更要扫描，而扫描不是纯读（docs/version-control.md §4.17）。
+        versionControl: {
+            title: "版本",
+            open: "打开版本轨道",
+            // 同一个按钮两种文案，因为它做两件事：冻结期间面板折回 48px 常驻条（那条必须留着，它是
+            // 出口），而在 HEAD 上没有常驻条，关掉就什么都不剩。那时写「折叠」等于承诺一列作者随后
+            // 找不到的东西。
+            collapse: "折叠版本轨道",
+            close: "关闭版本轨道",
+            // 正在看历史版本时，折叠轨道、切换器菜单与状态栏那一位的悬停文案。`{version}` 是该版本自己的
+            // 标签，例如 `#4`。
+            viewingVersion: "你正在查看版本 {version}",
+            currentVersion: "当前版本",
+            // 逃生口，也是它为什么在轨道的两种状态下都在：让作者卡在一个出不去的冻结工作区里，
+            // 是这个功能能造成的最坏结果。
+            returnToCurrent: "回到当前版本",
+            returning: "正在回到当前版本…",
+            // 整个界面里唯一会改动作者磁盘文件的动作，下面三句话是它与「工作没了」之间唯一的东西。
+            //
+            // 动作自己说出自己是什么，而不是写「恢复」：确认框会把这句话放在按钮上，而一句
+            // 「确定」摆在一段讲覆盖文件的话旁边，正是一个人按错东西的方式。
+            restore: "恢复到这个版本",
+            // 明说是哪个版本，免得这个框被当成在问另一个——作者是从一列版本里点进来的。
+            // `{version}` 是 `#12`，若进入时没带标签则是短哈希。
+            restoreConfirm: "恢复到版本 {version}？",
+            // 两句话，一句都不能少。第一句是作者要同意的事；第二句是同意它为什么安全，少了它
+            // 就是把一个可回退的操作演成不可逆的，而一个被当成不可逆的功能没人敢用。
+            // 「先记录」是字面意思：检查点在写下第一个字节之前就提交，而检查点打不出来时整个
+            // 恢复直接中止。
+            restoreConfirmDetail: "项目文件会被这个版本的内容替换。你现在的东西会先记录成一个检查点，而且不会有任何版本被删掉。",
+            // 很慢：一次检查点、重写每一个受版本控制的文件、再提交一个版本，然后跟「回到当前
+            // 版本」一样整体重读一遍。
+            restoring: "正在恢复到这个版本…",
+            // 恢复唯一一种「失败时文件已经换过了」的失败：重写已经做完，只有提交它的那一次没成。
+            // 先说他的项目现在是什么样，再说错误——因为作者本来会得出的结论「失败了所以什么都没
+            // 发生」正好与事实相反，然后他就在一个悄悄退回上周的项目上继续干活。`{action}` 是
+            // 「提交版本」那个按钮，从按钮自己的文案取，免得这句话指向一个已经改了名的控件。
+            restoreNotRecordedTitle: "文件已经恢复了，但这个版本没能提交",
+            restoreNotRecordedDetail:
+                "你的项目文件现在是版本 {version} 的内容。把它提交成一个新版本时失败了（{error}）。"
+                + "什么都没丢，按「{action}」就能自己提交一次。",
+            // 还没有版本库的项目。按「缺什么」命名，而不是按机制命名。
+            //
+            // 原文案是「没有版本历史」，与下面的 `noHistory`（仓库存在但还没有版本）几乎撞车。
+            // 这一条说的是「这个工程根本没纳入版本控制」，所以改成与下面按钮 `enable` 对齐的说法。
+            notVersioned: "未启用版本控制",
+            enable: "启用版本控制",
+            // 只有一行：启用会往作者的项目目录里写东西并对它取独占锁，所以在他按下之前先说清做什么。
+            // 用「保存」而不是「记录」：这句说的是将来会有的历史，不是那个动作——而在一个已经写着
+            // 「提交版本」的按钮下面留着最后一处「记录」，读起来就是同一件事有两个名字。
+            enableHint: "在这个项目的目录里保存版本历史。",
+            enabling: "正在设置版本控制…",
+            // 仓库已经存在、里面还没有版本——与上面的 `notVersioned`（压根没启用）是两回事。
+            noHistory: "还没有版本",
+            history: "历史",
+            loadingHistory: "正在读取版本历史…",
+            // 列表末尾，只在这次读取是「读满了上限」而不是「读到工程开头」时出现。说的是作者能得到
+            // 什么，而不是怎么取的——「加载更多」描述的是机制，而那个机制（用更大的上限重读一遍）
+            // 不该是他们需要知道的事。
+            loadMoreHistory: "显示更早的版本",
+            // 配了远端的项目首次读取某个版本会走网络，所以这是真的在等，不是礼貌性的转圈。
+            loadingRevision: "正在打开该版本…",
+            showVersion: "在编辑器里显示这个版本",
+            // 有一个以上父级的版本。标记而不是展开：轨道是线性列表，而不加标记的合并会让这个
+            // 线性列表说假话。
+            merge: "合并",
+            changes: "变更",
+            refreshChanges: "检查变更",
+            // 提交一个版本的按钮。写「提交版本」而不是「提交更改」：这一整块说的都是「版本」，
+            // 作者交出去的就是一个版本。用「提交」而不是「记录」，是因为将来的远端 lore 服务器
+            // 会把同一个动作叫「提交」——词现在就定死，免得以后一半界面一个说法。
+            commit: "提交版本",
+            // 是个问句而不是命令，并且明说可选——因为它确实可选：不写消息也是一个合法的版本，
+            // 没有消息的版本会在上面的列表里用自己的编号称呼自己。
+            commitPlaceholder: "这次改了什么？（可选）",
+            commitMessage: "版本说明",
+            // 绝不是瞬时的：管线要先把这个窗口没保存的东西落完，再暂存整个工程，然后等后端把它的
+            // store 写到磁盘上。
+            committing: "正在提交这个版本…",
+            // 「还没人看过」，这和「干净」不是一回事——而这个区别很重要，因为「看」就是一次扫描，
+            // 这个界面绝不自己发起。
+            changesUnknown: "未检查",
+            noChanges: "没有变更",
+            changesCount: "{count} 项变更",
+            // 逐文件清单。每一行都只是展示：看一个文件「里面」改了什么是后面的里程碑，而一个点开
+            // 什么都没有的行，正是这个面板一直小心不去许下的承诺。
+            //
+            // 每行那个记号的含义。后端本身没有「修改」这个动作——改过内容的文件报的是 KEEP
+            // （docs §4.18），是出口处翻译过来的——所以这五个词是 Studio 的词汇，作者永远看不到
+            // 后端的那套。
+            changeKind: {
+                added: "新增",
+                modified: "修改",
+                deleted: "删除",
+                moved: "移动",
+                copied: "复制",
+            },
+            // 移动或复制的来源。`{path}` 和行本身一样是仓库相对路径。
+            changeFromPath: "来自 {path}",
+            // 唯一一种会挡住「提交版本」的变更——所以它被单独标出来，也因此排在清单最前面，
+            // 而不是按路径落在它本来的位置上。
+            changeConflict: "未解决的冲突",
+            // 清单有上限。这件事要说出来：一个悄悄停在第五十条的列表会被读成「一共就这些」，
+            // 作者会以为自己看全了要提交的东西，然后就提交了。
+            changesMore: "还有 {count} 项未显示",
+            // 检查点是 Studio 按计时器记下的；写一天下来会有几十个。
+            showCheckpoints: "显示 {count} 个检查点",
+            hideCheckpoints: "隐藏检查点",
+            // 版本控制是**可选能力**——Epic 不为 macOS Intel 与 Windows ARM64 提供原生后端——所以
+            // 这两句话不一样，因为作者只有其中一种情况能自己动手。两者都不渲染成禁用控件：在那些
+            // 机器上这个功能从未发货，灰掉的轨道会把一台好机器说成装坏了。
+            unavailable: {
+                platform: "这台机器上没有版本控制。",
+                installation: "这个 Studio 安装里没有版本控制。",
+            },
+            // 版本轨道里的服务器区。用「服务器」不用「远端」：没用过版本控制的作者知道服务器是什么，
+            // 而「远端」这个词要先懂模型才有意义。
+            server: {
+                title: "服务器",
+                // 没连服务器——在有人明确说要连之前，每个工程都是这个状态。
+                none: "没有连接服务器",
+                connect: "连接服务器",
+                // 只有这一个字段。实测：后端只保留 URL 的**源**，仓库靠它自己的 id 认，
+                // 所以真的没有第二样东西要填——旁边不需要「仓库名」。
+                addressLabel: "服务器地址",
+                addressPlaceholder: "lore://studio.example.lan:41337",
+                save: "连接",
+                cancel: "取消",
+                disconnect: "断开连接",
+                // 够到服务器最多要两秒，所以它永远不会自己发生——面板打开时是「还没查」，
+                // 由这个按钮去问。
+                check: "检查服务器",
+                checking: "正在检查服务器…",
+                notChecked: "还没查",
+                upToDate: "已是最新",
+                // 故意按「版本」数而不是按文件数：作者提交的是版本，
+                // 而决定要不要推送的，正是有多少个版本还没离开这台机器。
+                localAhead: "有版本还没上传到服务器",
+                remoteAhead: "服务器上有你还没有的版本",
+                // 两边都动过。这种状态下推送会被拒绝并说明原因，先同步就会合并。
+                diverged: "你和服务器都有新的改动",
+                unreachable: "连不上这个服务器",
+                // 服务器答应了但不接受我们。**只有这个状态**才显示凭据字段——
+                // 在没有人被拒绝之前就问令牌，是在问一个多数作者永远不需要回答的问题。
+                unauthorized: "这个服务器不接受你的身份",
+                push: "上传到服务器",
+                pushing: "正在上传到服务器…",
+                // 「已经有了」是成功。按两次是很正常的事。
+                pushedAlready: "服务器上已经有这些版本了",
+                sync: "从服务器获取",
+                syncing: "正在从服务器获取版本…",
+                syncedNothing: "已经是最新的了",
+            },
+            // 同步时合不拢的文件。用常驻通知而不是行内错误：同步在收尾时会离开版本视图，
+            // 而轨道会因为这个状态变化重新读一遍，行内错误在有人看见之前就被清掉了。
+            //
+            // 说的是「接下来去哪」而不是「发生了什么」：同步只报告然后停下，不会把作者
+            // 直接拖进解决界面——和「绝不替作者建仓库」是同一条纪律。
+            syncConflictTitle: "有文件没能合并",
+            syncConflictDetail:
+                "有 {count} 个文件在你这里和服务器上都改过：\n"
+                + "{files}\n"
+                + "其余的改动已经拿下来了。在版本面板里选择每个文件保留哪一边。",
+            // 合并进行中，只在真的有合并时出现——那时它就是面板里最要紧的一块。
+            mergeOpen: "合并进行中",
+            mergeConflicts: {
+                one: "有 {count} 个文件要选保留哪一边",
+                other: "有 {count} 个文件要选保留哪一边",
+            },
+            // 自动合并全都合上了，只差记一个版本。
+            mergeNoConflicts: "全部自动合并完成，提交一个版本即可收尾。",
+            mergeResolve: "去完成合并",
         },
         // 快捷键自定义（设置 tab）+「?」速查浮层。
         keybindings: {
@@ -315,24 +605,38 @@ export const workspace = {
                     undo: "撤销",
                     redo: "重做",
                     delete: "删除关键帧",
+                    prevFrame: "播放头后退一帧",
+                    nextFrame: "播放头前进一帧",
+                    prevFrames: "播放头后退十帧",
+                    nextFrames: "播放头前进十帧",
+                    playheadStart: "播放头移到开头",
+                    playheadEnd: "播放头移到结尾",
                 },
             },
         },
         // 全局项目搜索：dock 面板与命令面板搜索模式共用。
         search: {
             placeholder: "搜索项目…",
-            // 顶栏搜索 pill 上的文案（点击后打开搜索模式的命令面板）。
-            titleBarPlaceholder: "在项目里搜索",
+            // 顶栏搜索 pill 上的文案（点击后打开搜索模式的命令面板）。`{name}` 为当前项目名。
+            titleBarPlaceholder: "在 {name} 里搜索",
             building: "正在建立搜索索引…",
             empty: "没有匹配结果",
             more: "还有 {count} 条",
+            // 实体分组排在前面：这个框先回答「打开叫 X 的东西」，再回答「找到写着 X 的那句」。
             groups: {
-                story: "剧情文本",
+                scene: "场景",
+                story: "剧本",
+                character: "角色",
+                uiSurface: "UI 界面",
+                blueprint: "蓝图",
                 asset: "素材",
+                storyText: "剧情文本",
                 variable: "变量",
                 uiTextKey: "UI 文本 Key",
                 blueprintNode: "蓝图节点",
             },
+            // 一行结果代表多条一模一样的结果时，行尾显示的角标。
+            occurrences: "×{count}",
         },
         // 标题栏里类 PyCharm 的项目切换器：显示当前项目名，下拉列出最近工作区以便跳转。
         projectSwitcher: {
@@ -347,6 +651,14 @@ export const workspace = {
         closeConfirm: {
             message: "确定要关闭当前工作区吗？",
             detail: "将会自动保存已作出的更改",
+        },
+        // 关闭过程中工作区自己说的话，一个阶段一句（见 `WorkspaceCloseStage`）。
+        // 真正花时间的是检查点那一步，也正是需要点名说清楚的那一步。
+        closing: {
+            title: "正在关闭工作区",
+            saving: "正在保存更改…",
+            checkpoint: "正在记录项目的检查点…",
+            launcher: "正在返回启动器…",
         },
     },
 } satisfies LocaleNamespace<"workspace">;

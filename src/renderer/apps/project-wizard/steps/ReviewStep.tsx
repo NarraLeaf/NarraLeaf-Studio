@@ -84,7 +84,7 @@ export function ReviewStep({ projectData }: ReviewStepProps) {
                                         <p className="text-sm text-fg-muted mt-1">
                                             {selectedTemplate.descriptionKey ? t(selectedTemplate.descriptionKey) : selectedTemplate.description}
                                         </p>
-                                        <span className="text-xs text-fg-subtle bg-fill px-2 py-1 rounded mt-2 inline-block">
+                                        <span className="text-xs text-fg-subtle bg-fill px-2 py-1 rounded-md mt-2 inline-block">
                                             {selectedTemplate.categoryKey ? t(selectedTemplate.categoryKey) : selectedTemplate.category}
                                         </span>
                                     </div>
@@ -110,7 +110,7 @@ export function ReviewStep({ projectData }: ReviewStepProps) {
                                 <div className="space-y-1">
                                     <label className="font-medium text-fg-muted">{t("wizard.fields.versionControl")}</label>
                                     <p className="text-fg">
-                                        {projectData.versionControl === "none" ? t("common.none") : "Git"}
+                                        {projectData.versionControl === "none" ? t("common.none") : "Lore"}
                                     </p>
                                 </div>
                                 <div className="space-y-1">

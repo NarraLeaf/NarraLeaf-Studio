@@ -53,6 +53,7 @@ import {
     updateStoryMotionKeyframe,
     upsertStoryMotionKeyframe,
 } from "./storyMotionTimeline";
+import { useFreezeGuard } from "../../components/ui/freezeGuard";
 import { StoryMotionStagePreview, type StoryMotionPreviewDragMode } from "./StoryMotionStagePreview";
 import { resolveStoryMotionPreviewTarget } from "./storyMotionPreviewTarget";
 
@@ -104,6 +105,9 @@ export function createStoryMotionEditorTab(payload: StoryMotionEditorPayload): E
 export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabComponentProps<StoryMotionEditorPayload>) {
     const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
+    // Everything that moves a keyframe or a stage handle writes the animation asset. The playhead,
+    // zoom, playback and selection do not, and stay live so a frozen motion can still be watched.
+    const freeze = useFreezeGuard();
     const storyService = useMemo(
         () => context && isInitialized ? context.services.get<StoryService>(Services.Story) : null,
         [context, isInitialized],
@@ -767,25 +771,25 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
             id: "undo",
             key: "mod+z",
             description: "Undo story motion edit",
-            handler: undoTimelineEdit,
+            handler: freeze.run(undoTimelineEdit),
         },
         {
             id: "redo",
             key: "mod+shift+z",
             description: "Redo story motion edit",
-            handler: redoTimelineEdit,
+            handler: freeze.run(redoTimelineEdit),
         },
         {
             id: "delete",
             key: "delete",
             description: "Delete selected keyframe",
-            handler: deleteSelectedKeyframe,
+            handler: freeze.run(deleteSelectedKeyframe),
         },
         {
             id: "backspace",
             key: "backspace",
             description: "Delete selected keyframe",
-            handler: deleteSelectedKeyframe,
+            handler: freeze.run(deleteSelectedKeyframe),
         },
         {
             id: "prev-frame",
@@ -823,7 +827,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
             description: "Move playhead to end",
             handler: () => setPlayheadMs(durationRef.current),
         },
-    ], [deleteSelectedKeyframe, redoTimelineEdit, stepPlayhead, undoTimelineEdit]);
+    ], [deleteSelectedKeyframe, freeze, redoTimelineEdit, stepPlayhead, undoTimelineEdit]);
 
     useKeybindings({
         keybindings,
@@ -1151,6 +1155,11 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                         preview={visiblePreview}
                                         target={previewTarget}
                                         onPointerDrag={startPreviewDrag}
+                                        // The stage handles are drawn only when they can be grabbed. A
+                                        // resize handle IS the gesture affordance - leaving one visible
+                                        // that refuses to move is the half-inert drag that reads as a
+                                        // broken editor, so while frozen the frame is inspect-only.
+                                        interactive={!freeze.frozen}
                                         stageSize={stageSize}
                                         showLabel={false}
                                         backgroundUrl={previewBackgroundUrl}
@@ -1195,12 +1204,17 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                 portalMenu
                                 menuZIndex={80}
                             />
+                            {/* Adding a track writes the animation asset. On a frozen project this
+                                still added the property, drew the lane, and lost it on thaw - so it
+                                is refused here, while the dropdown beside it (local state only)
+                                stays live so the list can be read. A motion with every property
+                                already animated keeps its own reason for being off. */}
                             <Button
                                 variant="secondary"
                                 size="md"
                                 type="button"
                                 onClick={() => updateTimeline(current => ensureStoryMotionTrack(current, selectedAddProperty, playheadMs))}
-                                disabled={addPropertyOptions.length === 0}
+                                {...freeze.writes(addPropertyOptions.length === 0)}
                                 className="shrink-0"
                             >
                                 <Plus className="h-3.5 w-3.5" />
@@ -1216,10 +1230,14 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                     gridTemplateColumns: `${TIMELINE_LEFT_COL_PX}px ${timelineWidth}px`,
                                 }}
                             >
-                                <div className="sticky left-0 top-0 z-40 flex h-8 items-center border-r border-b border-edge bg-surface px-3 text-xs font-medium text-fg-muted">
+                                {/* The ruler, its corner and the property gutter are `bg-surface-sunken`,
+                                    not `bg-surface`: they are sticky, so they have to hide the tracks
+                                    sliding under them, and a base surface is cleared to transparent
+                                    under a workspace wallpaper (see styles.css). */}
+                                <div className="sticky left-0 top-0 z-40 flex h-8 items-center border-r border-b border-edge bg-surface-sunken px-3 text-xs font-medium text-fg-muted">
                                     {t("motion.property")}
                                 </div>
-                                <div className="sticky top-0 z-30 h-8 border-b border-edge bg-surface" onPointerDown={startPlayheadDrag}>
+                                <div className="sticky top-0 z-30 h-8 border-b border-edge bg-surface-sunken" onPointerDown={startPlayheadDrag}>
                                     {buildTicks(pxPerMs, timelineWidth, timelineViewport, STORY_MOTION_FPS).map(tick => (
                                         <div key={tick.timeMs} className="absolute top-0 h-full border-l border-edge" style={{ left: tick.timeMs * pxPerMs }}>
                                             <span className="ml-1 text-2xs text-fg-subtle">{tick.label}</span>
@@ -1231,30 +1249,30 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                 </div>
                                 {tracks.map(track => (
                                     <Fragment key={track.id}>
-                                        <div className="group sticky left-0 z-20 flex h-[34px] items-center gap-2 border-r border-b border-edge-subtle bg-surface px-3 text-xs text-fg-muted">
+                                        <div className="group sticky left-0 z-20 flex h-[34px] items-center gap-2 border-r border-b border-edge-subtle bg-surface-sunken px-3 text-xs text-fg-muted">
                                             <span className="min-w-0 flex-1 truncate">{getStoryMotionPropertyMeta(track.property).label}</span>
                                             <button
                                                 type="button"
-                                                className="grid h-6 w-6 shrink-0 place-items-center rounded text-fg-subtle opacity-0 transition group-hover:opacity-100 hover:bg-primary/10 hover:text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
+                                                className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-fg-subtle opacity-0 transition group-hover:opacity-100 hover:bg-primary/10 hover:text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
                                                 onClick={event => {
                                                     event.stopPropagation();
                                                     addKeyframeAtTime(track, playheadMs);
                                                 }}
                                                 onPointerDown={event => event.stopPropagation()}
-                                                title={t("motion.editor.addKeyframeAtPlayhead")}
+                                                {...freeze.writes(false, t("motion.editor.addKeyframeAtPlayhead"))}
                                                 aria-label={t("motion.editor.addKeyframeAria", { property: getStoryMotionPropertyMeta(track.property).label })}
                                             >
                                                 <Diamond className="h-3.5 w-3.5" />
                                             </button>
                                             <button
                                                 type="button"
-                                                className="grid h-6 w-6 shrink-0 place-items-center rounded text-fg-subtle opacity-0 transition group-hover:opacity-100 hover:bg-danger/10 hover:text-danger focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-danger/50"
+                                                className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-fg-subtle opacity-0 transition group-hover:opacity-100 hover:bg-danger/10 hover:text-danger focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-danger/50"
                                                 onClick={event => {
                                                     event.stopPropagation();
                                                     deleteTrack(track);
                                                 }}
                                                 onPointerDown={event => event.stopPropagation()}
-                                                title={t("motion.editor.deleteTrack")}
+                                                {...freeze.writes(false, t("motion.editor.deleteTrack"))}
                                                 aria-label={t("motion.editor.deleteTrackAria", { property: getStoryMotionPropertyMeta(track.property).label })}
                                             >
                                                 <Trash2 className="h-3.5 w-3.5" />
@@ -1262,7 +1280,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                         </div>
                                         <div
                                             className="relative h-[34px] border-b border-edge-subtle"
-                                            onDoubleClick={event => handleLaneDoubleClick(event, track)}
+                                            onDoubleClick={freeze.gesture((event: ReactMouseEvent<HTMLDivElement>) => handleLaneDoubleClick(event, track))}
                                         >
                                             <div className="absolute top-0 z-20 h-full w-px bg-orange-400/90" style={{ left: playheadMs * pxPerMs }} />
                                             {track.keyframes.map(keyframe => (
@@ -1279,7 +1297,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                                         left: (keyframeDrag?.keyframeId === keyframe.id ? keyframeDrag.timeMs : keyframe.timeMs) * pxPerMs,
                                                     }}
                                                     onClick={() => selectKeyframe(track, keyframe)}
-                                                    onPointerDown={event => startKeyframeDrag(event, track, keyframe)}
+                                                    onPointerDown={freeze.gesture((event: ReactPointerEvent<HTMLButtonElement>) => startKeyframeDrag(event, track, keyframe))}
                                                     title={`${getStoryMotionPropertyMeta(track.property).label} ${formatStoryMotionTime(keyframe.timeMs, STORY_MOTION_FPS)}`}
                                                 />
                                             ))}

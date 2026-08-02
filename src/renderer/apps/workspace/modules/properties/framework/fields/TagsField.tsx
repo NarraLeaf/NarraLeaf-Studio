@@ -92,12 +92,13 @@ function TagsFieldInner<TData>({ field, data, onSaving }: TagsFieldProps<TData>)
                 </label>
             )}
             <div className="space-y-2">
-                <div className="flex flex-wrap gap-1">
-                    {hasTags ? (
-                        localTags.map((tag) => (
+                {/* No tags: no chip row. The "Add tag…" field below is the whole affordance. */}
+                {hasTags && (
+                    <div className="flex flex-wrap gap-1">
+                        {localTags.map((tag) => (
                             <span
                                 key={tag}
-                                className="inline-flex items-center gap-1 px-2 py-1 bg-primary/20 text-primary text-xs rounded"
+                                className="inline-flex items-center gap-1 px-2 py-1 bg-primary/20 text-primary text-xs rounded-md"
                             >
                                 {tag}
                                 <button
@@ -110,11 +111,9 @@ function TagsFieldInner<TData>({ field, data, onSaving }: TagsFieldProps<TData>)
                                     <X className="w-3 h-3" />
                                 </button>
                             </span>
-                        ))
-                    ) : (
-                        <span className="text-xs text-fg-subtle">{t("properties.tags.empty")}</span>
-                    )}
-                </div>
+                        ))}
+                    </div>
+                )}
                 <div className="flex gap-1">
                     <input
                         ref={inputRef}

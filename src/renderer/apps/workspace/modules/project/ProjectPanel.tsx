@@ -9,9 +9,13 @@ import type { PanelComponentProps } from "../types";
 import { useProjectNavItems, ProjectPanelHome, type ProjectSectionId } from "./ProjectPanelHome";
 import { ProjectSubPage } from "./components/ProjectSubPage";
 import { ProjectDetailsSection } from "./sections/ProjectDetailsSection";
+import { ProjectGameSection } from "./sections/ProjectGameSection";
+import { ProjectAudioSection } from "./sections/ProjectAudioSection";
 import { ProjectAssetsSection } from "./sections/ProjectAssetsSection";
 import { ProjectSettingsSection } from "./sections/ProjectSettingsSection";
 import { ProjectDependenciesSection } from "./sections/ProjectDependenciesSection";
+import { ProjectRuntimesSection } from "./sections/ProjectRuntimesSection";
+import { ProjectLintingSection } from "./sections/ProjectLintingSection";
 import type { ProjectSectionProps } from "./sections/types";
 
 /** Deep-link payload: open the panel already showing a sub-page. */
@@ -96,7 +100,10 @@ export function ProjectPanel({ panelId, payload }: PanelComponentProps<ProjectPa
                 {activeItem && sectionProps ? (
                     <motion.div
                         key={activeItem.id}
-                        className="absolute inset-0 z-10 bg-surface shadow-[-8px_0_24px_rgba(0,0,0,0.35)]"
+                        // `.nl-opaque-surface`, not `bg-surface`: this slides over the overview list,
+                        // which stays mounted underneath, so its fill has to survive the wallpaper
+                        // rule that clears every base surface (see styles.css). Same colour either way.
+                        className="absolute inset-0 z-10 nl-opaque-surface shadow-[-8px_0_24px_rgba(0,0,0,0.35)]"
                         initial={{ x: "100%" }}
                         animate={{ x: 0 }}
                         exit={{ x: "100%" }}
@@ -108,8 +115,12 @@ export function ProjectPanel({ panelId, payload }: PanelComponentProps<ProjectPa
                             onBack={closeSection}
                         >
                             {activeItem.id === "details" ? <ProjectDetailsSection {...sectionProps} /> : null}
+                            {activeItem.id === "game" ? <ProjectGameSection {...sectionProps} /> : null}
+                            {activeItem.id === "audio" ? <ProjectAudioSection {...sectionProps} /> : null}
                             {activeItem.id === "assets" ? <ProjectAssetsSection {...sectionProps} /> : null}
                             {activeItem.id === "dependencies" ? <ProjectDependenciesSection {...sectionProps} /> : null}
+                            {activeItem.id === "runtimes" ? <ProjectRuntimesSection {...sectionProps} /> : null}
+                            {activeItem.id === "linting" ? <ProjectLintingSection {...sectionProps} /> : null}
                             {activeItem.id === "settings" ? <ProjectSettingsSection {...sectionProps} /> : null}
                         </ProjectSubPage>
                     </motion.div>

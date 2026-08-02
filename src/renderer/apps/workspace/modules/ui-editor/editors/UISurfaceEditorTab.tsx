@@ -76,6 +76,8 @@ import {
     getEditorSurfaceAreaBackgroundColor,
     shouldShowEditorSurfaceLowOpacityOutline,
 } from "@/lib/ui-editor/runtime/surfaceBackground";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import type { UIEditorReadOnly } from "@/lib/ui-editor/interaction/readOnlyInteraction";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 const getSurfaceTabId = (targetSurfaceId: string) => `${SURFACE_TAB_PREFIX}${targetSurfaceId}`;
@@ -314,6 +316,16 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         uiService?.focus.setFocus(FocusArea.Editor, tabId);
     }, [tabId, uiService]);
 
+    // The interface editor's canvas is the case the frozen workspace was described by: *"select an
+    // element and read its properties, but not modify or move it"*. This is the only place the freeze
+    // enters the canvas - everything below `lib/ui-editor` takes a plain `readOnly` and knows nothing
+    // about version control.
+    const freeze = useFreezeGuard();
+    const readOnly = useMemo<UIEditorReadOnly>(
+        () => ({ active: freeze.frozen, reason: freeze.reason }),
+        [freeze.frozen, freeze.reason],
+    );
+
     const { createElementAtClientPoint, surfaceImageDropTargetProps, surfaceImageDropOverlayClass } =
         useSurfaceImageDrop({
             viewportRef,
@@ -374,6 +386,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         stateService,
         uiService,
         requestRenamePrimary,
+        readOnly,
     });
 
     const hostAdapter = useMemo<UIHostAdapter>(() => {
@@ -381,8 +394,12 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
             host: surface?.host ?? "app",
             editorStateService: stateService ?? undefined,
             editorDocumentService: documentService ?? undefined,
+            // Beside the two services rather than anywhere else, because those two ARE the write
+            // path a widget renderer can reach from inside its own markup - see
+            // `resolveInlineTextEditHost`, which reads all three together.
+            editorReadOnly: readOnly,
         };
-    }, [documentService, stateService, surface?.host]);
+    }, [documentService, readOnly, stateService, surface?.host]);
 
     const surfaceContent = useMemo(() => {
         if (!surfaceId || !runtimeBridge || !documentService) {
@@ -502,6 +519,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         tool,
         stateService,
         documentService,
+        readOnly,
     });
 
     useEffect(() => {
@@ -617,6 +635,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                         localBlueprint={localBlueprint}
                         inputDialog={inputDialog}
                         allowAddSelectionToComponentLibrary={!isComponentEdit}
+                        readOnly={readOnly}
                     />
 
                     {/* Top toolbar */}
@@ -678,15 +697,15 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             </div>
                             <button
                                 type="button"
-                                className="rounded border border-primary/35 bg-primary/15 px-2.5 py-1 text-2xs font-medium text-fg hover:bg-primary/25 disabled:cursor-not-allowed disabled:opacity-45"
-                                disabled={!bindingSelection}
+                                className="rounded-md border border-primary/35 bg-primary/15 px-2.5 py-1 text-2xs font-medium text-fg hover:bg-primary/25 disabled:cursor-not-allowed disabled:opacity-45"
+                                {...freeze.writes(!bindingSelection)}
                                 onClick={handleConfirmElementBinding}
                             >
                                 {t("common.confirm")}
                             </button>
                             <button
                                 type="button"
-                                className="rounded border border-edge bg-fill-subtle px-2.5 py-1 text-2xs text-fg-muted hover:bg-fill"
+                                className="rounded-md border border-edge bg-fill-subtle px-2.5 py-1 text-2xs text-fg-muted hover:bg-fill"
                                 onClick={handleCancelElementBinding}
                             >
                                 {t("common.cancel")}
@@ -731,6 +750,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             showOutlines={true}
                             openSurfaceEditor={handleOpenSurfaceEditor}
                             openComponentEditor={handleOpenComponentEditor}
+                            readOnly={readOnly}
                         />
                     ) : null}
 
@@ -742,6 +762,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             documentService={documentService}
                             runtimeBridge={runtimeBridge}
                             enableComponents={!isComponentEdit}
+                            readOnly={readOnly}
                         />
                     )}
 

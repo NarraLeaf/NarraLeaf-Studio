@@ -76,7 +76,79 @@ export type StoryEditorViewState = {
     selectedBlockIds: StoryBlockId[];
     /** Focus-anchored scroll position; absent until the author scrolls. */
     scroll?: StoryEditorScrollAnchor;
+    /**
+     * Whether the scene-overview block (name / description / default background) is collapsed. Absent
+     * until the author toggles it manually: with no stored preference the editor falls back to a
+     * config-derived default (expanded while the scene is still unconfigured, collapsed once set up).
+     */
+    overviewCollapsed?: boolean;
 };
+
+/**
+ * Reading-density of the scene editor (WI-6). `compact` is the status quo; the other two open up type
+ * and row boxes by the amounts in `STORY_DENSITY_METRICS` (storyEditorTextStyle.tsx), which is the one
+ * place the numbers live — the row chrome reads them through a CSS variable rather than hard-coding a
+ * second copy in the stylesheet.
+ */
+export type StoryEditorDensity = "compact" | "standard" | "comfortable";
+
+export const STORY_EDITOR_DENSITIES: readonly StoryEditorDensity[] = ["compact", "standard", "comfortable"];
+
+/** A stored value from an older build (or a hand-edited state file) falls back to the status quo. */
+function normalizeDensity(value: unknown): StoryEditorDensity {
+    return STORY_EDITOR_DENSITIES.includes(value as StoryEditorDensity) ? value as StoryEditorDensity : "compact";
+}
+
+/**
+ * Editor-wide view preferences (WI-6): density and the "narrative only" filter. Persisted per-project
+ * via {@link PanelStateService} (the same store the row view-state uses), so they survive tab switches
+ * and restarts. Editor-wide, not per-scene, so they live under their own key rather than the scene map.
+ */
+export type StoryEditorViewPrefs = {
+    density: StoryEditorDensity;
+    /** When on, the projection hides staging rows and keeps only narration / dialogue / choice / note. */
+    narrativeOnly: boolean;
+};
+
+const STORY_EDITOR_VIEW_PREFS_KEY = "story:editor:view-prefs";
+const DEFAULT_STORY_EDITOR_VIEW_PREFS: StoryEditorViewPrefs = { density: "compact", narrativeOnly: false };
+
+export function getStoryEditorViewPrefs(panelState: PanelStateService): StoryEditorViewPrefs {
+    const stored = { ...DEFAULT_STORY_EDITOR_VIEW_PREFS, ...panelState.getPanelState<StoryEditorViewPrefs>(STORY_EDITOR_VIEW_PREFS_KEY) };
+    return { ...stored, density: normalizeDensity(stored.density) };
+}
+
+export function patchStoryEditorViewPrefs(panelState: PanelStateService, patch: Partial<StoryEditorViewPrefs>): void {
+    panelState.setPanelState<StoryEditorViewPrefs>(STORY_EDITOR_VIEW_PREFS_KEY, patch);
+}
+
+/**
+ * Which control containers are showing their staging lens (M7), persisted per-project via
+ * {@link PanelStateService} so the choice survives tab switches and restarts — the same storage the
+ * density preference uses. Keyed by the container's block id; a stale id for a since-deleted container
+ * is inert (nothing matches it). Stored as an id→true map so the shallow-merge `setPanelState` can flip
+ * one container without rewriting the rest (a `false`/absent entry both mean "list view").
+ */
+const STORY_EDITOR_LENS_STATE_KEY = "story:editor:lens-state";
+type StoryEditorLensStore = Record<StoryBlockId, boolean>;
+
+export function getStoryEditorLensContainerIds(panelState: PanelStateService): Set<StoryBlockId> {
+    const store = panelState.getPanelState<StoryEditorLensStore>(STORY_EDITOR_LENS_STATE_KEY);
+    const ids = new Set<StoryBlockId>();
+    if (store) {
+        for (const [id, on] of Object.entries(store)) {
+            if (on) {
+                ids.add(id);
+            }
+        }
+    }
+    return ids;
+}
+
+/** Flip one container's lens view on or off, touching only its own entry in the store. */
+export function setStoryEditorLensContainer(panelState: PanelStateService, containerId: StoryBlockId, on: boolean): void {
+    panelState.setPanelState<StoryEditorLensStore>(STORY_EDITOR_LENS_STATE_KEY, { [containerId]: on });
+}
 
 const ROW_SELECTOR = "[data-story-row-block-id]";
 
