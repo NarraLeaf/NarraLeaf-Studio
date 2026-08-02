@@ -22,6 +22,7 @@ import type {
     PluginTextEditorLanguageDef,
     PluginTextEditorPreviewDef,
 } from "@/lib/workspace/services/ui/textEditorContributions";
+import type { TestDefinition } from "@/lib/testing/types";
 import {
     AssetExtensions,
     AssetType,
@@ -156,6 +157,50 @@ export type {
     PluginTextEditorPreviewDef,
     PluginTextEditorPreviewProps,
 } from "@/lib/workspace/services/ui/textEditorContributions";
+/**
+ * The test protocol, whole. Same rule as the block above and the reason it is
+ * spelled out one name at a time: `TestDefinition` alone would publish a type
+ * whose `run` parameter a plugin author cannot name.
+ *
+ * `TEST_PROTOCOL_VERSION` is the compile-time constant a definition compares
+ * against. At *runtime* read `app.services.tests.protocolVersion` instead - the
+ * host module Studio serves for this specifier re-exports only `definePlugin`
+ * and the enums, so a value import of anything else fails to link.
+ *
+ * See `docs/plugin-test-protocol.md`.
+ */
+export { TEST_PROTOCOL_VERSION } from "@/lib/testing/types";
+export type {
+    TestAvailability,
+    TestAvailabilityContext,
+    TestCapability,
+    TestCategory,
+    TestDefinition,
+    TestFinding,
+    TestFindingSeverity,
+    TestGameEvent,
+    TestGameExit,
+    TestGameExitReason,
+    TestGameHandle,
+    TestGameLaunchOptions,
+    TestGameSession,
+    TestId,
+    TestLogLevel,
+    TestPresentation,
+    TestProgress,
+    TestProjectHandle,
+    TestRunContext,
+    TestSceneRef,
+    TestStoryRef,
+    TestText,
+    TestVerdict,
+} from "@/lib/testing/types";
+/**
+ * Where a {@link TestFinding} points. Not a testing type - it is the global-search navigation
+ * layer, exported here because `TestFinding.target` is the only way a plugin reaches it and an
+ * unnameable field is one an author has to build blind.
+ */
+export type { SearchJumpTarget } from "@/lib/workspace/services/search/searchIndexModel";
 
 export const ui = pluginUi;
 
@@ -228,6 +273,35 @@ export type PluginTextEditorService = {
     registerLanguage(def: PluginTextEditorLanguageDef): PluginCleanup;
     registerPreview(def: PluginTextEditorPreviewDef): PluginCleanup;
     registerAction(def: PluginTextEditorActionDef): PluginCleanup;
+};
+
+/**
+ * Contribute checks an author can run against their own game from Run > Test.
+ *
+ * "Test" here has nothing to do with the repo's or your plugin's unit tests: it is a check the
+ * *author* starts, that observes *their project*, and that reports a verdict and findings into
+ * Studio's Test Report tab. `docs/plugin-test-protocol.md` is the normative contract; four things
+ * bite before you have read it:
+ *
+ *  - **Declare every id in `contributes.tests`.** Registering an id the manifest does not list
+ *    throws at load, exactly as an undeclared blueprint node or widget does. Ids must be prefixed
+ *    with your plugin id, because the registry is one flat id space shared with Studio's own tests.
+ *  - **Declaring a test asks the author for nothing at install time.** It derives no permission,
+ *    deliberately - nothing runs until they pick it and press Start.
+ *  - **Your `run` may return `passed`, `failed` or `skipped` and nothing else.** `cancelled` and
+ *    `errored` are the host's verdicts about you. Cancellation reaches you as `ctx.signal`.
+ *  - **What you did not declare in `requires` is absent, not throwing.** `ctx.game` is `undefined`
+ *    unless you asked for `game.launch`, so a test must read the handle rather than assume it.
+ */
+export type PluginTestService = {
+    /**
+     * The host's {@link TEST_PROTOCOL_VERSION}. Read it at `setup` if your definition needs a
+     * contract newer than some Studio you support: refuse there, where you can still decline to
+     * register, rather than half-way through a run.
+     */
+    readonly protocolVersion: number;
+    register(definition: TestDefinition): PluginCleanup;
+    registerMany(definitions: TestDefinition[]): PluginCleanup;
 };
 
 /**
@@ -378,6 +452,8 @@ export type PluginServices = {
     workspace: PluginWorkspaceService;
     /** Extend Studio's built-in text editor; see {@link PluginTextEditorService}. */
     textEditor: PluginTextEditorService;
+    /** Contribute checks to Run > Test; see {@link PluginTestService}. */
+    tests: PluginTestService;
     ui: {
         panels: {
             register<TPayload = unknown>(panel: PanelDefinition<TPayload>): PluginCleanup;

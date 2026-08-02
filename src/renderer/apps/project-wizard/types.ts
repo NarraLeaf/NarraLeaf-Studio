@@ -2,10 +2,27 @@ import { LucideIcon } from "lucide-react";
 import { TranslationKey } from "@shared/i18n";
 
 /**
+ * Which path through the wizard a first-page card starts.
+ *
+ * **The first page is not about templates; it is about where the project comes from.** `create`
+ * scaffolds one here from answers the author types. `import` unpacks one somebody handed them as
+ * a file. `clone` copies one that already exists on a version-control server. Only the first has
+ * anything left to ask - for the other two every answer is already recorded in what is being
+ * brought in.
+ *
+ * They are three different wizards behind one entry point, so the flow is a property of the card
+ * rather than something read off its id: a card that only *looked* like a template while silently
+ * taking another path is the kind of thing that stays invisible until it is wrong.
+ */
+export type ProjectFlow = "create" | "import" | "clone";
+
+/**
  * Project template configuration
  */
 export interface ProjectTemplate {
     id: string;
+    /** Which wizard this card starts. See {@link ProjectFlow}. */
+    flow: ProjectFlow;
     name: string;
     /** i18n key; when set, overrides `name` at render time (falls back to `name`). */
     nameKey?: TranslationKey;
@@ -42,6 +59,15 @@ export interface ProjectData {
     resolution: string;
     appId: string;
     versionControl: VersionControlChoice;
+    /**
+     * The server address a cloned project comes from, e.g. `lore://studio.example.lan:41337/my-game`.
+     *
+     * Only the `clone` flow reads it, and it is the ONLY thing that flow asks about the project
+     * itself: name, app id, stage size, licence and author are all already recorded in what the
+     * server sends, and asking again would let the author give answers that the clone then
+     * overwrites.
+     */
+    remoteUrl: string;
 }
 
 /**
@@ -63,9 +89,52 @@ export interface ValidationErrors {
 }
 
 /**
- * Wizard step types
+ * Wizard step types.
+ *
+ * Not a sequence: which of these the author walks through, and in what order, depends on the
+ * {@link ProjectFlow} they picked on the first page. See `WIZARD_FLOW_STEPS`.
  */
-export type WizardStep = "template" | "details" | "settings" | "review";
+export type WizardStep = "template" | "details" | "settings" | "review" | "source" | "clone" | "import";
+
+/**
+ * How a clone is going, for the last page to draw.
+ *
+ * Two states and no more, because there is no third thing to say: the backend delivers a clone's
+ * progress events only once the call has finished, and the check that follows it is a single
+ * directory listing. A phase the author sees for ten milliseconds is not information.
+ */
+export type CloneStatus = "idle" | "cloning";
+
+/**
+ * A clone that did not end with an openable project, and what the author can do about it.
+ *
+ * `notAProject` carries the destination because those files are still on disk - the clone
+ * succeeded, it simply brought down something Studio cannot open - and the folder the author
+ * picked is no longer empty, so the next attempt needs a different one.
+ */
+export type CloneFailure =
+    | { kind: "failed"; message: string }
+    | { kind: "notAProject"; destination: string };
+
+/**
+ * How an import is going.
+ *
+ * `picking` is not cosmetic: the whole of an import happens inside one main-process call that puts
+ * two native dialogs on screen, so for most of its life this page is waiting on the author rather
+ * than on work. Saying "unpacking" through that would be a lie, and a spinner with no explanation
+ * over a dialog the author is already looking at is noise.
+ */
+export type ImportStatus = "idle" | "picking";
+
+/**
+ * An import that did not end with an openable project.
+ *
+ * Shares `notAProject` with {@link CloneFailure} and for the same reason: a package that unpacked
+ * cleanly can still contain something Studio cannot open, and the files are on disk either way.
+ */
+export type ImportFailure =
+    | { kind: "failed"; message: string }
+    | { kind: "notAProject"; destination: string };
 
 /**
  * Step configuration

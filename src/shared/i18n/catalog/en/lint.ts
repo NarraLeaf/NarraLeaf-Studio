@@ -185,6 +185,10 @@ export const lint = {
     },
     build: {
         blocked: "Build stopped by {count} problems",
+        // Spelled out panel → page → row, because the gate is on by default: an author who never
+        // opened this panel has no reason to know the setting exists, and "in the lint settings"
+        // would leave them looking for it.
+        blockedHint: "Change this in Project → Linting → Check before building",
         skipped: "Project check skipped",
     },
     settings: {

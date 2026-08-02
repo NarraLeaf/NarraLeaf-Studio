@@ -8,6 +8,7 @@ import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
 import type { MissingRecentProject } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
+import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
@@ -141,6 +142,7 @@ export enum IPCEventType {
     workspaceImportProjectPackage = "workspace.projectPackage.import",
     workspaceExportConsoleLogs = "workspace.console.exportLogs",
     workspaceConfirmClose = "workspace.confirmClose",
+    workspaceCloseProgress = "workspace.closeProgress",
     workspaceFlushPendingSaves = "workspace.flushPendingSaves",
     workspaceResolveAssetUrl = "workspace.resolveAssetUrl",
     workspaceResolveImageAssetUrl = "workspace.resolveImageAssetUrl",
@@ -175,6 +177,11 @@ export enum IPCEventType {
     previewLaunch = "preview.launch",
     previewStop = "preview.stop",
     previewGetStatus = "preview.getStatus",
+
+    gameTestLaunch = "gameTest.launch",
+    gameTestStop = "gameTest.stop",
+    /** Pushed, unlike preview's polled status: event ordering is evidence a test reasons about. */
+    workspaceGameTestEvent = "workspace.gameTest.event",
 
     gameBuildStart = "gameBuild.start",
     gameBuildCancel = "gameBuild.cancel",
@@ -282,6 +289,20 @@ export type BlueprintPersistenceProjectRef = {
  * right place to be asked what to say about it.
  */
 export type WorkspaceFreezeKind = "revision" | "manual";
+
+/**
+ * Which part of the close a workspace is currently waiting on.
+ *
+ * The close is a sequence of waits the author cannot see - the last auto-saves going out, then
+ * Lore writing the closing checkpoint, which is the long one - and until this existed the window
+ * simply sat there for those seconds with the title bar still on screen.
+ *
+ * Named stages rather than a fraction because none of the steps can report a fraction: the
+ * checkpoint is one call into the backend that answers when it answers. Naming what is happening
+ * is the honest amount of detail, and it is also the part that answers "why is this taking so
+ * long" - "recording a version" is a reason, "43%" is not.
+ */
+export type WorkspaceCloseStage = "saving" | "checkpoint" | "launcher";
 
 export type IPCEvents = {
     [IPCEventType.getPlatform]: {
@@ -541,7 +562,7 @@ export type IPCEvents = {
             byteLength?: number;
         };
     };
-} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameBuildEvents & IPCSigningEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCPrivilegedEvents & IPCVcsEvents;
+} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCPrivilegedEvents & IPCVcsEvents;
 
 /**
  * Version control. Every event carries `projectPath`: Studio is
@@ -1191,6 +1212,25 @@ export type IPCWorkspaceEvents = {
         response: RequestStatus<{ confirmed: boolean }>;
     };
     /**
+     * Tells the workspace which stage of its own close is running, so it can say so on screen.
+     *
+     * A message rather than a request: main must not wait on the renderer to acknowledge a
+     * progress note - the whole point of the note is that main is busy with something else - and a
+     * workspace that never renders it still closes exactly as before.
+     *
+     * `stage: null` means the close was called off (the launcher failed to start, so the window
+     * stays open) and the indicator should go away. The ordinary ending needs no message: the
+     * window is destroyed, and the indicator with it.
+     */
+    [IPCEventType.workspaceCloseProgress]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: {
+            stage: WorkspaceCloseStage | null;
+        };
+        response: never;
+    };
+    /**
      * Tells the workspace to write out every auto-save it still owes, and waits for it.
      *
      * The main process blocks the window close / the app quit on this reply, which is the whole
@@ -1514,6 +1554,41 @@ export type IPCPreviewEvents = {
         response: {
             status: PreviewStatus;
         };
+    };
+};
+
+/**
+ * Game processes owned by a *test* run, not by the author's Run button.
+ *
+ * Separate from `IPCPreviewEvents` on purpose. Preview answers one question - "is it running" - by
+ * polling, which is enough for an author watching their own game; a test has to tell a window being
+ * closed from a process dying, and has to see an uncaught error rather than read about one in a log
+ * line. Folding that onto the preview calls would have made every preview consumer carry it.
+ */
+export type IPCGameTestEvents = {
+    [IPCEventType.gameTestLaunch]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: GameTestLaunchRequest;
+        response: GameTestLaunchResult;
+    };
+    [IPCEventType.gameTestStop]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+            sessionId: string;
+        };
+        response: Record<string, never>;
+    };
+    [IPCEventType.workspaceGameTestEvent]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: GameTestEventPayload;
+        // Required by `IPCConfiguration` even for a one-way push. Omitting it does not just weaken
+        // this entry: `IPCEvents` stops satisfying the constraint every IPC generic is written
+        // against, so every handler in main and every preload call fails to typecheck at once.
+        response: never;
     };
 };
 

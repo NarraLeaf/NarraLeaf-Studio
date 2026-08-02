@@ -171,7 +171,37 @@ function isNothingToCommit(error: unknown): boolean {
 }
 
 /**
- * The one spelling of a project path this manager keys on.
+ * A project path this layer cannot work in, said so before anything acts on it.
+ *
+ * Named rather than anonymous for the reason {@link isNothingToCommit} explains: callers
+ * tell errors apart by name across a boundary where `instanceof` is not reliable.
+ */
+export class VcsProjectPathError extends Error {
+    constructor(readonly projectPath: string) {
+        super(
+            `Version control needs an absolute project path with no control characters, got `
+            + `${JSON.stringify(projectPath)}. One that arrives relative, or with a newline or a `
+            + `tab in it, has usually been through a layer that read its backslashes as escapes: `
+            + `"D:\\Temp\\nls\\back" comes out of that as "D:Temp", a newline, "ls", a backspace, `
+            + `"ack".`,
+        );
+        this.name = "VcsProjectPathError";
+    }
+}
+
+/**
+ * Characters no path handed to this layer may contain.
+ *
+ * NUL everywhere: it terminates a C string, so a path carrying one means something different
+ * on the far side of the FFI boundary than it does here. The rest of the C0 range on Windows
+ * only, where such a name cannot exist at all - POSIX permits a newline in a filename and this
+ * is not the place to decide otherwise.
+ */
+const FORBIDDEN_PATH_CHARACTERS = process.platform === "win32" ? /[\u0000-\u001f]/ : /\u0000/;
+
+/**
+ * The one spelling of a project path this manager works in: absolute, with this platform's
+ * separators, and refused outright when it is neither.
  *
  * **Two spellings of one directory used to be two projects here**, and the consequence was not a
  * duplicated cache - it was a process deadlocking against itself. The session map and the operation
@@ -184,15 +214,36 @@ function isNothingToCommit(error: unknown): boolean {
  *
  * The two spellings are not hypothetical. Window-close paths take the path from the window's props
  * while the renderer sends the one out of the project config, and nothing has ever required those
- * to agree on a separator.
+ * to agree on a separator. `path.resolve` unifies them, and makes the path absolute, which the
+ * backend requires anyway (§4.4 - relative paths resolve against the process working directory,
+ * which is never the project).
  *
- * `path.resolve` unifies separators and makes the path absolute, which the backend requires anyway
- * (§4.4 - relative paths resolve against the process working directory, which is never the
- * project). Case is folded on Windows only, where the filesystem is case-insensitive and
- * `D:\Demo` and `D:\demo` are one directory holding one lock.
+ * **Which is exactly why a path that is not already absolute has to be refused rather than
+ * resolved.** `path.resolve` does not report that it had to invent a root; it silently answers
+ * with one built from the Electron main process's working directory. A caller that hands over
+ * `D:Temp\demo` - the shape a `D:\Temp\demo` takes after one round of backslash-escape processing
+ * somewhere upstream - would have a repository created under Studio's own install directory and be
+ * told it succeeded, with a `root` in the reply nobody asked for. Refusing costs nothing (every
+ * real project path in Studio originates in the main process, from a native dialog or a config
+ * file) and turns a silent relocation into a sentence naming the likely cause.
+ *
+ * Case is folded by {@link projectKey} on Windows only, where the filesystem is case-insensitive
+ * and `D:\Demo` and `D:\demo` are one directory holding one lock.
  */
+function projectRoot(projectPath: string): string {
+    if (
+        typeof projectPath !== "string"
+        || !path.isAbsolute(projectPath)
+        || FORBIDDEN_PATH_CHARACTERS.test(projectPath)
+    ) {
+        throw new VcsProjectPathError(String(projectPath));
+    }
+    return path.resolve(projectPath);
+}
+
+/** The key the session map and the operation queue use. See {@link projectRoot}. */
 function projectKey(projectPath: string): string {
-    const resolved = path.resolve(projectPath);
+    const resolved = projectRoot(projectPath);
     return process.platform === "win32" ? resolved.toLowerCase() : resolved;
 }
 
@@ -374,9 +425,9 @@ export class VcsManager extends Manager {
      */
     private openSession(projectPath: string, key: string, backend: VcsBackend): Promise<VcsSession> {
         const pending = (async (): Promise<VcsSession> => {
-            // The resolved path rather than the key: the key is case-folded for lookup and this is
-            // what is handed to the backend and used to build absolute paths off.
-            const root = path.resolve(projectPath);
+            // The normalized path rather than the key: the key is case-folded for lookup and this
+            // is what is handed to the backend and used to build absolute paths off.
+            const root = projectRoot(projectPath);
             const globals = this.globalsFor(root);
             const store = await this.openStoreAnnouncingDelay(backend, globals, root);
 
@@ -460,7 +511,7 @@ export class VcsManager extends Manager {
     ): Promise<VcsRepositoryInfo> {
         return this.serialize(projectPath, async () => {
             const backend = await requireVcsBackend();
-            const root = path.resolve(projectPath);
+            const root = projectRoot(projectPath);
             const globals = this.globalsFor(root);
             // Decided before the attempt, because the cleanup below must not run when
             // the answer is "it was already one": that path can have a LIVE SESSION on
@@ -1177,7 +1228,7 @@ export class VcsManager extends Manager {
      * placeholder and leaves whatever is on the server alone.
      */
     public async setRemote(projectPath: string, url: string | null): Promise<void> {
-        const root = path.resolve(projectPath);
+        const root = projectRoot(projectPath);
         // Read BEFORE the session is closed, and needed only for the connect path: the
         // registration has to carry this project's own repository id, or the name on the
         // server would resolve to a different repository than the one that pushes to it.
@@ -1433,7 +1484,7 @@ export class VcsManager extends Manager {
         destination: string,
         options: { onProgress?: (transferred: number, total: number) => void } = {},
     ): Promise<{ root: string; branch: string; fileCount: number }> {
-        const root = path.resolve(destination);
+        const root = projectRoot(destination);
         return this.serialize(root, async () => {
             const backend = await requireVcsBackend();
             const globals = this.globalsFor(root, { online: true });
