@@ -319,13 +319,20 @@ spec.serialize(合并结果) → 原子写进工作树
 |---|---|---|---|
 | **D0** | 实测：§1.6 的五个未知 | — | ✅ **完成 2026-08-01**。`mergeSpike*.integration.test.ts` + 结论写回 `version-control.md` **§4.23–§4.30**（八条，多出来的三条比原来的五条更重要） |
 | **D1** | diff 的地基 | H1 | ✅ **完成 2026-08-01**（`5a24f901`）。`shared/documents/diff.ts`、`jsonStructuralDiff.ts`、`vcs/diff/` 三件、两个 IPC、`documentRegistry.test.ts`（**改前 4 条断言挂 3 条**）。五个 project 类型干净、591 测试全绿。真机验收并入 D2——D1 没有界面，能在真机上单独确认的只有「specs 真的进了 main 的产物」，已用实际构建配置（`build-main.js` 的 external 清单）跑 esbuild 确认五个 kind 与 `registerDocumentSpec` 都在产物里 |
-| **D2** | 变更行可点 | D1 | 就地展开 8 行摘要 + loading 态 |
-| **D3** | `vcs-changes` tab | D2 | `working-tree` 与 `between` 两种模式 |
-| **D4** | 三个真 `spec.diff` | D1 | story / assets-metadata / characters |
-| **D5** | 合并绑定 | D0 | 六个 verb；补上被丢掉的三个冲突标志 |
+| **D2** | 变更行可点 | D1 | ✅ **完成 2026-08-01**（`a514b367`）。就地展开、8 行上限、loading/错误/未查看三态、tier 一行淡字。真机验收见下 |
+| **D3** | `vcs-changes` tab | D2 | ✅ **完成 2026-08-01**（`a514b367`）。两种模式都真机跑过；**`builtInEditors` 是死代码**（`registry.ts:55` 无任何消费者），所以走的是 `EditorTabDefinition` + `openOrUpdate` 这条活路 |
+| **D4** | 三个真 `spec.diff` | D1 | ✅ **完成 2026-08-01**（`0aa2fc5f`）。characters 全量接入（含 serialize）；story / assets-metadata **只做读侧**，`serialize` 明确抛错而不是悄悄改写作者的文件。`undefined` 审计实得 **11 处**（预计 ~6），**其中 2 处在迁移函数里**。顺带修掉 D1 漏的 `DocumentSpecDefinition.diff` 静默丢弃 |
+| **D5** | 合并绑定 | D0 | ✅ **完成 2026-08-01**（`88bbcc4c`）。`merge.ts` + 5 个 IPC；三个冲突标志已通到渲染进程（真机 `getStatus` 里看到了）；**冲突同步现在能报出文件名**（此前恒为 `["*"]`）；「合并进行中」判据是 `revisionMerged && revisionStaged`，单看前者会把每个合并过的工程永久判成合并中 |
 | **D6** | 解决第一档 | D5, D3 | 整份取一边；写回管线（§4.4）；接 V4 重载与 `afterRevision` |
 | **D7** | 解决第二档 | D6, D4 | `merge3`；**localization 与 assets-metadata 先行** |
 | **D8** | story 的 merge3 | D7 | 场景级/块级合并 + 不可合并判据 |
+
+> **真机验收（2026-08-01，orchestrator 亲驱，工程 `D:/Temp/nls-d2acc`，仓库 #66）**：四档在真数据上**全部命中**——
+> `character.json` semantic、`audio-tracks.json` summary、`uidoc.json` structural（`elements` / `meta > updatedAt` 带
+> `旧 → 新`）、`assets/*.json` opaque；历史行 hover 出对比图标 → 开出 `#65 → #66` 的 tab。
+> **看出来两个「说了假话」的缺陷并已修**（`2d74a408`）：① 被列为「已修改」的文件展开说「内部没有差异」——两句都是真的，
+> 因为那次改动只是规范化重写，但作者无法把它和 bug 区分开；② 一个新增的 20 字节 `.txt` 自称「Not read / 太大、非文本或读不出」。
+> 这两条都不是测试能发现的。
 
 **D0 排最前**，因为 D5 之后的一切都建立在「Lore 的 automerge 到底做了什么」上。
 **D6 单独就让合并可用**，第二档是改善不是及格线。
