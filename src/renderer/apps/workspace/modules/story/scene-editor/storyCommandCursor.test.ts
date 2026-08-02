@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { getCommandCandidates, hasCandidateSource } from "./storyCommandCandidates";
 import { getCommandDef } from "./commands/registry";
 import { completionFor, defaultHighlights, getCommandCursor, type StoryCommandCursor } from "./storyCommandCursor";
+import { argMenuOffer } from "./StorySceneEditorRows";
 import type { StoryCommandContext } from "./storyCommandResolution";
 
 const CONTEXT: StoryCommandContext = {
@@ -180,6 +181,57 @@ describe("defaultHighlights", () => {
         expect(defaultHighlights(at("/say Zoe|"), items(freeEcho()))).toBe(false);
         // ...but a real match still wins: `/say Ali` puts Alice first, so Enter picks Alice.
         expect(defaultHighlights(at("/say Ali|"), items(real(), freeEcho()))).toBe(true);
+    });
+
+    it("never highlights inside an expression, whatever it is offering", () => {
+        // A ruling, not a gap in the rule: in an expression the author is writing rather than picking,
+        // so Enter has to keep meaning "commit this line". Asserted with a full, real-looking list
+        // precisely because every other reason this function returns false (nothing typed, nothing
+        // offered, the top offer is an echo) is absent here - the arm itself is the reason.
+        expect(defaultHighlights(at("/set gold go|"), items(real(), real()))).toBe(false);
+        expect(defaultHighlights(at("/set flag visited(Chap|)"), items(real()))).toBe(false);
+    });
+});
+
+describe("argMenuOffer", () => {
+    const offer = (marked: string, resolved = {}) => argMenuOffer(at(marked), CONTEXT, resolved);
+
+    // The defect this exists to pin: `getCommandCursor` answers `expression` for every `/set`, `/if`
+    // and `/until` right-hand side, and the render gate used to admit `positional` / `paramValue` /
+    // `paramName` only - so the candidates the model had ready never reached a menu, in any expression
+    // slot, ever. The model was right and had no way out.
+    it("opens with candidates in an expression slot", () => {
+        const inCall = offer("/set flag visited(Chap|)");
+        expect(inCall.open).toBe(true);
+        expect(inCall.candidates.map(candidate => candidate.value)).toEqual(["Chapter 2"]);
+
+        const bare = offer("/set gold go|");
+        expect(bare.open).toBe(true);
+        expect(bare.candidates.map(candidate => candidate.value)).toContain("gold");
+    });
+
+    it("still opens the positional slot it always opened", () => {
+        // The control from the bug report: `/set g` worked all along, because that caret is
+        // `positional`. If this ever goes red the fix has traded one arm for another.
+        const positional = offer("/set g|");
+        expect(positional.open).toBe(true);
+        expect(positional.candidates.map(candidate => candidate.value)).toContain("gold");
+    });
+
+    it("leaves an expression slot with NOTHING highlighted, so Enter still commits the line", () => {
+        // The core of the ruling, kept here as well as on `defaultHighlights` because this is the
+        // value the component actually feeds the menu. Flip it to true and `/set gold gold + 1` +
+        // Enter stops submitting and inserts whatever the menu happened to be showing instead.
+        expect(offer("/set gold go|").autoHighlight).toBe(false);
+        expect(offer("/set flag visited(Chap|)").autoHighlight).toBe(false);
+        // ...and the positional beside it does highlight, so the two above are not both false for some
+        // unrelated reason (an empty list, say) that would hide a regression.
+        expect(offer("/set g|").autoHighlight).toBe(true);
+    });
+
+    it("stays shut where there is nothing to offer", () => {
+        expect(offer("/say Alice hello |").open).toBe(false);
+        expect(offer("he said |so").open).toBe(false);
     });
 });
 
