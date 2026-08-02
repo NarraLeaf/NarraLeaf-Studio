@@ -122,7 +122,12 @@ export function forgetWorkspaceFreeze(projectPath: string): void {
 export function workspaceFrozenMessage(reason: WorkspaceFreezeKind, operation: WorkspaceFrozenOperation): string {
     const remedy = reason === "revision"
         ? "Leave the revision you are looking at, or unfreeze the workspace, and try again."
-        : "Unfreeze the workspace and try again.";
+        // A merge has no "unfreeze": the working tree holds two sides at once, and what a build
+        // produced from it is something nobody wrote. Finishing the merge is the only way out, and
+        // naming it is the difference between a refusal and a dead end.
+        : reason === "merge"
+            ? "Finish the merge in the version panel - choose which side to keep for each file - and try again."
+            : "Unfreeze the workspace and try again.";
     return `The ${operation} is unavailable while this workspace is frozen - what it produced would `
         + `not be what you are looking at. ${remedy}`;
 }

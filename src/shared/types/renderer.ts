@@ -45,7 +45,7 @@ import type {
 } from "./privileged";
 import { AppEventToken } from "./app";
 import type { LocaleContribution } from "@shared/i18n";
-import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingTreeDiffResult } from "./vcs";
+import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -480,6 +480,21 @@ export interface RendererPreloadedInterface {
          * gets settled: write the file first, then call this.
          */
         resolveConflicts(projectPath: string, paths: string[], choice: VcsConflictChoice): Promise<RequestStatus<VcsMergeResolveResult>>;
+        /**
+         * Take one side per path and close the merge with a commit.
+         *
+         * The whole of "take one side, whole", as ONE operation: settling and recording are a
+         * single queued act so that nothing - notably the checkpoint timer - can commit the
+         * author's merge in between under its own message and kind.
+         *
+         * **This writes the author's files** (each side overwrites its path) and then records a
+         * revision, so the caller carries a restore's obligations: hold the workspace in its
+         * view, release before leaving it, and re-read every document once it resolves.
+         *
+         * A path left out of `decisions` that the merge has not settled makes the commit fail
+         * with the backend's own sentence, which names the path.
+         */
+        completeMerge(projectPath: string, decisions: VcsMergeDecision[], options?: VcsCommitOptions): Promise<RequestStatus<VcsMergeCompletion>>;
         /** Undo a choice. All three sides are still on disk, so it costs nothing. */
         unresolveConflicts(projectPath: string, paths: string[]): Promise<RequestStatus<VcsMergeResolveResult>>;
         /**

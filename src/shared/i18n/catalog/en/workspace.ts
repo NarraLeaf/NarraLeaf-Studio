@@ -336,6 +336,9 @@ export const workspace = {
             frozenTitle: "Nothing is being saved right now",
             frozenDetailRevision: "You are looking at version {version}. Your project files are left untouched until you go back to the current version.",
             frozenDetailManual: "The workspace is frozen, so changes are not written to your project. Unfreeze it to start saving again.",
+            // A merge has no "unfreeze": the working tree holds two sides at once until the
+            // merge is finished, so naming that is the only useful thing this can say.
+            frozenDetailMerge: "A merge is unfinished, so changes are not written to your project. Finish the merge from the version panel to start saving again.",
             consoleFrozen: "write refused, workspace frozen ({reason}): {path}",
             // Names for the things that hold project data - used when a flush fails, and again when a
             // working-tree re-read cannot reach one of them.
@@ -583,14 +586,24 @@ export const workspace = {
             // leaves the version view on its way out and the rail re-reads on that change, which
             // clears the inline error before anyone could read it.
             //
-            // It says plainly that Studio cannot finish this, because it cannot: resolving is a
-            // separate feature that does not exist yet, and an author left guessing would try the
-            // same button again.
+            // It names where the author goes next rather than what happened, because the sync
+            // deliberately does not take them there: reporting and stopping is the same discipline
+            // as never creating a repository on their behalf.
             syncConflictTitle: "Some files could not be merged",
             syncConflictDetail:
-                "{count} file(s) changed both here and on the server, and Studio cannot merge them yet:\n"
+                "{count} file(s) changed both here and on the server:\n"
                 + "{files}\n"
-                + "Your other changes did arrive. Resolve these files outside Studio before submitting a version.",
+                + "Your other changes did arrive. Choose which side to keep from the version panel.",
+            // An open merge, in the rail. Present only while there is one, which is almost never -
+            // and then it is the most important thing in the panel.
+            mergeOpen: "Merge in progress",
+            mergeConflicts: {
+                one: "{count} file needs a side chosen",
+                other: "{count} files need a side chosen",
+            },
+            // The automerge settled everything; all that is left is to record it.
+            mergeNoConflicts: "Everything merged on its own. Submit a version to finish.",
+            mergeResolve: "Finish the merge",
         },
         // Keyboard-shortcut customization (Settings window → Editor) + the "?" cheat sheet overlay.
         keybindings: {

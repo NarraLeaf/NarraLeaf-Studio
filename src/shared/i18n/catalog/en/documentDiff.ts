@@ -189,4 +189,41 @@ export const documentDiff = {
         documentsOmitted: "{count} more files are not listed here.",
         unavailable: "Version control is not available in this project.",
     },
+    /**
+     * Finishing a merge by taking one side of each file.
+     *
+     * The vocabulary is "keep mine / keep theirs" rather than the backend's `mine`/`theirs`, and
+     * "the version you got" rather than a revision hash where one can be named: an author who
+     * pressed "Get from server" is reconciling their work with a colleague's, not resolving a
+     * three-way merge.
+     *
+     * `notSaved` is the sentence this whole surface is honest because of. Nothing readable records
+     * which conflicts have been decided, so the record is this window's - and saying so beats
+     * implying a progress that closing the tab would silently discard.
+     */
+    resolve: {
+        tab: "Merge",
+        merging: "Two versions of this project are being merged",
+        none: "This project is not in the middle of a merge.",
+        automerged: "Everything merged on its own. Finish to record it as a version.",
+        count: {
+            one: "{count} file changed on both sides. Choose which one to keep.",
+            other: "{count} files changed on both sides. Choose which one to keep.",
+        },
+        takeMine: "Keep mine",
+        takeTheirs: "Keep theirs",
+        takeAllMine: "Keep mine everywhere",
+        takeAllTheirs: "Keep theirs everywhere",
+        rowsOmitted: "{count} more files are not listed here. Use the two links above to choose for all of them.",
+        finish: "Finish the merge",
+        finishUndecided: {
+            one: "{count} file still needs a side",
+            other: "{count} files still need a side",
+        },
+        notSaved: "These choices are only remembered while this window is open. Nothing is written until you finish.",
+        abandon: "Abandon",
+        abandonConfirm: "Abandon this merge?",
+        abandonConfirmDetail:
+            "Every file goes back to what it was before you got these versions from the server, including the ones that merged on their own. Nothing of yours is lost - you can get them again whenever you like.",
+    },
 } as const;

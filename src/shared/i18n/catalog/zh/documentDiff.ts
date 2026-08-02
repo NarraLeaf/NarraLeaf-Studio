@@ -143,4 +143,38 @@ export const documentDiff = {
         documentsOmitted: "另有 {count} 个文件没有列出。",
         unavailable: "这个工程没有可用的版本控制。",
     },
+    /**
+     * 整份取一边地收尾一次合并。
+     *
+     * 用词是「保留我的／保留对方的」而不是后端的 mine/theirs：按下「从服务器获取」的作者
+     * 是在跟同伴的改动对齐，不是在做三路合并。
+     *
+     * `notSaved` 是这整个界面之所以诚实的那一句——哪些冲突已经决定过，没有任何地方读得出来，
+     * 所以这份记录只属于这个窗口；说出来，好过暗示一份关掉标签页就没了的进度。
+     */
+    resolve: {
+        tab: "合并",
+        merging: "这个工程的两个版本正在合并",
+        none: "这个工程没有正在进行的合并。",
+        automerged: "全部自动合并完成，收尾即可记成一个版本。",
+        count: {
+            one: "有 {count} 个文件两边都改过，请选择保留哪一边。",
+            other: "有 {count} 个文件两边都改过，请选择保留哪一边。",
+        },
+        takeMine: "保留我的",
+        takeTheirs: "保留对方的",
+        takeAllMine: "全部保留我的",
+        takeAllTheirs: "全部保留对方的",
+        rowsOmitted: "另有 {count} 个文件没有列出，可用上面两个链接一次选完。",
+        finish: "完成合并",
+        finishUndecided: {
+            one: "还有 {count} 个文件没选边",
+            other: "还有 {count} 个文件没选边",
+        },
+        notSaved: "这些选择只在这个窗口开着时有效；按下完成之前不会写入任何文件。",
+        abandon: "放弃合并",
+        abandonConfirm: "放弃这次合并？",
+        abandonConfirmDetail:
+            "所有文件都会回到从服务器获取之前的样子，包括那些已经自动合并好的。你自己的东西不会丢——想要的时候随时可以再获取一次。",
+    },
 } satisfies LocaleNamespace<"documentDiff">;
