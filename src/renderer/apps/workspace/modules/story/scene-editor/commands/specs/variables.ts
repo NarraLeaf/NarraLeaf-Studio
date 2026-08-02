@@ -284,11 +284,19 @@ export function declarationFromArgs(args: Readonly<Record<string, StoryCommandVa
     if (!name) {
         return null;
     }
-    const defaultValue = args.default?.kind === "literal" ? args.default.value : undefined;
+    const declaredType = args.type?.kind === "enum" ? args.type.value as StoryVariableValueType : undefined;
+    // An explicit `type=string` outranks how the value happens to read: `/local x "[1,2]" type=string`
+    // asked for the characters, so the source text goes in rather than the list `parseLiteral` made of
+    // them. Only `string` is undone, and deliberately so - `/local flag 1 type=bool` has always stored
+    // the 1 it was handed, and coercing every default to its declared type is a different change with
+    // its own migration question. This one only refuses to CREATE a mismatch the reading introduced.
+    const defaultValue = args.default?.kind === "literal"
+        ? (declaredType === "string" ? args.default.source : args.default.value)
+        : undefined;
     return {
         name,
         // An explicit `type=` wins; otherwise the default's own type is the best evidence available.
-        valueType: args.type?.kind === "enum" ? args.type.value as StoryVariableValueType : inferDeclaredType(defaultValue),
+        valueType: declaredType ?? inferDeclaredType(defaultValue),
         defaultValue,
         description: args.desc?.kind === "text" && args.desc.value.trim() ? args.desc.value.trim() : undefined,
     };
@@ -297,6 +305,10 @@ export function declarationFromArgs(args: Readonly<Record<string, StoryCommandVa
 /**
  * The type of a declaration with no explicit `type=`. Boolean is the fallback for a bare
  * `/local met` because a flag is what an author declares without thinking about types at all.
+ *
+ * The trailing `json` arm was unreachable until `parseLiteral` learned to read a bracketed default:
+ * every value it could produce was a string, a number or a boolean. A list or an object now lands
+ * here, and lands on the arm that was already waiting for it - `/local inv "[1, 2]"` needs no `type=`.
  */
 function inferDeclaredType(defaultValue: StoryLiteralValue | undefined): StoryVariableValueType {
     if (typeof defaultValue === "number") {
@@ -343,7 +355,9 @@ export const declareLocal = defineStoryCommand({
     token: "local",
     aliases: ["scenevar"],
     category: "data",
-    examples: ["/local hp 100", "/local hp 100 type=number desc='Player health'"],
+    // The json line is quoted because a space still splits a token - quoting is the grouping syntax the
+    // command line already has, and the one an author needs for any default with a space in it.
+    examples: ["/local hp 100", "/local hp 100 type=number desc='Player health'", "/local inv \"[1, 2]\" type=json"],
     params: declarationParams(),
     build: buildDeclaration("scene"),
     validate: validateDeclaration("scene"),
