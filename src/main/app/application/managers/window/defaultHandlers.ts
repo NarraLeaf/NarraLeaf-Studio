@@ -1,9 +1,9 @@
 import { IPCEventType } from "@shared/types/ipcEvents";
 import { IPCHandler } from "./handlers/IPCHandler";
-import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppRemoveRecentProjectHandler, AppCheckRecentProjectsHandler, AppInfoHandler, AppOpenExternalHandler, AppPickBackgroundImageHandler, AppPlatformInfoHandler, AppReadBackgroundImageHandler, AppTerminateHandler, AppWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowEditCommandHandler, AppWindowGetControlHandler, AppWindowGetFullscreenHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler } from "./handlers/appAction";
+import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppRemoveRecentProjectHandler, AppCheckRecentProjectsHandler, AppInfoHandler, AppOpenExternalHandler, AppPickBackgroundImageHandler, AppPlatformInfoHandler, AppReadBackgroundImageHandler, AppTerminateHandler, AppWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowEditCommandHandler, AppWindowGetControlHandler, AppWindowGetFullscreenHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler, AppExportDiagnosticsHandler } from "./handlers/appAction";
 import { AppCountWorkspaceWindowsHandler, AppRequestWorkspaceViewHandler, AppSettingsWindowLaunchHandler } from "./handlers/settingAction";
 import {
-    FsStatHandler, FsListHandler, FsDetailsHandler, FsRequestReadHandler, FsRequestWriteHandler,
+    FsStatHandler, FsListHandler, FsDetailsHandler, FsDirectorySizeHandler, FsRequestReadHandler, FsRequestReadDirHandler, FsRequestWriteHandler,
     FsCreateDirHandler, FsEnsureRegularFileHandler, FsWriteFileNoFollowHandler, FsRecoverCorruptedJsonFileHandler, FsDeleteFileHandler, FsDeleteDirHandler, FsRenameHandler,
     FsCopyFileHandler, FsCopyDirHandler, FsMoveFileHandler, FsMoveDirHandler,
     FsFileExistsHandler, FsDirExistsHandler, FsIsFileHandler, FsIsDirHandler,
@@ -11,11 +11,19 @@ import {
 } from "./handlers/fsAction";
 import {
     VcsGetAvailabilityHandler, VcsIsRepositoryHandler, VcsGetInfoHandler, VcsGetHistoryHandler, VcsReadBlobHandler,
-    VcsGetChangedPathsHandler, VcsGetThreeWayHandler, VcsGetMergeBaseHandler,
+    VcsReadRevisionDocumentsHandler, VcsGetChangedPathsHandler, VcsGetThreeWayHandler, VcsGetMergeBaseHandler,
+    VcsDiffRevisionsHandler, VcsDiffWorkingTreeHandler,
+    VcsInitRepositoryHandler,
+    VcsGetStatusHandler, VcsCommitHandler, VcsCheckpointHandler, VcsRestoreRevisionHandler,
+    VcsGetRemoteHandler, VcsSetRemoteHandler, VcsGetSyncStateHandler, VcsPushHandler, VcsSyncHandler, VcsCloneHandler,
+    VcsGetMergeStateHandler, VcsGetMergeDocumentHandler, VcsResolveConflictsHandler, VcsCompleteMergeHandler, VcsUnresolveConflictsHandler,
+    VcsRestartConflictsHandler, VcsAbortMergeHandler,
 } from "./handlers/vcsAction";
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./handlers/projectWizardAction";
 import { WorkspaceExportProjectPackageHandler, WorkspaceImportProjectPackageHandler } from "./handlers/projectPackageAction";
+import { PsdBakeHandler, PsdOpenHandler } from "./handlers/psdImport";
 import { WorkspaceLaunchHandler, WorkspaceOpenRecentHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler, WorkspaceExportConsoleLogsHandler, WorkspaceMenuSyncHandler, WorkspaceReportLoadResultHandler } from "./handlers/workspaceAction";
+import { WorkspaceReportWriteFreezeHandler } from "./handlers/workspaceFreezeAction";
 import {
     DevModeFullscreenGetHandler,
     DevModeFullscreenSetHandler,
@@ -27,6 +35,7 @@ import {
     DevModeResolveAssetUrlHandler,
     DevModeResolveImageAssetUrlHandler,
     DevModeForwardBlueprintDebugEventHandler,
+    DevModeForwardStoryRowHandler,
 } from "./handlers/devModeAction";
 import {
     DevModeSaveDeleteHandler,
@@ -41,18 +50,33 @@ import {
     PreviewStopHandler,
 } from "./handlers/previewAction";
 import {
+    GameTestLaunchHandler,
+    GameTestStopHandler,
+} from "./handlers/gameTestAction";
+import {
     GameBuildCancelHandler,
     GameBuildGetStatusHandler,
     GameBuildPreflightHandler,
     GameBuildSelectOutputDirHandler,
     GameBuildStartHandler,
 } from "./handlers/gameBuildAction";
+import {
+    SigningImportHandler,
+    SigningInspectHandler,
+    SigningKeystoreAliasesHandler,
+    SigningListHandler,
+    SigningMacIdentitiesHandler,
+    SigningRemoveHandler,
+} from "./handlers/signingAction";
 import { PluginPermissionGrantHandler, PluginPermissionPromptLaunchHandler } from "./handlers/pluginPermissionAction";
 import {
     PluginApproveHandler,
+    PluginInstallFromRegistryHandler,
     PluginInstallLocalHandler,
     PluginListHandler,
     PluginLocaleListHandler,
+    PluginRegistryFetchHandler,
+    PluginRegistryIconHandler,
     PluginReportLoadErrorHandler,
     PluginRevokeHandler,
     PluginRuntimeListHandler,
@@ -60,6 +84,11 @@ import {
     PluginUninstallHandler,
     PluginWorkspaceListHandler,
 } from "./handlers/pluginManagerAction";
+import {
+    UITemplateFetchBundleHandler,
+    UITemplateRegistryFetchHandler,
+} from "./handlers/uiTemplateAction";
+import { PuppetRuntimeInstallSdkHandler } from "./handlers/puppetRuntimeAction";
 import {
     BlueprintPersistenceGetAllHandler,
     BlueprintPersistenceGetValueHandler,
@@ -100,6 +129,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new AppRemoveRecentProjectHandler(),
         new AppCheckRecentProjectsHandler(),
         new AppSystemPathHandler(),
+        new AppExportDiagnosticsHandler(),
 
         new AppSettingsWindowLaunchHandler(),
         new AppCountWorkspaceWindowsHandler(),
@@ -117,12 +147,15 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new WorkspaceLaunchHandler(),
         new WorkspaceOpenRecentHandler(),
         new WorkspaceSelectFolderHandler(),
+        new PsdOpenHandler(),
+        new PsdBakeHandler(),
         new WorkspaceCloseHandler(),
         new WorkspaceExportProjectPackageHandler(),
         new WorkspaceImportProjectPackageHandler(),
         new WorkspaceExportConsoleLogsHandler(),
         new WorkspaceMenuSyncHandler(),
         new WorkspaceReportLoadResultHandler(),
+        new WorkspaceReportWriteFreezeHandler(),
 
         // Dev mode handlers
         new DevModeLaunchHandler(),
@@ -133,6 +166,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new DevModeFullscreenSetHandler(),
         new DevModeOpenBlueprintInWorkspaceHandler(),
         new DevModeForwardBlueprintDebugEventHandler(),
+        new DevModeForwardStoryRowHandler(),
         new DevModeResolveAssetUrlHandler(),
         new DevModeResolveImageAssetUrlHandler(),
         new DevModeSaveWriteHandler(),
@@ -146,12 +180,24 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new PreviewStopHandler(),
         new PreviewGetStatusHandler(),
 
+        // Game sessions owned by a test run (not by the Run button)
+        new GameTestLaunchHandler(),
+        new GameTestStopHandler(),
+
         // Production game build handlers
         new GameBuildStartHandler(),
         new GameBuildCancelHandler(),
         new GameBuildGetStatusHandler(),
         new GameBuildSelectOutputDirHandler(),
         new GameBuildPreflightHandler(),
+
+        // Code-signing credential vault (machine-level; no handler returns a secret)
+        new SigningListHandler(),
+        new SigningImportHandler(),
+        new SigningRemoveHandler(),
+        new SigningInspectHandler(),
+        new SigningKeystoreAliasesHandler(),
+        new SigningMacIdentitiesHandler(),
 
         // Blueprint persistent variable storage handlers
         new BlueprintPersistenceGetAllHandler(),
@@ -172,6 +218,12 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new PluginRuntimeListHandler(),
         new PluginReportLoadErrorHandler(),
         new PluginLocaleListHandler(),
+        new PluginRegistryFetchHandler(),
+        new PluginRegistryIconHandler(),
+        new PluginInstallFromRegistryHandler(),
+        new UITemplateRegistryFetchHandler(),
+        new UITemplateFetchBundleHandler(),
+        new PuppetRuntimeInstallSdkHandler(),
 
         // Actor-aware privileged facade handlers
         new PrivilegedFsCallHandler(),
@@ -183,7 +235,9 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new FsStatHandler(),
         new FsListHandler(),
         new FsDetailsHandler(),
+        new FsDirectorySizeHandler(),
         new FsRequestReadHandler(),
+        new FsRequestReadDirHandler(),
         new FsRequestWriteHandler(),
         new FsEnsureRegularFileHandler(),
         new FsWriteFileNoFollowHandler(),
@@ -205,14 +259,36 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new FsGrantFileAccessHandler(),
         new FsHashHandler(),
 
-        // Version control (read-only surface; see docs/version-control.md)
+        // Version control (reads, the writes that only ever add a revision, and restore -
+        // the one that overwrites the working tree. See docs/version-control.md)
         new VcsGetAvailabilityHandler(),
         new VcsIsRepositoryHandler(),
         new VcsGetInfoHandler(),
+        new VcsInitRepositoryHandler(),
+        new VcsCommitHandler(),
+        new VcsCheckpointHandler(),
+        new VcsRestoreRevisionHandler(),
+        new VcsGetStatusHandler(),
         new VcsGetHistoryHandler(),
         new VcsReadBlobHandler(),
+        new VcsReadRevisionDocumentsHandler(),
         new VcsGetChangedPathsHandler(),
+        new VcsDiffRevisionsHandler(),
+        new VcsDiffWorkingTreeHandler(),
         new VcsGetThreeWayHandler(),
         new VcsGetMergeBaseHandler(),
+        new VcsGetMergeStateHandler(),
+        new VcsGetMergeDocumentHandler(),
+        new VcsResolveConflictsHandler(),
+        new VcsCompleteMergeHandler(),
+        new VcsUnresolveConflictsHandler(),
+        new VcsRestartConflictsHandler(),
+        new VcsAbortMergeHandler(),
+        new VcsGetRemoteHandler(),
+        new VcsSetRemoteHandler(),
+        new VcsGetSyncStateHandler(),
+        new VcsPushHandler(),
+        new VcsSyncHandler(),
+        new VcsCloneHandler(),
     ] as IPCHandler<IPCEventType>[];
 }

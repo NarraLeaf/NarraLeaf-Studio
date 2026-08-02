@@ -40,6 +40,13 @@ import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurf
 import { filterSelectionToTopLevelMovers, selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
+import {
+    isSurfaceGestureEnabled,
+    toReadOnlyFloatingToolbarItems,
+    toReadOnlyMoveableProps,
+    UI_EDITOR_WRITABLE,
+    type UIEditorReadOnly,
+} from "./readOnlyInteraction";
 
 function InsertPreviewOverlay({ preview, viewport }: { preview: InsertPreview; viewport: ViewportTransform }) {
     const x = Math.min(preview.startX, preview.currentX);
@@ -82,6 +89,11 @@ type Props = {
     showOutlines?: boolean;
     openSurfaceEditor?: (surfaceId: string) => void;
     openComponentEditor?: (componentId: string) => void;
+    /**
+     * Makes every editing gesture on this surface inert while leaving selection, hover, drill-in, pan
+     * and zoom alone. The workspace passes its freeze state down; see `./readOnlyInteraction`.
+     */
+    readOnly?: UIEditorReadOnly;
 };
 export function UIEditorInteractionLayer({
     surfaceId,
@@ -93,6 +105,7 @@ export function UIEditorInteractionLayer({
     showOutlines = true,
     openSurfaceEditor,
     openComponentEditor,
+    readOnly = UI_EDITOR_WRITABLE,
 }: Props) {
     const [selection, setSelection] = useState(stateService.getSelection());
     const previousSelectedTargets = useRef<HTMLElement[]>([]);
@@ -322,6 +335,24 @@ export function UIEditorInteractionLayer({
         return unsub;
     }, [stateService]);
 
+    // An override that was already open when the surface went read-only would leave a live
+    // `contenteditable` (or the crop handles) on screen, taking keystrokes nothing will keep. Close it
+    // rather than gate it: the author becomes read-only in the middle of a gesture, not before it.
+    useEffect(() => {
+        if (!readOnly.active) {
+            return;
+        }
+        if (stateService.getInteractionOverride()) {
+            stateService.setInteractionOverride(null);
+        }
+        // The insert tool armed before the freeze would leave the canvas genuinely dead: the select
+        // tool's whole overlay is unmounted under it, and pointerdown only selects while it is chosen.
+        // The tool is editor state, so putting it back is not a write the freeze has to refuse.
+        if (stateService.getTool().kind === "insert") {
+            stateService.setTool({ kind: "select" });
+        }
+    }, [readOnly.active, stateService]);
+
     const inlineTextEditElementId =
         interactionOverride?.kind === "textEdit" && interactionOverride.surfaceId === surfaceId
             ? interactionOverride.elementId
@@ -388,7 +419,11 @@ export function UIEditorInteractionLayer({
             openSurfaceEditor,
         }) ?? [];
     }, [documentRevision, documentService, effectiveSelectedSingleElement, openComponentEditor, openSurfaceEditor, stateService, surfaceId]);
-    const hasFloatingToolbar = floatingToolbarItems.length > 0;
+    const effectiveFloatingToolbarItems = useMemo(
+        () => toReadOnlyFloatingToolbarItems(floatingToolbarItems, readOnly),
+        [floatingToolbarItems, readOnly],
+    );
+    const hasFloatingToolbar = effectiveFloatingToolbarItems.length > 0;
     const [floatingToolbarPosition, setFloatingToolbarPosition] = useState<{ left: number; top: number } | null>(null);
 
     const beginTransform = () => {
@@ -599,17 +634,22 @@ export function UIEditorInteractionLayer({
         [selectedTargets],
     );
 
+    const transformEnabled = isSurfaceGestureEnabled("transform", readOnly);
+
     const handleSelectionDragStart = useCallback(
         (e: any) => {
             const eventTarget = e.inputEvent?.target as Element | null;
             if (isMoveableControlTarget(eventTarget)) {
                 return false;
             }
-            if (isTargetInsideSelection(eventTarget)) {
+            // Yielding a drag that starts inside the selection exists only so Moveable can move it.
+            // With no transform to hand it to, keep Selecto: dragging there marquees like anywhere else
+            // instead of doing nothing at all.
+            if (transformEnabled && isTargetInsideSelection(eventTarget)) {
                 return false;
             }
         },
-        [isMoveableControlTarget, isTargetInsideSelection],
+        [isMoveableControlTarget, isTargetInsideSelection, transformEnabled],
     );
     const panState = useRef<{
         active: boolean;
@@ -648,6 +688,7 @@ export function UIEditorInteractionLayer({
         uiService,
         insertSnapEnabled,
         insertSnapSuspended,
+        readOnly,
     });
 
     const transformController = useTransformController({
@@ -685,6 +726,9 @@ export function UIEditorInteractionLayer({
         return candidates[0] ?? transformController;
     }, [imageCropController, transformController]);
 
+    const inlineTextEditEnabled = isSurfaceGestureEnabled("inlineTextEdit", readOnly);
+    const imageCropEnabled = isSurfaceGestureEnabled("imageCrop", readOnly);
+
     const handleMoveableInlineTextClick = useCallback(
         (event: OnClick | OnClickGroup) => {
             if (!event.isDouble || activeController.id !== "transform") {
@@ -702,7 +746,7 @@ export function UIEditorInteractionLayer({
             }
 
             const element = documentService.getDocument().elements[liveSelectedSingleElementId];
-            if (isInlineTextEditableElement(element)) {
+            if (inlineTextEditEnabled && isInlineTextEditableElement(element)) {
                 event.inputEvent?.preventDefault?.();
                 event.inputEvent?.stopPropagation?.();
                 beginInlineTextEdit(stateService, surfaceId, liveSelectedSingleElementId);
@@ -710,6 +754,7 @@ export function UIEditorInteractionLayer({
             }
 
             if (
+                imageCropEnabled &&
                 beginImageCropEdit({
                     documentService,
                     stateService,
@@ -722,19 +767,30 @@ export function UIEditorInteractionLayer({
                 event.inputEvent?.stopPropagation?.();
             }
         },
-        [activeController.id, documentService, stateService, surfaceId],
+        [activeController.id, documentService, imageCropEnabled, inlineTextEditEnabled, stateService, surfaceId],
     );
 
     const SELECTO_CLASS_NAME = "narraleaf-selecto";
 
-    const moveablePointerClass = isInlineTextEditing ? "pointer-events-none" : "pointer-events-auto";
+    // Read-only borrows the trick inline text editing already uses: with the overlay transparent to
+    // the pointer, clicks and hovers reach the elements underneath, so selection and the properties
+    // panel keep working. It is also what makes the stripped overlay provably inert rather than
+    // merely handler-less.
+    const moveablePointerClass =
+        isInlineTextEditing || !transformEnabled ? "pointer-events-none" : "pointer-events-auto";
     const isInlineTextMoveableTarget =
-        activeController.id === "transform" && isInlineTextEditableSelection && !isInlineTextEditing;
+        activeController.id === "transform" &&
+        isInlineTextEditableSelection &&
+        !isInlineTextEditing &&
+        inlineTextEditEnabled;
     const moveableModeClass = activeController.id === "imageCrop"
         ? "narraleaf-moveable--crop"
         : isInlineTextMoveableTarget
           ? "narraleaf-moveable--inline-text-target"
           : "";
+    const moveableProps = transformEnabled
+        ? activeController.moveableProps
+        : toReadOnlyMoveableProps(activeController.moveableProps);
 
     return (
         <>
@@ -765,10 +821,10 @@ export function UIEditorInteractionLayer({
                         container={surfaceElement}
                         flushSync={flushSync}
                         className={`narraleaf-moveable ${moveableModeClass} ${moveablePointerClass}`.trim()}
-                        {...activeController.moveableProps}
-                        clickable={isInlineTextMoveableTarget ? true : activeController.moveableProps.clickable}
-                        onClick={handleMoveableInlineTextClick}
-                        onClickGroup={handleMoveableInlineTextClick}
+                        {...moveableProps}
+                        clickable={isInlineTextMoveableTarget ? true : moveableProps.clickable}
+                        onClick={inlineTextEditEnabled || imageCropEnabled ? handleMoveableInlineTextClick : undefined}
+                        onClickGroup={inlineTextEditEnabled || imageCropEnabled ? handleMoveableInlineTextClick : undefined}
                     />
                     {hasFloatingToolbar && floatingToolbarPosition ? (
                         <div
@@ -784,7 +840,7 @@ export function UIEditorInteractionLayer({
                                 event.stopPropagation();
                             }}
                         >
-                            {floatingToolbarItems.map((item, index) => {
+                            {effectiveFloatingToolbarItems.map((item, index) => {
                                 const Icon = item.icon;
                                 const label = item.label ?? item.tooltip ?? item.id;
                                 return (
@@ -794,7 +850,7 @@ export function UIEditorInteractionLayer({
                                         className={`flex h-7 items-center justify-center text-xs transition-colors hover:bg-fill hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 ${
                                             Icon ? "w-7" : "min-w-7 px-2"
                                         } ${
-                                            index < floatingToolbarItems.length - 1 ? "border-r border-edge" : ""
+                                            index < effectiveFloatingToolbarItems.length - 1 ? "border-r border-edge" : ""
                                         }`}
                                         title={item.tooltip ?? label}
                                         aria-label={item.tooltip ?? label}

@@ -1,7 +1,10 @@
 /**
  * Plugin project-storage namespacing.
  *
- * Plugin stores live alongside core service stores in `editor/services/*.json`.
+ * Plugin stores live in `editor/services/*.json`, under version control alongside
+ * the core stores that are project content - a plugin store is a game capability's
+ * data (the Gallery's catalog is inlined into the shipped bundle), so it takes the
+ * project-content default in `@shared/vcs/serviceStores`.
  * Namespacing every plugin store under a parseable, plugin-scoped prefix does
  * two things: it stops a plugin from colliding with (or overwriting) a core
  * store by picking a matching namespace, and it makes plugin-storage usage

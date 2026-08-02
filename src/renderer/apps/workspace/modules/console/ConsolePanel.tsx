@@ -41,11 +41,13 @@ const BUILTIN_CHANNEL_LABEL_KEYS: Partial<Record<ConsoleChannelId, TranslationKe
     blueprint: "console.channels.blueprint",
     build: "console.channels.build",
     story: "console.channels.story",
+    storage: "console.channels.storage",
 };
 const BUILTIN_CHANNEL_DESCRIPTION_KEYS: Partial<Record<ConsoleChannelId, TranslationKey>> = {
     blueprint: "console.channels.blueprintDescription",
     build: "console.channels.buildDescription",
     story: "console.channels.storyDescription",
+    storage: "console.channels.storageDescription",
 };
 
 function channelLabel(t: (key: TranslationKey) => string, channel: ConsoleChannelDefinition): string {
@@ -173,6 +175,26 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
         setVisibleLevels(normalizeVisibleLevels(stored?.visibleLevels));
         panelStateLoadedRef.current = true;
     }, [panelId, panelStateService]);
+
+    // A run that started before this panel mounted still gets its tab. Read after the stored state
+    // above, so a standing request wins over the remembered tab - it is the more recent intent.
+    // This runs on every mount, not just the first: `panels.show()` can remount the panel, and the
+    // stored-state effect above would otherwise restore the tab the run was meant to replace.
+    useEffect(() => {
+        const pending = consoleService?.peekPendingFocusRequest();
+        if (pending) {
+            setActiveChannel(pending);
+        }
+    }, [consoleService]);
+
+    useEffect(() => {
+        if (!consoleService) {
+            return;
+        }
+        return consoleService.onFocusRequested(({ channel }) => {
+            setActiveChannel(channel);
+        });
+    }, [consoleService]);
 
     useEffect(() => {
         if (!panelStateService || !panelStateLoadedRef.current) {
@@ -322,11 +344,16 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                                         ? "bg-surface text-fg"
                                         : "text-fg-muted hover:bg-fill-subtle hover:text-fg"
                                 }`}
-                                onClick={() => setActiveChannel(channel.id)}
+                                onClick={() => {
+                                    // Picking a tab by hand outranks any run's standing request,
+                                    // which would otherwise re-apply itself on the next remount.
+                                    consoleService?.clearPendingFocusRequest();
+                                    setActiveChannel(channel.id);
+                                }}
                             >
                                 <span>{channelLabel(t, channel)}</span>
                                 <span
-                                    className={`rounded border px-1.5 py-0.5 text-2xs leading-none ${
+                                    className={`rounded-md border px-1.5 py-0.5 text-2xs leading-none ${
                                         active
                                             ? "border-primary/40 bg-primary/10 text-primary"
                                             : "border-edge bg-fill-subtle text-fg-subtle"
@@ -345,7 +372,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                 <div className="flex h-full shrink-0 items-center gap-2 px-2">
                     <button
                         type="button"
-                        className="flex h-7 w-7 cursor-default items-center justify-center rounded border border-edge text-fg-muted transition-colors hover:bg-fill hover:text-fg"
+                        className="flex h-7 w-7 cursor-default items-center justify-center rounded-md border border-edge text-fg-muted transition-colors hover:bg-fill hover:text-fg"
                         title={t("console.export")}
                         aria-label={t("console.export")}
                         onClick={handleExport}
@@ -355,7 +382,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                     <div ref={filterMenuRef} className="relative">
                         <button
                             type="button"
-                            className="flex h-7 w-7 cursor-default items-center justify-center rounded border border-edge text-fg-muted transition-colors hover:bg-fill hover:text-fg"
+                            className="flex h-7 w-7 cursor-default items-center justify-center rounded-md border border-edge text-fg-muted transition-colors hover:bg-fill hover:text-fg"
                             title={t("console.filterLevels")}
                             aria-label={t("console.filterLevels")}
                             aria-haspopup="menu"
@@ -367,18 +394,18 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                         {filterMenuOpen ? (
                             <div
                                 role="menu"
-                                className="absolute right-0 top-full z-20 mt-1 w-36 rounded border border-edge bg-surface-overlay p-1 shadow-xl"
+                                className="absolute right-0 top-full z-20 mt-1 w-36 rounded-lg border border-edge bg-surface-overlay p-1 shadow-xl"
                             >
                                 {LOG_LEVELS.map(level => (
                                     <label
                                         key={level}
-                                        className="flex cursor-default items-center gap-2 rounded px-1.5 py-1 text-2xs text-fg-muted hover:bg-fill"
+                                        className="flex cursor-default items-center gap-2 rounded-md px-1.5 py-1 text-2xs text-fg-muted hover:bg-fill"
                                     >
                                         <input
                                             type="checkbox"
                                             checked={visibleLevels.has(level)}
                                             onChange={() => toggleLevel(level)}
-                                            className="h-3 w-3 rounded border-edge-strong bg-surface-sunken"
+                                            className="h-3 w-3 rounded-sm border-edge-strong bg-surface-sunken"
                                         />
                                         <span className={LEVEL_TEXT_CLASS[level]}>{t(`console.level.${level}`)}</span>
                                     </label>
@@ -404,10 +431,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                 className={`${visibleEntries.length > 0 ? "nl-selectable-text cursor-text" : "cursor-default select-none"} min-h-0 flex-1 overflow-auto overscroll-contain py-1 font-mono text-2xs leading-relaxed`}
             >
                 {visibleEntries.length === 0 ? (
-                    <ConsoleEmptyState
-                        label={activeChannelDef ? channelLabel(t, activeChannelDef) : t("console.outputFallback")}
-                        total={channelEntries.length}
-                    />
+                    <ConsoleEmptyState total={channelEntries.length} />
                 ) : (
                     <ConsoleEntryGrid entries={visibleEntries} />
                 )}
@@ -458,15 +482,21 @@ function ConsoleProgressBar({ progress }: { progress: ConsoleProgress | null }) 
     );
 }
 
-function ConsoleEmptyState({ label, total }: { label: string; total: number }) {
+/**
+ * A channel that has produced nothing prints nothing — the blank pane already says it, the way a
+ * terminal does. Only the *filtered* case still speaks, because there the entries exist and the
+ * level filter beside this pane is hiding them: that is a state the author set and can undo.
+ */
+function ConsoleEmptyState({ total }: { total: number }) {
     const { t } = useTranslation();
+    if (total === 0) {
+        return null;
+    }
     return (
         <div className="flex h-full min-h-24 items-center justify-center px-4 text-center text-fg-subtle">
             <div>
                 <Terminal className="mx-auto mb-2 h-8 w-8 opacity-45" />
-                <p className="text-xs text-fg-muted">
-                    {total > 0 ? t("console.emptyFiltered") : t("console.emptyChannel", { label })}
-                </p>
+                <p className="text-xs text-fg-muted">{t("console.emptyFiltered")}</p>
             </div>
         </div>
     );

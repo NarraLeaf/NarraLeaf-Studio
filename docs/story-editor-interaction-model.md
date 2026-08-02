@@ -25,13 +25,30 @@ top of them (see `docs/plans/2026-07-16-001-feat-story-command-system.md`).
 |---|---|---|---|
 | `Esc` | close inspector, if open | commit + exit | ① dismiss candidates, keep text ② discard slot |
 | `Enter` | text row → edit; action row → inspector (or its card-less op) | commit + new same-kind row (carries speaker); **narration → insert slot** | take highlight; else resolve line |
-| `Tab` | indent | — | take highlight |
+| `Tab` | indent | style strip: open it, else step into it | take highlight |
 | `Shift+Enter` | blank row after last selected | commit + blank row after | `#` line → invalid row; else resolve line |
-| `Shift+Tab` | outdent | — | — |
+| `Shift+Tab` | outdent | style strip, entered from its far end | — |
+| `Backspace` | one leaf action row → blank line, caret in it; anything else → delete | at an empty line: dialogue → insert slot, else delete + step back | empty slot → dismiss, step back |
 | double-click | enter edit, native word selection preserved | — | — |
 
 `Mod+Enter` was removed: it did exactly what `Shift+Enter` does, had no UI path, and was silently
 downgraded to plain `Enter` inside the slot.
+
+**The style strip is the "within a row" that rule 3 promises.** From a line being edited, `Tab` opens
+the rich-text strip if it is collapsed — and *only* opens it, leaving the caret in the sentence; one
+keystroke, one effect. Pressed again it steps in, landing on the first control that is not the
+collapse chevron, because arriving on the way out of a thing you just asked to open is a trap.
+`Tab`/`Shift+Tab` then cycle the controls in both directions, wrapping; the chevron stays in the
+cycle, it is just never the arrival point. `Escape` is the ladder as always: an open colour palette
+is its own rung and closes first with the strip keeping focus, then the line takes the caret back,
+then the next `Escape` is the ordinary commit-and-exit. Nothing on that path commits the row.
+
+Two things this costs, both load-bearing. Focus inside the strip has to hold `Tab`, `Escape`,
+`Enter` and `Space` back from the global keybinding service — its `window` listener only stands
+aside for *editable* targets, and a focused button is not one, so otherwise `Tab` re-nests the row
+and `Enter` is `preventDefault`ed before the browser can turn it into a press. And every command
+re-focuses the field internally (a mark needs a live selection), so each one has to hand focus back
+to the control afterwards, or the strip works exactly once per visit.
 
 There is no soft line break. `Enter` never inserts `\n` — rows are the line model.
 
@@ -47,6 +64,29 @@ branches have no card (`hasInspector`): the branch authors its condition inline 
 and the container only manages branches. So Enter on a branch adds a line inside its body — the common
 next step when building an if/else — and Enter on the condition container folds it. Creating one never
 opens a card either (`isInspectorFirstCommand` excludes them).
+
+## The Backspace ladder
+
+`Backspace` walks a row *down* one rung per press, the way it walks a character off a line: an action
+row becomes a blank line, and a blank line becomes nothing.
+
+1. A selected row that is not being edited is **replaced in place** by an empty narration row, caret in
+   it. The row count does not change — it is a replacement, not a delete — and the swap is *one*
+   history entry, so a single `Mod+Z` brings the action row back with its payload. `Escape` out of the
+   fresh line keeps it (Escape never destroys), and blurring commits the empty narration row it already
+   is.
+2. That empty line is now on the rung text rows have always had: `Backspace` deletes it and steps back
+   to the line above (an empty dialogue drops to an insert slot in the same spot instead).
+
+So an action row degrades to "blank line → gone" in two presses, which is what a text editor trained
+the author to expect. The rule is only ever what that muscle memory makes obvious, so three cases keep
+the plain delete: a **multi-row selection** (a column of blank lines is nobody's intent), a **container
+that holds children** (the subtree would go silently), and a **structural row** whose parent takes only
+its own kind (a condition's branch, a menu's option). A childless container is a leaf and follows the
+ladder like any other row.
+
+`Delete` is the other path and is unchanged — it removes the rows outright, however many are selected.
+The two keys stay two paths.
 
 ## Editing in place
 

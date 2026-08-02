@@ -1,5 +1,5 @@
 import type { MutableRefObject, ReactNode } from "react";
-import { Game, KeyBindingType, type LiveGame } from "narraleaf-react";
+import { Game, KeyBindingType, type AudioBusDeclaration, type LiveGame } from "narraleaf-react";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type {
     BlueprintGameHistoryEntry,
@@ -83,15 +83,31 @@ export function createNlrGameWithGameUi(input: {
     slots: GameUiSlots;
     /** Override NLR's minimum stage size (default 800×450) — needed for small embedded viewports. */
     minStageSize?: { width: number; height: number };
+    /**
+     * The project's mixer, as the engine's boot-time bus declaration (see `audioBusRuntime`).
+     *
+     * Read **once**, here: the engine realizes the tree into gain nodes when the audio subsystem
+     * starts and never re-shapes it, so a host that wants the author's buses has exactly this one
+     * opportunity to say so. Omitted (the story preview, which has no bundle) leaves the engine's
+     * three seeded buses, which is what every game had before buses existed.
+     */
+    audioBuses?: readonly AudioBusDeclaration[];
 }): Game {
-    const { width, height, contentContainerId, slots, minStageSize } = input;
+    const { width, height, contentContainerId, slots, minStageSize, audioBuses } = input;
     const game = new Game({
         app: { debug: false },
+        ...(audioBuses && audioBuses.length > 0 ? { audioBuses: [...audioBuses] } : {}),
         width,
         height,
         aspectRatio: width / height,
         ratioUpdateInterval: 0,
         contentContainerId,
+        // NLR paces its preloader (default: 5 at a time, 100ms between batches) for games served
+        // over a network. Every asset here comes off the local disk — through `nlgame://` in a
+        // packaged game, the dev server in Dev Mode — so the pacing buys nothing and its idle time
+        // lands squarely on the path to the first painted frame. Wider batches, no waiting.
+        preloadConcurrency: 8,
+        preloadDelay: 0,
         ...(minStageSize ? { minWidth: minStageSize.width, minHeight: minStageSize.height } : {}),
         ...(slots.dialog ? { dialog: slots.dialog, dialogWidth: width, dialogHeight: height } : {}),
         ...(slots.notification ? { notification: slots.notification } : {}),
@@ -131,6 +147,54 @@ export type LiveGameUiCallbacks = Pick<GameUiSlotHostOptions,
     | "getGamePreferenceInGame"
     | "setGamePreferenceInGame"
 >;
+
+/**
+ * Restore the running game to a past backlog line by token.
+ *
+ * Feature-detected (the same convention `fastForward` follows), so an engine build without
+ * `restoreToHistory` reports failure instead of throwing and the caller can fall back. Restoring
+ * re-applies the entry's own state snapshot, so it works after loading a save and costs no replay.
+ */
+export function restoreLiveGameToHistory(liveGame: LiveGame, token: string): boolean {
+    const restoreToHistory = (liveGame as {
+        restoreToHistory?: (token: string) => boolean;
+    }).restoreToHistory;
+    if (!token || typeof restoreToHistory !== "function") {
+        return false;
+    }
+    return restoreToHistory.call(liveGame, token) === true;
+}
+
+/**
+ * Fast-forward the running game to the next menu, preserving full history.
+ *
+ * Prefers the engine's `LiveGame.fastForward` primitive (feature-detected, per the same
+ * convention as `restoreToHistory`). Falls back — for an engine build without it — to a
+ * best-effort skip loop that stops once the choice runtime reports a menu on screen. Either way
+ * the backlog accumulates because the real interpreter advances line by line.
+ */
+export async function fastForwardToNextChoice(
+    liveGame: LiveGame,
+    choiceRuntimeRef: MutableRefObject<ChoiceSlotRuntime | null>,
+): Promise<void> {
+    const fastForward = (liveGame as {
+        fastForward?: (options?: { until?: "menu" | "end" }) => Promise<unknown>;
+    }).fastForward;
+    if (typeof fastForward === "function") {
+        await fastForward.call(liveGame, { until: "menu" });
+        return;
+    }
+    // Fallback for an older engine dist: drive skip until a menu is on screen (the choice runtime
+    // registers while a menu is mounted) or we hit the safety bound.
+    const maxSteps = 5000;
+    for (let step = 0; step < maxSteps; step++) {
+        if (choiceRuntimeRef.current != null) {
+            return;
+        }
+        liveGame.skipDialog();
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    }
+}
 
 /**
  * The LiveGame-backed subset of {@link GameUiSlotHostOptions}: everything a Game UI surface (or a
@@ -190,7 +254,14 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
 
         restoreHistoryInGame: async (id?: string): Promise<void> => {
             const token = String(id ?? "").trim();
-            requireLiveGame("Restore From History").undo(token ? token : undefined);
+            const liveGame = requireLiveGame("Restore From History");
+            // Snapshot-based restore works both during live play and after loading a save (where the
+            // closure-based undo stack is empty). Prefer it when a specific backlog line is targeted
+            // and the engine exposes it; fall back to undo otherwise (and for "go back one line").
+            if (restoreLiveGameToHistory(liveGame, token)) {
+                return;
+            }
+            liveGame.undo(token ? token : undefined);
         },
 
         getChoiceCountInGame: (): number => {

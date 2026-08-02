@@ -2,19 +2,27 @@ import { RendererInterfaceKey } from "@shared/types/constants";
 import { Namespace } from "@shared/types/ipc";
 import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "@shared/types/menu";
-import type { BlueprintPersistenceProjectRef } from "@shared/types/ipcEvents";
+import type { FsTextEncoding } from "@shared/types/textEncoding";
+import type { BlueprintPersistenceProjectRef, WorkspaceCloseStage, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import type { MissingRecentProject } from "@shared/types/state/appStateTypes";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, WorkspaceViewRequest } from "@shared/types/window";
-import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload } from "@shared/types/devMode";
+import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
+import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "@shared/types/gameTest";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "@shared/types/gameBuild";
+import type {
+    MacSigningIdentity,
+    SigningCredential,
+    SigningCredentialImport,
+    SigningInspectResult,
+} from "@shared/types/signing";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import type { PrivilegedActor } from "@shared/types/privileged";
-import type { RevisionId, VcsAvailability, VcsHistoryEntry, VcsRepositoryInfo, VcsThreeWayResult } from "@shared/types/vcs";
+import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
@@ -40,8 +48,14 @@ function createPrivilegedBridge(guarded: boolean): RendererPrivilegedInterface {
 
     return {
         fs: {
-            selectFile: (actor: PrivilegedActor, filters: string[], multiple: boolean) =>
-                invoke(IPCEventType.privilegedFsCall, { actor, operation: "selectFile", filters, multiple }),
+            selectFile: (actor: PrivilegedActor, filters: string[], multiple: boolean, title?: string) =>
+                invoke(IPCEventType.privilegedFsCall, {
+                    actor,
+                    operation: "selectFile",
+                    filters,
+                    multiple,
+                    ...(title === undefined ? {} : { title }),
+                }),
             selectSaveFile: (actor: PrivilegedActor, defaultFileName: string, filters: string[]) =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "selectSaveFile", defaultFileName, filters }),
             stat: (actor: PrivilegedActor, path: string) =>
@@ -50,11 +64,11 @@ function createPrivilegedBridge(guarded: boolean): RendererPrivilegedInterface {
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "list", path }),
             details: (actor: PrivilegedActor, path: string) =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "details", path }),
-            requestRead: (actor: PrivilegedActor, path: string, encoding: BufferEncoding) =>
+            requestRead: (actor: PrivilegedActor, path: string, encoding: FsTextEncoding) =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestRead", path, encoding, raw: false }),
             requestReadRaw: (actor: PrivilegedActor, path: string) =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestRead", path, raw: true }),
-            requestWrite: (actor: PrivilegedActor, path: string, encoding: BufferEncoding) =>
+            requestWrite: (actor: PrivilegedActor, path: string, encoding: FsTextEncoding) =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestWrite", path, encoding, raw: false }),
             requestWriteRaw: (actor: PrivilegedActor, path: string) =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestWrite", path, raw: true }),
@@ -145,9 +159,11 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         stat: (path: string) => ipcClient.invoke(IPCEventType.fsStat, { path }),
         list: (path: string) => ipcClient.invoke(IPCEventType.fsList, { path }),
         details: (path: string) => ipcClient.invoke(IPCEventType.fsDetails, { path }),
-        requestRead: (path: string, encoding: BufferEncoding) => ipcClient.invoke(IPCEventType.fsRequestRead, { path, encoding, raw: false }),
+        directorySize: (path: string) => ipcClient.invoke(IPCEventType.fsDirectorySize, { path }),
+        requestRead: (path: string, encoding: FsTextEncoding) => ipcClient.invoke(IPCEventType.fsRequestRead, { path, encoding, raw: false }),
         requestReadRaw: (path: string) => ipcClient.invoke(IPCEventType.fsRequestRead, { path, raw: true }),
-        requestWrite: (path: string, encoding: BufferEncoding) => ipcClient.invoke(IPCEventType.fsRequestWrite, { path, encoding, raw: false }),
+        requestReadDir: (path: string) => ipcClient.invoke(IPCEventType.fsRequestReadDir, { path }),
+        requestWrite: (path: string, encoding: FsTextEncoding) => ipcClient.invoke(IPCEventType.fsRequestWrite, { path, encoding, raw: false }),
         requestWriteRaw: (path: string) => ipcClient.invoke(IPCEventType.fsRequestWrite, { path, raw: true }),
         ensureRegularFile: (path: string, data: string, encoding: BufferEncoding = "utf-8") => ipcClient.invoke(IPCEventType.fsEnsureRegularFile, { path, data, encoding }),
         writeFileNoFollow: (path: string, data: string, encoding: BufferEncoding = "utf-8") => ipcClient.invoke(IPCEventType.fsWriteFileNoFollow, { path, data, encoding }),
@@ -174,6 +190,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     
     // Workspace
     selectFolder: () => ipcClient.invoke(IPCEventType.workspaceSelectFolder, {}),
+    openPsd: () => ipcClient.invoke(IPCEventType.psdOpen, {}),
+    bakePsd: (request) => ipcClient.invoke(IPCEventType.psdBake, { request }),
     workspace: {
         getDefaultProjectDirectory: () => ipcClient.invoke(IPCEventType.projectWizardGetDefaultDirectory, {}),
         launch: (props: WindowProps[WindowAppType.Workspace], closeCurrentWindow?: boolean) =>
@@ -189,6 +207,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.workspaceExportConsoleLogs, { defaultFileName, content }),
         onConfirmClose: (handler: () => Promise<RequestStatus<{ confirmed: boolean }>>) =>
             ipcClient.onRequest(IPCEventType.workspaceConfirmClose, handler),
+        onFlushPendingSaves: (handler: () => Promise<RequestStatus<{ flushed: boolean }>>) =>
+            ipcClient.onRequest(IPCEventType.workspaceFlushPendingSaves, handler),
+        onCloseProgress: (handler: (stage: WorkspaceCloseStage | null) => void) =>
+            ipcClient.onMessage(IPCEventType.workspaceCloseProgress, (data) => handler(data.stage)),
         onResolveAssetUrl: (handler: (payload: { assetId: string; assetType?: string }) => Promise<RequestStatus<{ url: string }>>) =>
             ipcClient.onRequest(IPCEventType.workspaceResolveAssetUrl, handler),
         onResolveImageAssetUrl: (handler: (payload: { assetId: string }) => Promise<RequestStatus<{ url: string }>>) =>
@@ -201,6 +223,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.send(IPCEventType.workspaceMenuSync, { model }),
         reportLoadResult: (ok: boolean) =>
             ipcClient.send(IPCEventType.workspaceReportLoadResult, { ok }),
+        reportWriteFreeze: (reason: WorkspaceFreezeKind | null, revision?: RevisionId) =>
+            ipcClient.send(IPCEventType.workspaceReportWriteFreeze, { reason, revision }),
         onOpenViewRequest: (handler: (view: WorkspaceViewRequest) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceOpenView, (data) => handler(data.view)),
     },
@@ -231,6 +255,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.appCheckRecentProjects, {}) as Promise<RequestStatus<{ missing: MissingRecentProject[] }>>,
         getSystemPath: (name: "desktop" | "home") =>
             ipcClient.invoke(IPCEventType.appSystemPath, { name }) as Promise<RequestStatus<{ path: string }>>,
+        exportDiagnostics: (defaultFileName: string, report: string) =>
+            ipcClient.invoke(IPCEventType.appExportDiagnostics, { defaultFileName, report }),
     },
 
     devMode: {
@@ -262,6 +288,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onMessage(IPCEventType.workspaceBlueprintDebugEvent, handler),
         forwardBlueprintDebugEvent: (payload: DevModeBlueprintDebugEventPayload) =>
             ipcClient.send(IPCEventType.devModeForwardBlueprintDebugEvent, payload),
+        forwardStoryRow: (payload: DevModeStoryRowPayload) =>
+            ipcClient.send(IPCEventType.devModeForwardStoryRow, payload),
+        onStoryRowHighlight: (handler: (payload: DevModeStoryRowHighlight) => void) =>
+            ipcClient.onMessage(IPCEventType.workspaceStoryRowHighlight, handler),
         resolveAssetUrl: (assetId: string, assetType?: string) =>
             ipcClient.invoke(IPCEventType.devModeResolveAssetUrl, { assetId, assetType }) as Promise<RequestStatus<{ url: string }>>,
         resolveImageAssetUrl: (assetId: string) =>
@@ -304,7 +334,27 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     },
 
     /**
-     * Version control. Read-only for now; writes wait on the resolve UI.
+     * Game processes owned by a test run.
+     *
+     * No `getStatus`, unlike `preview`: everything a test needs to know arrives on `onEvent`, in
+     * order. A polled status cannot tell the two exits a test cares about apart - the author closing
+     * the window and the process dying - which is the reason this namespace exists next to `preview`
+     * rather than inside it. A launch that is refused (frozen workspace, a session already running,
+     * a failed compile) still resolves successfully, carrying `{ok:false, reason}`.
+     */
+    gameTest: {
+        launch: (request: GameTestLaunchRequest) =>
+            ipcClient.invoke(IPCEventType.gameTestLaunch, request) as Promise<RequestStatus<GameTestLaunchResult>>,
+        stop: (projectPath: string, sessionId: string) =>
+            ipcClient.invoke(IPCEventType.gameTestStop, { projectPath, sessionId }) as Promise<RequestStatus<void>>,
+        onEvent: (handler: (payload: GameTestEventPayload) => void) =>
+            ipcClient.onMessage(IPCEventType.workspaceGameTestEvent, handler),
+    },
+
+    /**
+     * Version control. Reads, the writes that produce a revision (`initRepository`, `commit`,
+     * `checkpoint`), and `restoreRevision` - the only one that overwrites the author's files.
+     * Merge, which is the write that needs a conflict story, is still deliberately absent.
      * Blobs arrive base64-encoded - decode at the call site that needs bytes.
      */
     vcs: {
@@ -315,16 +365,99 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.vcsIsRepository, { projectPath }) as Promise<RequestStatus<{ isRepository: boolean }>>,
         getInfo: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.vcsGetInfo, { projectPath }) as Promise<RequestStatus<VcsRepositoryInfo>>,
-        getHistory: (projectPath: string, limit?: number) =>
-            ipcClient.invoke(IPCEventType.vcsGetHistory, { projectPath, limit }) as Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>>,
+        /** Creates `.lore/` in the project and commits it. The author's decision, never Studio's. */
+        initRepository: (projectPath: string, options?: VcsInitOptions) =>
+            ipcClient.invoke(IPCEventType.vcsInitRepository, { projectPath, options }) as Promise<RequestStatus<VcsRepositoryInfo>>,
+        /**
+         * Scans the working tree. On demand only: the scan records newly found
+         * directories into staged state, so polling it invents deletions (§4.17).
+         */
+        getStatus: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsGetStatus, { projectPath }) as Promise<RequestStatus<VcsStatus>>,
+        /**
+         * Flushes the renderer's pending saves, stages, commits, and forces Lore's
+         * stores to disk before answering. Slow by nature; await it and show the error.
+         */
+        commit: (projectPath: string, options?: VcsCommitOptions) =>
+            ipcClient.invoke(IPCEventType.vcsCommit, { projectPath, options }) as Promise<RequestStatus<VcsCommitResult>>,
+        /** Same pipeline, labelled a checkpoint. `revision: null` = nothing to record. */
+        checkpoint: (projectPath: string, reason: VcsCheckpointReason) =>
+            ipcClient.invoke(IPCEventType.vcsCheckpoint, { projectPath, reason }) as Promise<RequestStatus<{ revision: VcsCommitResult | null }>>,
+        /**
+         * Write one revision's content over the working tree and record it as a new revision.
+         *
+         * The only call here that touches the author's files. It checkpoints first (and aborts if
+         * it cannot), and it never removes a revision - `#12` restored at `#61` produces `#62`.
+         * The caller must leave any revision view and re-read every document afterwards.
+         */
+        restoreRevision: (projectPath: string, revision: RevisionId, options?: VcsRestoreOptions) =>
+            ipcClient.invoke(IPCEventType.vcsRestoreRevision, { projectPath, revision, options }) as Promise<RequestStatus<VcsRestoreResult>>,
+        /**
+         * `includeDetails` costs one call per revision; leave it off unless the details
+         * are shown. One call carries the kind, message, timestamp and author together.
+         */
+        getHistory: (projectPath: string, limit?: number, includeDetails?: boolean) =>
+            ipcClient.invoke(IPCEventType.vcsGetHistory, { projectPath, limit, includeDetails }) as Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>>,
         readBlob: (projectPath: string, revision: RevisionId, path: string) =>
             ipcClient.invoke(IPCEventType.vcsReadBlob, { projectPath, revision, path }) as Promise<RequestStatus<{ contentBase64: string }>>,
+        /** Every document at one revision in one round trip; `contentBase64: null` = absent there. */
+        readRevisionDocuments: (projectPath: string, revision: RevisionId, paths?: string[]) =>
+            ipcClient.invoke(IPCEventType.vcsReadRevisionDocuments, { projectPath, revision, paths }) as Promise<RequestStatus<{ documents: { path: string; contentBase64: string | null }[] }>>,
         getChangedPaths: (projectPath: string, from: RevisionId, to: RevisionId) =>
             ipcClient.invoke(IPCEventType.vcsGetChangedPaths, { projectPath, from, to }) as Promise<RequestStatus<{ paths: string[] }>>,
+        /** Changes between two revisions. Cached in main - sound only because revisions are immutable. */
+        diffRevisions: (projectPath: string, from: RevisionId, to: RevisionId) =>
+            ipcClient.invoke(IPCEventType.vcsDiffRevisions, { projectPath, from, to }) as Promise<RequestStatus<VcsRevisionDiffResult>>,
+        /** Changes since the last version. Never cached, and never on a timer - it scans (docs §4.17). */
+        diffWorkingTree: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsDiffWorkingTree, { projectPath }) as Promise<RequestStatus<VcsWorkingTreeDiffResult>>,
         getThreeWay: (projectPath: string, mine: RevisionId, theirs: RevisionId, path: string) =>
             ipcClient.invoke(IPCEventType.vcsGetThreeWay, { projectPath, mine, theirs, path }) as Promise<RequestStatus<VcsThreeWayResult>>,
         getMergeBase: (projectPath: string, a: RevisionId, b: RevisionId) =>
             ipcClient.invoke(IPCEventType.vcsGetMergeBase, { projectPath, a, b }) as Promise<RequestStatus<{ base?: RevisionId }>>,
+        /** Is a merge open here? Repository state, so ask on project open, not only after a sync. */
+        getMergeState: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsGetMergeState, { projectPath }) as Promise<RequestStatus<VcsMergeState>>,
+        /**
+         * Tier two: the three-way merge of ONE conflicted document, change by change.
+         *
+         * Reads the three copies the merge left beside the file; records nothing. `blocked` set
+         * means this path stays at tier one and says why - not every document can be settled this
+         * way, and the difference has to be visible rather than a missing control.
+         */
+        getMergeDocument: (projectPath: string, path: string) =>
+            ipcClient.invoke(IPCEventType.vcsGetMergeDocument, { projectPath, path }) as Promise<RequestStatus<VcsMergeDocument>>,
+        /** Settles paths; records nothing. `mine`/`theirs` rewrite the working tree - re-read them. */
+        resolveConflicts: (projectPath: string, paths: string[], choice: VcsConflictChoice) =>
+            ipcClient.invoke(IPCEventType.vcsResolveConflicts, { projectPath, paths, choice }) as Promise<RequestStatus<VcsMergeResolveResult>>,
+        /** Takes one side per path AND commits, as one act. Writes files: re-read afterwards. */
+        completeMerge: (projectPath: string, decisions: VcsMergeDecision[], options?: VcsCommitOptions) =>
+            ipcClient.invoke(IPCEventType.vcsCompleteMerge, { projectPath, decisions, options }) as Promise<RequestStatus<VcsMergeCompletion>>,
+        unresolveConflicts: (projectPath: string, paths: string[]) =>
+            ipcClient.invoke(IPCEventType.vcsUnresolveConflicts, { projectPath, paths }) as Promise<RequestStatus<VcsMergeResolveResult>>,
+        /** Merges these paths again, discarding the working-tree bytes for them. */
+        restartConflicts: (projectPath: string, paths: string[]) =>
+            ipcClient.invoke(IPCEventType.vcsRestartConflicts, { projectPath, paths }) as Promise<RequestStatus<VcsMergeState>>,
+        /** Full rollback to before the merge (measured). Re-read every document afterwards. */
+        abortMerge: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsAbortMerge, { projectPath }) as Promise<RequestStatus<VcsMergeState>>,
+        /** Local read - no socket. Null means the project has no server. */
+        getRemote: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsGetRemote, { projectPath }) as Promise<RequestStatus<{ url: string | null }>>,
+        /** Local write - does NOT contact the server. `null` disconnects. */
+        setRemote: (projectPath: string, url: string | null) =>
+            ipcClient.invoke(IPCEventType.vcsSetRemote, { projectPath, url }) as Promise<RequestStatus<{ url: string | null }>>,
+        /** Goes to the network; ~2s when nothing answers. On demand only, never on a timer. */
+        getSyncState: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsGetSyncState, { projectPath }) as Promise<RequestStatus<VcsSyncState>>,
+        push: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsPush, { projectPath }) as Promise<RequestStatus<VcsPushResult>>,
+        /** Writes the working tree: re-read every document once this resolves. */
+        sync: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsSync, { projectPath }) as Promise<RequestStatus<VcsSyncResult>>,
+        /** Destination must be an empty (or missing) folder. */
+        clone: (url: string, destination: string) =>
+            ipcClient.invoke(IPCEventType.vcsClone, { url, destination }) as Promise<RequestStatus<{ root: string; branch: string; fileCount: number }>>,
     },
 
     gameBuild: {
@@ -338,6 +471,29 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.gameBuildSelectOutputDir, { defaultPath }) as Promise<RequestStatus<{ path: string | null }>>,
         preflight: (projectPath: string, request: GameBuildRequest) =>
             ipcClient.invoke(IPCEventType.gameBuildPreflight, { projectPath, request }) as Promise<RequestStatus<{ findings: BuildPreflightFinding[] }>>,
+    },
+
+    /**
+     * The machine's code-signing credential vault. Nothing here returns a
+     * password: `import` sends the plain secrets up once and everything else
+     * deals in the redacted credential.
+     */
+    signing: {
+        list: () =>
+            ipcClient.invoke(IPCEventType.signingList, {}) as Promise<RequestStatus<{ credentials: SigningCredential[] }>>,
+        /** `input` holds plain passwords. Do not log it or keep it after the call. */
+        import: (input: SigningCredentialImport) =>
+            ipcClient.invoke(IPCEventType.signingImport, { input }) as Promise<RequestStatus<{ credential: SigningCredential }>>,
+        remove: (id: string) =>
+            ipcClient.invoke(IPCEventType.signingRemove, { id }) as Promise<RequestStatus<{ removed: boolean }>>,
+        inspect: (id: string) =>
+            ipcClient.invoke(IPCEventType.signingInspect, { id }) as Promise<RequestStatus<SigningInspectResult>>,
+        /** `storePassword` is plain text. Do not log it or keep it after the call. */
+        keystoreAliases: (file: string, storePassword: string) =>
+            ipcClient.invoke(IPCEventType.signingKeystoreAliases, { file, storePassword }) as Promise<RequestStatus<{ aliases: string[] }>>,
+        /** The code-signing identities in this Mac's keychains; empty on other hosts. */
+        macIdentities: () =>
+            ipcClient.invoke(IPCEventType.signingMacIdentities, {}) as Promise<RequestStatus<{ identities: MacSigningIdentity[] }>>,
     },
 
     blueprintPersistence: {
@@ -379,6 +535,24 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.pluginLocaleList, {}),
         onLocalesChanged: (handler: (change: { version: number }) => void) =>
             ipcClient.onMessage(IPCEventType.pluginLocalesChanged, handler),
+        registryFetch: () =>
+            ipcClient.invoke(IPCEventType.pluginRegistryFetch, {}),
+        registryIcon: (pluginId: string) =>
+            ipcClient.invoke(IPCEventType.pluginRegistryIcon, { pluginId }),
+        installFromRegistry: (pluginId: string) =>
+            ipcClient.invoke(IPCEventType.pluginInstallFromRegistry, { pluginId }),
+    },
+
+    uiTemplates: {
+        registryFetch: () =>
+            ipcClient.invoke(IPCEventType.uiTemplateRegistryFetch, {}),
+        fetchBundle: (templateId: string) =>
+            ipcClient.invoke(IPCEventType.uiTemplateFetchBundle, { templateId }),
+    },
+
+    puppetRuntimes: {
+        installSdk: (runtimeId: string, projectPath: string, archivePath: string) =>
+            ipcClient.invoke(IPCEventType.puppetRuntimeInstallSdk, { runtimeId, projectPath, archivePath }),
     },
 
     privileged: privilegedBootstrapBridge,

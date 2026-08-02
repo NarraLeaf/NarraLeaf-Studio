@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseBinaryManifest } from "./axml";
 import { parseArscPackageNames } from "./arsc";
 import { verifyApkV2 } from "./apkSigningV2";
-import { generateSigningIdentity } from "./signingIdentity";
+import { generateSigningIdentity, toApkSigningIdentity } from "./signingIdentity";
 import { buildArscFixture, buildBinaryManifestFixture } from "./androidFixtures";
 import { repackApk, type ApkWwwEntry } from "./repackApk";
 import { findMisalignedStoredEntries, parseZipIndex, readEntryBytes, ZIP_METHOD_STORE } from "./zipModel";
@@ -12,11 +12,11 @@ import type { AndroidShellTemplate } from "./mobileShellManifest";
 const MTIME = new Date(Date.UTC(2020, 0, 1));
 
 /** One identity for the suite: RSA keygen is the slow part. */
-const identity = generateSigningIdentity({
+const identity = toApkSigningIdentity(generateSigningIdentity({
     notBefore: new Date(Date.UTC(2020, 0, 1)),
     notAfter: new Date(Date.UTC(2050, 0, 1)),
     serialNumber: Buffer.from([0x2a]),
-});
+}));
 
 const ICON_SLOT = "res/mipmap-mdpi-v4/ic_launcher.png";
 const ICON_SLOT_HDPI = "res/mipmap-hdpi-v4/ic_launcher.png";

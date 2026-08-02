@@ -73,7 +73,7 @@ export type GameBuildRequest = {
 };
 
 /** Which build-dialog section a preflight finding belongs to. */
-export type BuildPreflightSection = "targets" | "identity" | "content" | "output";
+export type BuildPreflightSection = "targets" | "identity" | "content" | "signing" | "output";
 
 /**
  * "error" blocks the build (the pipeline would throw); "warning" ships but
@@ -89,18 +89,57 @@ export type BuildPreflightCode =
     | "identifier-missing"
     | "icon-missing"
     | "icon-unusable"
+    | "icon-low-resolution"
+    | "icon-stale"
     | "plugins-invalid"
+    | "build-dependency-unavailable"
+    | "sidecar-target-missing"
+    | "sidecar-crossbuild-exec-bit"
     | "encryption-key-unavailable"
     | "web-unprotected"
-    | "mobile-unprotected"
     | "mobile-template-missing"
     | "mobile-payload-too-large"
     | "version-uncodable"
     | "appid-android-adjusted"
     | "bundleid-ios-adjusted"
+    // Reported only for a platform the project has NOT pointed at a signing
+    // credential: once one is configured, the specific signing-* codes below
+    // carry whatever is wrong with it instead.
     | "unsigned"
     | "unsigned-android"
     | "unsigned-ios"
+    // The project names a credential this machine does not hold - the expected
+    // shape when a version-controlled project is opened somewhere else, since
+    // the key material never travels with it.
+    | "signing-credential-missing"
+    | "signing-credential-expired"
+    | "signing-credential-expiring"
+    /** The password is on disk but cannot be unsealed here (keyring gone, or another OS account). */
+    | "signing-secret-unavailable"
+    /** Configured, but the host lacks the program that does the signing (gpg, the Azure module). */
+    | "signing-tool-missing"
+    /** The host cannot drive this credential at all - e.g. the Windows certificate store off Windows. */
+    | "signing-host-unsupported"
+    /** Signing reaches the network (timestamping, cloud signing, fetching signtool). */
+    | "signing-needs-network"
+    /** A signed APK still cannot go to Google Play, which takes only AABs. */
+    | "signing-android-not-play"
+    | "signing-ios-profile-mismatch"
+    /** The keychain identity the macOS credential names is not on this machine. */
+    | "signing-macos-identity-missing"
+    /**
+     * The identity is in the keychain but `security` will not offer it: expired,
+     * missing its private key, or not chaining to a trusted root. A distinct
+     * code from "missing" because the author has to fix the certificate they
+     * have rather than go looking for one they do not.
+     */
+    | "signing-macos-identity-unusable"
+    /**
+     * The macOS identity is not a `Developer ID Application` one, so Gatekeeper
+     * will reject the result on a player's machine and Apple will refuse to
+     * notarize it.
+     */
+    | "signing-macos-not-developer-id"
     | "cross-build-download"
     | "output-not-writable"
     | "output-not-empty";
@@ -131,6 +170,14 @@ export type GameBuildStateSnapshot = {
     status: GameBuildStatus;
     startedAt?: number;
     finishedAt?: number;
+    /**
+     * Platforms this build was asked to produce, deduplicated in request order. Carried on the
+     * snapshot rather than left to the caller because the renderer only ever sees the snapshot -
+     * the dashboard archives finished builds off this poll and has no other route to the request.
+     *
+     * Absent on the idle snapshot, which describes no build.
+     */
+    platforms?: GameBuildPlatform[];
     /** Absolute paths of produced artifacts (installers/archives/app dirs). */
     artifacts?: string[];
     /** Absolute output directory of the finished build. */

@@ -8,10 +8,17 @@ import {
     EDITOR_FONT_SIZE_MIN,
 } from "@/lib/settings/editorFontOptions";
 import {
+    EDITOR_SURFACE_OPACITY_DEFAULT,
+    EDITOR_SURFACE_OPACITY_MAX,
+    EDITOR_SURFACE_OPACITY_MIN,
+    EDITOR_SURFACE_OPACITY_STEP,
+} from "@/lib/settings/editorSurfaceOptions";
+import {
     MAX_ACTIVE_EDITORS_DEFAULT,
     MAX_ACTIVE_EDITORS_MAX,
     MAX_ACTIVE_EDITORS_MIN,
 } from "@/lib/settings/editorLayoutOptions";
+import { SLASH_AT_ALIAS_KEY, slashAtAliasDefault } from "@/lib/settings/slashAliasOptions";
 import {
     ACCENT_COLOR_DEFAULT,
     ACCENT_PRESETS,
@@ -72,12 +79,20 @@ export const AppSettingCategories: SettingCategory[] = [
         order: 4,
     },
     {
+        key: "plugins",
+        label: "Plugins",
+        labelKey: "settings.categories.plugins.label",
+        description: "Plugin store and registry.",
+        descriptionKey: "settings.categories.plugins.description",
+        order: 5,
+    },
+    {
         key: "advanced",
         label: "Advanced",
         labelKey: "settings.categories.advanced.label",
         description: "Telemetry, developer helpers and experimental toggles.",
         descriptionKey: "settings.categories.advanced.description",
-        order: 5,
+        order: 6,
     },
 ];
 
@@ -118,7 +133,7 @@ export const AppSettings: AppSettingDefinition[] = [
         type: SettingValueType.Enum,
         label: "Theme",
         labelKey: "settings.items.themeMode.label",
-        description: "Color theme for the Studio interface. \"Follow system\" switches with the operating system.",
+        description: "Color theme for the Studio interface.",
         descriptionKey: "settings.items.themeMode.description",
         defaultValue: "auto",
         options: ["auto", "light", "dark"],
@@ -142,7 +157,7 @@ export const AppSettings: AppSettingDefinition[] = [
         type: SettingValueType.Color,
         label: "Accent color",
         labelKey: "settings.items.accentColor.label",
-        description: "Color used for selection, focus rings, and primary buttons across the Studio interface.",
+        description: "Color used for selection, focus rings, and primary buttons.",
         descriptionKey: "settings.items.accentColor.description",
         defaultValue: ACCENT_COLOR_DEFAULT,
         options: ACCENT_PRESETS.map(preset => preset.id),
@@ -173,7 +188,7 @@ export const AppSettings: AppSettingDefinition[] = [
         type: SettingValueType.Boolean,
         label: "Reduce motion",
         labelKey: "settings.items.reduceMotion.label",
-        description: "Turn off animated transitions in the Studio interface. Your game's own animations are unaffected, in the editor and when it ships.",
+        description: "Turn off animated transitions in the Studio interface. Your game's own animations are unaffected.",
         descriptionKey: "settings.items.reduceMotion.description",
         defaultValue: false,
     },
@@ -205,10 +220,30 @@ export const AppSettings: AppSettingDefinition[] = [
         type: SettingValueType.Integer,
         label: "Story editor font size",
         labelKey: "settings.items.editorFontSize.label",
-        description: `Font size (px) for dialogue, narration, and choice text in the story scene editor (${EDITOR_FONT_SIZE_MIN}–${EDITOR_FONT_SIZE_MAX}).`,
+        description: `Font size (px) for story text in the scene editor (${EDITOR_FONT_SIZE_MIN}-${EDITOR_FONT_SIZE_MAX}).`,
         descriptionKey: "settings.items.editorFontSize.description",
         descriptionParams: { min: EDITOR_FONT_SIZE_MIN, max: EDITOR_FONT_SIZE_MAX },
         defaultValue: EDITOR_FONT_SIZE_DEFAULT,
+    },
+    {
+        // Published as the `--nl-editor-surface-opacity` custom property by `lib/appearance`, and
+        // consumed by the one `.nl-editor-surface` rule in styles.css — the story editor's prose
+        // area, the inspector's field area and the Dev Mode debug panel all resolve their fill
+        // through it. Only meaningful with a workspace wallpaper on: the wallpaper is opt-in, so
+        // the hard opaque plate it puts under the prose has to be adjustable rather than pinned.
+        key: "editor.surfaceOpacity",
+        category: "editor",
+        scope: SettingScope.Global,
+        type: SettingValueType.Integer,
+        label: "Editor surface opacity",
+        labelKey: "settings.items.editorSurfaceOpacity.label",
+        description: "Opacity of the surfaces behind story text and inspector fields.",
+        descriptionKey: "settings.items.editorSurfaceOpacity.description",
+        defaultValue: EDITOR_SURFACE_OPACITY_DEFAULT,
+        min: EDITOR_SURFACE_OPACITY_MIN,
+        max: EDITOR_SURFACE_OPACITY_MAX,
+        step: EDITOR_SURFACE_OPACITY_STEP,
+        unit: "%",
     },
     {
         // Applied by the Story scene editor via `storyEditorTextStyle.tsx`.
@@ -231,10 +266,66 @@ export const AppSettings: AppSettingDefinition[] = [
         type: SettingValueType.Integer,
         label: "Maximum active editors",
         labelKey: "settings.items.maxActiveEditors.label",
-        description: `How many editor tabs stay loaded at once so their scroll position and focus are preserved when you switch between them (${MAX_ACTIVE_EDITORS_MIN}–${MAX_ACTIVE_EDITORS_MAX}). Tabs beyond this reload when reopened.`,
+        description: `How many editor tabs stay loaded at once, keeping their scroll position and focus (${MAX_ACTIVE_EDITORS_MIN}-${MAX_ACTIVE_EDITORS_MAX}). The rest reload when reopened.`,
         descriptionKey: "settings.items.maxActiveEditors.description",
         descriptionParams: { min: MAX_ACTIVE_EDITORS_MIN, max: MAX_ACTIVE_EDITORS_MAX },
         defaultValue: MAX_ACTIVE_EDITORS_DEFAULT,
+    },
+    {
+        // Read by the blueprint editor (useBlueprintDragConnectSettings): when on, dragging off an
+        // execution (next) output pin onto empty canvas opens a menu of compatible nodes and wires
+        // the chosen one automatically. Gates only the exec-output direction.
+        key: "blueprint.dragConnect.execOutput",
+        category: "editor",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Drag from execution output pins to create nodes",
+        labelKey: "settings.items.blueprintDragConnectExecOutput.label",
+        description: "Drop on empty canvas to pick a node; it is wired in after that pin.",
+        descriptionKey: "settings.items.blueprintDragConnectExecOutput.description",
+        defaultValue: true,
+    },
+    {
+        // Read by the blueprint editor (useBlueprintDragConnectSettings). Gates the data-output
+        // direction: only nodes that accept the dragged pin's value type are offered.
+        key: "blueprint.dragConnect.dataOutput",
+        category: "editor",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Drag from data output pins to create nodes",
+        labelKey: "settings.items.blueprintDragConnectDataOutput.label",
+        description: "Drop on empty canvas to pick a node; only nodes that accept that value type are listed.",
+        descriptionKey: "settings.items.blueprintDragConnectDataOutput.description",
+        defaultValue: true,
+    },
+    {
+        // Read by the blueprint editor (useBlueprintDragConnectSettings). Gates dragging off any
+        // input pin: the new node's matching output is wired into that input.
+        key: "blueprint.dragConnect.input",
+        category: "editor",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Drag from input pins to create nodes",
+        labelKey: "settings.items.blueprintDragConnectInput.label",
+        description: "Drop on empty canvas to pick a node; its output is wired into that pin.",
+        descriptionKey: "settings.items.blueprintDragConnectInput.description",
+        defaultValue: true,
+    },
+    {
+        // Applied by the Story scene editor: `handleInsertValueChange` rewrites a leading "@" to "/"
+        // in the insert slot, so "@" opens the action creator exactly as "/" does. The default is
+        // device-locale dependent (on for Simplified Chinese, where the "/" key types "、"), which is
+        // why nothing is stored under this key until the user toggles it - the value shown here, and
+        // the editor's fallback, both come from `slashAtAliasDefault()`. See globalState.ts.
+        key: SLASH_AT_ALIAS_KEY,
+        category: "editor",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Use “@” to open the action creator",
+        labelKey: "settings.items.slashAtAlias.label",
+        description: "Avoids the clash between / and 、 in Chinese input methods.",
+        descriptionKey: "settings.items.slashAtAlias.description",
+        defaultValue: slashAtAliasDefault(),
     },
     {
         // Applied by the main process in `App.handleWorkspaceCloseRequest`: the workspace
@@ -259,7 +350,7 @@ export const AppSettings: AppSettingDefinition[] = [
         type: SettingValueType.Boolean,
         label: "Return to the home screen when closing a workspace",
         labelKey: "settings.items.returnToLauncherOnClose.label",
-        description: "Closing a workspace goes back to the home screen. Turn this off to quit NarraLeaf Studio instead when no other window is open.",
+        description: "Turn this off to quit NarraLeaf Studio instead when no other window is open.",
         descriptionKey: "settings.items.returnToLauncherOnClose.description",
         defaultValue: true,
     },
@@ -273,8 +364,7 @@ export const AppSettings: AppSettingDefinition[] = [
         type: SettingValueType.Boolean,
         label: "Show the project dashboard by default",
         labelKey: "settings.items.dashboardOnOpen.label",
-        description:
-            "Whether projects you haven't decided about open their dashboard on entering the workspace. Each project can override this from its own dashboard.",
+        description: "Applies to projects you haven't decided about. Each project can override it.",
         descriptionKey: "settings.items.dashboardOnOpen.description",
         defaultValue: true,
     },
@@ -288,7 +378,7 @@ export const AppSettings: AppSettingDefinition[] = [
         type: SettingValueType.Action,
         label: "Clear all statistics data",
         labelKey: "settings.items.clearAllStats.label",
-        description: "Erase the recorded writing history, active time, and build history of every project. Counts derived from your projects are unaffected.",
+        description: "Erase the writing history, active time, and build history of every project. Counts read from your projects are unaffected.",
         descriptionKey: "settings.items.clearAllStats.description",
         defaultValue: null,
         actionLabel: "Clear",
@@ -306,7 +396,7 @@ export const AppSettings: AppSettingDefinition[] = [
         type: SettingValueType.Boolean,
         label: "Show status bar",
         labelKey: "settings.items.statusBarVisible.label",
-        description: "The slim strip along the bottom of the workspace (runtime status, word count, quick toggles).",
+        description: "The strip along the bottom of the workspace.",
         descriptionKey: "settings.items.statusBarVisible.description",
         defaultValue: true,
     },
@@ -319,7 +409,7 @@ export const AppSettings: AppSettingDefinition[] = [
         type: SettingValueType.Boolean,
         label: "Show title bar search box",
         labelKey: "settings.items.titleBarSearchVisible.label",
-        description: "The search pill in the middle of the title bar, which opens search and the command palette.",
+        description: "The search box in the middle of the title bar.",
         descriptionKey: "settings.items.titleBarSearchVisible.description",
         defaultValue: true,
     },
@@ -335,7 +425,7 @@ export const AppSettings: AppSettingDefinition[] = [
         type: SettingValueType.Action,
         label: "Custom background image",
         labelKey: "settings.items.backgroundImage.label",
-        description: "Overlay a picture of your choice across the workspace, watermark-style.",
+        description: "Show a picture of your choice behind the workspace.",
         descriptionKey: "settings.items.backgroundImage.description",
         defaultValue: null,
         actionLabel: "Configure…",
@@ -384,8 +474,103 @@ export const AppSettings: AppSettingDefinition[] = [
         type: SettingValueType.String,
         label: "Electron download mirror",
         labelKey: "settings.items.electronMirror.label",
-        description: "Mirror URL for downloading Electron when building games for other platforms. Leave empty to use the official source.",
+        description: "Mirror for downloading Electron. Leave empty to use the official source.",
         descriptionKey: "settings.items.electronMirror.description",
+        defaultValue: "",
+    },
+    {
+        // Read by the main process (pluginRegistryClient.resolveRegistryUrl) when the
+        // launcher's Plugins store fetches the index or installs a plugin. Empty = the
+        // official NarraLeaf/Plugins registry index.
+        key: "plugins.registryUrl",
+        category: "plugins",
+        scope: SettingScope.Global,
+        type: SettingValueType.String,
+        label: "Registry URL",
+        labelKey: "settings.items.pluginRegistryUrl.label",
+        description: "Where the plugin store looks. Leave empty to use the official NarraLeaf registry.",
+        descriptionKey: "settings.items.pluginRegistryUrl.description",
+        defaultValue: "",
+    },
+    {
+        // Read by the main process (uiTemplateRegistryClient.resolveTemplateRegistryUrl)
+        // when the UI editor's template store fetches the index or a template bundle.
+        // Empty = the official NarraLeaf/UI-Templates registry index.
+        key: "uiTemplates.registryUrl",
+        category: "plugins",
+        scope: SettingScope.Global,
+        type: SettingValueType.String,
+        label: "UI template registry URL",
+        labelKey: "settings.items.uiTemplateRegistryUrl.label",
+        description: "Where the template store looks. Leave empty to use the official NarraLeaf registry.",
+        descriptionKey: "settings.items.uiTemplateRegistryUrl.description",
+        defaultValue: "",
+    },
+    {
+        // Read by the renderer's CheckpointScheduler (VersionControlService) on every
+        // beat, so a change here applies without a restart. 0 turns the timer off.
+        // Only ever fires when a versioned file has actually been written - never by
+        // asking the backend what changed, which is a scan and not a pure read.
+        key: "versionControl.checkpointIntervalMinutes",
+        category: "sync",
+        scope: SettingScope.Global,
+        type: SettingValueType.Integer,
+        label: "Automatic checkpoint interval",
+        labelKey: "settings.items.checkpointInterval.label",
+        description: "How long to wait before recording a checkpoint, and only when something changed. Set to 0 to turn them off.",
+        descriptionKey: "settings.items.checkpointInterval.description",
+        defaultValue: 15,
+        min: 0,
+        // A day. Past that the setting is indistinguishable from 0, which is the honest
+        // way to say "do not do this".
+        max: 1440,
+        step: 5,
+        unit: "min",
+    },
+    {
+        // Directly under the interval because the pair is read together, and separate from it
+        // because they answer different questions: the interval is how often to record WHILE
+        // working, this is the one moment after which nothing is watching the working tree at
+        // all. Read by the main process (App.checkpointBeforeClose) at close time, so a change
+        // here applies to the next window closed without a restart.
+        key: "versionControl.checkpointOnClose",
+        category: "sync",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Record a checkpoint when a workspace closes",
+        labelKey: "settings.items.checkpointOnClose.label",
+        description: "Records on closing the window, independent of the interval above.",
+        descriptionKey: "settings.items.checkpointOnClose.description",
+        defaultValue: true,
+    },
+    {
+        // Read by the main process (VcsManager.resolveIdentity) for every commit and
+        // checkpoint. Empty records UNCONFIGURED_IDENTITY; deliberately not the OS
+        // account name, which is not Studio's to publish on the author's behalf.
+        key: "versionControl.authorName",
+        category: "sync",
+        scope: SettingScope.Global,
+        type: SettingValueType.String,
+        label: "Author name",
+        labelKey: "settings.items.versionControlAuthor.label",
+        description: "Recorded on commits and checkpoints. Leave empty to record NarraLeaf Studio instead.",
+        descriptionKey: "settings.items.versionControlAuthor.description",
+        defaultValue: "",
+    },
+    {
+        // Folded into the name by `composeVcsIdentity` before it reaches Lore, which stores ONE
+        // identity string - so this is not a field the repository keeps apart, it is the
+        // `Name <email>` half every other version-control tool writes. Not validated: an address
+        // that is wrong in a way a regex would catch is still the author's to fix, and refusing
+        // to record because of it would block committing rather than help.
+        key: "versionControl.authorEmail",
+        category: "sync",
+        scope: SettingScope.Global,
+        type: SettingValueType.String,
+        label: "Author email",
+        labelKey: "settings.items.versionControlAuthorEmail.label",
+        description: "Recorded next to the author name, as \"Name <email>\". Leave empty to record no address.",
+        descriptionKey: "settings.items.versionControlAuthorEmail.description",
         defaultValue: "",
     },
 ];

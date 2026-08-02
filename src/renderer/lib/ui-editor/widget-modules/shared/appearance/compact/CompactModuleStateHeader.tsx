@@ -4,6 +4,7 @@ import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { ConfirmModal } from "@/lib/components/elements/Modal";
 import type { AppearanceVariant } from "@shared/types/ui-editor/appearance";
 import { InlineMenuTriggerButton } from "@/lib/ui-editor/widget-modules/shared/chrome/InlineMenuTriggerButton";
+import { InspectOnlyButton } from "@/lib/components/elements/InspectOnlyButton";
 import {
     ensureModuleExclusiveState,
     listModuleExclusiveStatesPresent,
@@ -24,7 +25,9 @@ type Props = {
 
 function chipClass(active: boolean): string {
     return [
-        "rounded px-1.5 py-0.5 text-2xs font-medium border transition shrink-0",
+        // `cursor-default` because these are `<span role="button">`s: a span over text would
+        // otherwise show the I-beam a `<button>` never does. Same for every other chrome in here.
+        "rounded-md px-1.5 py-0.5 text-2xs font-medium border transition shrink-0 cursor-default",
         active
             ? "border-primary/60 bg-primary/15 text-primary"
             : "border-edge bg-fill-subtle text-fg-muted hover:bg-fill hover:text-fg",
@@ -33,6 +36,11 @@ function chipClass(active: boolean): string {
 
 /**
  * Per compact module: switch default vs exclusive system-state rows; add/remove state rows via context menu.
+ *
+ * **The chips only switch which rows the module SHOWS**, so they are {@link InspectOnlyButton}s and
+ * survive the `<fieldset disabled>` a frozen workspace puts around this field - reading what an
+ * element looks like when hovered is reading. The menu beside them adds and removes overrides, which
+ * writes the document, so it stays an ordinary button and the clamp reaches it.
  */
 export function CompactModuleStateHeader({ variant, commitVariant, moduleKeys, mode, onModeChange }: Props) {
     const { t } = useTranslation();
@@ -84,18 +92,17 @@ export function CompactModuleStateHeader({ variant, commitVariant, moduleKeys, m
         <>
             <div className="flex flex-wrap items-center gap-1 justify-end min-w-0">
                 {showDefaultChip ? (
-                    <button
-                        type="button"
+                    <InspectOnlyButton
                         className={chipClass(mode === "default")}
                         onClick={() => onModeChange("default")}
                     >
                         {t("widgetAppearance.states.default")}
-                    </button>
+                    </InspectOnlyButton>
                 ) : null}
                 {presentStates.map(s => (
-                    <button key={s} type="button" className={chipClass(mode === s)} onClick={() => onModeChange(s)}>
+                    <InspectOnlyButton key={s} className={chipClass(mode === s)} onClick={() => onModeChange(s)}>
                         {stateLabel(s)}
-                    </button>
+                    </InspectOnlyButton>
                 ))}
                 <InlineMenuTriggerButton
                     menu={menu}

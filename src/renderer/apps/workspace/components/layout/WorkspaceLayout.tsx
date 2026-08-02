@@ -17,11 +17,17 @@ import { EditorClosedTabsKeybinding } from "./EditorClosedTabsKeybinding";
 import { WorkspaceEditorQuickSwitch } from "./WorkspaceEditorQuickSwitch";
 import { CommandPalette } from "./CommandPalette";
 import { EditorCommands } from "./EditorCommands";
+import { WorkspaceFreezeCommands } from "./WorkspaceFreezeCommands";
+import { LintCommands } from "../../modules/lint/LintCommands";
+import { StoryScriptCommands } from "../../modules/story/script/StoryScriptCommands";
+import { WorkspaceCommands } from "./WorkspaceCommands";
 import { KeybindingCheatSheet } from "./KeybindingCheatSheet";
 import { TitleBarSearchBox } from "./TitleBarSearchBox";
 import { StatusBar, STATUS_BAR_HEIGHT } from "./StatusBar";
 import { QuickOpenPicker } from "./QuickOpenPicker";
 import { BackgroundImageDialog } from "./BackgroundImageDialog";
+import { useWorkspaceBackgroundImage } from "./useWorkspaceBackgroundImage";
+import { backgroundLayerStyle } from "@/lib/workspace/services/ui/backgroundSettings";
 import { useRegistry } from "../../registry";
 import { PanelPosition, type PanelDefinition } from "../../registry/types";
 import { useWorkspace } from "../../context";
@@ -38,9 +44,14 @@ import {
     DOCK_REGIONS,
     EDITOR_FLOOR,
     applyResize,
+    railColumnOffsets,
     resolveDock,
     type DockEnv,
 } from "./dockLayoutModel";
+import { DEFAULT_COLLAPSED_PANEL_IDS } from "./sidebarPanelGroup";
+import { VersionRail } from "./VersionRail";
+import { resolveVersionRailPresence, versionRailWidth } from "./versionRailModel";
+import { useVersionSurface } from "../../hooks/useVersionSurface";
 
 interface WorkspaceLayoutProps {
     title: string;
@@ -58,6 +69,7 @@ const SETTINGS_KEYS = {
     LEFT_SIDEBAR_WIDTH: "ui.leftSidebar.width",
     LEFT_SIDEBAR_ACTIVE_PANEL: "ui.leftSidebar.activePanel",
     LEFT_SIDEBAR_ORDER: "ui.leftSidebar.order",
+    LEFT_SIDEBAR_COLLAPSED: "ui.leftSidebar.collapsed",
     RIGHT_SIDEBAR_VISIBLE: "ui.rightSidebar.visible",
     RIGHT_SIDEBAR_WIDTH: "ui.rightSidebar.width",
     RIGHT_SIDEBAR_ACTIVE_PANEL: "ui.rightSidebar.activePanel",
@@ -66,6 +78,11 @@ const SETTINGS_KEYS = {
     BOTTOM_PANEL_HEIGHT: "ui.bottomPanel.height",
     BOTTOM_PANEL_ACTIVE_PANEL: "ui.bottomPanel.activePanel",
     BOTTOM_PANEL_ORDER: "ui.bottomPanel.order",
+    // The version rail's own state. Persisted like every other dock preference, and NOT with the
+    // freeze: a rail expanded because the author was reading history should still be expanded next
+    // launch, while the freeze itself is never persisted (a project that refuses to save with no
+    // visible cause - see WorkspaceFreezeService).
+    VERSION_RAIL_EXPANDED: "ui.versionRail.expanded",
 };
 
 const ORDER_SETTINGS_KEY_BY_POSITION: Record<PanelPosition, string> = {
@@ -112,6 +129,17 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
 
     // User-defined panel ordering per dock area (mirror of UIStore, persisted here)
     const [panelOrders, setPanelOrders] = useState<Partial<Record<PanelPosition, string[]>>>({});
+    // Panels folded into the left rail's collapse group (mirror of UIStore, persisted here)
+    const [collapsedLeftPanels, setCollapsedLeftPanels] = useState<string[] | null>(null);
+
+    // The version rail: the leftmost column, the one fixed column whose width changes, and the one
+    // that is usually not there at all. Owned here rather than by the rail itself because the dock
+    // solver has to be told about it — an unaccounted column squeezes the editor below its floor and
+    // the overflow loops (see DockEnv.versionRailWidth).
+    const [versionRailExpanded, setVersionRailExpanded] = useState(false);
+    // One reader shared by the rail and the switcher menu, so the two can never disagree about
+    // which version this window is a view of.
+    const versionSurface = useVersionSurface();
 
     // Intended region sizes (the user's last drag target). Effective rendered sizes are derived
     // from these via resolveDock() below — these are never mutated on window resize.
@@ -160,6 +188,10 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     // Visibility mirrors, read by the resize handlers when computing cross-axis drag bounds.
     const leftSidebarVisibleRef = useRef(false);
     const rightSidebarVisibleRef = useRef(false);
+    // The version rail's live width, for the same reason: a drag started while the rail is expanded
+    // has to be bounded by the space the rail is actually taking, or the sidebar can be dragged over
+    // the editor's floor.
+    const versionRailWidthRef = useRef(0);
 
     // Settings service
     const settingsService = context?.services.get<GlobalSettingsService>(Services.GlobalSettings);
@@ -185,6 +217,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     [SETTINGS_KEYS.LEFT_SIDEBAR_WIDTH]: leftSidebarWidth,
                     [SETTINGS_KEYS.LEFT_SIDEBAR_ACTIVE_PANEL]: activeLeftPanelId,
                     [SETTINGS_KEYS.LEFT_SIDEBAR_ORDER]: panelOrders[PanelPosition.Left] ?? null,
+                    [SETTINGS_KEYS.LEFT_SIDEBAR_COLLAPSED]: collapsedLeftPanels,
                     [SETTINGS_KEYS.RIGHT_SIDEBAR_VISIBLE]: rightSidebarVisible,
                     [SETTINGS_KEYS.RIGHT_SIDEBAR_WIDTH]: rightSidebarWidth,
                     [SETTINGS_KEYS.RIGHT_SIDEBAR_ACTIVE_PANEL]: activeRightPanelId,
@@ -193,6 +226,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     [SETTINGS_KEYS.BOTTOM_PANEL_HEIGHT]: bottomPanelHeight,
                     [SETTINGS_KEYS.BOTTOM_PANEL_ACTIVE_PANEL]: activeBottomPanelId,
                     [SETTINGS_KEYS.BOTTOM_PANEL_ORDER]: panelOrders[PanelPosition.Bottom] ?? null,
+                    [SETTINGS_KEYS.VERSION_RAIL_EXPANDED]: versionRailExpanded,
                 };
 
                 await settingsService.setBatch(settings);
@@ -212,6 +246,8 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         bottomPanelHeight,
         activeBottomPanelId,
         panelOrders,
+        collapsedLeftPanels,
+        versionRailExpanded,
     ]);
 
     useEffect(() => {
@@ -271,6 +307,10 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     setBottomPanelHeight(bottomHeight);
                     bottomPanelHeightRef.current = bottomHeight;
                 }
+                // Defaults to closed. An author who has not asked for version control gets no column
+                // at all - not even the 48px strip, which exists only while the workspace is frozen.
+                const railExpanded = await settingsService.get<boolean>(SETTINGS_KEYS.VERSION_RAIL_EXPANDED);
+                setVersionRailExpanded(railExpanded === true);
                 if (leftPanel !== undefined) setActiveLeftPanelId(leftPanel);
                 if (rightPanel !== undefined) setActiveRightPanelId(rightPanel);
                 if (bottomPanel !== undefined) setActiveBottomPanelId(bottomPanel);
@@ -286,6 +326,15 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     }
                 }
                 setPanelOrders(loadedOrders);
+
+                // The defaults apply only when nothing was ever stored, so a group the user has
+                // emptied stays empty instead of springing back on the next launch.
+                const savedCollapsed = await settingsService.get<string[]>(SETTINGS_KEYS.LEFT_SIDEBAR_COLLAPSED);
+                const collapsed = Array.isArray(savedCollapsed)
+                    ? savedCollapsed
+                    : [...DEFAULT_COLLAPSED_PANEL_IDS];
+                store?.setCollapsedPanels(PanelPosition.Left, collapsed);
+                setCollapsedLeftPanels(collapsed);
 
                 setSettingsLoaded(true);
                 console.log("[WorkspaceLayout] Settings loaded successfully");
@@ -333,12 +382,25 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         debouncedSaveSettings,
     ]);
 
+    // Whether the version rail is a column at all, and which one. `absent` is the ordinary answer -
+    // the strip exists only while project data is frozen, because what it expresses is control over
+    // that temporary state; the panel is openable at any time from the status cell or the switcher menu.
+    const railPresence = resolveVersionRailPresence({
+        state: versionSurface.state,
+        expanded: versionRailExpanded,
+        frozen: versionSurface.frozen !== null,
+    });
+    // What that takes out of the horizontal chain: 0 absent, 48 strip, 320 panel.
+    const railWidth = versionRailWidth(railPresence);
+    versionRailWidthRef.current = railWidth;
+
     // Live environment for the sizing solver, rebuilt from the current viewport + visibility.
     const dockEnv: DockEnv = {
         windowWidth: viewport.width,
         windowHeight: viewport.height,
         leftVisible: leftSidebarVisible,
         rightVisible: rightSidebarVisible,
+        versionRailWidth: railWidth,
     };
 
     // Effective (rendered) sizes derived from the intended sizes. Sidebars are protected from
@@ -356,6 +418,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             windowHeight: window.innerHeight,
             leftVisible: leftSidebarVisibleRef.current,
             rightVisible: rightSidebarVisibleRef.current,
+            versionRailWidth: versionRailWidthRef.current,
         }),
         []
     );
@@ -387,12 +450,15 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         return correction;
     }, [currentEnv]);
 
-    // The first panel that would actually show in a dock's rail: not hidden, and not a (bodyless)
-    // rail action — so opening a sidebar with no active panel never lands on a hidden or empty one.
+    // The first panel that would actually show in a dock's rail: not hidden, not folded into the
+    // collapse group, and not a (bodyless) rail action — so opening a sidebar with no active panel
+    // never lands on a hidden, folded-away or empty one.
     const firstVisiblePanelId = (position: PanelPosition): string | null => {
-        const visibility = context?.services.get<UIService>(Services.UI).getStore().getPanelVisibility() ?? {};
+        const store = context?.services.get<UIService>(Services.UI).getStore();
+        const visibility = store?.getPanelVisibility() ?? {};
+        const collapsed = store?.getCollapsedPanels()[position] ?? [];
         const first = getPanelsByPosition(position).find(
-            panel => !panel.railAction && visibility[panel.id] !== false,
+            panel => !panel.railAction && visibility[panel.id] !== false && !collapsed.includes(panel.id),
         );
         return first?.id ?? null;
     };
@@ -611,20 +677,48 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             setPanelOrders(prev => ({ ...prev, [position as PanelPosition]: order }));
         };
 
+        const handleCollapsedPanelsChanged = ({ position, collapsed }: { position: string; collapsed: string[] }) => {
+            if (position === PanelPosition.Left) {
+                setCollapsedLeftPanels(collapsed);
+            }
+        };
+
         const unsubscribeVisibility = uiService.getEvents().on("panelVisibilityChanged", handlePanelVisibilityChanged);
         const unsubscribeUnregistered = uiService.getEvents().on("panelUnregistered", handlePanelUnregistered);
         const unsubscribeOrder = uiService.getEvents().on("panelOrderChanged", handlePanelOrderChanged);
+        const unsubscribeCollapsed = uiService.getEvents().on("collapsedPanelsChanged", handleCollapsedPanelsChanged);
         return () => {
             unsubscribeVisibility();
             unsubscribeUnregistered();
             unsubscribeOrder();
+            unsubscribeCollapsed();
         };
     }, [context]);
 
     const isMac = isMacPlatform();
 
+    // Custom workspace background. Rendered as ONE pre-composited backdrop behind all chrome: the
+    // surface colour with the wallpaper already blended in at its configured strength (the 2–40%
+    // "opacity" the dialog exposes). When it is active, `nl-has-workspace-bg` makes every base
+    // `bg-surface` fill fully TRANSPARENT (see styles.css), so the panels AND the seams between them
+    // reveal this single layer uniformly. Because no element ever paints the raw picture, there is
+    // no bright bleed through the gaps; and text, icons, borders, raised/overlay surfaces and content
+    // images all keep their own opaque paints, so real content never reads as see-through.
+    const { settings: backgroundSettings, url: backgroundUrl } = useWorkspaceBackgroundImage();
+
     return (
-        <div className="h-screen w-screen flex flex-col bg-surface text-fg">
+        <div
+            className={`relative isolate h-screen w-screen flex flex-col bg-surface text-fg${backgroundUrl ? " nl-has-workspace-bg" : ""}`}
+        >
+            {backgroundUrl && (
+                <div
+                    aria-hidden
+                    className="pointer-events-none fixed inset-0 overflow-hidden"
+                    style={{ zIndex: -1, backgroundColor: "rgb(var(--nl-surface))" }}
+                >
+                    <div className="absolute" style={backgroundLayerStyle(backgroundSettings, backgroundUrl)} />
+                </div>
+            )}
             {/* Title Bar with Action Bar and Control Bar */}
             <TitleBar
                 title=""
@@ -632,7 +726,11 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 center={titleBarSearchVisible ? <TitleBarSearchBox /> : undefined}
                 actionBar={
                     <div className="flex items-center gap-0.5">
-                        <ProjectSwitcher />
+                        {/* The window's identity, and the version control menu inside it — one reader
+                            for both, handed down. The rail below gets the SAME object: a second
+                            `useVersionSurface()` would be a second answer to "which version is this",
+                            and that has already been on screen once (rail `#3`, status cell `#2`). */}
+                        <ProjectSwitcher versionSurface={versionSurface} />
                         <ActionBar hideAllGroups={isMac} />
                     </div>
                 }
@@ -650,6 +748,15 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
 
             {/* Main Content */}
             <div className="flex-1 flex overflow-hidden">
+                {/* Version rail — the far left of the window, LEFT of the sidebar selector, because in
+                    a past version the author still needs the sidebar, the assets and the scene tree.
+                    Its width is in the dock account above (dockEnv.versionRailWidth), never outside it. */}
+                <VersionRail
+                    surface={versionSurface}
+                    presence={railPresence}
+                    onExpandedChange={setVersionRailExpanded}
+                />
+
                 {/* Left Sidebar Selector */}
                 <LeftSidebarSelector
                     visible={leftSidebarVisible}
@@ -667,11 +774,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                         onClose={() => setLeftSidebarVisible(false)}
                         width={effective.left}
                     />
-                    <ResizableHandle
-                        direction="horizontal"
-                        onResize={handleLeftSidebarResize}
-                        className="w-1 border-r border-edge hover:bg-primary/20"
-                    />
+                    <ResizableHandle direction="horizontal" onResize={handleLeftSidebarResize} />
                 </div>
 
                 {/* Center Area (min-w-0/min-h-0 so it can shrink below content in the flex chain) */}
@@ -691,14 +794,10 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     {/* Bottom Panel - Always rendered, controlled by CSS visibility. shrink-0 keeps
                         its height so the editor above yields space instead of the panel collapsing. */}
                     <div
-                        className={bottomPanelVisible && activeBottomPanelId ? "shrink-0 border-t border-edge" : "hidden"}
+                        className={bottomPanelVisible && activeBottomPanelId ? "shrink-0" : "hidden"}
                         style={{ height: bottomPanelVisible && activeBottomPanelId ? `${effective.bottom}px` : 0 }}
                     >
-                        <ResizableHandle
-                            direction="vertical"
-                            onResize={handleBottomPanelResize}
-                            className="h-1 border-t border-edge hover:bg-primary/20"
-                        />
+                        <ResizableHandle direction="vertical" onResize={handleBottomPanelResize} />
                         <BottomPanel
                             panelId={activeBottomPanelId || ""}
                             onClose={() => setBottomPanelVisible(false)}
@@ -711,11 +810,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 <div 
                     className={rightSidebarVisible && activeRightPanelId ? "flex" : "hidden"}
                 >
-                    <ResizableHandle
-                        direction="horizontal"
-                        onResize={handleRightSidebarResize}
-                        className="w-1 border-l border-edge hover:bg-primary/20"
-                    />
+                    <ResizableHandle direction="horizontal" onResize={handleRightSidebarResize} />
                     <RightSidebar
                         panelId={activeRightPanelId || ""}
                         onClose={() => setRightSidebarVisible(false)}
@@ -735,8 +830,14 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             {/* Status Bar */}
             {statusBarVisible && <StatusBar />}
 
-            {/* Bottom Panel Selector (overlays left selector, just above the status bar) */}
-            <div className="absolute left-0" style={{ bottom: statusBarHeight }}>
+            {/* Bottom Panel Selector — in the SELECTOR rail's column, just above the status bar, so its
+                triggers line up with the left dock's. Absolutely positioned, so unlike every column in
+                the flex row above it has to be told where that column starts: `left-0` was right until
+                the version rail appeared to the left of the selector rail, and then the bottom triggers
+                sat in the version rail's column while the left dock's stayed one column over (measured
+                in the running app at x≈29 against x≈90). One column holds both docks' items; the
+                version rail is a column of its own and does not adopt them. */}
+            <div className="absolute" style={{ bottom: statusBarHeight, left: railColumnOffsets(dockEnv).sidebarRail }}>
                 <BottomPanelSelector
                     visible={bottomPanelVisible}
                     activeId={activeBottomPanelId}
@@ -752,6 +853,10 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             <CommandPalette />
             <QuickOpenPicker />
             <EditorCommands />
+            <WorkspaceCommands />
+            <WorkspaceFreezeCommands />
+            <LintCommands />
+            <StoryScriptCommands />
             <KeybindingCheatSheet />
             <EditorClosedTabsKeybinding />
             <NotificationContainer />

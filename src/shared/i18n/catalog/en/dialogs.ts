@@ -52,6 +52,9 @@ export const dialogs = {
     noun: {
         item: "item",
         layer: "layer",
+        pose: "pose",
+        axis: "axis",
+        tag: "tag",
         character: "character",
         group: "group",
         story: "story",
@@ -64,6 +67,11 @@ export const dialogs = {
         json: "JSON",
         blueprint: "Blueprint",
         font: "Font",
+        model: "Model",
         other: "Other",
+        // Merged sidebar sections; `image` / `font` / `model` / `other` above double as their
+        // category nouns because those sections hold exactly one type.
+        media: "Media",
+        data: "Data",
     },
 } as const;

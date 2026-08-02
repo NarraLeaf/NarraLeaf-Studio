@@ -1,5 +1,6 @@
 import { LoadingScreen, MissingProjectConfigScreen } from "./components";
 import { ErrorScreen } from "./components/ErrorScreen";
+import { WorkspaceClosingOverlay } from "./components/WorkspaceClosingOverlay";
 import { WorkspaceLayout } from "./components/layout";
 import { WorkspaceProvider, useWorkspace } from "./context";
 import { useModuleLoader } from "./hooks/useModuleLoader";
@@ -11,6 +12,7 @@ import { useWorkspacePlugins } from "./hooks/useWorkspacePlugins";
 import { RegistryProvider } from "./registry";
 import { WorkspaceAssetDragProvider } from "./dnd/WorkspaceAssetDragProvider";
 import { PreviewBlueprintNavigateBridge } from "./modules/blueprint-lite/PreviewBlueprintNavigateBridge";
+import { StoryRowHighlightBridge } from "./modules/story/scene-editor/StoryRowHighlightBridge";
 import { isWorkspaceStartupError, WorkspaceStartupErrorKind } from "@/lib/workspace/startup/workspaceProjectPreflight";
 
 /**
@@ -29,13 +31,14 @@ function WorkspaceContent() {
     return (
         <>
             <PreviewBlueprintNavigateBridge />
+            <StoryRowHighlightBridge />
             <WorkspaceLayout title="NarraLeaf Studio" iconSrc="/favicon.ico" />
         </>
     );
 }
 
 function InitializedWorkspace({ children }: { children: React.ReactNode }) {
-    const { isInitialized, error } = useWorkspace();
+    const { isInitialized, error, retry } = useWorkspace();
 
     // Show loading screen while initializing
     if (!isInitialized && !error) {
@@ -48,7 +51,7 @@ function InitializedWorkspace({ children }: { children: React.ReactNode }) {
         if (isWorkspaceStartupError(error) && error.kind === WorkspaceStartupErrorKind.MissingProjectConfig) {
             return <MissingProjectConfigScreen projectPath={error.projectPath} />;
         }
-        return <ErrorScreen error={error} />;
+        return <ErrorScreen error={error} onRetry={retry} />;
     }
 
     return (<>{children}</>);
@@ -59,15 +62,20 @@ function InitializedWorkspace({ children }: { children: React.ReactNode }) {
  */
 export function WorkSpaceApp() {
     return (
-        <WorkspaceProvider>
-            <InitializedWorkspace>
-                <RegistryProvider>
-                    <WorkspaceAssetDragProvider>
-                        <WorkspaceContent />
-                    </WorkspaceAssetDragProvider>
-                </RegistryProvider>
-            </InitializedWorkspace>
-        </WorkspaceProvider>
+        <>
+            <WorkspaceProvider>
+                <InitializedWorkspace>
+                    <RegistryProvider>
+                        <WorkspaceAssetDragProvider>
+                            <WorkspaceContent />
+                        </WorkspaceAssetDragProvider>
+                    </RegistryProvider>
+                </InitializedWorkspace>
+            </WorkspaceProvider>
+            {/* Outside the provider: a window that is still loading, or showing the error screen,
+                takes just as long to close as one with a project open in it. */}
+            <WorkspaceClosingOverlay />
+        </>
     );
 }
 

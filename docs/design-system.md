@@ -84,6 +84,10 @@ token 定义在 [tailwind.config.js](../tailwind.config.js),值在 [src/renderer
 
 **禁用裸 `rounded`（不带尺寸）与任意值 `rounded-[Npx]`。**
 
+`rounded-lg` 只给**浮起的覆盖层**（模态、dropdown / popover——即 `bg-surface-overlay` 那一层）。带边框的卡片 / 区块面板走 `rounded-md`，与共享组件 `Card` / `SectionCard` 一致；**嵌套盒子的圆角不得大于父容器**（属性编辑器里 `bg-surface` 预览框套在 `rounded-md` 面板内，就只能是 `md`）。
+
+`rounded-sm`（2px）不在上表里，但**允许**用于尺寸小到 `rounded-md` 会失真的地方：**checkbox 一律 `rounded-sm`**（12–16px 的方框配 6px 圆角就变成圆点，读起来像 radio），缩略图内框、8px 的 resize 角标同理。
+
 ## 3. 字号
 
 小字**只用单档** `text-2xs`（11px）——收敛原先的 `text-[9px]/[10px]/[11px]`。常规层级用 `text-xs`(12px)、`text-sm`(14px)、`text-base`(16px)。**禁用 `text-[Npx]` 任意值。**
@@ -123,4 +127,16 @@ Phase 2 新增(用来替换各处手写模式):
 
 ## 7. 防回归
 
-[scripts/style-ratchet.mjs](../scripts/style-ratchet.mjs) 统计任意 hex、裸调色板、任意 px 字号、裸圆角等"债务"计数,基线存在 `scripts/style-ratchet.baseline.json`。CI / 本地跑 `yarn style:ratchet`——计数只准降不准升。修完一批后跑 `yarn style:ratchet --save` 收紧基线。
+[scripts/style-ratchet.mjs](../scripts/style-ratchet.mjs) 统计任意 hex、裸调色板、任意 px 字号、裸圆角等"债务"计数,基线存在 `scripts/style-ratchet.baseline.json`。**CI 的 `verify` job 会跑 `yarn style:ratchet`**（[.github/workflows/ci.yml](../.github/workflows/ci.yml)),本地同样命令——计数只准降不准升。修完一批后跑 `yarn style:ratchet --save` 收紧基线。
+
+扫描范围见 [scripts/style-scan.mjs](../scripts/style-scan.mjs)：**只数字符串字面量,跳过测试文件、注释内容与标识符**。这不是图省事——组件库的 JSDoc 里写着它取代的手写模式（`Badge` 的注释就含 `rounded px-1.5 …`）,把注释算进债务等于让组件库为它消灭的债务背锅,唯一"修法"是删文档。标识符同理：类名只有进了字符串才到得了 DOM,所以一个**以类名命名的声明**不输出任何 CSS。`PluginInstallPermissions` 有个开关 `rounded-md` 的 `rounded?: boolean` prop,把它的每次出现都算成裸圆角债务,等于让门禁要求为迁就正则而改 prop 名。
+
+**三个指标有"合法地板",不可能降到 0**,升了要按 §0 逐条核对是不是真的属于这些豁免：
+
+| 指标 | 地板来自 |
+|---|---|
+| `raw-white-black-alpha` | 模态 / 浮层背板、媒体缩略图遮罩、阴影、游戏舞台留黑与预览 |
+| `raw-accent` | `var(--narraleaf-accent, #40a8c4)` 这类 CSS 变量兜底、canvas 读色兜底、调色板与角色颜色等用户数据 |
+| `arbitrary-hex` | 长尾近黑舞台色（判断密集,[scripts/style-codemod.mjs](../scripts/style-codemod.mjs) 有意不自动化） |
+
+⚠️ 每加一个模态背板,`raw-white-black-alpha` 就会 +1 并让 ratchet 变红。这是**设计如此**：它逼你确认这一笔真的属于 §0 豁免,而不是顺手写的裸 `bg-black/40`。确认了就带理由 `--save`。

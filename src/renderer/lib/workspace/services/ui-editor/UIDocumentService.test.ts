@@ -27,7 +27,9 @@ import {
     BLUEPRINT_NODE_TYPE_FLOW_IF,
     BLUEPRINT_NODE_TYPE_GAME_CHOOSE,
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR,
     BLUEPRINT_NODE_TYPE_GAME_NEXT,
+    BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS,
     BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT,
 } from "@shared/types/blueprint/graph";
@@ -216,6 +218,7 @@ describe("UIDocumentService surface creation", () => {
         const interactionLayer = doc.elements[root.childrenIds[0]!]!;
         const panel = doc.elements[root.childrenIds[1]!]!;
         const stack = doc.elements[panel.childrenIds[0]!]!;
+        const avatar = doc.elements[panel.childrenIds[1]!]!;
         const nametag = doc.elements[stack.childrenIds[0]!]!;
         const sentence = doc.elements[stack.childrenIds[1]!]!;
         const children = stack.childrenIds.map(id => doc.elements[id]!.type);
@@ -236,14 +239,27 @@ describe("UIDocumentService surface creation", () => {
         expect(children).toEqual(["nl.text", "nl.dialog.sentence"]);
         expect(nametag.type).toBe("nl.text");
         expect(sentence.type).toBe("nl.dialog.sentence");
+        expect(avatar.type).toBe("nl.image");
+        expect(avatar.parentId).toBe(panel.id);
+        // Square, vertically centred in the panel, and the text column pays for it in left padding.
+        expect(avatar.layout).toMatchObject({ x: 28, y: 22, width: 136, height: 136 });
+        expect(avatar.props).toMatchObject({
+            fillType: "image",
+            imageFill: { mode: "cover", assetId: null },
+            strokeVisible: false,
+            borderWidth: 0,
+        });
+        expect(stack.props?.stackPaddingLeft).toBe(188);
+        expect(sentence.layout.width).toBe(panel.layout.width - 188 - 28);
         expect(interactionLayer.props?.appearance).toBeTruthy();
         expect(panel.props?.appearance).toBeTruthy();
         expect(stack.props?.appearance).toBeTruthy();
         expect(nametag.props?.appearance).toBeTruthy();
         expect(sentence.props?.appearance).toBeTruthy();
+        expect(avatar.props?.appearance).toBeTruthy();
     });
 
-    it("wires default Dialog template blueprints for Next and Nametag updates", () => {
+    it("wires default Dialog template blueprints for Next, Nametag and Avatar updates", () => {
         const { service, blueprintDocument } = createHarness({ withLocalBlueprint: true });
 
         const dialog = service.createSurface({
@@ -257,6 +273,7 @@ describe("UIDocumentService surface creation", () => {
         const interactionLayer = doc.elements[root.childrenIds[0]!]!;
         const panel = doc.elements[root.childrenIds[1]!]!;
         const stack = doc.elements[panel.childrenIds[0]!]!;
+        const avatar = doc.elements[panel.childrenIds[1]!]!;
         const nametag = doc.elements[stack.childrenIds[0]!]!;
         const sentence = doc.elements[stack.childrenIds[1]!]!;
 
@@ -273,10 +290,11 @@ describe("UIDocumentService surface creation", () => {
         const elementClickTargets = nextNodes
             .filter((node: any) => node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK)
             .map((node: any) => [node.params?.elementId, node.params?.elementType]);
-        expect(elementClickTargets).toHaveLength(4);
+        expect(elementClickTargets).toHaveLength(5);
         expect(elementClickTargets).toEqual(expect.arrayContaining([
             [interactionLayer.id, "nl.container"],
             [panel.id, "nl.container"],
+            [avatar.id, "nl.image"],
             [nametag.id, "nl.text"],
             [sentence.id, "nl.dialog.sentence"],
         ]));
@@ -286,7 +304,7 @@ describe("UIDocumentService surface creation", () => {
             node.params?.[BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME] === " "
         )).toBe(true);
         const nextIncomingEdges = nextGraph.edges.filter((edge: any) => edge.to.nodeId === "dialog.next" && edge.to.port === "in");
-        expect(nextIncomingEdges).toHaveLength(6);
+        expect(nextIncomingEdges).toHaveLength(7);
         const outgoingKeys = nextGraph.edges.map((edge: any) => `${edge.from.nodeId}:${edge.from.port}`);
         expect(new Set(outgoingKeys).size).toBe(outgoingKeys.length);
 
@@ -304,6 +322,25 @@ describe("UIDocumentService surface creation", () => {
         expect(nametagNodeTypes.has(BLUEPRINT_NODE_TYPE_FLOW_IF)).toBe(true);
         expect(nametagNodeTypes.has(BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY)).toBe(true);
         expect(nametagNodeTypes.has(BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT)).toBe(true);
+
+        const avatarBlueprint = blueprintDocument.blueprints[`widget-main-${avatar.id}`];
+        expect(avatarBlueprint.owner).toMatchObject({ kind: "widgetMain", elementId: avatar.id });
+        expect(Object.keys(avatarBlueprint.program.graphs.events)).toEqual(["avatarUpdate"]);
+        const avatarGraph = avatarBlueprint.program.graphs.events.avatarUpdate.graph;
+        const avatarNodeTypes = new Set(Object.values(avatarGraph.nodes).map((node: any) => node.type));
+        expect(avatarNodeTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT)).toBe(true);
+        expect(avatarNodeTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH)).toBe(true);
+        expect(avatarNodeTypes.has(BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR)).toBe(true);
+        expect(avatarNodeTypes.has(BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET)).toBe(true);
+        // Both heads drive the same setter, and the avatar reaches it as a data pin - not a param.
+        const setAssetIncoming = avatarGraph.edges.filter((edge: any) =>
+            edge.to.nodeId === "avatar.update.setImageAsset" && edge.to.port === "in"
+        );
+        expect(setAssetIncoming).toHaveLength(2);
+        expect(avatarGraph.edges).toEqual(expect.arrayContaining([{
+            from: { nodeId: "avatar.update.get", port: "avatar" },
+            to: { nodeId: "avatar.update.setImageAsset", port: "asset" },
+        }]));
     });
 
     it("creates Notification Game UI with a list-driven template and message value binding", () => {

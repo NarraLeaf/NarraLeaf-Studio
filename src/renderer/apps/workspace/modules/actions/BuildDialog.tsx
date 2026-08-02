@@ -21,7 +21,12 @@ import {
     type GameBuildRequest,
 } from "@shared/types/gameBuild";
 import { sanitizeProjectFileName } from "@shared/utils/nlproj";
-import { BUILD_COMPRESSIONS } from "@/lib/workspace/project/configuration";
+import type { SigningCredential } from "@shared/types/signing";
+import {
+    BUILD_COMPRESSIONS,
+    SIGNING_PLATFORMS,
+    type SigningConfiguration,
+} from "@/lib/workspace/project/configuration";
 import type { Workspace } from "@/lib/workspace/workspace";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/ui";
@@ -43,8 +48,16 @@ import {
     type BuildDialogState,
 } from "./buildDialogState";
 import { BuildIconRow } from "./BuildIconRow";
+import { SigningSection } from "./BuildSigningSection";
+import { PROJECT_ICON_TARGETS } from "@shared/types/projectIcons";
 
-const SECTIONS: BuildPreflightSection[] = ["targets", "identity", "content", "output"];
+/**
+ * The rail, in order. Exported so a test can hold it against
+ * `BuildPreflightSection`: a section the type knows about and this list does not
+ * is invisible - its findings render nowhere, and a blocking one sends the
+ * author to a section that is not there.
+ */
+export const SECTIONS: BuildPreflightSection[] = ["targets", "identity", "content", "signing", "output"];
 
 /** Everything the dialog reads about the project but does not itself own. */
 export type BuildDialogInfo = {
@@ -71,8 +84,11 @@ export function BuildDialogContent({
     initialSection,
     initialVersion,
     initialCopyright,
+    initialSigning,
     onChange,
     onPersistIdentity,
+    onPersistSigning,
+    onRemoveCredential,
     onEditIcons,
     onCommit,
     onCancel,
@@ -83,8 +99,11 @@ export function BuildDialogContent({
     initialSection: BuildPreflightSection;
     initialVersion: string;
     initialCopyright: string;
+    initialSigning: SigningConfiguration;
     onChange: (request: GameBuildRequest, section: BuildPreflightSection) => void;
     onPersistIdentity: (identity: { version: string; copyright: string }) => Promise<void>;
+    onPersistSigning: (signing: SigningConfiguration) => Promise<void>;
+    onRemoveCredential: (credential: SigningCredential) => Promise<boolean>;
     onEditIcons: () => void;
     onCommit: (request: GameBuildRequest) => void;
     onCancel: () => void;
@@ -98,7 +117,9 @@ export function BuildDialogContent({
     // openBuildDialog, so a prop-driven input could never change.
     const [version, setVersion] = useState(initialVersion);
     const [copyright, setCopyright] = useState(initialCopyright);
+    const [signing, setSigning] = useState<SigningConfiguration>(initialSigning);
     const persisted = useRef({ version: initialVersion, copyright: initialCopyright });
+    const persistedSigning = useRef(initialSigning);
 
     const request = useMemo(() => stateToRequest(state), [state]);
 
@@ -112,10 +133,11 @@ export function BuildDialogContent({
         onChange(request, section);
     }, [onChange, request, section]);
 
-    // Persist identity edits and re-check, debounced together. Preflight reads
-    // the project from disk, so the write has to land first or it would judge
-    // the previous version. `cancelled` keeps a slow reply from overwriting a
-    // newer one.
+    // Persist identity and signing edits and re-check, debounced together.
+    // Preflight reads the project from disk, so the writes have to land first or
+    // it would judge the previous version - and, for signing, would report the
+    // credential the author just cleared. `cancelled` keeps a slow reply from
+    // overwriting a newer one.
     useEffect(() => {
         let cancelled = false;
         const timer = setTimeout(() => {
@@ -123,6 +145,10 @@ export function BuildDialogContent({
                 if (persisted.current.version !== version || persisted.current.copyright !== copyright) {
                     await onPersistIdentity({ version, copyright });
                     persisted.current = { version, copyright };
+                }
+                if (persistedSigning.current !== signing) {
+                    await onPersistSigning(signing);
+                    persistedSigning.current = signing;
                 }
                 if (cancelled) {
                     return;
@@ -137,7 +163,22 @@ export function BuildDialogContent({
             cancelled = true;
             clearTimeout(timer);
         };
-    }, [request, runPreflight, onPersistIdentity, version, copyright]);
+    }, [request, runPreflight, onPersistIdentity, onPersistSigning, version, copyright, signing]);
+
+    // Only the platforms this build actually produces: a credential row for a
+    // target nobody selected is a question the author has no reason to answer.
+    //
+    // The GPG slot is the exception. It is filed under "linux" in the config,
+    // but its detached signatures cover every artifact the build writes, not
+    // Linux's - so it is offered whenever the build writes anything. Gating it
+    // on a Linux target would put it out of reach on a Windows host, which
+    // cannot build a Linux target at all.
+    const signablePlatforms = useMemo(() => {
+        const producesSomething = DIALOG_PLATFORMS.some(platform => state.formats[platform].size > 0);
+        return SIGNING_PLATFORMS.filter(platform => (platform === "linux"
+            ? producesSomething
+            : state.formats[platform].size > 0));
+    }, [state.formats]);
 
     const severityBySection = useMemo(() => {
         const map = {} as Partial<Record<BuildPreflightSection, BuildPreflightSeverity>>;
@@ -204,6 +245,19 @@ export function BuildDialogContent({
                         />
                     )}
                     {section === "content" && <ContentSection info={info} findings={findings} />}
+                    {section === "signing" && (
+                        <SigningSection
+                            platforms={signablePlatforms}
+                            signing={signing}
+                            onChange={(platform, credentialId) => setSigning(current => ({
+                                ...current,
+                                [platform]: credentialId,
+                            }))}
+                            onRemove={onRemoveCredential}
+                        >
+                            <Findings findings={findings} section="signing" />
+                        </SigningSection>
+                    )}
                     {section === "output" && (
                         <OutputSection info={info} state={state} version={version} findings={findings} onChange={update} />
                     )}
@@ -242,6 +296,51 @@ function SeverityDot({ severity }: { severity?: BuildPreflightSeverity }) {
 }
 
 /** Findings for one section, rendered as plain sentences (no chips). */
+/**
+ * Detail fields whose value is a platform id, and how many ids each holds.
+ *
+ * A finding travels as a code plus raw values so the console can render English
+ * while the dialog renders the author's language - which means every value that
+ * is an internal identifier has to be turned into a name here, not just the one
+ * called `platform`. `host` reads "This machine runs macos" untranslated, and
+ * `targetPlatform` and the comma-joined `platforms` are the same vocabulary.
+ *
+ * Listed rather than inferred from the value: "linux" is a platform id and also
+ * a plausible substring of something that is not, and guessing would eventually
+ * translate a word that was never an id.
+ */
+const PLATFORM_DETAIL_FIELDS: Record<string, "one" | "list"> = {
+    platform: "one",
+    host: "one",
+    targetPlatform: "one",
+    platforms: "list",
+};
+
+/** A finding's detail with every platform id replaced by its display name. */
+function localizePlatformDetail(
+    detail: BuildPreflightFinding["detail"],
+    t: ReturnType<typeof useTranslation>["t"],
+): Record<string, string> {
+    const name = (id: string): string => {
+        const key = `build.platform.${id as GameBuildPlatform}` as const;
+        // An id from a newer Studio, or one that is not a platform after all:
+        // showing it verbatim beats showing a missing-key marker.
+        const translated = t(key);
+        return translated === key ? id : translated;
+    };
+    const localized: Record<string, string> = { ...detail };
+    for (const [field, arity] of Object.entries(PLATFORM_DETAIL_FIELDS)) {
+        const value = detail?.[field];
+        if (!value) {
+            continue;
+        }
+        localized[field] = arity === "list"
+            ? value.split(",").map(part => name(part.trim())).join(", ")
+            : name(value);
+    }
+    return localized;
+}
+
 function Findings({ findings, section }: { findings: BuildPreflightFinding[]; section: BuildPreflightSection }) {
     const { t } = useTranslation();
     const mine = findings.filter(finding => finding.section === section);
@@ -258,12 +357,7 @@ function Findings({ findings, section }: { findings: BuildPreflightFinding[]; se
                         finding.severity === "error" ? "text-danger" : "text-fg-subtle",
                     )}
                 >
-                    {t(`build.preflight.${finding.code}`, {
-                        ...finding.detail,
-                        ...(finding.detail?.platform
-                            ? { platform: t(`build.platform.${finding.detail.platform as GameBuildPlatform}`) }
-                            : {}),
-                    })}
+                    {t(`build.preflight.${finding.code}`, localizePlatformDetail(finding.detail, t))}
                 </p>
             ))}
         </div>
@@ -437,8 +531,8 @@ function IdentitySection({
             <Field label={t("build.identity.icons")} align="start">
                 <div>
                     <div className="flex gap-2">
-                        {DESKTOP_PLATFORMS.map(platform => (
-                            <BuildIconRow key={platform} platform={platform} onClick={onEditIcons} />
+                        {PROJECT_ICON_TARGETS.map(target => (
+                            <BuildIconRow key={target} target={target} onClick={onEditIcons} />
                         ))}
                     </div>
                     <p className="mt-1.5 text-2xs text-fg-subtle">{t("build.identity.iconsHint")}</p>
@@ -615,6 +709,14 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
         return;
     }
 
+    // The dialog only describes what the package will contain, and the pipeline
+    // reads the manifest from disk - so this has to too. The cached copy only
+    // tracks writes this window made, which let the Content section keep
+    // reporting encrypted assets after the setting was turned off elsewhere.
+    // Best-effort: an unreadable manifest falls back to the cache rather than
+    // blocking the dialog, and preflight still judges the file itself.
+    await projectService.reloadProjectConfig().catch(() => undefined);
+
     const projectConfig = projectService.getProjectConfig();
     const projectPath = context.project.getConfig().projectPath;
     const hostResult = await getInterface().getPlatform();
@@ -670,6 +772,7 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
                 initialSection={section}
                 initialVersion={typeof projectConfig.metadata?.version === "string" ? projectConfig.metadata.version : ""}
                 initialCopyright={typeof projectConfig.metadata?.copyright === "string" ? projectConfig.metadata.copyright : ""}
+                initialSigning={projectService.getSigningConfiguration()}
                 onChange={(nextRequest, nextSection) => {
                     request = nextRequest;
                     section = nextSection;
@@ -679,6 +782,34 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
                     // Best-effort: a failed write must not wedge the dialog, and
                     // preflight re-reads from disk either way.
                     await projectService.updateProjectMetadata({ version, copyright }).catch(() => undefined);
+                }}
+                onPersistSigning={async nextSigning => {
+                    // Same discipline as the identity write above. What lands in
+                    // the project is credential ids and nothing else - the key
+                    // material stays in the machine's vault.
+                    //
+                    // Passed whole rather than field by field. This used to name
+                    // the four platforms it knew about, which meant adding a
+                    // fifth compiled cleanly and dropped that platform's
+                    // credential on the way to disk: the row showed the author's
+                    // choice, and preflight - which reads the project back -
+                    // went on calling the build unsigned. `updateSigningConfiguration`
+                    // normalizes against SIGNING_PLATFORMS, so the filtering
+                    // that belongs here already happens there, keyed by a table
+                    // a new platform has to be added to.
+                    await projectService.updateSigningConfiguration(nextSigning).catch(() => undefined);
+                }}
+                onRemoveCredential={async credential => {
+                    const confirmed = await uiService.dialogs.confirmDestructive(
+                        translate("build.signing.removeConfirm", { label: credential.label }),
+                        translate("build.signing.removeConfirmDetail"),
+                        translate("build.signing.removeAction"),
+                    );
+                    if (!confirmed) {
+                        return false;
+                    }
+                    const result = await getInterface().signing.remove(credential.id);
+                    return result.success && result.data.removed;
                 }}
                 onEditIcons={() => {
                     // The draft is already parked, so closing here is safe: the

@@ -15,8 +15,14 @@ export type BuildActivityRecord = {
     finishedAt: number;
     durationMs: number;
     ok: boolean;
-    /** Build target as reported by the build service, when it named one. */
-    platform?: string;
+    /**
+     * Platforms the build was asked to produce, in request order. Plain strings rather than the
+     * `GameBuildPlatform` union: this is parsed back out of stored JSON, where a value written by
+     * an older (or newer) Studio is not something the union can promise.
+     *
+     * Absent on records written before platforms were kept.
+     */
+    platforms?: string[];
     /**
      * The build's console output, one already-rendered plain-text line per entry. Stored
      * formatted rather than structured because this is an archived artifact, not live console
@@ -50,13 +56,37 @@ export type ProjectActivityDay = {
     edits: number;
     /** Seconds the workspace window was focused and receiving input. */
     activeSeconds: number;
+    /**
+     * Set when this day's `words` was measured by a different counting rule than the day before it
+     * (see {@link WORD_COUNT_BASIS}), which makes the delta across that boundary meaningless.
+     *
+     * Without it, widening what counts as a word would plot the entire back catalogue of the newly
+     * counted text as one day's writing - the same failure the earliest recorded day is protected
+     * from, arriving through a different door. Readers must skip a rebased day rather than diff it.
+     */
+    rebased?: boolean;
 };
+
+/**
+ * Bumped whenever the word counter (`scanScene` in `projectStatsSnapshot.ts`) starts or stops
+ * counting some class of text, so totals recorded under the old rule are never diffed against
+ * totals recorded under the new one.
+ *
+ * 1 - narration and dialogue only.
+ * 2 - choice prompts and choice option text included.
+ */
+export const WORD_COUNT_BASIS = 2;
 
 export type ProjectStatsV1 = {
     version: 1;
     /** First day this project was ever opened with stats collection running. */
     firstSeenAt: number | null;
     lastActiveAt: number | null;
+    /**
+     * Counting rule the stored word totals were measured under. Absent on records written before
+     * the rule was versioned, which are basis 1 by definition.
+     */
+    wordBasis?: number;
     days: Record<string, ProjectActivityDay>;
     builds: BuildActivityRecord[];
 };
@@ -76,6 +106,8 @@ export function createEmptyProjectStats(): ProjectStatsV1 {
         version: 1,
         firstSeenAt: null,
         lastActiveAt: null,
+        // Nothing has been counted yet, so a fresh record is already on the current rule.
+        wordBasis: WORD_COUNT_BASIS,
         days: {},
         builds: [],
     };
@@ -94,16 +126,27 @@ export function toActivityDayKey(timestamp: number): string {
     return `${year}-${month}-${day}`;
 }
 
-function isActivityDay(value: unknown): value is ProjectActivityDay {
+function parseActivityDay(value: unknown): ProjectActivityDay | null {
     if (!value || typeof value !== "object") {
-        return false;
+        return null;
     }
     const day = value as Record<string, unknown>;
-    return (
-        typeof day.words === "number" &&
-        typeof day.edits === "number" &&
-        typeof day.activeSeconds === "number"
-    );
+    if (
+        typeof day.words !== "number" ||
+        typeof day.edits !== "number" ||
+        typeof day.activeSeconds !== "number"
+    ) {
+        return null;
+    }
+    const parsed: ProjectActivityDay = {
+        words: day.words,
+        edits: day.edits,
+        activeSeconds: day.activeSeconds,
+    };
+    if (day.rebased === true) {
+        parsed.rebased = true;
+    }
+    return parsed;
 }
 
 /**
@@ -131,8 +174,11 @@ function parseBuildRecord(value: unknown): BuildActivityRecord | null {
         durationMs: record.durationMs,
         ok: record.ok,
     };
-    if (typeof record.platform === "string") {
-        parsed.platform = record.platform;
+    if (Array.isArray(record.platforms)) {
+        const platforms = record.platforms.filter((name): name is string => typeof name === "string");
+        if (platforms.length > 0) {
+            parsed.platforms = platforms;
+        }
     }
     if (Array.isArray(record.log)) {
         const log = record.log.filter((line): line is string => typeof line === "string");
@@ -179,8 +225,9 @@ export function parseProjectStats(raw: unknown): ProjectStatsV1 | null {
     const days: Record<string, ProjectActivityDay> = {};
     if (record.days && typeof record.days === "object") {
         for (const [key, value] of Object.entries(record.days as Record<string, unknown>)) {
-            if (/^\d{4}-\d{2}-\d{2}$/.test(key) && isActivityDay(value)) {
-                days[key] = value;
+            const day = /^\d{4}-\d{2}-\d{2}$/.test(key) ? parseActivityDay(value) : null;
+            if (day) {
+                days[key] = day;
             }
         }
     }
@@ -195,6 +242,8 @@ export function parseProjectStats(raw: unknown): ProjectStatsV1 | null {
         version: 1,
         firstSeenAt: typeof record.firstSeenAt === "number" ? record.firstSeenAt : null,
         lastActiveAt: typeof record.lastActiveAt === "number" ? record.lastActiveAt : null,
+        // A record with no stored basis predates the versioning, so its totals are basis 1.
+        wordBasis: typeof record.wordBasis === "number" ? record.wordBasis : 1,
         days,
         builds,
     };

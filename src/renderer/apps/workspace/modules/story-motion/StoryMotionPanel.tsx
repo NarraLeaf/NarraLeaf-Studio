@@ -12,6 +12,7 @@ import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
+import { useFreezeGuard } from "../../components/ui/freezeGuard";
 import { Services } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
@@ -40,15 +41,18 @@ import {
 } from "./storyMotionTypes";
 import {
     STORY_MOTION_FPS,
-    STORY_MOTION_TEMPLATES,
     createStoryMotionName,
-    createStoryMotionTemplateTimeline,
+    getStoryMotionTimeline,
     formatStoryMotionTime,
     getStoryMotionDurationMs,
     sampleStoryMotionPreview,
     type StoryMotionPreviewState,
-    type StoryMotionTemplateName,
 } from "./storyMotionTimeline";
+import {
+    STORY_MOTION_PRESET_CATEGORIES,
+    getStoryMotionPreset,
+    storyMotionPresetsForTargetKind,
+} from "./storyMotionPresets";
 import { StoryMotionStagePreview } from "./StoryMotionStagePreview";
 import { resolveStoryMotionPreviewTarget, type StoryMotionPreviewTarget } from "./storyMotionPreviewTarget";
 
@@ -56,18 +60,14 @@ const ICON_BUTTON_CLASS = controlButtonClass();
 const PREVIEW_LOOP_GAP_MS = 2000;
 const PREVIEW_FRAME_MS = 1000 / STORY_MOTION_FPS;
 
-const STORY_MOTION_TEMPLATE_KEYS = {
-    "Fade in + slide": "fadeInSlide",
-    "Center pop": "centerPop",
-    "Look around": "lookAround",
-    "Flash": "flash",
-} as const satisfies Record<StoryMotionTemplateName, string>;
-
 export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPanelPayload | undefined>) {
     const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
     const { menuState, showMenu, hideMenu } = useContextMenu();
+    // Creating, duplicating, deleting and binding write the story document; selecting a motion,
+    // previewing it and opening the full editor only read, so they stay live in a frozen project.
+    const freeze = useFreezeGuard();
     const storyService = useMemo(
         () => context && isInitialized ? context.services.get<StoryService>(Services.Story) : null,
         [context, isInitialized],
@@ -197,18 +197,32 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
             || asset.targetKind.toLowerCase().includes(needle));
     }, [assets, query]);
 
-    const createMotion = useCallback(async (templateName?: typeof STORY_MOTION_TEMPLATES[number]) => {
+    const createMotion = useCallback(async (presetId?: string) => {
         if (!storyService) {
             return;
         }
         const targetKind = descriptor?.targetKind ?? "image";
+        const preset = presetId ? getStoryMotionPreset(presetId) : undefined;
         const asset = await storyService.createAnimationAsset({
-            name: createStoryMotionName(targetKind, templateName),
+            name: createStoryMotionName(
+                t(`motion.targetKind.${targetKind}`),
+                preset ? t(`motion.preset.${preset.id}`) : t("motion.blankMotionName"),
+            ),
             targetKind,
-            timeline: createStoryMotionTemplateTimeline(templateName),
+            timeline: preset?.build(),
+            config: preset?.config,
         });
         setSelectedId(asset.id);
-    }, [descriptor?.targetKind, storyService]);
+    }, [descriptor?.targetKind, storyService, t]);
+
+    const presetsForTarget = useMemo(
+        () => storyMotionPresetsForTargetKind(descriptor?.targetKind ?? "image"),
+        [descriptor?.targetKind],
+    );
+    const storyMotionPresetCategories = useMemo(
+        () => STORY_MOTION_PRESET_CATEGORIES.filter(category => presetsForTarget.some(preset => preset.category === category)),
+        [presetsForTarget],
+    );
 
     const openCreateMenu = useCallback((event: MouseEvent<HTMLButtonElement>) => {
         event.stopPropagation();
@@ -224,15 +238,25 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                 void createMotion();
             },
         },
-        ...STORY_MOTION_TEMPLATES.map(templateName => ({
-            id: `preset-${templateName}`,
-            label: t(`motion.templates.${STORY_MOTION_TEMPLATE_KEYS[templateName]}`),
+        { id: "preset-separator", separator: true },
+        // One submenu per category rather than a flat list: the library is far past the length where a
+        // single menu is readable, and the categories are how an author already thinks about the move
+        // they want ("something for an entrance").
+        ...storyMotionPresetCategories.map(category => ({
+            id: `preset-category-${category}`,
+            label: t(`motion.presetCategory.${category}`),
             icon: <Spline className="h-4 w-4" />,
-            onClick: () => {
-                void createMotion(templateName);
-            },
+            submenu: presetsForTarget
+                .filter(preset => preset.category === category)
+                .map(preset => ({
+                    id: `preset-${preset.id}`,
+                    label: t(`motion.preset.${preset.id}`),
+                    onClick: () => {
+                        void createMotion(preset.id);
+                    },
+                })),
         })),
-    ], [createMotion, t]);
+    ], [createMotion, presetsForTarget, storyMotionPresetCategories, t]);
 
     const duplicateMotion = useCallback(async () => {
         if (!storyService || !selectedAsset) {
@@ -301,10 +325,14 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
 
     const handlePreviewAssetConfirm = useCallback((assets: Asset[]) => {
         if (assetPickerFor) {
-            setPreviewAsset(assetPickerFor === "target" ? "previewAssetId" : "previewBackgroundAssetId", assets[0]?.id);
+            // Picking a preview image writes the motion asset, so the freeze refuses the binding -
+            // the second lock on a door the slot buttons already hold shut, because a picker that
+            // is open when the freeze arrives outlives the button that opened it. Closing the
+            // picker is not a write and always runs, or the author is left with a stuck panel.
+            freeze.run(setPreviewAsset)(assetPickerFor === "target" ? "previewAssetId" : "previewBackgroundAssetId", assets[0]?.id);
         }
         setAssetPickerFor(null);
-    }, [assetPickerFor, setPreviewAsset]);
+    }, [assetPickerFor, freeze, setPreviewAsset]);
 
     const setConfig = useCallback((patch: { repeat?: number; repeatDelayMs?: number }, clear: ("repeat" | "repeatDelayMs")[] = []) => {
         if (!storyService || !selectedAsset) {
@@ -338,7 +366,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
     }, [actionContext, openEditorTab, selectedAsset]);
 
     const previewTimeline = useMemo(() => {
-        return selectedAsset?.timeline ?? createStoryMotionTemplateTimeline("Fade in + slide");
+        return getStoryMotionTimeline(selectedAsset);
     }, [selectedAsset?.timeline]);
     const previewDurationMs = useMemo(() => getStoryMotionDurationMs(previewTimeline), [previewTimeline]);
     useEffect(() => {
@@ -389,7 +417,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                         placeholder={t("motion.panel.searchPlaceholder")}
                         leftIcon={<Search className="h-3.5 w-3.5 text-fg-subtle" />}
                     />
-                    <button className={ICON_BUTTON_CLASS} type="button" onClick={openCreateMenu} title={t("motion.panel.createMotion")} aria-label={t("motion.panel.createMotion")}>
+                    <button className={`${ICON_BUTTON_CLASS} disabled:cursor-not-allowed disabled:opacity-40`} type="button" onClick={openCreateMenu} {...freeze.writes(false, t("motion.panel.createMotion"))} aria-label={t("motion.panel.createMotion")}>
                         <Plus className="h-4 w-4" />
                     </button>
                 </div>
@@ -429,6 +457,11 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                 <div className="grid gap-4">
                                     <label className="grid min-w-0 gap-1.5">
                                         <span className="text-xs font-medium text-fg-subtle">{t("common.name")}</span>
+                                        {/* Renaming writes the motion asset: on a frozen project the
+                                            field took the new name, blurred, and reverted to the old
+                                            one the moment the asset reloaded. Read-only rather than
+                                            disabled, because the name is what the author came here to
+                                            read and a disabled input is dimmed past reading. */}
                                         <EnhancedInput
                                             className="transition-colors focus-within:ring-0"
                                             value={renameDraft}
@@ -438,6 +471,8 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                                 if (event.key === "Enter") event.currentTarget.blur();
                                             }}
                                             inputClassName="font-medium"
+                                            readOnly={freeze.frozen}
+                                            title={freeze.frozen ? freeze.reason : undefined}
                                         />
                                     </label>
                                     <SurfaceEditorToolbarButtonGroup aria-label={t("motion.panel.motionActions")} className="w-full">
@@ -450,13 +485,18 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                             <Edit3 className="h-3.5 w-3.5" />
                                             <span>{t("common.edit")}</span>
                                         </SurfaceEditorToolbarSegButton>
-                                        <SurfaceEditorToolbarSegButton type="button" onClick={duplicateMotion} title={t("common.duplicate")} aria-label={t("common.duplicate")}>
+                                        <SurfaceEditorToolbarSegButton type="button" onClick={duplicateMotion} {...freeze.writes(false, t("common.duplicate"))} aria-label={t("common.duplicate")}>
                                             <Copy className="h-4 w-4" />
                                         </SurfaceEditorToolbarSegButton>
-                                        <SurfaceEditorToolbarSegButton type="button" onClick={() => void deleteMotion()} title={t("common.delete")} aria-label={t("common.delete")}>
+                                        <SurfaceEditorToolbarSegButton type="button" onClick={() => void deleteMotion()} {...freeze.writes(false, t("common.delete"))} aria-label={t("common.delete")}>
                                             <Trash2 className="h-4 w-4" />
                                         </SurfaceEditorToolbarSegButton>
                                     </SurfaceEditorToolbarButtonGroup>
+                                    {/* Repeat and repeat delay are the motion's config, and every
+                                        keystroke here commits: typed into a frozen project they
+                                        changed the loop on screen and were gone on the next reload.
+                                        Read-only for the same reason as the name - the numbers are
+                                        half of what this panel is for. */}
                                     <div className="grid grid-cols-2 gap-3">
                                         <label className="grid min-w-0 gap-1.5">
                                             <span className="text-xs font-medium text-fg-subtle">{t("motion.panel.repeat")}</span>
@@ -470,6 +510,8 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                                     const repeat = Math.floor(value);
                                                     setConfig(repeat > 0 ? { repeat } : {}, repeat > 0 ? [] : ["repeat"]);
                                                 }}
+                                                readOnly={freeze.frozen}
+                                                title={freeze.frozen ? freeze.reason : undefined}
                                             />
                                         </label>
                                         <label className="grid min-w-0 gap-1.5">
@@ -484,6 +526,8 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                                     const repeatDelayMs = Math.max(0, storySecondsToMs(seconds));
                                                     setConfig(repeatDelayMs > 0 ? { repeatDelayMs } : {}, repeatDelayMs > 0 ? [] : ["repeatDelayMs"]);
                                                 }}
+                                                readOnly={freeze.frozen}
+                                                title={freeze.frozen ? freeze.reason : undefined}
                                             />
                                         </label>
                                     </div>
@@ -505,6 +549,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                             type="button"
                                             onClick={bindToAction}
                                             className="h-9 justify-center"
+                                            {...freeze.writes()}
                                         >
                                             <Check className="h-3.5 w-3.5" />
                                             {t("motion.panel.bindToAction")}
@@ -690,14 +735,18 @@ function PreviewAssetSlot(props: {
     onClear: () => void;
 }) {
     const { t } = useTranslation();
+    // Both halves of the slot write the motion asset - the label opens the asset picker that binds a
+    // preview image, the ✕ unbinds it - so both are refused while frozen. The slot still shows which
+    // image is bound, which is the part worth reading.
+    const freeze = useFreezeGuard();
     return (
-        <div className="flex min-w-0 max-w-56 items-center overflow-hidden rounded border border-edge bg-fill-subtle">
+        <div className="flex min-w-0 max-w-56 items-center overflow-hidden rounded-md border border-edge bg-fill-subtle">
             <button
                 ref={props.buttonRef}
                 type="button"
-                className={`flex h-7 min-w-0 flex-1 items-center gap-1.5 px-2 text-xs ${props.hasValue ? "text-fg" : "text-fg-subtle"} hover:bg-fill-subtle hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50`}
+                className={`flex h-7 min-w-0 flex-1 items-center gap-1.5 px-2 text-xs ${props.hasValue ? "text-fg" : "text-fg-subtle"} hover:bg-fill-subtle hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 disabled:cursor-not-allowed disabled:opacity-40`}
                 onClick={props.onOpen}
-                title={props.title}
+                {...freeze.writes(false, props.title)}
             >
                 {props.icon}
                 <span className="min-w-0 truncate">{props.label}</span>
@@ -705,9 +754,9 @@ function PreviewAssetSlot(props: {
             {props.hasValue ? (
                 <button
                     type="button"
-                    className="grid h-7 w-6 shrink-0 place-items-center border-l border-edge text-fg-subtle hover:bg-danger/10 hover:text-danger focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-danger/50"
+                    className="grid h-7 w-6 shrink-0 place-items-center border-l border-edge text-fg-subtle hover:bg-danger/10 hover:text-danger focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-danger/50 disabled:cursor-not-allowed disabled:opacity-40"
                     onClick={props.onClear}
-                    title={t("common.clear")}
+                    {...freeze.writes(false, t("common.clear"))}
                     aria-label={t("motion.panel.clearAria", { name: props.title })}
                 >
                     <X className="h-3 w-3" />

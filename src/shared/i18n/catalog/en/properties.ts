@@ -9,8 +9,6 @@ export const properties = {
         storyMotion: "Story Motion",
         scene: "Scene",
         character: "Character",
-        noSelection: "No item selected",
-        noSelectionHint: "Select an item to view its properties",
     },
     scene: {
         title: "Interface Properties",
@@ -26,7 +24,7 @@ export const properties = {
     diagnostics: {
         title: "Static checks",
         selectOnCanvas: "→ select on canvas",
-        help: "Graph structure and binding issues: open the Blueprint editor tab from the Blueprint section. Live execution, node enter/exit, and Host API traces appear in Dev Mode only.",
+        help: "For graph and binding problems, open the Blueprint editor. Live execution traces only appear in Dev Mode.",
     },
     layout: {
         title: "Layout",
@@ -105,7 +103,7 @@ export const properties = {
         selectHint: "Asset browser opens on click",
         changeImage: "Change image",
         openEditor: "Click to open editor",
-        resolveError: "Static check: image asset could not be resolved ({error}). Preview may be wrong until the asset exists; verify in Dev Mode.",
+        resolveError: "Image asset could not be resolved ({error}). The preview may be wrong until it exists.",
         selectFillImage: "Select Fill Image",
         mode: {
             cover: "Cover",
@@ -122,7 +120,6 @@ export const properties = {
         base: "Base",
         common: "Common",
         recent: "Recent",
-        noRecent: "No recent colors yet",
         custom: "Custom",
     },
     references: {
@@ -134,7 +131,7 @@ export const properties = {
             other: "{count} references",
         },
         dormant: "inactive",
-        dormantHint: "Stored on the widget but not currently rendered — the fill is set to a colour. Deleting this asset would empty it.",
+        dormantHint: "Stored on the widget but not drawn: the fill is set to a colour. Deleting this asset would empty it.",
         kind: {
             story: "Story",
             blueprint: "Blueprint",
@@ -149,12 +146,9 @@ export const properties = {
         add: "Add tag",
         remove: "Remove tag",
         removeAria: "Remove tag {tag}",
-        empty: "No tags yet",
     },
     thumbnail: {
         alt: "Thumbnail",
-        empty: "No thumbnail yet",
-        emptyHint: "Click Select to choose one",
         selectTitle: "Select Thumbnail",
         cropTitle: "Crop Thumbnail",
         error: {
@@ -215,6 +209,20 @@ export const properties = {
             preview: "JSON Structure",
             schemaValue: "Schema: {schema}",
             noSchema: "No schema",
+        },
+        model: {
+            title: "Model Properties",
+            info: "Model Information",
+            entry: "Entry File",
+            entryAuto: "Detected: {entry}",
+            entryUnresolvedNone: "No entry file could be identified. Choose one.",
+            entryUnresolvedAmbiguous: "More than one file could be the entry. Choose one.",
+            files: "Files",
+            fileCount: {
+                one: "{count} file",
+                other: "{count} files",
+            },
+            browse: "Bundle Contents",
         },
         other: {
             title: "File Properties",

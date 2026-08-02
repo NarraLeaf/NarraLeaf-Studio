@@ -8,6 +8,7 @@ import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { ContextMenu, type ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
 import { useTranslation } from "@/lib/i18n";
+import { useFreezeGuard } from "../../../components/ui/freezeGuard";
 
 type ComponentLibraryPanelProps = {
     documentService: UIDocumentService | null;
@@ -45,7 +46,7 @@ function ComponentPreviewFrame({
     const scale = frameWidth > 0 ? Math.min(frameWidth / designWidth, frameHeight / designHeight) : 0;
 
     return (
-        <div ref={frameRef} className="mt-2 h-20 w-full overflow-hidden rounded border border-edge bg-surface-canvas">
+        <div ref={frameRef} className="mt-2 h-20 w-full overflow-hidden rounded-md border border-edge bg-surface-canvas">
             <div className="relative h-full w-full">
                 {scale > 0 ? (
                     <div
@@ -74,6 +75,9 @@ export function ComponentLibraryPanel({
     onOpenComponent,
 }: ComponentLibraryPanelProps) {
     const { t, tn } = useTranslation();
+    // The library is browsable while frozen - search, previews, opening a component for reading - and
+    // only creating, renaming, duplicating and deleting are off.
+    const freeze = useFreezeGuard();
     const panelRef = useRef<HTMLDivElement | null>(null);
     const [open, setOpen] = useState(true);
     const [components, setComponents] = useState<UIComponentDefinition[]>([]);
@@ -240,7 +244,7 @@ export function ComponentLibraryPanel({
                 {
                     id: "rename",
                     label: t("uiEditor.componentLibrary.rename"),
-                    disabled: activeIds.length !== 1,
+                    ...freeze.menuRow(activeIds.length !== 1),
                     onClick: () => {
                         hideMenu();
                         void handleRename(component);
@@ -249,6 +253,7 @@ export function ComponentLibraryPanel({
                 {
                     id: "duplicate",
                     label: activeIds.length > 1 ? t("uiEditor.componentLibrary.duplicateSelected") : t("common.duplicate"),
+                    ...freeze.menuRow(),
                     onClick: () => {
                         hideMenu();
                         handleDuplicate(activeIds);
@@ -258,6 +263,7 @@ export function ComponentLibraryPanel({
                 {
                     id: "delete",
                     label: activeIds.length > 1 ? t("uiEditor.componentLibrary.deleteSelected") : t("common.delete"),
+                    ...freeze.menuRow(),
                     onClick: () => {
                         hideMenu();
                         void handleDelete(activeIds);
@@ -267,7 +273,7 @@ export function ComponentLibraryPanel({
             setMenuItems(items);
             showMenu(event);
         },
-        [handleDelete, handleDuplicate, handleRename, hideMenu, onOpenComponent, selectedIds, showMenu, t],
+        [freeze, handleDelete, handleDuplicate, handleRename, hideMenu, onOpenComponent, selectedIds, showMenu, t],
     );
 
     const selectedCount = selectedIds.size;
@@ -277,12 +283,16 @@ export function ComponentLibraryPanel({
             ref={panelRef}
             className="shrink-0 border-t border-edge bg-surface-sunken"
             tabIndex={0}
-            onKeyDown={event => {
+            // The Delete key is a third route to the same deletion the toolbar button and the
+            // context-menu row both refuse while frozen; a keystroke has no control to grey out,
+            // so `freeze.run` is what stops it. Measured before this: selecting a component and
+            // pressing Delete ran the confirm dialog and left the component where it was.
+            onKeyDown={freeze.run(event => {
                 if (event.key === "Delete" && selectedIds.size > 0) {
                     event.preventDefault();
                     void handleDelete([...selectedIds]);
                 }
-            }}
+            })}
         >
             <button
                 type="button"
@@ -310,7 +320,7 @@ export function ComponentLibraryPanel({
                             type="button"
                             className="grid h-8 w-8 place-items-center rounded-md border border-edge text-fg-muted hover:bg-fill hover:text-fg"
                             onClick={() => void handleCreate()}
-                            title={t("uiEditor.componentLibrary.createComponent")}
+                            {...freeze.writes(false, t("uiEditor.componentLibrary.createComponent"))}
                             aria-label={t("uiEditor.componentLibrary.createComponent")}
                         >
                             <Plus className="h-4 w-4" />
@@ -322,18 +332,18 @@ export function ComponentLibraryPanel({
                             <span className="min-w-0 flex-1 px-1 text-2xs text-fg-muted">{t("uiEditor.componentLibrary.selectedCount", { count: selectedCount })}</span>
                             <button
                                 type="button"
-                                className="grid h-7 w-7 place-items-center rounded text-fg-muted hover:bg-fill hover:text-fg"
+                                className="grid h-7 w-7 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-fg"
                                 onClick={() => handleDuplicate([...selectedIds])}
-                                title={t("uiEditor.componentLibrary.duplicateSelected")}
+                                {...freeze.writes(false, t("uiEditor.componentLibrary.duplicateSelected"))}
                                 aria-label={t("uiEditor.componentLibrary.duplicateSelected")}
                             >
                                 <Copy className="h-3.5 w-3.5" />
                             </button>
                             <button
                                 type="button"
-                                className="grid h-7 w-7 place-items-center rounded text-danger hover:bg-danger/15"
+                                className="grid h-7 w-7 place-items-center rounded-md text-danger hover:bg-danger/15"
                                 onClick={() => void handleDelete([...selectedIds])}
-                                title={t("uiEditor.componentLibrary.deleteSelected")}
+                                {...freeze.writes(false, t("uiEditor.componentLibrary.deleteSelected"))}
                                 aria-label={t("uiEditor.componentLibrary.deleteSelected")}
                             >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -394,19 +404,25 @@ export function ComponentLibraryPanel({
                                             </div>
                                             <button
                                                 type="button"
-                                                className="grid h-6 w-6 place-items-center rounded text-fg-muted opacity-0 hover:bg-fill hover:text-fg group-hover:opacity-100"
+                                                className="grid h-6 w-6 place-items-center rounded-md text-fg-muted opacity-0 hover:bg-fill hover:text-fg group-hover:opacity-100 disabled:cursor-not-allowed disabled:group-hover:opacity-40"
                                                 onClick={event => {
                                                     event.stopPropagation();
                                                     void handleRename(component);
                                                 }}
-                                                title={t("common.rename")}
+                                                // Renaming writes the component library, so it is
+                                                // refused while frozen - as the create, duplicate
+                                                // and delete buttons above already are, and as the
+                                                // context menu's own Rename row is. This one card
+                                                // shortcut was the way round all three: the dialog
+                                                // opened, took a new name and kept the old one.
+                                                {...freeze.writes(false, t("common.rename"))}
                                                 aria-label={t("common.rename")}
                                             >
                                                 <Edit3 className="h-3.5 w-3.5" />
                                             </button>
                                             <button
                                                 type="button"
-                                                className="grid h-6 w-6 place-items-center rounded text-fg-muted hover:bg-fill hover:text-fg"
+                                                className="grid h-6 w-6 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-fg"
                                                 onClick={event => openContextMenu(event, component, { selectComponent: false })}
                                                 title={t("uiEditor.componentLibrary.componentActions")}
                                                 aria-label={t("uiEditor.componentLibrary.componentActions")}

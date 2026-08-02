@@ -17,6 +17,14 @@ export const GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL = "runtime:fullscreen:chang
 export const GAME_RUNTIME_CLOSE_REQUESTED_CHANNEL = "runtime:close:requested" as const;
 /** Renderer -> main reply to a {@link GAME_RUNTIME_CLOSE_REQUESTED_CHANNEL} request. */
 export const GAME_RUNTIME_CLOSE_DECISION_CHANNEL = "runtime:close:decision" as const;
+/**
+ * Main -> renderer push carrying everything a sidecar says or does that the
+ * renderer did not ask for: its `evt` frames, its exit, and the moment the host
+ * gives up restarting it. One channel with a discriminated payload rather than
+ * three, because all three are the same fan-out and the preload demultiplexes
+ * them into per-sidecar listener sets anyway.
+ */
+export const GAME_RUNTIME_SIDECAR_MESSAGE_CHANNEL = "runtime:sidecar:message" as const;
 
 export type GameRuntimeLaunchEntry =
     | {
@@ -51,6 +59,15 @@ export type GameRuntimeAssetManifestEntry = {
     hash?: string;
     ext?: string;
     mimeType?: string;
+    /**
+     * Bundle assets only (`type: "model"`), and only on the entry keyed by the bare asset id:
+     * the bundle-relative path of its entry file.
+     *
+     * Its siblings ship as their own manifest entries keyed `{assetId}/{pathInsideBundle}`, so a
+     * URL built from `{assetId}/{bundleEntry}` is one the bundle's own relative references resolve
+     * against - which is the entire reason a model is one asset rather than N.
+     */
+    bundleEntry?: string;
 };
 
 export type GameRuntimeProjectIconPlatform = "macos" | "windows" | "linux";
@@ -61,6 +78,33 @@ export type GameRuntimeProjectIcon = {
     originalRelativePath: string;
     sourceName?: string;
     mediaType?: string;
+};
+
+/**
+ * One native child process shipped inside the pack for the platform this build
+ * targets, ready for the game's main process to spawn.
+ *
+ * Flattened out of the plugin's `contributes.sidecars[]` rather than read back
+ * from the embedded manifest: the manifest declares binaries for every platform
+ * the plugin supports, while a pack carries exactly the one set that was copied
+ * into this app dir. Anything the manifest says about other platforms is not a
+ * fact about this artifact, so the runtime must not read it as one.
+ */
+export type GameRuntimePackSidecarEntry = {
+    /** `contributes.sidecars[].id`, the name the runtime API addresses it by. */
+    id: string;
+    /**
+     * The executable (or, for `kind: "node"`, the .js file) to run, relative to
+     * the app dir - e.g. `sidecars/{pluginId}/{sidecarId}/bin/tool.exe`.
+     */
+    entry: string;
+    /** `executable` spawns the binary directly; `node` runs it under the game's own Electron as Node. */
+    kind: "executable" | "node";
+    /** `onGameStart` spawns with the window; `onRequest` waits for the first call. */
+    autostart: "onGameStart" | "onRequest";
+    startupTimeoutMs: number;
+    shutdownTimeoutMs: number;
+    restart: { maxRetries: number; backoffMs: number };
 };
 
 /**
@@ -80,6 +124,38 @@ export type GameRuntimePackPluginEntry = {
      * channel existed, and on plugins that declare no runtime data.
      */
     data?: Record<string, unknown>;
+    /**
+     * Native child processes copied into this app dir for the platform it was
+     * built for. Absent on packs built before sidecars existed, on plugins that
+     * declare none, and on any pack whose target platform the plugin ships no
+     * binaries for - the runtime treats all three the same way, as "this game
+     * has no sidecar for that id", and the plugin degrades rather than assumes.
+     */
+    sidecars?: GameRuntimePackSidecarEntry[];
+};
+
+/**
+ * A puppet-runtime module shipped inside the pack.
+ *
+ * A puppet's backend is the author's own code, dropped into the project under
+ * `runtimes/puppet/{name}/`, and it is the only thing that can draw the model.
+ * A pack that carried the model bundle without it would produce a game whose
+ * characters are empty boxes - and nothing in the build would say so, because
+ * the engine treats an unregistered backend as a puppet that simply draws
+ * nothing. So the module travels with the pack, keyed by the directory name,
+ * which is the same string a character's appearance names as its backend.
+ */
+export type GameRuntimePackPuppetRuntimeEntry = {
+    /** The directory name under `runtimes/puppet/`, which is also the backend name authors select. */
+    name: string;
+    /** Path of the runtime's ESM entry relative to the app dir, e.g. puppet/{name}/index.js. */
+    entryRelativePath: string;
+    /**
+     * Every other file in the runtime's directory, relative to it, so a backend
+     * that reads its own siblings finds them. Ordered, and never includes the
+     * entry itself.
+     */
+    files: string[];
 };
 
 export type GameRuntimePackV1 = {
@@ -101,6 +177,12 @@ export type GameRuntimePackV1 = {
     };
     /** Runtime entries of the plugins packaged with this game. */
     plugins: GameRuntimePackPluginEntry[];
+    /**
+     * Puppet backends packaged with this game. Absent on packs produced before
+     * this field existed, and on projects that installed none - the runtime
+     * treats both the same way, as "this game draws no puppets".
+     */
+    puppetRuntimes?: GameRuntimePackPuppetRuntimeEntry[];
     /**
      * Network policy for the packaged/previewed game. Absent on packs produced
      * before this field existed - the runtime treats a missing value as the
@@ -132,6 +214,69 @@ export type GameRuntimeSaveBridge = {
 
 export type GameRuntimeSaveRecord = DevModeSaveRecord;
 
+/** Unsolicited news about one sidecar, pushed on {@link GAME_RUNTIME_SIDECAR_MESSAGE_CHANNEL}. */
+export type GameRuntimeSidecarMessage =
+    | {
+          kind: "event";
+          pluginId: string;
+          sidecarId: string;
+          method: string;
+          params: unknown;
+      }
+    | {
+          kind: "exit";
+          pluginId: string;
+          sidecarId: string;
+          code: number | null;
+          signal: string | null;
+      }
+    | {
+          /**
+           * The host has stopped restarting this sidecar for the rest of the
+           * process. Separate from `exit` because the two answer different
+           * questions: an exit may still be followed by a restart, this never
+           * is, and it is what flips `sidecar.available()` to false.
+           */
+          kind: "unavailable";
+          pluginId: string;
+          sidecarId: string;
+          reason: string;
+      };
+
+/**
+ * Child-process hosting, present only on shells that have child processes. The
+ * web export omits it outright, which is what removes `app.game.sidecar` there.
+ *
+ * There is deliberately no `available()` here: the plugin API answers that
+ * synchronously, and the pack the renderer already holds is the authority on
+ * which sidecars this build shipped (plus the `unavailable` push above for the
+ * ones the host has given up on). An async probe would only add a race.
+ *
+ * `pluginId` is passed by the caller and CANNOT be authenticated - every plugin
+ * in the renderer shares one realm (see the note on the main-process handlers).
+ * The real boundary is that the host only ever spawns what the pack declares.
+ */
+export type GameRuntimeSidecarBridge = {
+    /** Spawn and hand-shake if needed. Idempotent; rejects if the sidecar cannot run. */
+    start(pluginId: string, sidecarId: string): Promise<void>;
+    stop(pluginId: string, sidecarId: string): Promise<void>;
+    request(pluginId: string, sidecarId: string, method: string, params?: unknown): Promise<unknown>;
+    notify(pluginId: string, sidecarId: string, method: string, params?: unknown): void;
+    onEvent(
+        pluginId: string,
+        sidecarId: string,
+        listener: (method: string, params: unknown) => void,
+    ): () => void;
+    onExit(
+        pluginId: string,
+        sidecarId: string,
+        listener: (info: { code: number | null; signal: string | null }) => void,
+    ): () => void;
+    onUnavailable(
+        listener: (info: { pluginId: string; sidecarId: string; reason: string }) => void,
+    ): () => void;
+};
+
 export type GameRuntimePersistenceBridge = {
     getAll(): Promise<Record<string, unknown>>;
     getValue(key: string): Promise<unknown>;
@@ -156,13 +301,31 @@ export type GameRuntimePreloadBridge = {
     /** Subscribe to window fullscreen transitions. Returns an unsubscribe function. */
     onFullscreenChanged(listener: (isFullscreen: boolean) => void): () => void;
     /**
-     * Register the handler that decides whether a user-initiated window close may proceed. The main
-     * process holds the close open until the handler resolves: `true` closes the window, `false`
-     * cancels it. Only one handler is active; registering replaces it. Returns an unsubscribe fn.
+     * Register a handler consulted when the user asks to close the window. The main process holds
+     * the close open until every registered handler resolves, and closes only if all of them
+     * answered `true` — any single `false` cancels it. Handlers accumulate rather than replace, so
+     * the game's blueprint decider and passive observers (runtime plugins) can coexist; a handler
+     * that only wants to watch returns `true`. Returns an unsubscribe fn.
      */
     onCloseRequested(listener: () => boolean | Promise<boolean>): () => void;
+    /**
+     * What this shell can actually back, where the contract's own shape cannot say so. Every method
+     * above exists on every shell; `closeRequested` is the case where one of them is inert (a page
+     * cannot reliably intercept a tab closing), and a caller that gates on it must be told rather
+     * than left registering a handler that never runs.
+     */
+    capabilities: {
+        /** Whether {@link onCloseRequested} can ever fire. False on the web export. */
+        closeRequested: boolean;
+    };
     save: GameRuntimeSaveBridge;
     persistence: GameRuntimePersistenceBridge;
+    /**
+     * Absent on shells with no child processes (the web export). Absence is the
+     * whole signal - the runtime plugin host passes no sidecar backend when this
+     * is missing, and `app.game.sidecar` then does not exist for plugins.
+     */
+    sidecar?: GameRuntimeSidecarBridge;
 };
 
 declare global {

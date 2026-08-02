@@ -1,33 +1,18 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Asset, AssetGroup } from '@/lib/workspace/services/assets/types';
-import { AssetType } from '@/lib/workspace/services/assets/assetTypes';
+import { ASSET_CATEGORY_ORDER, ASSET_CATEGORY_TYPES, AssetCategory } from '@/lib/workspace/services/assets/assetTypes';
 import { WorkspaceContext } from '@/lib/workspace/services/services';
 import { AssetsService } from '@/lib/workspace/services/core/AssetsService';
 import { Services } from '@/lib/workspace/services/services';
+import { createEmptyAssetCategoryRecord } from './assetCategoryRecord';
 
-const createEmptyAssets = (): Record<AssetType, Asset[]> => ({
-    [AssetType.Image]: [],
-    [AssetType.Audio]: [],
-    [AssetType.Video]: [],
-    [AssetType.JSON]: [],
-    [AssetType.Blueprint]: [],
-    [AssetType.Font]: [],
-    [AssetType.Other]: [],
-});
+const createEmptyAssets = (): Record<AssetCategory, Asset[]> => createEmptyAssetCategoryRecord<Asset>();
 
-const createEmptyGroups = (): Record<AssetType, AssetGroup[]> => ({
-    [AssetType.Image]: [],
-    [AssetType.Audio]: [],
-    [AssetType.Video]: [],
-    [AssetType.JSON]: [],
-    [AssetType.Blueprint]: [],
-    [AssetType.Font]: [],
-    [AssetType.Other]: [],
-});
+const createEmptyGroups = (): Record<AssetCategory, AssetGroup[]> => createEmptyAssetCategoryRecord<AssetGroup>();
 
 interface AssetDataSnapshot {
-    assets: Record<AssetType, Asset[]>;
-    groups: Record<AssetType, AssetGroup[]>;
+    assets: Record<AssetCategory, Asset[]>;
+    groups: Record<AssetCategory, AssetGroup[]>;
 }
 
 const assetDataCache = new Map<string, AssetDataSnapshot>();
@@ -36,18 +21,18 @@ function getCacheKey(context: WorkspaceContext | null): string | null {
     return context?.project.getConfig().projectPath ?? null;
 }
 
-function cloneAssets(assets: Record<AssetType, Asset[]>): Record<AssetType, Asset[]> {
+function cloneAssets(assets: Record<AssetCategory, Asset[]>): Record<AssetCategory, Asset[]> {
     const next = createEmptyAssets();
-    for (const type of Object.values(AssetType)) {
-        next[type] = [...(assets[type] ?? [])];
+    for (const category of ASSET_CATEGORY_ORDER) {
+        next[category] = [...(assets[category] ?? [])];
     }
     return next;
 }
 
-function cloneGroups(groups: Record<AssetType, AssetGroup[]>): Record<AssetType, AssetGroup[]> {
+function cloneGroups(groups: Record<AssetCategory, AssetGroup[]>): Record<AssetCategory, AssetGroup[]> {
     const next = createEmptyGroups();
-    for (const type of Object.values(AssetType)) {
-        next[type] = [...(groups[type] ?? [])];
+    for (const category of ASSET_CATEGORY_ORDER) {
+        next[category] = [...(groups[category] ?? [])];
     }
     return next;
 }
@@ -60,8 +45,8 @@ export interface UseAssetDataParams {
 export function useAssetData({ context, isInitialized }: UseAssetDataParams) {
     const cacheKey = getCacheKey(context);
     const cachedSnapshot = cacheKey ? assetDataCache.get(cacheKey) : undefined;
-    const [assets, setAssets] = useState<Record<AssetType, Asset[]>>(() => cachedSnapshot ? cloneAssets(cachedSnapshot.assets) : createEmptyAssets());
-    const [groups, setGroups] = useState<Record<AssetType, AssetGroup[]>>(() => cachedSnapshot ? cloneGroups(cachedSnapshot.groups) : createEmptyGroups());
+    const [assets, setAssets] = useState<Record<AssetCategory, Asset[]>>(() => cachedSnapshot ? cloneAssets(cachedSnapshot.assets) : createEmptyAssets());
+    const [groups, setGroups] = useState<Record<AssetCategory, AssetGroup[]>>(() => cachedSnapshot ? cloneGroups(cachedSnapshot.groups) : createEmptyGroups());
     const [loading, setLoading] = useState(false);
     const [hasLoaded, setHasLoaded] = useState(Boolean(cachedSnapshot));
     const [error, setError] = useState<string | null>(null);
@@ -76,14 +61,18 @@ export function useAssetData({ context, isInitialized }: UseAssetDataParams) {
 
         try {
             const assetsService = context.services.get<AssetsService>(Services.Assets);
-            const assetsMap = assetsService.getAssets();
 
-            const newAssets: Record<AssetType, Asset[]> = createEmptyAssets();
-            const newGroups: Record<AssetType, AssetGroup[]> = createEmptyGroups();
+            const newAssets: Record<AssetCategory, Asset[]> = createEmptyAssets();
+            const newGroups: Record<AssetCategory, AssetGroup[]> = createEmptyGroups();
 
-            for (const type of Object.values(AssetType)) {
-                newAssets[type] = Object.values(assetsMap[type]);
-                newGroups[type] = assetsService.getGroupAssetsManager().getGroups(type);
+            for (const category of ASSET_CATEGORY_ORDER) {
+                // Explicit order, not `Object.values`: this list is what the grid draws and what
+                // shift-range selection slices, so once shards are written with sorted keys a
+                // range would cover a different set of rows than the author has on screen. A
+                // section's rows are its member types' rows, concatenated in member order.
+                newAssets[category] = ASSET_CATEGORY_TYPES[category]
+                    .flatMap(type => assetsService.getOrderedAssets(type) as Asset[]);
+                newGroups[category] = assetsService.getGroupAssetsManager().getGroups(category);
             }
 
             setAssets(newAssets);

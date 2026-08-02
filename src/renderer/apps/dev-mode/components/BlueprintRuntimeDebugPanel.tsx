@@ -14,6 +14,7 @@ import type { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge"
 import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import { listBlueprintsForDevTools } from "./blueprintDebugPanelModel";
+import { DevModePanelModeToggle, type DevModePanelChrome } from "./DevModePanelChrome";
 
 type DebugTabId = "blueprints" | "output" | "scope";
 export type BlueprintOutputLogLevel = BlueprintDebugEventLogLevel;
@@ -30,6 +31,8 @@ type BlueprintRuntimeDebugPanelProps = {
     widgetRuntimeStore: WidgetRuntimeStateStore;
     projectPath: string | null;
     className?: string;
+    /** Dock/float mode toggle + title-bar drag, owned by DevModeContent. */
+    chrome?: DevModePanelChrome;
 };
 
 export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProps) {
@@ -42,6 +45,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
         widgetRuntimeStore,
         projectPath,
         className,
+        chrome,
     } = props;
     const { t } = useTranslation();
     const [tab, setTab] = useState<DebugTabId>("output");
@@ -191,13 +195,28 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
         [projectPath, t],
     );
 
-    const rootClass = ["flex h-full min-h-0 shrink-0 flex-col border-l border-edge bg-surface-sunken text-2xs text-fg-muted", className]
+    const rootClass = [
+        "flex h-full min-h-0 shrink-0 flex-col bg-surface-sunken text-2xs text-fg-muted",
+        // See StoryRuntimeDebugPanel: the left hairline is the seam against the stage, and a floating
+        // panel already has a frame of its own.
+        chrome?.floating ? "" : "border-l border-edge",
+        className,
+    ]
         .filter(Boolean)
         .join(" ");
 
     return (
         <div className={rootClass}>
-            <div className="shrink-0 border-b border-edge px-2 py-1.5 text-xs font-medium text-fg">{t("devMode.devtools.title")}</div>
+            {/* Also the drag handle while floating (see StoryRuntimeDebugPanel). */}
+            <div
+                className={`flex shrink-0 items-center justify-between gap-2 border-b border-edge px-2 py-1.5 ${
+                    chrome?.floating ? "cursor-grab select-none active:cursor-grabbing" : ""
+                }`}
+                onPointerDown={chrome?.onTitleBarPointerDown}
+            >
+                <span className="text-xs font-medium text-fg">{t("devMode.devtools.title")}</span>
+                <DevModePanelModeToggle chrome={chrome} />
+            </div>
             <div className="flex shrink-0 border-b border-edge bg-surface-sunken" role="tablist" aria-label={t("devMode.devtools.panelsAria")}>
                 {(
                     [
@@ -265,7 +284,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                                                 <button
                                                     type="button"
                                                     disabled={!canStudio}
-                                                    className="shrink-0 rounded border border-edge px-1.5 py-0.5 text-2xs text-fg-muted hover:bg-fill disabled:cursor-not-allowed disabled:opacity-40"
+                                                    className="shrink-0 rounded-md border border-edge px-1.5 py-0.5 text-2xs text-fg-muted hover:bg-fill disabled:cursor-not-allowed disabled:opacity-40"
                                                     onClick={() => void openInStudio(bp)}
                                                 >
                                                     {t("devMode.blueprints.openWorkspace")}
@@ -293,7 +312,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                             <div ref={logLevelMenuRef} className="relative">
                                 <button
                                     type="button"
-                                    className="inline-flex items-center gap-1 rounded border border-edge px-2 py-0.5 text-2xs text-fg-muted hover:bg-fill"
+                                    className="inline-flex items-center gap-1 rounded-md border border-edge px-2 py-0.5 text-2xs text-fg-muted hover:bg-fill"
                                     aria-haspopup="menu"
                                     aria-expanded={logLevelMenuOpen}
                                     onClick={() => setLogLevelMenuOpen(prev => !prev)}
@@ -304,18 +323,18 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                                 {logLevelMenuOpen ? (
                                     <div
                                         role="menu"
-                                        className="absolute left-0 top-full z-20 mt-1 w-32 rounded border border-edge bg-surface-overlay p-1 shadow-xl"
+                                        className="absolute left-0 top-full z-20 mt-1 w-32 rounded-lg border border-edge bg-surface-overlay p-1 shadow-xl"
                                     >
                                         {OUTPUT_LOG_LEVELS.map(level => (
                                             <label
                                                 key={level}
-                                                className="flex cursor-default items-center gap-2 rounded px-1.5 py-1 text-2xs text-fg-muted hover:bg-fill"
+                                                className="flex cursor-default items-center gap-2 rounded-md px-1.5 py-1 text-2xs text-fg-muted hover:bg-fill"
                                             >
                                                 <input
                                                     type="checkbox"
                                                     checked={outputLogLevels.has(level)}
                                                     onChange={() => toggleOutputLogLevel(level)}
-                                                    className="h-3 w-3 rounded border-edge-strong bg-surface-sunken"
+                                                    className="h-3 w-3 rounded-sm border-edge-strong bg-surface-sunken"
                                                 />
                                                 {outputLogLevelLabel[level]}
                                             </label>
@@ -325,7 +344,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                             </div>
                             <button
                                 type="button"
-                                className="rounded border border-edge px-2 py-0.5 text-2xs text-fg-muted hover:bg-fill"
+                                className="rounded-md border border-edge px-2 py-0.5 text-2xs text-fg-muted hover:bg-fill"
                                 onClick={() => debug.clear()}
                             >
                                 {t("common.clear")}

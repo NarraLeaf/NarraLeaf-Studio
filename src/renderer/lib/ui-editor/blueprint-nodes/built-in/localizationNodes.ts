@@ -6,6 +6,14 @@
  * Comments in English per project convention.
  */
 
+import {
+    BLUEPRINT_NODE_TYPE_LOCALIZATION_FORMAT_TEXT,
+    BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_AVAILABLE_LANGUAGES,
+    BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_CURRENT_LANGUAGE,
+    BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT,
+    BLUEPRINT_NODE_TYPE_LOCALIZATION_HAS_TEXT,
+    BLUEPRINT_NODE_TYPE_LOCALIZATION_SET_LANGUAGE,
+} from "@shared/types/blueprint/graph";
 import { localizationKeyUnitId, resolveLocalizedUnitText } from "@shared/types/localization";
 import { parseTranslatedText } from "@shared/utils/localizationText";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
@@ -44,7 +52,7 @@ async function resolveNamedKeyText(ctx: NodeExecuteContext, keyName: string): Pr
 
 export const localizationBlueprintNodes: BlueprintNodeDef[] = [
     {
-        type: "blueprint.localization.getCurrentLanguage",
+        type: BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_CURRENT_LANGUAGE,
         displayName: "Get Current Language",
         category: "Localization",
         keywords: ["localization", "language", "locale", "i18n", "translation", "get"],
@@ -73,7 +81,7 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
         },
     },
     {
-        type: "blueprint.localization.setLanguage",
+        type: BLUEPRINT_NODE_TYPE_LOCALIZATION_SET_LANGUAGE,
         displayName: "Set Language",
         category: "Localization",
         keywords: ["localization", "language", "locale", "i18n", "translation", "set", "switch"],
@@ -113,7 +121,7 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
         },
     },
     {
-        type: "blueprint.localization.getText",
+        type: BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT,
         displayName: "Get Text",
         category: "Localization",
         keywords: ["localization", "text", "string", "key", "i18n", "translation", "lookup"],
@@ -157,7 +165,7 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
         },
     },
     {
-        type: "blueprint.localization.hasText",
+        type: BLUEPRINT_NODE_TYPE_LOCALIZATION_HAS_TEXT,
         displayName: "Has Text",
         category: "Localization",
         keywords: ["localization", "text", "key", "i18n", "exists", "check"],
@@ -197,7 +205,7 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
         },
     },
     {
-        type: "blueprint.localization.formatText",
+        type: BLUEPRINT_NODE_TYPE_LOCALIZATION_FORMAT_TEXT,
         displayName: "Format Text",
         category: "Localization",
         keywords: ["localization", "format", "placeholder", "interpolate", "template", "text"],
@@ -257,7 +265,7 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
         },
     },
     {
-        type: "blueprint.localization.getAvailableLanguages",
+        type: BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_AVAILABLE_LANGUAGES,
         displayName: "Get Available Languages",
         category: "Localization",
         keywords: ["localization", "language", "locale", "i18n", "translation", "list", "selector"],

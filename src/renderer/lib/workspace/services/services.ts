@@ -1,7 +1,13 @@
 import { FsRequestResult } from "@shared/types/os";
-import { FileDetails, FileStat } from "@shared/utils/fs";
-import { Porject, ProjectConfig, ProjectIconConfig, ProjectIconPlatform, ProjectMetadata } from "../project/project";
-import type { MobileConfiguration, NetworkConfiguration, SecurityConfiguration } from "../project/configuration";
+import type { FsTextEncoding } from "@shared/types/textEncoding";
+import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
+import { Porject, ProjectConfig, ProjectMetadata } from "../project/project";
+import type { ProjectIconSet, ProjectIconSource } from "@shared/types/projectIcons";
+import type { LintingConfiguration, MobileConfiguration, NetworkConfiguration, SecurityConfiguration } from "../project/configuration";
+import type { LintContext } from "@/lib/lint/context";
+import type { LintReport } from "@/lib/lint/types";
+import type { LintRunOptions } from "@/lib/lint/engine";
+import type { RegisteredTest, TestAvailability, TestId, TestRunRecord } from "@/lib/testing/types";
 import type {
     LocalizationConfiguration,
     LocalizationDocument,
@@ -13,12 +19,35 @@ import type {
     VoiceLocaleEntry,
 } from "@shared/types/voice";
 import type { ProjectDependencyResolution, ProjectDependencyTable } from "@shared/types/pluginDependencies";
+import type {
+    RevisionId,
+    VcsAvailability,
+    VcsCheckpointReason,
+    VcsCommitOptions,
+    VcsCommitResult,
+    VcsFileChange,
+    VcsHistoryEntry,
+    VcsInitOptions,
+    VcsRepositoryInfo,
+    VcsRestoreOptions,
+    VcsRestoreResult,
+    VcsStatus,
+} from "@shared/types/vcs";
+import type { WorkspaceFreezeReason } from "../../app/writeFreeze";
+import type {
+    ExternalReloadParticipant,
+    WorkspaceReloadCause,
+    WorkspaceReloadResult,
+} from "./core/WorkspaceReloadService";
+import type { DocumentSource } from "@shared/documents/documentSource";
 import { Asset, AssetsMap, AssetSource } from "./assets/types";
 import { ServiceRegistry } from "./serviceRegistry";
 import { AssetData, AssetType } from "./assets/assetTypes";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { Character } from "./character/Character";
-import { CharacterGroup } from "./character/types";
+import { CharacterAppearanceKind, CharacterGroup } from "./character/types";
+import type { PuppetDescription } from "narraleaf-react";
+import type { PuppetDescriptionRequest, PuppetDescriptionResult } from "./puppet/puppetDescriptionModel";
 import type {
     UIDocument,
     UISurface,
@@ -39,9 +68,12 @@ import type {
     BlueprintFieldValueSource,
     BlueprintFrontendKind,
     BlueprintGraphIr,
+    BlueprintPersistentVariable,
     BlueprintPrivateOwnerRecord,
     Blueprint,
 } from "@shared/types/blueprint/document";
+import type { VariableRegistry, VariableRegistryEntry } from "@shared/types/variables/registry";
+import type { AudioTrackChannel, ProjectAudioTrack, ProjectAudioTrackDocument } from "@shared/types/audioTrack";
 import type {
     ReadonlyBlueprintSurfaceSummary,
     ReadonlyBlueprintWidgetSummary,
@@ -83,9 +115,11 @@ import type {
     StoryId,
     StoryLibraryEntry,
     StoryLibraryIndex,
+    StoryLiteralValue,
     StoryScene,
     StorySceneId,
     StorySceneUpdate,
+    StoryVariableValueType,
 } from "@shared/types/story";
 import type {
     BlueprintNodeDef,
@@ -123,6 +157,10 @@ enum Services {
     DevMode = "devMode",
     Preview = "preview",
     Build = "build",
+    /** Project-wide lint: context assembly, the rule sweep, and the last report */
+    Lint = "lint",
+    /** Tests against the author's game: the registry, the one run slot, and this session's history */
+    TestRun = "testRun",
     Console = "console",
     /** Ref-counted FontFace + blob URLs for UI editor widgets */
     UIEditorFontFace = "uiEditorFontFace",
@@ -140,10 +178,18 @@ enum Services {
     Story = "story",
     Character = "character",
     Assets = "assets",
+    /** What a puppet's model says it contains — motions, expressions, skins, parameters */
+    PuppetDescription = "puppetDescription",
     /** Per-project plugin dependency table: scan, persist, and resolve compatibility */
     ProjectDependency = "projectDependency",
     /** Accumulated authoring activity (writing curve, active time, build history) */
     ProjectStats = "projectStats",
+    /** Project-level persistent variable registry (blueprint-declared persistent vars); M-VAR */
+    VariableRegistry = "variableRegistry",
+    /** Project-level audio tracks: the authoring-time mix presets every audio surface points at */
+    AudioTracks = "audioTracks",
+    /** Aggregate "is my work on disk?" state: auto-saver states + the table of files that failed */
+    SaveStatus = "saveStatus",
     // Texture = "texture",
     // Audio = "audio",
     // Video = "video",
@@ -153,13 +199,19 @@ enum Services {
     // Debug = "debug",
     Localization = "localization",
     Voice = "voice",
-    // VersionControl = "versionControl",
+    /** Repository state for this project: availability, status snapshot, history */
+    VersionControl = "versionControl",
+    /** Whether project data may be written at all, and why not - the write-boundary freeze */
+    WorkspaceFreeze = "workspaceFreeze",
+    /** "The working tree changed under the editors": drops in-memory documents and re-reads them */
+    WorkspaceReload = "workspaceReload",
     // Plugin = "plugin",
 }
 
 // Core Services
 interface IProjectService extends IService {
     getProjectConfig(): ProjectConfig;
+    reloadProjectConfig(): Promise<ProjectConfig>;
     updateProjectConfig(updater: (config: ProjectConfig) => ProjectConfig): Promise<ProjectConfig>;
     updateProjectName(name: string): Promise<ProjectConfig>;
     updateProjectMetadata(patch: Partial<ProjectMetadata>): Promise<ProjectConfig>;
@@ -167,16 +219,16 @@ interface IProjectService extends IService {
     updateNetworkConfiguration(patch: Partial<NetworkConfiguration>): Promise<ProjectConfig>;
     getSecurityConfiguration(): SecurityConfiguration;
     updateSecurityConfiguration(patch: Partial<SecurityConfiguration>): Promise<ProjectConfig>;
+    getLintingConfiguration(): LintingConfiguration;
+    updateLintingConfiguration(patch: Partial<LintingConfiguration>): Promise<ProjectConfig>;
     updateMobileConfiguration(patch: Partial<MobileConfiguration>): Promise<ProjectConfig>;
-    importProjectIcon(platform: ProjectIconPlatform): Promise<{
-        platform: ProjectIconPlatform;
-        sourcePath: string;
-        projectPath: string;
-        relativePath: string;
-        icon: ProjectIconConfig;
-        bytes: Uint8Array;
-    } | null>;
-    readProjectIcon(platform: ProjectIconPlatform): Promise<Uint8Array | null>;
+    getProjectIconSet(): ProjectIconSet;
+    updateProjectIconSet(updater: (set: ProjectIconSet) => ProjectIconSet): Promise<ProjectIconSet>;
+    importProjectIconSource(slot: string): Promise<{ source: ProjectIconSource; bytes: Uint8Array } | null>;
+    readProjectIconFile(relativePath: string): Promise<Uint8Array | null>;
+    projectIconFileExists(relativePath: string): Promise<boolean>;
+    writeProjectIconBake(relativePath: string, bytes: Uint8Array): Promise<boolean>;
+    deleteProjectIconFile(relativePath: string): Promise<void>;
     getDependencyTable(): ProjectDependencyTable | undefined;
     setDependencyTable(table: ProjectDependencyTable | undefined): Promise<ProjectConfig>;
 }
@@ -187,11 +239,12 @@ interface IUuidService extends IService {
 
 interface IFileSystemService extends IService {
     stat(path: string): Promise<FsRequestResult<FileStat>>;
-    list(path: string): Promise<FsRequestResult<FileStat[]>>;
+    list(path: string): Promise<FsRequestResult<FileEntry[]>>;
     details(path: string): Promise<FsRequestResult<FileDetails>>;
-    read(path: string, encoding: BufferEncoding): Promise<FsRequestResult<string>>;
+    directorySize(path: string): Promise<FsRequestResult<DirectorySizeResult>>;
+    read(path: string, encoding: FsTextEncoding): Promise<FsRequestResult<string>>;
     readRaw(path: string): Promise<FsRequestResult<Uint8Array>>;
-    write(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
+    write(path: string, data: string, encoding: FsTextEncoding): Promise<FsRequestResult<void>>;
     writeRaw(path: string, data: Uint8Array): Promise<FsRequestResult<void>>;
     ensureRegularFile(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
     writeFileNoFollow(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
@@ -384,6 +437,56 @@ interface IUIGraphService extends IService {
     }): UIGraph;
     updateGraph(graphId: string, updater: (graph: UIGraph) => void): void;
     deleteGraph(graphId: string): void;
+    /** One-shot: the raw persistent variables read at load before the M-VAR migration relocated them. */
+    consumeLegacyPersistentVariables(): Record<string, BlueprintPersistentVariable> | null;
+}
+
+interface IVariableRegistryService extends IService {
+    load(): Promise<VariableRegistry>;
+    save(registry: VariableRegistry): Promise<void>;
+    getRegistry(): VariableRegistry;
+    listEntries(): VariableRegistryEntry[];
+    getEntry(id: string): VariableRegistryEntry | undefined;
+    onRegistryChanged(handler: (registry: VariableRegistry) => void): () => void;
+    onDirtyChanged(handler: (dirty: boolean) => void): () => void;
+    isDirty(): boolean;
+    getRevision(): number;
+    applyRegistryMutation(mutator: (registry: VariableRegistry) => void): void;
+    createEntry(input?: { name?: string; valueType?: string; defaultValue?: StoryLiteralValue; description?: string }): VariableRegistryEntry;
+    renameEntry(id: string, name: string): void;
+    setEntryValueType(id: string, valueType: StoryVariableValueType): void;
+    setEntryDefault(id: string, defaultValue: StoryLiteralValue | undefined): void;
+    setEntryDescription(id: string, description: string | undefined): void;
+    deleteEntry(id: string): void;
+    replaceRegistry(registry: VariableRegistry): void;
+}
+
+/**
+ * The project's audio buses - a tree of mixer strips, each with a parent, its own live gain and a
+ * default loop policy. See `@shared/types/audioTrack` for the model.
+ */
+interface IAudioTrackService extends IService {
+    load(): Promise<ProjectAudioTrack[]>;
+    save(document: ProjectAudioTrackDocument): Promise<void>;
+    getDocument(): ProjectAudioTrackDocument;
+    listTracks(): ProjectAudioTrack[];
+    getTrack(id: string): ProjectAudioTrack | undefined;
+    resolveTrack(trackId: string | null | undefined, fallbackChannel?: AudioTrackChannel): ProjectAudioTrack;
+    onTracksChanged(handler: (tracks: ProjectAudioTrack[]) => void): () => void;
+    onDirtyChanged(handler: (dirty: boolean) => void): () => void;
+    isDirty(): boolean;
+    getRevision(): number;
+    applyTrackMutation(mutator: (tracks: ProjectAudioTrack[]) => ProjectAudioTrack[]): void;
+    createTrack(input?: Partial<Omit<ProjectAudioTrack, "id" | "builtin">>): ProjectAudioTrack;
+    duplicateTrack(id: string): ProjectAudioTrack | null;
+    updateTrack(id: string, patch: Partial<Omit<ProjectAudioTrack, "id" | "builtin" | "parentId">>): void;
+    renameTrack(id: string, name: string): boolean;
+    /** False for itself, for one of its own descendants, and for a parent that is not there. */
+    canReparentTrack(id: string, parentId: string | null): boolean;
+    reparentTrack(id: string, parentId: string | null): boolean;
+    /** Refuses the three seeded buses; promotes the children of whatever it does delete. */
+    deleteTrack(id: string): boolean;
+    moveTrack(id: string, beforeId: string | null): void;
 }
 
 interface ILocalBlueprintService extends IService {
@@ -472,7 +575,7 @@ interface ILocalBlueprintService extends IService {
             valueType?: string;
             defaultValue?: import("@shared/types/blueprint/document").LiteralValue;
         },
-    ): import("@shared/types/blueprint/document").BlueprintPersistentVariable;
+    ): VariableRegistryEntry;
     renamePersistentVariable(historyBlueprintId: string, variableId: string, name: string): void;
     setPersistentVariableDefault(
         historyBlueprintId: string,
@@ -785,7 +888,7 @@ interface IUIEditorHistoryService extends IService {
 interface ICharacterService extends IService {
     getCharacter(id: string): Character | undefined;
     listCharacter(): Character[];
-    createCharacter(name: string): Character;
+    createCharacter(name: string, kind?: CharacterAppearanceKind): Character;
     renameCharacter(id: string, name: string): boolean;
     deleteCharacter(id: string): boolean;
     listGroups(): CharacterGroup[];
@@ -797,6 +900,26 @@ interface ICharacterService extends IService {
     listCharactersByGroup(groupId?: string): Character[];
     isDirty(): boolean;
     flushPendingChanges(): Promise<void>;
+}
+
+/**
+ * What a puppet's model contains, read out of the live model rather than parsed off disk.
+ *
+ * The one lookup any surface can use: a character inspector filling its controls, a story row
+ * offering the motions a character actually has. Nothing here throws at a caller — a project with
+ * no runtime installed, a runtime that does not describe its models, and a model that failed to
+ * load all come back as `{status: "unavailable"}` with a reason, and the caller falls back to
+ * letting the author type a name.
+ */
+interface IPuppetDescriptionService extends IService {
+    describe(request: PuppetDescriptionRequest, options?: { refresh?: boolean }): Promise<PuppetDescriptionResult>;
+    describeCharacter(characterId: string, options?: { refresh?: boolean }): Promise<PuppetDescriptionResult>;
+    /** What is already in memory, for render paths that cannot await. Null means "ask, then re-render". */
+    peek(request: PuppetDescriptionRequest): PuppetDescription | null;
+    /** The same look addressed by character - what the story editor holds. Null for a non-puppet, or for an answer not in yet. */
+    peekCharacter(characterId: string): PuppetDescription | null;
+    invalidate(request?: PuppetDescriptionRequest): Promise<void>;
+    onDescriptionChanged(handler: () => void): () => void;
 }
 
 // Asset Services
@@ -849,6 +972,40 @@ interface IBuildService extends IService {
     onStateChanged(handler: (state: GameBuildStateSnapshot) => void): () => void;
 }
 
+/**
+ * Project-wide lint. `run()` is a read-only sweep, so it stays available while the workspace is
+ * frozen (ruling R3) - see LintService.
+ */
+interface ILintService extends IService {
+    buildContext(): Promise<LintContext>;
+    run(options?: LintRunOptions): Promise<LintReport>;
+    isRunning(): boolean;
+    getLastReport(): LintReport | null;
+    onReportChanged(handler: (report: LintReport | null) => void): () => void;
+}
+
+/**
+ * Test runs against the author's game (see `@/lib/testing`).
+ *
+ * One run at a time per project (ruling R7): `start` rejects while another is active, because a run
+ * contends with Dev Mode and Preview for the same compiled artifacts and the same Stop affordance.
+ * `getAvailability` is the definition's own answer with the host's gates on top - notably that a
+ * `windowed` test is unavailable while the workspace is frozen, while a `headless` one stays
+ * available exactly as `lint:project` does (ruling R9).
+ */
+interface ITestRunService extends IService {
+    listTests(): RegisteredTest[];
+    getAvailability(id: TestId): TestAvailability;
+    /** Resolves the run id once the run is accepted - not when it finishes. */
+    start(testId: TestId): Promise<string>;
+    cancel(runId: string): void;
+    getActiveRun(): TestRunRecord | null;
+    getRun(runId: string): TestRunRecord | null;
+    /** This session's history, newest first. Never persisted: a verdict is about a moment. */
+    listRuns(): TestRunRecord[];
+    onChanged(listener: () => void): () => void;
+}
+
 interface IDebugService extends IService { }
 
 // Helper Services
@@ -886,7 +1043,94 @@ interface IVoiceService extends IService {
     flushPendingChanges(): Promise<void>;
 }
 
-interface IVersionControlService extends IService { }
+/**
+ * Version control, scoped to this window's project. `getAvailability` first - the
+ * feature is optional and absent on macOS Intel / Windows ARM64 - and nothing here is
+ * safe to poll: the scan behind `refreshStatus` writes staged state.
+ */
+interface IVersionControlService extends IService {
+    getAvailability(): Promise<VcsAvailability>;
+    isRepository(): Promise<boolean>;
+    getInfo(): Promise<VcsRepositoryInfo | null>;
+    /** `includeDetails` costs one backend call per revision; leave it off unless they are shown. */
+    getHistory(limit?: number, options?: { includeDetails?: boolean }): Promise<VcsHistoryEntry[]>;
+    readBlob(revision: RevisionId, path: string): Promise<Uint8Array>;
+    /** Every document at one revision in one round trip; `null` = absent at that revision. */
+    readRevisionDocuments(revision: RevisionId, paths?: readonly string[]): Promise<Map<string, string | null>>;
+    /** Show a past revision in the real editors. Freezes first; awaitable because it may go to the network. */
+    showRevision(revision: RevisionId, label?: string): Promise<void>;
+    /** Leave a revision view: the working tree is read back in and writes are allowed again. */
+    showWorkingTree(): void;
+    /**
+     * Overwrite the working tree with one revision and record the result as a new one.
+     *
+     * The only method here that changes the author's files. Checkpoints first, never removes a
+     * revision, and leaves the version view + re-reads every document before it resolves.
+     */
+    restoreRevision(revision: RevisionId, options?: VcsRestoreOptions): Promise<VcsRestoreResult>;
+    /** The revision the editors are showing, or null for the working tree. */
+    getShownRevision(): RevisionId | null;
+    getChangedPaths(from: RevisionId, to: RevisionId): Promise<string[]>;
+    initRepository(options?: VcsInitOptions): Promise<VcsRepositoryInfo>;
+    /** Flushes pending saves, stages, commits, and waits for durability. Throws on failure. */
+    commit(options?: VcsCommitOptions): Promise<VcsCommitResult>;
+    /** Same pipeline, labelled a checkpoint. Null when there was nothing to record. */
+    createCheckpoint(reason: VcsCheckpointReason): Promise<VcsCommitResult | null>;
+    /** Scans. Only ever from an explicit request; see VersionControlService. */
+    refreshStatus(): Promise<VcsStatus | null>;
+    /** The last scan's snapshot, without scanning. */
+    getStatus(): VcsStatus | null;
+    /** The snapshot's files with directories dropped; `counts` stays as reported. */
+    getChangedFiles(): VcsFileChange[];
+    invalidateHistory(): void;
+    onStatusChanged(handler: (status: VcsStatus | null) => void): () => void;
+}
+
+/**
+ * The workspace-wide "may project data be written?" latch. Enforced at the write boundary, not by
+ * the components - see WorkspaceFreezeService. Session-only; never persisted.
+ */
+interface IWorkspaceFreezeService extends IService {
+    /** Flushes what is owed, then stops project-data writes. */
+    freeze(reason: WorkspaceFreezeReason): Promise<void>;
+    /**
+     * Freeze, then re-read every document out of a past revision. `thaw` comes back.
+     *
+     * Slow, and awaitable for that reason: the first read of a revision on a project with a remote
+     * goes to the network. Takes no checkpoint - browsing history has zero side effects.
+     */
+    showRevision(source: DocumentSource, label?: string): Promise<WorkspaceReloadResult>;
+    /**
+     * Keep the workspace in its current view - `thaw` refuses - until the returned function runs.
+     *
+     * For anything that rewrites project files from outside the editors: leaving mid-rewrite re-reads
+     * a half-written tree. Not a version-control flag; see the implementation for why that matters.
+     */
+    holdRelease(): () => void;
+    /** Whether anything is holding the workspace in its current view. */
+    isReleaseHeld(): boolean;
+    thaw(): void;
+    isFrozen(): boolean;
+    /** Why the workspace is frozen, or null when it is not. */
+    getReason(): WorkspaceFreezeReason | null;
+    onChanged(handler: (reason: WorkspaceFreezeReason | null) => void): () => void;
+}
+
+/**
+ * "The working tree is no longer what the editors are showing." Drops every in-memory document and
+ * re-reads it, with project writes held off for the whole pass. Thaw is the first caller, restore
+ * (`vcs:working-tree-changed`) the second - see WorkspaceReloadService, whose participant table is
+ * the single place that names everything taking part.
+ */
+interface IWorkspaceReloadService extends IService {
+    /** `source` defaults to the working tree, which is what every caller means unless it says so. */
+    reload(cause: WorkspaceReloadCause, source?: DocumentSource): Promise<WorkspaceReloadResult>;
+    /** Bumped once per reload; the editor area keys its tabs on it so each re-resolves its subject. */
+    getGeneration(): number;
+    onReloaded(handler: (result: WorkspaceReloadResult) => void): () => void;
+    /** Enrol something the participant table cannot name - today, a plugin's own store. */
+    registerReloader(participant: ExternalReloadParticipant): () => void;
+}
 
 // Plugin Services
 interface IPluginService extends IService { }
@@ -902,14 +1146,16 @@ interface IProjectDependencyService extends IService {
 }
 
 export {
-    IAssetService, IAudioService, IBlueprintNodeCatalogService, IBuildService, ICommandService, IDebugService,
+    IAssetService, IAudioService, IBlueprintNodeCatalogService, IBuildService, ICommandService, IDebugService, ILintService,
     IEditorService, IFileSystemService, IFontService, ILocalizationService, ILoggerService,
     IGlobalSettingsService, IPluginService, IPreviewService, IProjectService, IRuntimeService,
     IService, IServiceAssetsService, IPanelStateService, IStorageService, IStoryService,
-    ITextureService, IUIService, IUuidService, IVersionControlService, IVideoService,
+    ITextureService, IUIService, IUuidService, IVersionControlService, IWorkspaceFreezeService,
+    IWorkspaceReloadService, IVideoService,
     ICharacterService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, IConsoleService, UIEditorStateEvents,
-    IProjectDependencyService, IVoiceService,
+    IProjectDependencyService, IVoiceService, IVariableRegistryService, IAudioTrackService, IPuppetDescriptionService,
+    ITestRunService,
     Services, WorkspaceContext
 };
 

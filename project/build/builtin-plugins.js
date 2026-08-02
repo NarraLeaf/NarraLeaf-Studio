@@ -105,6 +105,19 @@ async function buildBuiltInPlugin(pluginDir, options = {}) {
     }
 
     fs.copyFileSync(path.join(pluginDir, 'manifest.json'), path.join(outDir, 'manifest.json'));
+    // A declared icon is part of the package: PluginManager refuses a manifest
+    // whose icon file is missing, so leaving it behind here would break the
+    // built-in at install time rather than at build time.
+    if (typeof manifest.icon === 'string' && manifest.icon.trim()) {
+        const relative = manifest.icon.trim().split(/[\\/]+/);
+        const source = path.join(pluginDir, ...relative);
+        if (!fs.existsSync(source)) {
+            throw new Error(`Built-in plugin ${manifest.id || pluginName} declares a missing icon: ${manifest.icon}`);
+        }
+        const target = path.join(outDir, ...relative);
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        fs.copyFileSync(source, target);
+    }
     return {
         id: manifest.id || pluginName,
         sourceDir: pluginDir,
@@ -127,37 +140,13 @@ async function buildBuiltInPlugins(options = {}) {
     return results;
 }
 
-function getDevUserDataPluginsDir() {
-    return path.join(rootDir, '.dev', 'temp', 'userData-dev', 'plugins');
-}
-
-async function copyBuiltInPluginsToDevUserData() {
-    const pluginsDir = getDevUserDataPluginsDir();
-    if (!fs.existsSync(distRootDir)) {
-        return;
-    }
-    fs.mkdirSync(pluginsDir, { recursive: true });
-    const entries = fs.readdirSync(distRootDir, { withFileTypes: true });
-    for (const entry of entries) {
-        if (!entry.isDirectory()) {
-            continue;
-        }
-        const sourceDir = path.join(distRootDir, entry.name);
-        const manifest = readManifest(sourceDir);
-        const targetDir = path.join(pluginsDir, manifest.id);
-        const tempDir = `${targetDir}.builtin-dev-tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        fs.rmSync(tempDir, { recursive: true, force: true });
-        fs.cpSync(sourceDir, tempDir, { recursive: true });
-        fs.rmSync(targetDir, { recursive: true, force: true });
-        fs.renameSync(tempDir, targetDir);
-    }
-}
-
+// Nothing here installs into the dev userData directory any more: the main
+// process is the single writer of `userData/plugins`, in development exactly as
+// in a packaged build. See PluginManager.refreshBuiltInPlugins.
 module.exports = {
     sourceRoot,
     distRootDir,
     buildBuiltInPlugin,
     buildBuiltInPlugins,
-    copyBuiltInPluginsToDevUserData,
     getBuiltInPluginDirs,
 };

@@ -1,24 +1,26 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Bell, BookText, CircleDot, Keyboard, Loader2, Monitor, Moon, Sun } from "lucide-react";
+import { Bell, BookText, CircleDot, GitBranch, History, Keyboard, Loader2, Monitor, Moon, Sun, TriangleAlert } from "lucide-react";
 import { useWorkspace } from "../../context";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
-import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
-import { PreviewService } from "@/lib/workspace/services/core/PreviewService";
-import { BuildService } from "@/lib/workspace/services/core/BuildService";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
+import { SaveStatusService } from "@/lib/workspace/services/autosave/SaveStatusService";
 import { getInterface } from "@/lib/app/bridge";
-import { computeProjectStatsSnapshot } from "@/lib/workspace/stats/projectStatsSnapshot";
-import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "../actions/runtimeActionStatus";
+import { countSceneTextStats } from "@/lib/workspace/stats/storyTextStats";
+import { getSceneName } from "../story/scene-editor/storySceneBlockUtils";
+import { createStorySceneEditorTab } from "../story/scene-editor/openStorySceneEditorTab";
+import type { StoryDocument, StoryId, StorySceneId } from "@shared/types/story";
 import { openKeybindingCheatSheet } from "../../components/layout/KeybindingCheatSheet";
 import { openDashboardTab } from "../dashboard";
 import { NOTIFICATIONS_PANEL_ID } from "../notifications";
 import { StatusEntry } from "./StatusEntry";
+import { useActiveRunMode } from "./useActiveRunMode";
+import { useVersionSurface } from "../../hooks/useVersionSurface";
+import { openVersionRail } from "../../components/layout/versionRailController";
+import { versionFace } from "../../components/layout/versionRailModel";
 import type { TranslationKey } from "@shared/i18n";
-import type { DevModeStatus } from "@shared/types/devMode";
-import type { PreviewStatus } from "@shared/types/gameRuntime";
 
 const ZOOM_SETTINGS_KEY = "ui.zoomPercent";
 const THEME_SETTINGS_KEY = "ui.themeMode";
@@ -37,167 +39,225 @@ const THEME_META: Record<ThemeMode, { icon: React.ReactNode; labelKey: Translati
  * is allowed to speak — not that it always occupies a cell.
  */
 
-export function DevModeEntry() {
+/**
+ * The single run-status cell. While a mode runs it reads "<mode> | <phase>" (e.g. "Dev Mode |
+ * Compiling…") and clicking it opens the console, where that mode's output lands. It renders nothing
+ * when idle — the bar is back to its resting colour then, so there is no state to report. The
+ * theme-colour wash over the whole bar (see {@link StatusBar}) is the "something is running" signal;
+ * this cell says *what*, without a status dot.
+ */
+export function RunStatusEntry() {
     const { t } = useTranslation();
     const { context } = useWorkspace();
-    const [status, setStatus] = useState<DevModeStatus>("idle");
+    const active = useActiveRunMode();
 
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const devMode = context.services.get<DevModeService>(Services.DevMode);
-        setStatus(devMode.getStatus());
-        return devMode.onStatusChanged(setStatus);
-    }, [context]);
-
-    if (!isDevModeRuntimeActive(status)) {
+    if (!active) {
         return null;
     }
+
+    const openConsole = () => {
+        context?.services.get<UIService>(Services.UI).panels.show("narraleaf-studio:console");
+    };
+
     return (
-        <StatusEntry emphasis title={t("workspace.shell.statusBar.devModeRunning")}>
-            <span className="h-1.5 w-1.5 rounded-full bg-success" />
-            <span>{t("workspace.shell.statusBar.devMode")}</span>
+        <StatusEntry emphasis onClick={openConsole} title={t("workspace.shell.statusBar.openConsole")}>
+            {active.busy && <Loader2 className="h-3 w-3 animate-spin" />}
+            <span className="font-medium">{t(active.labelKey)}</span>
+            <span aria-hidden className="opacity-50">|</span>
+            <span>{t(active.phaseKey)}</span>
         </StatusEntry>
     );
 }
 
-export function PreviewEntry() {
+/**
+ * The save readout. Silent while everything is on disk; otherwise it reports the worst state across
+ * every auto-saving document store — not just the story, which is all it used to watch.
+ *
+ * `failed` is the state worth the pixels: a write that keeps being rejected retries on a backoff
+ * that never gives up, but the user still needs to know it is happening (their disk is full, their
+ * project lives on a volume that went away). Clicking retries immediately instead of waiting out the
+ * backoff.
+ */
+export function SaveStatusEntry() {
     const { t } = useTranslation();
     const { context } = useWorkspace();
-    const [status, setStatus] = useState<PreviewStatus>("idle");
-
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const preview = context.services.get<PreviewService>(Services.Preview);
-        setStatus(preview.getStatus());
-        return preview.onStatusChanged(setStatus);
-    }, [context]);
-
-    if (!isPreviewRuntimeActive(status)) {
-        return null;
-    }
-    return (
-        <StatusEntry emphasis title={t("workspace.shell.statusBar.previewRunning")}>
-            <span className="h-1.5 w-1.5 rounded-full bg-success" />
-            <span>{t("workspace.shell.statusBar.preview")}</span>
-        </StatusEntry>
+    const saveStatus = context ? context.services.get<SaveStatusService>(Services.SaveStatus) : null;
+    const status = useSyncExternalStore(
+        listener => saveStatus?.onChanged(listener) ?? (() => {}),
+        () => saveStatus?.getStatus() ?? "clean",
     );
-}
 
-export function BuildEntry() {
-    const { t } = useTranslation();
-    const { context } = useWorkspace();
-    const [building, setBuilding] = useState(false);
-
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const build = context.services.get<BuildService>(Services.Build);
-        setBuilding(build.isBuilding());
-        return build.onStateChanged(state =>
-            setBuilding(state.status === "preparing" || state.status === "compiling" || state.status === "packaging"),
-        );
-    }, [context]);
-
-    if (!building) {
+    if (status === "clean" || status === "saving") {
+        // "Saving…" would flicker on every 800ms auto-save; the absence of the cell already means
+        // "on disk", and a save in flight is a fraction of a second away from being exactly that.
         return null;
     }
-    return (
-        <StatusEntry emphasis title={t("workspace.shell.statusBar.building")}>
-            <Loader2 className="h-3 w-3 animate-spin" />
-            <span>{t("workspace.shell.statusBar.building")}</span>
-        </StatusEntry>
-    );
-}
 
-export function UnsavedChangesEntry() {
-    const { t } = useTranslation();
-    const { context } = useWorkspace();
-    const [dirty, setDirty] = useState(false);
-
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const story = context.services.get<StoryService>(Services.Story);
-        setDirty(story.isDirty());
-        return story.onDirtyChanged(setDirty);
-    }, [context]);
-
-    if (!dirty) {
-        return null;
-    }
+    const failed = status === "failed";
     return (
         <StatusEntry
-            title={t("workspace.shell.statusBar.saveNow")}
+            emphasis={failed}
+            title={t(failed ? "workspace.shell.statusBar.retrySave" : "workspace.shell.statusBar.saveNow")}
             onClick={() => {
-                void context?.services.get<StoryService>(Services.Story).flushPendingChanges();
+                void saveStatus?.retryNow();
             }}
         >
-            <CircleDot className="h-3 w-3" />
-            <span>{t("workspace.shell.statusBar.unsavedChanges")}</span>
+            {failed ? <TriangleAlert className="h-3 w-3" /> : <CircleDot className="h-3 w-3" />}
+            <span>{t(failed ? "workspace.shell.statusBar.saveFailed" : "workspace.shell.statusBar.unsavedChanges")}</span>
         </StatusEntry>
     );
 }
 
+type SceneRef = { storyId: StoryId; sceneId: StorySceneId };
+type SceneStats = { name: string; words: number; lines: number };
+
+const sameScene = (a: SceneRef | null, b: SceneRef | null): boolean =>
+    a?.storyId === b?.storyId && a?.sceneId === b?.sceneId;
+
+/**
+ * Reports the scene the user is currently editing: its outline name (e.g. "Scene 1"), word/字 count
+ * and line count. The "current" scene is the most-recently-focused open scene-editor tab, so it
+ * follows focus between scenes but survives stepping onto a non-scene tab (the scene-flow map, the
+ * dashboard, an asset preview); only when no scene editor is open at all does it read "no story
+ * open". Counts cover that one scene and match the "N 行" the story panel shows for it. Recomputed
+ * on edits with a debounce — ambient information, not a live counter.
+ */
 export function WordCountEntry() {
     const { t } = useTranslation();
     const { context } = useWorkspace();
-    const [totalWords, setTotalWords] = useState<number | null>(null);
+    const [stats, setStats] = useState<SceneStats | null>(null);
 
-    // Computed from the same snapshot the dashboard uses, refreshed on story edits with a long
-    // debounce — this is ambient information, not a live counter.
+    const activeScene = useRef<SceneRef | null>(null);
     const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
     useEffect(() => {
         if (!context) {
             return;
         }
         let mounted = true;
-        const recompute = () => {
-            void computeProjectStatsSnapshot(context)
-                .then(snapshot => {
-                    if (mounted) {
-                        setTotalWords(snapshot.scale.totalWords);
-                    }
-                })
-                .catch(() => undefined);
-        };
-        recompute();
+        const uiService = context.services.get<UIService>(Services.UI);
         const storyService = context.services.get<StoryService>(Services.Story);
-        const unsubscribe = storyService.onDocumentChanged(() => {
+
+        // The most-recently-focused scene-editor tab still open. A scene editor carries both storyId
+        // and sceneId; the scene-flow map and other tabs do not, so they are skipped and the last
+        // edited scene stays on the readout instead of blanking it.
+        const resolveScene = (): SceneRef | null => {
+            for (const tab of uiService.getStore().getEditorTabsByRecency()) {
+                const payload = tab.payload as { storyId?: StoryId; sceneId?: StorySceneId } | undefined;
+                if (payload?.storyId && payload.sceneId && storyService.getStoryEntry(payload.storyId)) {
+                    return { storyId: payload.storyId, sceneId: payload.sceneId };
+                }
+            }
+            return null;
+        };
+
+        const computeFor = (target: SceneRef | null) => {
+            if (!mounted) {
+                return;
+            }
+            if (!target) {
+                setStats(null);
+                return;
+            }
+            let doc: StoryDocument;
+            try {
+                doc = storyService.getStoryDocument(target.storyId);
+            } catch {
+                // The tab is open but its document is not in memory yet (e.g. right after a session
+                // restore). Pull it in and recompute once it lands, leaving the readout untouched
+                // meanwhile rather than flashing "no story open".
+                void storyService
+                    .loadStory(target.storyId)
+                    .then(() => {
+                        if (mounted && sameScene(activeScene.current, target)) {
+                            computeFor(target);
+                        }
+                    })
+                    .catch(() => undefined);
+                return;
+            }
+            const scene = doc.scenes[target.sceneId];
+            if (!scene) {
+                setStats(null);
+                return;
+            }
+            const counts = countSceneTextStats(scene);
+            setStats({ name: getSceneName(doc.scenes, target.sceneId), words: counts.words, lines: counts.lines });
+        };
+
+        // Recompute only when the active scene actually changes, so unrelated layout noise (a split
+        // sash drag, a non-scene tab gaining focus) does not walk the document.
+        const syncActiveScene = () => {
+            const target = resolveScene();
+            if (sameScene(target, activeScene.current)) {
+                return;
+            }
+            activeScene.current = target;
+            computeFor(target);
+        };
+
+        syncActiveScene();
+
+        const unsubscribeLayout = uiService.getEvents().on("editorLayoutChanged", syncActiveScene);
+        const unsubscribeDoc = storyService.onDocumentChanged(event => {
+            if (event.storyId !== activeScene.current?.storyId) {
+                return;
+            }
             if (timer.current) {
                 clearTimeout(timer.current);
             }
-            timer.current = setTimeout(recompute, 2000);
+            timer.current = setTimeout(() => computeFor(activeScene.current), 800);
         });
+
         return () => {
             mounted = false;
-            unsubscribe();
+            unsubscribeLayout();
+            unsubscribeDoc();
             if (timer.current) {
                 clearTimeout(timer.current);
             }
         };
     }, [context]);
 
-    if (totalWords === null) {
-        return null;
+    const openDashboard = () => {
+        if (context) {
+            openDashboardTab(context);
+        }
+    };
+
+    // Reopen (or refocus) the scene this cell is reporting on — the most-recently-edited scene —
+    // so the readout doubles as a jump-back-to-writing shortcut. Falls back to the dashboard when
+    // no scene is being tracked, matching the empty-state cell below.
+    const openCurrentScene = () => {
+        const scene = activeScene.current;
+        if (!context || !scene) {
+            openDashboard();
+            return;
+        }
+        context.services
+            .get<UIService>(Services.UI)
+            .editor.open(createStorySceneEditorTab(
+                { storyId: scene.storyId, sceneId: scene.sceneId },
+                stats?.name ?? "",
+            ));
+    };
+
+    if (!stats) {
+        return (
+            <StatusEntry title={t("workspace.shell.statusBar.openDashboard")} onClick={openDashboard}>
+                <BookText className="h-3 w-3" />
+                <span>{t("workspace.shell.statusBar.noStoryOpen")}</span>
+            </StatusEntry>
+        );
     }
     return (
-        <StatusEntry
-            title={t("workspace.shell.statusBar.openDashboard")}
-            onClick={() => {
-                if (context) {
-                    openDashboardTab(context);
-                }
-            }}
-        >
-            <BookText className="h-3 w-3" />
+        <StatusEntry title={t("workspace.shell.statusBar.openCurrentScene")} onClick={openCurrentScene}>
+            <BookText className="h-3 w-3 shrink-0" />
+            <span className="max-w-[16ch] truncate">{stats.name}</span>
             <span className="tabular-nums">
-                {t("workspace.shell.statusBar.words", { count: totalWords.toLocaleString() })}
+                {t("workspace.shell.statusBar.words", { count: stats.words.toLocaleString() })}
+            </span>
+            <span className="tabular-nums">
+                {t("workspace.shell.statusBar.lines", { count: stats.lines.toLocaleString() })}
             </span>
         </StatusEntry>
     );
@@ -289,11 +349,57 @@ export function NotificationsEntry() {
             <span className="relative flex items-center">
                 <Bell className="h-3 w-3" />
                 {unread > 0 && (
-                    <span className="absolute -right-1.5 -top-1.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-primary px-0.5 text-[9px] leading-none text-on-primary">
+                    <span className="absolute -right-1.5 -top-1.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-primary px-0.5 text-2xs leading-none text-on-primary">
                         {unread > 9 ? "9+" : unread}
                     </span>
                 )}
             </span>
+        </StatusEntry>
+    );
+}
+
+/**
+ * The version cell: which version this window is a view of, click opens the rail.
+ *
+ * What it says comes from `versionFace`, shared with the switcher menu and the rail's focused
+ * block - the three of them naming one version three ways is a contradiction an author reads as a
+ * broken feature, and it has happened here before. Merges and ahead/behind markers are still
+ * undecided (plan 2026-07-28-002 §6); when they land, they land in that function.
+ *
+ * The width cap is a MAXIMUM, so it costs nothing in the ordinary case: `#12` is three characters
+ * wide whatever the cap says. It only becomes real on a branch, and it is there to stop a long
+ * branch name from pushing the cells beside this one off the bar.
+ *
+ * Silent in exactly two states: no version control on this host (it was never shipped for this
+ * OS/arch, so a cell would be reporting on a feature that does not exist) and while the first probe
+ * is still out. It speaks up for a project with no repository, because "not under version control"
+ * is a thing the author needs to be able to notice.
+ */
+export function VersionEntry() {
+    const { t } = useTranslation();
+    // Its own reader rather than the layout's: this cell is not in the rail's tree, and the service
+    // caches availability, so a second reader costs one `isRepository` and one `getInfo` round trip
+    // at mount and nothing until a revision is recorded. Neither of them scans - see
+    // useVersionSurface.
+    const { state, branch } = useVersionSurface();
+
+    if (state.kind === "unavailable" || state.kind === "probing") {
+        return null;
+    }
+    const onRevision = state.kind === "revision";
+    const face = versionFace({ state, branch }, t);
+
+    return (
+        <StatusEntry
+            emphasis={onRevision}
+            title={onRevision
+                // The UNCUT line, so a branch name this cell had to shorten is still readable.
+                ? t("workspace.shell.versionControl.viewingVersion", { version: face.full })
+                : face.full !== face.text ? face.full : t("workspace.shell.versionControl.open")}
+            onClick={openVersionRail}
+        >
+            {onRevision ? <History className="h-3 w-3" /> : <GitBranch className="h-3 w-3" />}
+            <span className="max-w-[22ch] truncate tabular-nums">{face.text}</span>
         </StatusEntry>
     );
 }

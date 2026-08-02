@@ -1,4 +1,4 @@
-import { AssetType } from '@/lib/workspace/services/assets/assetTypes';
+import { AssetCategory } from '@/lib/workspace/services/assets/assetTypes';
 import { Asset, AssetGroup } from '@/lib/workspace/services/assets/types';
 import { createContext, useContext } from 'react';
 import { ClipboardState } from './state/useClipboard';
@@ -11,10 +11,19 @@ export interface AssetsIconViewToolbarCenter {
 }
 
 interface AssetsPanelContextType {
-    assets: Record<AssetType, Asset[]>;
-    groups: Record<AssetType, AssetGroup[]>;
-    filteredAssets: Record<AssetType, Asset[]>;
-    filteredGroups: Record<AssetType, AssetGroup[]>;
+    /**
+     * Keyed by sidebar section. The assets inside still carry their own `type`; what a section, a
+     * folder and a drop target belong to is the category.
+     */
+    assets: Record<AssetCategory, Asset[]>;
+    groups: Record<AssetCategory, AssetGroup[]>;
+    filteredAssets: Record<AssetCategory, Asset[]>;
+    filteredGroups: Record<AssetCategory, AssetGroup[]>;
+    /**
+     * Groups whose own name matched the search. `filteredGroups` also carries the ancestors needed
+     * to draw a tree; those are scaffolding, and a flat result grid must not present them as hits.
+     */
+    matchedGroupIds: ReadonlySet<string>;
 
     // State
     selectedItems: Set<string>;
@@ -30,13 +39,21 @@ interface AssetsPanelContextType {
     handleItemSelect: (itemId: string, isGroup: boolean, event: React.MouseEvent) => void;
     handleAssetClick: (asset: Asset, isMultiSelectMode: boolean) => void;
     handleGroupFocus: (groupId: string) => void;
-    showContextMenu: (e: React.MouseEvent, type: AssetType, item: Asset | AssetGroup | null, isGroup: boolean) => void;
-    handleDragStart?: (e: React.DragEvent, type: AssetType, item: Asset | AssetGroup, isGroup: boolean) => void;
+    showContextMenu: (e: React.MouseEvent, category: AssetCategory, item: Asset | AssetGroup | null, isGroup: boolean) => void;
+    handleDragStart?: (e: React.DragEvent, category: AssetCategory, item: Asset | AssetGroup, isGroup: boolean) => void;
     handleDragEnd?: () => void;
     handleDragOverItem?: (e: React.DragEvent, targetId: string) => void;
-    handleDropOnItem?: (e: React.DragEvent, targetType: AssetType, targetGroup: AssetGroup | null) => void;
-    handleImportToGroup: (type: AssetType, groupId?: string, files?: FileList, dataTransfer?: DataTransfer) => void;
+    handleDropOnItem?: (e: React.DragEvent, targetCategory: AssetCategory, targetGroup: AssetGroup | null) => void;
+    handleImportToGroup: (category: AssetCategory, groupId?: string, files?: FileList, dataTransfer?: DataTransfer) => void;
     isFocused: (id: string) => boolean;
+
+    /**
+     * True when a search or a filter is currently narrowing `filteredAssets` / `filteredGroups`.
+     *
+     * The views read this to stop hiding hits behind folders: a match filed inside a collapsed group
+     * has to be on screen, so the tree force-opens and the grid goes flat while this is set.
+     */
+    isNarrowed: boolean;
 
     /** True when the panel uses the compact toolbar (e.g. bottom dock). Icon view can merge group navigation there. */
     compactToolbar: boolean;

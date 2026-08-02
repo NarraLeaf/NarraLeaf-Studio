@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { StoryBlock, StoryExpr } from "@shared/types/story";
-import { isStoryExpressionEvaluable, STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
+import type { StoryBlock, StoryDocument, StoryExpr, StoryVariableRef } from "@shared/types/story";
+import { isStoryExpressionEvaluable, storyVariableRefKey, STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import {
     collectInvalidBlocks,
     collectTempSpeakers,
@@ -9,6 +9,8 @@ import {
     createEmptyStoryLibraryIndex,
     deleteBlockFromScene,
     insertBlockInScene,
+    isBlockDisabled,
+    migrateStoryDocumentToLatest,
     moveBlockInScene,
     normalizeStoryAnimationAsset,
     normalizeStoryAnimationIndex,
@@ -162,6 +164,21 @@ describe("storyModel", () => {
                 documentPath: `editor/story/animations/${STORY_ID_1}.json`,
             }),
         ]);
+    });
+
+    it("keeps a camera motion filed under the camera", () => {
+        // The fallback for an unknown kind is `image`, so a motion target kind that is not on the
+        // normalizer's list is not rejected - it is silently reassigned, and the author's camera shot
+        // shows up in every sprite's motion picker instead. Hence a test naming the kind directly.
+        const normalized = normalizeStoryAnimationAsset({
+            schemaVersion: 1,
+            id: STORY_ID_2,
+            name: "Camera shake",
+            targetKind: "camera",
+            sequences: [],
+        } as any, "2026-07-29T00:00:00.000Z");
+
+        expect(normalized.targetKind).toBe("camera");
     });
 
     it("normalizes story animation assets without leaking unsupported sequence fields", () => {
@@ -453,6 +470,34 @@ describe("storyModel", () => {
         expect((normalizedScene.blocks.fx.payload as any).durationMs).toBe(500);
     });
 
+    it("keeps a scene's audio track through normalization, even one no track list has", () => {
+        const now = "2026-06-08T00:00:00.000Z";
+        const document = createEmptyStoryDocument({ id: STORY_ID_1, name: "Story", now, generateId: idFactory() });
+        const scene = document.scenes[document.entrySceneId!];
+        // A deleted track's id, which is the case that matters: references are NOT rewritten when a
+        // track goes away, they resolve to the bus's built-in - so dropping the id here would erase
+        // the author's choice the moment they deleted a track they meant to re-create.
+        scene.bgm = { assetId: "asset-theme", audioTrackId: "  t_gone  ", volume: 0.5 };
+
+        const normalized = normalizeStoryDocument(document, now);
+
+        expect(normalized.scenes[document.entrySceneId!].bgm).toMatchObject({
+            assetId: "asset-theme",
+            audioTrackId: "t_gone",
+            volume: 0.5,
+        });
+    });
+
+    it("writes no audio track key when the scene names none", () => {
+        const now = "2026-06-08T00:00:00.000Z";
+        const document = createEmptyStoryDocument({ id: STORY_ID_1, name: "Story", now, generateId: idFactory() });
+        document.scenes[document.entrySceneId!].bgm = { assetId: "asset-theme" };
+
+        const normalized = normalizeStoryDocument(document, now);
+
+        expect(normalized.scenes[document.entrySceneId!].bgm).not.toHaveProperty("audioTrackId");
+    });
+
     it("migrates legacy image/text layerName strings to stable layer refs (v2 → v3)", () => {
         const now = "2026-06-08T00:00:00.000Z";
         const document = createEmptyStoryDocument({
@@ -606,6 +651,21 @@ describe("collectInvalidBlocks", () => {
         const document = documentWith([invalidBlock("bad1", "/bgg"), invalidBlock("bad2", "#")]);
         expect(collectInvalidBlocks(document).map(ref => ref.blockId)).toEqual(["bad1", "bad2"]);
     });
+
+    it("does not gate the build on a disabled invalid row (schema v7)", () => {
+        const document = documentWith([{ ...invalidBlock("bad", "/bgg"), disabled: true }]);
+        expect(collectInvalidBlocks(document)).toEqual([]);
+    });
+
+    it("does not gate the build on an invalid row nested under a disabled container", () => {
+        const document = documentWith([
+            { id: "grp", kind: "control", parentId: null, childrenIds: ["bad"], disabled: true, payload: { control: "sequence", mode: "do" } },
+            { ...invalidBlock("bad", "/bgg"), parentId: "grp" },
+        ]);
+        const scene = Object.values(document.scenes)[0];
+        expect(isBlockDisabled(scene, scene.blocks.bad)).toBe(true);
+        expect(collectInvalidBlocks(document)).toEqual([]);
+    });
 });
 
 describe("temp speakers", () => {
@@ -712,9 +772,237 @@ describe("story document migration ladder", () => {
     // The regression that shipped: bumping the constant without adding a step left v3 documents
     // falling through migrateStoryDocumentToLatest untouched, so every existing project threw
     // "migration is not implemented" and its story panel would not open.
-    it.each([[1], [2], [3], [4]])("brings a v%i document to the current schema", version => {
+    it.each([[1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11], [12]])("brings a v%i document to the current schema", version => {
         expect(normalizeStoryDocument(docAtVersion(version), "2026-07-16T00:00:00.000Z").schemaVersion)
             .toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+    });
+
+    /**
+     * v11→v12 has exactly one chance to run: the key order of a freshly parsed `scenes` record IS
+     * the authored order of the scenes no chapter claims, and the first canonical write destroys it.
+     * These pin that it reads that order, and that nothing about the step can un-capture it.
+     */
+    describe("v11→v12 unassignedSceneIds", () => {
+        const SCENE_IN_CHAPTER = "00000000-0000-4000-8000-00000000aa01";
+        const LOOSE_FIRST = "00000000-0000-4000-8000-00000000bb02";
+        const LOOSE_SECOND = "00000000-0000-4000-8000-00000000bb01";
+
+        /** A v11 document whose two chapter-less scenes are stored in an order UUID sorting reverses. */
+        function v11WithLooseScenes(): StoryDocument {
+            const base = docAtVersion(11);
+            const chapterId = base.chapters[0].id;
+            const template = Object.values(base.scenes)[0];
+            const scene = (id: string) => ({ ...template, id, blocks: {}, rootBlockIds: [] });
+            return {
+                ...base,
+                entrySceneId: SCENE_IN_CHAPTER,
+                chapters: [{ ...base.chapters[0], id: chapterId, sceneIds: [SCENE_IN_CHAPTER] }],
+                scenes: {
+                    [SCENE_IN_CHAPTER]: scene(SCENE_IN_CHAPTER),
+                    [LOOSE_FIRST]: scene(LOOSE_FIRST),
+                    [LOOSE_SECOND]: scene(LOOSE_SECOND),
+                },
+            } as StoryDocument;
+        }
+
+        it("captures the parsed key order of the scenes no chapter claims", () => {
+            // Through JSON, because that is the only state the order ever exists in: `JSON.parse`
+            // hands back insertion order for these (non-integer-like) keys and nothing else does.
+            const parsed = JSON.parse(JSON.stringify(v11WithLooseScenes())) as StoryDocument;
+            const migrated = migrateStoryDocumentToLatest(parsed);
+            expect(migrated.unassignedSceneIds).toEqual([LOOSE_FIRST, LOOSE_SECOND]);
+            // Which is not what sorting the record would have said.
+            expect([LOOSE_FIRST, LOOSE_SECOND]).not.toEqual([...Object.keys(parsed.scenes)].sort());
+        });
+
+        it("survives the canonical rewrite that key order does not", () => {
+            const migrated = migrateStoryDocumentToLatest(v11WithLooseScenes());
+            const canonical = {
+                ...migrated,
+                scenes: Object.fromEntries(Object.keys(migrated.scenes).sort().map(id => [id, migrated.scenes[id]])),
+            };
+            expect(normalizeStoryDocument(canonical, "2026-07-16T00:00:00.000Z").unassignedSceneIds)
+                .toEqual([LOOSE_FIRST, LOOSE_SECOND]);
+        });
+
+        it("is a no-op on an already-migrated document", () => {
+            const once = normalizeStoryDocument(v11WithLooseScenes(), "2026-07-16T00:00:00.000Z");
+            const twice = normalizeStoryDocument(once, "2026-07-16T00:00:00.000Z");
+            expect(twice).toEqual(once);
+        });
+
+        it("loads a v12 document that carries no ordering field at all", () => {
+            const { unassignedSceneIds: _absent, ...withoutField } = migrateStoryDocumentToLatest(v11WithLooseScenes());
+            expect(() => normalizeStoryDocument(withoutField as StoryDocument, "2026-07-16T00:00:00.000Z")).not.toThrow();
+        });
+
+        it("writes no field when every scene belongs to a chapter", () => {
+            const normalized = normalizeStoryDocument(docAtVersion(11), "2026-07-16T00:00:00.000Z");
+            expect("unassignedSceneIds" in normalized).toBe(false);
+        });
+
+        it("drops a scene that has since been claimed by a chapter, without reordering the rest", () => {
+            const migrated = normalizeStoryDocument(v11WithLooseScenes(), "2026-07-16T00:00:00.000Z");
+            const adopted = {
+                ...migrated,
+                chapters: [{ ...migrated.chapters[0], sceneIds: [SCENE_IN_CHAPTER, LOOSE_FIRST] }],
+            };
+            expect(normalizeStoryDocument(adopted, "2026-07-16T00:00:00.000Z").unassignedSceneIds).toEqual([LOOSE_SECOND]);
+        });
+    });
+
+    it("v8→v9 renames the persistent StoryVariableRef arm storageKey→variableId with zero semantic change", () => {
+        const document = docAtVersion(8);
+        const sceneId = Object.keys(document.scenes)[0];
+        const scene = document.scenes[sceneId];
+        const v8 = {
+            ...document,
+            scenes: {
+                [sceneId]: {
+                    ...scene,
+                    rootBlockIds: ["persis-decl", "set-gold"],
+                    blocks: {
+                        // A `/persis` declaration row keeps its storageKey - it is not a ref.
+                        "persis-decl": {
+                            id: "persis-decl", parentId: null, childrenIds: [], kind: "declaration",
+                            payload: { scope: "persistent", name: "Gold", valueType: "number", storageKey: "persis-decl" },
+                        },
+                        // A setVariable targeting a persistent variable - its ref carries storageKey (v8).
+                        "set-gold": {
+                            id: "set-gold", parentId: null, childrenIds: [], kind: "action",
+                            payload: { action: "setVariable", target: { scope: "persistent", storageKey: "persis-decl" }, value: 5 },
+                        },
+                    },
+                },
+            },
+        } as unknown as StoryDocument;
+
+        const migrated = migrateStoryDocumentToLatest(v8);
+        expect(migrated.schemaVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+        const setBlock = migrated.scenes[sceneId].blocks["set-gold"] as { payload: { target: StoryVariableRef } };
+        // The ref arm is renamed, same value - old references resolve unchanged.
+        expect(setBlock.payload.target).toEqual({ scope: "persistent", variableId: "persis-decl" });
+        expect(storyVariableRefKey(setBlock.payload.target)).toBe("persistent:persis-decl");
+        // The declaration payload is untouched (it is a variable, not a ref).
+        const decl = migrated.scenes[sceneId].blocks["persis-decl"] as { payload: { storageKey: string; name: string } };
+        expect(decl.payload).toMatchObject({ storageKey: "persis-decl", name: "Gold" });
+    });
+
+    /**
+     * v12→v13 deletes a block kind, so the only thing it can get wrong is losing what the row held.
+     * The source is asserted byte-for-byte rather than "contains something like it": authors put real
+     * code in these blocks, and a migration that reformatted, trimmed or re-indented it would be data
+     * loss that no diff review would catch.
+     */
+    describe("v12→v13 code blocks become notes", () => {
+        const SOURCE = "  const a = 1;\n\n\tif (a) {\n  return \"don't\";\n}\n";
+
+        function v12WithCodeBlock(payload: Record<string, unknown>): StoryDocument {
+            const document = docAtVersion(12);
+            const sceneId = Object.keys(document.scenes)[0];
+            const scene = document.scenes[sceneId];
+            return {
+                ...document,
+                scenes: {
+                    [sceneId]: {
+                        ...scene,
+                        rootBlockIds: ["c1"],
+                        blocks: { c1: { id: "c1", parentId: null, childrenIds: [], kind: "code", payload } },
+                    },
+                },
+            } as unknown as StoryDocument;
+        }
+
+        function migratedBlock(payload: Record<string, unknown>) {
+            const migrated = migrateStoryDocumentToLatest(v12WithCodeBlock(payload));
+            expect(migrated.schemaVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+            const sceneId = Object.keys(migrated.scenes)[0];
+            return migrated.scenes[sceneId].blocks.c1;
+        }
+
+        it("keeps the source verbatim, at the end of the note", () => {
+            const block = migratedBlock({ language: "typescript", source: SOURCE });
+            expect(block.kind).toBe("note");
+            const value = (block as { payload: { text: { value: string } } }).payload.text.value;
+            // Byte equality of the tail: whatever the header line says, the author's bytes end the note.
+            expect(value.endsWith(SOURCE)).toBe(true);
+            expect(value.slice(value.length - SOURCE.length)).toBe(SOURCE);
+            // The language is the one thing the note has to state, since the payload field is gone.
+            expect(value).toContain("typescript");
+        });
+
+        it("survives an empty or malformed payload rather than dropping the row", () => {
+            expect(migratedBlock({}).kind).toBe("note");
+            expect(migratedBlock({ source: 12 as unknown as string }).kind).toBe("note");
+        });
+
+        it("keeps the row's id, place in the tree and disabled flag", () => {
+            const document = docAtVersion(12);
+            const sceneId = Object.keys(document.scenes)[0];
+            const scene = document.scenes[sceneId];
+            const v12 = {
+                ...document,
+                scenes: {
+                    [sceneId]: {
+                        ...scene,
+                        rootBlockIds: ["group"],
+                        blocks: {
+                            group: { id: "group", parentId: null, childrenIds: ["c1"], kind: "control", payload: { control: "sequence" } },
+                            c1: { id: "c1", parentId: "group", childrenIds: [], kind: "code", disabled: true, payload: { language: "javascript", source: SOURCE } },
+                        },
+                    },
+                },
+            } as unknown as StoryDocument;
+            const block = migrateStoryDocumentToLatest(v12).scenes[sceneId].blocks.c1;
+            expect(block).toMatchObject({ id: "c1", kind: "note", parentId: "group", disabled: true });
+        });
+    });
+
+    it("migrates v6 forward additively — a bump only, every block untouched (no invented `disabled`)", () => {
+        const document = docAtVersion(6);
+        const sceneId = Object.keys(document.scenes)[0];
+        const scene = document.scenes[sceneId];
+        const v6 = {
+            ...document,
+            scenes: {
+                [sceneId]: {
+                    ...scene,
+                    rootBlockIds: ["n1"],
+                    blocks: { n1: { id: "n1", parentId: null, childrenIds: [], kind: "note", payload: { text: { textId: "t", role: "note", value: "hi" } } } },
+                },
+            },
+        } as StoryDocument;
+        const migrated = migrateStoryDocumentToLatest(v6);
+        expect(migrated.schemaVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+        expect(migrated.scenes[sceneId].blocks.n1).not.toHaveProperty("disabled");
+    });
+
+    it("migrates v7 to v8 additively — a bump only, no invented `event` runs", () => {
+        const document = docAtVersion(7);
+        const sceneId = Object.keys(document.scenes)[0];
+        const scene = document.scenes[sceneId];
+        const v7 = {
+            ...document,
+            scenes: {
+                [sceneId]: {
+                    ...scene,
+                    rootBlockIds: ["d1"],
+                    blocks: {
+                        d1: {
+                            id: "d1", parentId: null, childrenIds: [], kind: "nodeAction",
+                            payload: {
+                                action: "dialogue", characterId: "c1",
+                                text: { textId: "t", role: "dialogue", value: "hi", rich: [{ text: "hi" }] },
+                            },
+                        },
+                    },
+                },
+            },
+        } as unknown as StoryDocument;
+        const migrated = migrateStoryDocumentToLatest(v7);
+        expect(migrated.schemaVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+        const rich = (migrated.scenes[sceneId].blocks.d1 as { payload: { text: { rich: unknown[] } } }).payload.text.rich;
+        expect(rich).toEqual([{ text: "hi" }]);
     });
 
     /** A v4 document holding one `conditionBranch` whose expression condition is the legacy raw string. */

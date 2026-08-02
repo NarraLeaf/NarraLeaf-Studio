@@ -12,6 +12,7 @@ import {
 import type { DevModeBundle, DevModeStartStoryRequest } from "@shared/types/devMode";
 import type { UIStageSlotId, UIStageSurface } from "@shared/types/ui-editor/document";
 import type { BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
+import type { AutoSaveEntry } from "@shared/types/saves";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { GameSurfaceRenderer } from "@/lib/ui-editor/runtime/surface/GameSurfaceRenderer";
@@ -26,6 +27,8 @@ import {
     type DevModeWidgetRuntimePatch,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { createDevModeBlueprintHostAdapter } from "@/lib/ui-editor/runtime/hostAdapters/devModeBlueprintHostAdapter";
+import type { ProjectAudioTrack } from "@shared/types/audioTrack";
+import type { SoundTransport } from "./soundTransport";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 import type { SurfaceLifecycleOrchestrator } from "./lifecycle/surfaceLifecycleOrchestrator";
 import { collectSurfaceFlushElementIds } from "@/lib/ui-editor/runtime/game/surfaceFlushTargets";
@@ -62,9 +65,17 @@ export type GameUiSlotHostOptions = {
     listSaveIds: () => Promise<string[]>;
     getSaveMetadata: (id: string) => Promise<unknown>;
     getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
+    writeAutoSaveInGame: () => Promise<void>;
+    listAutoSaves: () => Promise<AutoSaveEntry[]>;
     getHistoryInGame: () => BlueprintGameHistoryEntry[];
     restoreHistoryInGame: (id?: string) => Promise<void>;
     getCurrentNametag: () => string | null;
+    /**
+     * Invert a dialog-avatar URL back to the asset id it was compiled from. The engine resolves
+     * avatars to URLs; a blueprint pin carries an `ImageAsset`. Absent on hosts with no compiled
+     * story, where there are no avatars to invert.
+     */
+    resolveAvatarAssetId?: (url: string) => string | null;
     getNotificationsInGame: () => BlueprintGameNotification[];
     getChoiceCountInGame: () => number;
     isNvlModeInGame: () => boolean;
@@ -83,6 +94,21 @@ export type GameUiSlotHostOptions = {
     setSentenceSpeedInGame: (cps: number) => Promise<void>;
     getGamePreferenceInGame: (key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue;
     setGamePreferenceInGame: (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => Promise<void>;
+    /**
+     * The session's sound transport.
+     *
+     * Optional because a host may back no audio at all (the in-editor story preview), in which case
+     * the sound nodes degrade to their warned no-op exactly as they do on a Page previewed in
+     * Studio. It is *not* optional in the sense of "nice to have": a slot surface without it is the
+     * shipped defect where a button-click sound in a dialogue box, choice or NVL surface silently
+     * did nothing, because this shell built its host API with none of the sound callbacks the
+     * top-level surfaces pass.
+     */
+    soundTransport?: SoundTransport;
+    /** Project audio tracks (from the bundle); resolves the video widget's mixer volume. */
+    audioTracks?: readonly ProjectAudioTrack[];
+    /** Preference stream so a mid-playback volume-slider drag reaches host-owned media elements. */
+    subscribeGamePreferences?: (listener: () => void) => () => void;
     setWidgetPatchesByScope: Dispatch<SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>>;
     widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
     widgetRuntimeStore: WidgetRuntimeStateStore;
@@ -173,6 +199,8 @@ export function useStageSlotSurfaceRuntime(input: {
             onListSaveIds: options.listSaveIds,
             onGetSaveMetadata: options.getSaveMetadata,
             onGetSavePreview: options.getSavePreview,
+            onWriteAutoSave: options.writeAutoSaveInGame,
+            onListAutoSaves: options.listAutoSaves,
             onGetHistory: options.getHistoryInGame,
             onRestoreHistory: options.restoreHistoryInGame,
             onGetNametag: options.getCurrentNametag,
@@ -193,6 +221,20 @@ export function useStageSlotSurfaceRuntime(input: {
             onSetSentenceSpeed: options.setSentenceSpeedInGame,
             onGetGamePreference: options.getGamePreferenceInGame,
             onSetGamePreference: options.setGamePreferenceInGame,
+            // The same sound callbacks the top-level surfaces pass. Left off, `sound.play` returns null
+            // and every transport node is a silent no-op, so an authored click sound inside a
+            // dialogue box just never happens.
+            onPlaySound: options.soundTransport?.play,
+            onStopSound: options.soundTransport?.stop,
+            onPauseSound: options.soundTransport?.pause,
+            onResumeSound: options.soundTransport?.resume,
+            onSetSoundVolume: options.soundTransport?.setVolume,
+            onSeekSound: options.soundTransport?.seek,
+            onIsSoundPlaying: options.soundTransport?.isPlaying,
+            onGetTrackVolume: options.soundTransport?.getTrackVolume,
+            onSetTrackVolume: options.soundTransport?.setTrackVolume,
+            audioTracks: options.audioTracks,
+            onSubscribeGamePreferences: options.subscribeGamePreferences,
             onWidgetPatch: (elementId, patch) => {
                 applyWidgetRuntimePatch({
                     setWidgetPatchesByScope,
@@ -321,6 +363,7 @@ export function StageSlotSurfaceBody(props: {
         }
         return {
             blueprintDocument: bundle.ui.localBlueprints,
+            persistentVariables: bundle.ui.persistentVariables,
             surfaceState: core.scopeBridge.getSurfaceStore(runtimeScopeId),
             debug: core.debug,
             coalescer: core.bindingDebugCoalescer,
@@ -332,6 +375,7 @@ export function StageSlotSurfaceBody(props: {
         <SurfaceLifecycleBoundary
             core={subscriptionsReady ? core : null}
             blueprintDocument={bundle.ui.localBlueprints}
+            persistentVariables={bundle.ui.persistentVariables}
             surface={surface}
             runtimeScopeId={runtimeScopeId}
             hostAdapter={hostAdapter}

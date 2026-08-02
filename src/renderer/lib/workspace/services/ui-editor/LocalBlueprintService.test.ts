@@ -59,7 +59,6 @@ function blueprintDocument(): BlueprintDocument {
         blueprints: {
             [bp.id]: bp,
         },
-        persistentVariables: {},
         ownerRecords: {
             "surfaceMain:surface-a": {
                 activeBlueprintId: bp.id,
@@ -120,9 +119,51 @@ function uiDocument(): UIDocument {
     };
 }
 
+type MockRegistryEntry = { id: string; name: string; valueType: string; defaultValue?: unknown; storageKey: string; description?: string };
+
 function createHarness() {
     const graphDocument = { blueprintDocument: blueprintDocument() };
     let nextId = 0;
+    // In-memory stand-in for VariableRegistryService: persistent-variable CRUD now lives there, and
+    // its state is captured into blueprint history so persistent edits undo with the blueprint edit.
+    const registry: { schemaVersion: number; entries: Record<string, MockRegistryEntry> } = { schemaVersion: 1, entries: {} };
+    const registryService = {
+        getRegistry() {
+            return registry;
+        },
+        replaceRegistry(next: { schemaVersion: number; entries: Record<string, MockRegistryEntry> }) {
+            registry.schemaVersion = next.schemaVersion;
+            registry.entries = next.entries;
+        },
+        listEntries() {
+            return Object.values(registry.entries).sort((a, b) => a.name.localeCompare(b.name));
+        },
+        createEntry(input?: { name?: string; valueType?: string; defaultValue?: unknown }) {
+            const id = `persist-${++nextId}`;
+            const entry: MockRegistryEntry = {
+                id,
+                storageKey: id,
+                name: input?.name ?? `persist_${id}`,
+                valueType: input?.valueType ?? "json",
+                defaultValue: input?.defaultValue,
+            };
+            registry.entries[id] = entry;
+            return entry;
+        },
+        renameEntry(id: string, name: string) {
+            if (registry.entries[id]) {
+                registry.entries[id].name = name;
+            }
+        },
+        setEntryDefault(id: string, defaultValue: unknown) {
+            if (registry.entries[id]) {
+                registry.entries[id].defaultValue = defaultValue;
+            }
+        },
+        deleteEntry(id: string) {
+            delete registry.entries[id];
+        },
+    };
     const uidoc = {
         document: uiDocument(),
         getDocument() {
@@ -170,12 +211,43 @@ function createHarness() {
                 if (serviceId === Services.Uuid) {
                     return { generate: () => `generated-id-${++nextId}` };
                 }
+                if (serviceId === Services.VariableRegistry) {
+                    return registryService;
+                }
                 throw new Error(`Unexpected service ${serviceId}`);
             },
         } as any,
     });
-    return { service, graphDocument, uidoc };
+    return { service, graphDocument, uidoc, registryService };
 }
+
+describe("LocalBlueprintService persistent variables (M-VAR registry)", () => {
+    it("delegates CRUD to the registry and undoes/redoes it through blueprint history", () => {
+        const { service, registryService } = createHarness();
+
+        const created = service.createPersistentVariable("bp-main", { name: "Gold", valueType: "number", defaultValue: 100 });
+        expect(registryService.listEntries().map(e => e.name)).toEqual(["Gold"]);
+        expect(service.canUndoBlueprint("bp-main")).toBe(true);
+
+        // Undo removes the newly-created variable; redo brings it back.
+        expect(service.undoBlueprint("bp-main")).toBe(true);
+        expect(registryService.listEntries()).toEqual([]);
+        expect(service.redoBlueprint("bp-main")).toBe(true);
+        expect(registryService.listEntries().map(e => e.name)).toEqual(["Gold"]);
+
+        // Rename is on the same undo stack.
+        service.renamePersistentVariable("bp-main", created.id, "Coins");
+        expect(registryService.getRegistry().entries[created.id].name).toBe("Coins");
+        service.undoBlueprint("bp-main");
+        expect(registryService.getRegistry().entries[created.id].name).toBe("Gold");
+
+        // Delete then undo restores the entry.
+        service.deletePersistentVariable("bp-main", created.id);
+        expect(registryService.listEntries()).toEqual([]);
+        service.undoBlueprint("bp-main");
+        expect(registryService.listEntries().map(e => e.name)).toEqual(["Gold"]);
+    });
+});
 
 describe("LocalBlueprintService history", () => {
     it("seeds widget value blueprints with an init layer only", () => {
@@ -281,14 +353,15 @@ describe("LocalBlueprintService history", () => {
     });
 
     it("creates persistent variables and clears persistent node refs on delete", () => {
-        const { service, graphDocument } = createHarness();
+        const { service, graphDocument, registryService } = createHarness();
 
         const created = service.createPersistentVariable("bp-main", {
             name: "volume",
             valueType: "number",
             defaultValue: 0.5,
         });
-        expect(graphDocument.blueprintDocument.persistentVariables[created.id]).toMatchObject({
+        // The variable now lives in the M-VAR registry, not the blueprint document.
+        expect(registryService.getRegistry().entries[created.id]).toMatchObject({
             id: created.id,
             name: "volume",
             valueType: "number",
@@ -298,9 +371,9 @@ describe("LocalBlueprintService history", () => {
 
         service.renamePersistentVariable("bp-main", created.id, "masterVolume");
         service.setPersistentVariableDefault("bp-main", created.id, 0.75);
-        expect(graphDocument.blueprintDocument.persistentVariables[created.id]?.name).toBe("masterVolume");
-        expect(graphDocument.blueprintDocument.persistentVariables[created.id]?.storageKey).toBe(created.id);
-        expect(graphDocument.blueprintDocument.persistentVariables[created.id]?.defaultValue).toBe(0.75);
+        expect(registryService.getRegistry().entries[created.id]?.name).toBe("masterVolume");
+        expect(registryService.getRegistry().entries[created.id]?.storageKey).toBe(created.id);
+        expect(registryService.getRegistry().entries[created.id]?.defaultValue).toBe(0.75);
 
         const bp = graphDocument.blueprintDocument.blueprints["bp-main"];
         if (bp.program.kind !== "graph") {
@@ -359,7 +432,7 @@ describe("LocalBlueprintService history", () => {
 
         service.deletePersistentVariable("bp-main", created.id);
 
-        expect(graphDocument.blueprintDocument.persistentVariables[created.id]).toBeUndefined();
+        expect(registryService.getRegistry().entries[created.id]).toBeUndefined();
         const nodes = [
             bp.program.graphs.events.mouseClick?.graph?.nodes?.getPersistent,
             bp.program.graphs.functions.readVolume?.graph?.nodes?.setPersistent,
@@ -474,5 +547,78 @@ describe("LocalBlueprintService history", () => {
         if (bp.program.kind === "graph") {
             expect(bp.program.graphs.events.mouseClick?.name).toBe("Mouse Click");
         }
+    });
+});
+
+describe("LocalBlueprintService function graph order", () => {
+    it("maintains the order and survives a canonical rewrite that re-keys the record", () => {
+        const { service, graphDocument } = createHarness();
+        service.ensureFunctionGraph("bp-main", "zzz", "Z");
+        service.ensureFunctionGraph("bp-main", "aaa", "A");
+        service.ensureFunctionGraph("bp-main", "mmm", "M");
+        service.removeFunctionGraph("bp-main", "mmm");
+        expect(service.listFunctionGraphIds("bp-main")).toEqual(["zzz", "aaa"]);
+
+        const bp = graphDocument.blueprintDocument.blueprints["bp-main"];
+        if (bp.program.kind !== "graph") {
+            throw new Error("test fixture lost its graph program");
+        }
+        const graphs = bp.program.graphs;
+        graphs.functions = Object.fromEntries(
+            Object.keys(graphs.functions).sort().map(id => [id, graphs.functions[id]!]),
+        );
+        expect(Object.keys(graphs.functions)).toEqual(["aaa", "zzz"]);
+
+        expect(service.listFunctionGraphIds("bp-main")).toEqual(["zzz", "aaa"]);
+    });
+});
+
+describe("LocalBlueprintService event layer order", () => {
+    function readGraphs(graphDocument: { blueprintDocument: BlueprintDocument }) {
+        const bp = graphDocument.blueprintDocument.blueprints["bp-main"];
+        if (bp.program.kind !== "graph") {
+            throw new Error("test fixture lost its graph program");
+        }
+        return bp.program.graphs;
+    }
+
+    it("appends a new layer and drops a deleted one from the order", () => {
+        const { service, graphDocument } = createHarness();
+
+        service.ensureEventGraph("bp-main", "aaa", "A");
+        service.ensureEventGraph("bp-main", "zzz", "Z");
+        expect(service.listEventGraphIds("bp-main")).toEqual(["mouseClick", "aaa", "zzz"]);
+        expect(readGraphs(graphDocument).eventIds).toEqual(["mouseClick", "aaa", "zzz"]);
+
+        service.removeEventGraph("bp-main", "aaa");
+        expect(service.listEventGraphIds("bp-main")).toEqual(["mouseClick", "zzz"]);
+        expect(readGraphs(graphDocument).eventIds).toEqual(["mouseClick", "zzz"]);
+    });
+
+    it("keeps a layer's place when it is upserted again", () => {
+        const { service } = createHarness();
+
+        service.ensureEventGraph("bp-main", "aaa", "A");
+        service.ensureEventGraph("bp-main", "zzz", "Z");
+        service.ensureEventGraph("bp-main", "mouseClick", "Renamed");
+
+        expect(service.listEventGraphIds("bp-main")).toEqual(["mouseClick", "aaa", "zzz"]);
+    });
+
+    it("survives a canonical rewrite that re-keys the record in sorted order", () => {
+        const { service, graphDocument } = createHarness();
+        service.ensureEventGraph("bp-main", "zzz", "Z");
+        service.ensureEventGraph("bp-main", "aaa", "A");
+        const authored = ["mouseClick", "zzz", "aaa"];
+
+        // What a save/load round-trip through canonical JSON does to the record: same layers,
+        // reinserted in sorted key order. The array is the only thing that still knows.
+        const graphs = readGraphs(graphDocument);
+        graphs.events = Object.fromEntries(
+            Object.keys(graphs.events).sort().map(id => [id, graphs.events[id]!]),
+        );
+        expect(Object.keys(graphs.events)).toEqual(["aaa", "mouseClick", "zzz"]);
+
+        expect(service.listEventGraphIds("bp-main")).toEqual(authored);
     });
 });

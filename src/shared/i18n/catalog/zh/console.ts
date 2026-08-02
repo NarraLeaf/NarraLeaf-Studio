@@ -16,15 +16,16 @@ export const console = {
     exportSuccess: "已将 {label} 日志导出到 {path}",
     exportFailed: "导出日志失败：{error}",
     emptyFiltered: "没有符合当前筛选的日志",
-    emptyChannel: "还没有 {label} 输出",
     entryEmpty: "（空）",
     outputFallback: "输出",
     channels: {
         blueprint: "蓝图",
         build: "构建",
         story: "故事",
+        storage: "存储",
         blueprintDescription: "蓝图运行时与图表诊断",
         buildDescription: "构建、打包与预览流程输出",
         storyDescription: "故事场景预览诊断与警告",
+        storageDescription: "项目文件写入：保存失败、重试与恢复",
     },
 } satisfies LocaleNamespace<"console">;

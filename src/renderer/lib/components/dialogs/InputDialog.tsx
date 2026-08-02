@@ -3,7 +3,7 @@ import { UIService } from "@/lib/workspace/services/ui";
 import { useTranslation, translate, i18nStore } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
 import { Input } from "../elements/Input";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { AssetCategory, AssetType } from "@/lib/workspace/services/assets/assetTypes";
 
 /**
  * Resolve an item-type noun for interpolation into rename/create dialog titles.
@@ -278,20 +278,21 @@ export class InputDialog {
     /**
      * Convenience method for creating groups
      */
-    async showCreateGroupDialog(assetType: AssetType, parentGroupId?: string): Promise<string | null> {
-        const typeNouns: Record<AssetType, string> = {
-            [AssetType.Image]: nounFor("image"),
-            [AssetType.Audio]: nounFor("audio"),
-            [AssetType.Video]: nounFor("video"),
-            [AssetType.JSON]: nounFor("json"),
-            [AssetType.Blueprint]: nounFor("blueprint"),
-            [AssetType.Font]: nounFor("font"),
-            [AssetType.Other]: nounFor("other"),
+    async showCreateGroupDialog(category: AssetCategory, parentGroupId?: string): Promise<string | null> {
+        // Keyed by category, not type: a folder belongs to a sidebar section, and "create a folder
+        // for Audio" would be a lie under a section that also holds video.
+        const categoryNouns: Record<AssetCategory, string> = {
+            [AssetCategory.Image]: nounFor("image"),
+            [AssetCategory.Media]: nounFor("media"),
+            [AssetCategory.Data]: nounFor("data"),
+            [AssetCategory.Model]: nounFor("model"),
+            [AssetCategory.Font]: nounFor("font"),
+            [AssetCategory.Other]: nounFor("other"),
         };
 
         return this.show({
             title: translate("dialogs.createGroup.title"),
-            description: translate("dialogs.createGroup.prompt", { type: typeNouns[assetType] }),
+            description: translate("dialogs.createGroup.prompt", { type: categoryNouns[category] }),
             placeholder: translate("dialogs.createGroup.placeholder"),
             required: true,
             maxLength: 100,

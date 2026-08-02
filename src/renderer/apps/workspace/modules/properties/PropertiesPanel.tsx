@@ -9,7 +9,6 @@ import {
     MoveHorizontal,
     MoveVertical,
     RotateCw,
-    Settings,
 } from "lucide-react";
 import { PanelComponentProps } from "../types";
 import { useTranslation } from "@/lib/i18n";
@@ -60,6 +59,14 @@ import {
     isStoryMotionKeyframeSelectionData,
     type StoryMotionKeyframeSelection,
 } from "../story-motion/storyMotionTypes";
+import { ActionInspector } from "../story/scene-editor/StorySceneActionInspector";
+import { useStoryInspectorState } from "../story/scene-editor/storyInspectorBridge";
+import {
+    STORY_BLOCK_SELECTION_TYPE,
+    isStoryBlockSelectionData,
+    type StoryBlockSelection,
+} from "../story/scene-editor/storySelection";
+import { storyScenePropertySchema, type StorySceneEditorContext } from "./schemas";
 
 /** Translator function, threaded into module-scope schema builders (they run outside React). */
 type TranslateFn = Translator["t"];
@@ -552,6 +559,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     const [uiSelection, setUISelection] = useState<UIElementSelection | null>(null);
     const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
     const [storyMotionSelection, setStoryMotionSelection] = useState<StoryMotionKeyframeSelection | null>(null);
+    const [storySelection, setStorySelection] = useState<StoryBlockSelection | null>(null);
     const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
     
     // Track the current thumbnail URL and its associated thumbnailId to avoid revoking URLs still in use
@@ -627,8 +635,30 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         };
     }, [activeSceneSurface, documentService, documentVersion]);
 
+    /**
+     * The live context of the story scene editor that owns the rail (null when none does).
+     *
+     * Read through the bridge rather than through the selection: the selection only addresses the row,
+     * and this panel has to redraw when the *document* changes under it — a speaker renamed, a payload
+     * edited from the row itself. `useSyncExternalStore` also makes a row→row switch land in the same
+     * commit as the click, rather than waiting on the selection event's transition.
+     */
+    const storyInspector = useStoryInspectorState(storySelection?.tabId);
+    const storySceneContext = useMemo<StorySceneEditorContext | null>(() => {
+        if (!storySelection || !storyInspector) {
+            return null;
+        }
+        return { scene: storyInspector.scene, onUpdateScene: storyInspector.onUpdateScene };
+    }, [storyInspector, storySelection]);
+    const storyScene = storySelection ? storyInspector?.scene ?? null : null;
+
+    // The header states the context (which scene), the body states the subject (which row, via the
+    // inspector's own heading). Restating the row here would put the same sentence on screen twice in
+    // a 460px column.
     const panelTitle = storyMotionSelection
         ? t("properties.panel.motionKeyframe")
+        : storyScene
+        ? storyScene.name
         : activeSceneSurface
         ? activeSceneSurface.name
         : activeCharacter
@@ -638,6 +668,8 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         : t("properties.panel.title");
     const panelSubtitle = storyMotionSelection
         ? t("properties.panel.storyMotion")
+        : storyScene
+        ? t("properties.panel.scene")
         : activeSceneSurface
         ? t("properties.panel.scene")
         : activeCharacter
@@ -654,13 +686,21 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
                 selection.type === STORY_MOTION_KEYFRAME_SELECTION_TYPE && isStoryMotionKeyframeSelectionData(selection.data)
                     ? selection.data
                     : null;
+            // A story scene editor owns the rail: the row it has focused, or the scene itself when it
+            // has none. The subject travels as an address; its content arrives through the per-tab
+            // bridge read below, which republishes as the document changes.
+            const story =
+                selection.type === STORY_BLOCK_SELECTION_TYPE && isStoryBlockSelectionData(selection.data)
+                    ? selection.data
+                    : null;
             setStoryMotionSelection(motionSelection);
-            setActiveAsset(!motionSelection && selection.type === "asset" ? (selection.data as Asset) : null);
-            setActiveCharacter(!motionSelection && selection.type === "character" ? (selection.data as Character) : null);
+            setStorySelection(story);
+            setActiveAsset(!motionSelection && !story && selection.type === "asset" ? (selection.data as Asset) : null);
+            setActiveCharacter(!motionSelection && !story && selection.type === "character" ? (selection.data as Character) : null);
             setAssetMetadata(null);
-            setUISelection(!motionSelection && isUIElementSelection(selection) ? (selection.data as UIElementSelection) : null);
+            setUISelection(!motionSelection && !story && isUIElementSelection(selection) ? (selection.data as UIElementSelection) : null);
             const sceneId =
-                !motionSelection && selection.type === "scene"
+                !motionSelection && !story && selection.type === "scene"
                     ? typeof selection.data === "string"
                         ? selection.data
                         : selection.data?.id ?? null
@@ -773,7 +813,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
                             {d.elementId ? (
                                 <button
                                     type="button"
-                                    className="w-full rounded px-1 py-0.5 text-left text-warning hover:bg-warning/10"
+                                    className="w-full rounded-md px-1 py-0.5 text-left text-warning hover:bg-warning/10"
                                     onClick={() => selectUiCanvasElement(surfaceId, d.elementId!)}
                                 >
                                     {d.message}
@@ -827,7 +867,24 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         return () => {
             cancelled = true;
         };
-    }, [activeAsset?.id, assetsService]);
+        // `hash` is in the dependency list on purpose: a content replacement keeps the id and changes
+        // the bytes, so without it this panel would keep reporting the dimensions and size of the
+        // file that was there before.
+    }, [activeAsset?.id, activeAsset?.hash, assetsService]);
+
+    /**
+     * The selection carries a *snapshot* of the asset record. A content replacement rewrites that
+     * record in place, so without this the inspector would keep showing the previous hash — and the
+     * metadata reload above, which keys on it, would never run.
+     */
+    useEffect(() => {
+        if (!assetsService || !activeAsset) return;
+        return assetsService.getEvents().on("updated", updated => {
+            if (updated.id === activeAssetRef.current?.id) {
+                setActiveAsset({ ...updated });
+            }
+        });
+    }, [assetsService, activeAsset?.id]);
 
     // Listen to character changes
     useEffect(() => {
@@ -910,7 +967,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
 
     // Stable handler for asset field updates
     const handleAssetUpdate = useCallback(
-        async (field: "name" | "tags" | "description", value: any) => {
+        async (field: "name" | "tags" | "description" | "modelEntry", value: any) => {
             const asset = activeAssetRef.current;
             if (!asset || !assetsService) return;
 
@@ -924,6 +981,12 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
                         break;
                     case "description":
                         await assetsService.updateAssetDescription(asset, value);
+                        break;
+                    case "modelEntry":
+                        // Extras rather than a record field: which file in a bundle is the entry is
+                        // an authored decision, and it is the one part of a bundle that is not
+                        // re-derived from disk on every read.
+                        await assetsService.patchAssetExtras(asset, { modelEntry: value });
                         break;
                 }
             } catch (err) {
@@ -949,7 +1012,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         return {
             character: activeCharacter,
             thumbnailUrl,
-            forms: [...activeCharacter.profile.appearance.getForms()],
+            poses: activeCharacter.profile.appearance.getPoses().map(pose => ({ id: pose.id, name: pose.name })),
         };
     }, [activeCharacter, thumbnailUrl, characterVersion]);
 
@@ -962,6 +1025,38 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     // Build localized scene and character schemas (rebuilt when the locale changes)
     const sceneSchema = useMemo(() => scenePropertySchema(t), [t]);
     const characterSchema = useMemo(() => characterPropertySchema(t), [t]);
+    const storySceneSchema = useMemo(() => storyScenePropertySchema(t), [t]);
+
+    /**
+     * The story editor's half of the rail: the focused row's inspector, or — with no row focused — the
+     * scene's own fields. There is no third branch: while a scene tab is in front the panel always has
+     * a subject, which is why the empty state below is reached only outside the story editor.
+     */
+    const storyContent = useMemo(() => {
+        if (!storySelection || !storyInspector) {
+            return null;
+        }
+        if (storyInspector.block) {
+            // The inspector is a bare field stack with no chrome of its own, so the padding is here;
+            // a PropertyEditor brings its own.
+            return (
+                <div className="p-3">
+                    <ActionInspector
+                        block={storyInspector.block}
+                        document={storyInspector.document}
+                        sceneId={storyInspector.sceneId}
+                        characters={storyInspector.characters}
+                        onUpdatePayload={storyInspector.onUpdatePayload}
+                        onClose={storyInspector.onClose}
+                        onSetDialogueCharacter={storyInspector.onSetDialogueCharacter}
+                        generateTextId={storyInspector.generateTextId}
+                        onCreateLayer={storyInspector.onCreateLayer}
+                    />
+                </div>
+            );
+        }
+        return storySceneContext ? <PropertyEditor schema={storySceneSchema} data={storySceneContext} /> : null;
+    }, [storyInspector, storySceneContext, storySceneSchema, storySelection]);
 
     // Render appropriate property editor
     const renderPropertyEditor = () => {
@@ -974,6 +1069,9 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
                 />
             );
         }
+        if (storyContent) {
+            return storyContent;
+        }
         if (uiInspectorContent) {
             return (
                 <>
@@ -984,18 +1082,6 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         }
         if (sceneEditorContext) {
             return <PropertyEditor schema={sceneSchema} data={sceneEditorContext} />;
-        }
-        // No selection
-        if (!activeAsset && !activeCharacter && !sceneEditorContext && !storyMotionSelection) {
-            return (
-                <div className="flex-1 flex items-center justify-center p-4">
-                    <div className="text-center text-fg-subtle py-8">
-                        <Settings className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                        <p className="text-sm">{t("properties.panel.noSelection")}</p>
-                        <p className="text-xs mt-1">{t("properties.panel.noSelectionHint")}</p>
-                    </div>
-                </div>
-            );
         }
 
         // Character editor
@@ -1011,8 +1097,39 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         return null;
     };
 
+    /**
+     * Nothing anywhere in the app is selected — a Dashboard tab, say. A bare surface, no copy: the
+     * panel being empty is already the whole message, and the two sentences that used to sit here
+     * ("No item selected" / "Select an item to view its properties") said it a second and third time.
+     * Same convention the other docked panels follow.
+     */
+    const isEmpty = !storyContent
+        && !storyMotionSelection
+        && !uiInspectorContent
+        && !sceneEditorContext
+        && !activeCharacter
+        && !activeAsset;
+    if (isEmpty) {
+        return <div className="nl-editor-surface h-full min-h-0" />;
+    }
+
+    /**
+     * The whole panel is opaque, and follows the `editor.surfaceOpacity` knob rather than a fixed
+     * colour.
+     *
+     * `.nl-editor-surface` is the one rule the editor's reading surfaces share (prose column, Dev Mode
+     * debug panel, and this): a custom workspace background otherwise shows straight through a
+     * panel whose base is `rgba(0,0,0,0)`, and values you have to read must not compete with a
+     * photograph. It goes on both the panel root and the scroller so the whole plane paints as one,
+     * header included.
+     *
+     * U2 scoped this to story rows only, which left the asset, character, interface and
+     * (empty, on a Dashboard tab) inspectors reading over the wallpaper. A field label is a field
+     * label whatever produced it, so the plate is unconditional — the empty branch above included,
+     * since that is the one the Dashboard tab shows.
+     */
     return (
-        <div className="h-full flex flex-col">
+        <div className="nl-editor-surface h-full flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between px-3 py-2 border-b border-edge">
             <div className="flex items-center gap-2">
@@ -1024,7 +1141,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto">{renderPropertyEditor()}</div>
+            <div className="nl-editor-surface flex-1 overflow-y-auto">{renderPropertyEditor()}</div>
         </div>
     );
 }

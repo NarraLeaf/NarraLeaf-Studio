@@ -1,12 +1,14 @@
-import { FileDetails, FileStat } from "@shared/utils/fs";
+import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import { IPCMessageType, IPCType } from "./ipc";
 import { FsRequestResult, PlatformInfo } from "./os";
+import type { FsTextEncoding } from "./textEncoding";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults, WorkspaceViewRequest } from "./window";
 import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
 import type { MissingRecentProject } from "./state/appStateTypes";
-import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus } from "./devMode";
+import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
+import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
@@ -19,6 +21,9 @@ import type {
     RuntimePluginDescriptor,
     WorkspacePluginDescriptor,
 } from "./plugins";
+import type { PluginRegistryFetchResult } from "./pluginRegistry";
+import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
+import type { UITemplateBundle, UITemplateFetchResult } from "./uiTemplateRegistry";
 import type { LocaleContribution } from "@shared/i18n";
 import type {
     PrivilegedBashExecutePayload,
@@ -33,13 +38,38 @@ import type {
     MenuActionId,
     NativeMenuModel,
 } from "./menu";
+import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
+import type {
+    SigningCredential,
+    MacSigningIdentity,
+    SigningCredentialImport,
+    SigningInspectResult,
+} from "./signing";
 import type {
     RevisionId,
     VcsAvailability,
     VcsBlobRequest,
+    VcsCheckpointReason,
+    VcsCommitOptions,
+    VcsCommitResult,
+    VcsConflictChoice,
     VcsHistoryEntry,
+    VcsInitOptions,
+    VcsMergeCompletion,
+    VcsMergeDecision,
+    VcsMergeDocument,
+    VcsMergeResolveResult,
+    VcsMergeState,
     VcsRepositoryInfo,
+    VcsRestoreOptions,
+    VcsRestoreResult,
+    VcsPushResult,
+    VcsRevisionDiffResult,
+    VcsStatus,
+    VcsSyncResult,
+    VcsSyncState,
     VcsThreeWayResult,
+    VcsWorkingTreeDiffResult,
 } from "./vcs";
 
 export enum IPCEventType {
@@ -70,11 +100,14 @@ export enum IPCEventType {
     appRemoveRecentProject = "app.removeRecentProject",
     appCheckRecentProjects = "app.checkRecentProjects",
     appSystemPath = "app.systemPath",
+    appExportDiagnostics = "app.exportDiagnostics",
 
     fsStat = "fs.stat",
     fsList = "fs.list",
     fsDetails = "fs.details",
+    fsDirectorySize = "fs.directorySize",
     fsRequestRead = "fs.requestRead",
+    fsRequestReadDir = "fs.requestReadDir",
     fsRequestWrite = "fs.requestWrite",
     fsEnsureRegularFile = "fs.ensureRegularFile",
     fsWriteFileNoFollow = "fs.writeFileNoFollow",
@@ -106,15 +139,21 @@ export enum IPCEventType {
     workspaceOpenRecent = "workspace.openRecent",
     workspaceSelectFolder = "workspace.selectFolder",
     workspaceClose = "workspace.close",
+    psdOpen = "psd.open",
+    psdBake = "psd.bake",
     workspaceExportProjectPackage = "workspace.projectPackage.export",
     workspaceImportProjectPackage = "workspace.projectPackage.import",
     workspaceExportConsoleLogs = "workspace.console.exportLogs",
     workspaceConfirmClose = "workspace.confirmClose",
+    workspaceCloseProgress = "workspace.closeProgress",
+    workspaceFlushPendingSaves = "workspace.flushPendingSaves",
     workspaceResolveAssetUrl = "workspace.resolveAssetUrl",
     workspaceResolveImageAssetUrl = "workspace.resolveImageAssetUrl",
+    workspaceReportWriteFreeze = "workspace.reportWriteFreeze",
     workspaceBlueprintNavigateFromPreview = "workspace.blueprint.navigateFromPreview",
     workspaceBlueprintDebugEvent = "workspace.blueprint.debugEvent",
     workspaceDevModeConsoleLog = "workspace.devMode.consoleLog",
+    workspaceStoryRowHighlight = "workspace.storyRow.highlight",
     
     devModeLaunch = "devMode.launch",
     devModeStop = "devMode.stop",
@@ -127,6 +166,7 @@ export enum IPCEventType {
     devModeResolveImageAssetUrl = "devMode.resolveImageAssetUrl",
     devModeOpenBlueprintInWorkspace = "devMode.openBlueprintInWorkspace",
     devModeForwardBlueprintDebugEvent = "devMode.blueprintDebug.forward",
+    devModeForwardStoryRow = "devMode.storyRow.forward",
     devModeSaveWrite = "devMode.save.write",
     devModeSaveRead = "devMode.save.read",
     devModeSaveListIds = "devMode.save.listIds",
@@ -141,11 +181,23 @@ export enum IPCEventType {
     previewStop = "preview.stop",
     previewGetStatus = "preview.getStatus",
 
+    gameTestLaunch = "gameTest.launch",
+    gameTestStop = "gameTest.stop",
+    /** Pushed, unlike preview's polled status: event ordering is evidence a test reasons about. */
+    workspaceGameTestEvent = "workspace.gameTest.event",
+
     gameBuildStart = "gameBuild.start",
     gameBuildCancel = "gameBuild.cancel",
     gameBuildGetStatus = "gameBuild.getStatus",
     gameBuildSelectOutputDir = "gameBuild.selectOutputDir",
     gameBuildPreflight = "gameBuild.preflight",
+
+    signingList = "signing.list",
+    signingImport = "signing.import",
+    signingRemove = "signing.remove",
+    signingInspect = "signing.inspect",
+    signingKeystoreAliases = "signing.keystoreAliases",
+    signingMacIdentities = "signing.macIdentities",
 
     blueprintPersistenceGetAll = "blueprintPersistence.getAll",
     blueprintPersistenceGetValue = "blueprintPersistence.getValue",
@@ -165,6 +217,14 @@ export enum IPCEventType {
     pluginReportLoadError = "plugin.reportLoadError",
     pluginLocaleList = "plugin.localeList",
     pluginLocalesChanged = "plugin.localesChanged",
+    pluginRegistryFetch = "plugin.registryFetch",
+    pluginRegistryIcon = "plugin.registryIcon",
+    pluginInstallFromRegistry = "plugin.installFromRegistry",
+
+    uiTemplateRegistryFetch = "uiTemplate.registryFetch",
+    uiTemplateFetchBundle = "uiTemplate.fetchBundle",
+
+    puppetRuntimeInstallSdk = "puppetRuntime.installSdk",
 
     privilegedFsCall = "privileged.fs.call",
     privilegedPermissionRequest = "privileged.permission.request",
@@ -180,11 +240,32 @@ export enum IPCEventType {
     vcsGetAvailability = "vcs.getAvailability",
     vcsGetInfo = "vcs.getInfo",
     vcsIsRepository = "vcs.isRepository",
+    vcsInitRepository = "vcs.initRepository",
+    vcsCommit = "vcs.commit",
+    vcsCheckpoint = "vcs.checkpoint",
+    vcsRestoreRevision = "vcs.restoreRevision",
+    vcsGetStatus = "vcs.getStatus",
     vcsGetHistory = "vcs.getHistory",
     vcsReadBlob = "vcs.readBlob",
+    vcsReadRevisionDocuments = "vcs.readRevisionDocuments",
     vcsGetChangedPaths = "vcs.getChangedPaths",
+    vcsDiffRevisions = "vcs.diffRevisions",
+    vcsDiffWorkingTree = "vcs.diffWorkingTree",
     vcsGetThreeWay = "vcs.getThreeWay",
     vcsGetMergeBase = "vcs.getMergeBase",
+    vcsGetMergeState = "vcs.getMergeState",
+    vcsGetMergeDocument = "vcs.getMergeDocument",
+    vcsResolveConflicts = "vcs.resolveConflicts",
+    vcsCompleteMerge = "vcs.completeMerge",
+    vcsUnresolveConflicts = "vcs.unresolveConflicts",
+    vcsRestartConflicts = "vcs.restartConflicts",
+    vcsAbortMerge = "vcs.abortMerge",
+    vcsGetRemote = "vcs.getRemote",
+    vcsSetRemote = "vcs.setRemote",
+    vcsGetSyncState = "vcs.getSyncState",
+    vcsPush = "vcs.push",
+    vcsSync = "vcs.sync",
+    vcsClone = "vcs.clone",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -202,6 +283,31 @@ export type BlueprintPersistenceProjectRef = {
     projectIdentifier?: string;
     projectPath: string;
 };
+
+/**
+ * Why a workspace is frozen, as it travels to main - the `kind` of the renderer's
+ * `WorkspaceFreezeReason` and nothing else.
+ *
+ * Only the kind crosses, because main only needs it to pick the sentence it tells the author
+ * ("leave the revision" vs "unfreeze"). The revision id and label are the renderer's business.
+ * A third kind added to the reason will fail to compile at the reporting call site, which is the
+ * right place to be asked what to say about it.
+ */
+export type WorkspaceFreezeKind = "revision" | "manual" | "merge";
+
+/**
+ * Which part of the close a workspace is currently waiting on.
+ *
+ * The close is a sequence of waits the author cannot see - the last auto-saves going out, then
+ * Lore writing the closing checkpoint, which is the long one - and until this existed the window
+ * simply sat there for those seconds with the title bar still on screen.
+ *
+ * Named stages rather than a fraction because none of the steps can report a fraction: the
+ * checkpoint is one call into the backend that answers when it answers. Naming what is happening
+ * is the honest amount of detail, and it is also the part that answers "why is this taking so
+ * long" - "recording a version" is a reason, "43%" is not.
+ */
+export type WorkspaceCloseStage = "saving" | "checkpoint" | "launcher";
 
 export type IPCEvents = {
     [IPCEventType.getPlatform]: {
@@ -436,7 +542,32 @@ export type IPCEvents = {
             path: string;
         };
     };
-} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameBuildEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCPrivilegedEvents & IPCVcsEvents;
+    /**
+     * Write a support bundle - the caller's own report plus the main-process log tail - to a file
+     * the user picks.
+     *
+     * The renderer supplies only the half it can see (what went wrong, what it had loaded, its own
+     * recent console lines); the environment header and the log tail are read here, because
+     * `<userData>/logs` is Studio storage that no renderer is granted. Exists on the base surface
+     * rather than the workspace one on purpose: the window that most needs it is the one whose
+     * workspace failed to start, and that window has no services to route a workspace call through.
+     */
+    [IPCEventType.appExportDiagnostics]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            /** Suggested file name, without a directory. Sanitized before use. */
+            defaultFileName: string;
+            /** The renderer's section of the bundle, already formatted. */
+            report: string;
+        },
+        response: {
+            canceled: boolean;
+            filePath?: string;
+            byteLength?: number;
+        };
+    };
+} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCPrivilegedEvents & IPCVcsEvents;
 
 /**
  * Version control. Every event carries `projectPath`: Studio is
@@ -471,10 +602,89 @@ export type IPCVcsEvents = {
         data: { projectPath: string },
         response: VcsRepositoryInfo;
     };
+    /**
+     * Create the repository and its first commit. The one write here, and only
+     * because nothing else works until it has happened - see vcsAction.ts.
+     */
+    [IPCEventType.vcsInitRepository]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; options?: VcsInitOptions },
+        response: VcsRepositoryInfo;
+    };
+    /**
+     * Record the working tree as a new revision.
+     *
+     * Long: it settles the renderer's auto-save debt, stages the whole project, commits,
+     * and forces Lore's stores to disk before answering, because a commit reported before
+     * that flush is a commit that may not survive the process. Await it, and show the
+     * failure - "nothing has changed" arrives here as one, and it is the answer.
+     */
+    [IPCEventType.vcsCommit]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; options?: VcsCommitOptions },
+        response: VcsCommitResult;
+    };
+    /**
+     * Record a checkpoint - the same revision, labelled as one Studio took rather than
+     * one the author asked for.
+     *
+     * `revision: null` means there was nothing to record: the project is not under
+     * version control, this host has no backend, or the tree has not changed since the
+     * last revision. None of those are failures, and an empty revision every interval
+     * would make the history unreadable.
+     */
+    [IPCEventType.vcsCheckpoint]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; reason: VcsCheckpointReason },
+        response: { revision: VcsCommitResult | null };
+    };
+    /**
+     * Put the working tree back to one revision and record the result as a new one.
+     *
+     * The only call in this map that OVERWRITES the author's files, so two properties are part of the
+     * contract rather than implementation detail: a checkpoint is taken before anything is written
+     * (and a failure to take it aborts the whole thing), and nothing between the target revision and
+     * the head is removed - restoring adds a revision, it never rewinds.
+     *
+     * Long, for the same reasons a commit is, twice over: it settles the renderer's save debt, reads
+     * the revision (over the network on a project with a remote), commits a checkpoint, rewrites the
+     * working tree, and commits again. The caller must leave the revision view and re-read every
+     * document afterwards - the bytes under the editors have changed.
+     */
+    [IPCEventType.vcsRestoreRevision]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; revision: RevisionId; options?: VcsRestoreOptions },
+        response: VcsRestoreResult;
+    };
+    /**
+     * What changed in the working tree. NOT a pure read - the scan behind it records
+     * newly discovered directories into staged state, so a caller that polls this on
+     * a timer manufactures deletions the author never made (docs §4.17). Call it when
+     * someone asks, never on a schedule.
+     */
+    [IPCEventType.vcsGetStatus]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: VcsStatus;
+    };
+    /**
+     * Revisions, newest first. `includeDetails` costs one backend call per revision -
+     * there is no batch metadata verb - so it is opt-in, and entries come back without
+     * a `kind` when it is off.
+     *
+     * That one call returns the whole metadata map, so the flag also fills in `message`,
+     * `timestamp` and `author` at no extra cost. All four stay optional: a revision is
+     * not obliged to carry any of them.
+     */
     [IPCEventType.vcsGetHistory]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
-        data: { projectPath: string; limit?: number },
+        data: { projectPath: string; limit?: number; includeDetails?: boolean },
         response: { entries: VcsHistoryEntry[] };
     };
     [IPCEventType.vcsReadBlob]: {
@@ -483,11 +693,53 @@ export type IPCVcsEvents = {
         data: VcsBlobRequest,
         response: { contentBase64: string };
     };
+    /**
+     * Every document at one revision, in one round trip.
+     *
+     * Batched rather than one call per path because the first read of a revision on a
+     * project with a remote goes to the network (docs/version-control.md §6). Omitting
+     * `paths` asks for whatever the revision holds that looks like a document; naming
+     * them asks for exactly those, and `contentBase64: null` means the revision does not
+     * contain that path - which is an answer, not a failure.
+     */
+    [IPCEventType.vcsReadRevisionDocuments]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; revision: RevisionId; paths?: string[] },
+        response: { documents: { path: string; contentBase64: string | null }[] };
+    };
     [IPCEventType.vcsGetChangedPaths]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: { projectPath: string; from: RevisionId; to: RevisionId },
         response: { paths: string[] };
+    };
+    /**
+     * What changed between two revisions, as changes rather than as bytes.
+     *
+     * Cached in the main process per pair, which it may be because revisions are immutable.
+     * `complete: false` means a budget stopped it short and the surface has to say so;
+     * `readFailure` means the bytes could not be fetched at all, which is a different fact
+     * from "nothing changed" and looks identical if it is ignored.
+     */
+    [IPCEventType.vcsDiffRevisions]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; from: RevisionId; to: RevisionId },
+        response: VcsRevisionDiffResult;
+    };
+    /**
+     * What the author has changed since the last version.
+     *
+     * **Never cached anywhere**, because the working tree changes under Studio between any
+     * two calls. It also SCANS (docs §4.17), so it must be asked because someone wants to
+     * know and never on a timer - a poll manufactures deletions the author never made.
+     */
+    [IPCEventType.vcsDiffWorkingTree]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: VcsWorkingTreeDiffResult;
     };
     [IPCEventType.vcsGetThreeWay]: {
         type: IPCMessageType.request,
@@ -500,6 +752,120 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { projectPath: string; a: RevisionId; b: RevisionId },
         response: { base?: RevisionId };
+    };
+    /**
+     * Whether a merge is open here, and which paths are still unsettled.
+     *
+     * Worth asking on project open and not only after a sync: a merge is repository
+     * state and survives closing the window (docs §4.23-§4.24).
+     */
+    [IPCEventType.vcsGetMergeState]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: VcsMergeState;
+    };
+    /**
+     * The three-way merge of ONE conflicted document, change by change - tier two.
+     *
+     * A pure read of the three copies the merge left beside the file (docs §4.23); it records
+     * nothing and remembers nothing, so a settled change and an unsettled one look the same here
+     * exactly as they do everywhere else in a merge (§4.24).
+     *
+     * Every reason a document cannot be settled this way comes back as `blocked` rather than as a
+     * failure: most paths have no spec, most specs have no `merge3`, and a spec that has one may
+     * still refuse to write itself back. All three keep the path at tier one, visibly.
+     */
+    [IPCEventType.vcsGetMergeDocument]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; path: string },
+        response: VcsMergeDocument;
+    };
+    /**
+     * **Records nothing** - the merge stays open until a commit closes it. `mine` and
+     * `theirs` overwrite the working tree, so re-read the paths afterwards.
+     */
+    [IPCEventType.vcsResolveConflicts]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; paths: string[]; choice: VcsConflictChoice },
+        response: VcsMergeResolveResult;
+    };
+    /**
+     * Take one side per path and close the merge with a commit - the whole of tier one, as ONE
+     * operation.
+     *
+     * One call rather than "resolve, then commit" from the renderer, because the two halves must
+     * not be interleavable: anything else that commits in between (the checkpoint timer) would
+     * close the author's merge under a different message and a different kind.
+     */
+    [IPCEventType.vcsCompleteMerge]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; decisions: VcsMergeDecision[]; options?: VcsCommitOptions },
+        response: VcsMergeCompletion;
+    };
+    [IPCEventType.vcsUnresolveConflicts]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; paths: string[] },
+        response: VcsMergeResolveResult;
+    };
+    /** **Discards the working-tree bytes** for these paths and merges them again. */
+    [IPCEventType.vcsRestartConflicts]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; paths: string[] },
+        response: VcsMergeState;
+    };
+    /** **Writes the working tree** back to before the merge. Re-read every document. */
+    [IPCEventType.vcsAbortMerge]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: VcsMergeState;
+    };
+    /** Local read: the configured server, or null. Opens no socket. */
+    [IPCEventType.vcsGetRemote]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: { url: string | null };
+    };
+    /** Local write: `null` disconnects. Does not contact the server. */
+    [IPCEventType.vcsSetRemote]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; url: string | null },
+        response: { url: string | null };
+    };
+    /** **Goes to the network** - up to ~2s when nothing answers. On demand only. */
+    [IPCEventType.vcsGetSyncState]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: VcsSyncState;
+    };
+    [IPCEventType.vcsPush]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: VcsPushResult;
+    };
+    /** **Writes the working tree.** The caller must re-read every document afterwards. */
+    [IPCEventType.vcsSync]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: VcsSyncResult;
+    };
+    /** No project session: there is no repository at `destination` until this finishes. */
+    [IPCEventType.vcsClone]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { url: string; destination: string },
+        response: { root: string; branch: string; fileCount: number };
     };
 };
 
@@ -518,7 +884,7 @@ export type IPCFsEvents = {
         data: {
             path: string;
         },
-        response: FsRequestResult<FileStat[]>;
+        response: FsRequestResult<FileEntry[]>;
     };
     [IPCEventType.fsDetails]: {
         type: IPCMessageType.request,
@@ -528,15 +894,39 @@ export type IPCFsEvents = {
         },
         response: FsRequestResult<FileDetails>;
     };
+    [IPCEventType.fsDirectorySize]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            path: string;
+        },
+        response: FsRequestResult<DirectorySizeResult>;
+    };
     [IPCEventType.fsRequestRead]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: {
             path: string;
             raw: boolean;
-            encoding?: BufferEncoding;
+            encoding?: FsTextEncoding;
         },
         response: FsRequestResult<string>; // a hash that can be used to fetch the file later
+    };
+    /**
+     * Grant read access to a whole directory tree, served as `app://fs/{hash}/{relative/path}`.
+     *
+     * Studio-internal (not on the plugin privileged surface, same as `fsDirectorySize`): a directory
+     * grant is a broader capability than the single-file grants plugins get, and its one consumer is
+     * the model-bundle asset resolver, whose served URL has to be something the bundle's own
+     * relative sibling references resolve against.
+     */
+    [IPCEventType.fsRequestReadDir]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            path: string;
+        },
+        response: FsRequestResult<string>; // a hash the whole tree can be fetched under
     };
     [IPCEventType.fsRequestWrite]: {
         type: IPCMessageType.request,
@@ -544,7 +934,7 @@ export type IPCFsEvents = {
         data: {
             path: string;
             raw: boolean;
-            encoding?: BufferEncoding;
+            encoding?: FsTextEncoding;
         },
         response: FsRequestResult<string>;
     };
@@ -775,6 +1165,25 @@ export type IPCWorkspaceEvents = {
         };
         response: void;
     };
+    [IPCEventType.psdOpen]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {};
+        response: {
+            filePath: string | null;
+            document: PsdDocument | null;
+        };
+    };
+    [IPCEventType.psdBake]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {
+            request: PsdBakeRequest;
+        };
+        response: {
+            layers: PsdBakedLayer[];
+        };
+    };
     [IPCEventType.workspaceSelectFolder]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
@@ -838,6 +1247,40 @@ export type IPCWorkspaceEvents = {
         data: {};
         response: RequestStatus<{ confirmed: boolean }>;
     };
+    /**
+     * Tells the workspace which stage of its own close is running, so it can say so on screen.
+     *
+     * A message rather than a request: main must not wait on the renderer to acknowledge a
+     * progress note - the whole point of the note is that main is busy with something else - and a
+     * workspace that never renders it still closes exactly as before.
+     *
+     * `stage: null` means the close was called off (the launcher failed to start, so the window
+     * stays open) and the indicator should go away. The ordinary ending needs no message: the
+     * window is destroyed, and the indicator with it.
+     */
+    [IPCEventType.workspaceCloseProgress]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: {
+            stage: WorkspaceCloseStage | null;
+        };
+        response: never;
+    };
+    /**
+     * Tells the workspace to write out every auto-save it still owes, and waits for it.
+     *
+     * The main process blocks the window close / the app quit on this reply, which is the whole
+     * point: the renderer's debounced writes go out over IPC, and once the window is torn down there
+     * is nothing left to carry them. `flushed: false` means the workspace could not persist
+     * everything (it says which stores in its own console channel); main proceeds either way rather
+     * than trapping the user in a window that will not close.
+     */
+    [IPCEventType.workspaceFlushPendingSaves]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Client,
+        data: {};
+        response: RequestStatus<{ flushed: boolean }>;
+    };
     [IPCEventType.workspaceResolveAssetUrl]: {
         type: IPCMessageType.request,
         consumer: IPCType.Client,
@@ -855,6 +1298,36 @@ export type IPCWorkspaceEvents = {
         };
         response: RequestStatus<{ url: string }>;
     };
+    /**
+     * The workspace telling main whether its project data is frozen right now.
+     *
+     * Main refuses the production build and the Preview runtime while it is - both are started in
+     * main and reached by IPC, so a disabled button in the top bar does not stop them. Dev Mode is
+     * allowed and runs the revision instead (plan 2026-07-28-002 §1), which is why `revision`
+     * travels with the kind.
+     *
+     * A message rather than a request: the renderer has nothing to do with the answer, and the
+     * freeze changes on a human's timescale.
+     */
+    [IPCEventType.workspaceReportWriteFreeze]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: {
+            /** Null when this project's data may be written again. */
+            reason: WorkspaceFreezeKind | null;
+            /**
+             * Which revision the workspace is showing, when `reason` is `"revision"`.
+             *
+             * Optional in the type and load-bearing in practice: Dev Mode compiles the revision the
+             * author is looking at, so main needs the id and not only the fact of a freeze. A
+             * `"revision"` freeze that arrives without one makes main REFUSE the launch rather than
+             * fall back to the working tree - running the current game while the author is reading
+             * version #1 is the failure U4 exists to prevent.
+             */
+            revision?: RevisionId;
+        };
+        response: never;
+    };
     [IPCEventType.workspaceBlueprintNavigateFromPreview]: {
         type: IPCMessageType.message,
         consumer: IPCType.Host,
@@ -871,6 +1344,12 @@ export type IPCWorkspaceEvents = {
         type: IPCMessageType.message,
         consumer: IPCType.Host,
         data: DevModeConsoleLogPayload;
+        response: never;
+    };
+    [IPCEventType.workspaceStoryRowHighlight]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: DevModeStoryRowHighlight;
         response: never;
     };
 };
@@ -1017,6 +1496,12 @@ export type IPCDevModeEvents = {
         data: DevModeBlueprintDebugEventPayload;
         response: never;
     };
+    [IPCEventType.devModeForwardStoryRow]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: DevModeStoryRowPayload;
+        response: never;
+    };
     [IPCEventType.devModeSaveWrite]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
@@ -1108,6 +1593,41 @@ export type IPCPreviewEvents = {
     };
 };
 
+/**
+ * Game processes owned by a *test* run, not by the author's Run button.
+ *
+ * Separate from `IPCPreviewEvents` on purpose. Preview answers one question - "is it running" - by
+ * polling, which is enough for an author watching their own game; a test has to tell a window being
+ * closed from a process dying, and has to see an uncaught error rather than read about one in a log
+ * line. Folding that onto the preview calls would have made every preview consumer carry it.
+ */
+export type IPCGameTestEvents = {
+    [IPCEventType.gameTestLaunch]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: GameTestLaunchRequest;
+        response: GameTestLaunchResult;
+    };
+    [IPCEventType.gameTestStop]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+            sessionId: string;
+        };
+        response: Record<string, never>;
+    };
+    [IPCEventType.workspaceGameTestEvent]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: GameTestEventPayload;
+        // Required by `IPCConfiguration` even for a one-way push. Omitting it does not just weaken
+        // this entry: `IPCEvents` stops satisfying the constraint every IPC generic is written
+        // against, so every handler in main and every preload call fails to typecheck at once.
+        response: never;
+    };
+};
+
 export type IPCGameBuildEvents = {
     [IPCEventType.gameBuildStart]: {
         type: IPCMessageType.request,
@@ -1160,6 +1680,97 @@ export type IPCGameBuildEvents = {
         };
         response: {
             findings: BuildPreflightFinding[];
+        };
+    };
+};
+
+/**
+ * The machine's code-signing credential vault.
+ *
+ * Passwords travel one way only. `import` carries the plain secrets the author
+ * just typed up to the main process, which seals them immediately; no response
+ * here ever carries a secret back, and there is deliberately no "read the
+ * password" event. Unsealing happens in the main process alone, when a build
+ * actually needs the material.
+ */
+export type IPCSigningEvents = {
+    [IPCEventType.signingList]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>,
+        response: {
+            /** Redacted: metadata only, never a password. */
+            credentials: SigningCredential[];
+        };
+    };
+    /**
+     * Import a credential: the material files are copied into the vault and the
+     * secrets in the payload are sealed. The payload holds plain passwords - do
+     * not log it, do not keep it, do not send it anywhere else.
+     */
+    [IPCEventType.signingImport]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            input: SigningCredentialImport;
+        },
+        response: {
+            credential: SigningCredential;
+        };
+    };
+    [IPCEventType.signingRemove]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            id: string;
+        },
+        response: {
+            /** False when the id was already gone. */
+            removed: boolean;
+        };
+    };
+    /**
+     * Read the credential's certificate for display: subject, issuer, validity,
+     * thumbprint. Never key material.
+     */
+    [IPCEventType.signingInspect]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            id: string;
+        },
+        response: SigningInspectResult;
+    };
+    /**
+     * The signing keys inside a keystore the author has picked but not imported
+     * yet, so the import form can offer them instead of asking for an alias
+     * typed from memory. Same one-way traffic as `import`: the password goes up
+     * and only the names come back.
+     */
+    [IPCEventType.signingKeystoreAliases]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            /** Absolute path the author picked; nothing is copied or kept. */
+            file: string;
+            /** Plain text - do not log it or keep it after the call. */
+            storePassword: string;
+        },
+        response: {
+            aliases: string[];
+        };
+    };
+    /**
+     * The code-signing identities in this Mac's keychains, so the import form can
+     * offer them rather than asking for a certificate name typed from memory.
+     * Empty on every other host, and on a Mac that holds none.
+     */
+    [IPCEventType.signingMacIdentities]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>,
+        response: {
+            identities: MacSigningIdentity[];
         };
     };
 };
@@ -1317,6 +1928,80 @@ export type IPCPluginManagerEvents = {
         },
         response: never;
     };
+    // Store: fetch the registry index (configured URL, else the official default).
+    [IPCEventType.pluginRegistryFetch]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: PluginRegistryFetchResult;
+    };
+    /**
+     * Store: the plugin's thumbnail, as a `data:` URL, or null when it has none.
+     *
+     * The renderer sends an id, never a URL, and never fetches the image itself:
+     * renderers do not talk to the network, so main resolves the address from
+     * the index it trusts, checks the bytes, and caches them by version.
+     */
+    [IPCEventType.pluginRegistryIcon]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            pluginId: string;
+        },
+        response: { icon: string | null };
+    };
+    // Store: download + extract + install a registry plugin by id. The download
+    // URL is taken from the freshly fetched index, never from the renderer. Lands
+    // in `needsAuthorization`, exactly like a local-folder install.
+    [IPCEventType.pluginInstallFromRegistry]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            pluginId: string;
+        },
+        response: PluginInstallResult;
+    };
+    /**
+     * Build a named puppet runtime out of an SDK archive the author supplied, into their project.
+     *
+     * In the host because it needs a bundler; see `managers/puppet/live2dRuntimeBuild.ts` for why the
+     * adapter cannot simply be shipped. The renderer names the *runtime*, never the destination — the
+     * host derives that from the project path, which it authorizes against the window's own file-system
+     * grant, so a renderer cannot aim a megabyte of generated code anywhere it likes.
+     */
+    [IPCEventType.puppetRuntimeInstallSdk]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            /** A `KnownPuppetRuntimeId`; validated against the registry rather than trusted. */
+            runtimeId: string;
+            projectPath: string;
+            /** The archive the author picked in a file dialog. Read, never written. */
+            archivePath: string;
+        },
+        response: PuppetRuntimeInstallResult;
+    };
+};
+
+export type IPCUITemplateEvents = {
+    // Store: fetch the UI template registry index (configured URL, else the default).
+    [IPCEventType.uiTemplateRegistryFetch]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: UITemplateFetchResult;
+    };
+    // Store: fetch one template's document pair + declared resources from the raw
+    // blob directory the index came from. The paths come from the freshly fetched
+    // index, never from the renderer. The renderer migrates and applies the result.
+    [IPCEventType.uiTemplateFetchBundle]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            templateId: string;
+        },
+        response: UITemplateBundle;
+    };
 };
 
 export type IPCPrivilegedEvents = {
@@ -1391,3 +2076,4 @@ export type IPCMenuEvents = {
         response: never;
     };
 };
+

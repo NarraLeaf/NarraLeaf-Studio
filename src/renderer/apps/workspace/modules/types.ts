@@ -58,6 +58,8 @@ export interface ModuleAction {
     badge?: string | number;
     /** When condition - if provided, action only shows when this returns true */
     when?: (context: FocusContext) => boolean;
+    /** Command-palette category for an action that belongs to no group (see `ActionDefinition`). */
+    paletteCategoryKey?: TranslationKey;
 }
 
 /**

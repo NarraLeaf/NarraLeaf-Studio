@@ -20,6 +20,8 @@ import { ImageFillField } from "./ImageFillField";
 import { FontAssetField } from "./FontAssetField";
 import type { FontAssetFieldDefinition, ImageFillFieldDefinition } from "../types";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { needsStructuralReadOnly } from "./fieldReadOnlyStrategy";
 
 interface FieldRendererProps<TData> {
     field: FieldDefinition<TData>;
@@ -54,7 +56,25 @@ function wrapBindableField<TData>(
 /**
  * Renders the appropriate field component based on field type
  */
-function FieldRendererInner<TData>({ field, data, onSaving }: FieldRendererProps<TData>) {
+function FieldRendererInner<TData>({ field: definition, data, onSaving }: FieldRendererProps<TData>) {
+    /**
+     * A frozen workspace makes every inspector field read-only through the mechanism the framework
+     * already has, rather than a second one: `readOnly` is a field-definition flag, so the whole switch
+     * below inherits it from one place.
+     *
+     * A copy, never a write back to `definition`: field definitions come from module schemas that are
+     * built once and shared, so setting the flag on the original would leave the inspector read-only
+     * after the thaw.
+     *
+     * `readOnly` is honoured by the text, number, input-group and colour fields; the field types that
+     * ignore it are the remaining gap, not a second design.
+     */
+    const freeze = useFreezeGuard();
+    const field = useMemo(
+        () => (freeze.frozen ? ({ ...definition, readOnly: true } as FieldDefinition<TData>) : definition),
+        [definition, freeze.frozen],
+    );
+
     // Check if field should be hidden
     const isHidden = useMemo(() => {
         if (field.hidden === undefined) return false;
@@ -68,6 +88,41 @@ function FieldRendererInner<TData>({ field, data, onSaving }: FieldRendererProps
         return null;
     }
 
+    const rendered = renderFieldBody(field, data, onSaving);
+    if (!freeze.frozen || !needsStructuralReadOnly(field)) {
+        return rendered;
+    }
+    /**
+     * The clamp for the field types that cannot honour `readOnly` themselves - see
+     * `fieldReadOnlyStrategy` for the measurement that made this necessary, and `selfReadOnly` for
+     * how a custom component that IS read-only-aware steps out of it.
+     *
+     * **It reaches inspection as well as writes, and there is no way to exempt a descendant**: per
+     * HTML the only escape from a disabled fieldset is its first `<legend>`. So a control that must
+     * keep working inside one has to not be a form control - which is what `InspectOnlyButton` is.
+     *
+     * A `disabled` `<fieldset>` because the disabling is then the BROWSER's, not a convention every
+     * `render` callback has to remember: per HTML, every form control whose nearest ancestor fieldset is
+     * disabled is itself disabled, so a bespoke inline-row `<input>` reports `disabled: true` without
+     * knowing this code exists. `display: contents` keeps it out of the layout entirely, so the flex
+     * rows the inline-row fields build are untouched (the disabled rule is tree-based, not layout-based)
+     * - as an inline style rather than a utility class, because a wrapper whose whole job is to be
+     * invisible must not depend on a class having been emitted into the stylesheet.
+     * Rendered only while frozen, so the writable path is byte-for-byte what it was.
+     */
+    return (
+        <fieldset disabled aria-readonly style={{ display: "contents" }}>
+            {rendered}
+        </fieldset>
+    );
+}
+
+/** The switch itself, split out so the read-only clamp above has something to wrap. */
+function renderFieldBody<TData>(
+    field: FieldDefinition<TData>,
+    data: TData,
+    onSaving: (saving: boolean) => void,
+): React.ReactNode {
     switch (field.type) {
         case "text":
         case "textarea":

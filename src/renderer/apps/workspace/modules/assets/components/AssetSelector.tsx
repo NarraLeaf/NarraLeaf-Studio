@@ -7,6 +7,7 @@ import {
     FileJson,
     Workflow,
     Type,
+    Boxes,
     File,
     Check,
     X,
@@ -15,15 +16,17 @@ import {
     ChevronRight,
     FolderOpen,
 } from "lucide-react";
+import { useEscapeToClose } from "@/lib/components/elements/Modal";
 import { Asset } from "@/lib/workspace/services/assets/types";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { AssetType, categoryOfAssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import { Services } from "@/lib/workspace/services/services";
 import { useWorkspace } from "../../../context";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useTranslation } from "@/lib/i18n";
 import { SearchBox } from "./SearchBox";
-import { FilterSystem } from "./FilterSystem";
+import { FilterSystem, type ActiveFilter } from "./FilterSystem";
 import { useAssetData } from "../state/useAssetData";
 import { useAssetFilters } from "../state/useAssetFilters";
 
@@ -34,6 +37,7 @@ const ASSET_TYPE_ICONS = {
     [AssetType.JSON]: FileJson,
     [AssetType.Blueprint]: Workflow,
     [AssetType.Font]: Type,
+    [AssetType.Model]: Boxes,
     [AssetType.Other]: File,
 };
 
@@ -99,8 +103,22 @@ export function AssetSelector({
 }: AssetSelectorProps) {
     const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
+    // The picker asks about the freeze itself rather than trusting whoever opened it: it renders in
+    // a portal on `document.body`, so every `fieldset disabled` clamp an inspector puts around its
+    // trigger stops at the panel's edge and never reaches the controls inside.
+    const freeze = useFreezeGuard();
     const { assets, groups, loading, hasLoaded, error, loadAssets } = useAssetData({ context, isInitialized });
-    const { filterConfigs, activeFilters, setActiveFilters, handleFilterOpen, filteredAssets, filteredGroups } = useAssetFilters({ assets, groups });
+    // The selector keeps its own search (it matches against virtual groups the library does not
+    // know about) and asks nothing about bytes or usage, so the measured half of the pass stays off.
+    const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([]);
+    const { filterConfigs, handleFilterOpen, filteredAssets, filteredGroups } = useAssetFilters({
+        assets,
+        groups,
+        activeFilters,
+        query: "",
+        bytesByAssetId: null,
+        referencedAssetIds: null,
+    });
     const assetsService = useMemo(() => {
         if (!context) return null;
         return context.services.get<AssetsService>(Services.Assets);
@@ -119,13 +137,44 @@ export function AssetSelector({
         position: { top: number; left: number };
     } | null>(null);
 
+    // Escape closes it, the way the backdrop and the X already do. This is a dialog that positions
+    // against its trigger rather than centring, so it is not a `Modal` and had none of a `Modal`'s
+    // keyboard behaviour - leaving the mouse as the only way out of every asset picker in Studio.
+    useEscapeToClose(visible, onClose);
+
+    /**
+     * Seed the selection from the caller's ids when the dialog opens, or when
+     * those ids actually change.
+     *
+     * Keyed by value rather than by array identity. `selectedIds` defaults to a
+     * fresh `[]` and callers routinely pass an inline literal, so an
+     * identity-keyed effect re-ran on *every* render - including the one caused
+     * by ticking a checkbox, which wiped the selection again immediately. That
+     * made multi-select impossible to use: `multiple` was only ever exercised by
+     * the Gallery plugin, and its "pick several images at once" silently
+     * selected nothing. Single-select callers never noticed because that path
+     * confirms on click and never reads `selection`.
+     */
+    const selectedIdsKey = selectedIds.join();
     useEffect(() => {
         setSelection(new Set(selectedIds));
-    }, [selectedIds, visible]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by value; see above
+    }, [selectedIdsKey, visible]);
 
-    const typeAssets = useMemo(() => assets[assetType] ?? [], [assets, assetType]);
-    const filteredTypeAssets = useMemo(() => filteredAssets[assetType] ?? [], [filteredAssets, assetType]);
-    const filteredTypeGroups = useMemo(() => filteredGroups[assetType] ?? [], [filteredGroups, assetType]);
+    // The selector still picks exactly one `AssetType`, but the browser's lists are keyed by the
+    // sidebar section that type is filed under, so each one is narrowed back down here. The folder
+    // tree is the section's — `shouldRenderGroup` below already drops any folder holding nothing of
+    // this type, so a voice picker under "Media" never shows a folder of nothing but video.
+    const assetCategory = useMemo(() => categoryOfAssetType(assetType), [assetType]);
+    const typeAssets = useMemo(
+        () => (assets[assetCategory] ?? []).filter(asset => asset.type === assetType),
+        [assets, assetCategory, assetType],
+    );
+    const filteredTypeAssets = useMemo(
+        () => (filteredAssets[assetCategory] ?? []).filter(asset => asset.type === assetType),
+        [filteredAssets, assetCategory, assetType],
+    );
+    const filteredTypeGroups = useMemo(() => filteredGroups[assetCategory] ?? [], [filteredGroups, assetCategory]);
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
     const [expandedVirtualGroups, setExpandedVirtualGroups] = useState<Set<string>>(new Set());
     const [stateReady, setStateReady] = useState(false);
@@ -154,7 +203,7 @@ export function AssetSelector({
 
     useEffect(() => {
         if (!hasLoaded) return;
-        const knownGroupIds = new Set((groups[assetType] ?? []).map(group => group.id));
+        const knownGroupIds = new Set((groups[assetCategory] ?? []).map(group => group.id));
         setExpandedGroups(prev => {
             const next = new Set(Array.from(prev).filter(id => knownGroupIds.has(id)));
             return next.size === prev.size ? prev : next;
@@ -616,17 +665,20 @@ export function AssetSelector({
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
+                        {/* Import from disk copies files into the project's asset library, which is
+                            a write; picking an existing asset is not, so only this one goes off.
+                            On a frozen project it ran the file dialog and the import to completion
+                            and the library came back unchanged. */}
                         <button
                             onClick={handleImportAssets}
-                            disabled={loading}
-                            className="p-1 rounded hover:bg-fill disabled:opacity-50"
-                            title={t("assets.selector.importFromDisk")}
+                            className="p-1 rounded-md hover:bg-fill disabled:opacity-50"
+                            {...freeze.writes(loading, t("assets.selector.importFromDisk"))}
                         >
                             <FolderOpen className="w-4 h-4" />
                         </button>
                         <button
                             onClick={onClose}
-                            className="p-1 rounded hover:bg-fill"
+                            className="p-1 rounded-md hover:bg-fill"
                             title={t("common.close")}
                         >
                             <X className="w-4 h-4" />

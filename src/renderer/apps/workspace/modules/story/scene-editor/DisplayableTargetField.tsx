@@ -146,7 +146,7 @@ export function DisplayableTargetField(props: {
                         <span className="truncate text-fg">{name}</span>
                         {unresolved ? (
                             <span
-                                className="shrink-0 rounded bg-warning/10 px-1 text-2xs text-warning"
+                                className="shrink-0 rounded-md bg-warning/10 px-1 text-2xs text-warning"
                                 title={t("story.targetField.notOnStageTitle")}
                             >
                                 {t("story.stage.notOnStage")}
@@ -222,12 +222,12 @@ function BuiltinTargetRow(props: {
             role="option"
             aria-selected={props.active}
             className={[
-                "flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-left transition-colors",
+                "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors",
                 props.active ? "bg-primary/15 text-fg" : "hover:bg-fill",
             ].join(" ")}
             onClick={props.onChoose}
         >
-            <span className="grid h-7 w-7 shrink-0 place-items-center rounded border border-edge bg-fill-subtle">
+            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle">
                 <Icon className="h-3.5 w-3.5 text-fg-muted" />
             </span>
             <span className="min-w-0 flex-1">
@@ -255,12 +255,12 @@ function DisplayableOptionRow(props: {
             role="option"
             aria-selected={props.active}
             className={[
-                "flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-left transition-colors",
+                "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors",
                 props.active ? "bg-primary/15 text-fg" : "hover:bg-fill",
             ].join(" ")}
             onClick={props.onChoose}
         >
-            <span className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded border border-edge bg-fill-subtle">
+            <span className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-md border border-edge bg-fill-subtle">
                 {url ? (
                     <img src={url} alt="" className="h-full w-full object-cover" draggable={false} />
                 ) : (

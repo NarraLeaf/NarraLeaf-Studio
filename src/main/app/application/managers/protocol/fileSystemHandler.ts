@@ -4,7 +4,8 @@ import { fileURLToPath } from "url";
 import { AssetResolved, AssetResolver, ProtocolHandler, ProtocolResponse, ProtocolRule, ProtocolScheme } from "./types";
 import { Fs, getMimeType } from "@shared/utils/fs";
 import { normalizePath } from "@shared/utils/string";
-import { FsRejectErrorCode } from "@shared/types/os";
+import { FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
+import { decodeTextBytes, encodeTextBytes, resolveTextEncodingId } from "../../../../utils/textCodec";
 import { FileStorageInfo, StorageManager } from "../storageManager";
 
 export class FileSystemHandler implements ProtocolHandler, AssetResolver {
@@ -134,7 +135,13 @@ export class FileSystemHashHandler implements ProtocolHandler {
 
     async handle(request: Request): Promise<ProtocolResponse> {
         const url = new URL(request.url);
-        const hash = url.pathname.slice(1); // Remove leading slash
+        // First segment is the grant; anything after it is a path *inside* a directory grant
+        // (`app://fs/{hash}/Hiyori.2048/texture_00.png`). Per-file grants have no remainder, and a
+        // remainder against one of them simply fails the lookup below - as it should.
+        const pathname = decodeURIComponent(url.pathname).replace(/^\/+/, "");
+        const separator = pathname.indexOf("/");
+        const hash = separator === -1 ? pathname : pathname.slice(0, separator);
+        const relativePath = separator === -1 ? "" : pathname.slice(separator + 1);
 
         // Get storage info for this hash
         const storageInfo = this.storageManager.get(hash);
@@ -160,6 +167,20 @@ export class FileSystemHashHandler implements ProtocolHandler {
             if (request.method === 'GET') {
                 if (storageInfo.operation !== "read") {
                     return this.methodNotAllowed("Hash is not valid for read operations");
+                }
+                if (storageInfo.directory) {
+                    return await this.handleDirectoryRead(storageInfo, relativePath);
+                }
+                if (relativePath) {
+                    // A per-file grant addressed as if it were a directory. 404 rather than serving
+                    // the file: silently ignoring the path would make a broken sibling reference
+                    // look like it resolved.
+                    this.logger.error(`Hash is not a directory grant: ${hash}/${relativePath}`);
+                    return {
+                        statusCode: 404,
+                        headers: { "Content-Type": "text/plain" },
+                        data: "Not a directory grant: " + hash
+                    };
                 }
                 return await this.handleRead(hash, storageInfo);
             } else if (request.method === 'PUT') {
@@ -192,12 +213,60 @@ export class FileSystemHashHandler implements ProtocolHandler {
         };
     }
 
+    /**
+     * Serve one file from inside a directory grant.
+     *
+     * Never consumes the grant: the whole point of a bundle is that many files are read through the
+     * same root, and the caller cannot know in advance how many (a Live2D manifest names its motions
+     * lazily). The grant is revoked when its owner window closes instead.
+     *
+     * The Content-Type matters here in a way it does not for per-file grants: these bytes are fetched
+     * by the model runtime, which branches on it (JSON manifests vs. binary `.moc3`), so this path
+     * reports the real MIME type rather than `application/octet-stream`.
+     */
+    private async handleDirectoryRead(storageInfo: FileStorageInfo, relativePath: string): Promise<ProtocolResponse> {
+        const filePath = this.storageManager.resolveDirectoryGrantPath(storageInfo, relativePath);
+        if (!filePath) {
+            this.logger.error(`Rejected directory grant path: ${relativePath}`);
+            return {
+                statusCode: 403,
+                headers: { "Content-Type": "text/plain" },
+                data: "Path is outside the granted directory"
+            };
+        }
+
+        const result = await Fs.readRaw(filePath);
+        if (!result.ok) {
+            const missing = result.error.code === FsRejectErrorCode.NOT_FOUND;
+            this.logger.error(`Error reading bundle file: ${filePath} - ${result.error.message}`);
+            return {
+                statusCode: missing ? 404 : 500,
+                headers: { "Content-Type": "text/plain" },
+                data: missing ? "Not found" : `Failed to read file: ${result.error.message}`
+            };
+        }
+
+        return {
+            statusCode: 200,
+            headers: {
+                "Content-Type": getMimeType(filePath),
+                // Same reasoning as a session grant: the hash is minted per resolve, so cached bytes
+                // cannot outlive the record they belong to.
+                "Cache-Control": "private, max-age=3600"
+            },
+            data: result.data
+        };
+    }
+
     private async handleRead(hash: string, storageInfo: FileStorageInfo): Promise<ProtocolResponse> {
         let result;
         if (storageInfo.raw) {
             result = await Fs.readRaw(storageInfo.path);
         } else {
-            result = await Fs.read(storageInfo.path, storageInfo.encoding);
+            // The encodings Node cannot name (GBK, Shift_JIS, UTF-16 BE, a UTF-8 that keeps its
+            // mark) are decoded here rather than by `Fs`, so iconv-lite stays out of the module the
+            // packaged game runtime imports. See `src/main/utils/textCodec.ts`.
+            result = await this.readDecodedText(storageInfo);
         }
 
         if (!result.ok) {
@@ -236,6 +305,28 @@ export class FileSystemHashHandler implements ProtocolHandler {
         };
     }
 
+    /**
+     * Read `storageInfo.path` as text under the grant's encoding.
+     *
+     * Split out of {@link handleRead} because the two halves answer different questions: Node's own
+     * `readFile(path, {encoding})` covers the encodings it names, and {@link decodeTextBytes} covers
+     * the rest plus the byte-order-mark handling that neither Node nor the caller should be doing by
+     * hand. The string this produces goes on the wire as UTF-8 (`new Response(string)`) and comes
+     * back out of `response.text()` as UTF-8, so the grant's encoding describes the *file* only -
+     * it never describes the transport.
+     */
+    private async readDecodedText(storageInfo: FileStorageInfo): Promise<FsRequestResult<string>> {
+        const textEncoding = resolveTextEncodingId(storageInfo.encoding);
+        if (!textEncoding) {
+            return Fs.read(storageInfo.path, storageInfo.encoding as BufferEncoding | undefined);
+        }
+        const bytes = await Fs.readRaw(storageInfo.path);
+        if (!bytes.ok) {
+            return bytes;
+        }
+        return { ok: true, data: decodeTextBytes(bytes.data, textEncoding) };
+    }
+
     private async handleWrite(hash: string, request: Request, storageInfo: FileStorageInfo): Promise<ProtocolResponse> {
         try {
             const content = await request.arrayBuffer();
@@ -245,8 +336,18 @@ export class FileSystemHashHandler implements ProtocolHandler {
             if (storageInfo.raw) {
                 result = await Fs.writeRaw(storageInfo.path, buffer);
             } else {
-                const textContent = buffer.toString(storageInfo.encoding || 'utf-8');
-                result = await Fs.write(storageInfo.path, textContent, storageInfo.encoding);
+                // The wire is always UTF-8 and has nothing to do with `storageInfo.encoding`: the
+                // renderer PUTs a JS string as the fetch body, and a USVString body is UTF-8-encoded
+                // by definition. `storageInfo.encoding` describes the *file*. Decoding the wire with
+                // it - which this did - was a no-op for UTF-8 and would have silently mangled every
+                // other encoding the moment one existed.
+                const textContent = buffer.toString("utf-8");
+                const textEncoding = resolveTextEncodingId(storageInfo.encoding);
+                result = textEncoding
+                    // `writeRaw`, not `write`: same atomic temp-file-and-rename core, but the bytes
+                    // are ours rather than `Buffer.from(text, encoding)`'s.
+                    ? await Fs.writeRaw(storageInfo.path, encodeTextBytes(textContent, textEncoding))
+                    : await Fs.write(storageInfo.path, textContent, storageInfo.encoding as BufferEncoding | undefined);
             }
 
             if (!result.ok) {

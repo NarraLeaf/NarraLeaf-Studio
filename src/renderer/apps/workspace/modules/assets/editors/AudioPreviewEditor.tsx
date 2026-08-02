@@ -4,6 +4,7 @@ import {
     BetweenVerticalEnd,
     BetweenVerticalStart,
     Crop,
+    IterationCw,
     Maximize,
     Pause,
     Play,
@@ -23,10 +24,11 @@ import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { useTranslation } from "@/lib/i18n";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
 import { WaveformView, type LoopEnd } from "./audio/WaveformView";
-import { useClipPlayback } from "./audio/useClipPlayback";
+import { useClipPlayback, type PlayRange } from "./audio/useClipPlayback";
 import { clipDuration, clipLength, fromAudioBuffer, type AudioClip, type SampleRange } from "./audio/audioClip";
 import { clampView, ensureVisible, fitAll, scrollByFraction, zoomAt, zoomToRange } from "./audio/viewWindow";
 import { resolvePlayStart } from "./audio/transport";
@@ -34,6 +36,7 @@ import {
     clearPoint,
     fromAssetExtras,
     loopHistoryReducer,
+    loopPointAt,
     markPoint,
     sameLoop,
     toAssetLoop,
@@ -85,6 +88,10 @@ function formatTime(seconds: number): string {
 export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentProps<AudioPreviewPayload>) {
     const { t } = useTranslation();
     const { context } = useWorkspace();
+    // Playback, zoom, selection and the jump-to-point keys are pure inspection and stay live while
+    // frozen. The cue points are the one thing here that is written back to the asset record, so
+    // they are the one thing the freeze refuses.
+    const freeze = useFreezeGuard();
     const asset = payload?.asset;
 
     const [metadata, setMetadata] = useState<AssetData<AssetType.Audio>["metadata"] | null>(null);
@@ -246,7 +253,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
         [clip],
     );
 
-    /** Mark one end at the playhead - the two toolbar buttons and their I/O shortcuts. */
+    /** Mark one marker at the playhead - the three toolbar buttons and their I/L/O shortcuts. */
     const markLoopPoint = useCallback(
         (end: LoopEnd) => {
             if (clip) {
@@ -256,41 +263,90 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
         [clip, commitLoop, loopHistory.present, position, sampleToMs],
     );
 
+    /**
+     * The three the waveform drives: clearing a marker, dragging one, and the commit at the end of
+     * that drag. They refuse inside the handler rather than by being withheld from the child, because
+     * `WaveformView` takes all three as required props. Measured while frozen before this: a marker
+     * dragged to a new place, the status bar read the new time, and the asset record still held the
+     * old one.
+     */
     const clearLoopPoint = useCallback(
         (end: LoopEnd) => {
+            if (freeze.frozen) {
+                return;
+            }
             commitLoop(clearPoint(loopHistory.present, end));
         },
-        [commitLoop, loopHistory.present],
+        [commitLoop, freeze.frozen, loopHistory.present],
     );
 
     const dragLoopPoint = useCallback(
         (end: LoopEnd, sample: number) => {
-            if (clip) {
+            if (clip && !freeze.frozen) {
                 // markPoint, not a raw assignment: dragging one end past the other has to resolve
                 // the same way as marking it there, or the drag could build an inverted region.
                 setDraftLoop(markPoint(draftLoop ?? loopHistory.present, end, sampleToMs(sample)));
             }
         },
-        [clip, draftLoop, loopHistory.present, sampleToMs],
+        [clip, draftLoop, freeze.frozen, loopHistory.present, sampleToMs],
     );
 
     const endLoopDrag = useCallback(() => {
-        if (draftLoop) {
+        if (draftLoop && !freeze.frozen) {
             commitLoop(draftLoop);
         }
-    }, [draftLoop, commitLoop]);
+    }, [draftLoop, commitLoop, freeze.frozen]);
 
 
     // ---- transport ---------------------------------------------------------
 
     const playhead = position;
+
+    /**
+     * What a press of play auditions.
+     *
+     * A selection always wins - that is the author pointing at a range. Failing that, a looping
+     * transport auditions the *authored* region, so the intro plays once and playback returns to
+     * the loop point exactly the way the shipped game will do it. Hearing that before shipping is
+     * the only way to tell a good loop point from a bad one, and no other surface can play it.
+     *
+     * Gated on the loop toggle rather than applied always: with looping off, play still means
+     * "play the file from here", so the samples outside the region stay auditionable without
+     * clearing the markers that describe it.
+     */
+    const auditionRange = useMemo<PlayRange | null>(() => {
+        if (hasSelection && selection) {
+            return selection;
+        }
+        if (!clip || !loop) {
+            return null;
+        }
+        const { inMs, loopStartMs, outMs } = loopPoints;
+        if (inMs === null && loopStartMs === null && outMs === null) {
+            return null;
+        }
+        // Clamped to the clip: markers outlive the file they were marked on, and a range running
+        // past the buffer makes Web Audio quietly fall back to looping the whole thing.
+        const toSample = (ms: number) => Math.min(totalSamples, Math.round((ms / 1000) * clip.sampleRate));
+        const start = inMs === null ? 0 : toSample(inMs);
+        const end = outMs === null ? totalSamples : toSample(outMs);
+        if (end <= start) {
+            return null;
+        }
+        return {
+            start,
+            end,
+            ...(loopStartMs === null ? {} : { loopStart: toSample(loopStartMs) }),
+        };
+    }, [clip, loop, loopPoints, hasSelection, selection, totalSamples]);
+
     const togglePlay = useCallback(() => {
         if (playing) {
             stop();
             return;
         }
-        play(resolvePlayStart({ position, selection, totalSamples, finished }), selection);
-    }, [playing, stop, play, position, selection, totalSamples, finished]);
+        play(resolvePlayStart({ position, selection: auditionRange, totalSamples, finished }), auditionRange);
+    }, [playing, stop, play, position, auditionRange, totalSamples, finished]);
 
     const seekTo = useCallback(
         (sample: number) => {
@@ -369,10 +425,10 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
         }
     }, [totalSamples]);
 
-    /** Jump to a marked end, so a long clip is navigable by the points on it. */
+    /** Jump to a marker, so a long clip is navigable by the points on it. */
     const goToLoopPoint = useCallback(
         (end: LoopEnd) => {
-            const ms = end === "in" ? loopPoints.inMs : loopPoints.outMs;
+            const ms = loopPointAt(loopPoints, end);
             if (!clip || ms === null) {
                 return;
             }
@@ -402,22 +458,46 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                 description: "Nudge forward a second",
                 handler: () => nudge(NUDGE_SECONDS_COARSE),
             },
-            { id: "loop", key: "l", description: "Toggle loop", handler: () => setLoop(value => !value) },
-            { id: "mark-in", key: "i", description: "Set in point", handler: () => markLoopPoint("in") },
-            { id: "mark-out", key: "o", description: "Set out point", handler: () => markLoopPoint("out") },
+            // The three markers own I, L and O - one letter each, bare to set, shift to jump,
+            // mod+shift to clear. The transport's repeat toggle gave up L for that and took R
+            // (its button has always been the Repeat icon); a marker family with a hole in it
+            // would cost more than one relocated toggle.
+            //
+            // These keys are the *fallback*. What actually fires is resolved by catalog id
+            // (`catalogPrefix` + `id`) in `KeybindingService.getEffectiveKey`, so every one of
+            // them also has an entry in `keybindingCatalog.ts` - and `keybindingCatalog.test.ts`
+            // fails the build if the two ever disagree again.
+            //
+            // The three that SET a marker go through the freeze guard; the shift+ pair only moves
+            // the playhead to one, so it keeps working on a frozen project. A keybinding has no
+            // control to grey out, which is what `freeze.run` is for.
+            { id: "loop", key: "r", description: "Toggle loop", handler: () => setLoop(value => !value) },
+            { id: "mark-in", key: "i", description: "Set in point", handler: freeze.run(() => markLoopPoint("in")) },
+            { id: "mark-loop", key: "l", description: "Set loop point", handler: freeze.run(() => markLoopPoint("loop")) },
+            { id: "mark-out", key: "o", description: "Set out point", handler: freeze.run(() => markLoopPoint("out")) },
             { id: "go-to-in", key: "shift+i", description: "Go to in point", handler: () => goToLoopPoint("in") },
+            { id: "go-to-loop", key: "shift+l", description: "Go to loop point", handler: () => goToLoopPoint("loop") },
             { id: "go-to-out", key: "shift+o", description: "Go to out point", handler: () => goToLoopPoint("out") },
-            { id: "clear-in", key: "mod+shift+i", description: "Clear in point", handler: () => clearLoopPoint("in") },
-            { id: "clear-out", key: "mod+shift+o", description: "Clear out point", handler: () => clearLoopPoint("out") },
-            { id: "undo", key: "mod+z", description: "Undo point change", handler: () => dispatchLoop({ type: "undo" }) },
-            { id: "redo", key: "mod+shift+z", description: "Redo point change", handler: () => dispatchLoop({ type: "redo" }) },
+            // Clearing a marker is as much a write as setting one.
+            { id: "clear-in", key: "mod+shift+i", description: "Clear in point", handler: freeze.run(() => clearLoopPoint("in")) },
+            {
+                id: "clear-loop",
+                key: "mod+shift+l",
+                description: "Clear loop point",
+                handler: freeze.run(() => clearLoopPoint("loop")),
+            },
+            { id: "clear-out", key: "mod+shift+o", description: "Clear out point", handler: freeze.run(() => clearLoopPoint("out")) },
+            // Undo and redo restore a marker and are saved like any other change, so they reach the
+            // record without ever going through `commitLoop` - which is why they need the guard too.
+            { id: "undo", key: "mod+z", description: "Undo marker change", handler: freeze.run(() => dispatchLoop({ type: "undo" })) },
+            { id: "redo", key: "mod+shift+z", description: "Redo marker change", handler: freeze.run(() => dispatchLoop({ type: "redo" })) },
             { id: "select-all", key: "mod+a", description: "Select whole clip", handler: selectAll },
             { id: "clear-selection", key: "escape", description: "Clear selection", handler: () => setSelection(null) },
             { id: "zoom-in", key: "=", description: "Zoom in", handler: () => zoomBy(1.4) },
             { id: "zoom-out", key: "-", description: "Zoom out", handler: () => zoomBy(1 / 1.4) },
             { id: "zoom-fit", key: "0", description: "Fit whole clip", handler: () => setView(fitAll(totalSamples)) },
         ],
-        [togglePlay, seekTo, totalSamples, nudge, setLoop, markLoopPoint, goToLoopPoint, clearLoopPoint, selectAll, zoomBy],
+        [togglePlay, seekTo, totalSamples, nudge, setLoop, markLoopPoint, goToLoopPoint, clearLoopPoint, selectAll, zoomBy, freeze],
     );
 
     useKeybindings({
@@ -528,19 +608,30 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
 
                 {separator}
 
+                {/* The only two toolbar buttons that write: they put a point on the asset record,
+                    so on a frozen project they say why they are off. Everything to their left is
+                    transport and zoom, which a reader needs. */}
                 <button
                     type="button"
                     onClick={() => markLoopPoint("in")}
-                    className={controlButtonClass(loopPoints.inMs !== null)}
-                    title={t("assets.audio.editor.markIn")}
+                    className={`${controlButtonClass(loopPoints.inMs !== null)} disabled:cursor-not-allowed disabled:opacity-40`}
+                    {...freeze.writes(false, t("assets.audio.editor.markIn"))}
                 >
                     <BetweenVerticalStart className="h-4 w-4" />
                 </button>
                 <button
                     type="button"
+                    onClick={() => markLoopPoint("loop")}
+                    className={controlButtonClass(loopPoints.loopStartMs !== null)}
+                    title={t("assets.audio.editor.markLoop")}
+                >
+                    <IterationCw className="h-4 w-4" />
+                </button>
+                <button
+                    type="button"
                     onClick={() => markLoopPoint("out")}
-                    className={controlButtonClass(loopPoints.outMs !== null)}
-                    title={t("assets.audio.editor.markOut")}
+                    className={`${controlButtonClass(loopPoints.outMs !== null)} disabled:cursor-not-allowed disabled:opacity-40`}
+                    {...freeze.writes(false, t("assets.audio.editor.markOut"))}
                 >
                     <BetweenVerticalEnd className="h-4 w-4" />
                 </button>
@@ -571,7 +662,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                         setVolume(Number(event.target.value));
                         setMuted(false);
                     }}
-                    className="h-1 w-20 shrink-0 rounded bg-fill accent-fg/70"
+                    className="h-1 w-20 shrink-0 rounded-md bg-fill accent-fg/70"
                     aria-label={t("assets.audio.volume")}
                 />
             </div>
@@ -582,7 +673,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                 the very samples being aimed at. */}
             <div ref={wheelRef} className="flex min-h-0 flex-1 items-start px-3 py-2">
                 <div
-                    className="relative h-full w-full overflow-hidden rounded border border-edge bg-surface-sunken"
+                    className="relative h-full w-full overflow-hidden rounded-md border border-edge bg-surface-sunken"
                     style={{ maxHeight: waveformMaxHeight }}
                 >
                     <WaveformView
@@ -612,12 +703,18 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                         {")"}
                     </span>
                 )}
-                {(loopPoints.inMs !== null || loopPoints.outMs !== null) && (
+                {(loopPoints.inMs !== null || loopPoints.loopStartMs !== null || loopPoints.outMs !== null) && (
                     <span className="flex items-center gap-1 text-primary">
                         <BetweenVerticalStart className="h-3 w-3" />
                         {loopPoints.inMs === null ? "--:--" : formatTime(loopPoints.inMs / 1000)}
                         {" – "}
                         {loopPoints.outMs === null ? "--:--" : formatTime(loopPoints.outMs / 1000)}
+                        {loopPoints.loopStartMs !== null && (
+                            <>
+                                <IterationCw className="h-3 w-3" />
+                                {formatTime(loopPoints.loopStartMs / 1000)}
+                            </>
+                        )}
                     </span>
                 )}
                 <span className="flex-1" />

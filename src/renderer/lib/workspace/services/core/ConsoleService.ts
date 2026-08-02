@@ -86,6 +86,19 @@ type ConsoleServiceEvents = {
         channel: ConsoleChannelId;
         progress: ConsoleProgress | null;
     };
+    /**
+     * A feature area asked for its own channel to be brought to the front.
+     *
+     * The panel owns which tab is active and persists it, which is right for a human clicking
+     * around and wrong at the moment a run starts: showing the panel alone lands the author on
+     * whatever they last looked at, so starting a test opened the console on an empty `build` tab
+     * while the run's lines piled up one tab over. A request rather than a setter, because the
+     * panel may not be mounted yet - it reads {@link ConsoleService.getPendingFocusRequest} when
+     * it mounts.
+     */
+    focusRequested: {
+        channel: ConsoleChannelId;
+    };
 };
 
 export const MAX_CONSOLE_ENTRIES_PER_CHANNEL = 500;
@@ -109,6 +122,11 @@ export const BUILTIN_CONSOLE_CHANNELS: readonly ConsoleChannelDefinition[] = [
         id: "build",
         label: "Build",
         description: "Build, packaging, and preview pipeline output",
+    },
+    {
+        id: "storage",
+        label: "Storage",
+        description: "Project file writes: failed saves, retries, and recoveries",
     },
 ] as const;
 
@@ -270,6 +288,7 @@ export class ConsoleService extends Service<ConsoleService> {
     private progress = new Map<ConsoleChannelId, ConsoleProgress>();
     private readonly events = new EventEmitter<ConsoleServiceEvents>();
     private sequence = 0;
+    private pendingFocusRequest: ConsoleChannelId | null = null;
     private devModeStatusUnsubscribe: (() => void) | null = null;
     private devModeConsoleLogUnsubscribe: (() => void) | null = null;
     private devModeBlueprintDebugUnsubscribe: (() => void) | null = null;
@@ -332,6 +351,36 @@ export class ConsoleService extends Service<ConsoleService> {
         }
         this.emitChannelsChanged();
         return this.makeChannelDisposer(definition.id);
+    }
+
+    /**
+     * Ask the panel to make `channel` the active tab.
+     *
+     * Paired with `uiService.panels.show(...)` at the moment a run starts. It is a request, not a
+     * command: the panel decides, and if it is not mounted yet the request is held so that showing
+     * the panel and selecting the tab can happen in either order.
+     */
+    public requestFocus(channel: ConsoleChannelId): void {
+        this.pendingFocusRequest = channel;
+        this.events.emit("focusRequested", { channel });
+    }
+
+    /**
+     * The standing {@link requestFocus}, for a panel that mounts after the request was made.
+     *
+     * Deliberately does NOT clear on read. `panels.show()` can remount the panel, and a remount
+     * restores the *persisted* tab - so a request that cleared itself the first time it was applied
+     * was immediately undone by the very remount that revealed the panel, which is how starting a
+     * test still landed the author on an empty `build` tab. The request stands until the author
+     * picks a tab themselves ({@link clearPendingFocusRequest}) or another run supersedes it.
+     */
+    public peekPendingFocusRequest(): ConsoleChannelId | null {
+        return this.pendingFocusRequest;
+    }
+
+    /** The author chose a tab by hand; their choice outranks any run's request from here on. */
+    public clearPendingFocusRequest(): void {
+        this.pendingFocusRequest = null;
     }
 
     public getEntries(channel: ConsoleChannelId): ConsoleEntry[] {
@@ -428,6 +477,10 @@ export class ConsoleService extends Service<ConsoleService> {
 
     public onProgressChanged(handler: (event: ConsoleServiceEvents["progressChanged"]) => void): () => void {
         return this.events.on("progressChanged", handler);
+    }
+
+    public onFocusRequested(handler: (event: ConsoleServiceEvents["focusRequested"]) => void): () => void {
+        return this.events.on("focusRequested", handler);
     }
 
     public clear(channel?: ConsoleChannelId): void {

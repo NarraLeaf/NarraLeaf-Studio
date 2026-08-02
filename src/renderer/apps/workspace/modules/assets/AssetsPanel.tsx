@@ -1,26 +1,29 @@
 import { useMemo, useCallback, useState, useRef, useEffect, useLayoutEffect, ComponentType } from "react";
 import { flushSync } from "react-dom";
-import { LayoutGrid, LayoutList, RefreshCw, AlertCircle, Copy, Scissors, Clipboard, Trash, Search, X, ChevronLeft } from "lucide-react";
+import { LayoutGrid, LayoutList, RefreshCw, AlertCircle, Copy, Scissors, Clipboard, Trash, Search, X, ChevronLeft, Boxes } from "lucide-react";
 import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
 import { PanelComponentProps } from "../types";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { ASSET_CATEGORY_ORDER, AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
 import { ContextMenu } from "@/lib/components/elements/ContextMenu";
 import { useAssetsContextMenu } from "./hooks/useAssetsContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
 import { SearchBox } from "./components/SearchBox";
-import { SearchResultsPopup } from "./components/SearchResultsPopup";
-import { FilterSystem } from "./components/FilterSystem";
+import { FilterSystem, type ActiveFilter } from "./components/FilterSystem";
+import { ImportQueueStrip } from "./components/ImportQueueStrip";
+import { ModelImportWizard } from "./components/ModelImportWizard";
 
 import { useAssetData } from "./state/useAssetData";
 import { useMultiSelection } from "./state/useMultiSelection";
-import { useAssetSearch, SearchResult } from "./state/useAssetSearch";
-import { useAssetFilters } from "./state/useAssetFilters";
+import { useAssetSearch } from "./state/useAssetSearch";
+import { useAssetFilters, filtersNeedLibrarySnapshot } from "./state/useAssetFilters";
+import { useAssetLibrarySnapshot } from "../asset-overview/useAssetLibrarySnapshot";
 import { useDragAndDrop, type InternalAssetDropCompletedInfo } from "./state/useDragAndDrop";
 import { useClipboard } from "./state/useClipboard";
 import { useAssetFocus } from "./state/useAssetFocus";
 import { useAssetActions, ContextMenuTargetState } from "./state/useAssetActions";
+import { useImportQueue } from "./state/useImportQueue";
 import { useKeyboardShortcuts } from "./state/useKeyboardShortcuts";
 import { AssetsPanelContext, type AssetsIconViewToolbarCenter } from './AssetsPanelContext';
 import { Services } from "@/lib/workspace/services/services";
@@ -32,9 +35,11 @@ import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { AssetsListView } from "./views/AssetsListView";
 import { AssetsIconView } from "./views/AssetsIconView";
 import { useWorkspaceAssetDragOptional } from "@/apps/workspace/dnd/WorkspaceAssetDragProvider";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useTranslation } from "@/lib/i18n";
+import { AssetOverviewView } from "../asset-overview/AssetOverviewView";
 
-export type AssetViewMode = "list" | "icons";
+export type AssetViewMode = "list" | "icons" | "overview";
 
 const VIEW_MODE_OPTIONS: { id: AssetViewMode; icon: ComponentType<any> }[] = [
     {
@@ -45,7 +50,18 @@ const VIEW_MODE_OPTIONS: { id: AssetViewMode; icon: ComponentType<any> }[] = [
         id: "icons",
         icon: LayoutGrid,
     },
+    {
+        id: "overview",
+        icon: Boxes,
+    },
 ];
+
+const VIEW_MODE_IDS = new Set<string>(VIEW_MODE_OPTIONS.map(option => option.id));
+
+/** A persisted view mode from before the overview was folded in, or from a hand-edited store. */
+function sanitizeViewMode(mode: string | undefined): AssetViewMode | null {
+    return mode && VIEW_MODE_IDS.has(mode) ? (mode as AssetViewMode) : null;
+}
 
 interface AssetsPanelPayload {
     defaultViewMode?: AssetViewMode;
@@ -57,19 +73,25 @@ interface AssetsPanelPayload {
 interface AssetsPanelState {
     viewMode?: AssetViewMode;
     iconSize?: number;
+    /**
+     * Which sidebar sections are open. Still named `assetTypeOpenItems` on disk: the ids stored by
+     * a build from before sections were categories are filtered out by
+     * {@link filterKnownAssetCategoryIds}, which is exactly the "persisted UI state may lapse"
+     * the plan allows.
+     */
     assetTypeOpenItems?: string[];
     expandedGroupIds?: string[];
     iconGroupPathIds?: string[];
 }
 
-const DEFAULT_ASSET_TYPE_OPEN_ITEMS = [AssetType.Image];
-const ASSET_TYPE_IDS = new Set<string>(Object.values(AssetType));
+const DEFAULT_ASSET_CATEGORY_OPEN_ITEMS = [AssetCategory.Image];
+const ASSET_CATEGORY_IDS = new Set<string>(ASSET_CATEGORY_ORDER);
 
-function filterKnownAssetTypeIds(ids: string[] | undefined): string[] {
+function filterKnownAssetCategoryIds(ids: string[] | undefined): string[] {
     if (!Array.isArray(ids)) {
-        return DEFAULT_ASSET_TYPE_OPEN_ITEMS;
+        return DEFAULT_ASSET_CATEGORY_OPEN_ITEMS;
     }
-    return ids.filter(id => ASSET_TYPE_IDS.has(id));
+    return ids.filter(id => ASSET_CATEGORY_IDS.has(id));
 }
 
 function sanitizeStringIds(ids: string[] | undefined): string[] {
@@ -79,13 +101,13 @@ function sanitizeStringIds(ids: string[] | undefined): string[] {
     return ids.filter(id => typeof id === "string" && id.length > 0);
 }
 
-function resolveAssetGroupPathIds(pathIds: string[], groups: Record<AssetType, AssetGroup[]>): string[] {
+function resolveAssetGroupPathIds(pathIds: string[], groups: Record<AssetCategory, AssetGroup[]>): string[] {
     const groupById = new Map<string, AssetGroup>();
     Object.values(groups).flat().forEach(group => groupById.set(group.id, group));
 
     const resolved: string[] = [];
     let expectedParentId: string | undefined;
-    let expectedType: AssetType | undefined;
+    let expectedCategory: AssetCategory | undefined;
 
     for (const id of pathIds) {
         const group = groupById.get(id);
@@ -95,10 +117,10 @@ function resolveAssetGroupPathIds(pathIds: string[], groups: Record<AssetType, A
         if ((group.parentGroupId ?? undefined) !== expectedParentId) {
             break;
         }
-        if (expectedType && group.type !== expectedType) {
+        if (expectedCategory && group.category !== expectedCategory) {
             break;
         }
-        expectedType = group.type;
+        expectedCategory = group.category;
         expectedParentId = group.id;
         resolved.push(group.id);
     }
@@ -107,9 +129,13 @@ function resolveAssetGroupPathIds(pathIds: string[], groups: Record<AssetType, A
 }
 
 export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPanelPayload>) {
-    const { t, tn } = useTranslation();
+    const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { registerActionGroup, unregisterActionGroup } = useRegistry();
+    // The panel's own shortcuts. Every button and menu row here is greyed where it is rendered, but
+    // a keystroke has no control to grey - and a keybinding bypasses the disabled menu row it shares
+    // an action with, so Ctrl+V and Delete kept working on a frozen project.
+    const freeze = useFreezeGuard();
     const searchBoxRef = useRef<HTMLInputElement>(null);
     const inputDialog = useMemo(() => {
         if (!context) return null;
@@ -134,7 +160,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     const showHeader = payload?.showHeader ?? true;
     const [viewMode, setViewMode] = useState<AssetViewMode>(defaultViewMode);
     const [iconSize, setIconSize] = useState<number>(defaultIconSize);
-    const [assetTypeOpenItems, setAssetTypeOpenItems] = useState<string[]>(DEFAULT_ASSET_TYPE_OPEN_ITEMS);
+    const [categoryOpenItems, setCategoryOpenItems] = useState<string[]>(DEFAULT_ASSET_CATEGORY_OPEN_ITEMS);
     const [iconGroupPathIds, setIconGroupPathIds] = useState<string[]>([]);
     const [stateReady, setStateReady] = useState(false);
     const [disableAccordionAnimation, setDisableAccordionAnimation] = useState(true);
@@ -159,21 +185,22 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         setDisableAccordionAnimation(true);
         setHasPersistedViewMode(false);
         setHasPersistedIconSize(false);
-        setAssetTypeOpenItems(DEFAULT_ASSET_TYPE_OPEN_ITEMS);
+        setCategoryOpenItems(DEFAULT_ASSET_CATEGORY_OPEN_ITEMS);
         setExpandedGroups(new Set());
         setIconGroupPathIds([]);
 
         const panelStateService = context.services.get<PanelStateService>(Services.PanelState);
         const saved = panelStateService.getPanelState<AssetsPanelState>(panelId);
-        if (saved?.viewMode) {
-            setViewMode(saved.viewMode);
+        const savedViewMode = sanitizeViewMode(saved?.viewMode);
+        if (savedViewMode) {
+            setViewMode(savedViewMode);
             setHasPersistedViewMode(true);
         }
         if (typeof saved?.iconSize === "number") {
             setIconSize(saved.iconSize);
             setHasPersistedIconSize(true);
         }
-        setAssetTypeOpenItems(filterKnownAssetTypeIds(saved?.assetTypeOpenItems));
+        setCategoryOpenItems(filterKnownAssetCategoryIds(saved?.assetTypeOpenItems));
         if (Array.isArray(saved?.expandedGroupIds)) {
             setExpandedGroups(new Set(sanitizeStringIds(saved.expandedGroupIds)));
         }
@@ -187,11 +214,11 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         panelStateService.setPanelState<AssetsPanelState>(panelId, {
             viewMode,
             iconSize,
-            assetTypeOpenItems: filterKnownAssetTypeIds(assetTypeOpenItems),
+            assetTypeOpenItems: filterKnownAssetCategoryIds(categoryOpenItems),
             expandedGroupIds: Array.from(expandedGroups),
             iconGroupPathIds,
         });
-    }, [assetTypeOpenItems, context, expandedGroups, iconGroupPathIds, iconSize, panelId, stateReady, viewMode]);
+    }, [categoryOpenItems, context, expandedGroups, iconGroupPathIds, iconSize, panelId, stateReady, viewMode]);
 
     useEffect(() => {
         if (!stateReady) return;
@@ -213,9 +240,28 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         }
     });
 
-    const { searchQuery, searchResults, isSearchResultsVisible, setSearchQuery, setSearchResultsVisible } = useAssetSearch({ assets, groups });
+    const { searchQuery, activeQuery, setSearchQuery } = useAssetSearch();
 
-    const { filterConfigs, activeFilters, setActiveFilters, handleFilterOpen, filteredAssets, filteredGroups } = useAssetFilters({ assets, groups });
+    const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([]);
+    // Measuring the library costs a directory walk and a reference-index flush; only pay for it
+    // while something is reading the result — the overview view, or a filter asking a question the
+    // asset records cannot answer on their own.
+    const {
+        snapshot,
+        failed: snapshotFailed,
+        refresh: refreshSnapshot,
+        bytesByAssetId,
+        referencedAssetIds,
+    } = useAssetLibrarySnapshot(context, viewMode === "overview" || filtersNeedLibrarySnapshot(activeFilters));
+
+    const { filterConfigs, handleFilterOpen, filteredAssets, filteredGroups, matchedGroupIds } =
+        useAssetFilters({ assets, groups, activeFilters, query: activeQuery, bytesByAssetId, referencedAssetIds });
+
+    /**
+     * A search or a filter is narrowing the library. The views read this to stop hiding hits: the
+     * tree opens every group it still shows, and the grid drops the folder walk and goes flat.
+     */
+    const isNarrowed = activeQuery.length > 0 || activeFilters.length > 0;
 
     useEffect(() => {
         if (!hasLoaded) return;
@@ -235,6 +281,16 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         handleClearSelection();
     }, [loadAssets, handleClearSelection]);
 
+    // One refresh button for the whole panel. The overview reads measured numbers the asset records
+    // do not carry, so on that view it has to re-walk as well — a refresh that reloaded the records
+    // and left the sizes alone would look like it had done nothing.
+    const handleRefresh = useCallback(() => {
+        loadAssets();
+        if (viewMode === "overview") {
+            refreshSnapshot();
+        }
+    }, [loadAssets, refreshSnapshot, viewMode]);
+
     const { clipboard, setClipboard } = useClipboard();
 
     // Function to expand a group by its ID
@@ -242,13 +298,22 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         setExpandedGroups(prev => new Set(prev).add(groupId));
     }, []);
 
+    const { importQueue, importState, dismissImportFailures } = useImportQueue();
+
     const {
-        handleCreateGroup, handleCopy, handleCut, handlePaste, handleRename, handleDelete, handleImport, handleImportToGroup, handleImportRemote,
-        handleCreateMagicTags, handleApplyMagicTags
+        handleCreateGroup, handleCreateTextFile, handleCopy, handleCut, handlePaste, handleRename, handleReplaceContent, handleDelete, handleImport, handleRetryImport, handleImportToGroup, handleImportRemote,
+        handleCreateMagicTags, handleApplyMagicTags,
+        modelImportRequest, completeModelImport, cancelModelImport
     } = useAssetActions({
         context, inputDialog, assets, groups, selectedItems, clipboard, contextMenuTarget,
-        focusedItemId, onActionComplete, setClipboard, setActionLoading, expandGroup
+        focusedItemId, onActionComplete, setClipboard, setActionLoading, expandGroup, importQueue
     });
+
+    const handleRetryFailedImports = useCallback(() => {
+        const run = importState.run;
+        if (!run || importState.failures.length === 0) return;
+        void handleRetryImport(run.category, importState.failures.map(failure => failure.path), run.groupId);
+    }, [handleRetryImport, importState]);
 
     // Use refs to store latest function references to avoid stale closures in action group
     const handleCopyRef = useRef(handleCopy);
@@ -333,13 +398,18 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         onWorkspaceDragSessionEnd: workspaceDrag?.endSession,
     });
 
+    // F2 opens the rename dialog, which writes the new name straight to the asset record. Nothing
+    // renders for the key, so the refusal goes on the handler; memoised so the binding is not
+    // re-registered on every render.
+    const renameShortcut = useMemo(() => freeze.run(handleRename), [freeze, handleRename]);
+
     useKeyboardShortcuts({
         isInitialized,
         panelId,
         onCopy: () => handleCopyRef.current(),
         onCut: () => handleCutRef.current(),
         onPaste: () => handlePasteRef.current(),
-        onRename: handleRename,
+        onRename: renameShortcut,
         registerClipboardShortcuts: false, // already provided by action shortcuts
     });
 
@@ -351,26 +421,17 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         handlePaste: () => handlePasteRef.current(),
         handleDelete: () => handleDeleteRef.current(),
         handleRename,
-        handleCreateGroup, handleImportToGroup, handleCreateMagicTags: handleMagicTagsClick
+        handleReplaceContent: () => handleReplaceContent(),
+        handleCreateGroup, handleCreateTextFile, handleImportToGroup, handleCreateMagicTags: handleMagicTagsClick
     });
 
-    const handleSearchResultClick = useCallback((result: SearchResult) => {
-        if (result.isGroup) {
-            handleGroupFocus(result.id);
-        } else {
-            const asset = Object.values(assets).flat().find(a => a.id === result.id);
-            if(asset) handleAssetClick(asset, false);
-        }
-        setSearchResultsVisible(false);
-    }, [assets, handleGroupFocus, handleAssetClick, setSearchResultsVisible]);
-
     const handleRootDrop = useCallback(
-        async (event: React.DragEvent, type: AssetType, contextualGroup?: AssetGroup | null) => {
+        async (event: React.DragEvent, category: AssetCategory, contextualGroup?: AssetGroup | null) => {
             const targetGroup = contextualGroup ?? null;
             if (draggedItem) {
-                await handleDropOnItem(event, type, targetGroup);
+                await handleDropOnItem(event, category, targetGroup);
             } else {
-                await handleImport(type, targetGroup?.id, event.dataTransfer.files, event.dataTransfer);
+                await handleImport(category, targetGroup?.id, event.dataTransfer.files, event.dataTransfer);
             }
             setDragOver(false);
             setDropTargetId(null);
@@ -425,7 +486,12 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                     tooltip: t("assets.actions.pasteTooltip"),
                     shortcut: "mod+v",
                     menuRole: "paste",
-                    onClick: (_workspace) => handlePasteRef.current(),
+                    // Paste copies assets into the library, so a frozen project refuses it. The
+                    // refusal sits on the handler rather than on `disabled`: the menu row is greyed
+                    // by the freeze policy already, but `mod+v` runs the action straight from the
+                    // keybinding, and on a frozen project it created assets that never landed.
+                    // Copy and cut above only fill the clipboard, so they are left alone.
+                    onClick: freeze.run((_workspace) => handlePasteRef.current()),
                     disabled: !hasClipboardContent || actionLoading,
                     when,
                     order: 2,
@@ -437,7 +503,9 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                     tooltip: t("assets.actions.deleteTooltip"),
                     shortcut: "delete",
                     menuRole: "delete",
-                    onClick: (_workspace) => handleDeleteRef.current(),
+                    // Same for Delete, which reaches the files themselves: the key runs the action
+                    // without ever consulting the greyed row.
+                    onClick: freeze.run((_workspace) => handleDeleteRef.current()),
                     disabled: !hasSelection || actionLoading,
                     when,
                     order: 3,
@@ -448,7 +516,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         return () => {
             unregisterActionGroup(groupId);
         };
-    }, [context, panelId, selectedItems.size, clipboard?.assets.length, clipboard?.groups.length, actionLoading, focusArea, t]);
+    }, [context, panelId, selectedItems.size, clipboard?.assets.length, clipboard?.groups.length, actionLoading, focusArea, t, freeze]);
 
     useEffect(() => {
         if (showHeader) {
@@ -464,13 +532,21 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         return <div className="p-4 text-danger flex items-start gap-2"><AlertCircle className="w-4 h-4" /> <div><p>{t("assets.loadError")}</p><p className="text-xs">{error}</p></div></div>;
     }
 
+    // While narrowing, every category holding a survivor opens: a hit inside a category the reader
+    // last left collapsed is not a hit. The stored list is untouched and comes back when the search
+    // is cleared.
+    const effectiveOpenItems = isNarrowed
+        ? ASSET_CATEGORY_ORDER.filter(category => filteredAssets[category].length > 0 || filteredGroups[category].length > 0)
+        : categoryOpenItems;
+
     const contextValue = {
-        assets, groups, filteredAssets, filteredGroups, selectedItems, focusedItemId, 
+        assets, groups, filteredAssets, filteredGroups, matchedGroupIds, selectedItems, focusedItemId,
         draggedItem, dropTargetId, clipboard, isMultiSelectMode, expandedGroups,
         handleItemSelect, handleAssetClick, handleGroupFocus, showContextMenu,
         handleDragStart, handleDragEnd, handleDragOverItem, handleDropOnItem, handleImportToGroup,
         setExpandedGroups,
         isFocused: (id: string) => focusedItemId === id,
+        isNarrowed,
         compactToolbar: !showHeader,
         setAssetsIconToolbarCenter,
     };
@@ -490,9 +566,16 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                         <div className="flex items-center justify-between">
                             <FilterSystem filters={filterConfigs} activeFilters={activeFilters} onFiltersChange={setActiveFilters} onFilterOpen={handleFilterOpen} />
                             <div className="flex items-center gap-2">
-                                <span className="text-xs text-fg-muted">{tn("assets.itemCount", Object.values(filteredAssets).flat().length)}</span>
                                 <ViewModeToggle mode={viewMode} onChange={setViewMode} />
-                                <button onClick={loadAssets} disabled={loading} className="p-1 rounded hover:bg-fill"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
+                                <button
+                                    onClick={handleRefresh}
+                                    disabled={loading}
+                                    title={t("common.refresh")}
+                                    aria-label={t("common.refresh")}
+                                    className="p-1 rounded-md hover:bg-fill"
+                                >
+                                    <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -528,7 +611,6 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                                         onClick={() => {
                                             setIsSearchActive(false);
                                             setSearchQuery("");
-                                            setSearchResultsVisible(false);
                                         }}
                                         className="h-9 w-9 flex items-center justify-center rounded-md border border-edge-strong bg-fill-subtle text-fg-muted hover:bg-fill"
                                         title={t("assets.closeSearch")}
@@ -546,12 +628,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                                         onFilterOpen={handleFilterOpen}
                                     />
                                     <button
-                                        onClick={() => {
-                                            setIsSearchActive(true);
-                                            if (searchQuery.trim()) {
-                                                setSearchResultsVisible(true);
-                                            }
-                                        }}
+                                        onClick={() => setIsSearchActive(true)}
                                         className={`h-9 w-9 flex items-center justify-center rounded-md border transition-colors ${
                                             searchQuery
                                                 ? "border-primary bg-primary/10 text-primary"
@@ -569,7 +646,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                                 <button
                                     type="button"
                                     onClick={assetsIconToolbarCenter.onBack}
-                                    className="p-1 rounded hover:bg-fill shrink-0"
+                                    className="p-1 rounded-md hover:bg-fill shrink-0"
                                     title={t("assets.backToParent")}
                                 >
                                     <ChevronLeft className="w-4 h-4" />
@@ -585,16 +662,35 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                                         : "flex items-center gap-2 shrink-0"
                                 }
                             >
-                                <span className="text-2xs text-fg-subtle hidden sm:inline">{tn("assets.itemCount", Object.values(filteredAssets).flat().length)}</span>
+                                {/* The item count used to sit here. It was redundant (every group in the
+                                    tree below already prints its own count, and the overview page prints
+                                    the total) and it never gave way: `hidden sm:inline` is a VIEWPORT
+                                    query, so a narrow sidebar in a wide window still paid for it. */}
                                 <ViewModeToggle mode={viewMode} onChange={setViewMode} />
-                                <button onClick={loadAssets} disabled={loading} className="p-1 rounded hover:bg-fill"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
+                                <button
+                                    onClick={handleRefresh}
+                                    disabled={loading}
+                                    title={t("common.refresh")}
+                                    aria-label={t("common.refresh")}
+                                    className="p-1 rounded-md hover:bg-fill"
+                                >
+                                    <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                                </button>
                             </div>
                         )}
                     </div>
                 )}
 
+                <ImportQueueStrip
+                    state={importState}
+                    onRetry={handleRetryFailedImports}
+                    onDismiss={dismissImportFailures}
+                />
+
                 <div className="flex-1 overflow-y-auto">
-                    {viewMode === "list" ? (
+                    {viewMode === "overview" ? (
+                        <AssetOverviewView snapshot={snapshot} failed={snapshotFailed} refresh={refreshSnapshot} />
+                    ) : viewMode === "list" ? (
                         <AssetsListView
                             dropTargetId={dropTargetId}
                             handleRootDrop={handleRootDrop}
@@ -603,8 +699,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                             handleCreateGroup={handleCreateGroup}
                             actionLoading={actionLoading}
                             setDropTargetId={setDropTargetId}
-                            openItems={assetTypeOpenItems}
-                            onOpenChange={(next) => setAssetTypeOpenItems(filterKnownAssetTypeIds(next))}
+                            openItems={effectiveOpenItems}
+                            onOpenChange={(next) => setCategoryOpenItems(filterKnownAssetCategoryIds(next))}
                             disableAnimation={disableAccordionAnimation}
                         />
                     ) : (
@@ -624,9 +720,13 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                     )}
                 </div>
                 
-                <SearchResultsPopup results={searchResults} visible={isSearchResultsVisible} onResultClick={handleSearchResultClick} onClose={() => setSearchResultsVisible(false)} searchQuery={searchQuery} anchorRef={searchBoxRef} />
                 <ContextMenu items={contextMenu} position={menuState.position} visible={menuState.visible} onClose={closeContextMenu} />
-                <MagicTagDialog 
+                <ModelImportWizard
+                    visible={modelImportRequest !== null}
+                    onClose={cancelModelImport}
+                    onImport={(selection) => void completeModelImport(selection)}
+                />
+                <MagicTagDialog
                     visible={magicTagDialogVisible}
                     assets={magicTagAssets}
                     template={magicTagTemplate}
@@ -638,12 +738,18 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     );
 }
 
+const VIEW_MODE_LABEL_KEYS = {
+    list: "assets.view.list",
+    icons: "assets.view.icons",
+    overview: "assets.view.overview",
+} as const;
+
 function ViewModeToggle({ mode, onChange }: { mode: AssetViewMode; onChange: (mode: AssetViewMode) => void }) {
     const { t } = useTranslation();
     return (
         <div className="inline-flex items-center gap-1 rounded-md border border-edge-strong bg-fill-subtle p-1">
             {VIEW_MODE_OPTIONS.map(({ id, icon: Icon }) => {
-                const label = id === "list" ? t("assets.view.list") : t("assets.view.icons");
+                const label = t(VIEW_MODE_LABEL_KEYS[id]);
                 return (
                 <button
                     key={id}
@@ -651,7 +757,7 @@ function ViewModeToggle({ mode, onChange }: { mode: AssetViewMode; onChange: (mo
                     title={label}
                     aria-pressed={mode === id}
                     onClick={() => onChange(id)}
-                    className={`p-1 rounded ${mode === id ? "bg-primary/80 text-on-primary" : "text-fg-muted hover:bg-fill"}`}
+                    className={`p-1 rounded-md ${mode === id ? "bg-primary/80 text-on-primary" : "text-fg-muted hover:bg-fill"}`}
                 >
                     <Icon className="w-4 h-4" />
                 </button>

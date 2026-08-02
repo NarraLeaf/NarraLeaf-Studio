@@ -1,12 +1,18 @@
-import type { StoryDocument, StoryLiteralValue, StoryScene, StorySceneId, StoryVariableValueType } from "@shared/types/story";
-import { savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story/declarations";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import type { StoryDocument, StoryScene, StorySceneId } from "@shared/types/story";
+import { savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story/declarations";
+import { sceneLabelNames } from "@shared/types/story/labels";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
+import { buildMergedPersistentView } from "@shared/variables/mergedPersistentView";
 import { collectTempSpeakers } from "@/lib/workspace/services/story/storyModel";
 import type { Character } from "@/lib/workspace/services/character/Character";
+import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { AssetsMap } from "@/lib/workspace/services/assets/types";
 import { listSceneDisplayableTargets } from "../../story-motion/storyMotionPreviewTarget";
-import type { StoryCommandContext, StoryCommandNamedRef, StoryCommandStageObjects, StoryCommandVariableEntry } from "./storyCommandResolution";
+import { segmentPlainText } from "./storyFindReplace";
+import type { StoryCommandAppearanceRef, StoryCommandContext, StoryCommandNamedRef, StoryCommandStageObjects, StoryCommandVariableEntry } from "./storyCommandResolution";
+import type { StoryPuppetVocabulary } from "./storyCommandValues";
 
 /**
  * Project a live project onto the flat, name-keyed view the command line resolves against.
@@ -35,7 +41,7 @@ function assetRefs(assets: AssetsMap | undefined, type: AssetType): StoryCommand
 function variableEntries(
     document: StoryDocument | null,
     scene: StoryScene | null,
-    blueprintDocument: BlueprintDocument | null,
+    persistentVariables: readonly VariableRegistryEntry[],
 ): StoryCommandVariableEntry[] {
     const entries: StoryCommandVariableEntry[] = [];
     // v6: the tables are scans over declaration rows - the row is the variable.
@@ -55,39 +61,28 @@ function variableEntries(
             defaultValue: definition.defaultValue,
         });
     }
-    // Persistent variables declared as story rows, then the blueprint-declared ones - one scope,
-    // two authoring surfaces until the project-level registry lands.
-    for (const definition of Object.values(document ? storyPersistentDefs(document) : {})) {
+    // Persistent variables: the merged view of the registry (blueprint-declared) and story `/persis`
+    // rows - one scope, two authoring surfaces (WI-3). Addressed by `storageKey`, the rename-stable key
+    // the compiler hands the host persistence bridge.
+    const persistentView = buildMergedPersistentView(
+        persistentVariables,
+        document ? Object.values(storyPersistentDefs(document)) : [],
+    );
+    for (const entry of persistentView.entries) {
         entries.push({
-            name: definition.name,
-            ref: { scope: "persistent", storageKey: definition.storageKey },
-            valueType: definition.valueType,
-            defaultValue: definition.defaultValue,
-        });
-    }
-    for (const definition of Object.values(blueprintDocument?.persistentVariables ?? {})) {
-        entries.push({
-            name: definition.name,
-            // Addressed by `storageKey`, not id: the key is what survives a rename, and what the
-            // compiler hands the host persistence bridge.
-            ref: { scope: "persistent", storageKey: definition.storageKey },
-            // Blueprint variables carry a free-form `valueType`; anything outside the story system's
-            // four types is treated as `json`, which type-checks as "assignable from anything" rather
-            // than blocking the author over a distinction the story document cannot represent.
-            valueType: asStoryValueType(definition.valueType),
-            defaultValue: definition.defaultValue as StoryLiteralValue | undefined,
+            name: entry.name,
+            // v9: persistent refs address by variableId, which equals the storage key.
+            ref: { scope: "persistent", variableId: entry.storageKey },
+            valueType: entry.valueType,
+            defaultValue: entry.defaultValue,
         });
     }
     return entries;
 }
 
-function asStoryValueType(valueType: string | undefined): StoryVariableValueType {
-    return valueType === "boolean" || valueType === "number" || valueType === "string" ? valueType : "json";
-}
-
 /**
- * The named objects on stage in this scene, per kind - the picker `/imgshow`, `/settext`, `/stop`
- * lead with instead of a blind name field.
+ * The named objects on stage in this scene, per kind - the picker `/show`, `/swap`, `/stop` lead with
+ * instead of a blind name field.
  *
  * image / text / layer come from {@link listSceneDisplayableTargets}, the same collector the
  * inspector's target picker reads, so the command line can never offer a name the inspector wouldn't.
@@ -101,6 +96,7 @@ function collectStageObjects(document: StoryDocument | null, sceneId: StoryScene
     const layer = new Set<string>();
     const video = new Set<string>();
     const audio = new Set<string>();
+    const vfx = new Set<string>();
 
     for (const ref of listSceneDisplayableTargets(document, sceneId ?? undefined, undefined)) {
         if (ref.kind === "image") {
@@ -119,9 +115,56 @@ function collectStageObjects(document: StoryDocument | null, sceneId: StoryScene
             video.add(block.payload.objectName);
         } else if (block.payload.action === "audio" && block.payload.objectName) {
             audio.add(block.payload.objectName);
+        } else if (block.payload.action === "vfx" && block.payload.objectName) {
+            vfx.add(block.payload.objectName);
         }
     }
-    return { image: [...image], text: [...text], layer: [...layer], video: [...video], audio: [...audio] };
+    return { image: [...image], text: [...text], layer: [...layer], video: [...video], audio: [...audio], vfx: [...vfx] };
+}
+
+/**
+ * Every choice option in the document, by the text the player reads - the table `picked(…)` resolves
+ * against.
+ *
+ * Scanned off the raw block map rather than walked in document order: an option is addressed by name
+ * and the order it comes back in decides nothing (a duplicate name is reported as ambiguous, not
+ * resolved by position). Disabled rows are included on purpose - a row switched off for the afternoon
+ * is still the option the author is writing a check about, and having the reference break the moment
+ * they toggle it would be the worse failure.
+ */
+export function choiceOptionRefs(document: StoryDocument | null): StoryCommandNamedRef[] {
+    const options: StoryCommandNamedRef[] = [];
+    for (const scene of Object.values(document?.scenes ?? {})) {
+        for (const block of Object.values(scene?.blocks ?? {})) {
+            if (block.kind !== "nodeAction" || block.payload.action !== "choiceOption") {
+                continue;
+            }
+            const name = segmentPlainText(block.payload.text).trim();
+            if (name) {
+                options.push({ id: block.id, name });
+            }
+        }
+    }
+    return options;
+}
+
+/**
+ * The `mode:"value"` Story Action Blueprints, by name - the table a blueprint call resolves against.
+ *
+ * `mode` is read off the owner rather than off some separate index because the owner IS the identity
+ * of a story blueprint (self-referential: the owner key equals the blueprint id). An `action`
+ * blueprint is excluded because it may run latent nodes and returns nothing; a `condition` one
+ * because it belongs to the single condition slot that created it.
+ */
+export function valueBlueprintRefs(document: BlueprintDocument | null | undefined): StoryCommandNamedRef[] {
+    const refs: StoryCommandNamedRef[] = [];
+    for (const blueprint of Object.values(document?.blueprints ?? {})) {
+        const owner = blueprint?.owner;
+        if (owner?.kind === "storyAction" && owner.mode === "value" && blueprint.name.trim()) {
+            refs.push({ id: blueprint.id, name: blueprint.name.trim() });
+        }
+    }
+    return refs;
 }
 
 export function buildStoryCommandContext(input: {
@@ -130,13 +173,52 @@ export function buildStoryCommandContext(input: {
     document: StoryDocument | null;
     sceneId: StorySceneId | null | undefined;
     scene: StoryScene | null;
-    /** Source of the persistent (game-level) variables; absent when the project has no blueprint document yet. */
+    /** Blueprint-declared persistent (game-level) variables from the M-VAR registry; empty when none. */
+    persistentVariables?: readonly VariableRegistryEntry[];
+    /**
+     * The project's blueprint document, for the `mode:"value"` blueprints an expression may call.
+     * Omitted wherever no project is open, which reports every blueprint name as unknown - the honest
+     * answer when the list could not be read at all.
+     */
     blueprintDocument?: BlueprintDocument | null;
+    /**
+     * What each puppet character's model reported about itself, for the ones that have been asked and
+     * answered. Omit a character - or the whole map - and the surface degrades to free text.
+     *
+     * An input rather than a lookup because this projection is pure by design: the answer comes from
+     * mounting the author's own runtime, which is a service's job (`PuppetDescriptionService`), and a
+     * context built in a test has no project to mount anything from.
+     */
+    puppetByCharacterId?: Readonly<Record<string, StoryPuppetVocabulary>>;
+    /**
+     * The project's audio tracks. Omitted in tests and wherever no project is open; the result is a
+     * line that reports every track name as unknown, which is the honest answer when the list could
+     * not be read at all.
+     */
+    audioTracks?: readonly { id: string; name: string }[];
 }): StoryCommandContext {
-    const formsByCharacterId: Record<string, string[]> = {};
+    // What a `/show` row can name after the character: a preset character's poses, a layered one's
+    // tags (across every axis — the engine resolves each against the group that owns it, so the
+    // command surface does not have to ask which axis the author meant).
+    const appearanceByCharacterId: Record<string, StoryCommandAppearanceRef[]> = {};
+    // A puppet character's differentials are not missing, they do not exist: what it looks like and
+    // what it is doing are named by the model its backend loaded. So it contributes no appearance
+    // refs at all, and instead lands here - which is what lets `/face` keep one slot for all three
+    // appearance kinds and `/motion` / `/skin` refuse the two Studio draws itself.
+    const puppetCharacterIds: string[] = [];
     const characters: StoryCommandNamedRef[] = input.characters.map(character => {
         const id = character.profile.getId();
-        formsByCharacterId[id] = character.profile.appearance.getForms().map(form => form.name);
+        const appearance = character.profile.appearance;
+        if (isPuppetAppearanceKind(appearance.getKind())) {
+            puppetCharacterIds.push(id);
+        }
+        appearanceByCharacterId[id] = appearance.getKind() === "preset"
+            ? appearance.getPoses().map(pose => ({ id: pose.id, name: pose.name }))
+            // Every tag of every axis, flat: the engine resolves a tag against the group that owns
+            // it, so a row never has to say which axis the author meant. The `axisId` rides along
+            // because the stored payload does have to.
+            : appearance.getAxes().flatMap(axis =>
+                axis.tags.map(tag => ({ id: tag.id, name: tag.name, axisId: axis.id })));
         return { id, name: character.profile.getName() };
     });
 
@@ -150,8 +232,24 @@ export function buildStoryCommandContext(input: {
         tempSpeakers: input.document ? collectTempSpeakers(input.document).map(speaker => speaker.name) : [],
         // A scene is addressed by the name the author sees in the panel, not its runtimeName.
         scenes: Object.values(input.document?.scenes ?? {}).map(entry => ({ id: entry.id, name: entry.name })),
-        variables: variableEntries(input.document, input.scene, input.blueprintDocument ?? null),
-        formsByCharacterId,
+        choiceOptions: choiceOptionRefs(input.document),
+        valueBlueprints: valueBlueprintRefs(input.blueprintDocument),
+        // Order preserved from the service (built-ins first), so the completion menu leads with the
+        // three tracks every project has rather than sorting them under a custom one.
+        audioTracks: (input.audioTracks ?? []).map(track => ({ id: track.id, name: track.name })),
+        // The one scan, shared with the compiler's `goto` validation (§12.9) - not a completion-layer
+        // special case, just another table this projection carries.
+        labels: sceneLabelNames(input.scene),
+        variables: variableEntries(input.document, input.scene, input.persistentVariables ?? []),
+        appearanceByCharacterId,
+        puppetCharacterIds,
+        // Only the characters that ARE puppets, so a stale entry left behind by an appearance the
+        // author changed from `puppet` to `layered` cannot go on offering motions.
+        puppetByCharacterId: Object.fromEntries(
+            puppetCharacterIds
+                .map(id => [id, input.puppetByCharacterId?.[id]] as const)
+                .filter((entry): entry is readonly [string, StoryPuppetVocabulary] => entry[1] !== undefined),
+        ),
         stageObjects: collectStageObjects(input.document, input.sceneId, input.scene),
     };
 }

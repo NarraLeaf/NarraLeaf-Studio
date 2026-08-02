@@ -38,7 +38,8 @@ export {
     ModalHeader,
     ModalBody,
     ModalFooter,
-    dialogFooterButtonClass
+    dialogFooterButtonClass,
+    useEscapeToClose
 } from "./Modal";
 export type { ModalProps } from "./Modal";
 
@@ -59,3 +60,15 @@ export type { HintPopoverProps } from "./HintPopover";
 // Slider components
 export { Slider } from "./Slider";
 export type { SliderProps } from "./Slider";
+
+// Badge component
+export { Badge } from "./Badge";
+export type { BadgeProps, BadgeTone } from "./Badge";
+
+// EmptyState component
+export { EmptyState } from "./EmptyState";
+export type { EmptyStateProps } from "./EmptyState";
+
+// Inspection-only control (survives a read-only `<fieldset disabled>` clamp)
+export { InspectOnlyButton } from "./InspectOnlyButton";
+export type { InspectOnlyButtonProps } from "./InspectOnlyButton";

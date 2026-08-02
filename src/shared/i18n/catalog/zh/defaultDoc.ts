@@ -10,11 +10,13 @@ export const defaultDoc = {
         interactionLayer: "对话交互图层",
         panel: "对话面板",
         content: "对话内容",
+        avatar: "说话人头像",
         nametag: "名牌",
         sentence: "句子",
         sentenceText: "当前台词将显示在这里",
         nextEvent: "对话下一步",
         updateNametagEvent: "更新名牌",
+        updateAvatarEvent: "更新说话人头像",
     },
     notification: {
         list: "通知列表",

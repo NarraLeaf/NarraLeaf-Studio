@@ -25,6 +25,27 @@
      */
     --nl-on-primary: 255 255 255;
 
+    /*
+     * Story editor reading density: the height of a row's single-line content box. The scene editor
+     * root overrides it per density from STORY_DENSITY_METRICS; this baseline is the compact value, so
+     * a row rendered outside that root (tests, isolated previews) still has a sane box.
+     */
+    --nl-story-row-box: 28px;
+
+    /*
+     * Story editor speaker-name column. The scene editor root overrides it with a width measured from
+     * that scene's own cast; this baseline is the floor, so a row rendered outside that root still has
+     * a column to hang its nametag in instead of collapsing onto the words.
+     */
+    --nl-story-name: 56px;
+
+    /*
+     * Alpha of the editor's reading surfaces (`.nl-editor-surface` below). Studio windows override
+     * it on the root element from the `editor.surfaceOpacity` setting (src/renderer/lib/appearance);
+     * 1 here is that setting's default and what a surface rendered outside the bootstrap gets.
+     */
+    --nl-editor-surface-opacity: 1;
+
     --narraleaf-accent: rgb(var(--nl-primary));
     --narraleaf-accent-strong: rgb(var(--nl-primary));
     --narraleaf-accent-weak: rgb(var(--nl-primary) / 0.6);
@@ -262,6 +283,18 @@
     background: transparent;
 }
 
+/* Opt-in: keep the element scrollable but hide the scrollbar chrome entirely. */
+.nl-no-scrollbar {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* legacy Edge */
+}
+
+.nl-no-scrollbar::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+}
+
 /* Global focus styles - remove default browser focus outlines */
 *:focus,
 *:focus-visible {
@@ -276,6 +309,76 @@ button:focus,
 select:focus {
     outline: none !important;
     box-shadow: none !important;
+}
+
+/*
+ * Opt back in to a VISIBLE focus indicator.
+ *
+ * The rule immediately above is `!important`, so on a `<button>` nothing short of another
+ * `!important` can put a focus indicator back — Tailwind's own `focus:ring-*` included. That failure
+ * is silent and convincing: every ring custom property resolves correctly, `:focus` matches, the
+ * utility is in the stylesheet, and only the composed `box-shadow` is discarded. It looks like it
+ * works right up until you photograph it.
+ *
+ * Needed by any control that is reachable by keyboard but deliberately NOT focusable by pointer —
+ * the story editor's rich-text strip, whose `mousedown` is prevented so the caret stays in the line.
+ * There, focus arrives only from the keyboard, and an invisible focus position is the whole feature
+ * missing. `outline` rather than `box-shadow` so the indicator costs no layout and cannot be clipped
+ * by an overflow ancestor.
+ */
+.nl-focus-ring:focus {
+    outline: 2px solid rgb(var(--nl-primary)) !important;
+    outline-offset: 1px !important;
+}
+
+/*
+ * Custom workspace background reveal (see WorkspaceLayout). When a wallpaper is set the workspace
+ * root carries `.nl-has-workspace-bg`, and a single pre-composited backdrop (surface colour +
+ * wallpaper at its configured strength) sits behind the chrome. Making the base `bg-surface` fill
+ * fully transparent turns every base panel — and the seams between them — into a window onto that
+ * one backdrop, so the picture reads identically everywhere and never bleeds through the gaps at
+ * full strength. Fully transparent, not merely thinned: stacked half-opaque fills would each let a
+ * little more through, so gaps (fewer fills) came out brighter than panels — the seam artefact.
+ * Only the base surface is cleared; raised/overlay/sunken surfaces (menus, dialogs, panel headers,
+ * cards) keep their opaque paints for depth, and text/icons/borders/content images are not
+ * `bg-surface`, so real content is never washed out. The descendant combinator excludes the root's
+ * own fill, which sits under the backdrop and stays opaque as the ultimate base.
+ */
+.nl-has-workspace-bg .bg-surface {
+    background-color: transparent;
+}
+
+/*
+ * The base surface paint, asserted opaquely — for a layer that is stacked ON another base surface
+ * and has to hide it (the project panel's slide-in sub-page over its own overview list). Such a
+ * layer cannot use `bg-surface`: the rule above clears that fill under a wallpaper, and a
+ * transparent lid over a still-mounted sibling shows the sibling straight through it.
+ *
+ * The same colour `bg-surface` resolves to, so nothing moves when no wallpaper is set. With one
+ * set, this layer stops being a window onto the backdrop for as long as it is up — the same trade
+ * menus and dialogs already make, and the only way to occlude at all.
+ *
+ * Not a `bg-surface` companion class: the wallpaper rule outranks a single class selector, so an
+ * element carrying both would still be cleared. This replaces it.
+ */
+.nl-opaque-surface {
+    background-color: rgb(var(--nl-surface));
+}
+
+/*
+ * The editor's reading surfaces: the story editor's prose area, the inspector's field area and the
+ * Dev Mode debug panel body. Same sunken paint they were pinned to, with its alpha taken from the
+ * `editor.surfaceOpacity` setting instead of from the token.
+ *
+ * Why it is adjustable at all: the rule above deliberately clears every base `bg-surface` so a
+ * wallpaper reads as one picture, which left the text you actually read sitting on the photograph.
+ * Making these three opaque fixed the reading but cut a hard rectangle out of an otherwise
+ * translucent app — and the wallpaper is opt-in, so the plate under the words has to be too.
+ * At 100% this is exactly `bg-surface-sunken`; at 0% the surface is gone and the wallpaper runs
+ * behind the prose again.
+ */
+.nl-editor-surface {
+    background-color: rgb(var(--nl-surface-sunken) / var(--nl-editor-surface-opacity));
 }
 
 /*
@@ -426,6 +529,17 @@ input[type="radio"]:focus {
     box-shadow: 0 0 0 2px rgb(var(--nl-primary) / 0.3);
 }
 
+/**
+ * Reading density for the story editor used to live here, as a flat `min-height` on the row. It grew
+ * the row but not its columns — the row grid is `items-start` by design — so the extra height piled up
+ * *below* the text (10.8px per row in comfortable) while the drag handle, which centred over the whole
+ * row, drifted out of line with the words it grabs.
+ *
+ * The density numbers now live in one table (`STORY_DENSITY_METRICS`, storyEditorTextStyle.tsx) and
+ * reach the rows as the `--nl-story-row-box` custom property, so each column sizes the same single-line
+ * box and centres in it. Nothing density-specific belongs in this stylesheet any more.
+ */
+
 @layer utilities {
     .titlebar-drag { -webkit-app-region: drag; }
     .no-drag { -webkit-app-region: no-drag; }
@@ -531,6 +645,34 @@ input[type="radio"]:focus {
     border-radius: 0 !important;
 }
 
+/*
+ * Pin drag feel: a blueprint pin is only an ~8px dot sitting at the card edge. Pressing a
+ * pixel or two off it lands on the pane and React Flow starts a marquee (or a node drag)
+ * instead of pulling a connection — even when the crosshair cursor was showing. A transparent
+ * ::before enlarges the pointer target so those near-misses grab the pin.
+ *
+ * `pointer-events` is inherited, so the expander is only live while the handle itself is
+ * connectable (React Flow sets `pointer-events: all` + `cursor: crosshair` on connectable
+ * handles, `none` otherwise) — non-connectable handles stay inert and never swallow clicks on
+ * card controls. The pane-facing side (left for inputs, right for outputs) gets the generous
+ * inset since that is exactly where the misses land; the card-facing side stays inside the
+ * pin gutter so it never reaches labels or inline inputs, and the small vertical inset keeps
+ * each pin's target within its own row so neighbours don't overlap.
+ */
+.narraleaf-blueprint-flow .react-flow__handle::before {
+    content: "";
+    position: absolute;
+    inset: -4px -6px;
+}
+
+.narraleaf-blueprint-flow .react-flow__handle-left::before {
+    inset: -4px -6px -4px -12px;
+}
+
+.narraleaf-blueprint-flow .react-flow__handle-right::before {
+    inset: -4px -12px -4px -6px;
+}
+
 .moveable,
 .moveable * {
     --moveable-color: var(--narraleaf-accent-strong);
@@ -614,6 +756,105 @@ input[type="radio"]:focus {
 
 .nl-field-grid > * {
     min-width: 0;
+}
+
+/*
+ * Dock divider (see components/ui/ResizableHandle) — the seam between two regions of the shell:
+ * sidebar/editor, editor/bottom panel, editor/preview pane.
+ *
+ * ONE line, 1px, and nothing else. It used to be two: the panel painted `border-*-edge` and the
+ * 4px drag handle beside it painted another, leaving a 3px strip between them that showed the
+ * root surface — a different colour from the panel header above it, and a bright slot for a
+ * workspace wallpaper to shine through. So the panels now draw no border at the seam at all and
+ * this element IS the seam.
+ *
+ * Everything the 1px box is too thin for is a pseudo-element, so neither the grab area nor the
+ * glow can push the layout around:
+ *   ::before  the pointer target, widened past the line into both neighbours (same trick as the
+ *             blueprint pin hit areas and the editor split sash).
+ *   ::after   the hover/drag bloom: a gradient that fades out symmetrically to BOTH sides, so
+ *             the seam lights up across the boundary instead of thickening into a bar.
+ */
+.nl-dock-divider {
+    position: relative;
+    /* Above the editor group's own `z-10` so the bloom is not painted under the neighbour. */
+    z-index: 15;
+    flex: none;
+    background-color: var(--nl-edge);
+    transition: background-color 150ms ease;
+}
+
+.nl-dock-divider--x {
+    width: 1px;
+    align-self: stretch;
+    cursor: col-resize;
+}
+
+.nl-dock-divider--y {
+    height: 1px;
+    cursor: row-resize;
+}
+
+.nl-dock-divider::before,
+.nl-dock-divider::after {
+    content: "";
+    position: absolute;
+}
+
+/* Grab area only — invisible, 3px into each neighbour (a 7px target for a 1px line). */
+.nl-dock-divider--x::before {
+    inset: 0 -3px;
+}
+
+.nl-dock-divider--y::before {
+    inset: -3px 0;
+}
+
+.nl-dock-divider::after {
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 160ms ease;
+}
+
+.nl-dock-divider--x::after {
+    inset: 0 -6px;
+    background: linear-gradient(to right, transparent, rgb(var(--nl-primary) / 0.09), transparent);
+}
+
+.nl-dock-divider--y::after {
+    inset: -6px 0;
+    background: linear-gradient(to bottom, transparent, rgb(var(--nl-primary) / 0.09), transparent);
+}
+
+/*
+ * A focused dock panel rings itself in the accent, and one arm of that ring lands on this exact
+ * seam. Stand the line down there so the seam still shows exactly ONE line — the accent one —
+ * instead of an accent line pressed up against a grey one. The divider keeps its full grab area
+ * and its hover glow; only the resting paint yields. (`+` covers the left dock, where the panel
+ * precedes the divider; `:has(+ …)` covers the right/bottom docks, where it follows.)
+ */
+.nl-dock-focused + .nl-dock-divider,
+.nl-dock-divider:has(+ .nl-dock-focused) {
+    background-color: transparent;
+}
+
+/*
+ * Hover is an aside, not an event: the line lifts to a half-strength accent and the bloom stays
+ * near the threshold of visible. Same weights the editor split sash already uses (`primary/50`
+ * hovered, solid while dragging), so the seam reads as part of the chrome rather than a highlight
+ * laid over it. Only the drag — a thing the user is actively doing — goes to the full accent.
+ */
+.nl-dock-divider:hover {
+    background-color: rgb(var(--nl-primary) / 0.5);
+}
+
+.nl-dock-divider--active {
+    background-color: rgb(var(--nl-primary));
+}
+
+.nl-dock-divider:hover::after,
+.nl-dock-divider--active::after {
+    opacity: 1;
 }
 
 /*

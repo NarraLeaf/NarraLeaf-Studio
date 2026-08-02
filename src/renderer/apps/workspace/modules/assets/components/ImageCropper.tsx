@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AlertCircle, Crop, RefreshCw, X } from "lucide-react";
+import { useEscapeToClose } from "@/lib/components/elements/Modal";
 import { useTranslation } from "@/lib/i18n";
 
 type CropRect = {
@@ -55,6 +56,9 @@ export function ImageCropper({
     onChange,
 }: ImageCropperProps) {
     const { t } = useTranslation();
+    // The step straight after the asset picker in the thumbnail flow, hand-built the same way and
+    // missing the same keystroke. Fixing only the picker would have moved the dead end one dialog on.
+    useEscapeToClose(visible, onClose);
     const containerRef = useRef<HTMLDivElement | null>(null);
     const imageRef = useRef<HTMLImageElement | null>(null);
     const [imageSize, setImageSize] = useState<Size | null>(null);
@@ -419,7 +423,7 @@ export function ImageCropper({
         >
             <div
                 style={anchorRef?.current ? { position: "fixed", top: anchorStyle.top, left: anchorStyle.left, width: anchorStyle.width } : { width: anchorStyle.width }}
-                className={`${anchorRef?.current ? "" : "mt-10 mx-auto"} bg-surface border border-edge rounded-xl shadow-xl text-fg max-h-[640px] flex flex-col ${className}`}
+                className={`${anchorRef?.current ? "" : "mt-10 mx-auto"} bg-surface-raised border border-edge rounded-xl shadow-xl text-fg max-h-[640px] flex flex-col ${className}`}
                 onMouseDown={(e) => e.stopPropagation()}
             >
                 <div className="flex items-center justify-between px-4 py-3 border-b border-edge">
@@ -442,13 +446,13 @@ export function ImageCropper({
                                     img.src = imageUrl;
                                 }
                             }}
-                            className="p-1 rounded hover:bg-fill disabled:opacity-50"
+                            className="p-1 rounded-md hover:bg-fill disabled:opacity-50"
                             disabled={loading}
                             title={t("assets.cropper.reload")}
                         >
                             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
                         </button>
-                        <button onClick={onClose} className="p-1 rounded hover:bg-fill" title={t("common.close")}>
+                        <button onClick={onClose} className="p-1 rounded-md hover:bg-fill" title={t("common.close")}>
                             <X className="w-4 h-4" />
                         </button>
                     </div>
@@ -540,7 +544,7 @@ export function ImageCropper({
                                     )}
 
                                     {dragState && dragState.handle !== "move" && (
-                                        <div className="absolute left-2 bottom-2 bg-black/60 text-2xs px-2 py-1 rounded text-white pointer-events-none">
+                                        <div className="absolute left-2 bottom-2 bg-black/60 text-2xs px-2 py-1 rounded-md text-white pointer-events-none">
                                             {Math.round(selection.width)} x {Math.round(selection.height)}
                                         </div>
                                     )}

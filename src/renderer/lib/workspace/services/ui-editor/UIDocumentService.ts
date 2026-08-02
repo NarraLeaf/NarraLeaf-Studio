@@ -30,6 +30,8 @@ import { roundUILayoutGeometryFields } from "@/lib/ui-editor/layout/roundLayoutG
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
 import { IUIDocumentService, Services, WorkspaceContext } from "../services";
+import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver } from "../autosave/DebouncedSaver";
+import { registerAutoSaver } from "../autosave/SaveStatusService";
 import { LocalBlueprintService } from "./LocalBlueprintService";
 import { UIEditorHistoryService, cloneUIHistoryDocument } from "./UIEditorHistoryService";
 import { FileSystemService } from "../core/FileSystem";
@@ -64,11 +66,15 @@ import {
 } from "./blueprint/ownerKeys";
 import type {
     Blueprint,
+    BlueprintDocument,
     BlueprintGraphIr,
     BlueprintGraphNode,
     BlueprintOwnerRef,
     BlueprintPrivateOwnerRecord,
 } from "@shared/types/blueprint/document";
+import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
+import type { UITemplateSurfacePlacement } from "@shared/types/uiTemplateRegistry";
+import { assertValidBlueprintDocument } from "./blueprint/documentValidation";
 import {
     BLUEPRINT_GRAPH_IR_META_KIND,
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
@@ -85,7 +91,9 @@ import {
     BLUEPRINT_NODE_TYPE_FLOW_IF,
     BLUEPRINT_NODE_TYPE_GAME_CHOOSE,
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR,
     BLUEPRINT_NODE_TYPE_GAME_NEXT,
+    BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS,
     BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT,
 } from "@shared/types/blueprint/graph";
@@ -108,6 +116,7 @@ import { defaultTextWidgetProps, type TextWidgetProps } from "@/lib/ui-editor/wi
 import { defaultListWidgetProps, type ListWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/list/types";
 import {
     createInitialContainerAppearance,
+    createInitialImageAppearanceFromProps,
     createInitialTextAppearance,
     isUsableAppearanceModel,
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
@@ -160,6 +169,7 @@ type DialogStageTemplate = {
     elements: Record<UIElementId, UIElement>;
     interactionLayerId: UIElementId;
     panelId: UIElementId;
+    avatarId: UIElementId;
     stackId: UIElementId;
     nametagId: UIElementId;
     sentenceId: UIElementId;
@@ -250,6 +260,9 @@ type SurfaceDuplicateRemapContext = {
     newSurfaceId: string;
     elementIdMap: Record<string, string>;
     blueprintIdMap: Record<string, string>;
+    /** Optional source-assetId -> project-assetId map, set only when importing a
+     * template that ships resources; absent (and inert) for in-document duplicate. */
+    assetIdMap?: Record<string, string>;
 };
 
 function remapSurfaceDuplicateReferenceValue<T>(value: T, ctx: SurfaceDuplicateRemapContext, key?: string): T {
@@ -262,6 +275,9 @@ function remapSurfaceDuplicateReferenceValue<T>(value: T, ctx: SurfaceDuplicateR
         }
         if (key && isReferenceKey(key, "blueprintId") && ctx.blueprintIdMap[value]) {
             return ctx.blueprintIdMap[value] as T;
+        }
+        if (key && ctx.assetIdMap && isReferenceKey(key, "assetId") && ctx.assetIdMap[value]) {
+            return ctx.assetIdMap[value] as T;
         }
         return value;
     }
@@ -325,6 +341,21 @@ function createTextTemplateProps(overrides: Partial<TextWidgetProps>): TextWidge
         ...overrides,
     };
     props.appearance = createInitialTextAppearance(props);
+    return props;
+}
+
+/**
+ * `nl.image` has no exported default-props bag, so the widget module's own insert defaults are the
+ * single source of truth here; overrides land on top and the appearance model is rebuilt from the
+ * merged result (the module's serialized one describes the defaults, not what we just wrote).
+ */
+function createImageTemplateProps(overrides: Record<string, unknown>): Record<string, unknown> {
+    const defaults = widgetModuleRegistry.get("nl.image")?.createDefaultElement().props ?? {};
+    const props: Record<string, unknown> = {
+        ...cloneJson(defaults),
+        ...overrides,
+    };
+    props.appearance = createInitialImageAppearanceFromProps(props);
     return props;
 }
 
@@ -435,14 +466,35 @@ function calculateElementsBounds(elements: UIElement[]): UISurfaceDesignSize & {
     };
 }
 
+/** What a template import touched: the surfaces added, and any stage slots that
+ * were already occupied so their surface was skipped (surfaced to the user). */
+export type ImportTemplateResult = {
+    importedSurfaces: UISurface[];
+    skippedSlots: UIStageSlotId[];
+};
+
+/** One template's fetched documents plus a resolved placement, ready to import.
+ * `assetIdMap` maps the template's original asset ids to the ids they were
+ * ingested under in this project; empty/undefined for asset-free templates. */
+export type ImportTemplateBundleInput = {
+    document: unknown;
+    graphs: unknown;
+    placement: UITemplateSurfacePlacement;
+    assetIdMap?: Record<string, string>;
+};
+
 export class UIDocumentService extends Service<UIDocumentService> implements IUIDocumentService {
     private document: UIDocument | null = null;
     private readonly events = new EventEmitter<UIDocumentServiceEvents>();
     private revision = 0;
     private lastSavedRevision = 0;
     private dirty = false;
-    private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
-    private readonly autoSaveDelay = 800;
+    private readonly autoSaver = new DebouncedSaver({
+        delayMs: DEFAULT_AUTOSAVE_DELAY_MS,
+        maxWaitMs: DEFAULT_AUTOSAVE_MAX_WAIT_MS,
+        save: () => this.save(this.getDocument()),
+        onError: err => console.warn("[UIDocumentService] auto-save failed", err),
+    });
     private afterMutateHook: (() => void) | null = null;
     private historySuppressionDepth = 0;
 
@@ -451,6 +503,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const projectService = ctx.services.get<ProjectService>(Services.Project);
         const uuidService = ctx.services.get<UuidService>(Services.Uuid);
         await depend([filesystemService, projectService, uuidService]);
+        await registerAutoSaver(ctx, depend, "uiDocument", "workspace.shell.save.stores.uiDocument", this.autoSaver);
 
         await this.ensureDocumentDir();
         await this.load();
@@ -515,10 +568,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const fs = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         await this.ensureDocumentDir();
         const documentPath = this.getDocumentPath();
-        if (this.autoSaveTimer) {
-            clearTimeout(this.autoSaveTimer);
-            this.autoSaveTimer = null;
-        }
+        // This write supersedes whatever the timer was going to do.
+        this.autoSaver.cancel();
         const updated: UIDocument = {
             ...document,
             meta: {
@@ -535,6 +586,16 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         this.lastSavedRevision = this.revision;
         this.setDirty(false);
         this.events.emit("documentChanged", this.document);
+    }
+
+    /**
+     * Write out anything the auto-save timer still owes, and wait for it.
+     *
+     * The uniform name across every document service, so the shutdown/hand-off flush can call them
+     * all without knowing what each one persists.
+     */
+    public async flushPendingChanges(): Promise<void> {
+        await this.autoSaver.flush();
     }
 
     public onDocumentChanged(handler: (doc: UIDocument) => void): () => void {
@@ -924,15 +985,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     }
 
     private scheduleAutoSave(): void {
-        if (this.autoSaveTimer) {
-            clearTimeout(this.autoSaveTimer);
-        }
-        this.autoSaveTimer = setTimeout(() => {
-            this.autoSaveTimer = null;
-            void this.save(this.getDocument()).catch(err => {
-                console.warn("[UIDocumentService] auto-save failed", err);
-            });
-        }, this.autoSaveDelay);
+        this.autoSaver.schedule();
     }
 
     private setDirty(value: boolean): void {
@@ -1594,6 +1647,289 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
 
         return duplicatedSurface;
+    }
+
+    /**
+     * Import a downloaded UI template into the open project.
+     *
+     * A template is a `UIDocument` + `UIGraphDocument` pair (possibly on an older
+     * schema). Both are migrated to the current schema, every surface / element /
+     * blueprint id is regenerated, and cross-references are remapped together — the
+     * same discipline as {@link duplicateSurface}, but sourcing from external docs
+     * and building the surface envelope from the caller's `placement` rather than
+     * cloning the source surface's own kind/mount. Nothing in the user's existing
+     * work is replaced; the template's surfaces are appended.
+     *
+     * A stage template whose target slot is already occupied is skipped and its
+     * slot reported back, so the caller can tell the user rather than silently
+     * dropping or clobbering a surface.
+     */
+    public importTemplateBundle(input: ImportTemplateBundleInput): ImportTemplateResult {
+        // migrateIfNeeded is pure (does not touch this.document) and, unlike load(),
+        // does not inject a main surface — so only the template's own surfaces come
+        // through and the current document is untouched until the final mutate.
+        const sourceDocument = this.migrateIfNeeded(this.coerceIncomingUIDocument(input.document));
+
+        let sourceBlueprintDocument: BlueprintDocument | null = null;
+        try {
+            const rawBlueprint = input.graphs && typeof input.graphs === "object"
+                ? (input.graphs as { blueprintDocument?: unknown }).blueprintDocument
+                : undefined;
+            if (rawBlueprint) {
+                const migrated = migrateBlueprintDocumentToLatest(rawBlueprint);
+                assertValidBlueprintDocument(migrated);
+                sourceBlueprintDocument = migrated;
+            }
+        } catch (error) {
+            // A logic graph that fails to migrate/validate must not block importing
+            // the visual layout; drop the blueprints and keep the surface.
+            console.warn("[UIDocumentService] template blueprints skipped (invalid)", error);
+            sourceBlueprintDocument = null;
+        }
+
+        const importable = sourceDocument.surfaces.filter(surface => surface.id !== MAIN_APP_SURFACE_ID);
+        const occupiedStageSlots = new Set<UIStageSlotId>(
+            this.getDocument().surfaces
+                .filter((surface): surface is UISurface & { kind: "stageSurface"; mount: UIStageSurfaceMount } =>
+                    surface.kind === "stageSurface")
+                .map(surface => surface.mount.slotId),
+        );
+
+        const importedSurfaces: UISurface[] = [];
+        const skippedSlots: UIStageSlotId[] = [];
+
+        for (const sourceSurface of importable) {
+            let placement = input.placement;
+            if (placement.kind === "stageSurface") {
+                const slotId = placement.slotId ?? DEFAULT_UI_STAGE_SLOT_ID;
+                if (occupiedStageSlots.has(slotId)) {
+                    skippedSlots.push(slotId);
+                    continue;
+                }
+                occupiedStageSlots.add(slotId);
+                placement = { kind: "stageSurface", slotId };
+            }
+            const imported = this.importSingleSurface(
+                sourceSurface,
+                sourceDocument,
+                sourceBlueprintDocument,
+                placement,
+                input.assetIdMap,
+            );
+            if (imported) {
+                importedSurfaces.push(imported);
+            }
+        }
+
+        return { importedSurfaces, skippedSlots };
+    }
+
+    private coerceIncomingUIDocument(raw: unknown): UIDocument {
+        if (!raw || typeof raw !== "object") {
+            throw new RendererError("Template document is not an object");
+        }
+        const record = raw as Record<string, unknown>;
+        if (
+            typeof record.schemaVersion !== "number"
+            || !Array.isArray(record.surfaces)
+            || typeof record.elements !== "object"
+            || record.elements === null
+        ) {
+            throw new RendererError("Template document is missing required fields");
+        }
+        return raw as UIDocument;
+    }
+
+    private importSingleSurface(
+        sourceSurface: UISurface,
+        sourceDocument: UIDocument,
+        sourceBlueprintDocument: BlueprintDocument | null,
+        placement: UITemplateSurfacePlacement,
+        assetIdMap?: Record<string, string>,
+    ): UISurface | null {
+        const sourceRootId = sourceSurface.rootElementId;
+        if (!sourceDocument.elements[sourceRootId]) {
+            return null;
+        }
+
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const newSurfaceId = uuidService.generate();
+        const sourceElementIds = Array.from(collectSubtreeElementIds(sourceDocument, sourceRootId))
+            .filter(elementId => Boolean(sourceDocument.elements[elementId]));
+        const elementIdMap: Record<string, string> = {};
+        for (const elementId of sourceElementIds) {
+            elementIdMap[elementId] = uuidService.generate();
+        }
+        const newRootElementId = elementIdMap[sourceRootId];
+        if (!newRootElementId) {
+            return null;
+        }
+
+        let localBp: LocalBlueprintService | null = null;
+        try {
+            localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        } catch {
+            localBp = null;
+        }
+
+        const blueprintIdMap: Record<string, string> = {};
+        const ownerRecordsToClone: Record<string, BlueprintPrivateOwnerRecord> = {};
+        if (sourceBlueprintDocument) {
+            for (const [ownerKey, ownerRecord] of Object.entries(sourceBlueprintDocument.ownerRecords)) {
+                const firstBlueprint = ownerRecord.privateBlueprintIds
+                    .map(blueprintId => sourceBlueprintDocument.blueprints[blueprintId])
+                    .find((blueprint): blueprint is Blueprint => Boolean(blueprint));
+                const owner = firstBlueprint?.owner;
+                // Only clone blueprints owned by this surface / its widgets. Global
+                // blueprints (globalMain) remap to null and are left behind.
+                if (!owner || !remapDuplicatedBlueprintOwner(owner, {
+                    oldSurfaceId: sourceSurface.id,
+                    newSurfaceId,
+                    elementIdMap,
+                    blueprintIdMap: {},
+                })) {
+                    continue;
+                }
+                ownerRecordsToClone[ownerKey] = cloneJson(ownerRecord);
+                for (const blueprintId of ownerRecord.privateBlueprintIds) {
+                    if (sourceBlueprintDocument.blueprints[blueprintId] && !blueprintIdMap[blueprintId]) {
+                        blueprintIdMap[blueprintId] = uuidService.generate();
+                    }
+                }
+            }
+        }
+
+        const remapContext: SurfaceDuplicateRemapContext = {
+            oldSurfaceId: sourceSurface.id,
+            newSurfaceId,
+            elementIdMap,
+            blueprintIdMap,
+            assetIdMap,
+        };
+
+        const existingNames = new Set(this.getDocument().surfaces.map(surface => surface.name));
+        const nextName = createDuplicateName(sourceSurface.name, existingNames);
+        const designSize = sourceSurface.designSize ?? DEFAULT_UI_SURFACE_SIZE;
+        const remappedSettings = sourceSurface.settings
+            ? remapSurfaceDuplicateReferenceValue(cloneJson(sourceSurface.settings), remapContext)
+            : undefined;
+
+        const newSurface: UISurface = placement.kind === "stageSurface"
+            ? {
+                id: newSurfaceId,
+                name: nextName,
+                host: "player",
+                kind: "stageSurface",
+                designSize,
+                rootElementId: newRootElementId,
+                settings: { backgroundColor: "transparent", ...(remappedSettings ?? {}) },
+                mount: { kind: "slot", slotId: placement.slotId ?? DEFAULT_UI_STAGE_SLOT_ID },
+            }
+            : {
+                id: newSurfaceId,
+                name: nextName,
+                host: "app",
+                kind: "appSurface",
+                designSize,
+                rootElementId: newRootElementId,
+                settings: createDefaultPageSurfaceSettings(remappedSettings),
+            };
+
+        localBp?.applyBlueprintMutation(bpDoc => {
+            for (const sourceOwnerRecord of Object.values(ownerRecordsToClone)) {
+                const clonedBlueprintIds = sourceOwnerRecord.privateBlueprintIds
+                    .map(oldBlueprintId => blueprintIdMap[oldBlueprintId])
+                    .filter((blueprintId): blueprintId is string => Boolean(blueprintId));
+                const activeBlueprintId = blueprintIdMap[sourceOwnerRecord.activeBlueprintId];
+                if (!activeBlueprintId || clonedBlueprintIds.length === 0) {
+                    continue;
+                }
+                const firstSourceBlueprint = sourceOwnerRecord.privateBlueprintIds
+                    .map(oldBlueprintId => sourceBlueprintDocument?.blueprints[oldBlueprintId])
+                    .find((blueprint): blueprint is Blueprint => Boolean(blueprint));
+                const newOwner = firstSourceBlueprint
+                    ? remapDuplicatedBlueprintOwner(firstSourceBlueprint.owner, remapContext)
+                    : null;
+                if (!newOwner) {
+                    continue;
+                }
+                let newOwnerKey: string;
+                if (newOwner.kind === "surfaceMain") {
+                    newOwnerKey = surfaceMainOwnerKey(newOwner.surfaceId);
+                } else if (newOwner.kind === "widgetMain") {
+                    newOwnerKey = widgetMainOwnerKey(newOwner.surfaceId, newOwner.elementId);
+                } else if (newOwner.kind === "widgetValue") {
+                    newOwnerKey = widgetValueOwnerKey(newOwner.surfaceId, newOwner.elementId, newOwner.propPath);
+                } else {
+                    continue;
+                }
+                for (const oldBlueprintId of sourceOwnerRecord.privateBlueprintIds) {
+                    const sourceBlueprint = sourceBlueprintDocument?.blueprints[oldBlueprintId];
+                    const newBlueprintId = blueprintIdMap[oldBlueprintId];
+                    if (!sourceBlueprint || !newBlueprintId) {
+                        continue;
+                    }
+                    const clonedBlueprint = cloneBlueprintForSurfaceDuplicate(sourceBlueprint, newBlueprintId, remapContext);
+                    if (clonedBlueprint) {
+                        bpDoc.blueprints[newBlueprintId] = clonedBlueprint;
+                    }
+                }
+                bpDoc.ownerRecords[newOwnerKey] = {
+                    ...cloneJson(sourceOwnerRecord),
+                    activeBlueprintId,
+                    privateBlueprintIds: clonedBlueprintIds,
+                };
+            }
+        });
+
+        const importedElements: Record<string, UIElement> = {};
+        for (const oldElementId of sourceElementIds) {
+            const sourceElement = sourceDocument.elements[oldElementId];
+            const newElementId = elementIdMap[oldElementId];
+            if (!sourceElement || !newElementId) {
+                continue;
+            }
+            const copy = cloneJson(sourceElement);
+            copy.id = newElementId;
+            copy.parentId = sourceElement.parentId ? elementIdMap[sourceElement.parentId] ?? null : null;
+            copy.childrenIds = sourceElement.childrenIds
+                .filter(childId => Boolean(elementIdMap[childId]))
+                .map(childId => elementIdMap[childId]);
+            copy.props = copy.props
+                ? remapSurfaceDuplicateReferenceValue(copy.props, remapContext)
+                : undefined;
+            copy.style = copy.style
+                ? remapSurfaceDuplicateReferenceValue(copy.style, remapContext)
+                : undefined;
+            copy.extra = copy.extra
+                ? remapSurfaceDuplicateReferenceValue(copy.extra, remapContext)
+                : undefined;
+            if (copy.behavior?.events) {
+                copy.behavior = {
+                    ...copy.behavior,
+                    events: remapElementBehaviorBlueprintIds(copy.behavior.events, blueprintIdMap),
+                };
+            }
+            if (copy.valueBindings) {
+                copy.valueBindings = remapElementValueBindingBlueprintIds(copy.valueBindings, blueprintIdMap);
+            }
+            importedElements[newElementId] = copy;
+        }
+
+        // The imported root becomes the new surface's root: no parent, whatever the
+        // source tree said.
+        const newRoot = importedElements[newRootElementId];
+        if (newRoot) {
+            newRoot.parentId = null;
+        }
+
+        this.mutateDocument(document => {
+            Object.assign(document.elements, importedElements);
+            document.surfaces.push(newSurface);
+            normalizeFlowChildLayouts(document, Object.keys(importedElements));
+        });
+
+        return newSurface;
     }
 
     public getComponent(componentId: string): UIComponentDefinition | undefined {
@@ -2957,6 +3293,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
         const interactionLayerId = uuidService.generate();
         const panelId = uuidService.generate();
+        const avatarId = uuidService.generate();
         const stackId = uuidService.generate();
         const nametagId = uuidService.generate();
         const sentenceId = uuidService.generate();
@@ -2964,6 +3301,13 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const panelHeight = Math.max(180, Math.round(designSize.height * 0.24));
         const panelX = Math.round((designSize.width - panelWidth) / 2);
         const panelY = Math.max(0, designSize.height - panelHeight - Math.round(designSize.height * 0.04));
+        const panelInset = 28;
+        // The avatar sits in the panel's free layout, and the text column pays for it with left
+        // padding rather than becoming a flow sibling: that keeps nametag/sentence stacking as-is
+        // and keeps the text baseline steady on lines that resolve no avatar.
+        const avatarSize = Math.max(96, Math.min(180, panelHeight - 44));
+        const avatarY = Math.max(0, Math.round((panelHeight - avatarSize) / 2));
+        const contentPaddingLeft = panelInset + avatarSize + 24;
 
         rootElement.childrenIds = [interactionLayerId, panelId];
 
@@ -3001,7 +3345,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             type: "nl.container",
             name: translate("defaultDoc.dialog.panel"),
             parentId: rootElement.id,
-            childrenIds: [stackId],
+            childrenIds: [stackId, avatarId],
             layout: roundUILayoutGeometryFields({
                 x: panelX,
                 y: panelY,
@@ -3026,6 +3370,39 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }),
         };
 
+        const avatar: UIElement = {
+            id: avatarId,
+            type: "nl.image",
+            name: translate("defaultDoc.dialog.avatar"),
+            parentId: panelId,
+            childrenIds: [],
+            layout: roundUILayoutGeometryFields({
+                x: panelInset,
+                y: avatarY,
+                width: avatarSize,
+                height: avatarSize,
+                opacity: 1,
+                visible: true,
+            }),
+            props: createImageTemplateProps({
+                // No chrome: with no asset resolved the widget then paints nothing at all, which is
+                // what a narrator line or an avatar-less character should look like.
+                fillType: "image",
+                imageFill: { mode: "cover", assetId: null },
+                backgroundColor: "transparent",
+                fillVisible: true,
+                fillOpacity: 1,
+                strokeVisible: false,
+                borderWidth: 0,
+                borderRadius: 8,
+                borderRadiusTL: 8,
+                borderRadiusTR: 8,
+                borderRadiusBL: 8,
+                borderRadiusBR: 8,
+                borderRadiusLinked: true,
+            }),
+        };
+
         const stack: UIElement = {
             id: stackId,
             type: "nl.container",
@@ -3045,9 +3422,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 stackDirection: "vertical",
                 stackGap: 10,
                 stackPaddingTop: 22,
-                stackPaddingRight: 28,
+                stackPaddingRight: panelInset,
                 stackPaddingBottom: 22,
-                stackPaddingLeft: 28,
+                stackPaddingLeft: contentPaddingLeft,
                 backgroundColor: "transparent",
                 fillVisible: false,
                 strokeVisible: false,
@@ -3089,7 +3466,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             layout: roundUILayoutGeometryFields({
                 x: 0,
                 y: 0,
-                width: Math.max(1, panelWidth - 56),
+                width: Math.max(1, panelWidth - contentPaddingLeft - panelInset),
                 height: Math.max(96, panelHeight - 88),
                 opacity: 1,
                 visible: true,
@@ -3106,12 +3483,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             elements: {
                 [interactionLayer.id]: interactionLayer,
                 [panel.id]: panel,
+                [avatar.id]: avatar,
                 [stack.id]: stack,
                 [nametag.id]: nametag,
                 [sentence.id]: sentence,
             },
             interactionLayerId,
             panelId,
+            avatarId,
             stackId,
             nametagId,
             sentenceId,
@@ -3131,6 +3510,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         targets: {
             interactionLayerId: UIElementId;
             panelId: UIElementId;
+            avatarId: UIElementId;
             nametagId: UIElementId;
             sentenceId: UIElementId;
         },
@@ -3152,16 +3532,22 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 y: 380,
             },
             {
+                nodeId: "dialog.next.avatarElementClick",
+                elementId: targets.avatarId,
+                elementType: "nl.image",
+                y: 550,
+            },
+            {
                 nodeId: "dialog.next.nametagElementClick",
                 elementId: targets.nametagId,
                 elementType: "nl.text",
-                y: 550,
+                y: 720,
             },
             {
                 nodeId: "dialog.next.sentenceElementClick",
                 elementId: targets.sentenceId,
                 elementType: DIALOG_SENTENCE_WIDGET_TYPE,
-                y: 720,
+                y: 890,
             },
         ] as const;
         const nodes: Record<string, BlueprintGraphNode> = {
@@ -3177,13 +3563,13 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 params: {
                     [BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME]: " ",
                 },
-                meta: { editorLayout: { x: 80, y: 890 } },
+                meta: { editorLayout: { x: 80, y: 1060 } },
             },
             [nextId]: {
                 id: nextId,
                 type: BLUEPRINT_NODE_TYPE_GAME_NEXT,
                 params: {},
-                meta: { editorLayout: { x: 560, y: 465 } },
+                meta: { editorLayout: { x: 560, y: 550 } },
             },
         };
         const edges: NonNullable<BlueprintGraphIr["edges"]> = [
@@ -3324,6 +3710,63 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         };
     }
 
+    /**
+     * On every dialog beat, push the speaking character's avatar into the image widget.
+     *
+     * `Get Speaker Avatar` answers off the live portrait, so it already carries the differential the
+     * character is wearing; a line with no avatar answers null, which clears the widget rather than
+     * leaving the previous speaker's face on screen.
+     */
+    private createAvatarUpdateGraph(): BlueprintGraphIr {
+        const initHeadId = "avatar.update.init";
+        const flushHeadId = "avatar.update.flush";
+        const getAvatarId = "avatar.update.get";
+        const setAssetId = "avatar.update.setImageAsset";
+        return {
+            nodes: {
+                [initHeadId]: {
+                    id: initHeadId,
+                    type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+                    params: {},
+                    meta: { editorLayout: { x: 80, y: 60 } },
+                } satisfies BlueprintGraphNode,
+                [flushHeadId]: {
+                    id: flushHeadId,
+                    type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
+                    params: {},
+                    meta: { editorLayout: { x: 80, y: 190 } },
+                } satisfies BlueprintGraphNode,
+                [getAvatarId]: {
+                    id: getAvatarId,
+                    type: BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR,
+                    params: {},
+                    meta: { editorLayout: { x: 300, y: 230 } },
+                } satisfies BlueprintGraphNode,
+                [setAssetId]: {
+                    id: setAssetId,
+                    type: BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET,
+                    params: {},
+                    meta: { editorLayout: { x: 580, y: 110 } },
+                } satisfies BlueprintGraphNode,
+            },
+            edges: [
+                {
+                    from: { nodeId: initHeadId, port: "then" },
+                    to: { nodeId: setAssetId, port: "in" },
+                },
+                {
+                    from: { nodeId: flushHeadId, port: "then" },
+                    to: { nodeId: setAssetId, port: "in" },
+                },
+                {
+                    from: { nodeId: getAvatarId, port: "avatar" },
+                    to: { nodeId: setAssetId, port: "asset" },
+                },
+            ],
+            meta: { [BLUEPRINT_GRAPH_IR_META_KIND]: "event" },
+        };
+    }
+
     private configureDefaultDialogBlueprints(surfaceId: UISurfaceId, template: DialogStageTemplate): void {
         const localBp = this.getOptionalLocalBlueprintService();
         if (!localBp) {
@@ -3349,6 +3792,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     graph: this.createDialogContentNextGraph(surfaceId, {
                         interactionLayerId: template.interactionLayerId,
                         panelId: template.panelId,
+                        avatarId: template.avatarId,
                         nametagId: template.nametagId,
                         sentenceId: template.sentenceId,
                     }),
@@ -3367,6 +3811,21 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     id: "nametagUpdate",
                     name: translate("defaultDoc.dialog.updateNametagEvent"),
                     graph: this.createNametagUpdateGraph(),
+                },
+            };
+        });
+
+        const avatarBlueprintId = localBp.ensureWidgetMain(surfaceId, template.avatarId, translate("defaultDoc.dialog.avatar"), "nl.image");
+        localBp.applyBlueprintMutation(doc => {
+            const blueprint = doc.blueprints[avatarBlueprintId];
+            if (!blueprint || blueprint.program.kind !== "graph") {
+                return;
+            }
+            blueprint.program.graphs.events = {
+                avatarUpdate: {
+                    id: "avatarUpdate",
+                    name: translate("defaultDoc.dialog.updateAvatarEvent"),
+                    graph: this.createAvatarUpdateGraph(),
                 },
             };
         });

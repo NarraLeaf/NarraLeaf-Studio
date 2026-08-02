@@ -23,10 +23,6 @@ export const dashboard = {
             one: "{count} word",
             other: "{count} words",
         },
-        nodes: {
-            one: "{count} node",
-            other: "{count} nodes",
-        },
         days: {
             one: "{count} day",
             other: "{count} days",
@@ -54,7 +50,7 @@ export const dashboard = {
         totalWords: "Words",
         characters: "Characters",
         assets: "Assets",
-        blueprints: "Blueprints",
+        blueprintNodes: "Blueprint nodes",
         uiSurfaces: "Interface surfaces",
         variables: "Variables",
     },
@@ -75,6 +71,7 @@ export const dashboard = {
             removed: "{date} · {words} removed",
             unchanged: "{date} · no change",
             start: "{date} · tracking started, so this day has no baseline to compare against",
+            rebased: "{date} · the word count rule changed, so this day is not comparable to the one before it",
             untracked: "{date} · before tracking started",
         },
     },
@@ -108,6 +105,6 @@ export const dashboard = {
         clear: "Clear this project's statistics",
         clearConfirm: "Clear this project's statistics?",
         clearDetail:
-            "Only the recorded activity history is erased: the writing curve, active time, edit counts and build history. Scene, word, character and localization counts are calculated from the project itself and will not change. This cannot be undone.",
+            "Erases the writing curve, active time, edit counts and build history. Counts read from the project itself do not change. This cannot be undone.",
     },
 } as const;

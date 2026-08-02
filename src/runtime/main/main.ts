@@ -4,12 +4,14 @@ import path from "path";
 import { Readable } from "stream";
 import { nativeImage } from "electron";
 import { app, BrowserWindow, ipcMain, Menu, protocol, session } from "electron/main";
-import { WebSocketServer } from "ws";
+import { WebSocketServer, type WebSocket } from "ws";
+import type { GameTestEvent } from "@shared/types/gameTest";
 import {
     GAME_RUNTIME_CLOSE_DECISION_CHANNEL,
     GAME_RUNTIME_CLOSE_REQUESTED_CHANNEL,
     GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL,
     GAME_RUNTIME_PROTOCOL,
+    GAME_RUNTIME_SIDECAR_MESSAGE_CHANNEL,
     type GameRuntimePackV1,
 } from "@shared/types/gameRuntime";
 import { getMimeType } from "@shared/utils/fs";
@@ -26,10 +28,13 @@ import {
 } from "@shared/utils/pluginRuntimeApiModule";
 import { resolveRuntimeStaticPath } from "./runtimeProtocol";
 import { injectRuntimeCsp, installRuntimeNetworkPolicy } from "./networkPolicy";
+import { dispatchControlFrame, encodeTestEventFrame } from "./testControlProtocol";
+import { GAME_RUNTIME_TEST_SIGNAL_CHANNEL, toGameTestEvent } from "../gameTestSignal";
 import {
     RuntimePersistenceStore,
     RuntimeSaveStore,
 } from "./runtimeStorage";
+import { collectPackSidecars, SidecarHost } from "./sidecarHost";
 
 const appDir = __dirname;
 
@@ -52,6 +57,15 @@ function readShellMode(): "preview" | "production" {
 }
 
 const shellMode = readShellMode();
+
+/**
+ * A test asked for this game to run with no way out to the network.
+ *
+ * An environment variable rather than a pack field: the pack is the game's own content and is
+ * identical whether a test launched it or an author did, and baking "this run has no network" into
+ * it would mean recompiling to change how a run is observed.
+ */
+const testNetworkBlocked = process.env.NARRALEAF_TEST_NETWORK === "blocked";
 
 // Preview keeps saves next to the compiled app; a shipped game has no sibling
 // userData dir and uses the OS per-user location derived from the app name.
@@ -76,7 +90,13 @@ let controlServer: WebSocketServer | null = null;
 let resources: RuntimeResources | null = null;
 let saveStore: RuntimeSaveStore | null = null;
 let persistenceStore: RuntimePersistenceStore | null = null;
-let runtimeStorageFlushedForQuit = false;
+let sidecarHost: SidecarHost | null = null;
+/**
+ * Set once the quit has already drained everything that needs draining (queued
+ * storage writes, running sidecars), so the second pass through `before-quit`
+ * does not start over.
+ */
+let runtimeQuitDrained = false;
 /**
  * Set once the app has started quitting (Quit Application node, window-all-closed, preview
  * shutdown). The window-close guard stands aside while this is true, so a programmatic quit never
@@ -133,6 +153,21 @@ if (useSiblingUserData) {
     app.setPath("userData", userDataDir);
 }
 
+if (testNetworkBlocked) {
+    // Belt, applied here because command-line switches are only read before Chromium starts:
+    // every name resolves to NOTFOUND, so a game that reaches for a host fails the way a player's
+    // would rather than the way a firewall's does. `EXCLUDE localhost` is not optional - Chromium
+    // resolves its own inspector endpoint through this, and dropping it takes DevTools with it.
+    //
+    // Braces are the `webRequest` veto in networkPolicy.ts, which is what actually enforces the
+    // block: a literal IP never goes through DNS at all, so this switch alone would leak.
+    app.commandLine.appendSwitch("host-resolver-rules", "MAP * ~NOTFOUND, EXCLUDE localhost");
+    console.log(
+        "[GameRuntime] Network blocked for this run (NARRALEAF_TEST_NETWORK=blocked): "
+        + "only nlgame:, file:, devtools:, data:/blob: and loopback will load.",
+    );
+}
+
 // Earliest possible refusal to run a production game under an attached
 // debugger/CDP: before app-ready, before any window or session exists. The
 // post-pack-read check below stays as the authoritative (tamper-resistant on
@@ -157,14 +192,53 @@ void app.whenReady().then(async () => {
     applyRuntimeAppIdentity(pack);
     applyRuntimeMenu(pack);
     registerRuntimeProtocol(allowHttp);
+    sidecarHost = createSidecarHost(pack);
     registerRuntimeIpc();
     startPreviewControlServer(pack);
     // Confine the renderer to the app protocol before it loads any document
-    // unless the project opted into HTTP.
-    installRuntimeNetworkPolicy(session.defaultSession, allowHttp);
+    // unless the project opted into HTTP - and unconditionally when a test asked
+    // for a network-less run, which overrides the project's own flag.
+    installRuntimeNetworkPolicy(session.defaultSession, { allowHttp, blockAll: testNetworkBlocked });
     mainWindow = createWindow(pack);
-    await mainWindow.loadURL(`${GAME_RUNTIME_PROTOCOL}://runtime/index.html`);
+    // After the window exists so a sidecar's first event has somewhere to land,
+    // and unawaited so a slow handshake never delays the game's first paint.
+    sidecarHost.startAutostart();
+    // A preview stopped while it was still booting quits mid-load, and the pending navigation then
+    // rejects with ERR_FAILED. That is the shutdown working, not a failure to report - and the
+    // author, who pressed Stop, would otherwise read an unhandled rejection on the Studio console.
+    // Keyed on the quit rather than on the window being destroyed: `app.quit()` aborts the load
+    // first and tears the window down after, so `isDestroyed()` is still false when this rejects.
+    await mainWindow.loadURL(`${GAME_RUNTIME_PROTOCOL}://runtime/index.html`).catch(error => {
+        if (isQuitting) {
+            return;
+        }
+        throw error;
+    });
 });
+
+/**
+ * Sidecars are addressed by the plugin that shipped them, but the pack - not the
+ * caller - decides what exists: {@link collectPackSidecars} is the only source of
+ * declarations, so an id this build never packaged has nothing to spawn.
+ */
+function createSidecarHost(pack: GameRuntimePackV1): SidecarHost {
+    return new SidecarHost(collectPackSidecars(pack), {
+        appDir,
+        userDataDir,
+        execPath: process.execPath,
+        mode: pack.mode,
+        game: { name: pack.project.name, version: pack.project.version ?? null },
+        log: (level, message) => {
+            const sink = level === "error" ? "error" : level === "warning" ? "warn" : "log";
+            console[sink](`[GameRuntime] ${message}`);
+        },
+        send: message => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send(GAME_RUNTIME_SIDECAR_MESSAGE_CHANNEL, message);
+            }
+        },
+    });
+}
 
 app.on("window-all-closed", () => {
     app.quit();
@@ -174,24 +248,122 @@ app.on("before-quit", event => {
     // From here on every window close is part of the quit, not a user close, so the close guard
     // must stand aside (it also lets the quit-and-flush dance below re-close without re-prompting).
     isQuitting = true;
-    // Save/persistence writes are debounced; hold the quit open until every
-    // queued write has reached disk, then quit again.
-    if (!runtimeStorageFlushedForQuit && (saveStore?.hasPendingWrites() || persistenceStore?.hasPendingWrites())) {
-        event.preventDefault();
-        void Promise.allSettled([
-            saveStore?.flush(),
-            persistenceStore?.flush(),
-        ]).then(() => {
-            runtimeStorageFlushedForQuit = true;
-            app.quit();
-        });
-        return;
+    // Two things can outlive the decision to quit: debounced storage writes that
+    // have not reached disk, and sidecar processes that have not been told to
+    // stop. Both are drained on this one held-open pass rather than on separate
+    // ones - a second `before-quit` path would race this one's re-quit.
+    if (!runtimeQuitDrained) {
+        const pendingWrites = saveStore?.hasPendingWrites() === true || persistenceStore?.hasPendingWrites() === true;
+        const runningSidecars = sidecarHost?.needsShutdown() === true;
+        if (pendingWrites || runningSidecars) {
+            event.preventDefault();
+            void Promise.allSettled([
+                saveStore?.flush(),
+                persistenceStore?.flush(),
+                // Polite first (`bye`), then SIGTERM, then SIGKILL - all inside
+                // the sidecar's own declared shutdown timeout, and bounded, so a
+                // wedged sidecar cannot trap the quit.
+                sidecarHost?.shutdownAll(),
+            ]).then(() => {
+                runtimeQuitDrained = true;
+                app.quit();
+            });
+            return;
+        }
+        runtimeQuitDrained = true;
     }
     controlServer?.close();
     controlServer = null;
+    testSubscribers.clear();
     void resources?.dispose();
     resources = null;
 });
+
+/**
+ * Last line of defence against an orphaned sidecar. `before-quit` does the
+ * graceful shutdown, but it can be skipped (a second quit path, a preventDefault
+ * elsewhere, an exception in a listener) and `will-quit`/`exit` cannot: the only
+ * thing that runs here is a synchronous SIGKILL of anything still breathing.
+ *
+ * A sidecar is also expected to exit on stdin EOF, which covers the one case no
+ * handler can - the game's process dying without running any of its own code.
+ */
+app.on("will-quit", () => {
+    sidecarHost?.killAllSync();
+});
+process.on("exit", () => {
+    sidecarHost?.killAllSync();
+});
+
+/**
+ * Sockets that asked for test events with `test:subscribe`.
+ *
+ * Empty in every ordinary run: a production pack carries no `preview` block, so there is no control
+ * server for anything to subscribe on. That is what makes {@link emitTestEvent} safe to call from
+ * anywhere, including a crash handler - with no subscribers it does nothing at all.
+ *
+ * Declared above the error monitor below rather than after it, so an exception thrown while this
+ * module is still evaluating finds an initialised set instead of a temporal-dead-zone error that
+ * would replace the real crash with a bogus one.
+ */
+const testSubscribers = new Set<WebSocket>();
+
+/** `ws` readyState for an open socket; compared numerically so no `ws` value import is needed. */
+const WEBSOCKET_OPEN = 1;
+
+function describeRuntimeError(error: unknown): { message: string; stack?: string } {
+    if (error instanceof Error) {
+        return {
+            message: error.message || String(error),
+            ...(error.stack ? { stack: error.stack } : {}),
+        };
+    }
+    return { message: String(error) };
+}
+
+/**
+ * Report an uncaught error in the game's main process without changing what happens next.
+ *
+ * `uncaughtExceptionMonitor` rather than `uncaughtException` / `unhandledRejection`: registering
+ * either of those *replaces* Node's default handling, and the default is to die. A game left alive
+ * after an uncaught exception - half-initialised, its invariants gone - is a worse bug than the
+ * missing report this hook exists to fix, and a test watching that wreck would call it a pass.
+ * The monitor observes and the process still ends exactly as it would have. Unhandled rejections
+ * arrive here too: Node's default mode raises them as uncaught exceptions.
+ *
+ * Best-effort by nature - the frame is written to the socket on the way out, and a process that
+ * dies before the kernel drains it loses the message. Studio still classifies the death from the
+ * exit code, so a lost frame costs detail, not the verdict.
+ */
+process.on("uncaughtExceptionMonitor", (error: unknown, origin?: string) => {
+    const described = describeRuntimeError(error);
+    emitTestEvent({
+        kind: "runtime-error",
+        scope: "main",
+        message: origin === "unhandledRejection"
+            ? `Unhandled rejection: ${described.message}`
+            : described.message,
+        ...(described.stack ? { stack: described.stack } : {}),
+    });
+});
+
+function emitTestEvent(event: GameTestEvent): void {
+    if (testSubscribers.size === 0) {
+        return;
+    }
+    const frame = encodeTestEventFrame(event);
+    for (const socket of Array.from(testSubscribers)) {
+        if (socket.readyState !== WEBSOCKET_OPEN) {
+            continue;
+        }
+        try {
+            socket.send(frame);
+        } catch {
+            // A subscriber that vanished mid-run is not the game's problem; its own close/error
+            // handler reaps it from the set.
+        }
+    }
+}
 
 async function readPack(): Promise<GameRuntimePackV1> {
     if (!packPromise) {
@@ -629,6 +801,15 @@ function registerRuntimeIpc(): void {
         const level = data?.level === "error" ? "error" : data?.level === "warning" ? "warn" : "log";
         console[level](`[GameRuntime] ${String(data?.message ?? "")}`);
     });
+    // The renderer's uncaught errors and the engine reaching an ending. Validated rather than
+    // trusted (toGameTestEvent stamps the scope and refuses anything else), and dropped on the
+    // floor when nothing is subscribed - which is every run that is not a test.
+    ipcMain.on(GAME_RUNTIME_TEST_SIGNAL_CHANNEL, (_event, signal: unknown) => {
+        const event = toGameTestEvent(signal);
+        if (event) {
+            emitTestEvent(event);
+        }
+    });
 
     ipcMain.handle("runtime:save:write", (_event, data: { id: string; savedGame: unknown; capture?: string; metadata?: unknown }) =>
         saves.write(data.id, data.savedGame, data.capture, data.metadata));
@@ -641,6 +822,42 @@ function registerRuntimeIpc(): void {
     ipcMain.handle("runtime:persistence:getValue", (_event, key: string) => persistence.getValue(key));
     ipcMain.handle("runtime:persistence:setValue", (_event, key: string, value: unknown) => persistence.setValue(key, value));
     ipcMain.handle("runtime:persistence:removeValue", (_event, key: string) => persistence.removeValue(key));
+
+    // Sidecar control.
+    //
+    // SECURITY POSTURE, stated plainly: the `pluginId` on these calls is what the
+    // caller said it was, and this process CANNOT check it. Runtime plugins are
+    // same-origin ES modules sharing one renderer realm - they can read each
+    // other's closures, so nothing in the renderer can prove which plugin a call
+    // came from. Adding a check here would only look like a boundary.
+    //
+    // The boundary that does hold is upstream of the caller: `requireSidecarHost`
+    // resolves against the sidecars THIS PACK DECLARED, so the worst a plugin can
+    // do with another plugin's id is talk to a process the game already ships and
+    // the player already approved at install. No id reaches spawn(), no path from
+    // the renderer names an executable, and an undeclared id has nothing to hit.
+    ipcMain.handle("runtime:sidecar:start", (_event, pluginId: string, sidecarId: string) =>
+        requireSidecarHost().start(pluginId, sidecarId));
+    ipcMain.handle("runtime:sidecar:stop", (_event, pluginId: string, sidecarId: string) =>
+        requireSidecarHost().stop(pluginId, sidecarId));
+    ipcMain.handle(
+        "runtime:sidecar:request",
+        (_event, pluginId: string, sidecarId: string, method: string, params?: unknown) =>
+            requireSidecarHost().request(pluginId, sidecarId, method, params),
+    );
+    ipcMain.on(
+        "runtime:sidecar:notify",
+        (_event, pluginId: string, sidecarId: string, method: string, params?: unknown) => {
+            requireSidecarHost().notify(pluginId, sidecarId, method, params);
+        },
+    );
+}
+
+function requireSidecarHost(): SidecarHost {
+    if (!sidecarHost) {
+        throw new Error("Sidecar host accessed before initialization");
+    }
+    return sidecarHost;
 }
 
 function startPreviewControlServer(pack: GameRuntimePackV1): void {
@@ -654,24 +871,24 @@ function startPreviewControlServer(pack: GameRuntimePackV1): void {
     });
     controlServer.on("connection", socket => {
         socket.on("message", raw => {
-            let payload: { type?: unknown; token?: unknown };
-            try {
-                payload = JSON.parse(raw.toString()) as { type?: unknown; token?: unknown };
-            } catch {
-                socket.send(JSON.stringify({ ok: false, error: "Invalid JSON" }));
-                return;
-            }
-            if (payload.token !== preview.controlToken) {
-                socket.send(JSON.stringify({ ok: false, error: "Invalid token" }));
-                return;
-            }
-            if (payload.type === "shutdown") {
-                socket.send(JSON.stringify({ ok: true }));
+            const { reply, effect } = dispatchControlFrame(raw.toString(), preview.controlToken);
+            // Always answer first: a shutdown that quit before replying would reach Studio as a
+            // dropped connection, which is exactly the crash/clean-quit ambiguity this pipeline is
+            // here to remove.
+            socket.send(JSON.stringify(reply));
+            if (effect === "shutdown") {
                 setTimeout(() => app.quit(), 20);
                 return;
             }
-            socket.send(JSON.stringify({ ok: false, error: "Unknown command" }));
+            if (effect === "subscribe") {
+                testSubscribers.add(socket);
+            }
         });
+        const forget = () => {
+            testSubscribers.delete(socket);
+        };
+        socket.on("close", forget);
+        socket.on("error", forget);
     });
     controlServer.on("error", error => {
         console.error("[GameRuntime] Preview control server error", error);

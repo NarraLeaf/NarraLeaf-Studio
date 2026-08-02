@@ -2,7 +2,7 @@
 export const widgetAppearance = {
     panel: {
         invalidModel:
-            "Appearance data is missing or invalid for this element. This editor requires a serialized appearance model. Create a new element from the palette to get a valid appearance block.",
+            "This element has no valid appearance data. Create a new one from the palette.",
     },
     variant: {
         nameLabel: "Variant name",
@@ -139,7 +139,7 @@ export const widgetAppearance = {
         toggleTitle: "Require {condition} = true (cycle: unset → true → false)",
         overridesTitle: "State overrides (advanced)",
         overridesHint:
-            "Prefer module headers for single-flag hover/active/disabled/focused overrides. Use this section to inspect rows, tweak compound conditions, or add per-property rows manually. Last matching row wins per property.",
+            "For a single hover/active/disabled/focused override, use the module header instead. Last matching row wins per property.",
         conditionalRows: "Conditional rows",
         removeRow: "Remove row",
         addRowManually: "Add row manually",

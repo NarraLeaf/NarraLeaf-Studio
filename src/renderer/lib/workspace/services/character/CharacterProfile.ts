@@ -1,25 +1,29 @@
-import { CharacterAppearance, AssetChangeCallback } from "./CharacterAppearance";
-import { CharacterEditorProfile, ICharacterAppearance } from "./types";
+import { CharacterAppearance, AssetChangeCallback, emptyAppearance } from "./CharacterAppearance";
+import { CharacterAppearanceKind, CharacterEditorProfile, ICharacterAppearance, PortraitCrop } from "./types";
 
 export interface CharacterProfileConfig extends CharacterEditorProfile {
     appearance: ICharacterAppearance;
 }
 
 export class CharacterProfile {
-    public static create(id:string, name: string): CharacterProfile {
+    /**
+     * The sprite kind is fixed at creation because the two kinds share no data — see
+     * {@link CharacterAppearance.setKind} for what changing it later costs.
+     */
+    public static create(id: string, name: string, kind: CharacterAppearanceKind = "preset"): CharacterProfile {
         const defaultProfile: CharacterProfileConfig = {
             id,
             name,
             description: "",
             tags: [],
-            defaultForm: null,
             attributes: {},
             thumbnail: null,
             nicknames: [],
-            groupId: undefined,
-            appearance: {
-                forms: [],
-            },
+            // No `groupId: undefined`. The store is written by the canonical encoder now, which
+            // throws on an `undefined` property instead of dropping it the way `JSON.stringify` did
+            // - so a character created the assigning way is one that cannot be saved. An absent
+            // optional field is spelled by leaving it out, everywhere in this file.
+            appearance: emptyAppearance(kind),
         };
         return new CharacterProfile(defaultProfile);
     }
@@ -28,10 +32,10 @@ export class CharacterProfile {
         const clonedConfig: CharacterProfileConfig = {
             ...config,
             tags: [...config.tags],
-            defaultForm: config.defaultForm ?? null,
             attributes: { ...config.attributes },
             nicknames: [...config.nicknames],
-            groupId: config.groupId,
+            // `...config` already carries `groupId` when it has one; re-stating it here used to add
+            // the key back as `undefined` for every character that has none.
             appearance: new CharacterAppearance(config.appearance).toJSON(),
         };
         return new CharacterProfile(clonedConfig);
@@ -86,15 +90,6 @@ export class CharacterProfile {
         return this.profile.tags;
     }
 
-    public getDefaultForm(): string | null {
-        return this.profile.defaultForm ?? null;
-    }
-
-    public setDefaultForm(name: string | null): void {
-        this.profile.defaultForm = name ?? null;
-        this.notifyChange();
-    }
-
     public addTag(tag: string): void {
         this.profile.tags.push(tag);
         this.notifyChange();
@@ -142,6 +137,60 @@ export class CharacterProfile {
         this.notifyChange();
     }
 
+    public getColor(): string | undefined {
+        return this.profile.color;
+    }
+
+    public setColor(color: string | undefined): void {
+        this.profile.color = color;
+        this.notifyChange();
+    }
+
+    public getPortrait(): PortraitCrop | undefined {
+        return this.profile.portrait;
+    }
+
+    public setPortrait(portrait: PortraitCrop | undefined): void {
+        this.profile.portrait = portrait;
+        this.notifyChange();
+    }
+
+    /**
+     * The dialog avatar shown when no differential resolves one. Unlike {@link getThumbnail}, this
+     * is a *project* asset and the runtime consumes it.
+     */
+    public getDefaultAvatarAssetId(): string | null {
+        return this.profile.defaultAvatarAssetId ?? null;
+    }
+
+    public setDefaultAvatarAssetId(assetId: string | null): void {
+        const previous = this.profile.defaultAvatarAssetId ?? null;
+        if (previous === assetId) {
+            return;
+        }
+        this.profile.defaultAvatarAssetId = assetId;
+        this.notifyAssetChange(previous, assetId);
+        this.notifyChange();
+    }
+
+    /**
+     * The bus this character's voice lines play on. `null` is "the seeded `voice` bus", which is
+     * what every character was on before this existed - so an unset character and a character
+     * pointed at `voice` are the same playback, and the model keeps them the same value.
+     */
+    public getVoiceTrackId(): string | null {
+        return this.profile.voiceTrackId ?? null;
+    }
+
+    public setVoiceTrackId(trackId: string | null): void {
+        const next = trackId?.trim() || null;
+        if ((this.profile.voiceTrackId ?? null) === next) {
+            return;
+        }
+        this.profile.voiceTrackId = next;
+        this.notifyChange();
+    }
+
     public getNicknames(): string[] {
         return this.profile.nicknames;
     }
@@ -166,11 +215,21 @@ export class CharacterProfile {
             name: this.profile.name,
             description: this.profile.description,
             tags: [...this.profile.tags],
-            defaultForm: this.profile.defaultForm ?? null,
             attributes: { ...this.profile.attributes },
             thumbnail: this.profile.thumbnail,
             nicknames: [...this.profile.nicknames],
-            groupId: this.profile.groupId,
+            // Five optional fields, spread in only when they hold something. Assigning them
+            // unconditionally wrote `"groupId": undefined` for every ungrouped character, which
+            // `JSON.stringify` dropped without a word and the canonical encoder refuses by name -
+            // i.e. it was invisible right up until the store became a document, and then it was a
+            // cast that could not be saved.
+            ...(this.profile.groupId === undefined ? {} : { groupId: this.profile.groupId }),
+            ...(this.profile.color === undefined ? {} : { color: this.profile.color }),
+            ...(this.profile.portrait === undefined ? {} : { portrait: this.profile.portrait }),
+            ...(this.profile.defaultAvatarAssetId === undefined
+                ? {}
+                : { defaultAvatarAssetId: this.profile.defaultAvatarAssetId }),
+            ...(this.profile.voiceTrackId === undefined ? {} : { voiceTrackId: this.profile.voiceTrackId }),
             appearance: this.appearance.toJSON(),
         };
     }
@@ -178,6 +237,12 @@ export class CharacterProfile {
     private notifyChange(): void {
         if (this.onChange) {
             this.onChange();
+        }
+    }
+
+    private notifyAssetChange(oldAssetId: string | null, newAssetId: string | null): void {
+        if (oldAssetId !== newAssetId) {
+            this.onAssetChange?.(oldAssetId, newAssetId);
         }
     }
 }

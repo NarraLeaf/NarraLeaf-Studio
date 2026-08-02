@@ -1,8 +1,9 @@
-import { STORY_EXPR_FUNCTIONS } from "@shared/types/story";
-import { matchEnumOption, paramTypes, type StoryCommandParam, type StoryCommandParamType } from "./storyCommandGrammar";
+import { STORY_EXPR_FUNCTIONS, STORY_VISITED_CALLS, type StoryVisitedCall } from "@shared/types/story";
+import { formatStoryExpressionName } from "@shared/utils/storyExpressionParser";
+import { freeTargetKind, matchEnumOption, paramTypes, type StoryCommandParam, type StoryCommandParamType } from "./storyCommandGrammar";
 import { listCommandDefs } from "./commands/registry";
 import type { StoryCommandCursor } from "./storyCommandCursor";
-import { BGM_OBJECT_NAME, type StoryCommandContext, type StoryCommandNamedRef, type StoryCommandStageObjectKind, type StoryCommandValue } from "./storyCommandValues";
+import { BGM_OBJECT_NAME, puppetChannelNames, type StoryCommandContext, type StoryCommandNamedRef, type StoryCommandStageObjectKind, type StoryCommandValue } from "./storyCommandValues";
 
 /**
  * What to offer at the caret.
@@ -20,6 +21,13 @@ export type StoryCommandCandidate = {
     /** What to show. Empty for command candidates - the caller translates from `commandId`. */
     label: string;
     detail?: string;
+    /**
+     * Which world this name lives in, when the slot spans more than one. Carried as the KIND rather
+     * than as text for the same reason `commandId` is: this module holds no locale data, so the caller
+     * translates it through `commandCategoryLabelKey(subjectGroupId(kind))`. Writing the kind straight
+     * into `detail` put a raw `audio` / `video` / `vfx` in front of a zh author.
+     */
+    detailKind?: StoryCommandStageObjectKind;
     /** Set on command candidates only. */
     commandId?: string;
     /**
@@ -45,6 +53,13 @@ function refCandidates(entries: readonly StoryCommandNamedRef[], query: string):
     return [...prefix, ...rest].map(entry => ({ value: entry.name, label: entry.name }));
 }
 
+/** Plain names, prefix matches first - the same ordering {@link refCandidates} gives ids-with-names. */
+function nameCandidates(names: readonly string[], query: string): StoryCommandCandidate[] {
+    const prefix = names.filter(name => startsWithFold(name, query));
+    const rest = query ? names.filter(name => !startsWithFold(name, query) && containsFold(name, query)) : [];
+    return [...prefix, ...rest].map(name => ({ value: name, label: name }));
+}
+
 function assetsOfType(context: StoryCommandContext, assetType: "image" | "audio" | "video"): readonly StoryCommandNamedRef[] {
     return assetType === "image" ? context.images : assetType === "audio" ? context.audio : context.videos;
 }
@@ -60,13 +75,20 @@ function ownerCharacterId(owner: StoryCommandValue | undefined): string | null {
     return null;
 }
 
-function stageObjectCandidates(context: StoryCommandContext, kind: StoryCommandStageObjectKind, query: string): StoryCommandCandidate[] {
+function stageObjectCandidates(
+    context: StoryCommandContext,
+    kind: StoryCommandStageObjectKind,
+    query: string,
+    /** Say which world a name lives in, when the slot spans more than one. */
+    labelKind: boolean,
+): StoryCommandCandidate[] {
     const names = kind === "audio"
         // The background-music channel answers to its reserved name, offered first: `/vol bgm 0.5`
         // is the explicit spelling of what an omitted target means.
         ? [BGM_OBJECT_NAME, ...(context.stageObjects.audio ?? [])]
         : context.stageObjects[kind] ?? [];
-    return refCandidates(names.map(name => ({ id: name, name })), query);
+    return refCandidates(names.map(name => ({ id: name, name })), query)
+        .map(candidate => (labelKind ? { ...candidate, detailKind: kind } : candidate));
 }
 
 function targetCandidates(
@@ -78,16 +100,21 @@ function targetCandidates(
     if (type.accepts.includes("character")) {
         candidates.push(...refCandidates(context.characters, query));
     }
+    // A verb that reaches several worlds dispatches on WHICH one the name turns out to be, and the
+    // author has to be able to see that before picking: `/pause intro` pausing a video rather than the
+    // music is right only if "intro" was visibly a video. With one possible kind there is nothing to
+    // disambiguate and the label would be noise. Read off `accepts`, so no command is special-cased.
+    const labelKind = type.accepts.filter(kind => kind !== "character").length > 1;
     for (const kind of type.accepts) {
         if (kind !== "character") {
-            candidates.push(...stageObjectCandidates(context, kind, query));
+            candidates.push(...stageObjectCandidates(context, kind, query, labelKind));
         }
     }
-    // Offer the typed name back only where a free name is legal - one possible kind, so resolution
-    // can still dispatch. A never-empty list keeps Tab and Enter single-meaning there.
-    const stageKinds = type.accepts.filter(kind => kind !== "character");
+    // Offer the typed name back only where a free name is legal - the same rule resolution applies,
+    // so the list never offers a name that then fails. A never-empty list keeps Tab and Enter
+    // single-meaning there.
     const typed = query.trim();
-    if (stageKinds.length === 1 && typed && !candidates.some(candidate => candidate.value.trim().toLowerCase() === typed.toLowerCase())) {
+    if (freeTargetKind(type) && typed && !candidates.some(candidate => candidate.value.trim().toLowerCase() === typed.toLowerCase())) {
         candidates.push({ value: typed, label: typed, free: true });
     }
     return candidates;
@@ -119,6 +146,8 @@ function candidatesForType(
     query: string,
     context: StoryCommandContext,
     resolved: Readonly<Record<string, StoryCommandValue>>,
+    /** The `visited(` / `picked(` the caret sits inside, when it does. See {@link StoryCommandCursor}. */
+    call?: StoryVisitedCall,
 ): StoryCommandCandidate[] {
     switch (type.kind) {
         case "asset":
@@ -154,12 +183,41 @@ function candidatesForType(
                 // every form of every character would be worse than offering none.
                 return [];
             }
-            return (context.formsByCharacterId[characterId] ?? [])
-                .filter(form => !query || containsFold(form, query))
-                .map(form => ({ value: form, label: form }));
+            return (context.appearanceByCharacterId[characterId] ?? [])
+                .filter(ref => !query || containsFold(ref.name, query))
+                .map(ref => ({ value: ref.name, label: ref.name }));
+        }
+        case "puppetName": {
+            // A puppet's motions, expressions and skins live in the model file, and the only thing
+            // that can enumerate them is the live backend answering `PuppetInstance.describe`. The
+            // editor asks it (`PuppetDescriptionService`) and the answer arrives on the context, so
+            // this arm has a real list to offer - keyed by `type.channel` and the owner character.
+            //
+            // Nothing is appended for a query that matches none of them. A bare name is a legal temp
+            // *speaker*, which is why that arm offers the author's own text back, but a motion the
+            // model does not list is overwhelmingly a typo - and offering it as a candidate would
+            // dress the typo up as a choice. It still commits (Enter submits an empty menu), and the
+            // row then carries the `unknownPuppetName` mark, which is where a wrong name belongs.
+            const names = puppetChannelNames(context, ownerCharacterId(resolved[type.dependsOn]) ?? undefined, type.channel);
+            return nameCandidates(names, query);
+        }
+        case "puppetParam": {
+            // The ids the model reported, each showing the range it accepts - which is the whole reason
+            // a parameter is worth a command surface at all. A bare id with no bounds would be one more
+            // string to remember; `ParamAngleX  -30…30` is a control the author can aim.
+            const owner = ownerCharacterId(resolved[type.dependsOn]);
+            const params = (owner ? context.puppetByCharacterId[owner]?.params : undefined) ?? [];
+            return nameCandidates(params.map(param => param.id), query).map(candidate => {
+                const spec = params.find(param => param.id === candidate.value);
+                return spec ? { ...candidate, detail: `${spec.min}…${spec.max}` } : candidate;
+            });
         }
         case "scene":
             return refCandidates(context.scenes, query);
+        case "audioTrack":
+            return refCandidates(context.audioTracks, query);
+        case "label":
+            return refCandidates(context.labels.map(name => ({ id: name, name })), query);
         case "variable":
             return context.variables
                 .filter(entry => !query || containsFold(entry.name, query))
@@ -180,6 +238,13 @@ function candidatesForType(
         case "boolean":
             return ["true", "false"].filter(value => !query || value.startsWith(query.toLowerCase())).map(value => ({ value, label: value }));
         case "expression": {
+            // Inside `visited(` / `picked(` the vocabulary is not the expression language's at all -
+            // it is one entity name - so the whole variable/function offer is replaced rather than
+            // added to. Offering `gold` where only a scene may go would be offering a line that
+            // cannot resolve.
+            if (call) {
+                return refCandidates(call === "visited" ? context.scenes : context.choiceOptions, query);
+            }
             // Inside an expression the query is the identifier fragment under the caret (the cursor
             // layer extracts it), so the offer is every variable in scope plus the function whitelist.
             //
@@ -194,9 +259,24 @@ function candidatesForType(
                 ...context.variables
                     .filter(entry => !query || containsFold(entry.name, query))
                     .map(entry => ({ value: entry.name, label: entry.name, detail: entry.valueType })),
+                // Blueprints sit with the variables, not with the functions, because that is what
+                // they are here: a name the project declares, offered unprompted for the same reason.
+                // The inserted text is the whole CALL, and the name is quoted when the lexer would
+                // otherwise split it - the default "Story Value" has a space in it, so the unquoted
+                // spelling would not parse at all.
+                ...context.valueBlueprints
+                    .filter(entry => !query || containsFold(entry.name, query))
+                    .map(entry => ({ value: `${formatStoryExpressionName(entry.name)}()`, label: entry.name, detail: "bp" })),
                 ...STORY_EXPR_FUNCTIONS
                     .filter(fn => query !== "" && startsWithFold(fn, query))
                     .map(fn => ({ value: `${fn}(`, label: fn, detail: "fn" })),
+                // The two record reads complete like functions but ARE offered on an empty query,
+                // where the whitelist is not. The rule the whitelist follows is "do not bury the
+                // variables under ten names an author already knows"; these are two names an author
+                // has no way to discover, and two rows below the variables bury nothing.
+                ...STORY_VISITED_CALLS
+                    .filter(name => !query || startsWithFold(name, query))
+                    .map(name => ({ value: `${name}(`, label: name, detail: "fn" })),
             ];
         }
         case "constant":
@@ -218,9 +298,10 @@ function candidatesForParam(
     query: string,
     context: StoryCommandContext,
     resolved: Readonly<Record<string, StoryCommandValue>>,
+    call?: StoryVisitedCall,
 ): StoryCommandCandidate[] {
     // A union offers every branch's candidates, in declaration order.
-    return paramTypes(param).flatMap(type => candidatesForType(type, query, context, resolved));
+    return paramTypes(param).flatMap(type => candidatesForType(type, query, context, resolved, call));
 }
 
 /**
@@ -230,14 +311,22 @@ function candidatesForParam(
  * is worth telling the author about, a half-typed number is not. Callers use it to decide whether an
  * empty list deserves an empty *state* or no menu at all.
  */
-export function hasCandidateSource(param: StoryCommandParam): boolean {
+export function hasCandidateSource(
+    param: StoryCommandParam,
+    context?: StoryCommandContext,
+    resolved: Readonly<Record<string, StoryCommandValue>> = {},
+): boolean {
     return paramTypes(param).some(type => {
         switch (type.kind) {
             case "asset":
             case "character":
             case "characterForm":
             case "scene":
+            // Every project has at least the three built-ins, so "no matches" here always means what
+            // it says - unlike a puppet channel, whose empty list may only mean nobody could ask.
+            case "audioTrack":
             case "variable":
+            case "label":
             case "target":
             case "content":
             case "enum":
@@ -249,6 +338,19 @@ export function hasCandidateSource(param: StoryCommandParam): boolean {
             // A constant enumerates true/false, so "no matches" is meaningful once something is typed.
             case "constant":
                 return true;
+            // The only param whose answer is not a property of the grammar. A model that has been
+            // asked and answered has a list, so "no matches" means what it says; a model nobody could
+            // ask has none, and the honest response is no menu at all - the author is typing a name
+            // only the model knows, and telling them it "does not match" would be Studio blaming them
+            // for a runtime it never loaded. Answering `true` unconditionally is what made the arm
+            // look broken in projects that carry no runtime.
+            case "puppetName":
+                return context !== undefined
+                    && puppetChannelNames(context, ownerCharacterId(resolved[type.dependsOn]) ?? undefined, type.channel).length > 0;
+            case "puppetParam": {
+                const owner = context && ownerCharacterId(resolved[type.dependsOn]);
+                return Boolean(owner && (context?.puppetByCharacterId[owner]?.params.length ?? 0) > 0);
+            }
             case "number":
             case "color":
             case "literal":
@@ -279,8 +381,9 @@ export function getCommandCandidates(
                 .map(def => ({ value: def.token, label: "", commandId: def.commandId }));
         case "positional":
         case "paramValue":
-        case "expression":
             return candidatesForParam(cursor.param, cursor.query, context, resolved);
+        case "expression":
+            return candidatesForParam(cursor.param, cursor.query, context, resolved, cursor.call);
         case "paramName":
             return cursor.params
                 .filter(param => !cursor.query || startsWithFold(param.name, cursor.query)

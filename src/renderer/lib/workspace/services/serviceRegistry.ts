@@ -20,6 +20,8 @@ import { UIBlueprintLifecycleCoordinator } from "./ui-editor/UIBlueprintLifecycl
 import { DevModeService } from "./core/DevModeService";
 import { PreviewService } from "./core/PreviewService";
 import { BuildService } from "./core/BuildService";
+import { LintService } from "./core/LintService";
+import { TestRunService } from "@/lib/testing/TestRunService";
 import { ConsoleService } from "./core/ConsoleService";
 import { UIEditorFontFaceService } from "./ui-editor/UIEditorFontFaceService";
 import { BlueprintNodeCatalogService } from "./ui-editor/BlueprintNodeCatalogService";
@@ -31,6 +33,13 @@ import { ProjectStatsService } from "./stats/ProjectStatsService";
 import { CommandService } from "./ui/CommandService";
 import { SearchService } from "./search/SearchService";
 import { ReferenceService } from "./references/ReferenceService";
+import { VariableRegistryService } from "./variables/VariableRegistryService";
+import { AudioTrackService } from "./audio/AudioTrackService";
+import { SaveStatusService } from "./autosave/SaveStatusService";
+import { VersionControlService } from "./core/VersionControlService";
+import { WorkspaceFreezeService } from "./core/WorkspaceFreezeService";
+import { WorkspaceReloadService } from "./core/WorkspaceReloadService";
+import { PuppetDescriptionService } from "./puppet/PuppetDescriptionService";
 
 export class ServiceRegistry {
     private services: Record<Services, Service> = {
@@ -45,6 +54,7 @@ export class ServiceRegistry {
         [Services.RecentColors]: RecentColorsService.getInstance(),
         [Services.Story]: StoryService.getInstance(),
         [Services.Character]: CharacterService.getInstance(),
+        [Services.PuppetDescription]: PuppetDescriptionService.getInstance(),
         [Services.UIDocument]: UIDocumentService.getInstance(),
         [Services.RuntimeBridge]: UIRuntimeBridgeService.getInstance(),
         [Services.UIEditorState]: UIEditorStateService.getInstance(),
@@ -55,6 +65,8 @@ export class ServiceRegistry {
         [Services.DevMode]: DevModeService.getInstance(),
         [Services.Preview]: PreviewService.getInstance(),
         [Services.Build]: BuildService.getInstance(),
+        [Services.Lint]: LintService.getInstance(),
+        [Services.TestRun]: TestRunService.getInstance(),
         [Services.Console]: ConsoleService.getInstance(),
         [Services.UIEditorFontFace]: UIEditorFontFaceService.getInstance(),
         [Services.BlueprintNodeCatalog]: BlueprintNodeCatalogService.getInstance(),
@@ -65,6 +77,12 @@ export class ServiceRegistry {
         [Services.Command]: CommandService.getInstance(),
         [Services.Search]: SearchService.getInstance(),
         [Services.Reference]: ReferenceService.getInstance(),
+        [Services.VariableRegistry]: VariableRegistryService.getInstance(),
+        [Services.AudioTracks]: AudioTrackService.getInstance(),
+        [Services.SaveStatus]: SaveStatusService.getInstance(),
+        [Services.VersionControl]: VersionControlService.getInstance(),
+        [Services.WorkspaceFreeze]: WorkspaceFreezeService.getInstance(),
+        [Services.WorkspaceReload]: WorkspaceReloadService.getInstance(),
     };
 
     public get<T extends Service>(service: Services): T {

@@ -10,6 +10,12 @@ export interface GlobalStateType extends Record<string, any> {
     "app.notificationsEnabled": boolean;
     "app.autoCheckUpdates": boolean;
     "ui.themeMode": "auto" | "light" | "dark" | string;
+    /**
+     * Which mode the toolbar's Run split-button launches — Dev Mode or Preview. The button runs the
+     * selected mode; its dropdown switches this. A UI habit, so it lives globally rather than per
+     * project.
+     */
+    "ui.runMode": "devMode" | "preview" | string;
     /** Studio UI zoom as a whole percentage; see @shared/constants/zoom. */
     "ui.zoomPercent": number;
     /**
@@ -18,7 +24,6 @@ export interface GlobalStateType extends Record<string, any> {
      * resolves through. Studio windows only; a shipped game keeps the brand anchor.
      */
     "ui.accentColor": string;
-    "ui.compactMode": boolean;
     /**
      * Calm the Studio interface: no CSS transitions or animations (styles.css) and no
      * framer-motion transform/layout animations (the MotionConfig in lib/renderApp). Independent
@@ -59,9 +64,27 @@ export interface GlobalStateType extends Record<string, any> {
     "keybindings.overrides": Record<string, string>;
     "editor.fontSize": number;
     "editor.fontFamily": string;
+    /**
+     * Opacity (0-100) of the editor's reading surfaces — story prose area, inspector field area,
+     * Dev Mode debug panel. Published as `--nl-editor-surface-opacity` by lib/appearance; see
+     * lib/settings/editorSurfaceOptions. 100 (fully opaque) is the default and a no-op without a
+     * workspace wallpaper, which is the only thing an opaque plate can cut a seam into.
+     */
+    "editor.surfaceOpacity": number;
     "editor.lineNumbers": boolean;
     "editor.softWrap": boolean;
     "editor.maxActiveEditors": number;
+    /**
+     * Let "@" stand in for "/" as the trigger that opens the story editor's action creator.
+     *
+     * A Simplified-Chinese input method rewrites the "/" key as "、", so authors typing in Chinese
+     * have to switch IME just to start a command; "@" survives that mapping untouched. Deliberately
+     * absent from GLOBAL_STATE_DEFAULTS (like the `ui.background*` keys): the default is device-locale
+     * dependent, so the renderer resolves an unset value through `slashAtAliasDefault()` — on for a
+     * Simplified-Chinese device, off otherwise — rather than a static default that cannot know the
+     * locale. A value written here (the user toggled it) is honored as-is.
+     */
+    "editor.slashAtAlias": boolean;
     "workspace.restoreLastWorkspace": boolean;
     /**
      * Ask for confirmation before a workspace window closes.
@@ -91,6 +114,61 @@ export interface GlobalStateType extends Record<string, any> {
     "advanced.experimentalFeatures": boolean;
     /** Electron download mirror for cross-platform game builds; "" = official source. */
     "build.electronMirror": string;
+    /**
+     * Plugin store registry index URL; "" = the official NarraLeaf/Plugins index
+     * (see @shared/constants/pluginRegistry). Read by the main process when the
+     * launcher's Plugins store fetches or installs.
+     */
+    "plugins.registryUrl": string;
+    /**
+     * UI template store registry index URL; "" = the official NarraLeaf/UI-Templates
+     * index (see @shared/constants/uiTemplateRegistry). Read by the main process when
+     * the UI editor's template store fetches the index or a template bundle.
+     */
+    "uiTemplates.registryUrl": string;
+    /**
+     * How long between automatic checkpoints, in minutes. **0 disables them.**
+     *
+     * A checkpoint only happens when a versioned file has actually been written since
+     * the last one - the interval is a ceiling on how often, never a schedule that
+     * fires on its own. Global rather than per-project because it describes how often
+     * the author wants Studio interrupting to record, which is a habit rather than a
+     * property of any one project.
+     */
+    "versionControl.checkpointIntervalMinutes": number;
+    /**
+     * Record a checkpoint when a workspace window is closed.
+     *
+     * A DIFFERENT question from the interval above, which is why it is its own key
+     * rather than a mode of it: the interval describes how often the author wants
+     * Studio recording *while they work*, and this one is about the moment after which
+     * nothing is watching the working tree at all. An author who edits for an hour and
+     * closes without committing has that hour recorded nowhere if both are off - so
+     * this defaults on, and turning the interval off does not turn it off.
+     *
+     * Read by the main process in `App.checkpointBeforeClose`, which is the only caller
+     * of the `project-close` checkpoint reason.
+     */
+    "versionControl.checkpointOnClose": boolean;
+    /**
+     * Name recorded as the author on commits and checkpoints; "" = unset.
+     *
+     * The interim answer to Lore's `identity` global, which is per-call rather than
+     * stored in the repository. It becomes the fallback once there is a logged-in
+     * identity to prefer; see VcsManager.resolveIdentity for what an unset value
+     * records.
+     */
+    "versionControl.authorName": string;
+    /**
+     * Email recorded alongside the author name; "" = unset.
+     *
+     * Lore's identity is ONE verbatim string, so this is not a second field it stores -
+     * `composeVcsIdentity` folds the two into the `Name <email>` form every other
+     * version-control tool writes and reads. Separate here because that is how an author
+     * thinks of it, and because a name typed with the angle brackets by hand is the kind
+     * of thing that ends up in every revision of a repository.
+     */
+    "versionControl.authorEmail": string;
 }
 
 export type GlobalStateKeys = string;
@@ -107,9 +185,9 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "app.notificationsEnabled": true,
     "app.autoCheckUpdates": true,
     "ui.themeMode": "auto",
+    "ui.runMode": "devMode",
     "ui.zoomPercent": ZOOM_PERCENT_DEFAULT,
     "ui.accentColor": ACCENT_COLOR_DEFAULT,
-    "ui.compactMode": false,
     "ui.reduceMotion": false,
     "ui.statusBar.visible": true,
     "ui.statusBar.hiddenItems": [],
@@ -121,6 +199,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "keybindings.overrides": {},
     "editor.fontSize": 14,
     "editor.fontFamily": "Default",
+    "editor.surfaceOpacity": 100,
     "editor.lineNumbers": true,
     "editor.softWrap": false,
     "editor.maxActiveEditors": 8,
@@ -137,4 +216,10 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "advanced.enableDevTools": false,
     "advanced.experimentalFeatures": false,
     "build.electronMirror": "",
+    "plugins.registryUrl": "",
+    "uiTemplates.registryUrl": "",
+    "versionControl.checkpointIntervalMinutes": 15,
+    "versionControl.checkpointOnClose": true,
+    "versionControl.authorName": "",
+    "versionControl.authorEmail": "",
 };

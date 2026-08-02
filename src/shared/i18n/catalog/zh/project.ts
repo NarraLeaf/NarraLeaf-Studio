@@ -6,6 +6,14 @@ export const project = {
             title: "详情",
             description: "名称、标识符与元数据",
         },
+        game: {
+            title: "游戏",
+            description: "成品游戏对玩家的表现",
+        },
+        audio: {
+            title: "音频",
+            description: "混音台：总线之间如何汇入，各自多大声",
+        },
         assets: {
             title: "图标",
             description: "各平台的应用图标",
@@ -13,6 +21,14 @@ export const project = {
         dependencies: {
             title: "依赖",
             description: "本项目依赖的插件",
+        },
+        runtimes: {
+            title: "运行时",
+            description: "Live2D 与 Spine 角色的绘制运行时",
+        },
+        linting: {
+            title: "检查",
+            description: "工程检查报告哪些问题",
         },
         settings: {
             title: "设置",
@@ -39,19 +55,79 @@ export const project = {
         required: "必填",
     },
     assets: {
-        iconMissing: "图标文件缺失",
-        iconSaved: "{platform} 图标已保存",
-        uploadIcon: "上传 {platform} 图标",
-        iconAlt: "{platform} 图标",
-        noIcon: "未选择图标",
+        master: "选择应用图标",
+        override: "覆盖",
+        chooseOverride: "为该平台单独选择图片",
+        clearOverride: "此处改用应用图标",
+        inset: "内边距",
+        background: "底色",
+        clearBackground: "保留透明",
+        transparent: "无",
         icnsPreview: "ICNS 预览",
+        target: {
+            macos: "macOS",
+            windows: "Windows",
+            linux: "Linux",
+            android: "Android",
+            ios: "iOS",
+            web: "Web",
+        },
+    },
+    game: {
+        autoSaveTitle: "自动保存",
+        autoSaveDescription: "按间隔自动保存进度，崩溃时只损失片刻，而不是一整段游玩",
+        autoSaveIntervalTitle: "保存间隔",
+        autoSaveIntervalDescription: "多久检查一次。剧情没有推进就不会写入",
+        autoSaveIntervalUnit: "秒",
+        autoSaveSlotsTitle: "保留数量",
+        autoSaveSlotsDescription: "自动存档在这么多个槽位间轮转，最旧的先被覆盖，不会混进玩家自己的存档槽",
+    },
+    // 音频子页：一条总线一行，字段收在折叠里。下面这些是「标签」不是「标题」——
+    // 原先每个字段各带一段说明，三条轨道就是三遍同样的话，现在只在 intro 里说一次。
+    audio: {
+        // 什么是总线、音量如何逐级相乘，在分区顶部说一次。它吸收了原来的
+        // nameDescription / parentDescription / volumeDescription 三段。
+        intro: "轨道就是一条总线：它汇入上级总线，或直接汇入主输出。片段的实际音量等于自身电平乘以其上每一条总线的音量，总线只能衰减。改名是安全的",
+        add: "新建轨道",
+        newTrackName: "新建轨道",
+        nameTitle: "名称",
+        parentTitle: "汇入",
+        parentMaster: "主输出",
+        volumeTitle: "音量",
+        volumeUnit: "%",
+        loopTitle: "默认循环",
+        loopDescription: "在这条轨道上播放的片段默认循环，除非播放它的动作另有指定",
+        duplicate: "复制",
+        delete: "删除",
+        // 展开后紧挨着「删除」：确认框接下来要说的就是这个数字。
+        usedBy: {
+            other: "被 {count} 处引用",
+        },
+        deleteConfirm: "删除「{name}」？",
+        // 诚实地说明后果：指向这条轨道的地方不会被改写，从此各自按自身形态对应的内置总线解析——
+        // 具体落到哪一条取决于播放的是什么，在这里点名某一条只会是猜测。
+        deleteDetail: {
+            other: "{count} 处引用将各自回落到默认总线",
+        },
+        // 子总线会被上提而不是一并删除，并且明确告诉作者它们落到哪里。
+        deleteChildren: {
+            other: "其下的 {count} 条轨道将移到 {parent}",
+        },
+        // 玩家自己的音量滑块，与三条内置总线一一对应。
+        slider: {
+            bgm: "BGM 音量",
+            sound: "音效音量",
+            voice: "语音音量",
+            // 不经由三条内置总线、直接挂在主输出下的总线没有专属滑杆，玩家只能用全局音量控制它
+            global: "全局音量",
+        },
     },
     settings: {
         allowHttpTitle: "允许 HTTP",
         allowHttpDescription: "关闭时，游戏将被限制在应用协议内，所有 HTTP/HTTPS 请求均会被阻止",
-        allowHttpWebHint: "对 Web 导出不适用：网页游戏本身经由 HTTP(S) 分发，此设置仅影响桌面构建",
+        allowHttpWebHint: "对 Web 导出不适用，此设置仅影响桌面构建",
         encryptAssetsTitle: "加密资源",
-        encryptAssetsDescription: "在打包及预览版本中加密资源、插件代码与剧本数据，让解包变得困难，但不影响开发模式",
+        encryptAssetsDescription: "在打包及预览版本中加密资源、插件代码与剧本数据，不影响开发模式",
         encryptAssetsWebHint: "对 Web 导出不适用：Web 构建始终不加密资源",
         orientationTitle: "移动端方向",
         orientationDescription: "移动端构建启动时锁定的屏幕方向",
@@ -66,7 +142,7 @@ export const project = {
         scanning: "正在扫描项目…",
         empty: "没有插件依赖，本项目仅使用 Studio 内置功能",
         banner: {
-            blocked: "由于已安装版本不兼容，本项目中的部分插件已被禁用，请更新或重新安装以恢复完整功能",
+            blocked: "部分插件在本项目中被禁用：已安装版本不兼容。请更新或重新安装",
             warnings: "部分依赖项需要处理，某个插件版本过旧或某项软依赖不可用",
         },
         status: {

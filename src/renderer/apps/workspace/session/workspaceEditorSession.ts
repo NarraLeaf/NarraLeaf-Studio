@@ -2,15 +2,23 @@ import { FileText, Image, Music, PanelsTopLeft, User } from "lucide-react";
 import { createElement, type ReactNode } from "react";
 import type { EditorGroup, EditorLayout, EditorTabDefinition } from "@/apps/workspace/registry/types";
 import { createWelcomeTab } from "@/apps/workspace/modules/welcome/openWelcomeTab";
+import { createNewTabTab } from "@/apps/workspace/modules/new-tab/openNewTab";
+import { NEW_TAB_ID_PREFIX } from "@/apps/workspace/modules/new-tab/newTabId";
 import { BlueprintEntryTab } from "@/apps/workspace/modules/blueprint-lite/editors/BlueprintEntryTab";
 import {
     getBlueprintEntryTabId,
+    type BlueprintEntryOwnerKind,
     type BlueprintEntryTabPayload,
 } from "@/apps/workspace/modules/blueprint-lite/blueprintEntryTabId";
 import { UISurfaceEditorTab } from "@/apps/workspace/modules/ui-editor/editors/UISurfaceEditorTab";
 import { CharacterEditor } from "@/apps/workspace/modules/characters/editors/CharacterEditor";
 import { ImagePreviewEditor } from "@/apps/workspace/modules/assets/editors/ImagePreviewEditor";
 import { AudioPreviewEditor } from "@/apps/workspace/modules/assets/editors/AudioPreviewEditor";
+import { TextEditor } from "@/apps/workspace/modules/assets/editors/text/TextEditor";
+import { isTextEditableAsset } from "@/apps/workspace/modules/assets/editors/text/textEditableFiles";
+// The id prefix lives apart from the component so `trySerializeTab` can recognise a text tab
+// without the session module depending on Monaco to do it.
+import { TEXT_EDITOR_TAB_PREFIX, getTextEditorTabId } from "@/apps/workspace/modules/assets/editors/text/textEditorTabId";
 import { StorySceneEditorTab } from "@/apps/workspace/modules/story/scene-editor/StorySceneEditorTab";
 import {
     getStorySceneEditorTabId,
@@ -44,22 +52,36 @@ const IMAGE_PREVIEW_PREFIX = "narraleaf-studio:assets:image-preview-";
 const AUDIO_PREVIEW_PREFIX = "narraleaf-studio:assets:audio-preview-";
 const STORY_SCENE_TAB_PREFIX = "story:scene:";
 const STORY_MOTION_TAB_PREFIX = "story-motion:";
-const BLUEPRINT_ENTRY_OWNER_KINDS = new Set([
-    "globalMain",
-    "surfaceMain",
-    "widgetMain",
-    "widgetValue",
-    "componentWidgetMain",
-]);
+/**
+ * Owner kinds accepted when reading a blueprint tab back off disk.
+ *
+ * Keyed off the union instead of listed loose, because this set already drifted once and did so
+ * silently: `storyAction` was added to `BlueprintEntryOwnerKind` but never added here, so every
+ * story-action blueprint tab failed `isBlueprintEntryPayload` and was dropped by `trySerializeTab`
+ * - the tab never even reached the session file, and came back missing after every restart.
+ * The `satisfies` makes the next added owner kind a compile error until it is decided here.
+ */
+const BLUEPRINT_ENTRY_OWNER_KINDS = new Set<string>(
+    Object.keys({
+        globalMain: true,
+        surfaceMain: true,
+        widgetMain: true,
+        widgetValue: true,
+        componentWidgetMain: true,
+        storyAction: true,
+    } satisfies Record<BlueprintEntryOwnerKind, true>),
+);
 
 export type SerializedTab =
     | { kind: "welcome" }
     | { kind: "dashboard" }
+    | { kind: "newTab"; token: string }
     | { kind: "surface"; surfaceId: string }
     | { kind: "blueprint"; title: string; payload: BlueprintEntryTabPayload }
     | { kind: "character"; characterId: string }
     | { kind: "assetImage"; assetId: string; title: string }
     | { kind: "assetAudio"; assetId: string; title: string }
+    | { kind: "assetText"; assetId: string; title: string }
     | { kind: "storyScene"; title: string; payload: StorySceneEditorTabPayload }
     | { kind: "storyMotion"; title: string; payload: StoryMotionEditorPayload };
 
@@ -111,7 +133,13 @@ function isBlueprintEntryPayload(value: unknown): value is BlueprintEntryTabPayl
         return false;
     }
     const o = value as Record<string, unknown>;
-    if (typeof o.blueprintId !== "string" || typeof o.surfaceId !== "string") {
+    if (typeof o.blueprintId !== "string") {
+        return false;
+    }
+    // `surfaceId` is optional *by design* (see BlueprintEntryTabPayload): a story-action blueprint
+    // hangs off a story action, not off a surface, so it has none to record. Demanding a string
+    // here made those tabs unserializable, which is why they disappeared instead of coming back.
+    if (o.surfaceId !== undefined && typeof o.surfaceId !== "string") {
         return false;
     }
     if (typeof o.ownerKind !== "string" || !BLUEPRINT_ENTRY_OWNER_KINDS.has(o.ownerKind)) {
@@ -193,6 +221,13 @@ export function trySerializeTab(tab: EditorTabDefinition): SerializedTab | null 
     if (tab.id === DASHBOARD_TAB_ID) {
         return { kind: "dashboard" };
     }
+    if (tab.id.startsWith(NEW_TAB_ID_PREFIX)) {
+        const token = tab.id.slice(NEW_TAB_ID_PREFIX.length);
+        if (!token) {
+            return null;
+        }
+        return { kind: "newTab", token };
+    }
     if (tab.id.startsWith(SURFACE_TAB_PREFIX)) {
         const surfaceId = tab.id.slice(SURFACE_TAB_PREFIX.length);
         if (!surfaceId) {
@@ -223,6 +258,13 @@ export function trySerializeTab(tab: EditorTabDefinition): SerializedTab | null 
             return null;
         }
         return { kind: "assetAudio", assetId, title: tab.title };
+    }
+    if (tab.id.startsWith(TEXT_EDITOR_TAB_PREFIX)) {
+        const assetId = tab.id.slice(TEXT_EDITOR_TAB_PREFIX.length);
+        if (!assetId) {
+            return null;
+        }
+        return { kind: "assetText", assetId, title: tab.title };
     }
     if (tab.id.startsWith(STORY_SCENE_TAB_PREFIX) && isStorySceneEditorPayload(tab.payload)) {
         return { kind: "storyScene", title: tab.title, payload: tab.payload };
@@ -287,6 +329,9 @@ function isSerializedTab(value: unknown): value is SerializedTab {
     if (kind === "welcome" || kind === "dashboard") {
         return true;
     }
+    if (kind === "newTab" && typeof o.token === "string" && o.token.length > 0) {
+        return true;
+    }
     if (kind === "surface" && typeof o.surfaceId === "string" && o.surfaceId.length > 0) {
         return true;
     }
@@ -306,6 +351,14 @@ function isSerializedTab(value: unknown): value is SerializedTab {
     }
     if (
         kind === "assetAudio" &&
+        typeof o.assetId === "string" &&
+        o.assetId.length > 0 &&
+        typeof o.title === "string"
+    ) {
+        return true;
+    }
+    if (
+        kind === "assetText" &&
         typeof o.assetId === "string" &&
         o.assetId.length > 0 &&
         typeof o.title === "string"
@@ -451,6 +504,11 @@ function storyIcon(): ReactNode {
     return createElement(FileText, { className: "w-4 h-4" });
 }
 
+/** Same glyph the open path gives a text tab, so a restored tab is indistinguishable. */
+function textIcon(): ReactNode {
+    return createElement(FileText, { className: "w-4 h-4" });
+}
+
 /**
  * Rebuild a live tab definition from its serialized form. Null when the tab's
  * resource no longer exists (deleted scene/asset/…) - callers drop the entry.
@@ -462,6 +520,9 @@ export function buildTabDefinition(ctx: WorkspaceContext, entry: SerializedTab):
     }
     if (entry.kind === "dashboard") {
         return createDashboardTab();
+    }
+    if (entry.kind === "newTab") {
+        return createNewTabTab(entry.token);
     }
     if (entry.kind === "surface") {
         const documentService = ctx.services.get<UIDocumentService>(Services.UIDocument);
@@ -489,7 +550,19 @@ export function buildTabDefinition(ctx: WorkspaceContext, entry: SerializedTab):
         if (!blueprintDocument.blueprints[p.blueprintId]) {
             return null;
         }
-        if (!document.surfaces.some(surface => surface.id === p.surfaceId)) {
+        // Only three owner kinds put a real UISurfaceId in `surfaceId`, so only those three can be
+        // checked against the document - same gating the widget/component checks below already do.
+        // For the rest, `surfaceId` is not a surface reference at all:
+        //   globalMain           -> the GLOBAL_MAIN_OWNER_KEY sentinel ("globalMain")
+        //   componentWidgetMain  -> a `component-editor:<componentId>` pseudo id (the component is
+        //                           what gets checked, in the branch below)
+        //   storyAction          -> absent entirely; the blueprint hangs off a story action
+        // For those, "no surface with this id" is their permanent, correct state rather than a
+        // deleted resource - reading it as a dead reference is what silently ate their tabs.
+        if (
+            (p.ownerKind === "surfaceMain" || p.ownerKind === "widgetMain" || p.ownerKind === "widgetValue") &&
+            !document.surfaces.some(surface => surface.id === p.surfaceId)
+        ) {
             return null;
         }
         if (p.ownerKind === "componentWidgetMain") {
@@ -563,6 +636,23 @@ export function buildTabDefinition(ctx: WorkspaceContext, entry: SerializedTab):
             title: entry.title,
             icon: audioIcon(),
             component: AudioPreviewEditor,
+            closable: true,
+            payload: { asset },
+        };
+    }
+    if (entry.kind === "assetText") {
+        const assetsService = ctx.services.get<AssetsService>(Services.Assets);
+        const asset = assetsService.getAssets()[AssetType.Other][entry.assetId] as Asset<AssetType.Other> | undefined;
+        // The extension check runs again on restore, not just on open: an asset renamed from
+        // `plan.md` to `plan.psd` between sessions must not come back in a text editor.
+        if (!asset || !isTextEditableAsset(asset)) {
+            return null;
+        }
+        return {
+            id: getTextEditorTabId(entry.assetId),
+            title: entry.title,
+            icon: textIcon(),
+            component: TextEditor,
             closable: true,
             payload: { asset },
         };

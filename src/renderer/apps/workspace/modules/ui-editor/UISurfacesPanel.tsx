@@ -25,6 +25,8 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { DEFAULT_APP_SURFACE_NAME, DEFAULT_UI_SURFACE_SIZE, MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { SurfaceActions } from "./panel/SurfaceActions";
+import { useFreezeGuard } from "../../components/ui/freezeGuard";
+import { UITemplateStoreModal } from "./panel/templates/UITemplateStoreModal";
 import { SurfaceFilters } from "./panel/SurfaceFilters";
 import { SurfaceList, type SurfaceListGlobalBlueprintCard } from "./panel/SurfaceList";
 import { ComponentLibraryPanel } from "./panel/ComponentLibraryPanel";
@@ -132,6 +134,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     const { menuState, showMenu, hideMenu } = useContextMenu();
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
     const [hasEnsuredAppSurface, setHasEnsuredAppSurface] = useState(false);
+    const [templateStoreOpen, setTemplateStoreOpen] = useState(false);
     const blueprintRevision = useBlueprintDocumentRevision();
 
     const documentService = useMemo<UIDocumentService | null>(() => {
@@ -155,6 +158,9 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         return context.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
     }, [context]);
     const inputDialog = useMemo(() => (uiService ? createInputDialog(uiService) : null), [uiService]);
+    // Renaming, duplicating and deleting a surface write the interface document. Opening one - and the
+    // filter, the search and the previews - do not.
+    const freeze = useFreezeGuard();
 
     useEffect(() => {
         if (!documentService) return;
@@ -357,6 +363,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 {
                     id: "rename-surface",
                     label: t("uiEditor.panel.renameSurface", { label }),
+                    ...freeze.menuRow(),
                     onClick: () => {
                         void handleRenameSurface(surface);
                     },
@@ -366,6 +373,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 items.push({
                     id: "duplicate-surface",
                     label: t("uiEditor.panel.duplicateSurface", { label }),
+                    ...freeze.menuRow(),
                     onClick: () => {
                         handleDuplicateSurface(surface);
                     },
@@ -380,6 +388,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                     {
                         id: "delete-surface",
                         label: t("uiEditor.panel.deleteSurface", { label }),
+                        ...freeze.menuRow(),
                         onClick: () => {
                             void handleDeleteSurface(surface);
                         },
@@ -389,7 +398,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             setMenuItems(items);
             showMenu(event);
         },
-        [showMenu, handleOpenSurface, handleRenameSurface, handleDuplicateSurface, handleDeleteSurface, t],
+        [freeze, showMenu, handleOpenSurface, handleRenameSurface, handleDuplicateSurface, handleDeleteSurface, t],
     );
 
     const promptCreateSurface = useCallback(
@@ -549,10 +558,12 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 onCreate={handleCreateSurface}
                 createLabel={kind === "appSurface" ? t("uiEditor.panel.createPage") : t("uiEditor.panel.createGameUi")}
                 createDisabled={!documentService || !currentKindOption}
+                onOpenTemplateStore={() => setTemplateStoreOpen(true)}
+                templateLabel={t("uiEditor.templateStore.open")}
+                templateDisabled={!documentService}
             />
             <SurfaceList
                 surfaces={filteredSurfaces}
-                surfaceKind={kind}
                 globalBlueprintCard={globalBlueprintCard}
                 renderSurfacePreview={renderSurfacePreview}
                 onSurfaceClick={handleSurfaceClick}
@@ -569,6 +580,13 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 position={menuState.position}
                 visible={menuState.visible}
                 onClose={hideMenu}
+            />
+            <UITemplateStoreModal
+                isOpen={templateStoreOpen}
+                onClose={() => setTemplateStoreOpen(false)}
+                documentService={documentService}
+                onApplied={handleOpenSurface}
+                onNotify={(message, level) => uiService?.showNotification(message, level)}
             />
         </div>
     );

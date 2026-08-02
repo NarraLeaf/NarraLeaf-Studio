@@ -1,3 +1,4 @@
+import { isStoryVisitedCall, type StoryVisitedCall } from "@shared/types/story";
 import { findParam, isFlagParam, paramTypes, positionalParams, type StoryCommandDef, type StoryCommandParam } from "./storyCommandGrammar";
 import { getCommandDef } from "./commands/registry";
 import { tokenizeCommandLine, type StoryCommandSpan, type StoryCommandToken } from "./storyCommandParser";
@@ -22,8 +23,15 @@ export type StoryCommandCursor =
     | { kind: "paramValue"; param: StoryCommandParam; query: string; replace: StoryCommandSpan }
     /** Inside free text that runs to the end of the line. No candidates, by nature. */
     | { kind: "greedy" }
-    /** Inside a greedy expression. `query` is the identifier fragment at the caret, not the whole line. */
-    | { kind: "expression"; param: StoryCommandParam; query: string; replace: StoryCommandSpan }
+    /**
+     * Inside a greedy expression. `query` is the identifier fragment at the caret, not the whole line.
+     *
+     * `call` is set when that fragment is the argument of a `visited(` / `picked(`, which changes the
+     * vocabulary completely - scenes or choice options instead of variables and functions. It is the
+     * only piece of enclosing syntax this layer tracks, and only because those two calls take an
+     * entity name rather than an expression.
+     */
+    | { kind: "expression"; param: StoryCommandParam; query: string; replace: StoryCommandSpan; call?: StoryVisitedCall }
     /** After `#`, naming the speaker. */
     | { kind: "characterName"; query: string; replace: StoryCommandSpan };
 
@@ -283,7 +291,13 @@ function expressionCursor(param: StoryCommandParam, source: string, caret: numbe
         if (end < source.length) {
             end += 1; // take the closing quote too
         }
-        return { kind: "expression", param, query: source.slice(openedAt + 1, caret), replace: { start: openedAt, end } };
+        return {
+            kind: "expression",
+            param,
+            query: source.slice(openedAt + 1, caret),
+            replace: { start: openedAt, end },
+            ...visitedCallAt(source, openedAt, expressionStart),
+        };
     }
 
     let start = caret;
@@ -294,7 +308,44 @@ function expressionCursor(param: StoryCommandParam, source: string, caret: numbe
     while (end < source.length && isExpressionIdentifierChar(source[end])) {
         end += 1;
     }
-    return { kind: "expression", param, query: source.slice(start, caret), replace: { start, end } };
+    return {
+        kind: "expression",
+        param,
+        query: source.slice(start, caret),
+        replace: { start, end },
+        ...visitedCallAt(source, start, expressionStart),
+    };
+}
+
+/**
+ * `{ call: "visited" }` when the fragment starting at `fragmentStart` is the argument of a
+ * `visited(` / `picked(`, otherwise `{}`.
+ *
+ * The one place the completion layer has to know what encloses the caret, and it is worth the scan:
+ * inside those two calls the entire vocabulary is different (scenes / choice options, not variables
+ * and functions), so a menu that ignored the enclosing call would offer the author every name that
+ * cannot go there and none of the ones that can.
+ *
+ * A backwards character scan rather than a parse. The parser is no help here - the argument is
+ * half-typed, so the call it belongs to is exactly the node that failed to build - and the shape it
+ * looks for is unambiguous by construction: `visited` and `picked` take ONE entity name, so the only
+ * legal thing between the caret's fragment and the `(` is whitespace.
+ */
+function visitedCallAt(source: string, fragmentStart: number, expressionStart: number): { call?: StoryVisitedCall } {
+    let index = fragmentStart;
+    while (index > expressionStart && /\s/.test(source[index - 1])) {
+        index -= 1;
+    }
+    if (index <= expressionStart || source[index - 1] !== "(") {
+        return {};
+    }
+    index -= 1;
+    let nameEnd = index;
+    while (index > expressionStart && isExpressionIdentifierChar(source[index - 1])) {
+        index -= 1;
+    }
+    const name = source.slice(index, nameEnd);
+    return isStoryVisitedCall(name) ? { call: name } : {};
 }
 
 function characterCursor(source: string, caret: number): StoryCommandCursor {
@@ -364,7 +415,16 @@ export function completionFor(cursor: StoryCommandCursor, value: string): { text
             // single-quoted - the expression language's quoted-identifier spelling - or the lexer
             // would read it back as two names. The replace span already covers any quotes the author
             // opened (see expressionCursor), so this never nests quotes.
-            return { text: value.includes(" ") ? `'${value}'` : value, replace: cursor.replace };
+            //
+            // A candidate that already carries its own syntax is taken verbatim: a blueprint call
+            // arrives pre-formatted as `'Story Value'()` - name quoted where the lexer needs it, then
+            // the parens - and wrapping that in another pair would produce `''Story Value'()'`.
+            return {
+                text: value.includes(" ") && !value.includes("'") && !value.includes("(")
+                    ? `'${value}'`
+                    : value,
+                replace: cursor.replace,
+            };
         case "greedy":
         case "none":
             return null;

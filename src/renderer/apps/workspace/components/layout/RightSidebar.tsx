@@ -61,8 +61,10 @@ export function RightSidebar({ panelId, onClose, width }: RightSidebarProps) {
 
     return (
         <div 
+            // No border at the seam: the `.nl-dock-divider` beside this panel is the one line
+            // drawn there. The (transparent) border box stays for the focus ring alone.
             className={`bg-surface flex flex-col border transition-colors ${
-                isFocused ? 'border-primary' : 'border-transparent border-l-edge'
+                isFocused ? 'nl-dock-focused border-primary' : 'border-transparent'
             }`}
             style={{ width: `${width}px` }}
             onClick={handleClick}
@@ -76,7 +78,7 @@ export function RightSidebar({ panelId, onClose, width }: RightSidebarProps) {
                 </div>
                 <button
                     onClick={onClose}
-                    className="w-6 h-6 rounded flex items-center justify-center text-fg-muted hover:bg-fill hover:text-fg transition-colors cursor-default"
+                    className="w-6 h-6 rounded-md flex items-center justify-center text-fg-muted hover:bg-fill hover:text-fg transition-colors cursor-default"
                     aria-label={t("workspace.shell.closePanel")}
                     title={t("workspace.shell.closePanel")}
                 >

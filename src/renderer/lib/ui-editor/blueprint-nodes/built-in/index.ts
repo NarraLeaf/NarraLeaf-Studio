@@ -22,8 +22,11 @@ import { localVariableBlueprintNodes } from "./localVariableNodes";
 import { mathBlueprintNodes } from "./mathNodes";
 import { persistentVariableBlueprintNodes } from "./persistentVariableNodes";
 import { sliderBlueprintNodes } from "./sliderNodes";
+import { soundBlueprintNodes } from "./soundNodes";
+import { structuralBlueprintNodes } from "./structuralNodes";
 import { textInputBlueprintNodes } from "./textInputNodes";
 import { storyVariableBlueprintNodes } from "./storyVariableNodes";
+import { visitedBlueprintNodes } from "./visitedNodes";
 import { stringBlueprintNodes } from "./stringNodes";
 import { textBlueprintNodes } from "./textNodes";
 import { widgetPropertyBlueprintNodes } from "./widgetPropertyNodes";
@@ -46,22 +49,24 @@ export { localVariableBlueprintNodes } from "./localVariableNodes";
 export { mathBlueprintNodes } from "./mathNodes";
 export { persistentVariableBlueprintNodes } from "./persistentVariableNodes";
 export { storyVariableBlueprintNodes } from "./storyVariableNodes";
+export { visitedBlueprintNodes } from "./visitedNodes";
 export { sliderBlueprintNodes } from "./sliderNodes";
+export { soundBlueprintNodes } from "./soundNodes";
 export { textInputBlueprintNodes } from "./textInputNodes";
-export { navigationBlueprintNodes } from "./navigationNodes";
 export { stringBlueprintNodes } from "./stringNodes";
 export { textBlueprintNodes } from "./textNodes";
 export { structuralBlueprintNodes } from "./structuralNodes";
-export { widgetHostBlueprintNodes } from "./widget/widgetHostNodes";
 export { imageAssetBlueprintNodes, widgetPropertyBlueprintNodes } from "./widgetPropertyNodes";
 
 /** All core built-in nodes in registration order (must stay stable if you rely on duplicate checks elsewhere). */
 export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
+    ...structuralBlueprintNodes,
     ...eventHeadBlueprintNodes,
     ...broadcastBlueprintNodes,
     ...fnBlueprintNodes,
     ...frameBlueprintNodes,
     ...gameBlueprintNodes,
+    ...visitedBlueprintNodes,
     ...backlogBlueprintNodes,
     ...controlFlowBlueprintNodes,
     ...dataBlueprintNodes,
@@ -70,6 +75,7 @@ export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
     ...elementBlueprintNodes,
     ...localVariableBlueprintNodes,
     ...localizationBlueprintNodes,
+    ...soundBlueprintNodes,
     ...persistentVariableBlueprintNodes,
     ...storyVariableBlueprintNodes,
     ...mathBlueprintNodes,

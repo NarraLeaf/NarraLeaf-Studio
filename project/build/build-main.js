@@ -22,9 +22,17 @@ const { rootDir, isDev } = require('./utils');
         format: 'cjs',
         bundle: true,
         // @narraleaf/encryption is kept external (required from node_modules, not bundled).
-        // @lore-vcs/sdk and koffi likewise: koffi resolves its own .node addon and the
-        // platform lorelib shared library by path at runtime, which bundling breaks.
-        external: ['electron', 'esbuild', '@narraleaf/encryption', '@lore-vcs/sdk', 'koffi'],
+        // koffi likewise: it resolves its own .node addon by path at runtime, which
+        // bundling breaks. lorelib itself is loaded through a computed require of the
+        // @lore-vcs/sdk-<platform> package, which esbuild cannot follow and therefore
+        // leaves alone - see vcs/lore/library.ts.
+        //   esbuild is external for the same reason as koffi -- it spawns its own
+        // platform binary from @esbuild/<platform>, resolved by path -- and it is a
+        // *runtime* dependency, not just this script's: the Live2D puppet runtime
+        // installer bundles the author's Cubism SDK on their machine, because the
+        // Cubism Framework ships as TypeScript and nobody may publish a prebuilt
+        // adapter. See managers/puppet/live2dRuntimeBuild.ts.
+        external: ['electron', 'esbuild', '@narraleaf/encryption', 'koffi'],
         sourcemap: isDev(),
         minify: !isDev(),
         target: ['node18'],
@@ -42,7 +50,42 @@ const { rootDir, isDev } = require('./utils');
         // reads template/resource files relative to itself at runtime. 7zip-bin
         // (already in electron-builder's closure) resolves its bundled 7za.exe
         // relative to its own __dirname, so it must not be inlined either.
-        external: ['electron', 'electron-builder', '7zip-bin'],
+        // @narraleaf/encryption is a native addon: it loads a platform-specific
+        // binary by path, so it must resolve from node_modules, not be bundled
+        // (same reason the artifact compile worker keeps it external).
+        external: ['electron', 'electron-builder', '7zip-bin', '@narraleaf/encryption'],
+        sourcemap: isDev(),
+        minify: !isDev(),
+        target: ['node18'],
+        tsconfig: path.join(rootDir, 'src', 'main', 'tsconfig.json'),
+    });
+
+    console.log('[build-main] Bundling PSD import worker…');
+    await esbuild.build({
+        entryPoints: [path.join(rootDir, 'src', 'main', 'buildWorker', 'psdWorker.ts')],
+        outfile: path.join(outDir, 'psdWorker.js'),
+        platform: 'node',
+        format: 'cjs',
+        bundle: true,
+        // ag-psd is pure JS and bundles fine; electron stays external as everywhere else.
+        external: ['electron'],
+        sourcemap: isDev(),
+        minify: !isDev(),
+        target: ['node18'],
+        tsconfig: path.join(rootDir, 'src', 'main', 'tsconfig.json'),
+    });
+
+    console.log('[build-main] Bundling artifact compile worker…');
+    await esbuild.build({
+        entryPoints: [path.join(rootDir, 'src', 'main', 'buildWorker', 'compileWorker.ts')],
+        outfile: path.join(outDir, 'compileWorker.js'),
+        platform: 'node',
+        format: 'cjs',
+        bundle: true,
+        // Same externals as the main bundle: @narraleaf/encryption is a native
+        // addon whose computed-require sidecars resolve by path at runtime, and koffi
+        // loads its own binary by path — bundling either breaks resolution.
+        external: ['electron', '@narraleaf/encryption', 'koffi'],
         sourcemap: isDev(),
         minify: !isDev(),
         target: ['node18'],

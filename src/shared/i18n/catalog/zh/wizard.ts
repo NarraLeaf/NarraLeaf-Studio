@@ -1,9 +1,9 @@
 import type { LocaleNamespace } from "../types";
 
 export const wizard = {
-    appTitle: "新建项目",
+    appTitle: "添加项目",
     header: {
-        title: "创建新项目",
+        title: "添加项目",
         stepIndicator: "第 {current} 步，共 {total} 步",
     },
     steps: {
@@ -23,10 +23,26 @@ export const wizard = {
             label: "确认",
             description: "确认并创建",
         },
+        source: {
+            label: "来源",
+            description: "服务器与存放位置",
+        },
+        clone: {
+            label: "获取项目",
+            description: "复制到本机",
+        },
+        import: {
+            label: "导入",
+            description: "解包到本机",
+        },
     },
     nav: {
         createProject: "创建项目",
         creating: "正在创建…",
+        cloneProject: "获取项目",
+        cloning: "正在获取…",
+        importProject: "选择安装包…",
+        importing: "正在导入…",
     },
     error: {
         createFailedTitle: "创建项目失败",
@@ -41,13 +57,23 @@ export const wizard = {
         appId: "应用 ID",
     },
     template: {
-        title: "选择项目模板",
-        subtitle: "选择一个项目模板，借助预配置的结构和设置快速开始",
+        title: "这个项目从哪里来？",
+        subtitle: "新建一个，或者把已经存在的项目拿进来",
         options: {
             empty: {
                 name: "空白",
                 description: "从空白项目开始，从零构建",
                 category: "自定义",
+            },
+            import: {
+                name: "来自安装包",
+                description: "解包别人导出的 .nlspkg 文件",
+                category: "已有项目",
+            },
+            clone: {
+                name: "来自服务器",
+                description: "复制一个已存在于版本控制服务器上的项目",
+                category: "已有项目",
             },
         },
     },
@@ -60,7 +86,7 @@ export const wizard = {
         },
         application: {
             title: "应用",
-            description: "常用的应用设置。多数设置在项目初始化后无法更改",
+            description: "多数项在项目创建后无法更改",
         },
         projectName: "项目名称",
         projectNamePlaceholder: "输入项目名称…",
@@ -86,9 +112,13 @@ export const wizard = {
         },
         versionControl: {
             description: "为项目设置版本控制",
+            loreHint: "会在项目文件夹内建立版本历史，并把此刻记为第一个版本",
+            unavailablePlatform: "本机不支持版本控制，项目将不带版本控制创建",
+            unavailableInstallation: "当前安装的 Studio 不含版本控制，项目将不带版本控制创建",
         },
         projectLocation: "项目位置",
         projectLocationPlaceholder: "输入项目位置…",
+        browseLocation: "选择文件夹…",
         validatingDirectory: "正在校验目录…",
         directoryWillBeCreated: "创建项目时将自动创建该目录",
         versionControlSystem: "版本控制系统",
@@ -98,6 +128,58 @@ export const wizard = {
             hourly: "每小时",
             daily: "每天",
             weekly: "每周",
+        },
+    },
+    import: {
+        title: "导入项目安装包",
+        subtitle: "把一个 .nlspkg 文件解包到本机的文件夹里",
+        steps: {
+            title: "接下来会发生什么",
+            description: "会依次弹出两个对话框，然后开始解包",
+            pickPackage: "第一步：选择要解包的 .nlspkg 文件",
+            pickFolder: "第二步：选择解包到哪个文件夹",
+        },
+        working: "等待你选择安装包和目标文件夹，两个都选好之后才开始解包",
+        error: {
+            failedTitle: "无法导入项目",
+            generic: "无法导入该项目安装包",
+            notAProjectTitle: "这不是 NarraLeaf Studio 项目",
+            notAProject: "安装包已解包，但其中没有 Studio 项目文件。已解包的内容位于 {path}。请确认拿到的文件是否正确，然后重试",
+        },
+    },
+    source: {
+        title: "项目在哪里",
+        subtitle: "指向存放该项目的服务器，并选择本机副本的存放位置",
+        server: {
+            title: "服务器",
+            description: "项目在版本控制服务器上的地址",
+        },
+        addressLabel: "项目地址",
+        addressHint: "向搭建该项目的人索取这个地址",
+        addressInvalid: "项目地址末尾需要带上项目名，例如 lore://studio.example.lan:41337/my-game",
+        parsedServer: "服务器",
+        parsedName: "服务器上的项目名",
+        destination: {
+            title: "存放位置",
+            description: "副本在本机的存放位置",
+        },
+        destinationLabel: "存放到",
+        destinationHint: "必须是新建或空的文件夹",
+        destinationWillBeCreated: "复制项目时将创建该文件夹",
+    },
+    clone: {
+        title: "获取项目",
+        subtitle: "尚未开始下载。此操作会把整个项目复制到本机",
+        summary: {
+            title: "将要复制的内容",
+            description: "开始前请确认；整个项目都会经网络传输",
+        },
+        working: "正在从服务器复制项目，可能需要一段时间",
+        error: {
+            failedTitle: "无法获取项目",
+            generic: "无法从服务器获取该项目",
+            notAProjectTitle: "这不是 NarraLeaf Studio 项目",
+            notAProject: "复制已完成，但其中没有 Studio 项目文件。已复制的内容位于 {path}。请与搭建该项目的人核对地址，然后另选一个空文件夹重试",
         },
     },
     review: {
@@ -122,9 +204,9 @@ export const wizard = {
         locationRequired: "项目位置为必填项",
         templateRequired: "项目模板为必填项",
         invalidPath: "无效路径",
-        notADirectory: "所选路径已存在，但不是目录。请选择一个目录或新建一个",
-        cannotWrite: "无法写入所选目录。请检查权限或选择其他位置",
-        notEmpty: "目录不为空。请选择一个空目录或新建一个",
+        notADirectory: "该路径已存在，但不是目录。换一个目录，或新建一个",
+        cannotWrite: "无法写入该目录。检查权限，或换一个位置",
+        notEmpty: "该目录不为空。换一个空目录，或新建一个",
         validationFailed: "目录校验失败",
         failedToValidate: "校验目录失败",
         checkExistenceFailed: "检查目录是否存在失败",

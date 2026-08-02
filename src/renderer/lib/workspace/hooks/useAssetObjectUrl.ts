@@ -6,6 +6,10 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { AssetType, AssetData } from "@/lib/workspace/services/assets/assetTypes";
 import { getInterface } from "@/lib/app/bridge";
 import { resolveDevModeSavePreviewImageUrl } from "@/lib/ui-editor/runtime/devModeSavePreviewAssets";
+import {
+    isCharacterAvatarAssetId,
+    resolveCharacterAvatarAssetUrl,
+} from "@/lib/ui-editor/runtime/characterAvatarAssets";
 import { resolveGameRuntimeAssetUrl } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
 
 interface AssetObjectUrlState {
@@ -15,7 +19,20 @@ interface AssetObjectUrlState {
     error: string | null;
 }
 
-export function useAssetObjectUrl(assetId?: string | null) {
+/**
+ * Which library pool an id is looked up in. The bare string form is accepted so callers inside the
+ * shared `@/lib/ui-editor` tree - which the game-runtime bundle also compiles, and which may not
+ * import workspace service modules - can name a pool without pulling the enum across that boundary.
+ */
+export type AssetObjectUrlPool = AssetType | `${AssetType}`;
+
+/**
+ * `assetType` selects which library pool the id is looked up in. It was implicitly Image before
+ * `nl.video` existed - and silently so: a video id resolved to "not found" rather than to anything
+ * an author could see was wrong. The runtime shim ignores the argument entirely, because the
+ * packaged game addresses assets by id alone.
+ */
+export function useAssetObjectUrl(assetId?: string | null, assetType: AssetObjectUrlPool = AssetType.Image) {
     let workspaceValue: ReturnType<typeof useWorkspace> | null = null;
     let context: WorkspaceContext | null = null;
     try {
@@ -33,6 +50,24 @@ export function useAssetObjectUrl(assetId?: string | null) {
         error: null,
     });
     const urlRef = useRef<string | null>(null);
+    /**
+     * Bumped when this asset's bytes are replaced. Everything downstream of this hook — story rows,
+     * character variants, widget fills — addresses the asset by id, and the id survives a
+     * replacement, so without a second key the effect below would never re-run and every one of them
+     * would keep the pre-replacement picture until the tab was remounted.
+     */
+    const [contentGeneration, setContentGeneration] = useState(0);
+
+    useEffect(() => {
+        if (!assetsService || !assetId) {
+            return;
+        }
+        return assetsService.getEvents().on("updated", asset => {
+            if (asset.id === assetId) {
+                setContentGeneration(generation => generation + 1);
+            }
+        });
+    }, [assetsService, assetId]);
 
     useEffect(() => {
         if (!assetId) {
@@ -60,6 +95,25 @@ export function useAssetObjectUrl(assetId?: string | null) {
                 metadata: null,
                 loading: false,
                 error: null,
+            });
+            return;
+        }
+
+        // A dialog avatar the mounted compile already resolved. This has to come before every
+        // other arm: it is the swap that must not flash, and in Dev Mode the ordinary arm costs
+        // two IPC hops. A synthetic (baked) avatar id stops here either way - it has no record in
+        // the asset library, so falling through would spend that round trip only to be told so.
+        const avatarUrl = resolveCharacterAvatarAssetUrl(assetId);
+        if (avatarUrl || isCharacterAvatarAssetId(assetId)) {
+            if (urlRef.current) {
+                URL.revokeObjectURL(urlRef.current);
+                urlRef.current = null;
+            }
+            setState({
+                url: avatarUrl,
+                metadata: null,
+                loading: false,
+                error: avatarUrl ? null : `Avatar is not available in this session: ${assetId}`,
             });
             return;
         }
@@ -100,7 +154,7 @@ export function useAssetObjectUrl(assetId?: string | null) {
 
             (async () => {
                 try {
-                    const result = await getInterface().devMode.resolveImageAssetUrl(assetId);
+                    const result = await getInterface().devMode.resolveAssetUrl(assetId, assetType);
                     if (cancelled) {
                         return;
                     }
@@ -109,7 +163,7 @@ export function useAssetObjectUrl(assetId?: string | null) {
                             url: null,
                             metadata: null,
                             loading: false,
-                            error: result.error ?? "Image asset not found",
+                            error: result.error ?? `Asset not found: ${assetId}`,
                         });
                         return;
                     }
@@ -144,13 +198,13 @@ export function useAssetObjectUrl(assetId?: string | null) {
             };
         }
 
-        const asset = assetsService.getAssets()[AssetType.Image]?.[assetId];
+        const asset = assetsService.getAssets()[assetType]?.[assetId];
         if (!asset) {
             setState({
                 url: null,
                 metadata: null,
                 loading: false,
-                error: "Image asset not found",
+                error: `Asset not found: ${assetId}`,
             });
             return;
         }
@@ -172,12 +226,30 @@ export function useAssetObjectUrl(assetId?: string | null) {
                     url: null,
                     metadata: null,
                     loading: false,
-                    error: result.error ?? "Failed to load image",
+                    error: result.error ?? `Failed to load asset: ${assetId}`,
                 });
                 return;
             }
 
-            const blob = new Blob([new Uint8Array(result.data.data)]);
+            /**
+             * `fetch` is typed per pool: image / audio / video / font hand back bytes, while
+             * blueprint, JSON and model bundles hand back parsed objects. Only the byte-bearing ones
+             * can become an object URL, so an object payload is an error here rather than a
+             * `[object Object]` blob some `<img>` or `<video>` would silently fail to decode.
+             */
+            const payload = result.data;
+            const bytes = payload.data;
+            if (!(bytes instanceof Uint8Array)) {
+                setState({
+                    url: null,
+                    metadata: null,
+                    loading: false,
+                    error: `Asset has no binary content: ${assetId}`,
+                });
+                return;
+            }
+
+            const blob = new Blob([new Uint8Array(bytes) as BlobPart]);
             const nextUrl = URL.createObjectURL(blob);
             if (urlRef.current) {
                 URL.revokeObjectURL(urlRef.current);
@@ -185,7 +257,9 @@ export function useAssetObjectUrl(assetId?: string | null) {
             urlRef.current = nextUrl;
             setState({
                 url: nextUrl,
-                metadata: result.data,
+                // Image-shaped metadata is only image-shaped for the image pool; claiming otherwise
+                // would hand a caller a width/height that does not exist.
+                metadata: assetType === AssetType.Image ? (payload as AssetData<AssetType.Image>) : null,
                 loading: false,
                 error: null,
             });
@@ -194,7 +268,7 @@ export function useAssetObjectUrl(assetId?: string | null) {
         return () => {
             cancelled = true;
         };
-    }, [assetId, assetsService]);
+    }, [assetId, assetType, assetsService, contentGeneration]);
 
     useEffect(() => {
         return () => {

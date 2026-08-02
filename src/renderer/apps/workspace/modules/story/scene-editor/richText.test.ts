@@ -89,4 +89,37 @@ describe("richText", () => {
             .toEqual([{ text: "ab" }, { pause: 300 }, { text: "cd" }]);
         expect(totalUnits([{ text: "ab" }, { pause: true }, { text: "c" }])).toBe(4);
     });
+
+    describe("inline event runs", () => {
+        const event = { event: { expression: { characterId: "c1", formName: "angry" } } } as const;
+
+        it("projects to nothing in plain text (zero-width, like a pause)", () => {
+            expect(richRunsToPlain([{ text: "a" }, event, { text: "b" }])).toBe("ab");
+        });
+
+        it("survives normalizeRuns intact — never mis-routed to a pause run", () => {
+            // The union widened past pause/interp; without an explicit branch normalizeRuns would
+            // corrupt an event into `{ pause: undefined }`.
+            expect(normalizeRuns([{ text: "a" }, event, { text: "b" }]))
+                .toEqual([{ text: "a" }, event, { text: "b" }]);
+        });
+
+        it("counts as one atomic unit and splices like a chip", () => {
+            expect(totalUnits([{ text: "ab" }, event, { text: "c" }])).toBe(4);
+            expect(spliceRuns([{ text: "abcd" }], 2, 2, [event]))
+                .toEqual([{ text: "ab" }, event, { text: "cd" }]);
+            // Deleting the event's single unit rejoins the surrounding text.
+            expect(spliceRuns([{ text: "a" }, event, { text: "b" }], 1, 2, []))
+                .toEqual([{ text: "ab" }]);
+        });
+
+        it("keeps an event run meaningful (never collapsed to plain)", () => {
+            expect(richIfMeaningful([{ text: "x" }, event])).toEqual([{ text: "x" }, event]);
+        });
+
+        it("derives event runs from a rich segment", () => {
+            expect(segmentToRuns({ textId: "t", role: "dialogue", value: "ab", rich: [{ text: "a" }, event, { text: "b" }] }))
+                .toEqual([{ text: "a" }, event, { text: "b" }]);
+        });
+    });
 });

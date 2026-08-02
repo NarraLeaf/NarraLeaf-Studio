@@ -3,6 +3,13 @@ import { normalizeLocale, setLocaleContributions } from "@shared/i18n";
 import { i18nStore } from "./store";
 
 let subscribed = false;
+/**
+ * The persisted `app.language` value, kept raw. A plugin locale that is not
+ * registered right now still has to be remembered: the plugin may come back
+ * (re-enabled, re-authorized after an update) and the preference must survive
+ * the gap rather than being flattened to whatever it degraded to.
+ */
+let preference: unknown = undefined;
 
 /**
  * Fetch the aggregated plugin language packs from the main process and push them
@@ -21,6 +28,20 @@ async function loadPluginLocales(): Promise<void> {
 }
 
 /**
+ * Re-resolve the stored preference against the locales registered *now*.
+ *
+ * `normalizeLocale` reads the live registry, so this is what makes a plugin
+ * locale degrade the same way whether it disappears mid-session or was already
+ * gone at startup: "zh-x-neko" falls back to its `zh` primary subtag either way.
+ * Without it a window that loses a pack keeps holding the dead code and every
+ * lookup misses into the `en` fallback instead — same broken state, two
+ * different languages depending on how you got there.
+ */
+function applyPreference(): void {
+    i18nStore.setLocale(normalizeLocale(preference));
+}
+
+/**
  * Load the persisted language and wire live updates. Call once, before the first
  * React render (renderApp does this), so the window paints in the right language
  * with no flash of source-locale text.
@@ -36,7 +57,8 @@ export async function initI18n(): Promise<void> {
     try {
         const result = await getInterface().app.state.getGlobalState("app.language");
         if (result.success) {
-            i18nStore.setLocale(normalizeLocale(result.data.value));
+            preference = result.data.value;
+            applyPreference();
         }
     } catch (error) {
         console.warn("[i18n] Failed to load language preference; using default.", error);
@@ -46,11 +68,12 @@ export async function initI18n(): Promise<void> {
         subscribed = true;
         getInterface().app.state.onGlobalStateChanged?.((change) => {
             if (change.key === "app.language") {
-                i18nStore.setLocale(normalizeLocale(change.value));
+                preference = change.value;
+                applyPreference();
             }
         });
         getInterface().plugins?.onLocalesChanged?.(() => {
-            void loadPluginLocales();
+            void loadPluginLocales().then(applyPreference);
         });
     }
 }

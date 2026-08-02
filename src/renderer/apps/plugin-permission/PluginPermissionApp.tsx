@@ -5,19 +5,24 @@ import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey, Translator } from "@shared/i18n";
 import {
+    PluginInstallPermission,
     PluginPermissionGrantResult,
     PluginPermissionPersistence,
     PluginPermissionPromptProps,
     PluginPermissionRequest,
 } from "@shared/types/pluginPermissions";
 import { describePluginInstallPermissions } from "@shared/utils/pluginInstallPermissions";
+import { PluginInstallPermissionSections } from "@/lib/plugins/PluginInstallPermissions";
 import { WindowAppType, WindowControlPolicy, type WindowControlAbility } from "@shared/types/window";
 
 type PermissionCopy = {
     type: string;
     title: string;
     body: string[];
+    /** Flat rows, for the request kinds that grant exactly one thing. */
     permissions: string[];
+    /** Install requests instead render the grouped breakdown, heaviest group first. */
+    installPermissions?: readonly PluginInstallPermission[];
     detail?: string;
 };
 
@@ -65,6 +70,7 @@ function buildPermissionCopy(props: PluginPermissionPromptProps, t: Translator["
 
     switch (request.kind) {
         case "install": {
+            const requested = request.permissions ?? [];
             return {
                 type: t("pluginPermission.install.type"),
                 title: t("pluginPermission.install.title", { requester, plugin }),
@@ -72,7 +78,10 @@ function buildPermissionCopy(props: PluginPermissionPromptProps, t: Translator["
                     t("pluginPermission.install.body1"),
                     t("pluginPermission.install.body2"),
                 ],
-                permissions: describePluginInstallPermissions(request.permissions),
+                // Nothing requested still needs saying out loud, so the "no
+                // privileged controls" line falls through to the flat list.
+                permissions: requested.length > 0 ? [] : describePluginInstallPermissions(undefined),
+                installPermissions: requested,
                 detail: t("pluginPermission.install.source", { source: request.source }),
             };
         }
@@ -261,6 +270,12 @@ export function PluginPermissionApp() {
                                 </div>
                             ) : null}
 
+                            <PluginInstallPermissionSections
+                                permissions={copy.installPermissions}
+                                rounded={false}
+                                className="mt-3"
+                            />
+
                             {copy.detail ? (
                                 <div className="mt-3 truncate font-mono text-2xs text-fg-subtle">
                                     {copy.detail}
@@ -294,7 +309,7 @@ export function PluginPermissionApp() {
                             type="button"
                             onClick={handleDeny}
                             autoFocus
-                            className="no-drag flex h-9 min-w-0 items-center justify-center gap-2 rounded border border-edge bg-fill-subtle px-3 text-sm font-medium text-fg hover:bg-fill focus:outline-none focus:ring-2 focus:ring-primary/60"
+                            className="no-drag flex h-9 min-w-0 items-center justify-center gap-2 rounded-md border border-edge bg-fill-subtle px-3 text-sm font-medium text-fg hover:bg-fill focus:outline-none focus:ring-2 focus:ring-primary/60"
                         >
                             <X size={15} className="shrink-0" />
                             <span className="whitespace-nowrap">{request.kind === "install" ? t("pluginPermission.button.dontAllow") : t("pluginPermission.button.deny")}</span>
@@ -304,7 +319,7 @@ export function PluginPermissionApp() {
                                 type="button"
                                 onClick={() => handleApprove("temporary")}
                                 disabled={!request || busy}
-                                className="no-drag flex h-9 min-w-0 items-center justify-center gap-2 rounded border border-edge bg-fill px-3 text-sm font-medium text-fg hover:bg-fill-strong disabled:cursor-not-allowed disabled:opacity-50"
+                                className="no-drag flex h-9 min-w-0 items-center justify-center gap-2 rounded-md border border-edge bg-fill px-3 text-sm font-medium text-fg hover:bg-fill-strong disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 <Check size={15} className="shrink-0" />
                                 <span className="whitespace-nowrap">{t("pluginPermission.button.allowOnce")}</span>
@@ -314,7 +329,7 @@ export function PluginPermissionApp() {
                             type="button"
                             onClick={() => handleApprove(showPersistentChoices ? "permanent" : undefined)}
                             disabled={!request || busy}
-                            className="no-drag flex h-9 min-w-0 items-center justify-center gap-2 rounded bg-primary px-3 text-sm font-semibold text-on-primary hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="no-drag flex h-9 min-w-0 items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-semibold text-on-primary hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             <Check size={15} className="shrink-0" />
                             <span className="whitespace-nowrap">{busy ? t("pluginPermission.button.granting") : showPersistentChoices ? t("pluginPermission.button.alwaysAllow") : t("pluginPermission.button.allow")}</span>

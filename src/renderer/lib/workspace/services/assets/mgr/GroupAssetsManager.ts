@@ -3,14 +3,26 @@ import { FsRequestResult } from "@shared/types/os";
 import { RendererError } from "@shared/utils/error";
 import { FileSystemService } from "../../core/FileSystem";
 import { Services, WorkspaceContext } from "../../services";
-import { AssetType } from "../assetTypes";
-import { Asset, AssetGroup, AssetGroupMap, AssetSource } from "../types";
+import { ASSET_CATEGORY_ORDER, ASSET_CATEGORY_TYPES, AssetCategory, AssetType, categoryOfAssetType } from "../assetTypes";
+import { Asset, AssetGroup, AssetGroupMap, AssetSource, LegacyTypedAssetGroup } from "../types";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { AssetsService } from "../../core/AssetsService";
+import type { AssetDeleteOptions } from "../assetDeleteGuard";
+import { reconcileAssetOrder } from "../assetOrder";
+import { legacyShardTypesFor, mergeLegacyGroupShards, normalizeAssetGroupRecords } from "../assetCategoryShards";
+
+/** An empty group map — one record per category, in sidebar order. */
+function emptyGroupMap(): AssetGroupMap {
+    const map = {} as AssetGroupMap;
+    for (const category of ASSET_CATEGORY_ORDER) {
+        map[category] = {};
+    }
+    return map;
+}
 
 export class GroupAssetsManager {
     public assetsGroups: AssetGroupMap | null = null;
-    private dirtyGroupTypes = new Set<AssetType>();
+    private dirtyGroupCategories = new Set<AssetCategory>();
 
     constructor(private assetsService: AssetsService, private context: WorkspaceContext) {
     }
@@ -21,14 +33,30 @@ export class GroupAssetsManager {
         return this;
     }
 
-    public getGroups<T extends AssetType>(type: T): AssetGroup[] {
+    public getGroups(category: AssetCategory): AssetGroup[] {
         this.assertGroups();
-        const groups = Object.values(this.assetsGroups[type]);
-        return groups;
+        const record = this.assetsGroups[category];
+        return this.listOrderedGroups(category).map(id => record[id]);
     }
 
-    public async createGroup<T extends AssetType>(
-        type: T,
+    /**
+     * Group ids of `category` in the order the browser draws them — the tree's other half, walked
+     * together with the assets by shift-range selection.
+     */
+    public listOrderedGroups(category: AssetCategory): string[] {
+        this.assertGroups();
+        return reconcileAssetOrder(this.assetsService.getAssetOrderManager().getGroupIds(category), this.assetsGroups[category]);
+    }
+
+    /** Every asset record filed under this category, across all of its member types. */
+    private categoryAssets(category: AssetCategory): Asset<AssetType, AssetSource>[] {
+        const metadata = this.assetsService.getAssetsMetadataManager().getAssets();
+        return ASSET_CATEGORY_TYPES[category]
+            .flatMap(type => Object.values(metadata[type])) as Asset<AssetType, AssetSource>[];
+    }
+
+    public async createGroup(
+        category: AssetCategory,
         name: string,
         parentGroupId?: string
     ): Promise<RequestStatus<AssetGroup>> {
@@ -38,17 +66,17 @@ export class GroupAssetsManager {
         const group: AssetGroup = {
             id,
             name,
-            type,
+            category,
             parentGroupId,
             createdAt: Date.now(),
             updatedAt: Date.now(),
         };
 
-        (this.assetsGroups[type] as Record<string, AssetGroup>)[id] = group;
-        this.dirtyGroupTypes.add(type);
-        
+        this.assetsGroups[category][id] = group;
+        this.dirtyGroupCategories.add(category);
+
         // Save to filesystem
-        const writeResult = await this.writeAssetsGroupsMetadata(type);
+        const writeResult = await this.writeAssetsGroupsMetadata(category);
         if (!writeResult.ok) {
             return {
                 success: false,
@@ -56,22 +84,58 @@ export class GroupAssetsManager {
             };
         }
 
-        this.assetsService.getEvents().emit("groupsUpdated", { type, groupId: id });
-        
+        this.assetsService.getEvents().emit("groupsUpdated", { category, groupId: id });
+
         return {
             success: true,
             data: group,
         };
     }
 
-    public async deleteGroup<T extends AssetType>(
-        type: T, 
-        groupId: string, 
-        recursive: boolean = false
+    /**
+     * Every asset a delete of this group would remove: its own, plus — when the delete cascades —
+     * everything in the groups below it, to any depth.
+     *
+     * Split out so the guard can ask the question *before* the first file is unlinked; see
+     * {@link AssetsService.deleteGroup}.
+     */
+    public collectGroupAssets(
+        category: AssetCategory,
+        groupId: string,
+        recursive: boolean = false,
+    ): Asset<AssetType, AssetSource>[] {
+        this.assertGroups();
+
+        const groupIds = new Set<string>([groupId]);
+        if (recursive) {
+            const candidates = Object.values(this.assetsGroups[category]);
+            // Group nesting has no depth bound, so descend until no new child appears.
+            let grew = true;
+            while (grew) {
+                grew = false;
+                for (const group of candidates) {
+                    if (group.parentGroupId && groupIds.has(group.parentGroupId) && !groupIds.has(group.id)) {
+                        groupIds.add(group.id);
+                        grew = true;
+                    }
+                }
+            }
+        }
+
+        return this.categoryAssets(category).filter(
+            asset => asset.groupId && groupIds.has(asset.groupId)
+        );
+    }
+
+    public async deleteGroup(
+        category: AssetCategory,
+        groupId: string,
+        recursive: boolean = false,
+        options?: AssetDeleteOptions,
     ): Promise<RequestStatus<void>> {
         this.assertGroups();
 
-        if (!this.assetsGroups![type][groupId]) {
+        if (!this.assetsGroups![category][groupId]) {
             return {
                 success: false,
                 error: `Group not found: ${groupId}`,
@@ -79,7 +143,7 @@ export class GroupAssetsManager {
         }
 
         // Check for child groups
-        const childGroups = Object.values(this.assetsGroups![type]).filter(
+        const childGroups = Object.values(this.assetsGroups![category]).filter(
             g => g.parentGroupId === groupId
         );
 
@@ -91,32 +155,44 @@ export class GroupAssetsManager {
         }
 
         // Check for assets in this group
-        const metadata = this.assetsService.getAssetsMetadataManager().getAssets();
-        const assetsInGroup = Object.values(metadata[type]).filter(
+        const assetsInGroup = this.categoryAssets(category).filter(
             a => a.groupId === groupId
         );
 
-        // Delete all assets within this group instead of moving them to root
+        // Delete all assets within this group instead of moving them to root.
+        //
+        // A refusal stops the cascade instead of being swallowed: the delete goes through
+        // `AssetsService.deleteAsset`, which is where the reference guard lives, and carrying on
+        // past it would drop the group record while leaving the file it refused to delete behind,
+        // stranded at the root with no way back to where it was.
         for (const asset of assetsInGroup) {
-            await this.assetsService.deleteAsset(asset as Asset<AssetType, AssetSource>);
+            const result = await this.assetsService.deleteAsset(asset, options);
+            if (!result.success) {
+                return result;
+            }
         }
 
         // Delete child groups recursively
         if (recursive) {
             for (const child of childGroups) {
-                await this.deleteGroup(type, child.id, true);
+                const result = await this.deleteGroup(category, child.id, true, options);
+                if (!result.success) {
+                    return result;
+                }
             }
         }
 
         // Delete the group
-        delete this.assetsGroups![type][groupId];
-        this.dirtyGroupTypes.add(type);
+        delete this.assetsGroups![category][groupId];
+        this.dirtyGroupCategories.add(category);
 
         // Save changes
-        await this.writeAssetsGroupsMetadata(type);
-        this.assetsService.markDirty(type);
+        await this.writeAssetsGroupsMetadata(category);
+        for (const type of ASSET_CATEGORY_TYPES[category]) {
+            this.assetsService.markDirty(type);
+        }
 
-        this.assetsService.getEvents().emit("groupsUpdated", { type, groupId });
+        this.assetsService.getEvents().emit("groupsUpdated", { category, groupId });
 
         return {
             success: true,
@@ -124,14 +200,14 @@ export class GroupAssetsManager {
         };
     }
 
-    public async renameGroup<T extends AssetType>(
-        type: T,
+    public async renameGroup(
+        category: AssetCategory,
         groupId: string,
         newName: string
     ): Promise<RequestStatus<AssetGroup>> {
         this.assertGroups();
 
-        const group = this.assetsGroups![type][groupId];
+        const group = this.assetsGroups![category][groupId];
         if (!group) {
             return {
                 success: false,
@@ -142,10 +218,10 @@ export class GroupAssetsManager {
         group.name = newName;
         group.updatedAt = Date.now();
 
-        await this.writeAssetsGroupsMetadata(type);
-        this.dirtyGroupTypes.add(type);
+        await this.writeAssetsGroupsMetadata(category);
+        this.dirtyGroupCategories.add(category);
 
-        this.assetsService.getEvents().emit("groupsUpdated", { type, groupId });
+        this.assetsService.getEvents().emit("groupsUpdated", { category, groupId });
 
         return {
             success: true,
@@ -153,14 +229,14 @@ export class GroupAssetsManager {
         };
     }
 
-    public async moveGroupToParent<T extends AssetType>(
-        type: T,
+    public async moveGroupToParent(
+        category: AssetCategory,
         groupId: string,
         newParentGroupId?: string
     ): Promise<RequestStatus<AssetGroup>> {
         this.assertGroups();
 
-        const group = this.assetsGroups![type][groupId];
+        const group = this.assetsGroups![category][groupId];
         if (!group) {
             return {
                 success: false,
@@ -169,7 +245,7 @@ export class GroupAssetsManager {
         }
 
         // Verify new parent group exists if provided
-        if (newParentGroupId && !this.assetsGroups![type][newParentGroupId]) {
+        if (newParentGroupId && !this.assetsGroups![category][newParentGroupId]) {
             return {
                 success: false,
                 error: `Parent group not found: ${newParentGroupId}`,
@@ -179,10 +255,10 @@ export class GroupAssetsManager {
         group.parentGroupId = newParentGroupId;
         group.updatedAt = Date.now();
 
-        await this.writeAssetsGroupsMetadata(type);
-        this.dirtyGroupTypes.add(type);
+        await this.writeAssetsGroupsMetadata(category);
+        this.dirtyGroupCategories.add(category);
 
-        this.assetsService.getEvents().emit("groupsUpdated", { type, groupId });
+        this.assetsService.getEvents().emit("groupsUpdated", { category, groupId });
 
         return {
             success: true,
@@ -196,8 +272,10 @@ export class GroupAssetsManager {
     ): Promise<RequestStatus<void>> {
         this.assertGroups();
 
-        // Verify group exists if provided
-        if (groupId && !this.assetsGroups![asset.type][groupId]) {
+        // Verify group exists if provided. The category is the asset's own, which is what refuses a
+        // cross-category move: an mp3 may join any folder under Media, and no folder anywhere else.
+        const category = categoryOfAssetType(asset.type);
+        if (groupId && !this.assetsGroups![category][groupId]) {
             return {
                 success: false,
                 error: `Group not found: ${groupId}`,
@@ -229,14 +307,14 @@ export class GroupAssetsManager {
      * Duplicate a group recursively, including all child groups and assets.
      * Returns the newly created group.
      */
-    public async duplicateGroup<T extends AssetType>(
-        type: T,
+    public async duplicateGroup(
+        category: AssetCategory,
         groupId: string,
         newParentGroupId?: string
     ): Promise<RequestStatus<AssetGroup>> {
         this.assertGroups();
 
-        const originalGroup = this.assetsGroups![type][groupId];
+        const originalGroup = this.assetsGroups![category][groupId];
         if (!originalGroup) {
             return {
                 success: false,
@@ -245,32 +323,31 @@ export class GroupAssetsManager {
         }
 
         // Create new group with the same name (with " Copy" suffix)
-        const newGroupResult = await this.createGroup(type, `${originalGroup.name} Copy`, newParentGroupId);
+        const newGroupResult = await this.createGroup(category, `${originalGroup.name} Copy`, newParentGroupId);
         if (!newGroupResult.success || !newGroupResult.data) {
             return newGroupResult;
         }
         const newGroup = newGroupResult.data;
 
         // Duplicate all assets in this group
-        const metadata = this.assetsService.getAssetsMetadataManager().getAssets();
-        const assetsInGroup = Object.values(metadata[type]).filter(
+        const assetsInGroup = this.categoryAssets(category).filter(
             a => a.groupId === groupId
         );
 
         for (const asset of assetsInGroup) {
-            const dupResult = await this.assetsService.duplicateAsset(asset as Asset<AssetType, AssetSource>);
+            const dupResult = await this.assetsService.duplicateAsset(asset);
             if (dupResult.success && dupResult.data) {
                 await this.moveAssetToGroup(dupResult.data, newGroup.id);
             }
         }
 
         // Recursively duplicate child groups
-        const childGroups = Object.values(this.assetsGroups![type]).filter(
+        const childGroups = Object.values(this.assetsGroups![category]).filter(
             g => g.parentGroupId === groupId
         );
 
         for (const childGroup of childGroups) {
-            await this.duplicateGroup(type, childGroup.id, newGroup.id);
+            await this.duplicateGroup(category, childGroup.id, newGroup.id);
         }
 
         return {
@@ -279,15 +356,19 @@ export class GroupAssetsManager {
         };
     }
 
-    private async writeAssetsGroupsMetadata(type: AssetType): Promise<FsRequestResult<void>> {
+    private async writeAssetsGroupsMetadata(category: AssetCategory): Promise<FsRequestResult<void>> {
         this.assertGroups();
 
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
-        const data = JSON.stringify(this.assetsGroups[type]);
+        const data = JSON.stringify(this.assetsGroups[category]);
+
+        // The row order lives in a sibling file, not in this one, so an older Studio keeps reading
+        // this shard byte-for-byte as it always has.
+        this.assetsService.markOrderDirty(category);
 
         return await filesystemService.write(
-            this.getContext().project.resolve(ProjectNameConvention.AssetsGroupsShard(type)), 
-            data, 
+            this.getContext().project.resolve(ProjectNameConvention.AssetsGroupsShard(category)),
+            data,
             "utf-8"
         );
     }
@@ -298,89 +379,143 @@ export class GroupAssetsManager {
         }
     }
 
+    /**
+     * The folder list of every category, folding the type-named shards up on the open that finds a
+     * category shard missing.
+     *
+     * The merge is the whole reason an absent file cannot simply read as `{}`: a project whose
+     * folders live in `assets.groups.audio.json` would open with every audio asset un-filed, and
+     * re-filing a library by hand is not something an author can be asked to do. The old shards are
+     * read, never written and never deleted.
+     *
+     * **Reading is what this depends on; writing is only an optimisation.** The shape is
+     * `AssetOrderManager.init`'s, and for the same reason: `FileSystemService.write` answers a
+     * refused write - a frozen workspace, a working tree being re-read after a version restore - as
+     * a no-op success, so creating the shard first and then reading it back is a load path that
+     * fails on every project the freeze latch is closed over. The merged records are resolved in
+     * memory here; the file is written afterwards, and its failure costs the next open the same
+     * merge and nothing else.
+     */
     private async fetchAssetsGroups(): Promise<AssetGroupMap> {
-        // Initialize assets groups
-        await this.initAssetsGroups();
-
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
-        const data: AssetGroupMap = {
-            [AssetType.Image]: {},
-            [AssetType.Audio]: {},
-            [AssetType.Video]: {},
-            [AssetType.JSON]: {},
-            [AssetType.Blueprint]: {},
-            [AssetType.Font]: {},
-            [AssetType.Other]: {},
-        };
+        const data: AssetGroupMap = emptyGroupMap();
+        /** Categories built from the type-named shards on this open, i.e. the files to create. */
+        const migrated: AssetCategory[] = [];
 
-        for (const type of Object.values(AssetType)) {
-            const shardPath = this.getContext().project.resolve(ProjectNameConvention.AssetsGroupsShard(type));
-            const shardResult = await filesystemService.readJSON<Record<string, AssetGroup>>(shardPath);
+        for (const category of ASSET_CATEGORY_ORDER) {
+            const shardPath = this.getContext().project.resolve(ProjectNameConvention.AssetsGroupsShard(category));
+            const shardResult = await filesystemService.readJSON<Record<string, LegacyTypedAssetGroup>>(shardPath);
             if (shardResult.ok) {
-                Object.assign(data[type], shardResult.data);
-            } else {
+                // Key order stands as the group order until the sibling order file says otherwise;
+                // for a project that predates that file it *is* the order, and this parse is where
+                // it still exists.
+                Object.assign(data[category], normalizeAssetGroupRecords(shardResult.data, category));
+                continue;
+            }
+
+            // Only a definite "not there" is a shard to migrate. A file that is present but
+            // unreadable still holds the author's folders, and a stat that failed says nothing at
+            // all - treating either as absent would merge over a live list.
+            const existsResult = await filesystemService.isFileExists(shardPath);
+            if (!existsResult.ok || existsResult.data) {
                 throw new RendererError(`Failed to read assets groups shard: ${shardPath}`);
             }
+
+            Object.assign(data[category], await this.readLegacyGroupShards(category));
+            migrated.push(category);
         }
+
+        await this.createMigratedGroupShards(migrated, data);
 
         return data;
     }
 
-    private async initAssetsGroups(): Promise<void> {
+    /**
+     * Write the category shards this open had to build from the type-named ones.
+     *
+     * Best-effort by construction: a refused write reports success without touching the disk, so
+     * there is nothing here to assert on. A genuine failure still reaches the author - every write
+     * through `FileSystemService` is observed by `SaveStatusService`.
+     */
+    private async createMigratedGroupShards(categories: readonly AssetCategory[], data: AssetGroupMap): Promise<void> {
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
-        const files = Object.values(AssetType).map(type => ({
-            type,
-            path: this.getContext().project.resolve(ProjectNameConvention.AssetsGroupsShard(type)),
-        }));
 
-        const tasks = files.map(async file => {
-            const existsResult = await filesystemService.isFileExists(file.path);
-            if (!existsResult.ok || !existsResult.data) {
-                return filesystemService.write(file.path, JSON.stringify({}), "utf-8");
-            }
-            return { ok: true, data: void 0 } satisfies FsRequestResult<void, true>;
-        });
-        const results = await Promise.all(tasks);
-        const failedIndex = results.findIndex(result => !result.ok);
-        if (failedIndex >= 0) {
-            const failed = results[failedIndex];
-            const file = files[failedIndex];
-            if (!failed.ok) {
-                throw new RendererError(
-                    `Failed to initialize assets groups shard (${file.type}): ${file.path}: ${failed.error.code} ${failed.error.message}`
+        await Promise.all(categories.map(async category => {
+            const path = this.getContext().project.resolve(ProjectNameConvention.AssetsGroupsShard(category));
+            const result = await filesystemService.write(path, JSON.stringify(data[category]), "utf-8");
+            if (!result.ok) {
+                console.warn(
+                    `[assets] could not create the assets groups shard (${category}): ${path}: ${result.error.code} ${result.error.message}`
                 );
             }
+        }));
+    }
+
+    /**
+     * The type-named shards behind a category, read in member order.
+     *
+     * An absent file contributes nothing; one that exists and cannot be read throws, *before* the
+     * merged result is written anywhere. The two are not the same answer: a shard that is on disk
+     * and unreadable holds folders this merge would otherwise drop, and the created category shard
+     * would then be the file every later open reads instead - one bad read, migrated into a
+     * permanent loss.
+     */
+    private async readLegacyGroupShards(category: AssetCategory): Promise<Record<string, AssetGroup>> {
+        const legacyTypes = legacyShardTypesFor(category);
+        if (legacyTypes.length === 0) {
+            return {};
         }
+
+        const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+        const shards: { type: AssetType; records: Record<string, LegacyTypedAssetGroup> | null }[] = [];
+        for (const type of legacyTypes) {
+            // `AssetsGroupsShard` now takes a category; the legacy files are named after a type, and
+            // those two id spaces overlap only where the migration is a no-op. Built here rather than
+            // through the convention so the convention stops naming files nothing writes any more.
+            const path = this.getContext().project.resolve(["assets", `assets.groups.${type}.json`]);
+            const existsResult = await filesystemService.isFileExists(path);
+            if (existsResult.ok && !existsResult.data) {
+                continue;
+            }
+            const result = await filesystemService.readJSON<Record<string, LegacyTypedAssetGroup>>(path);
+            if (!result.ok) {
+                throw new RendererError(
+                    `Failed to read legacy assets groups shard: ${path}: ${result.error.code} ${result.error.message}`
+                );
+            }
+            shards.push({ type, records: result.data });
+        }
+
+        return mergeLegacyGroupShards(category, shards);
     }
 
     /**
      * Check if a group has neither child groups nor assets.
      */
-    private isGroupEmpty<T extends AssetType>(type: T, gid: string): boolean {
-        const groups = this.assetsGroups![type];
+    private isGroupEmpty(category: AssetCategory, gid: string): boolean {
+        const groups = this.assetsGroups![category];
         const group = groups[gid];
         if (!group) return false;
         const hasChildGroup = Object.values(groups).some(g => g.parentGroupId === gid);
         if (hasChildGroup) return false;
-        const metadata = this.assetsService.getAssetsMetadataManager().getAssets();
-        const hasAssets = Object.values(metadata[type]).some(a => a.groupId === gid);
+        const hasAssets = this.categoryAssets(category).some(a => a.groupId === gid);
         return !hasAssets;
     }
 
     /**
      * Walk up the parent chain and remove groups that become empty after deleting a child group.
      */
-    private async removeEmptyParentGroups<T extends AssetType>(type: T, parentGroupId?: string): Promise<void> {
+    private async removeEmptyParentGroups(category: AssetCategory, parentGroupId?: string): Promise<void> {
         while (parentGroupId) {
-            if (!this.isGroupEmpty(type, parentGroupId)) break;
-            const parent = this.assetsGroups![type][parentGroupId];
-            delete this.assetsGroups![type][parentGroupId];
+            if (!this.isGroupEmpty(category, parentGroupId)) break;
+            const parent = this.assetsGroups![category][parentGroupId];
+            delete this.assetsGroups![category][parentGroupId];
             // Move up the chain
             parentGroupId = parent.parentGroupId;
         }
         if (parentGroupId === undefined) {
             // We may have deleted some groups, ensure metadata flushed
-            await this.writeAssetsGroupsMetadata(type);
+            await this.writeAssetsGroupsMetadata(category);
         }
     }
 

@@ -4,7 +4,6 @@ import type {
     StoryBlockId,
     StoryConditionRef,
     StoryDocument,
-    StoryExpr,
     StoryNodeActionPayload,
     StoryScene,
     StoryVariableRef,
@@ -17,6 +16,7 @@ import {
     sceneVariableDefs,
     storyVariableRefKey,
 } from "@shared/types/story";
+import { formatStoryExpr } from "@shared/utils/storyExpressionParser";
 import { formatStorySecondsLabel } from "@shared/utils/storyTime";
 import { getSceneName } from "../scene-editor/storySceneBlockUtils";
 
@@ -180,14 +180,27 @@ function projectBlockLine(
             const label = block.payload.branch === "else" ? "else" : `${block.payload.branch} ${formatCondition(block.payload.condition, scene, document)}`;
             return { text: `${indent}/${label}`, editable: false, prefix: "" };
         }
+        if (block.payload.control === "label") {
+            return { text: `${indent}/label ${block.payload.name}`.trimEnd(), editable: false, prefix: "" };
+        }
+        if (block.payload.control === "goto") {
+            return { text: `${indent}/goto ${block.payload.targetLabel}`.trimEnd(), editable: false, prefix: "" };
+        }
+        if (block.payload.control === "break") {
+            return { text: `${indent}/break`, editable: false, prefix: "" };
+        }
+        // Both loop forms render back as the command that produces them. The conditional one renders
+        // as `/until`, not as `/repeat until="…"`: same block, but the greedy positional needs no
+        // quotes, so this is both shorter and the spelling an author would actually type.
+        if (block.payload.control === "repeat") {
+            return block.payload.until
+                ? { text: `${indent}/until ${formatCondition(block.payload.until, scene, document)}`, editable: false, prefix: "" }
+                : { text: `${indent}/repeat ${block.payload.times ?? 1}`, editable: false, prefix: "" };
+        }
         return { text: `${indent}/condition`, editable: false, prefix: "" };
     }
     if (block.kind === "jump") {
         return { text: `${indent}/jump ${getSceneName(document?.scenes, block.payload.targetSceneId)}`, editable: false, prefix: "" };
-    }
-    if (block.kind === "code") {
-        const marker = block.payload.folded ? " folded" : "";
-        return { text: `${indent}/code ${block.payload.language}${marker}`, editable: false, prefix: "" };
     }
     if (block.kind === "invalid") {
         // Verbatim: the line never parsed, so there is nothing to pretty-print from.
@@ -248,7 +261,16 @@ function formatAction(payload: StoryActionPayload, scene: StoryScene, document?:
         return `/background ${payload.assetId ?? payload.color ?? ""}`.trimEnd();
     }
     if (payload.action === "character") {
-        return `/character ${payload.operation}${payload.characterId ? ` ${payload.characterId}` : payload.objectName ? ` ${payload.objectName}` : ""}`;
+        const subject = payload.characterId ? ` ${payload.characterId}` : payload.objectName ? ` ${payload.objectName}` : "";
+        // The new label is the whole of a rename, so it rides the projected line like a text's content.
+        // A puppet's requested state name is the same case: the row says nothing without it.
+        const suffix = payload.operation === "setName" && payload.displayName
+            ? ` ${payload.displayName}`
+            : payload.puppetName ? ` ${payload.puppetName}`
+                // A parameter row projects every pair: this text is the searchable body of the row, so
+                // unlike the one-line summary it must not drop any of them.
+                : Object.entries(payload.params ?? {}).map(([id, value]) => ` ${id}=${value}`).join("");
+        return `/character ${payload.operation}${subject}${suffix}`;
     }
     if (payload.action === "audio") {
         return `/audio ${payload.operation}${payload.objectName ? ` ${payload.objectName}` : payload.assetId ? ` ${payload.assetId}` : ""}`;
@@ -277,13 +299,38 @@ function formatAction(payload: StoryActionPayload, scene: StoryScene, document?:
     if (payload.action === "video") {
         return `/video ${payload.operation} ${payload.objectName}`.trimEnd();
     }
+    if (payload.action === "vfx") {
+        return `/vfx ${payload.operation} ${payload.objectName}`.trimEnd();
+    }
     if (payload.action === "nvl") {
         return "/nvl";
     }
     if (payload.action === "blueprint") {
         return "/blueprint";
     }
+    if (payload.action === "camera") {
+        const amount = payload.operation === "zoom" ? payload.zoom
+            : payload.operation === "rotate" ? payload.rotation
+                : payload.operation === "darken" ? payload.darkness
+                    : undefined;
+        return `/camera ${payload.operation}${amount === undefined ? "" : ` ${amount}`}`;
+    }
     return `/effect ${payload.effect}`;
+}
+
+/**
+ * One-line rendering of a branch condition, as the text projection shows it.
+ *
+ * Exported because the scene-flow map labels its branch edges with the same string: two surfaces
+ * describing the same `if` must not word it two ways, and the alternative (a second formatter next
+ * to the graph) drifts the moment a condition kind is added.
+ */
+export function formatStoryConditionSummary(
+    condition: StoryConditionRef | undefined,
+    scene: StoryScene,
+    document?: StoryDocument,
+): string {
+    return formatCondition(condition, scene, document);
 }
 
 function formatCondition(condition: StoryConditionRef | undefined, scene: StoryScene, document?: StoryDocument): string {
@@ -339,25 +386,12 @@ function describeAssignment(
 /**
  * Re-render a subtree as source. Only reached for the step of an `/inc`/`/dec`, where the stored
  * `source` describes the whole assignment and so cannot be sliced for just the operand.
+ *
+ * The printer itself lives beside the parser (`formatStoryExpr`), because the only property that
+ * makes it correct - that what it prints, the lexer reads back as the same tree - is a property of
+ * the two together, and it is tested where both are.
  */
-function formatExpr(expr: StoryExpr): string {
-    switch (expr.kind) {
-        case "literal":
-            return formatStoryLiteral(expr.value);
-        case "var":
-            return expr.name;
-        case "unary":
-            return `${expr.op}${formatExpr(expr.operand)}`;
-        case "binary":
-            return `(${formatExpr(expr.left)} ${expr.op} ${formatExpr(expr.right)})`;
-        case "ternary":
-            return `(${formatExpr(expr.test)} ? ${formatExpr(expr.consequent)} : ${formatExpr(expr.alternate)})`;
-        case "call":
-            return `${expr.fn}(${expr.args.map(formatExpr).join(", ")})`;
-        case "invalid":
-            return expr.source;
-    }
-}
+const formatExpr = formatStoryExpr;
 
 /** Compact, user-safe label for a variable reference (never exposes internal ids). */
 function describeVariableRef(ref: StoryVariableRef, scene: StoryScene, document?: StoryDocument): string {

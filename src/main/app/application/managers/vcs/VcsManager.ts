@@ -1,17 +1,50 @@
-import { normalizeProjectPath } from "@shared/utils/recentProject";
+import fs from "fs/promises";
+import path from "path";
 import type {
     VcsAvailability,
     VcsBlobRequest,
+    VcsCheckpointReason,
+    VcsCommitOptions,
+    VcsCommitResult,
+    VcsConflictChoice,
     VcsHistoryEntry,
+    VcsMergeCompletion,
+    VcsMergeDecision,
+    VcsMergeDocument,
+    VcsMergePerChangeDecision,
+    VcsMergeResolveResult,
+    VcsMergeSideChoice,
+    VcsMergeState,
     VcsRepositoryInfo,
+    VcsPushResult,
+    VcsRestoreOptions,
+    VcsRestoreResult,
+    VcsRevisionDiffResult,
+    VcsRevisionKind,
+    VcsStatus,
+    VcsSyncResult,
+    VcsSyncState,
     VcsThreeWayResult,
+    VcsWorkingTreeDiffResult,
 } from "@shared/types/vcs";
+import { composeVcsIdentity } from "@shared/types/vcs";
 import { BaseApp } from "../../baseApp";
 import { Manager } from "../manager";
 import { getVcsAvailability, requireVcsBackend, type VcsBackend } from "./backend";
 // Type-only: erased at compile time, so no Lore module is reachable from here
 // at load time. See backend.ts for why that matters.
-import type { LoreGlobals, LoreHex, StoreHandle } from "./loreClient";
+import type { LoreGlobals, LoreHex, StoreHandle } from "./lore";
+import type { InitRepositoryOptions } from "./repository";
+// Value imports, and safe to be ones for the same reason as the two below: pure policy over bytes,
+// with the reader imported for types alone. `documentDiff` is also where the main process picks up
+// `@shared/documents/specs`, so this edge is what populates the document registry in this process.
+import { diffRevisions } from "./diff/revisionDiff";
+import { diffWorkingTree } from "./diff/workingTreeDiff";
+// Value import, and safe to be one: this module only touches `fs` and the working-set predicate,
+// and imports the reader for types alone.
+import { materializeRevisionSnapshot, type RevisionSnapshotResult } from "./revisionSnapshot";
+// Same argument: policy plus `fs`, with the reader imported for types alone.
+import { applyRevisionRestore, planRevisionRestore, readWorkingSetPaths } from "./revisionRestore";
 
 /**
  * Owns Lore state for open projects.
@@ -33,6 +66,9 @@ import type { LoreGlobals, LoreHex, StoreHandle } from "./loreClient";
  * local fragment cache the diff path depends on.
  */
 
+/** What one revision says about itself, as the backend answers it. */
+type RevisionDetails = Awaited<ReturnType<VcsBackend["readRevisionDetails"]>>;
+
 interface VcsSession {
     /** Repository root on disk. For now this is the project directory itself. */
     root: string;
@@ -40,14 +76,237 @@ interface VcsSession {
     /** Repository (partition) id, hex. Learned on first use. */
     repositoryId: LoreHex;
     globals: LoreGlobals;
+    /**
+     * What each revision already said about itself, remembered for the life of the session.
+     *
+     * Revisions are IMMUTABLE, so this cannot go stale - and it is what makes the rail's paging
+     * affordable. There is no cursor verb in the backend (`readRevisionGraph(globals, limit)` is
+     * the whole history surface), so "show older versions" re-reads with a larger limit: the fifth
+     * press asks for 250 revisions to gain 50 new ones. Details cost ONE CALL PER REVISION taken in
+     * turn (see {@link VcsManager.getHistory}), so without this that press pays 250 of them.
+     *
+     * **Details only, never the graph.** A new commit changes the graph and cannot change what an
+     * existing revision already recorded, which is exactly the line between what may be cached here
+     * and what may not.
+     *
+     * Bounded by how far the author actually paged, and dropped with the session in
+     * {@link VcsManager.closeProject}.
+     */
+    details: Map<LoreHex, RevisionDetails>;
+    /**
+     * Comparisons between two revisions, keyed `from..to`.
+     *
+     * Cacheable for exactly the reason {@link details} is: **both revisions are immutable**, so
+     * the answer cannot go stale. The line this draws is the same one that keeps the graph out of
+     * {@link details} - anything anchored to the working tree or to a moving head must not be here,
+     * and {@link VcsManager.diffWorkingTree} therefore has no cache at all.
+     *
+     * Bounded, unlike {@link details}, because an entry is not a handful of metadata: it is up to
+     * 200 changes for each of up to 2000 documents, and an author stepping through a long history
+     * would otherwise accumulate all of it for the life of the window.
+     */
+    diffs: Map<string, VcsRevisionDiffResult>;
 }
+
+/**
+ * Have one project's window write out every auto-save it still owes, and wait.
+ *
+ * Injected rather than reached for, because only the window layer can do it and this
+ * manager deliberately holds a `BaseApp`. A commit with this missing would still work
+ * and would still be wrong: the revision would describe a document that is about to
+ * change, which is the one failure the pipeline's ordering exists to prevent.
+ *
+ * Must not throw. A workspace that cannot flush is a reason to log, not a reason to
+ * refuse the author their commit.
+ */
+export type PendingSaveFlush = (projectPath: string) => Promise<void>;
+
+/**
+ * What a checkpoint's message says, by why it was taken.
+ *
+ * Not translated, deliberately. A commit message is permanent repository content that
+ * travels to collaborators and outlives the interface language it was written under; a
+ * history where the same automatic checkpoint reads differently depending on who was
+ * looking when it happened is worse than one that reads in English throughout.
+ *
+ * Same argument for the restore message built in {@link VcsManager.restoreRevision}.
+ */
+const CHECKPOINT_MESSAGES: Readonly<Record<VcsCheckpointReason, string>> = {
+    interval: "Checkpoint",
+    "project-close": "Checkpoint before closing the project",
+    build: "Checkpoint before build",
+    restore: "Checkpoint before restore",
+};
+
+const DEFAULT_COMMIT_MESSAGE = "Commit";
+
+/**
+ * What a merge the author did not name records.
+ *
+ * Not translated, for the reason on {@link CHECKPOINT_MESSAGES}: this sentence is permanent
+ * repository content that travels to the collaborator whose work was just merged, and a history
+ * that reads in whichever language happened to be selected is worse than one that reads in English
+ * throughout.
+ */
+const DEFAULT_MERGE_MESSAGE = "Merge";
+
+/**
+ * The two sides a path can be taken from, in the order they are applied.
+ *
+ * A constant rather than a literal in the loop so the two choices cannot drift from
+ * {@link VcsMergeSideChoice} - adding a third whole-side verb upstream is then a type error here
+ * rather than a side that is silently never applied.
+ */
+const MERGE_SIDES: readonly VcsMergeSideChoice[] = ["mine", "theirs"];
+
+/** Tier two, told apart from tier one by the one value {@link MERGE_SIDES} cannot hold. */
+function isPerChangeDecision(decision: VcsMergeDecision): decision is VcsMergePerChangeDecision {
+    return decision.choice === "per-change";
+}
+
+/** How much of a revision id names it in a commit message when the caller had no label. */
+const RESTORE_MESSAGE_HASH_LENGTH = 12;
+
+/**
+ * Size ceiling on one document read out of a revision, when the caller did not name the
+ * paths it wants.
+ *
+ * Generous on purpose - a story document with a few thousand blocks is well under it -
+ * and it exists only to keep a mis-selected asset out of the batch. Anything genuinely
+ * larger has to be asked for by path.
+ */
+const DEFAULT_REVISION_DOCUMENT_MAX_BYTES = 8 * 1024 * 1024;
+
+/**
+ * What a project with no configured author name records.
+ *
+ * Deliberately not the OS account name. The identity is written into revisions that
+ * outlive the machine and travel to collaborators once there is a remote, and quietly
+ * publishing the author's login as their name is not a decision Studio gets to make on
+ * their behalf. Naming the tool is honest about what is known: nobody said.
+ */
+export const UNCONFIGURED_IDENTITY = "NarraLeaf Studio";
+
+/**
+ * "Nothing changed" told apart from a genuine failure.
+ *
+ * By name rather than with `instanceof`: the class lives in `repository.ts`, which
+ * nothing above `backend.ts` may reach at module scope, and re-loading the backend
+ * inside a catch block to get at the constructor could replace the error being handled
+ * with a load failure.
+ */
+function isNothingToCommit(error: unknown): boolean {
+    return error instanceof Error && error.name === "NothingToCommitError";
+}
+
+/**
+ * A project path this layer cannot work in, said so before anything acts on it.
+ *
+ * Named rather than anonymous for the reason {@link isNothingToCommit} explains: callers
+ * tell errors apart by name across a boundary where `instanceof` is not reliable.
+ */
+export class VcsProjectPathError extends Error {
+    constructor(readonly projectPath: string) {
+        super(
+            `Version control needs an absolute project path with no control characters, got `
+            + `${JSON.stringify(projectPath)}. One that arrives relative, or with a newline or a `
+            + `tab in it, has usually been through a layer that read its backslashes as escapes: `
+            + `"D:\\Temp\\nls\\back" comes out of that as "D:Temp", a newline, "ls", a backspace, `
+            + `"ack".`,
+        );
+        this.name = "VcsProjectPathError";
+    }
+}
+
+/**
+ * Characters no path handed to this layer may contain.
+ *
+ * NUL everywhere: it terminates a C string, so a path carrying one means something different
+ * on the far side of the FFI boundary than it does here. The rest of the C0 range on Windows
+ * only, where such a name cannot exist at all - POSIX permits a newline in a filename and this
+ * is not the place to decide otherwise.
+ */
+const FORBIDDEN_PATH_CHARACTERS = process.platform === "win32" ? /[\u0000-\u001f]/ : /\u0000/;
+
+/**
+ * The one spelling of a project path this manager works in: absolute, with this platform's
+ * separators, and refused outright when it is neither.
+ *
+ * **Two spellings of one directory used to be two projects here**, and the consequence was not a
+ * duplicated cache - it was a process deadlocking against itself. The session map and the operation
+ * queue were keyed on the caller's string with only trailing separators removed, so
+ * `D:/projects/demo` and `D:\projects\demo` produced two entries; the second opened a SECOND store
+ * on the same repository, and Lore's repository lock is exclusive and BLOCKING (§4.12). The second
+ * open never returns, nothing reports an error, the process sits at zero CPU, and every later call
+ * on that project queues behind it forever. Measured in a running Studio: the panel stayed on
+ * "Submitting this version" while an unqueued call answered in 0ms.
+ *
+ * The two spellings are not hypothetical. Window-close paths take the path from the window's props
+ * while the renderer sends the one out of the project config, and nothing has ever required those
+ * to agree on a separator. `path.resolve` unifies them, and makes the path absolute, which the
+ * backend requires anyway (§4.4 - relative paths resolve against the process working directory,
+ * which is never the project).
+ *
+ * **Which is exactly why a path that is not already absolute has to be refused rather than
+ * resolved.** `path.resolve` does not report that it had to invent a root; it silently answers
+ * with one built from the Electron main process's working directory. A caller that hands over
+ * `D:Temp\demo` - the shape a `D:\Temp\demo` takes after one round of backslash-escape processing
+ * somewhere upstream - would have a repository created under Studio's own install directory and be
+ * told it succeeded, with a `root` in the reply nobody asked for. Refusing costs nothing (every
+ * real project path in Studio originates in the main process, from a native dialog or a config
+ * file) and turns a silent relocation into a sentence naming the likely cause.
+ *
+ * Case is folded by {@link projectKey} on Windows only, where the filesystem is case-insensitive
+ * and `D:\Demo` and `D:\demo` are one directory holding one lock.
+ */
+function projectRoot(projectPath: string): string {
+    if (
+        typeof projectPath !== "string"
+        || !path.isAbsolute(projectPath)
+        || FORBIDDEN_PATH_CHARACTERS.test(projectPath)
+    ) {
+        throw new VcsProjectPathError(String(projectPath));
+    }
+    return path.resolve(projectPath);
+}
+
+/** The key the session map and the operation queue use. See {@link projectRoot}. */
+function projectKey(projectPath: string): string {
+    const resolved = projectRoot(projectPath);
+    return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
+/**
+ * How long a store may take to open before the log says something.
+ *
+ * Not a timeout: waiting is the CORRECT behaviour when another process holds the repository, and
+ * the wait ends the moment that process lets go (measured at 16 seconds in one case, §4.12).
+ * Failing instead would turn a recoverable wait into a refusal. But a wait with nothing said is how
+ * this presents to an author - a spinner that never stops - so the wait announces itself.
+ */
+const SLOW_STORE_OPEN_MS = 5_000;
+
+/**
+ * How many revision comparisons one session keeps.
+ *
+ * Not a measurement, a bound: a comparison is orders of magnitude larger than the revision
+ * metadata cached beside it, and stepping through a hundred versions must not turn into a hundred
+ * change lists held for the life of the window. Twenty-four covers going back and forth across a
+ * page of history, which is the pattern the cache exists for.
+ */
+const MAX_CACHED_REVISION_DIFFS = 24;
 
 export class VcsManager extends Manager {
     private readonly sessions = new Map<string, VcsSession>();
     /** Serializes work per project so two callers cannot interleave on one store. */
     private readonly operations = new Map<string, Promise<unknown>>();
+    /**
+     * Opens in flight, so concurrent first callers share one store rather than each opening their
+     * own. See {@link sessionFor} for what the second store costs.
+     */
+    private readonly opening = new Map<string, Promise<VcsSession>>();
 
-    constructor(app: BaseApp) {
+    constructor(app: BaseApp, private readonly flushPendingSaves?: PendingSaveFlush) {
         super(app);
     }
 
@@ -67,7 +326,7 @@ export class VcsManager extends Manager {
      * Mirrors the operations-map pattern the other per-project managers use.
      */
     private async serialize<T>(projectPath: string, task: () => Promise<T>): Promise<T> {
-        const key = normalizeProjectPath(projectPath);
+        const key = projectKey(projectPath);
         const previous = this.operations.get(key) ?? Promise.resolve();
         const tracked = previous.catch(() => undefined).then(task);
         // Keep the chain alive on failure; an error must not wedge the project.
@@ -81,91 +340,616 @@ export class VcsManager extends Manager {
         return tracked;
     }
 
-    private globalsFor(root: string): LoreGlobals {
+    /**
+     * Open a store, and say so in the log if it is taking long enough to be a lock wait.
+     *
+     * See {@link SLOW_STORE_OPEN_MS} for why this warns rather than gives up. The message names the
+     * only thing that can cause it - something else holding the repository - because an author whose
+     * `lore` CLI is open in a terminal has an action available and no other way to learn of it.
+     */
+    private async openStoreAnnouncingDelay(
+        backend: VcsBackend,
+        globals: LoreGlobals,
+        root: string,
+    ): Promise<StoreHandle> {
+        const slow = setTimeout(() => {
+            this.app.logger.warn(
+                "[Vcs] Still waiting to open", root,
+                "- another process is holding this repository. Lore's lock is exclusive and blocks"
+                + " rather than failing, so this call resumes as soon as that process lets go.",
+            );
+        }, SLOW_STORE_OPEN_MS);
+        try {
+            return await backend.openStore(globals, root);
+        } finally {
+            clearTimeout(slow);
+        }
+    }
+
+    /**
+     * The globals every call in this class runs on.
+     *
+     * **`offline` is the single most consequential flag here, and it defaults to on.**
+     * Offline, the backend never opens a socket, so a status read from the status bar
+     * cannot wait on a network no matter what a project's config says. Online, the same
+     * read takes 2.03 s against a server that does not answer (measured) - affordable for
+     * something the author pressed, and not for anything that happens on opening a
+     * project.
+     *
+     * `{ online: true }` is therefore reachable from exactly five places, all of them in
+     * this class and all of them named after an act the author performed: reading the
+     * sync state, pushing, syncing, cloning, and signing in. Adding a sixth means
+     * deciding, again, that a socket may be opened without anyone asking for it.
+     */
+    private globalsFor(root: string, options: { online?: boolean } = {}): LoreGlobals {
         return {
             repositoryPath: root,
-            offline: true,
+            offline: !options.online,
             // Retain fragments fetched from a remote. Off upstream by default, which
             // would make repeated diffs of the same two revisions re-fetch every time.
             cache: true,
             storeKeepAlive: true,
+            /**
+             * One second, not the ten-second default, and this number is the difference
+             * between a commit that feels instant and one that appears to hang.
+             *
+             * MEASURED: `repositoryFlush` waits out the remaining keep-alive window of the
+             * last call that kept the store alive. On the default the commit pipeline took
+             * 10,012 ms of which the flush was 9,996; with this set to 1 it is 1,009 ms of
+             * which the flush is 988; with keep-alive off entirely it is 29 ms. Staging and
+             * committing themselves are 5-20 ms in every configuration, so the entire cost
+             * is the wait.
+             *
+             * Also measured, because it is the obvious wrong fix: passing
+             * `storeKeepAlive: false` on the pipeline's own calls changes NOTHING (1,029 ms
+             * with it, 1,009 without). The wait belongs to the reads that came before, so
+             * only the window length can shorten it.
+             *
+             * Kept rather than removed because reopening the store per call is what it
+             * avoids for a burst of blob reads when a diff view opens, and one second is
+             * far longer than the gap inside such a burst. If a future measurement shows
+             * reopening is free, this whole flag can go and commits get the other second
+             * back.
+             */
+            storeKeepAliveSeconds: 1,
         };
     }
 
+    /**
+     * The session for one project, opening it the first time it is asked for.
+     *
+     * **At most one open per project is ever in flight, and that is load-bearing.** Recording the
+     * session takes two awaits - the store, then the identity read - and a second caller arriving
+     * inside that window used to miss the map and open a store of its own. Only the last one
+     * reached `sessions.set`; the earlier handles were unreachable, so `closeProject` could not
+     * release them and Lore held the repository - exclusively - for the rest of the process's life.
+     * Measured in a running Studio: opening a versioned project logged four "Opened session" lines
+     * and closing it logged one.
+     *
+     * What that costs is not a stale cache. Reopening the same project then blocks on the lock
+     * Lore never gave back (it blocks rather than failing, §4.12), and because every Lore call is a
+     * koffi `async` call it blocks on a **libuv thread pool** thread. Four of them is the whole
+     * default pool, and `fs` runs on that same pool - so the second open of a project stopped the
+     * main process reading ANY file: no assets, no stories, no dashboard, and a window that could
+     * not be closed because the close path waits for a checkpoint.
+     *
+     * So callers that arrive during an open join it instead of starting another.
+     */
     private async sessionFor(projectPath: string): Promise<{ session: VcsSession; backend: VcsBackend }> {
         const backend = await requireVcsBackend();
-        const key = normalizeProjectPath(projectPath);
+        const key = projectKey(projectPath);
         const existing = this.sessions.get(key);
         if (existing) return { session: existing, backend };
 
-        const root = key;
-        const globals = this.globalsFor(root);
-        const store = await backend.openStore(globals, root);
+        const opening = this.opening.get(key) ?? this.openSession(projectPath, key, backend);
+        return { session: await opening, backend };
+    }
 
-        let repositoryId: LoreHex;
-        try {
-            // The repository id comes off the revision-history header, a purely
-            // local read. Deliberately not `repositoryInfo`: that verb dials the
-            // remote even under `offline: true` and blocks until the socket times out.
-            const identity = await backend.readRepositoryIdentity(globals);
-            if (!identity?.repository) {
-                throw new Error(
-                    "Repository has no revisions yet; version control is unavailable until the first commit",
-                );
+    /**
+     * Open one store and record it, exactly once per project.
+     *
+     * Registered in {@link opening} before it can yield - the body runs synchronously up to its
+     * first await, and nothing else can interleave in between - so a caller arriving a tick later
+     * finds the promise rather than an empty map.
+     */
+    private openSession(projectPath: string, key: string, backend: VcsBackend): Promise<VcsSession> {
+        const pending = (async (): Promise<VcsSession> => {
+            // The normalized path rather than the key: the key is case-folded for lookup and this
+            // is what is handed to the backend and used to build absolute paths off.
+            const root = projectRoot(projectPath);
+            const globals = this.globalsFor(root);
+            const store = await this.openStoreAnnouncingDelay(backend, globals, root);
+
+            let repositoryId: LoreHex;
+            try {
+                // The repository id comes off the revision-history header, a purely
+                // local read. Deliberately not `repositoryInfo`: that verb dials the
+                // remote even under `offline: true` and blocks until the socket times out.
+                const identity = await backend.readRepositoryIdentity(globals);
+                if (!identity?.repository) {
+                    throw new Error(
+                        "Repository has no revisions yet; version control is unavailable until the first commit",
+                    );
+                }
+                repositoryId = identity.repository;
+            } catch (error) {
+                // Do not leak the handle (or the exclusive lock) if identity lookup fails.
+                // Closing the store is not enough on its own: Lore keeps the repository
+                // itself open afterwards, and while it does, the directory cannot be
+                // deleted and the author's `lore` CLI blocks on the lock instead of
+                // failing. This path runs on every `isRepository` check against a
+                // directory that turns out not to be one, so it is not a rare corner.
+                await backend.closeStore(globals, store).catch(() => undefined);
+                await backend.releaseRepository(globals).catch(() => undefined);
+                throw error;
             }
-            repositoryId = identity.repository;
-        } catch (error) {
-            // Do not leak the handle (or the exclusive lock) if identity lookup fails.
-            await backend.closeStore(globals, store).catch(() => undefined);
-            throw error;
-        }
 
-        const session: VcsSession = { root, store, repositoryId, globals };
-        this.sessions.set(key, session);
-        this.app.logger.info("[Vcs] Opened session", root, repositoryId);
-        return { session, backend };
+            const session: VcsSession = {
+                root, store, repositoryId, globals, details: new Map(), diffs: new Map(),
+            };
+            this.sessions.set(key, session);
+            this.app.logger.info("[Vcs] Opened session", root, repositoryId);
+            return session;
+        })();
+
+        this.opening.set(key, pending);
+        void pending.catch(() => undefined).finally(() => {
+            // A failed open must not become the cached answer: the next caller has to try again
+            // (a directory that is not a repository is asked about on every `isRepository`).
+            if (this.opening.get(key) === pending) this.opening.delete(key);
+        });
+        return pending;
     }
 
     /**
      * True when this host has a working backend AND the directory is a Lore
      * repository. Returns false rather than throwing on an unsupported host, so
      * a caller can use it as a plain feature check.
+     *
+     * Queued like every other verb, and not because it touches the store: it is the ONE question
+     * three separate surfaces ask the moment a workspace opens (the rail, the switcher menu and the
+     * status-bar cell each read the head for themselves, by design), so an unqueued one ran
+     * alongside whatever else those surfaces started - which is how the open race in
+     * {@link sessionFor} became the normal case rather than a corner. The queue is also what makes
+     * {@link closeProject} able to see a session this call is about to record.
      */
     public async isRepository(projectPath: string): Promise<boolean> {
         try {
-            await this.sessionFor(projectPath);
+            await this.serialize(projectPath, () => this.sessionFor(projectPath));
             return true;
         } catch {
             return false;
         }
     }
 
-    public async getInfo(projectPath: string): Promise<VcsRepositoryInfo> {
+    /**
+     * Put a project under version control, creating the repository and its first
+     * commit. Fails if the directory already has one.
+     *
+     * Never called on Studio's behalf. Creating a repository writes `.lore/` into the
+     * author's project and takes an exclusive lock on it, so it is theirs to decide.
+     *
+     * Ordering matters and runs against the grain of the rest of this class: every
+     * other entry point starts from {@link sessionFor}, which cannot exist yet - it
+     * reads the repository id off the revision history, and there is no history until
+     * this method makes one. So init works on bare globals and takes no session.
+     */
+    public async initRepository(
+        projectPath: string,
+        options: InitRepositoryOptions = {},
+    ): Promise<VcsRepositoryInfo> {
         return this.serialize(projectPath, async () => {
+            const backend = await requireVcsBackend();
+            const root = projectRoot(projectPath);
+            const globals = this.globalsFor(root);
+            // Decided before the attempt, because the cleanup below must not run when
+            // the answer is "it was already one": that path can have a LIVE SESSION on
+            // the same directory, and releasing the repository out from under it would
+            // leave an open store handle pointing at nothing.
+            const preexisting = backend.isRepositoryDirectory(root);
+            try {
+                // Through the same resolver as every other write: the first commit's
+                // author must not be the one revision in the repository attributed
+                // differently from the rest.
+                const created = await backend.initRepository(globals, {
+                    ...options,
+                    identity: this.resolveIdentity(options.identity),
+                });
+                this.app.logger.info("[Vcs] Initialised repository", root, created.repositoryId);
+                return {
+                    root,
+                    repositoryId: created.repositoryId,
+                    head: created.revision,
+                    // Exactly the commit just made; nothing else can have happened yet.
+                    headNumber: 1,
+                    // Asked rather than assumed - the default branch is the backend's decision, not
+                    // ours - but NOT allowed to fail the enable. The repository at this point is
+                    // created, committed and flushed; refusing to report success because a cosmetic
+                    // read came back empty would send the author to try again and be told they are
+                    // already versioned. "" is the same "not reported" every other producer of this
+                    // field uses, and the renderer re-reads the identity through `getInfo` the
+                    // moment this resolves anyway.
+                    branch: await backend.readBranchIdentity(globals)
+                        .then((identity) => identity.branch)
+                        .catch(() => ""),
+                };
+            } finally {
+                // No session was opened here, so nothing else in this class will ever
+                // let go of the repository - and Lore holds it open after the last
+                // call. Left held, the project directory cannot be moved or deleted
+                // and the author's own `lore` CLI blocks on the lock without an error.
+                // In the `finally` because a half-created repository holds it too.
+                if (!preexisting) {
+                    await backend.releaseRepository(globals).catch((error) => {
+                        this.app.logger.warn("[Vcs] Failed to release the repository after init", root, error);
+                    });
+                }
+            }
+        });
+    }
+
+    /**
+     * Who to record as the author.
+     *
+     * Lore's `identity` is a per-call global rather than repository configuration, so
+     * every write has to answer this. Three sources, in order, and the first is the
+     * seam a logged-in identity plugs into without touching anything else here.
+     *
+     * An `explicit` identity is taken WHOLE - no email is folded into it - because a
+     * caller that passes one is passing a finished identity, not a name to decorate.
+     * The two settings are composed by {@link composeVcsIdentity}, which owns the
+     * `Name <email>` shape and the four ways those two fields can be empty.
+     */
+    private resolveIdentity(explicit?: string): string {
+        const state = this.app.getGlobalState();
+        const configuredName = state.get("versionControl.authorName");
+        const configuredEmail = state.get("versionControl.authorEmail");
+        return explicit?.trim()
+            || composeVcsIdentity(
+                typeof configuredName === "string" ? configuredName : "",
+                typeof configuredEmail === "string" ? configuredEmail : "",
+            )
+            || UNCONFIGURED_IDENTITY;
+    }
+
+    /**
+     * Record the working tree as a new revision.
+     *
+     * The pipeline, in the one order that does not lose data:
+     *
+     * ```
+     * flush the renderer's pending saves -> stage -> label -> commit -> flush Lore
+     * ```
+     *
+     * The label sits before the commit, not after, and that is measured rather than
+     * stylistic - see `commitWorkingTree`.
+     *
+     * **The renderer flush comes first** and is the step that is easy to leave out.
+     * Studio's auto-save is debounced, so at any instant there is usually an edit that
+     * has been typed and not written. Staging before it lands produces a revision that
+     * describes a document already superseded on disk - and the author has no way to
+     * see that, because the file they are looking at is right and only the history is
+     * wrong. It runs inside the per-project serialization so nothing can stage between
+     * the flush and the commit.
+     *
+     * **Lore's flush comes last, and before success is reported.** Not politeness: see
+     * `commitWorkingTree`.
+     *
+     * Throws {@link NothingToCommitError} when the tree has not changed, which for an
+     * author who pressed Commit is the answer rather than an error - the message says
+     * so in words they can read, instead of Lore's "Nothing staged for commit".
+     */
+    public async commit(projectPath: string, options: VcsCommitOptions = {}): Promise<VcsCommitResult> {
+        return this.commitWithKind(projectPath, "commit", options.message?.trim() || DEFAULT_COMMIT_MESSAGE, options);
+    }
+
+    /**
+     * Record a checkpoint: an ordinary revision that the author did not ask for.
+     *
+     * Answers null rather than throwing for the two cases an automatic operation must
+     * treat as normal - the project is not under version control (or this host has no
+     * backend), and nothing has changed since the last revision. An empty revision
+     * every fifteen minutes would make the history unreadable and "restore to before
+     * lunch" unanswerable, so "nothing changed, no revision" holds for the timer and for
+     * all three unconditional checkpoints alike.
+     *
+     * Real failures still throw. A checkpoint that could not be written because the
+     * disk is full is not the same as one that was not needed.
+     */
+    public async checkpoint(
+        projectPath: string,
+        reason: VcsCheckpointReason,
+        options: VcsCommitOptions = {},
+    ): Promise<VcsCommitResult | null> {
+        // Cheaper than it looks - the session is opened once per project and reused by
+        // everything else - and it is what keeps an unversioned project silent rather
+        // than logging a failure every interval for the rest of the session.
+        if (!(await this.isRepository(projectPath))) return null;
+
+        const message = options.message?.trim() || CHECKPOINT_MESSAGES[reason];
+        try {
+            const result = await this.commitWithKind(projectPath, "checkpoint", message, options);
+            this.app.logger.info("[Vcs] Checkpoint", reason, result.revision);
+            return result;
+        } catch (error) {
+            if (isNothingToCommit(error)) return null;
+            throw error;
+        }
+    }
+
+    private async commitWithKind(
+        projectPath: string,
+        kind: VcsRevisionKind,
+        message: string,
+        options: VcsCommitOptions,
+    ): Promise<VcsCommitResult> {
+        return this.serialize(projectPath, async () => {
+            // First, and inside the lock. See the ordering note on `commit`.
+            if (this.flushPendingSaves) {
+                await this.flushPendingSaves(projectPath).catch((error) => {
+                    this.app.logger.warn("[Vcs] Could not flush pending saves before committing", error);
+                });
+            }
+
             const { session, backend } = await this.sessionFor(projectPath);
-            const graph = await backend.readRevisionGraph(session.globals);
-            const ordered = [...graph.values()].sort((a, b) => b.number - a.number);
+            return backend.commitWorkingTree(
+                { ...session.globals, identity: this.resolveIdentity(options.identity) },
+                { message, kind },
+            );
+        });
+    }
+
+    /**
+     * Put the working tree back to what one revision held, and record that as a new revision.
+     *
+     * **Restoring adds to history; it never rewinds it.** Restoring to `#12` writes `#12`'s content
+     * over the working tree and commits the result as `#62`. Nothing between them disappears. That is
+     * the only model the backend can honestly offer - it has no verb that moves a branch tip
+     * backwards - and it is also the only one where a restore the author regrets is itself
+     * recoverable.
+     *
+     * The order below is the whole of it, and every step is where it is because moving it loses
+     * something:
+     *
+     *  1. **Enumerate the revision.** A pure read, and the step that establishes the revision exists
+     *     at all - on a project with a remote it is also where the network wait happens
+     *     (docs/version-control.md §6). Before the checkpoint on purpose: a restore that turns out to
+     *     be impossible must not have already left a revision in the author's history for it.
+     *  2. **Enumerate the working set**, which decides what may be DELETED. Only paths `isVersioned`
+     *     accepts are ever enumerated, so `.nlstudio/`, `editor/cache`, `dist` and `.lore/` are
+     *     outside this operation in both directions.
+     *  3. **Checkpoint.** The one place in the feature where a checkpoint is taken BEFORE the act,
+     *     because this is the one act that overwrites files the author may never have recorded.
+     *     A failure here ABORTS the restore - "note the error and carry on" would mean overwriting
+     *     their work with nothing to get it back from. "Nothing to record" is not a failure: a clean
+     *     tree's pre-restore state IS the head, so there is nothing a checkpoint could add.
+     *  4. **Write, then delete.** Deletions last, so an interruption leaves a tree with too much in
+     *     it rather than one with holes. See `revisionRestore.ts` for why nothing recurses.
+     *  5. **Commit.** The one step whose failure is REPORTED rather than thrown
+     *     ({@link VcsRestoreResult.recordFailure}), because it is the only one that fails with the
+     *     author's files already changed: the restored tree is on disk and uncommitted, which is a
+     *     state they can see and record themselves - and step 3's checkpoint is still the way back.
+     *     Thrown, it would read to every caller as "nothing happened", and the renderer would keep
+     *     showing documents that are no longer what is on disk. An unchanged tree answers
+     *     `revision: null` with no failure: restoring to what is already on disk changed nothing, and
+     *     an empty revision is a lie about their history.
+     *
+     * All of it inside ONE serialization block, which is why the steps talk to `backend` directly
+     * instead of calling this class's own `checkpoint` and `commit` - those serialize too, and would
+     * wait on the block they are already inside.
+     */
+    public async restoreRevision(
+        projectPath: string,
+        revision: string,
+        options: VcsRestoreOptions = {},
+    ): Promise<VcsRestoreResult> {
+        return this.serialize(projectPath, async () => {
+            // First and inside the lock, exactly as for a commit: an auto-save still owed would
+            // otherwise land on top of the restored bytes moments after they were written.
+            if (this.flushPendingSaves) {
+                await this.flushPendingSaves(projectPath).catch((error) => {
+                    this.app.logger.warn("[Vcs] Could not flush pending saves before restoring", error);
+                });
+            }
+
+            const { session, backend } = await this.sessionFor(projectPath);
+            const globals = { ...session.globals, identity: this.resolveIdentity(options.identity) };
+
+            const entries = await backend.listFilesAt(
+                globals,
+                session.store,
+                session.repositoryId,
+                revision,
+            );
+            const plan = planRevisionRestore({
+                revision: entries,
+                working: await readWorkingSetPaths(session.root),
+            });
+
+            const checkpoint = await backend
+                .commitWorkingTree(globals, {
+                    message: CHECKPOINT_MESSAGES.restore,
+                    kind: "checkpoint",
+                })
+                .catch((error) => {
+                    // The ONLY tolerated failure, and it is not one: with nothing uncommitted there is
+                    // nothing for a checkpoint to hold. Anything else stops the restore before a byte
+                    // is written.
+                    if (isNothingToCommit(error)) return null;
+                    throw error;
+                });
+            this.app.logger.info(
+                "[Vcs] Restoring", session.root, revision,
+                `${plan.write.length} write(s), ${plan.remove.length} removal(s)`,
+                checkpoint ? `checkpoint ${checkpoint.revision}` : "clean tree, no checkpoint",
+            );
+
+            const applied = await applyRevisionRestore({
+                projectPath: session.root,
+                plan,
+                source: {
+                    read: (entry) => backend.readEntryBytes(
+                        globals,
+                        session.store,
+                        session.repositoryId,
+                        entry,
+                    ),
+                },
+            });
+
+            let recordFailure: string | null = null;
+            const recorded = await backend
+                .commitWorkingTree(globals, {
+                    // Composed here rather than sent from the renderer, for the reason on
+                    // CHECKPOINT_MESSAGES: this sentence is permanent repository content, and a
+                    // history whose entries read in whichever language happened to be selected that
+                    // day is worse than one that reads in English throughout. The label is a
+                    // revision number, which is not language.
+                    message: `Restore version ${
+                        options.label?.trim() || revision.slice(0, RESTORE_MESSAGE_HASH_LENGTH)
+                    }`,
+                    kind: "commit",
+                })
+                .catch((error) => {
+                    if (isNothingToCommit(error)) return null;
+                    // **Reported, not thrown**, and this is the one step where those differ. Past
+                    // `applyRevisionRestore` the author's files ARE the old version; a throw here
+                    // reaches the renderer as "the restore failed", after which it keeps the
+                    // documents it had - which are now a version that is no longer on disk, one save
+                    // away from being written back over the restored tree. So the operation SUCCEEDS
+                    // with the failure in hand: the caller re-reads the working tree either way and
+                    // says what did not happen. Every earlier step still throws, because before this
+                    // line nothing of theirs has changed.
+                    recordFailure = error instanceof Error ? error.message : String(error);
+                    this.app.logger.error(
+                        "[Vcs] Restored the working tree but could not record it as a version",
+                        session.root, recordFailure,
+                    );
+                    return null;
+                });
+
             return {
-                root: session.root,
-                repositoryId: session.repositoryId,
-                head: ordered[0]?.revision,
-                revisionCount: ordered.length,
+                from: revision,
+                checkpoint,
+                revision: recorded,
+                recordFailure,
+                filesWritten: applied.filesWritten,
+                filesRemoved: applied.filesRemoved,
             };
         });
     }
 
-    public async getHistory(projectPath: string, limit = 0): Promise<VcsHistoryEntry[]> {
+    /**
+     * What has changed in the working tree since the last commit, plus where this
+     * branch stands against its remote.
+     *
+     * The paths in the result are REPOSITORY-RELATIVE while every write verb wants
+     * absolute ones, so a caller that turns a status entry into a stage or restore
+     * has to convert. Both are `string`, and Lore answers an unconverted relative
+     * path with success and no work done.
+     */
+    public async getStatus(projectPath: string): Promise<VcsStatus> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            return backend.getStatus(session.globals);
+        });
+    }
+
+    /**
+     * Where this project stands: its identity, its head, and the branch that head is on.
+     *
+     * **A pure read, and it has to stay one.** This is what the status-bar cell and the switcher
+     * menu ask on every project open and after every revision, so anything here that scanned
+     * would turn an ambient readout into a writer of staged state (docs §4.17). `readBranchIdentity`
+     * is `scan: false, revisionOnly: true` for exactly that reason.
+     *
+     * It used to walk the ENTIRE revision graph, unbounded, to produce a `revisionCount` that no
+     * caller in the repository ever read. Deleting the field is what makes asking for the branch
+     * cheap enough to ask often.
+     */
+    public async getInfo(projectPath: string): Promise<VcsRepositoryInfo> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            const identity = await backend.readBranchIdentity(session.globals);
+            return {
+                root: session.root,
+                repositoryId: session.repositoryId,
+                head: identity.head,
+                headNumber: identity.headNumber,
+                branch: identity.branch,
+            };
+        });
+    }
+
+    /**
+     * Revisions, newest first.
+     *
+     * `includeDetails` costs one backend call PER REVISION - Lore has no batch metadata
+     * verb - so it is opt-in rather than always on: a history panel that paid for it
+     * unconditionally would open with a few hundred round trips on a long-lived
+     * project. A revision that records no kind comes back with none, which is a real
+     * answer (the first commit predates kinds) and not a default of either one.
+     *
+     * That one call is `revisionMetadataList`, which hands back EVERY key on the
+     * revision, so the flag fills in the message, timestamp and author too - which is
+     * what it is named for, all four rather than the kind alone. Measured on
+     * a six-revision repository (median of nine): `revisionHistory` + 6 metadata calls
+     * either way - 2.5ms without kinds, 7.1ms with, where the single-key read it replaces
+     * accounted for 4.2ms of that against the whole map's 5.6ms. Asking for the kind and
+     * then asking again for the rest would have been the only version that cost more.
+     */
+    public async getHistory(
+        projectPath: string,
+        limit = 0,
+        options: { includeDetails?: boolean } = {},
+    ): Promise<VcsHistoryEntry[]> {
         return this.serialize(projectPath, async () => {
             const { session, backend } = await this.sessionFor(projectPath);
             const graph = await backend.readRevisionGraph(session.globals, limit);
-            return [...graph.values()]
-                .sort((a, b) => b.number - a.number)
-                .map((node) => ({
+            const ordered = [...graph.values()].sort((a, b) => b.number - a.number);
+
+            const entries: VcsHistoryEntry[] = [];
+            for (const node of ordered) {
+                // Sequential on purpose. Re-entering Lore concurrently on one store is
+                // not a contract this binding makes, and the whole point of a single
+                // reused store handle is that calls take turns on it. Which is also why
+                // the cache below matters: sequential per-revision calls are the cost the
+                // rail's paging would otherwise re-pay on every press.
+                const details = options.includeDetails
+                    ? await this.revisionDetails(session, backend, node.revision)
+                    : {};
+                entries.push({
                     revision: node.revision,
                     number: node.number,
                     parents: node.parents,
-                }));
+                    // Spread rather than four assignments so a key the revision does not
+                    // carry stays ABSENT instead of arriving as an explicit undefined -
+                    // which survives the IPC hop as a present-but-null field.
+                    ...details,
+                });
+            }
+            return entries;
         });
+    }
+
+    /**
+     * One revision's metadata, from the session cache once anything has read it.
+     *
+     * The reason the cache exists is on {@link VcsSession.details}. What is worth saying here is
+     * what it does NOT do: it does not merge, and it does not refresh. A revision's metadata is
+     * written once when the revision is made, so the first answer is the only answer - if a future
+     * verb ever lets a revision be re-labelled, this is the line that has to be revisited.
+     */
+    private async revisionDetails(
+        session: VcsSession,
+        backend: VcsBackend,
+        revision: LoreHex,
+    ): Promise<RevisionDetails> {
+        const cached = session.details.get(revision);
+        if (cached) return cached;
+        const details = await backend.readRevisionDetails(session.globals, revision);
+        session.details.set(revision, details);
+        return details;
     }
 
     /**
@@ -177,7 +961,7 @@ export class VcsManager extends Manager {
             const { session, backend } = await this.sessionFor(request.projectPath);
             // Lore silently *ignores* a path outside the repository rather than
             // rejecting it, so the guard has to happen here.
-            backend.client.repoPath(session.root, request.path);
+            backend.repositoryPath(session.root, request.path);
             return backend.blobAt(
                 session.globals,
                 session.store,
@@ -196,8 +980,97 @@ export class VcsManager extends Manager {
     ): Promise<Map<string, Buffer>> {
         return this.serialize(projectPath, async () => {
             const { session, backend } = await this.sessionFor(projectPath);
-            for (const relative of paths) backend.client.repoPath(session.root, relative);
+            for (const relative of paths) backend.repositoryPath(session.root, relative);
             return backend.blobsAt(session.globals, session.store, session.repositoryId, revision, paths);
+        });
+    }
+
+    /**
+     * Every document at one revision, read in a single pass over its tree.
+     *
+     * This is what "the workspace shows a past revision" reads through, so it answers
+     * the two questions that per-path reads cannot:
+     *
+     *  - **absent is `null`, not a throw** - a document added after the revision has to
+     *    put its editor in the same "missing, use defaults" state as at project open;
+     *  - **one round trip** - the first read of a revision on a project with a remote
+     *    fetches fragments over the network (docs/version-control.md §6), and nine
+     *    document services asking one path at a time would pay that latency nine times.
+     *
+     * With no `paths`, the caller gets every file whose name matches `suffixes` and
+     * whose size is within `maxBytes`. Both filters exist because the tree also holds
+     * the author's assets: a project with 400MB of art would otherwise base64 the lot
+     * across IPC to answer "what did this scene look like?".
+     */
+    public async readRevisionDocuments(
+        projectPath: string,
+        revision: string,
+        options: { paths?: readonly string[]; suffixes?: readonly string[]; maxBytes?: number } = {},
+    ): Promise<Map<string, Buffer | null>> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            if (options.paths) {
+                // Lore silently *ignores* a path outside the repository rather than
+                // rejecting it, so the guard has to happen here - same as readBlob.
+                for (const relative of options.paths) backend.repositoryPath(session.root, relative);
+            }
+            const suffixes = options.suffixes ?? [".json"];
+            const maxBytes = options.maxBytes ?? DEFAULT_REVISION_DOCUMENT_MAX_BYTES;
+            return backend.documentsAt(
+                session.globals,
+                session.store,
+                session.repositoryId,
+                revision,
+                {
+                    paths: options.paths,
+                    accept: (entry) => entry.size <= maxBytes
+                        && suffixes.some((suffix) => entry.path.toLowerCase().endsWith(suffix)),
+                },
+            );
+        });
+    }
+
+    /**
+     * Write one revision out as a project directory the compile path can be pointed at, and answer
+     * where it landed and what it cost.
+     *
+     * Dev Mode's reason for existing: while the workspace shows a past revision, Run has to compile
+     * that revision rather than the working tree (plan 2026-07-28-002 §1). See `revisionSnapshot.ts`
+     * for where the directory lives, what it deliberately leaves out, and why.
+     *
+     * Inside the per-project serialization, so a materialisation and a commit cannot interleave on one
+     * store handle. That also means a launch waits behind an in-flight commit rather than racing it,
+     * which is the right order: the revision it is about to read is only complete once that commit is.
+     */
+    public async materializeRevisionSnapshot(
+        projectPath: string,
+        revision: string,
+        options: { onProgress?: (message: string) => void } = {},
+    ): Promise<RevisionSnapshotResult> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            return materializeRevisionSnapshot({
+                projectPath: session.root,
+                revision,
+                onProgress: options.onProgress,
+                source: {
+                    // One tree walk for the whole revision, then the bytes by address. On a project
+                    // with a remote the first read fetches fragments over the network
+                    // (docs/version-control.md §6), which is why the walk is not repeated per file.
+                    list: () => backend.listFilesAt(
+                        session.globals,
+                        session.store,
+                        session.repositoryId,
+                        revision,
+                    ),
+                    read: (entry) => backend.readEntryBytes(
+                        session.globals,
+                        session.store,
+                        session.repositoryId,
+                        entry,
+                    ),
+                },
+            });
         });
     }
 
@@ -222,7 +1095,7 @@ export class VcsManager extends Manager {
     ): Promise<VcsThreeWayResult> {
         return this.serialize(projectPath, async () => {
             const { session, backend } = await this.sessionFor(projectPath);
-            backend.client.repoPath(session.root, filePath);
+            backend.repositoryPath(session.root, filePath);
             const result = await backend.threeWay(
                 session.globals,
                 session.store,
@@ -240,12 +1113,550 @@ export class VcsManager extends Manager {
         });
     }
 
+    /**
+     * What changed between two revisions, as changes rather than as bytes.
+     *
+     * **Cached per session, and that is safe because revisions are immutable** - the same pair can
+     * never answer differently, which is the identical argument {@link VcsSession.details} rests
+     * on. A failed read is deliberately NOT cached: it is a fact about this process rather than
+     * about the revisions - the measured case is a process that cannot read back what it wrote
+     * with an online commit (docs/version-control.md §4.29) - and caching it would leave a session
+     * answering with a failure that has already passed.
+     *
+     * Inside the per-project queue like every other verb, so a comparison and a commit cannot
+     * interleave on one store handle.
+     */
+    public async diffRevisions(projectPath: string, from: string, to: string): Promise<VcsRevisionDiffResult> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            const key = `${from}..${to}`;
+            const cached = session.diffs.get(key);
+            if (cached) return cached;
+
+            const result = await diffRevisions(
+                {
+                    changedPaths: (a, b) => backend.changedPaths(session.globals, a, b),
+                    documentsAt: (revision, paths) => backend.documentsAt(
+                        session.globals,
+                        session.store,
+                        session.repositoryId,
+                        revision,
+                        { paths },
+                    ),
+                },
+                { from, to, onDegrade: (reason) => this.app.logger.info("[Vcs] Diff degraded:", reason) },
+            );
+
+            if (!result.readFailure) {
+                this.rememberDiff(session, key, result);
+            }
+            return result;
+        });
+    }
+
+    /**
+     * What the author has changed since the last version.
+     *
+     * **Never cached, and the rule has no exceptions.** The working tree changes under Studio
+     * between any two calls - by the author's own editing, by an auto-save, by their other tools -
+     * so a remembered answer is a list of changes that may no longer exist, shown beside files that
+     * no longer match it. It is also the input to the resolve flow, where a stale row means taking a
+     * side on a change that is not there.
+     *
+     * The status read underneath scans, which is not a pure operation (§4.17), so this must be
+     * called because someone asked and never on a timer.
+     */
+    public async diffWorkingTree(projectPath: string): Promise<VcsWorkingTreeDiffResult> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            return diffWorkingTree(
+                {
+                    status: () => backend.getStatus(session.globals),
+                    documentsAt: (revision, paths) => backend.documentsAt(
+                        session.globals,
+                        session.store,
+                        session.repositoryId,
+                        revision,
+                        { paths },
+                    ),
+                    readWorking: async (relative) => {
+                        // Through the backend's own guard rather than a `path.join`: a status entry
+                        // is repository-relative text and this is the line that would otherwise read
+                        // any file on the disk (§4.16 - the compiler cannot tell the two directions
+                        // of path apart).
+                        const absolute = backend.repositoryPath(session.root, relative);
+                        return fs.readFile(absolute).catch(() => null);
+                    },
+                },
+                { onDegrade: (reason) => this.app.logger.info("[Vcs] Diff degraded:", reason) },
+            );
+        });
+    }
+
+    /**
+     * Remember one comparison, dropping the oldest once the cap is reached.
+     *
+     * Insertion order rather than recency: `Map` preserves it for free, and the access pattern this
+     * bounds is walking a history rail, where the oldest entry is also the one furthest from where
+     * the author is looking.
+     */
+    private rememberDiff(session: VcsSession, key: string, result: VcsRevisionDiffResult): void {
+        if (session.diffs.size >= MAX_CACHED_REVISION_DIFFS) {
+            const oldest = session.diffs.keys().next();
+            if (!oldest.done) session.diffs.delete(oldest.value);
+        }
+        session.diffs.set(key, result);
+    }
+
     /** Common ancestor of two revisions. Computed locally; Lore exposes no such API. */
     public async getMergeBase(projectPath: string, a: string, b: string): Promise<string | undefined> {
         return this.serialize(projectPath, async () => {
             const { session, backend } = await this.sessionFor(projectPath);
             const graph = await backend.readRevisionGraph(session.globals);
             return backend.mergeBase(graph, a, b);
+        });
+    }
+
+    // -- remote ---------------------------------------------------------------
+
+    /**
+     * The server this project syncs with, or null when it has none.
+     *
+     * A pure LOCAL read - it reads the repository's own config file through the backend
+     * and opens no socket - so it is safe to ask whenever a panel wants to know whether
+     * to offer the remote controls at all. Everything below it is not.
+     */
+    public async getRemote(projectPath: string): Promise<string | null> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            return backend.readRemote(session.globals);
+        });
+    }
+
+    /**
+     * Connect this project to a server, or disconnect it by passing null.
+     *
+     * **Connecting is two acts, and doing only the first is the trap this method exists to
+     * avoid.** Writing the address makes push and sync work; it does NOT make the project
+     * clonable. Measured: a project that was only pointed at a server pushes successfully,
+     * reports `remoteBranchExists: true`, and answers `Not found` to every clone - by name,
+     * by repository id, and by its own name. The collaboration looks finished from the one
+     * machine that set it up and does not exist from any other. So the address is written
+     * AND the repository is registered, or neither happens.
+     *
+     * Which is why this needs the network, while {@link getRemote} does not. Rolled back on
+     * a failed registration rather than left half-done: an address in the config with
+     * nothing behind it is exactly the state above.
+     *
+     * **The session is closed around the write.** The backend reads the config when a
+     * store is opened, so rewriting it under a live session would leave every later call in
+     * that session dialling the OLD address - a failure that looks like the setting did not
+     * save, on a screen that says it did.
+     *
+     * Disconnecting is purely local and cannot fail that way: it writes the unconfigured
+     * placeholder and leaves whatever is on the server alone.
+     */
+    public async setRemote(projectPath: string, url: string | null): Promise<void> {
+        const root = projectRoot(projectPath);
+        // Read BEFORE the session is closed, and needed only for the connect path: the
+        // registration has to carry this project's own repository id, or the name on the
+        // server would resolve to a different repository than the one that pushes to it.
+        const repositoryId = url ? (await this.getInfo(projectPath)).repositoryId : null;
+        const previous = url ? await this.getRemote(projectPath) : null;
+
+        // Outside the queue on purpose: `closeProject` serializes internally, and calling
+        // it from inside our own block would wait on the block it is already in.
+        await this.closeProject(projectPath);
+        return this.serialize(projectPath, async () => {
+            const backend = await requireVcsBackend();
+            await backend.writeRemote(root, url);
+            if (!url || !repositoryId) {
+                this.app.logger.info("[Vcs] Disconnected from server", root);
+                return;
+            }
+            try {
+                await backend.publishToRemote(this.globalsFor(root, { online: true }), {
+                    url,
+                    repositoryId,
+                });
+            } catch (error) {
+                // Put the address back to what it was, so a failed connection leaves the
+                // project in the state the author can retry from rather than in the
+                // pushes-but-cannot-be-cloned state described above.
+                await backend.writeRemote(root, previous).catch(() => undefined);
+                throw error;
+            }
+            this.app.logger.info("[Vcs] Connected to server", root, url);
+        });
+    }
+
+    /**
+     * Where this branch stands against its server.
+     *
+     * **The one read in this class that goes online**, because the five fields it answers
+     * are all false under offline globals - indistinguishable from "there is no server".
+     *
+     * Costs up to ~2 s when nothing answers, and reports that as `remoteAvailable: false`
+     * rather than throwing: an unreachable server is information the panel has to draw,
+     * not an error. Only ever called because the author asked - never on project open,
+     * never on a timer.
+     */
+    public async getSyncState(projectPath: string): Promise<VcsSyncState> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            return backend.readSyncState({ ...session.globals, offline: false });
+        });
+    }
+
+    /**
+     * Send this branch's revisions to the server.
+     *
+     * Refused by the backend when the branch has diverged, with a sentence that names the
+     * remedy (`Branch has diverged, sync to merge remote changes`). That error is passed
+     * through unchanged - see `remote.ts`.
+     *
+     * Nothing is written locally, so a failure leaves the project exactly as it was.
+     */
+    public async push(projectPath: string): Promise<VcsPushResult> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            const result = await backend.pushToRemote({
+                ...session.globals,
+                offline: false,
+                identity: this.resolveIdentity(),
+            });
+            this.app.logger.info(
+                "[Vcs] Pushed", session.root, result.branch,
+                result.alreadyPushed ? "(already up to date)" : "",
+            );
+            return result;
+        });
+    }
+
+    /**
+     * Bring the server's revisions down into the working tree.
+     *
+     * **This writes the author's files**, which puts it in the same category as a restore
+     * and gives it the same two obligations:
+     *
+     *  - the renderer's pending saves are flushed FIRST and inside the lock, or a
+     *    debounced auto-save lands on top of what was just synced;
+     *  - the caller must re-read every document afterwards. The bytes under the editors
+     *    are no longer the ones they were read from, and an editor that saves before
+     *    re-reading writes the pre-sync version straight back over it.
+     *
+     * **A dirty working tree is refused before anything is fetched.** Syncing a diverged
+     * branch merges automatically (measured), and a merge is only safe to accept when
+     * there is nothing uncommitted underneath it for the merge to land on. The refusal
+     * names the remedy, which is to submit a version first.
+     */
+    public async sync(projectPath: string): Promise<VcsSyncResult> {
+        return this.serialize(projectPath, async () => {
+            if (this.flushPendingSaves) {
+                await this.flushPendingSaves(projectPath).catch((error) => {
+                    this.app.logger.warn("[Vcs] Could not flush pending saves before syncing", error);
+                });
+            }
+
+            const { session, backend } = await this.sessionFor(projectPath);
+            const globals = { ...session.globals, identity: this.resolveIdentity() };
+
+            // Offline and non-scanning, so establishing the precondition costs neither a
+            // socket nor the staged-state side effect a scan would have (§4.17). This
+            // reports what is STAGED, which is what an uncommitted change looks like once
+            // anything has staged it - and a commit is what clears it.
+            const pending = await backend.getStatus(globals);
+            if (!pending.clean) {
+                throw new Error(
+                    "There are unsubmitted changes in this project. Submit a version before syncing,"
+                    + " so that anything the server sends can be merged onto a recorded state.",
+                );
+            }
+
+            const result = await backend.syncFromRemote({ ...globals, offline: false });
+            this.app.logger.info(
+                "[Vcs] Synced", session.root,
+                `${result.filesChanged} file(s), ${result.revisionsReceived} revision(s)`,
+                result.conflicts.length ? `CONFLICTS: ${result.conflicts.join(", ")}` : "",
+            );
+            return result;
+        });
+    }
+
+    // -- merge ----------------------------------------------------------------
+
+    /**
+     * Whether this project is in the middle of a merge, and which paths are still open.
+     *
+     * **Ask this on opening a project, not only after a sync.** A merge is repository state
+     * and outlives the process that started it: the author can close the window on a
+     * conflicted sync and reopen it tomorrow, and nothing in this class remembers. The
+     * answer is reconstructed from the repository and from what the merge left on disk -
+     * see `merge.ts` for exactly which signals, and for the one that is not an inference.
+     *
+     * A pure read on the offline globals: no socket, and `scan: false`, so it is not the
+     * kind of status call that records staged state as a side effect (§4.17).
+     */
+    public async getMergeState(projectPath: string): Promise<VcsMergeState> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            return backend.readMergeState(session.globals, session.root);
+        });
+    }
+
+    /**
+     * The three-way merge of one conflicted document, change by change - tier two.
+     *
+     * **A pure read of what the merge already left on disk.** The three sides are files beside the
+     * conflicted one (docs §4.23), so this needs no revision graph, no base lookup and none of
+     * `getMergeBase`'s single-branch blind spot (§4.30): a merge in progress has its own inputs,
+     * and they are the same bytes the two sides recorded.
+     *
+     * **Answers rather than throws for every reason a document cannot be settled this way.** Most
+     * of a repository has no spec, most specs have no `merge3` yet, and one that has one still
+     * refuses to write itself back - all three are ordinary states of ordinary files, and the
+     * surface has to be able to say WHICH, because "we cannot do this here" and "there is nothing
+     * left to decide here" are otherwise the same blank row.
+     *
+     * Queued with everything else on this project so it cannot read the sidecars while a resolve
+     * is replacing them.
+     */
+    public async getMergeDocument(projectPath: string, documentPath: string): Promise<VcsMergeDocument> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            return backend.readMergeDocument(session.root, documentPath);
+        });
+    }
+
+    /**
+     * Settle conflicted paths by taking one side, or by taking the working tree as it is.
+     *
+     * **Records nothing.** Settling a path is not committing it - the merge stays open
+     * until a commit closes it, which is what lets the author decide one file, look at the
+     * result, and decide the next. The caller commits when the author says so, through
+     * {@link commit}, whose globals are offline - and they must stay offline: a commit made
+     * through online globals on a server-registered repository cannot be read back by the
+     * process that wrote it (§4.29), so the author's own resolution would be unreadable in
+     * the session that made it.
+     *
+     * `mine` and `theirs` OVERWRITE the working tree, so the pending saves are flushed
+     * first and inside the lock for the same reason a sync flushes them: a debounced
+     * auto-save landing a moment later writes the author's pre-merge document back over
+     * the side they just chose.
+     *
+     * The caller must re-read every document this touched.
+     */
+    public async resolveConflicts(
+        projectPath: string,
+        paths: readonly string[],
+        choice: VcsConflictChoice,
+    ): Promise<VcsMergeResolveResult> {
+        return this.serialize(projectPath, async () => {
+            if (this.flushPendingSaves) {
+                await this.flushPendingSaves(projectPath).catch((error) => {
+                    this.app.logger.warn("[Vcs] Could not flush pending saves before resolving", error);
+                });
+            }
+            const { session, backend } = await this.sessionFor(projectPath);
+            const result = await backend.resolveConflicts(session.globals, session.root, paths, choice);
+            this.app.logger.info(
+                "[Vcs] Resolved", session.root, `${paths.length} path(s) as ${choice};`,
+                `${result.state.conflicts.length} left`,
+            );
+            return result;
+        });
+    }
+
+    /**
+     * Take one side per path, then close the merge with a commit.
+     *
+     * **The whole of tier one, and one operation on purpose.** Settling and recording are the
+     * same queued act, because a merge left settled-but-uncommitted is a window in which anything
+     * else that commits closes it: the checkpoint timer would record the author's merge under
+     * "Checkpoint", labelled `checkpoint`, and their own press would then be told nothing has
+     * changed. Inside one `serialize` block that cannot happen.
+     *
+     * The order, and why each step is where it is:
+     *
+     *  1. **Flush the renderer's pending saves**, first and inside the lock - the same reason a
+     *     commit does it, plus the sharper one a sync has: the resolve below OVERWRITES the paths
+     *     it names, so a debounced auto-save landing a moment later writes the author's pre-merge
+     *     document back over the side they just chose.
+     *  2. **Compose the per-change answers, then settle, one call per side.** Grouped rather than
+     *     one call per path: each of these flushes the repository, and a flush waits out the store
+     *     keep-alive window (§4.22), so per-path calls would cost a second each on a merge with two
+     *     hundred files. A tier-two path is written first and then settled with `working-tree`,
+     *     which is the only choice that can express an answer neither side wrote.
+     *  3. **Commit**, through `commitWorkingTree`, which is where the remaining three obligations
+     *     already live: it confirms there is something to commit with a NON-scanning status read
+     *     (§4.17), writes `narraleaf.kind` BEFORE the commit rather than after (§4.21 - the
+     *     metadata verb writes the staged revision, so a label set afterwards lands on the next
+     *     one), and flushes before reporting success (§4.11 - an unflushed commit can be lost
+     *     outright, and it is a race rather than a stable failure).
+     *
+     * **Committed through the session's OFFLINE globals, and that is not incidental** (§4.29).
+     * A merge is an online act; the commit that closes it must not be. Measured: on a repository
+     * registered with a server, a revision committed under `offline: false` cannot have its new
+     * content read back by the process that wrote it - the author's freshly resolved file would be
+     * unreadable in the very session that resolved it, until Studio restarted. `session.globals`
+     * is offline by construction (see {@link globalsFor}); nothing here may spread `offline: false`
+     * over it, and `merge.integration.test.ts` reads the bytes back through this same manager to
+     * keep that true.
+     *
+     * No `fileStageMerge`: measured, a plain commit records a settled merge, and the merge's own
+     * `~base`/`~mine`/`~theirs` files are excluded by the backend even when the whole tree is
+     * staged first (§4.23), which is exactly what this commit does.
+     *
+     * The caller must re-read every document afterwards - every settled path was rewritten - and
+     * must hold the workspace in its view for the duration, releasing before it leaves it.
+     */
+    public async completeMerge(
+        projectPath: string,
+        decisions: readonly VcsMergeDecision[],
+        options: VcsCommitOptions = {},
+    ): Promise<VcsMergeCompletion> {
+        return this.serialize(projectPath, async () => {
+            if (this.flushPendingSaves) {
+                await this.flushPendingSaves(projectPath).catch((error) => {
+                    this.app.logger.warn("[Vcs] Could not flush pending saves before completing a merge", error);
+                });
+            }
+
+            const { session, backend } = await this.sessionFor(projectPath);
+            const globals = { ...session.globals, identity: this.resolveIdentity(options.identity) };
+
+            // **Tier two, and it is written BEFORE anything is settled and after the flush above.**
+            // The composed bytes are an answer neither side wrote, so they go into the working tree
+            // first and are then accepted by the plain resolve verb, which commits the working tree
+            // byte for byte (§4.25). Writing them before the flush would lose them to a debounced
+            // auto-save; writing them after the settle would write into a path the backend has
+            // already recorded.
+            const perChange = decisions.filter(isPerChangeDecision);
+            for (const decision of perChange) {
+                await backend.resolveDocumentChanges(session.root, decision.path, decision.changes);
+            }
+            if (perChange.length > 0) {
+                // One call for all of them, for the reason the two side groups are grouped: each
+                // resolve flushes the repository and a flush waits out the keep-alive window
+                // (§4.22).
+                await backend.resolveConflicts(
+                    globals,
+                    session.root,
+                    perChange.map((decision) => decision.path),
+                    "working-tree",
+                );
+            }
+
+            for (const choice of MERGE_SIDES) {
+                const paths = decisions.filter((decision) => decision.choice === choice)
+                    .map((decision) => decision.path);
+                if (paths.length === 0) continue;
+                await backend.resolveConflicts(globals, session.root, paths, choice);
+            }
+
+            const revision = await backend.commitWorkingTree(globals, {
+                message: options.message?.trim() || DEFAULT_MERGE_MESSAGE,
+                kind: "commit",
+            });
+            const state = await backend.readMergeState(globals, session.root);
+            this.app.logger.info(
+                "[Vcs] Completed merge", session.root, revision.revision,
+                `${decisions.length} path(s) settled`,
+                state.inProgress ? "MERGE STILL OPEN" : "",
+            );
+            return { revision, state };
+        });
+    }
+
+    /** Put settled paths back into the unresolved state, undoing a choice. */
+    public async unresolveConflicts(
+        projectPath: string,
+        paths: readonly string[],
+    ): Promise<VcsMergeResolveResult> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            return backend.unresolveConflicts(session.globals, session.root, paths);
+        });
+    }
+
+    /**
+     * Redo the automatic merge for these paths, discarding what is in the working tree.
+     *
+     * The way back from a half-edited merge result, and it throws away bytes - so the
+     * pending saves are flushed first, and the caller must re-read afterwards.
+     */
+    public async restartConflicts(projectPath: string, paths: readonly string[]): Promise<VcsMergeState> {
+        return this.serialize(projectPath, async () => {
+            if (this.flushPendingSaves) {
+                await this.flushPendingSaves(projectPath).catch((error) => {
+                    this.app.logger.warn("[Vcs] Could not flush pending saves before restarting a merge", error);
+                });
+            }
+            const { session, backend } = await this.sessionFor(projectPath);
+            return backend.restartConflicts(session.globals, session.root, paths);
+        });
+    }
+
+    /**
+     * Abandon the merge and put the working tree back to what it was before it started.
+     *
+     * **A complete rollback, measured rather than assumed** (§4.27): every file back to its
+     * pre-merge content, the merge inputs deleted, the status header where it was. That
+     * measurement is the only reason this is offered at all - a cancel that left a
+     * half-merged tree would be worse than no cancel.
+     *
+     * It writes the author's files, so it carries a restore's obligations: pending saves
+     * flushed first and inside the lock, and every document re-read once it resolves.
+     */
+    public async abortMerge(projectPath: string): Promise<VcsMergeState> {
+        return this.serialize(projectPath, async () => {
+            if (this.flushPendingSaves) {
+                await this.flushPendingSaves(projectPath).catch((error) => {
+                    this.app.logger.warn("[Vcs] Could not flush pending saves before abandoning a merge", error);
+                });
+            }
+            const { session, backend } = await this.sessionFor(projectPath);
+            const state = await backend.abortMerge(session.globals, session.root);
+            this.app.logger.info("[Vcs] Abandoned the merge", session.root);
+            return state;
+        });
+    }
+
+    /**
+     * Copy a repository from a server into a local directory.
+     *
+     * Takes no project session and cannot: there is no repository here until this
+     * finishes. It works on bare globals for the same reason {@link initRepository} does,
+     * and like that method it releases the repository afterwards - the backend keeps it
+     * open otherwise, and on Windows that is a folder the author cannot move or delete.
+     *
+     * The destination must be empty. That guard is in `remote.ts` because the backend
+     * has none: it writes the working tree into whatever it is pointed at.
+     */
+    public async cloneRepository(
+        repositoryUrl: string,
+        destination: string,
+        options: { onProgress?: (transferred: number, total: number) => void } = {},
+    ): Promise<{ root: string; branch: string; fileCount: number }> {
+        const root = projectRoot(destination);
+        return this.serialize(root, async () => {
+            const backend = await requireVcsBackend();
+            const globals = this.globalsFor(root, { online: true });
+            try {
+                const cloned = await backend.cloneInto(
+                    { ...globals, identity: this.resolveIdentity() },
+                    { repositoryUrl, onProgress: options.onProgress },
+                );
+                this.app.logger.info("[Vcs] Cloned", repositoryUrl, "->", root, `${cloned.fileCount} file(s)`);
+                return { root, ...cloned };
+            } finally {
+                // No session was opened here, so nothing else will let go of the
+                // repository - and a half-finished clone holds it too, which is why this
+                // is in the `finally`.
+                await backend.releaseRepository(globals).catch((error) => {
+                    this.app.logger.warn("[Vcs] Failed to release after clone", root, error);
+                });
+            }
         });
     }
 
@@ -260,13 +1671,47 @@ export class VcsManager extends Manager {
      *
      * Closing also releases Lore's exclusive repository lock, which other
      * processes block on rather than fail against.
+     *
+     * **Serialized like every other operation, and that is not tidiness.** This used to close the
+     * store the moment a window reported itself gone, without regard for work already running on
+     * it - and a history read is not instant (one metadata call per revision, taken in turn). Pull
+     * the handle out from under one and the read does not fail cleanly: it is left waiting on a
+     * store that no longer exists, so the panel that asked stays on "Reading the version history"
+     * for the rest of the session with nothing anywhere to say why. Queuing behind the in-flight
+     * work costs the close a moment and makes that state unreachable.
+     *
+     * The session is removed from the map BEFORE the queue, deliberately: anything arriving after
+     * this call must open a fresh session rather than join one that is on its way out.
+     *
+     * **An open still in flight is waited for and released too.** A window can close while the
+     * first read of its repository is still opening one - and that session records itself while
+     * this call sits in the queue, so a close that only looked once would leave it behind holding
+     * the exclusive lock. What that costs is in {@link sessionFor}: the next open of the project
+     * blocks on the lock, on a libuv thread pool thread, and takes the process's file reads with it.
      */
     public async closeProject(projectPath: string): Promise<void> {
-        const key = normalizeProjectPath(projectPath);
+        const key = projectKey(projectPath);
         const session = this.sessions.get(key);
-        if (!session) return;
+        // Nothing open, nothing opening, and nothing QUEUED that could open one. The last of the
+        // three is not padding: a read started a moment before the window closed has not reached
+        // `sessionFor` yet, so both maps are still empty while a session is on its way.
+        if (!session && !this.opening.has(key) && !this.operations.has(key)) return;
         this.sessions.delete(key);
+        return this.serialize(projectPath, async () => {
+            // An open that is in flight right now was started outside the queue, so it settles on
+            // its own rather than behind this task. Awaited for its settlement, not its value: a
+            // failed open has already released its own handle.
+            const opening = this.opening.get(key);
+            if (opening) await opening.catch(() => undefined);
+            const late = this.sessions.get(key);
+            this.sessions.delete(key);
+            if (session) await this.releaseSession(session);
+            if (late && late !== session) await this.releaseSession(late);
+        });
+    }
 
+    /** The teardown itself, run with exclusive access to the project - see {@link closeProject}. */
+    private async releaseSession(session: VcsSession): Promise<void> {
         const backend = await requireVcsBackend().catch(() => null);
         if (!backend) return;
 
@@ -277,15 +1722,30 @@ export class VcsManager extends Manager {
         }
         try {
             await backend.closeStore(session.globals, session.store);
+        } catch (error) {
+            this.app.logger.warn("[Vcs] Failed to close the store", session.root, error);
+        }
+
+        try {
+            // Closing the store is not the same as letting go of the repository.
+            // Lore keeps the repository open after the last call (storeKeepAlive),
+            // and while it does, the directory cannot be deleted or moved and the
+            // author's own `lore` CLI BLOCKS on the repository lock rather than
+            // failing. Found the hard way: a test could not remove its own temp
+            // directory after closing the store.
+            await backend.releaseRepository(session.globals);
             this.app.logger.info("[Vcs] Closed session", session.root);
         } catch (error) {
-            this.app.logger.warn("[Vcs] Failed to close session", session.root, error);
+            this.app.logger.warn("[Vcs] Failed to release the repository", session.root, error);
         }
     }
 
     /** Release every session; called on app teardown. */
     public async dispose(): Promise<void> {
-        await Promise.all([...this.sessions.keys()].map((key) => this.closeProject(key)));
+        // Opens in flight included: quitting while one is still opening would otherwise leave the
+        // repository locked, and on Windows that is a directory the author cannot move or delete.
+        const keys = new Set([...this.sessions.keys(), ...this.opening.keys()]);
+        await Promise.all([...keys].map((key) => this.closeProject(key)));
     }
 
     /** Exposed for diagnostics: which projects currently hold a Lore store. */

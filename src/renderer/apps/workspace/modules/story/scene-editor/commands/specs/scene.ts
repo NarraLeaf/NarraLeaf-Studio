@@ -11,6 +11,10 @@ export const bg = defineStoryCommand({
     token: "bg",
     aliases: ["background"],
     category: "scene",
+    examples: ["/bg forest_day", "/bg forest_day t=fade d=0.5", "/bg #101018"],
+    // Inline quick-edit (WI-2): the transition duration. The transition kind (`t`, an enum) stays an
+    // inspector choice — a qualitative pick, not a high-frequency micro-adjust.
+    quickParams: ["d"],
     params: {
         image: {
             hint: "imageOrColor",
@@ -44,6 +48,8 @@ export const jump = defineStoryCommand({
     id: "jump",
     token: "jump",
     category: "scene",
+    examples: ["/jump 'Chapter 2'", "/jump 'Chapter 2' t=fade d=0.6"],
+    quickParams: ["scene"],
     params: {
         scene: { hint: "scene", type: { kind: "scene" }, positional: true, core: true },
         t: { aliases: ["transition"], hint: "transition", type: { kind: "enum", options: transitionOptions("scene") } },
@@ -66,7 +72,9 @@ export const jump = defineStoryCommand({
 export const wait = defineStoryCommand({
     id: "wait",
     token: "wait",
-    category: "control",
+    category: "flow",
+    examples: ["/wait 1.5", "/wait click"],
+    quickParams: ["seconds"],
     params: {
         // `/wait 2` pauses two seconds, `/wait click` (or a bare `/wait`) waits for the player.
         seconds: { hint: "waitFor", type: [{ kind: "keyword", value: "click" }, { kind: "number", min: 0 }], positional: true },
@@ -89,6 +97,7 @@ export const nvl = defineStoryCommand({
     id: "nvl",
     token: "nvl",
     category: "scene",
+    examples: ["/nvl", "/nvl t=fade d=0.4"],
     params: {
         t: { aliases: ["transition"], hint: "transition", type: { kind: "enum", options: transitionOptions("nvl") } },
         d: secondsParam(),

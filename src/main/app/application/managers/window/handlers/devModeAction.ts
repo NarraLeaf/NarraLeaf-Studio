@@ -172,7 +172,9 @@ function promoteDevModeAssetGrant(window: AppWindow<WindowAppType.DevMode>, url:
     if (parsed.protocol !== `${AppProtocol}:` || parsed.hostname !== AppHost.Fs) {
         return;
     }
-    const hash = parsed.pathname.replace(/^\/+/, "");
+    // Only the first segment is the grant - a model bundle resolves to
+    // `app://fs/{hash}/{entry}`, whose trailing path is a file *inside* the grant.
+    const hash = parsed.pathname.replace(/^\/+/, "").split("/")[0];
     if (!hash) {
         return;
     }
@@ -257,6 +259,50 @@ export class DevModeForwardBlueprintDebugEventHandler extends IPCHandler<IPCEven
         }
 
         workspaceWindow.sendIpcEvent(IPCEventType.workspaceBlueprintDebugEvent, data.event);
+        return this.success(void 0 as never);
+    }
+}
+
+export class DevModeForwardStoryRowHandler extends IPCHandler<IPCEventType.devModeForwardStoryRow> {
+    readonly name = IPCEventType.devModeForwardStoryRow;
+    readonly type = IPCMessageType.message;
+
+    public handle(
+        window: AppWindow,
+        data: IPCEvents[IPCEventType.devModeForwardStoryRow]["data"],
+    ): RequestStatus<never> {
+        if (window.getWindowType() !== WindowAppType.DevMode) {
+            return this.failed("Invalid window");
+        }
+
+        const devWindow = window as AppWindow<WindowAppType.DevMode>;
+        const props = devWindow.getProps();
+        if (!pathsEqual(props.projectPath, data.projectPath)) {
+            return this.failed("Project mismatch");
+        }
+
+        const workspaceWindow = window
+            .getApp()
+            .windowManager.getWindows()
+            .find(
+                w =>
+                    w.getWindowType() === WindowAppType.Workspace &&
+                    !w.isDestroyed() &&
+                    !w.isClosed() &&
+                    pathsEqual(w.getProps().projectPath, data.projectPath),
+            );
+
+        if (!workspaceWindow) {
+            return this.success(void 0 as never);
+        }
+
+        // Deliberately no show()/focus(): the play head follows execution in place, it does not
+        // yank the workspace forward (see the M5 card WI-2).
+        workspaceWindow.sendIpcEvent(IPCEventType.workspaceStoryRowHighlight, {
+            storyId: data.storyId,
+            sceneId: data.sceneId,
+            blockId: data.blockId,
+        });
         return this.success(void 0 as never);
     }
 }

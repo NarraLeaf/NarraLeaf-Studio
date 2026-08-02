@@ -1,10 +1,24 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "@/lib/i18n";
+import { freezeContextMenuRows, useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+
+/**
+ * The asset-menu rows a frozen library keeps: the two that only fill the clipboard.
+ *
+ * Copy and Cut record what is marked; the move happens on Paste, which is off. Everything else
+ * creates, imports, renames, retags, replaces bytes or deletes.
+ */
+const FREEZE_READ_ONLY_ASSET_MENU_IDS: ReadonlySet<string> = new Set([
+    "copy",
+    "cut",
+    "copy-selected",
+    "cut-selected",
+]);
 import { useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
-import { ContextMenuTargetState } from "../state/useAssetActions";
+import { contextMenuActsOnSelection, type ContextMenuTargetState } from "../state/assetActionTargets";
 import { ClipboardState } from "../state/useClipboard";
 
 export interface UseAssetsContextMenuParams {
@@ -20,9 +34,12 @@ export interface UseAssetsContextMenuParams {
     handleCut: () => void;
     handlePaste: () => Promise<void>;
     handleRename: () => Promise<void>;
+    handleReplaceContent: () => Promise<void>;
     handleDelete: () => Promise<void>;
-    handleCreateGroup: (type: AssetType, parentGroupId?: string) => Promise<void>;
-    handleImportToGroup: (type: AssetType, groupId?: string) => Promise<void>;
+    handleCreateGroup: (category: AssetCategory, parentGroupId?: string) => Promise<void>;
+    /** Other only. `groupId` is the group the menu was opened on, absent from the category header. */
+    handleCreateTextFile: (groupId?: string) => Promise<void>;
+    handleImportToGroup: (category: AssetCategory, groupId?: string) => Promise<void>;
     handleCreateMagicTags?: () => Promise<void>;
 }
 
@@ -38,18 +55,21 @@ export function useAssetsContextMenu({
     handleCut,
     handlePaste,
     handleRename,
+    handleReplaceContent,
     handleDelete,
     handleCreateGroup,
+    handleCreateTextFile,
     handleImportToGroup,
     handleCreateMagicTags,
 }: UseAssetsContextMenuParams) {
     const { t, tn } = useTranslation();
+    const freeze = useFreezeGuard();
     const { menuState, showMenu, hideMenu } = useContextMenu();
 
-    const showContextMenu = useCallback((event: React.MouseEvent, type: AssetType, item: Asset | AssetGroup | null, isGroup: boolean) => {
+    const showContextMenu = useCallback((event: React.MouseEvent, category: AssetCategory, item: Asset | AssetGroup | null, isGroup: boolean) => {
         event.preventDefault();
         event.stopPropagation();
-        setContextMenuTarget({ type, item, isGroup });
+        setContextMenuTarget({ category, item, isGroup });
         showMenu(event);
     }, [setContextMenuTarget, showMenu]);
 
@@ -65,8 +85,13 @@ export function useAssetsContextMenu({
 
         const items: ContextMenuDef = [];
 
+        // The actions resolve their targets the same way (see `resolveAssetActionTargets`): a
+        // right-click on a row outside the selection acts on that row alone, so the menu has to
+        // offer the single-item commands rather than counts the action will not honour.
+        const actsOnSelection = isMultiSelectMode && contextMenuActsOnSelection(contextMenuTarget, selectedItems);
+
         // Always add copy/cut operations first if applicable
-        if (isMultiSelectMode) {
+        if (actsOnSelection) {
             // Check selected items: assets and groups
             const selectedAssetItems = Array.from(selectedItems).filter(id => id.startsWith('asset:'));
             const selectedGroupItems = Array.from(selectedItems).filter(id => id.startsWith('group:'));
@@ -157,33 +182,62 @@ export function useAssetsContextMenu({
         }
 
         // Add rename/delete for single items
-        if (!isMultiSelectMode && contextMenuTarget.item) {
+        if (!actsOnSelection && contextMenuTarget.item) {
             if (items.length > 0) {
                 items.push({ separator: true as const, id: "sep1" });
             }
-            items.push(
-                {
-                    id: "rename",
-                    label: t("common.rename"),
+            items.push({
+                id: "rename",
+                label: t("common.rename"),
+                onClick: async () => {
+                    await handleRename();
+                    closeContextMenu();
+                },
+            });
+            // Files only: a group has no bytes to swap.
+            if (!contextMenuTarget.isGroup) {
+                items.push({
+                    id: "replace-content",
+                    label: t("assets.menu.replaceContent"),
                     onClick: async () => {
-                        await handleRename();
+                        await handleReplaceContent();
                         closeContextMenu();
                     },
+                });
+            }
+            items.push({
+                id: "delete",
+                label: t("common.delete"),
+                onClick: async () => {
+                    await handleDelete();
+                    closeContextMenu();
                 },
-                {
-                    id: "delete",
-                    label: t("common.delete"),
-                    onClick: async () => {
-                        await handleDelete();
-                        closeContextMenu();
-                    },
-                },
-            );
+            });
         }
 
         // Always show create group and import options at the end
         if (items.length > 0) {
             items.push({ separator: true as const, id: "sep-actions" });
+        }
+
+        // The one asset Studio can make rather than import, so it is offered only where it means
+        // something: the Other section itself, or a folder inside it. An asset row is not an
+        // enclosure, and "new file here" on top of a file would have to guess what "here" meant.
+        //
+        // Deliberately absent from FREEZE_READ_ONLY_ASSET_MENU_IDS: this creates, so a frozen
+        // library greys it out like every other write.
+        if (contextMenuTarget.category === AssetCategory.Other && (!contextMenuTarget.item || contextMenuTarget.isGroup)) {
+            items.push({
+                id: "new-text-file",
+                label: t("assets.menu.newTextFile"),
+                onClick: async () => {
+                    const groupId = contextMenuTarget.isGroup
+                        ? (contextMenuTarget.item as AssetGroup).id
+                        : undefined;
+                    await handleCreateTextFile(groupId);
+                    closeContextMenu();
+                },
+            });
         }
 
         items.push({
@@ -193,7 +247,7 @@ export function useAssetsContextMenu({
                 const parentGroupId = contextMenuTarget.item
                     ? (contextMenuTarget.item as AssetGroup).id
                     : undefined;
-                await handleCreateGroup(contextMenuTarget.type, parentGroupId);
+                await handleCreateGroup(contextMenuTarget.category, parentGroupId);
                 closeContextMenu();
             },
         });
@@ -205,13 +259,13 @@ export function useAssetsContextMenu({
                 const groupId = contextMenuTarget.item
                     ? (contextMenuTarget.item as AssetGroup).id
                     : undefined;
-                await handleImportToGroup(contextMenuTarget.type, groupId);
+                await handleImportToGroup(contextMenuTarget.category, groupId);
                 closeContextMenu();
             },
         });
 
-        return items;
-    }, [clipboard, closeContextMenu, contextMenuTarget, handleCopy, handleCut, handleDelete, handleImportToGroup, handlePaste, handleRename, handleCreateGroup, isMultiSelectMode, selectedItems, t, tn]);
+        return freezeContextMenuRows(items, freeze.frozen, FREEZE_READ_ONLY_ASSET_MENU_IDS, freeze.reason);
+    }, [clipboard, closeContextMenu, contextMenuTarget, freeze, handleCopy, handleCut, handleDelete, handleImportToGroup, handlePaste, handleRename, handleReplaceContent, handleCreateGroup, handleCreateTextFile, isMultiSelectMode, selectedItems, t, tn]);
 
     return {
         menuState,

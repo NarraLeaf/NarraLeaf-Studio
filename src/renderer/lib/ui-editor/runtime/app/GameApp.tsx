@@ -7,7 +7,7 @@ import {
     type ReactNode,
 } from "react";
 import { AnimatePresence, MotionConfig, useReducedMotion } from "motion/react";
-import { type LiveGame, type SavedGame } from "narraleaf-react";
+import { Sound, type LiveGame, type SavedGame } from "narraleaf-react";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
 import {
     LOCALE_STORAGE_KEY,
@@ -17,16 +17,30 @@ import {
 } from "@shared/types/localization";
 import { VOICE_LOCALE_STORAGE_KEY } from "@shared/types/voice";
 import {
+    isAutoSaveId,
+    normalizeAutoSaveConfiguration,
+    parseAutoSaveSlotIndex,
+    type AutoSaveEntry,
+} from "@shared/types/saves";
+import {
     GameLocalizationContext,
     type GameLocalizationRuntime,
 } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import { toBlueprintImageAsset, type BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import {
+    clearCharacterAvatarAssets,
+    registerCharacterAvatarAssets,
+} from "@/lib/ui-editor/runtime/characterAvatarAssets";
+import {
+    BLUEPRINT_GAME_CHARACTERS_STATE_KEY,
     BLUEPRINT_GAME_NAMETAG_STATE_KEY,
+    BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY,
+    BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY,
     BLUEPRINT_GAME_TEXT_READ_STATE_KEY,
     BLUEPRINT_TEXT_READ_PERSISTENCE_KEY,
 } from "@shared/types/blueprint/hostApi";
+import { toBlueprintCharacterInfo } from "@shared/types/blueprint/characterInfo";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type {
@@ -63,10 +77,19 @@ import {
     createEmptyCompiledNlrStory,
     type CompiledNlrStory,
 } from "@/lib/ui-editor/runtime/game/storyCompiler";
+import {
+    isStoryVisited,
+    STORY_VISITED_OPTIONS_KEY,
+    STORY_VISITED_SCENES_KEY,
+    type StoryVisitedKey,
+} from "@/lib/ui-editor/runtime/game/storyVisited";
 import { computeStoryStageSnapshot } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
+import { createPuppetStageHandle, loadPuppetBackends } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
 import { sceneVariableDefs, savedVariableDefs } from "@shared/types/story";
-import { resolveDefaultLaunchScene } from "@/lib/ui-editor/runtime/game/resolveDefaultLaunchScene";
+import { resolveStagePreloadTarget } from "@/lib/ui-editor/runtime/game/resolveDefaultLaunchScene";
 import { NlrStageLayer, type NlrStageSession } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
+import { RuntimePluginOverlayLayer } from "@/lib/ui-editor/runtime/plugins/RuntimePluginOverlayLayer";
+import type { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
 import {
     clearDevModeSavePreviewImages,
     registerDevModeSavePreviewImage,
@@ -78,7 +101,17 @@ import {
 } from "./AppSurfaceLayer";
 import type { ChoiceSlotRuntime } from "./ChoiceSlotSurface";
 import type { GameUiSlotHostOptions } from "./StageSlotSurfaceShell";
-import { createGameUiSlotComponents, createLiveGameUiCallbacks, createNlrGameWithGameUi } from "./gameUiSlots";
+import {
+    createGameUiSlotComponents,
+    createLiveGameUiCallbacks,
+    createNlrGameWithGameUi,
+    fastForwardToNextChoice,
+    restoreLiveGameToHistory,
+} from "./gameUiSlots";
+import { audioClipRegionToSoundConfig } from "@shared/types/audio";
+import type { ProjectAudioTrack } from "@shared/types/audioTrack";
+import { createSoundTransport } from "./soundTransport";
+import { attachAudioBusPersistence, audioTracksToBusDeclarations } from "./audioBusRuntime";
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
@@ -90,13 +123,42 @@ import {
     createTextReadTracker,
     type TextReadTracker,
 } from "./textReadTracker";
-import { waitForAnimationFrame } from "./frameTiming";
+import { withDeadline } from "./frameTiming";
 import { NavigationController } from "./navigation/NavigationController";
 import { useSurfaceNavigation } from "./navigation/useSurfaceNavigation";
 import type { AppNavEntry, HostAdapterBundle, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
-import type { GameAppFrameContext, GameAppHost, GameAppOverlayContext } from "./GameAppHost";
+import type {
+    GameAppFrameContext,
+    GameAppHost,
+    GameAppOverlayContext,
+    GameAppSaveRecord,
+    GameAppStoryRuntimeBridge,
+} from "./GameAppHost";
+import { useAutoSave } from "./useAutoSave";
 
-const NLR_BOOT_PRELOAD_TIMEOUT_MS = 15_000;
+// Outer safety net: if the environment never comes up at all, start the surface system anyway
+// rather than sit on the loading step forever. Generous on purpose — it has to sit *outside*
+// STAGE_WARMUP_TIMEOUT_MS, because cutting a warm-up short is the one failure that shows up as
+// in-game stutter, and boot latency is explicitly not what this trades against.
+const NLR_BOOT_PRELOAD_TIMEOUT_MS = 45_000;
+// How long a mount waits for the first scene to be fetched and decoded. Long enough that a real
+// project's opening scene always finishes: a longer loading step is the cheaper cost, since the
+// alternative is the player paying for it on a button they just pressed. Bounded only so a broken
+// asset degrades to "start pays for it" instead of never starting.
+const STAGE_WARMUP_TIMEOUT_MS = 30_000;
+
+/**
+ * A pending mount or game entry that was abandoned because something took over: a newer bundle
+ * revision, a quit, a session change. Whatever superseded it now owns the environment, so this is
+ * ordinary control flow and not a broken runtime — reporting it as an error made routine hot reloads
+ * look like failures ("NLR hot reload restart failed") while the newer session was coming up fine.
+ */
+class NlrSessionSupersededError extends Error {
+    constructor(reason: string) {
+        super(reason);
+        this.name = "NlrSessionSupersededError";
+    }
+}
 
 export type GameAppNavEntry = AppNavEntry;
 
@@ -128,6 +190,14 @@ export type GameAppProps = {
     renderPlaceholder?: () => ReactNode;
     /** Host overlays (e.g. debug tools) rendered as siblings above the frame. */
     renderOverlays?: (ctx: GameAppOverlayContext) => ReactNode;
+    /**
+     * Runtime plugin capability backends for this environment. The shell builds
+     * it before the plugins load (setup runs during boot); GameApp attaches the
+     * live blueprint runtime and NarraLeaf session to it as they come up, and
+     * renders the plugins' overlays. Absent for hosts that load no plugins (the
+     * workspace story preview).
+     */
+    pluginHost?: RuntimePluginHostController;
 };
 
 /**
@@ -138,13 +208,23 @@ export type GameAppProps = {
  * differ only in the injected GameAppHost.
  */
 export function GameApp(props: GameAppProps): ReactNode {
-    const { host, rendererRegistry, getScale, renderFrame, renderPlaceholder, renderOverlays } = props;
+    const { host, rendererRegistry, getScale, renderFrame, renderPlaceholder, renderOverlays, pluginHost } = props;
     const bundle = host.bundle;
     const core = useBlueprintRuntimeCore(bundle, {
         persistenceAdapter: host.persistenceAdapter,
         onDebugEvent: host.onDebugEvent,
         disposeMessage: host.disposeMessage,
     });
+    // Runtime plugins reach story variables and the player's language through the
+    // blueprint runtime, so those capabilities only become real once it exists.
+    // Re-attaches on a bundle swap (Dev Mode live reload); the plugins' own
+    // subscriptions live on the controller and are untouched by it.
+    useEffect(() => {
+        if (!pluginHost || !core) {
+            return;
+        }
+        return pluginHost.attachRuntime({ scope: core.scopeBridge, bundle });
+    }, [bundle, core, pluginHost]);
     // First-launch language pick: when no stored locale is valid for this project,
     // match the system language against the configured locales and persist it.
     // The stored value stays authoritative afterwards (player choice wins).
@@ -211,6 +291,45 @@ export function GameApp(props: GameAppProps): ReactNode {
         const locale = typeof stored === "string" && stored ? stored : localization.sourceLocale;
         return resolveLocalizedUnitText(localization, locale, characterTranslationUnitId(character.id)) ?? name;
     }, [bundle.localization, bundle.storyLibrary, core]);
+    /**
+     * The speaking character's *id*, from the authored name NLR reports.
+     *
+     * Same match `translateCharacterName` makes, and for the same reason it is done on the source
+     * name: that is the only name the engine ever hands back. A `/temp` speaker is in no table and
+     * resolves to null.
+     */
+    const resolveSpeakerCharacterId = useCallback((sourceName: string | null): string | null => {
+        if (!sourceName) {
+            return null;
+        }
+        return bundle.storyLibrary?.characters.find(entry => entry.name === sourceName)?.id ?? null;
+    }, [bundle.storyLibrary]);
+    /**
+     * Mirror the project's character table into blueprint global state, so `Get Character` can
+     * answer without the graph reaching into the bundle.
+     *
+     * Once per bundle: the table is authoring data baked into the build, and nothing in a running
+     * game edits it. Every host that shares this scope bridge - the app surfaces and each Game UI
+     * slot surface - reads the same mirror, which is why no slot has to wire a callback of its own.
+     *
+     * `color` is additive on the summary, so a bundle built before it existed simply mirrors with no
+     * colour - `toBlueprintCharacterInfo` treats absent and empty alike.
+     */
+    useEffect(() => {
+        if (!core) {
+            return;
+        }
+        const table = (bundle.storyLibrary?.characters ?? []).flatMap(entry => {
+            const info = toBlueprintCharacterInfo({
+                id: entry.id,
+                name: entry.name,
+                color: entry.color,
+                avatarAssetId: entry.defaultAvatarAssetId,
+            });
+            return info ? [info] : [];
+        });
+        core.scopeBridge.globalSet(BLUEPRINT_GAME_CHARACTERS_STATE_KEY, table);
+    }, [bundle.storyLibrary, core]);
     const [widgetPatchesByScope, setWidgetPatchesByScope] = useState<Record<string, Record<string, DevModeWidgetRuntimePatch>>>({});
     const widgetPatchesByScopeRef = useRef(widgetPatchesByScope);
     const navigation = useMemo(() => new NavigationController(), []);
@@ -241,6 +360,16 @@ export function GameApp(props: GameAppProps): ReactNode {
     const gameEnteredRef = useRef(false);
     // Resolves when the environment is initialised (gameReady dispatched), gating the surface system.
     const pendingEnvReadyRef = useRef(new Map<string, { resolve: () => void; reject: (error: Error) => void }>());
+    // Resolves when the mounted session's first-scene assets are fetched and decoded (the stage
+    // layer's `onEnvironmentReady`). The boot step waits on it so the cost is paid behind the
+    // loading screen rather than between "Start Game" and the first painted frame; `enterMountedGame`
+    // waits on it too, for the paths that enter without going through boot.
+    const pendingAssetsReadyRef = useRef(new Map<string, { resolve: () => void }>());
+    const stageWarmupRef = useRef<{ sessionId: string; promise: Promise<void> } | null>(null);
+    // Disposes the previous session's bus-volume subscription. One per mounted `Game`: a relaunch
+    // builds a new mixer, and a listener left on the old one would keep writing a dead game's
+    // volumes over the live one's.
+    const audioBusPersistenceRef = useRef<(() => void) | null>(null);
     const startStoryInGameRef = useRef<
         ((request: DevModeStartStoryRequest, options?: { forceReinit?: boolean }) => Promise<void>) | null
     >(null);
@@ -253,11 +382,32 @@ export function GameApp(props: GameAppProps): ReactNode {
     const nlrDialogVirtualClickTargetRef = useRef<HTMLElement | null>(null);
     const nlrCharacterPromptTokenRef = useRef<{ cancel(): void } | null>(null);
     const nlrPreferenceTokenRef = useRef<{ cancel(): void } | null>(null);
+    // Play head + call-stack introspection (Dev Mode story-runtime panel). The current-action token
+    // is re-bound to whichever LiveGame is live; `currentActionListenersRef` is a stable fan-out so
+    // panel subscriptions survive relaunches. `nlrCompiledRef` mirrors the mounted session's compiled
+    // story (action bindings + variable namespace names) for the bridge to read at call time.
+    const nlrCurrentActionTokenRef = useRef<{ cancel(): void } | null>(null);
+    const currentActionIdRef = useRef<string | null>(null);
+    const currentActionListenersRef = useRef<Set<(actionId: string | null) => void>>(new Set());
+    const nlrCompiledRef = useRef<CompiledNlrStory | null>(null);
     const textReadTrackerRef = useRef<TextReadTracker | null>(null);
     const preferenceSnapshotRef = useRef<Record<string, unknown>>({});
     const dispatchPreferenceChangeRef = useRef<
         ((key: string, value: unknown, previousValue: unknown) => void) | null
     >(null);
+    /**
+     * Host-side listeners on the preference stream, kept beside the blueprint `gamePreferenceChanged`
+     * dispatch rather than folded into it: a widget that has to re-read a volume is not an authored
+     * event and must not show up in the blueprint debug stream. Backs
+     * `hostApi.sound.subscribeMixerChanges`, which is how the video widget follows a slider drag.
+     */
+    const preferenceListenersRef = useRef<Set<() => void>>(new Set());
+    const subscribeGamePreferences = useCallback((listener: () => void) => {
+        preferenceListenersRef.current.add(listener);
+        return () => {
+            preferenceListenersRef.current.delete(listener);
+        };
+    }, []);
     const currentDialogNametagRef = useRef<string | null>(null);
     const choiceRuntimeRef = useRef<ChoiceSlotRuntime | null>(null);
     const prefersReducedMotion = useReducedMotion();
@@ -321,6 +471,11 @@ export function GameApp(props: GameAppProps): ReactNode {
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
+        stageWarmupRef.current = null;
+        nlrCurrentActionTokenRef.current?.cancel();
+        nlrCurrentActionTokenRef.current = null;
+        currentActionIdRef.current = null;
+        nlrCompiledRef.current = null;
         gameEnteredRef.current = false;
         setNlrPreloadDone(false);
         setNlrSession(null);
@@ -476,11 +631,19 @@ export function GameApp(props: GameAppProps): ReactNode {
         pendingGameStartsRef.current.clear();
         pendingEnvReadyRef.current.forEach(pending => pending.reject(gameError));
         pendingEnvReadyRef.current.clear();
+        // A warm-up that will never report in is *resolved*, not rejected: it is an optimisation,
+        // and a superseded or broken preload must not stall a boot or a game start.
+        pendingAssetsReadyRef.current.forEach(pending => pending.resolve());
+        pendingAssetsReadyRef.current.clear();
     }, []);
 
     const clearCurrentDialogNametag = useCallback(() => {
         currentDialogNametagRef.current = null;
         core?.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, null);
+        // Who was speaking and what colour that made the nametag are part of the same fact; leaving
+        // either behind would tint a screen after the game they belonged to is gone.
+        core?.scopeBridge.globalSet(BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY, null);
+        core?.scopeBridge.globalSet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY, null);
     }, [core]);
 
     const setChoiceRuntime = useCallback((runtime: ChoiceSlotRuntime | null): void => {
@@ -500,6 +663,16 @@ export function GameApp(props: GameAppProps): ReactNode {
         return textReadTrackerRef.current?.isCurrentTextRead() === true;
     }, []);
 
+    /**
+     * Has this specific line ever been read. Backs the voice EXTRA lock, since
+     * the read set and the voice table share one key space (the line's textId).
+     * No tracker means no game yet, which reads as "not read" rather than
+     * throwing - an EXTRA screen opened from the title menu still lays out.
+     */
+    const hasReadTextInGame = useCallback((textId: string): boolean => {
+        return textReadTrackerRef.current?.hasRead(textId) === true;
+    }, []);
+
     const clearTextReadInGame = useCallback(async (): Promise<void> => {
         const tracker = textReadTrackerRef.current;
         if (tracker) {
@@ -514,6 +687,60 @@ export function GameApp(props: GameAppProps): ReactNode {
         await core.scopeBridge.persistenceSetAsync(BLUEPRINT_TEXT_READ_PERSISTENCE_KEY, []);
         core.scopeBridge.globalSet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY, false);
     }, [core]);
+
+    /**
+     * The visited record, read straight off the live `Storable` (see `runtime/game/storyVisited`).
+     *
+     * Read rather than mirrored into global state, unlike the text-read flag next door: the record
+     * only ever changes while the story runs, and a mirror would need a write beat on every scene
+     * entry and every pick just to stay honest. Both callbacks resolve the namespace through the
+     * CURRENT compile (`nlrCompiledRef`), because a recompile mints a new namespace name.
+     *
+     * No live game means no record, which reads as "not visited" rather than throwing - a title
+     * screen asking whether a route is unlocked has to render before any game exists.
+     */
+    const readVisited = useCallback((key: StoryVisitedKey, id: string): boolean => {
+        const liveGame = nlrLiveGameRef.current;
+        const namespaceName = nlrCompiledRef.current?.visitedNamespaceName;
+        if (!liveGame || !namespaceName || !id) {
+            return false;
+        }
+        try {
+            return isStoryVisited(liveGame.getStorable(), namespaceName, key, id);
+        } catch {
+            return false;
+        }
+    }, []);
+
+    const isSceneVisitedInGame = useCallback((sceneId: string): boolean => {
+        return readVisited(STORY_VISITED_SCENES_KEY, sceneId);
+    }, [readVisited]);
+
+    const isOptionPickedInGame = useCallback((optionId: string): boolean => {
+        return readVisited(STORY_VISITED_OPTIONS_KEY, optionId);
+    }, [readVisited]);
+
+    const clearVisitedInGame = useCallback((): void => {
+        const liveGame = nlrLiveGameRef.current;
+        const namespaceName = nlrCompiledRef.current?.visitedNamespaceName;
+        if (!liveGame || !namespaceName) {
+            return;
+        }
+        try {
+            const storable = liveGame.getStorable();
+            if (!storable.hasNamespace(namespaceName)) {
+                return;
+            }
+            // Emptied rather than `reset()`: reset restores the namespace's construction defaults,
+            // which happen to be the same two empty arrays today, but tying "wipe" to "whatever the
+            // defaults are" would quietly change meaning if a default were ever seeded.
+            const namespace = storable.getNamespace(namespaceName);
+            namespace.set(STORY_VISITED_SCENES_KEY, []);
+            namespace.set(STORY_VISITED_OPTIONS_KEY, []);
+        } catch {
+            // A storable that refuses the write is not worth crashing a settings page over.
+        }
+    }, []);
 
     /**
      * Surface a failed save screenshot to the Blueprint console. Capture is best-effort — the save
@@ -536,6 +763,13 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
         return nlrLiveGameRef.current;
     }, [nlrSession?.id]);
+
+    // Read through the *mounted* session's compile, never a captured one: a recompile mints new
+    // avatar URLs, and an inverse from the previous compile would answer with a stale asset id.
+    const resolveAvatarAssetId = useCallback(
+        (url: string): string | null => nlrCompiledRef.current?.avatarAssetIdByUrl.get(url) ?? null,
+        [],
+    );
 
     const {
         getCurrentNametag,
@@ -561,12 +795,188 @@ export function GameApp(props: GameAppProps): ReactNode {
         dialogVirtualClickTargetRef: nlrDialogVirtualClickTargetRef,
     }), [requireActiveLiveGame]);
 
+    /**
+     * Backs the blueprint `sound` family. Built once per host and ref-backed, so
+     * its identity is stable across relaunches; it reads the live game through
+     * the ref and degrades to a warned no-op when there is none.
+     *
+     * `Sound.sound` vs the per-bus constructors: the resolved bus id is passed as
+     * `type` so the engine routes it into that bus's gain node, which is what
+     * makes the player's mixer apply. `Sound.bgm()` is deliberately not used -
+     * the engine blocks `play()` on a bgm-typed element, and the token path here
+     * is the other one.
+     */
+    const soundTransport = useMemo(() => createSoundTransport({
+        getLiveGame: () => nlrLiveGameRef.current,
+        resolveAssetUrl: (assetId, assetType) => host.resolveStoryAssetUrl(assetId, assetType),
+        // The bus and the loop default a play inherits. Absent on a bundle that predates tracks,
+        // which the transport reads as the built-ins.
+        getAudioTracks: () => bundle.audio?.tracks,
+        // The in/out points the author marked on the asset apply here exactly as they do in a story
+        // row, so a music page loops a track's body rather than the whole file.
+        createSound: ({ src, busId, loop, volume, assetId }) => new Sound({
+            src,
+            // An arbitrary bus id, not one of three enum members: the tracks declared at boot are
+            // the buses, so `voice/alice` routes here with nothing to map it through.
+            type: busId,
+            loop,
+            volume,
+            ...audioClipRegionToSoundConfig(bundle.audio?.clips?.[assetId]),
+        }),
+        log: (level, message) => host.log(level, message),
+    }), [bundle, host]);
+
+    useEffect(() => () => soundTransport.dispose(), [soundTransport]);
+
+    // Mount-scoped, not session-scoped: each mount replaces the previous subscription itself, and
+    // this is only the last one, on the way out.
+    useEffect(() => () => {
+        audioBusPersistenceRef.current?.();
+        audioBusPersistenceRef.current = null;
+    }, []);
+
+    const fastForwardToNextChoiceInGame = useCallback(async (): Promise<void> => {
+        const liveGame = requireActiveLiveGame("Skip To Next Choice");
+        await fastForwardToNextChoice(liveGame, choiceRuntimeRef);
+    }, [requireActiveLiveGame]);
+
+    // Read/write bridge over the running story runtime for the Dev Mode story-runtime panel. Fully
+    // ref-backed so its identity is stable across renders and relaunches; every method degrades to
+    // null / no-op / reject when no game is running.
+    const storyRuntime = useMemo<GameAppStoryRuntimeBridge>(() => ({
+        getStoryContext: () => {
+            const request = activeStoryRequestRef.current;
+            return request
+                ? {
+                    storyId: request.storyId,
+                    sceneId: request.sceneId,
+                    startBlockId: request.startBlockId,
+                    snapshotId: request.snapshotId,
+                }
+                : null;
+        },
+        getActionIdBindings: () => nlrCompiledRef.current?.actionIdBindings ?? [],
+        getVariableNamespaces: () => ({
+            saved: nlrCompiledRef.current?.savedNamespaceName || null,
+            sceneLocal: nlrCompiledRef.current?.sceneLocalNamespaceNames ?? {},
+        }),
+        getCurrentActionId: () => currentActionIdRef.current,
+        subscribeCurrentAction: listener => {
+            currentActionListenersRef.current.add(listener);
+            return () => {
+                currentActionListenersRef.current.delete(listener);
+            };
+        },
+        getStackSnapshot: () => {
+            const liveGame = nlrLiveGameRef.current;
+            if (!liveGame) {
+                return null;
+            }
+            try {
+                return liveGame.getStackSnapshot();
+            } catch {
+                return null;
+            }
+        },
+        readStorableNamespace: name => {
+            const liveGame = nlrLiveGameRef.current;
+            if (!liveGame || !name) {
+                return null;
+            }
+            try {
+                const storable = liveGame.getStorable();
+                if (!storable.hasNamespace(name)) {
+                    return null;
+                }
+                const namespace = storable.getNamespace(name);
+                const values: Record<string, unknown> = {};
+                for (const [key, value] of namespace.entries()) {
+                    values[String(key)] = value;
+                }
+                return values;
+            } catch {
+                return null;
+            }
+        },
+        writeStorableValue: (name, key, value) => {
+            const liveGame = nlrLiveGameRef.current;
+            if (!liveGame || !name) {
+                return false;
+            }
+            try {
+                const storable = liveGame.getStorable();
+                if (!storable.hasNamespace(name)) {
+                    return false;
+                }
+                storable.getNamespace(name).set(key, value as never);
+                return true;
+            } catch {
+                return false;
+            }
+        },
+        getPlayedBlockTokens: () => {
+            const liveGame = nlrLiveGameRef.current;
+            const bindings = nlrCompiledRef.current?.actionIdBindings;
+            if (!liveGame || !bindings?.length) {
+                return {};
+            }
+            try {
+                // Backlog entries carry the very Action object the compiler bound, so the block is
+                // resolved by identity — no id parsing, and immune to a story compiled with more
+                // than one copy of a scene (a row-precise launch compiles the entry scene twice).
+                // Keyed by identity, so the map is typed by reference rather than by the binding's
+                // narrower Action union (the backlog hands back the base `Action`).
+                const blockByAction = new Map<unknown, string>(
+                    bindings.map(binding => [binding.action, binding.blockId]),
+                );
+                const tokens: Record<string, string> = {};
+                for (const entry of liveGame.getHistory()) {
+                    const blockId = blockByAction.get(entry.action);
+                    // A pending line is still being played; it has no usable restore snapshot yet.
+                    if (!blockId || entry.isPending === true || entry.snapshot == null || !entry.token) {
+                        continue;
+                    }
+                    // Last write wins: a re-entered row restores to its most recent visit.
+                    tokens[blockId] = entry.token;
+                }
+                return tokens;
+            } catch {
+                return {};
+            }
+        },
+        restoreToHistoryToken: token => {
+            const liveGame = nlrLiveGameRef.current;
+            if (!liveGame) {
+                return false;
+            }
+            try {
+                return restoreLiveGameToHistory(liveGame, token);
+            } catch {
+                return false;
+            }
+        },
+        relaunch: async ({ sceneId, startBlockId, snapshotId }) => {
+            const request = activeStoryRequestRef.current;
+            if (!request) {
+                throw new Error("Relaunch: no active story");
+            }
+            const start = startStoryInGameRef.current;
+            if (!start) {
+                throw new Error("Relaunch: runtime is not ready");
+            }
+            await start(
+                { storyId: request.storyId, sceneId: sceneId ?? request.sceneId, startBlockId, snapshotId },
+                { forceReinit: true },
+            );
+        },
+    }), []);
+
     const quitGame = useCallback(async (surfaceId: string): Promise<void> => {
         const targetSurfaceId = String(surfaceId ?? "").trim();
         if (!targetSurfaceId) {
             throw new Error("Quit Game: surfaceId is required");
         }
-        rejectPendingGameStarts(new Error("Quit Game"));
+        rejectPendingGameStarts(new NlrSessionSupersededError("Quit Game"));
         activeStoryRequestRef.current = null;
         activeStoryRevisionRef.current = null;
         gameEnteredRef.current = false;
@@ -574,12 +984,18 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCharacterPromptTokenRef.current = null;
         nlrPreferenceTokenRef.current?.cancel();
         nlrPreferenceTokenRef.current = null;
+        nlrCurrentActionTokenRef.current?.cancel();
+        nlrCurrentActionTokenRef.current = null;
+        currentActionIdRef.current = null;
+        nlrCompiledRef.current = null;
+        clearCharacterAvatarAssets();
         detachTextReadTracker();
         preferenceSnapshotRef.current = {};
         nlrDialogVirtualClickTargetRef.current = null;
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
+        stageWarmupRef.current = null;
         choiceRuntimeRef.current = null;
         clearCurrentDialogNametag();
         setGameStageVisible(false);
@@ -604,7 +1020,10 @@ export function GameApp(props: GameAppProps): ReactNode {
             }
         }
         await host.saveStore.write(id, liveGame.serialize(), capture, metadata);
-    }, [host.saveStore, reportSaveCaptureFailure, requireActiveLiveGame]);
+        // Host-side, after the write landed: every shell reports it the same way,
+        // and a failed write never announces a save that does not exist.
+        pluginHost?.emitSaveWritten(id);
+    }, [host.saveStore, pluginHost, reportSaveCaptureFailure, requireActiveLiveGame]);
 
     const loadSave = useCallback(async (id: string) => {
         const liveGame = requireActiveLiveGame("Load Save");
@@ -624,9 +1043,81 @@ export function GameApp(props: GameAppProps): ReactNode {
         await host.saveStore.remove(id);
     }, [host.saveStore]);
 
+    // `saves.write` for runtime plugins: the very same paths the Save Game /
+    // Load Save nodes take, so a plugin save is indistinguishable from an
+    // authored one. Screenshots are left off — the plugin API takes no capture
+    // flag, and a capture the caller never asked for is a cost, not a default.
+    useEffect(() => {
+        if (!pluginHost) {
+            return;
+        }
+        return pluginHost.attachSaveActions({
+            write: (id, metadata) => writeSave(id, metadata),
+            load: id => loadSave(id),
+        });
+    }, [loadSave, pluginHost, writeSave]);
+
+    // Player slots only. Autosaves live in the same store under reserved ids and
+    // are listed by List Auto Saves instead, so an authored Save/Load screen
+    // built on this never has to filter Studio's bookkeeping out of its grid.
+    // (The plugin `saves.listIds` surface is deliberately left raw - it is
+    // documented as direct store access, not the authoring view.)
     const listSaveIds = useCallback(async (): Promise<string[]> => {
-        return host.saveStore.listIds();
+        const ids = await host.saveStore.listIds();
+        return ids.filter(id => !isAutoSaveId(id));
     }, [host.saveStore]);
+
+    const autoSaveConfig = useMemo(
+        () => normalizeAutoSaveConfiguration(bundle.autoSave),
+        [bundle.autoSave],
+    );
+
+    /** Every reserved autosave currently on disk, with its timestamps. */
+    const listAutoSaves = useCallback(async (): Promise<AutoSaveEntry[]> => {
+        const ids = (await host.saveStore.listIds()).filter(isAutoSaveId);
+        const entries = await Promise.all(ids.map(async (id): Promise<AutoSaveEntry | null> => {
+            let record: GameAppSaveRecord | null;
+            try {
+                record = await host.saveStore.read(id);
+            } catch {
+                return null; // a corrupt slot must not take the whole list down
+            }
+            if (!record) {
+                return null;
+            }
+            const updatedAt = Date.parse(record.metadata.updatedAt ?? "");
+            const createdAt = Date.parse(record.metadata.createdAt ?? "");
+            return {
+                id,
+                slot: parseAutoSaveSlotIndex(id) ?? 0,
+                timestamp: Number.isFinite(updatedAt) ? updatedAt : 0,
+                createdAt: Number.isFinite(createdAt) ? createdAt : 0,
+                metadata: record.metadata.user ?? null,
+            };
+        }));
+        return entries.filter((entry): entry is AutoSaveEntry => entry !== null)
+            .sort((a, b) => b.timestamp - a.timestamp);
+    }, [host.saveStore]);
+
+    const autoSave = useAutoSave({
+        config: autoSaveConfig,
+        // The same gate `writeSave` itself enforces, so a true here always means
+        // the write can actually serialize something.
+        isPlaying: () => Boolean(
+            gameEnteredRef.current
+            && nlrSession?.id
+            && nlrLiveGameSessionIdRef.current === nlrSession.id
+            && nlrLiveGameRef.current,
+        ),
+        // Screenshots on: the point of an autosave ring is a screen that lists
+        // it, and a list of thumbnail-less rows is a worse feature. The cost is
+        // bounded by the scheduler's play-head gate - an idle game captures
+        // nothing.
+        write: id => writeSave(id, null, true),
+        listStored: listAutoSaves,
+        subscribeStoryAdvanced: storyRuntime.subscribeCurrentAction,
+        log: host.log,
+    });
 
     const getSaveMetadata = useCallback(async (id: string): Promise<unknown> => {
         const record = await host.saveStore.read(id);
@@ -711,7 +1202,12 @@ export function GameApp(props: GameAppProps): ReactNode {
                 }
             }
         }
-        const compiled = await compileStudioStoryToNlr({
+        // Built as a typed local rather than inline so the two audio fields travel as ordinary
+        // properties, not as excess ones on a fresh object literal: `audioTracks` is added to
+        // `CompileInput` by the story milestone, and this half has to compile before and after that
+        // lands. Once it has, the intersection below is a no-op.
+        const compileInput: Parameters<typeof compileStudioStoryToNlr>[0]
+            & { audioTracks?: readonly ProjectAudioTrack[] } = {
             document: storyDocument,
             sceneId,
             launch,
@@ -719,6 +1215,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             animations: bundle.storyLibrary?.animations,
             resolveAssetUrl: host.resolveStoryAssetUrl,
             blueprintDocument: bundle.ui.localBlueprints,
+            persistentVariables: bundle.ui.persistentVariables,
             persistence: core
                 ? {
                       get: key => core.scopeBridge.persistenceGet(key),
@@ -749,7 +1246,14 @@ export function GameApp(props: GameAppProps): ReactNode {
                       },
                   }
                 : undefined,
-        });
+            // The in/out/loop points the author marked and the project's audio tracks. Only the
+            // in-editor scene preview used to pass these, so every marked loop point and every
+            // track was silently dropped in Dev Mode *and* in the packaged build - the two places
+            // the feature actually has to work. Both runtimes reach the compiler through this call.
+            audioClips: bundle.audio?.clips,
+            audioTracks: bundle.audio?.tracks,
+        };
+        const compiled = await compileStudioStoryToNlr(compileInput);
         if (compiled.diagnostics.length > 0) {
             for (const diagnostic of compiled.diagnostics) {
                 host.log(diagnostic.level === "error" ? "error" : "warning", diagnostic.message);
@@ -769,7 +1273,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         if (!activeSurface || !core) {
             throw new Error("Start Game: active surface is not available");
         }
-        rejectPendingGameStarts(new Error("NLR environment superseded by a newer session"));
+        rejectPendingGameStarts(new NlrSessionSupersededError("NLR environment superseded by a newer session"));
         activeStoryRequestRef.current = options.storyRequest;
         activeStoryRevisionRef.current = bundle.revision;
         gameEnteredRef.current = false;
@@ -798,9 +1302,12 @@ export function GameApp(props: GameAppProps): ReactNode {
             listSaveIds,
             getSaveMetadata,
             getSavePreview,
+            writeAutoSaveInGame: autoSave.writeNow,
+            listAutoSaves,
             getHistoryInGame,
             restoreHistoryInGame,
             getCurrentNametag,
+            resolveAvatarAssetId,
             getNotificationsInGame,
             getChoiceCountInGame,
             isNvlModeInGame,
@@ -817,6 +1324,12 @@ export function GameApp(props: GameAppProps): ReactNode {
             setSentenceSpeedInGame,
             getGamePreferenceInGame,
             setGamePreferenceInGame,
+            // The sound family. A slot surface builds its own host API, and it used to build one
+            // with none of these - so a button-click sound inside a dialogue box, a choice or an NVL
+            // surface did nothing at all, with no diagnostic anywhere.
+            soundTransport,
+            audioTracks: bundle.audio?.tracks,
+            subscribeGamePreferences,
             setWidgetPatchesByScope,
             widgetPatchesByScopeRef,
             widgetRuntimeStore,
@@ -838,14 +1351,68 @@ export function GameApp(props: GameAppProps): ReactNode {
             // and offset the stage instead of letterboxing down (same override as the story
             // preview, which embeds into arbitrarily small panes).
             minStageSize: { width: 1, height: 1 },
+            // The project's mixer, declared at boot. This is the *only* moment the shape of the
+            // tree can be set: the engine realizes it into gain nodes when audio starts and never
+            // re-shapes it. A bundle with no track table declares nothing and gets the engine's
+            // three seeded buses, which is exactly the pre-bus behaviour.
+            audioBuses: audioTracksToBusDeclarations(bundle.audio?.tracks),
         });
+        // The player's own volumes, restored on top of the author's declaration and written back on
+        // every change. Deliberately here rather than after the Player mounts: setting a volume for
+        // a bus whose channel does not exist yet is normal and is applied when it is realized, so
+        // doing it now closes the window where the first clip plays at the wrong level.
+        audioBusPersistenceRef.current?.();
+        audioBusPersistenceRef.current = await attachAudioBusPersistence({
+            mixer: (game as { audioBuses?: Parameters<typeof attachAudioBusPersistence>[0]["mixer"] }).audioBuses,
+            read: key => core.scopeBridge.persistenceGetAsync(key),
+            write: (key, value) => core.scopeBridge.persistenceSetAsync(key, value),
+            onVolumeChange: () => preferenceListenersRef.current.forEach(listener => listener()),
+            log: (level, message) => host.log(level, message),
+        });
+        // Before the Player mounts, not after: a puppet looks its backend up once, when its
+        // component mounts, so anything registered later is simply not there for it. Failures are
+        // already reported by the loader and never rejected — a broken author-supplied runtime
+        // costs the stage nothing but the characters it would have drawn.
+        if (host.listPuppetBackendModules) {
+            try {
+                const sources = await host.listPuppetBackendModules();
+                if (sources.length > 0) {
+                    await loadPuppetBackends(game, sources, { log: host.log });
+                }
+            } catch (error) {
+                host.log("warning", `Puppet backends could not be discovered: ${normalizeError(error)}`);
+            }
+        }
         const environmentReady = new Promise<void>((resolve, reject) => {
             pendingEnvReadyRef.current.set(sessionId, { resolve, reject });
         });
+        // The first scene's assets, warmed while this mount is still hidden behind the host's
+        // loading step. Bounded: a slow or broken asset degrades to the old behaviour (paid on
+        // entry) instead of holding the boot open.
+        const assetsReady = withDeadline(
+            new Promise<void>(resolve => {
+                pendingAssetsReadyRef.current.set(sessionId, { resolve });
+            }),
+            STAGE_WARMUP_TIMEOUT_MS,
+            () => {
+                pendingAssetsReadyRef.current.delete(sessionId);
+                host.log(
+                    "warning",
+                    `[${host.id}] first-scene preload did not finish in ${STAGE_WARMUP_TIMEOUT_MS}ms; `
+                    + "continuing without a warm stage",
+                );
+            },
+        );
+        stageWarmupRef.current = { sessionId, promise: assetsReady };
         setGameStageVisible(false);
         clearGameHiddenStudioPages();
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
+        nlrCurrentActionTokenRef.current?.cancel();
+        nlrCurrentActionTokenRef.current = null;
+        currentActionIdRef.current = null;
+        nlrCompiledRef.current = compiled;
+        registerCharacterAvatarAssets(compiled.avatarAssetIdByUrl);
         choiceRuntimeRef.current = null;
         setNlrSession({
             id: sessionId,
@@ -856,6 +1423,10 @@ export function GameApp(props: GameAppProps): ReactNode {
             onStageNode,
         });
         await environmentReady;
+        // Hold the mount open until the stage is warm. Callers mount either from boot (loading
+        // step on screen) or from a Start Game that could not fast-path, and both would otherwise
+        // reveal a stage that still has to fetch and decode its first scene.
+        await assetsReady;
         return sessionId;
     }, [
         activeSurface,
@@ -866,13 +1437,18 @@ export function GameApp(props: GameAppProps): ReactNode {
         deleteSave,
         getChoiceCountInGame,
         getCurrentNametag,
+        resolveAvatarAssetId,
         getGamePreferenceInGame,
         getHistoryInGame,
         getNotificationsInGame,
         getSaveMetadata,
         getSavePreview,
+        autoSave.writeNow,
+        listAutoSaves,
         hideDialogInGame,
         host.id,
+        host.log,
+        host.listPuppetBackendModules,
         host.quitApplication,
         host.getFullscreen,
         host.setFullscreen,
@@ -909,13 +1485,20 @@ export function GameApp(props: GameAppProps): ReactNode {
         if (!liveGame || !sessionId) {
             throw new Error("Start Game: game environment is not ready");
         }
+        // Normally already settled — the boot step waited on it. It can still be pending when the
+        // environment was mounted without a boot gate, and entering before the warm-up lands would
+        // put the fetch/decode right back on the start path.
+        if (stageWarmupRef.current?.sessionId === sessionId) {
+            await stageWarmupRef.current.promise;
+        }
         const sceneReady = new Promise<void>((resolve, reject) => {
             pendingGameStartsRef.current.set(sessionId, { resolve, reject });
         });
         liveGame.newGame();
         gameEnteredRef.current = true;
+        // `onFirstSceneReady` already ends on a painted frame (see waitForStageVisualReadyWithTimeout),
+        // so there is nothing left to wait for here: an extra frame only delays the UI's exit.
         await sceneReady;
-        await waitForAnimationFrame();
         setGameStageVisible(true);
         hideCurrentStudioPagesForGame();
     }, [hideCurrentStudioPagesForGame]);
@@ -997,6 +1580,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             onListSaveIds: listSaveIds,
             onGetSaveMetadata: getSaveMetadata,
             onGetSavePreview: getSavePreview,
+            onWriteAutoSave: autoSave.writeNow,
+            onListAutoSaves: listAutoSaves,
             onGetHistory: getHistoryInGame,
             onRestoreHistory: restoreHistoryInGame,
             onGetNametag: getCurrentNametag,
@@ -1004,7 +1589,11 @@ export function GameApp(props: GameAppProps): ReactNode {
             onGetChoiceCount: getChoiceCountInGame,
             onIsNvlMode: isNvlModeInGame,
             onIsCurrentTextRead: isCurrentTextReadInGame,
+            onIsTextRead: hasReadTextInGame,
             onClearTextRead: clearTextReadInGame,
+            onIsSceneVisited: isSceneVisitedInGame,
+            onIsOptionPicked: isOptionPickedInGame,
+            onClearVisited: clearVisitedInGame,
             onSelectChoice: selectChoiceInGame,
             onNext: nextInGame,
             onSkip: skipInGame,
@@ -1014,6 +1603,17 @@ export function GameApp(props: GameAppProps): ReactNode {
             onSetSentenceSpeed: setSentenceSpeedInGame,
             onGetGamePreference: getGamePreferenceInGame,
             onSetGamePreference: setGamePreferenceInGame,
+            onPlaySound: soundTransport.play,
+            onStopSound: soundTransport.stop,
+            onPauseSound: soundTransport.pause,
+            onResumeSound: soundTransport.resume,
+            onSetSoundVolume: soundTransport.setVolume,
+            onSeekSound: soundTransport.seek,
+            onIsSoundPlaying: soundTransport.isPlaying,
+            onGetTrackVolume: soundTransport.getTrackVolume,
+            onSetTrackVolume: soundTransport.setTrackVolume,
+            audioTracks: bundle.audio?.tracks,
+            onSubscribeGamePreferences: subscribeGamePreferences,
             onWidgetPatch: (elementId, patch) => {
                 applyWidgetRuntimePatch({
                     setWidgetPatchesByScope,
@@ -1044,6 +1644,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         });
         const bindingContext: SurfaceBlueprintBindingContext = {
             blueprintDocument: bundle.ui.localBlueprints,
+            persistentVariables: bundle.ui.persistentVariables,
             surfaceState: core.scopeBridge.getSurfaceStore(runtimeScopeId),
             debug: core.debug,
             coalescer: core.bindingDebugCoalescer,
@@ -1069,6 +1670,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         getNotificationsInGame,
         getSaveMetadata,
         getSavePreview,
+        autoSave.writeNow,
+        listAutoSaves,
         hideDialogInGame,
         host.quitApplication,
         host.getFullscreen,
@@ -1117,9 +1720,11 @@ export function GameApp(props: GameAppProps): ReactNode {
                 snapshotId: host.bootAction.snapshotId,
             });
         } else {
-            // Menu launch: initialise the environment (gameReady) and preheat the default
-            // scene, but do NOT enter the game — the player stays on the menu.
-            const defaultScene = resolveDefaultLaunchScene(bundle);
+            // Menu launch: initialise the environment (gameReady) and fully warm the scene the
+            // project's Start Game would enter — fetched and decoded — but do NOT enter the game;
+            // the player stays on the menu. Getting the target right is the whole point: a warm
+            // environment for the wrong scene has to be recompiled and remounted on start.
+            const defaultScene = resolveStagePreloadTarget(bundle);
             if (defaultScene) {
                 await initDefaultSceneEnvironment(defaultScene);
             } else {
@@ -1159,7 +1764,13 @@ export function GameApp(props: GameAppProps): ReactNode {
             try {
                 await runBootRef.current?.();
             } catch (err) {
-                if (!cancelled) {
+                if (cancelled) {
+                    // nothing to report; the effect was torn down
+                } else if (err instanceof NlrSessionSupersededError) {
+                    // A later mount owns the environment now, so this boot is done rather than
+                    // broken — and the guard stays set, because retrying it would fight that mount.
+                    host.log("info", `[${host.id}] NLR boot superseded: ${err.message}`);
+                } else {
                     nlrBootStartedRef.current = null;
                     host.log("error", normalizeError(err));
                 }
@@ -1225,6 +1836,8 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onListSaveIds: listSaveIds,
                     onGetSaveMetadata: getSaveMetadata,
                     onGetSavePreview: getSavePreview,
+                    onWriteAutoSave: autoSave.writeNow,
+                    onListAutoSaves: listAutoSaves,
                     onGetHistory: getHistoryInGame,
                     onRestoreHistory: restoreHistoryInGame,
                     onGetNametag: getCurrentNametag,
@@ -1232,7 +1845,11 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onGetChoiceCount: getChoiceCountInGame,
                     onIsNvlMode: isNvlModeInGame,
                     onIsCurrentTextRead: isCurrentTextReadInGame,
+                    onIsTextRead: hasReadTextInGame,
                     onClearTextRead: clearTextReadInGame,
+                    onIsSceneVisited: isSceneVisitedInGame,
+                    onIsOptionPicked: isOptionPickedInGame,
+                    onClearVisited: clearVisitedInGame,
                     onSelectChoice: selectChoiceInGame,
                     onNext: nextInGame,
                     onSkip: skipInGame,
@@ -1242,6 +1859,17 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onSetSentenceSpeed: setSentenceSpeedInGame,
                     onGetGamePreference: getGamePreferenceInGame,
                     onSetGamePreference: setGamePreferenceInGame,
+                    onPlaySound: soundTransport.play,
+                    onStopSound: soundTransport.stop,
+                    onPauseSound: soundTransport.pause,
+                    onResumeSound: soundTransport.resume,
+                    onSetSoundVolume: soundTransport.setVolume,
+                    onSeekSound: soundTransport.seek,
+                    onIsSoundPlaying: soundTransport.isPlaying,
+                    onGetTrackVolume: soundTransport.getTrackVolume,
+                    onSetTrackVolume: soundTransport.setTrackVolume,
+                    audioTracks: bundle.audio?.tracks,
+                    onSubscribeGamePreferences: subscribeGamePreferences,
                     onWidgetPatch: (elementId, patch) => {
                         applyWidgetRuntimePatch({
                             setWidgetPatchesByScope,
@@ -1274,6 +1902,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             },
             createBindingContext: input => ({
                 blueprintDocument: bundle.ui.localBlueprints,
+                persistentVariables: bundle.ui.persistentVariables,
                 surfaceState: core.scopeBridge.getSurfaceStore(input.runtimeScopeId),
                 debug: core.debug,
                 coalescer: core.bindingDebugCoalescer,
@@ -1287,6 +1916,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     dispatchSurfaceEvent: (command: { eventName: "surfaceInit" | "surfaceUnmount" | "beforeSurfaceExit" | "afterSurfaceEnter"; scopeId: string; surfaceId: string; allowClosedScopeExecution?: boolean }) => {
                         void dispatchSurfaceBlueprintEvent({
                             blueprintDocument: bundle.ui.localBlueprints,
+                            persistentVariables: bundle.ui.persistentVariables,
                             surfaceId: command.surfaceId,
                             runtimeScopeId: command.scopeId,
                             eventName: command.eventName,
@@ -1327,6 +1957,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         getNotificationsInGame,
         getSaveMetadata,
         getSavePreview,
+        autoSave.writeNow,
+        listAutoSaves,
         hideDialogInGame,
         host.quitApplication,
         host.getFullscreen,
@@ -1381,6 +2013,14 @@ export function GameApp(props: GameAppProps): ReactNode {
                     await startEmptyNlrEnvironment();
                 }
             } catch (err) {
+                if (err instanceof NlrSessionSupersededError) {
+                    // Another revision landed while this restart was in flight and has taken the
+                    // environment over. Expected when saves arrive in quick succession — and more
+                    // often now that a mount also waits for the stage to warm — so it is not a
+                    // failure to report.
+                    host.log("info", `[${host.id}] NLR hot reload restart superseded by a newer bundle revision`);
+                    return;
+                }
                 host.log("error", `[${host.id}] NLR hot reload restart failed: ${normalizeError(err)}`);
             }
         })();
@@ -1398,11 +2038,16 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
         activeStoryRequestRef.current = null;
         activeStoryRevisionRef.current = null;
-        rejectPendingGameStarts(new Error("Runtime session changed"));
+        rejectPendingGameStarts(new NlrSessionSupersededError("Runtime session changed"));
         nlrCharacterPromptTokenRef.current?.cancel();
         nlrCharacterPromptTokenRef.current = null;
         nlrPreferenceTokenRef.current?.cancel();
         nlrPreferenceTokenRef.current = null;
+        nlrCurrentActionTokenRef.current?.cancel();
+        nlrCurrentActionTokenRef.current = null;
+        currentActionIdRef.current = null;
+        nlrCompiledRef.current = null;
+        clearCharacterAvatarAssets();
         detachTextReadTracker();
         preferenceSnapshotRef.current = {};
         nlrDialogVirtualClickTargetRef.current = null;
@@ -1431,6 +2076,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCharacterPromptTokenRef.current = null;
         nlrPreferenceTokenRef.current?.cancel();
         nlrPreferenceTokenRef.current = null;
+        // Not nlrCompiledRef: mountNlrSession sets it for the new session before this fires.
+        nlrCurrentActionTokenRef.current?.cancel();
+        nlrCurrentActionTokenRef.current = null;
+        currentActionIdRef.current = null;
         detachTextReadTracker();
         preferenceSnapshotRef.current = {};
         nlrDialogVirtualClickTargetRef.current = null;
@@ -1439,7 +2088,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrLiveGameSessionIdRef.current = null;
         choiceRuntimeRef.current = null;
         clearCurrentDialogNametag();
-    }, [clearCurrentDialogNametag, detachTextReadTracker, nlrSession?.id]);
+        // The previous environment is gone; drop its engine subscriptions. The
+        // next onLiveGameReady re-attaches, and plugin listeners never move.
+        pluginHost?.detachSession();
+    }, [clearCurrentDialogNametag, detachTextReadTracker, nlrSession?.id, pluginHost]);
 
     useEffect(() => {
         if (!host.ready || !core || !hostAdapterBundle) {
@@ -1458,6 +2110,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
         void dispatchGlobalBlueprintEvent({
             blueprintDocument: bundle.ui.localBlueprints,
+            persistentVariables: bundle.ui.persistentVariables,
             eventName: "appBoot",
             hostAdapter: hostAdapterBundle.hostAdapter,
             debug: core.debug,
@@ -1488,6 +2141,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
             void dispatchGlobalBlueprintEvent({
                 blueprintDocument: bundle.ui.localBlueprints,
+                persistentVariables: bundle.ui.persistentVariables,
                 eventName,
                 eventPayload: payload,
                 eventControl,
@@ -1502,6 +2156,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 }
                 return dispatchSurfaceBlueprintEvent({
                     blueprintDocument: bundle.ui.localBlueprints,
+                    persistentVariables: bundle.ui.persistentVariables,
                     surfaceId: activeSurface.id,
                     runtimeScopeId: hostAdapterBundle.runtimeScopeId,
                     eventName,
@@ -1537,6 +2192,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
             void dispatchGlobalBlueprintEvent({
                 blueprintDocument: bundle.ui.localBlueprints,
+                persistentVariables: bundle.ui.persistentVariables,
                 eventName: "gamePreferenceChanged",
                 eventPayload,
                 hostAdapter: hostAdapterBundle.hostAdapter,
@@ -1546,6 +2202,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 executionManager: core.executionManager,
             }).then(() => dispatchSurfaceBlueprintEvent({
                 blueprintDocument: bundle.ui.localBlueprints,
+                persistentVariables: bundle.ui.persistentVariables,
                 surfaceId: activeSurface.id,
                 runtimeScopeId: hostAdapterBundle.runtimeScopeId,
                 eventName: "gamePreferenceChanged",
@@ -1574,6 +2231,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
             void dispatchGlobalBlueprintEvent({
                 blueprintDocument: bundle.ui.localBlueprints,
+                persistentVariables: bundle.ui.persistentVariables,
                 eventName: "windowFullscreenChanged",
                 eventPayload,
                 hostAdapter: hostAdapterBundle.hostAdapter,
@@ -1583,6 +2241,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 executionManager: core.executionManager,
             }).then(() => dispatchSurfaceBlueprintEvent({
                 blueprintDocument: bundle.ui.localBlueprints,
+                persistentVariables: bundle.ui.persistentVariables,
                 surfaceId: activeSurface.id,
                 runtimeScopeId: hostAdapterBundle.runtimeScopeId,
                 eventName: "windowFullscreenChanged",
@@ -1595,6 +2254,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             })).then(() => dispatchWidgetsBlueprintEvent({
                 document: bundle.ui.uidoc,
                 blueprintDocument: bundle.ui.localBlueprints,
+                persistentVariables: bundle.ui.persistentVariables,
                 surfaceId: activeSurface.id,
                 runtimeScopeId: hostAdapterBundle.runtimeScopeId,
                 eventName: "windowFullscreenChanged",
@@ -1623,6 +2283,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             try {
                 await dispatchGlobalBlueprintEvent({
                     blueprintDocument: bundle.ui.localBlueprints,
+                    persistentVariables: bundle.ui.persistentVariables,
                     eventName: "windowCloseRequested",
                     eventControl,
                     hostAdapter: hostAdapterBundle.hostAdapter,
@@ -1634,6 +2295,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 if (!eventControl.isPropagationStopped()) {
                     await dispatchSurfaceBlueprintEvent({
                         blueprintDocument: bundle.ui.localBlueprints,
+                        persistentVariables: bundle.ui.persistentVariables,
                         surfaceId: activeSurface.id,
                         runtimeScopeId: hostAdapterBundle.runtimeScopeId,
                         eventName: "windowCloseRequested",
@@ -1666,7 +2328,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         return (
             <GameLocalizationContext.Provider value={gameLocalizationRuntime}>
                 {renderFrame({ activeSurface, gameViewport, children: null })}
-                {renderOverlays?.({ core, activeSurface, widgetRuntimeStore })}
+                {renderOverlays?.({ core, activeSurface, widgetRuntimeStore, fastForwardToNextChoice: fastForwardToNextChoiceInGame, storyRuntime })}
             </GameLocalizationContext.Provider>
         );
     }
@@ -1692,6 +2354,11 @@ export function GameApp(props: GameAppProps): ReactNode {
             }}
             onEnvironmentReady={sessionId => {
                 host.log("info", `[${host.id}] NLR environment assets preheated: ${sessionId}`);
+                const pending = pendingAssetsReadyRef.current.get(sessionId);
+                if (pending) {
+                    pendingAssetsReadyRef.current.delete(sessionId);
+                    pending.resolve();
+                }
             }}
             onLiveGameReady={async (sessionId, liveGame) => {
                 if (nlrSession?.id !== sessionId) {
@@ -1699,15 +2366,26 @@ export function GameApp(props: GameAppProps): ReactNode {
                 }
                 nlrCharacterPromptTokenRef.current?.cancel();
                 nlrCharacterPromptTokenRef.current = liveGame.onCharacterPrompt(({ character }) => {
-                    const nametag = translateCharacterName(readNlrCharacterName(character));
+                    const sourceName = readNlrCharacterName(character);
+                    const nametag = translateCharacterName(sourceName);
                     currentDialogNametagRef.current = nametag;
                     core.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, nametag);
+                    // Staged, not consumed here: `DialogStateBridge` joins this against the mirrored
+                    // character table on the dialog beat. Publishing the id rather than the derived
+                    // colour is what survives a narrator line in between.
+                    core.scopeBridge.globalSet(
+                        BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY,
+                        resolveSpeakerCharacterId(sourceName),
+                    );
                 });
                 nlrPreferenceTokenRef.current?.cancel();
                 nlrPreferenceTokenRef.current = subscribeGamePreferenceChanges(
                     liveGame,
                     preferenceSnapshotRef,
-                    (key, value, previousValue) => dispatchPreferenceChangeRef.current?.(key, value, previousValue),
+                    (key, value, previousValue) => {
+                        dispatchPreferenceChangeRef.current?.(key, value, previousValue);
+                        preferenceListenersRef.current.forEach(listener => listener());
+                    },
                 );
                 detachTextReadTracker();
                 const dialogGameState = liveGame.getGameState();
@@ -1722,6 +2400,38 @@ export function GameApp(props: GameAppProps): ReactNode {
                 }
                 nlrLiveGameRef.current = liveGame;
                 nlrLiveGameSessionIdRef.current = sessionId;
+                // Puppets have no authoring surface yet, so the only way to put one on a stage is
+                // from a console. Published on the window rather than a panel because the audience
+                // is whoever is bringing a backend up, and what they need is to poke at a live one.
+                // Remove when a character's appearance can declare a puppet and the story compiler
+                // emits it; nothing in Studio reads this.
+                if (nlrSession?.game.listPuppetBackends().length) {
+                    const gameState = liveGame.getGameState();
+                    if (gameState) {
+                        (window as typeof window & { __NLS_PUPPETS__?: unknown }).__NLS_PUPPETS__ =
+                            createPuppetStageHandle(nlrSession.game, gameState);
+                    }
+                }
+                // Hand the new environment to the runtime plugin host. Called
+                // per session, so a relaunch or hot reload re-binds the engine
+                // events under the plugins' existing listeners.
+                if (nlrSession?.compiled) {
+                    pluginHost?.attachSession({ liveGame, compiled: nlrSession.compiled });
+                }
+                // Play-head stream for the Dev Mode story-runtime panel: mirror the current action id
+                // and fan it out to panel subscribers. Re-bound per session; the fan-out set is stable.
+                nlrCurrentActionTokenRef.current?.cancel();
+                currentActionIdRef.current = liveGame.getCurrentActionId();
+                nlrCurrentActionTokenRef.current = liveGame.onCurrentActionChange(({ actionId }) => {
+                    currentActionIdRef.current = actionId;
+                    currentActionListenersRef.current.forEach(listener => {
+                        try {
+                            listener(actionId);
+                        } catch (error) {
+                            host.log("warning", `[${host.id}] current-action listener failed: ${normalizeError(error)}`);
+                        }
+                    });
+                });
                 try {
                     // Environment ready: LiveGame exists. Dispatch gameReady so global blueprints can
                     // load game settings — BEFORE the game is ever entered (no newGame yet).
@@ -1730,6 +2440,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                         const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
                         await dispatchGlobalBlueprintEvent({
                             blueprintDocument: bundle.ui.localBlueprints,
+                            persistentVariables: bundle.ui.persistentVariables,
                             eventName: "gameReady",
                             hostAdapter: hostAdapterBundle.hostAdapter,
                             debug: core.debug,
@@ -1780,6 +2491,16 @@ export function GameApp(props: GameAppProps): ReactNode {
         <MotionConfig reducedMotion="never">
             <div className="nl-motion-keep relative h-full w-full overflow-hidden">
                 {nlrStageLayer}
+                {/* Runtime plugin overlays: above the game stage, below the app surface
+                    system (menus, save screens, every authored page). This is as low as a
+                    HOST-rendered layer can go — NarraLeaf renders the dialogue inside the
+                    Player and its only injection point (Player children) is itself stacked
+                    above that dialogue, so there is no DOM position under it to occupy. */}
+                {pluginHost ? (
+                    <div className="pointer-events-none absolute inset-0" style={{ zIndex: 5 }}>
+                        <RuntimePluginOverlayLayer store={pluginHost.overlays} log={host.log} />
+                    </div>
+                ) : null}
                 {/* Surface system starts only after the NLR environment boot preload finishes. */}
                 <div className="pointer-events-none absolute inset-0 z-10">
                     <AnimatePresence
@@ -1794,6 +2515,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                                     key={entry.key}
                                     uidoc={bundle.ui.uidoc}
                                     blueprintDocument={bundle.ui.localBlueprints}
+                                    persistentVariables={bundle.ui.persistentVariables}
                                     core={core}
                                     entry={entry}
                                     layerIndex={layerIndex}
@@ -1824,7 +2546,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     return (
         <GameLocalizationContext.Provider value={gameLocalizationRuntime}>
             {renderFrame({ activeSurface, gameViewport, children: content })}
-            {renderOverlays?.({ core, activeSurface, widgetRuntimeStore })}
+            {renderOverlays?.({ core, activeSurface, widgetRuntimeStore, fastForwardToNextChoice: fastForwardToNextChoiceInGame, storyRuntime })}
         </GameLocalizationContext.Provider>
     );
 }

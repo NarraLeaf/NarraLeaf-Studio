@@ -5,7 +5,6 @@ import {
     STORY_MOTION_FPS,
     STORY_MOTION_MAX_DURATION_MS,
     STORY_MOTION_PROPERTIES,
-    createStoryMotionTemplateTimeline,
     deleteStoryMotionKeyframe,
     deleteStoryMotionTrack,
     ensureStoryMotionTrack,
@@ -20,6 +19,7 @@ import {
     updateStoryMotionKeyframe,
     upsertStoryMotionKeyframe,
 } from "./storyMotionTimeline";
+import { createStoryMotionPresetTimeline } from "./storyMotionPresets";
 import type { StoryAnimationTimeline } from "@shared/types/story";
 
 function linearTimeline(): StoryAnimationTimeline {
@@ -46,8 +46,8 @@ function linearTimeline(): StoryAnimationTimeline {
 }
 
 describe("storyMotionTimeline", () => {
-    it("derives template durations from their keyframes", () => {
-        const timeline = createStoryMotionTemplateTimeline("Fade in + slide");
+    it("derives preset durations from their keyframes", () => {
+        const timeline = createStoryMotionPresetTimeline("fadeInSlide");
 
         expect(getStoryMotionDurationMs(timeline)).toBe(420);
         expect(timeline.fps).toBeUndefined();
@@ -57,8 +57,8 @@ describe("storyMotionTimeline", () => {
     });
 
     it("does not clamp short animations to a minimum duration", () => {
-        expect(getStoryMotionDurationMs(createStoryMotionTemplateTimeline("Center pop"))).toBe(360);
-        expect(getStoryMotionDurationMs(createStoryMotionTemplateTimeline("Flash"))).toBe(280);
+        expect(getStoryMotionDurationMs(createStoryMotionPresetTimeline("centerPop"))).toBe(360);
+        expect(getStoryMotionDurationMs(createStoryMotionPresetTimeline("flash"))).toBe(280);
 
         const single = upsertStoryMotionKeyframe({ tracks: [] }, "opacity", 200, 1);
         expect(getStoryMotionDurationMs(single)).toBe(200);
@@ -78,7 +78,7 @@ describe("storyMotionTimeline", () => {
     });
 
     it("applies the arriving keyframe's easing when sampling", () => {
-        const timeline = createStoryMotionTemplateTimeline("Fade in + slide");
+        const timeline = createStoryMotionPresetTimeline("fadeInSlide");
         const preview = sampleStoryMotionPreview(timeline, 210);
 
         expect(preview.opacity).toBeCloseTo(easeOut(0.5));
@@ -262,7 +262,7 @@ describe("storyMotionTimeline", () => {
     });
 
     it("deletes a whole track without touching other properties", () => {
-        const timeline = createStoryMotionTemplateTimeline("Fade in + slide");
+        const timeline = createStoryMotionPresetTimeline("fadeInSlide");
 
         const updated = deleteStoryMotionTrack(timeline, "track-position");
 

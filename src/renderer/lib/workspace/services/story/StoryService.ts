@@ -3,6 +3,7 @@ import { RendererError } from "@shared/utils/error";
 import {
     StoryAnimationAsset,
     StoryAnimationAssetId,
+    StoryAnimationConfig,
     StoryAnimationIndex,
     StoryAnimationIndexEntry,
     StoryAnimationSequence,
@@ -29,6 +30,8 @@ import {
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
 import { IStoryService, Services, WorkspaceContext, type StoryPluginActionRegistration } from "../services";
+import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver } from "../autosave/DebouncedSaver";
+import { registerAutoSaver } from "../autosave/SaveStatusService";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { UuidService } from "../core/UuidService";
@@ -36,6 +39,7 @@ import { AssetsService } from "../core/AssetsService";
 import { AssetLockReason } from "../assets/AssetLockManager";
 import { EventEmitter } from "../ui/EventEmitter";
 import { findDeclarationBlock } from "@shared/types/story/declarations";
+import { listSceneIdsInDocumentOrder } from "@shared/types/story/order";
 import { assertValidStoryId } from "@shared/utils/storyId";
 import {
     createChapter as createStoryChapterModel,
@@ -90,8 +94,12 @@ export class StoryService extends Service<StoryService> implements IStoryService
     private dirty = false;
     private revision = 0;
     private lastSavedRevision = 0;
-    private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
-    private readonly autoSaveDelay = 800;
+    private readonly autoSaver = new DebouncedSaver({
+        delayMs: DEFAULT_AUTOSAVE_DELAY_MS,
+        maxWaitMs: DEFAULT_AUTOSAVE_MAX_WAIT_MS,
+        save: () => this.flush(),
+        onError: err => console.warn("[StoryService] auto-save failed", err),
+    });
     private readonly storyAssetLocks = new Map<StoryId, Map<string, StoryAssetLockEntry>>();
     private readonly pluginActions = new Map<string, StoryPluginActionRegistration>();
 
@@ -101,6 +109,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         const uuidService = ctx.services.get<UuidService>(Services.Uuid);
         const assetsService = ctx.services.get<AssetsService>(Services.Assets);
         await depend([filesystemService, projectService, uuidService, assetsService]);
+        await registerAutoSaver(ctx, depend, "story", "workspace.shell.save.stores.story", this.autoSaver);
 
         await this.ensureStoryDirs();
         await this.loadLibrary();
@@ -266,16 +275,67 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     public async flushPendingChanges(): Promise<void> {
-        if (this.autoSaveTimer) {
-            clearTimeout(this.autoSaveTimer);
-            this.autoSaveTimer = null;
-        }
-        await this.flush();
+        await this.autoSaver.flush();
     }
 
     public async reloadStory(storyId: StoryId): Promise<StoryDocument> {
         this.documents.delete(storyId);
         return this.loadStory(storyId);
+    }
+
+    /**
+     * Throw away every story held in memory and read the library back off the disk.
+     *
+     * A participant of `WorkspaceReloadService`; see it for why this exists at all. The case that
+     * forces it: a story or scene created while the workspace was frozen never reached the disk (the
+     * write was refused), but this service kept it, and the next successful save wrote it there.
+     *
+     * Written read-first: the index is re-read before anything is dropped, so an index that cannot
+     * be read leaves the workspace showing the stories it already had - stale but coherent, which
+     * half a library is not.
+     */
+    public async reloadFromDisk(): Promise<void> {
+        const previouslyLoaded = [...this.documents.keys()];
+
+        await this.loadLibrary();
+        await this.loadAnimationIndex();
+
+        this.documents.clear();
+        this.animationAssets.clear();
+        this.revision = 0;
+        this.lastSavedRevision = 0;
+        this.setDirty(false);
+
+        // A story the re-read index no longer lists took its asset locks with it, and nothing else
+        // releases them: `syncLibraryAssetLocks` only visits stories the index still names.
+        for (const storyId of [...this.storyAssetLocks.keys()]) {
+            if (!this.getStoryEntry(storyId)) {
+                this.releaseStoryAssetLocks(storyId);
+            }
+        }
+
+        // Re-open what was open, one document at a time. One that cannot be read is left *not
+        // loaded* - the state `getStoryDocument` already reports and `flush` already skips over -
+        // rather than half-parsed, and it does not stop the other stories coming back.
+        const failures: string[] = [];
+        for (const storyId of previouslyLoaded) {
+            if (!this.getStoryEntry(storyId)) {
+                // Never reached the index on disk, so from here on it does not exist. Its editor tab
+                // re-resolves to "scene not found"; see `WorkspaceReloadService`.
+                continue;
+            }
+            try {
+                await this.loadStory(storyId);
+            } catch (error) {
+                failures.push(`${storyId} (${error instanceof Error ? error.message : String(error)})`);
+            }
+        }
+
+        await this.syncLibraryAssetLocks();
+
+        if (failures.length > 0) {
+            throw new RendererError(`Could not re-read ${failures.length} story document(s): ${failures.join("; ")}`);
+        }
     }
 
     public async loadLibrary(): Promise<StoryLibraryIndex> {
@@ -405,6 +465,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         targetKind?: StoryAnimationIndexEntry["targetKind"];
         timeline?: StoryAnimationTimeline;
         sequences?: StoryAnimationSequence[];
+        config?: StoryAnimationConfig;
     }): Promise<StoryAnimationAsset> {
         const now = new Date().toISOString();
         const animationId = this.generateUniqueAnimationId();
@@ -415,6 +476,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
             targetKind,
             timeline: input.timeline,
             sequences: input.sequences,
+            config: input.config,
             now,
         });
         const entry = createStoryAnimationIndexEntry({
@@ -694,9 +756,12 @@ export class StoryService extends Service<StoryService> implements IStoryService
         input: { name: string; valueType: StoryVariableValueType; defaultValue?: StoryLiteralValue },
     ): StorySavedVariableDefinition | null {
         const document = this.getStoryDocument(storyId);
+        // Where a saved variable's declaration row lands. Falling back to key order would move a new
+        // variable's row into an arbitrary scene once the record is rewritten, so it follows the
+        // author's scene order instead.
         const homeSceneId = document.entrySceneId && document.scenes[document.entrySceneId]
             ? document.entrySceneId
-            : Object.keys(document.scenes)[0];
+            : listSceneIdsInDocumentOrder(document)[0];
         return homeSceneId ? this.createDeclaration(storyId, homeSceneId, "saved", input) : null;
     }
 
@@ -843,7 +908,13 @@ export class StoryService extends Service<StoryService> implements IStoryService
         this.mutateDocument(storyId, document => {
             const found = findDeclarationBlock(document, variableId);
             if (!found) return;
-            mutate(found.block.payload);
+            // Reassign the payload rather than mutating it in place, so a fresh reference marks the edit:
+            // `updateBlockPayload` (the other write path) already reassigns, and the inspector bridge's
+            // republish gate (WI-0) compares payload identity — an in-place mutation would slip past it,
+            // leaving an open declaration inspector stale after a rename/retype from the Variables panel.
+            const nextPayload = { ...found.block.payload };
+            mutate(nextPayload);
+            found.block.payload = nextPayload;
             changed = true;
         });
         return changed;
@@ -873,11 +944,18 @@ export class StoryService extends Service<StoryService> implements IStoryService
             ? this.cleanOptionalString(patch.defaultBackgroundAssetId ?? "")
             : current.defaultBackgroundAssetId;
         const currentBackgroundAssetId = current.defaultBackgroundAssetId ?? undefined;
+        // The whole record is replaced, never merged: a partial merge would make "clear the volume"
+        // unexpressible, and the caller already holds the record it is editing.
+        const nextBgm = patch.bgm !== undefined
+            ? (patch.bgm && this.cleanOptionalString(patch.bgm.assetId) ? patch.bgm : undefined)
+            : current.bgm;
 
         const hasNameChange = patch.name !== undefined && nextName !== current.name;
         const hasDescriptionChange = patch.description !== undefined && nextDescription !== (current.description ?? "");
         const hasBackgroundChange = patch.defaultBackgroundAssetId !== undefined && nextBackgroundAssetId !== currentBackgroundAssetId;
-        if (!hasNameChange && !hasDescriptionChange && !hasBackgroundChange) {
+        const hasBgmChange = patch.bgm !== undefined
+            && JSON.stringify(nextBgm ?? null) !== JSON.stringify(current.bgm ?? null);
+        if (!hasNameChange && !hasDescriptionChange && !hasBackgroundChange && !hasBgmChange) {
             return false;
         }
 
@@ -898,6 +976,13 @@ export class StoryService extends Service<StoryService> implements IStoryService
                     scene.defaultBackgroundAssetId = nextBackgroundAssetId;
                 } else {
                     delete scene.defaultBackgroundAssetId;
+                }
+            }
+            if (hasBgmChange) {
+                if (nextBgm) {
+                    scene.bgm = nextBgm;
+                } else {
+                    delete scene.bgm;
                 }
             }
             scene.meta = { ...scene.meta, updatedAt: new Date().toISOString() };
@@ -980,6 +1065,22 @@ export class StoryService extends Service<StoryService> implements IStoryService
         });
     }
 
+    /** Set or clear a block's compiled-out flag (schema v7). Clearing deletes the field so an enabled block stays clean. */
+    public setBlockDisabled(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId, disabled: boolean): void {
+        this.mutateDocument(storyId, document => {
+            const scene = this.getSceneOrThrow(document, sceneId);
+            const block = scene.blocks[blockId];
+            if (!block) {
+                return;
+            }
+            if (disabled) {
+                block.disabled = true;
+            } else {
+                delete block.disabled;
+            }
+        });
+    }
+
     public replaceScene(storyId: StoryId, sceneId: StorySceneId, scene: StoryScene): void {
         this.mutateDocument(storyId, document => {
             this.getSceneOrThrow(document, sceneId);
@@ -1043,15 +1144,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     private scheduleAutoSave(): void {
-        if (this.autoSaveTimer) {
-            clearTimeout(this.autoSaveTimer);
-        }
-        this.autoSaveTimer = setTimeout(() => {
-            this.autoSaveTimer = null;
-            void this.flush().catch(err => {
-                console.warn("[StoryService] auto-save failed", err);
-            });
-        }, this.autoSaveDelay);
+        this.autoSaver.schedule();
     }
 
     private async flush(): Promise<void> {

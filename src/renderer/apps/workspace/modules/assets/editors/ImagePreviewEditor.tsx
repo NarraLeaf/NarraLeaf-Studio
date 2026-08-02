@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import { AlertCircle, RefreshCw, ZoomIn, ZoomOut } from "lucide-react";
 import { EditorComponentProps } from "../../types";
 import { Asset } from "@/lib/workspace/services/assets/types";
@@ -6,6 +6,7 @@ import { AssetData, AssetType } from "@/lib/workspace/services/assets/assetTypes
 import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import { UIService } from "@/lib/workspace/services/core/UIService";
 import { ActionDefinition, useRegistry } from "../../../registry";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { useTranslation } from "@/lib/i18n";
@@ -17,6 +18,31 @@ import {
 interface ImagePreviewPayload {
     asset: Asset<AssetType.Image>;
 }
+
+/**
+ * The id the Preview group is registered under - fixed, and in Studio's namespace, so that
+ * `components/ui/freezeActionPolicy` can name it.
+ *
+ * Zoom and Reset view move the viewport and write nothing at all, but a frozen workspace turns off
+ * every top-bar group its exemption table does not name, and that table matches ids exactly. The
+ * old id was built from the tab (`tab-7-image-preview-actions`), which is not a name anything can
+ * hold, so on a frozen project the Preview menu and its palette entries greyed out and the author
+ * could not zoom in on the very revision they had opened to look at.
+ *
+ * Kept distinct from the editor module's own `narraleaf-studio:image-preview`: two registries, two
+ * ids, so neither can be mistaken for the other.
+ */
+const IMAGE_PREVIEW_GROUP_ID = "narraleaf-studio:image-preview-actions";
+
+/**
+ * Every mounted image preview, by tab id, with the view controls it exposes.
+ *
+ * One id means one registration for the whole workspace, so the group cannot belong to a single
+ * tab: kept-alive tabs stay mounted and a split can show two previews at once. Each command
+ * therefore dispatches to whichever preview currently holds focus, and the last preview to unmount
+ * takes the group away.
+ */
+const mountedPreviews = new Map<string, MutableRefObject<ImagePixelPreviewControls | null>>();
 
 function LoadingState() {
     const { t } = useTranslation();
@@ -72,7 +98,7 @@ function PreviewToolbar({
             <div className="flex items-center gap-2">
                 <button
                     onClick={controls.zoomOut}
-                    className="p-1 rounded hover:bg-fill text-fg-muted hover:text-fg transition-colors cursor-default"
+                    className="p-1 rounded-md hover:bg-fill text-fg-muted hover:text-fg transition-colors cursor-default"
                     title={t("assets.image.zoomOut")}
                 >
                     <ZoomOut className="w-4 h-4" />
@@ -82,14 +108,14 @@ function PreviewToolbar({
                 </span>
                 <button
                     onClick={controls.zoomIn}
-                    className="p-1 rounded hover:bg-fill text-fg-muted hover:text-fg transition-colors cursor-default"
+                    className="p-1 rounded-md hover:bg-fill text-fg-muted hover:text-fg transition-colors cursor-default"
                     title={t("assets.image.zoomIn")}
                 >
                     <ZoomIn className="w-4 h-4" />
                 </button>
                 <button
                     onClick={controls.resetView}
-                    className="p-1 rounded hover:bg-fill text-fg-muted hover:text-fg transition-colors cursor-default ml-2"
+                    className="p-1 rounded-md hover:bg-fill text-fg-muted hover:text-fg transition-colors cursor-default ml-2"
                     title={t("assets.image.resetView")}
                 >
                     <RefreshCw className="w-4 h-4" />
@@ -122,18 +148,42 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
         url: null,
     });
 
-    const handleZoomIn = useCallback(() => controlsRef.current?.zoomIn(), []);
-    const handleZoomOut = useCallback(() => controlsRef.current?.zoomOut(), []);
-    const handleResetView = useCallback(() => controlsRef.current?.resetView(), []);
+    // Declared before the registration effect so that on unmount this tab is out of the map by the
+    // time the group's cleanup asks whether any preview is left.
+    useEffect(() => {
+        mountedPreviews.set(tabId, controlsRef);
+        return () => {
+            mountedPreviews.delete(tabId);
+        };
+    }, [tabId]);
+
+    /** Run a view command against the preview the author is looking at, not this one. */
+    const withFocusedPreview = useCallback(
+        (run: (controls: ImagePixelPreviewControls) => void) => {
+            if (!context) return;
+            const focus = context.services.get<UIService>(Services.UI).focus.getFocus();
+            if (focus.area !== FocusArea.Editor || !focus.targetId) return;
+            const controls = mountedPreviews.get(focus.targetId)?.current;
+            if (controls) {
+                run(controls);
+            }
+        },
+        [context],
+    );
+
+    const handleZoomIn = useCallback(() => withFocusedPreview(controls => controls.zoomIn()), [withFocusedPreview]);
+    const handleZoomOut = useCallback(() => withFocusedPreview(controls => controls.zoomOut()), [withFocusedPreview]);
+    const handleResetView = useCallback(() => withFocusedPreview(controls => controls.resetView()), [withFocusedPreview]);
 
     useEffect(() => {
-        const groupId = `${tabId}-image-preview-actions`;
+        const groupId = IMAGE_PREVIEW_GROUP_ID;
 
-        const focusWhen = (ctx: any) => ctx?.area === FocusArea.Editor && ctx?.targetId === tabId;
-        const namespace = "narraleaf-studio:image-preview";
+        // Any focused image preview, since the group is shared by all of them.
+        const focusWhen = (ctx: any) =>
+            ctx?.area === FocusArea.Editor && typeof ctx?.targetId === "string" && mountedPreviews.has(ctx.targetId);
 
         const zoomInAction: ActionDefinition = {
-            id: `${namespace}:${groupId}-zoom-in`,
+            id: `${groupId}-zoom-in`,
             icon: <ZoomIn className="w-4 h-4" />,
             label: t("assets.image.zoomIn"),
             shortcut: "mod+=",
@@ -143,7 +193,7 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
         };
 
         const zoomOutAction: ActionDefinition = {
-            id: `${namespace}:${groupId}-zoom-out`,
+            id: `${groupId}-zoom-out`,
             icon: <ZoomOut className="w-4 h-4" />,
             label: t("assets.image.zoomOut"),
             shortcut: "mod+-",
@@ -153,7 +203,7 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
         };
 
         const resetViewAction: ActionDefinition = {
-            id: `${namespace}:${groupId}-reset-view`,
+            id: `${groupId}-reset-view`,
             icon: <RefreshCw className="w-4 h-4" />,
             label: t("assets.image.resetView"),
             shortcut: "mod+0",
@@ -169,9 +219,13 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
         });
 
         return () => {
-            unregisterActionGroup(groupId);
+            // Only the last preview standing takes the group down; anything else would leave a tab
+            // that is still open with no Preview menu.
+            if (mountedPreviews.size === 0) {
+                unregisterActionGroup(groupId);
+            }
         };
-    }, [handleResetView, handleZoomIn, handleZoomOut, registerActionGroup, tabId, unregisterActionGroup, t]);
+    }, [handleResetView, handleZoomIn, handleZoomOut, registerActionGroup, unregisterActionGroup, t]);
 
     useEffect(() => {
         if (!context || !asset) return;

@@ -2,10 +2,18 @@ import { constants as bufferConstants } from "buffer";
 import fs from "fs/promises";
 import { createReadStream } from "fs";
 import path from "path";
+import { protectBuffer } from "@narraleaf/encryption";
+import { readKeystore } from "./keystoreReader";
 import { repackApk } from "./repackApk";
 import { repackIpa } from "./repackIpa";
+import { signIpa } from "./signIpa";
+import {
+    describeSigningCertificate,
+    toApkSigningIdentity,
+    type ApkSigningIdentity,
+} from "./signingIdentity";
 import type { ZipEntrySource } from "./zipWriter";
-import type { GameBuildWorkerMobileJob } from "../protocol";
+import type { GameBuildWorkerAndroidSigning, GameBuildWorkerMobileJob } from "../protocol";
 
 /**
  * The fs layer of the mobile repack: everything the pure repack modules
@@ -70,20 +78,40 @@ async function collectSiteFiles(sourceDir: string): Promise<SiteFile[]> {
     return files;
 }
 
-function siteEntries(files: SiteFile[], indexHtmlOverride: string): SiteEntry[] {
-    const entries: SiteEntry[] = files.map(file => ({
-        relativePath: file.relativePath,
-        source: {
-            kind: "stream",
-            size: file.size,
-            open: () => createReadStream(file.absolutePath),
-        },
-    }));
+/**
+ * Turn the collected site files into repack entries. With a `contentKey`, every
+ * payload file is protected as it is read (all-or-nothing: the shell assumes the
+ * whole payload under wwwRoot is protected, so the index override below is
+ * protected too). Without one, files stream through untouched. `shell-config.json`
+ * is written outside wwwRoot by the repackers and stays plain either way — the
+ * shell needs it to bootstrap.
+ */
+async function siteEntries(
+    files: SiteFile[],
+    indexHtmlOverride: string,
+    contentKey: string | undefined,
+): Promise<SiteEntry[]> {
+    const entries: SiteEntry[] = [];
+    for (const file of files) {
+        if (contentKey) {
+            // Read and protect one file at a time. The package is assembled in
+            // memory anyway (see MAX_PAYLOAD_BYTES), so this holds one plaintext
+            // file beyond that, not the whole payload at once.
+            const data = protectBuffer(await fs.readFile(file.absolutePath), contentKey);
+            entries.push({ relativePath: file.relativePath, source: { kind: "buffer", data } });
+        } else {
+            entries.push({
+                relativePath: file.relativePath,
+                source: { kind: "stream", size: file.size, open: () => createReadStream(file.absolutePath) },
+            });
+        }
+    }
     // The mobile entry document replaces the web one in the payload only; the
     // shared staging-web dir on disk stays exactly what the web target ships.
+    const overrideBytes = Buffer.from(indexHtmlOverride, "utf8");
     const overrideEntry: SiteEntry = {
         relativePath: "index.html",
-        source: { kind: "buffer", data: Buffer.from(indexHtmlOverride, "utf8") },
+        source: { kind: "buffer", data: contentKey ? protectBuffer(overrideBytes, contentKey) : overrideBytes },
     };
     const index = entries.findIndex(entry => entry.relativePath === "index.html");
     if (index >= 0) {
@@ -105,6 +133,48 @@ function assertPayloadFits(files: SiteFile[], platform: string): void {
     }
 }
 
+
+/**
+ * Pick the identity the APK is signed with, and say so.
+ *
+ * This is not a quiet detail. Android identifies an installed app by package
+ * name *and* signing certificate: the first build signed with a different
+ * identity cannot be installed over the previous one, and the device reports
+ * only "App not installed", which is unguessable if nobody said the identity
+ * changed. So both branches log which certificate signed, and switching to a
+ * release key is a warning rather than a note.
+ */
+async function resolveAndroidIdentity(
+    signing: GameBuildWorkerAndroidSigning | undefined,
+    debugIdentity: ApkSigningIdentity,
+    log: MobileRepackLogger,
+): Promise<ApkSigningIdentity> {
+    if (!signing) {
+        const { subject } = describeSigningCertificate(
+            Buffer.from(debugIdentity.certificateChainDerBase64[0], "base64"),
+        );
+        log("info", `signing the APK with this machine's sideload identity (${subject})`);
+        return debugIdentity;
+    }
+
+    const identity = readKeystore(await fs.readFile(signing.keystoreFile), {
+        storePassword: signing.storePassword,
+        keyPassword: signing.keyPassword,
+        alias: signing.alias,
+    });
+    const { subject, sha256Fingerprint, notAfter } = describeSigningCertificate(
+        Buffer.from(identity.certificateDerBase64, "base64"),
+    );
+    log("warning",
+        `signing the APK with the release key "${identity.alias}" (${subject}) instead of this machine's `
+        + "sideload identity. Android identifies an app by package name and signature together, so a device "
+        + "that already has a build signed with the other identity must uninstall it before this one will "
+        + "install - it fails with \"App not installed\" otherwise.");
+    log("info",
+        `release certificate SHA-256 ${sha256Fingerprint}, valid until ${notAfter.toISOString().slice(0, 10)}`);
+    return identity;
+}
+
 /**
  * Run the selected mobile repacks and return the absolute paths of what was
  * written. Reproducible: `mtime` is fixed per build rather than taken from the
@@ -119,11 +189,19 @@ export async function runMobileRepack(
     const artifacts: string[] = [];
     const files = await collectSiteFiles(job.sourceDir);
     await fs.mkdir(outputDir, { recursive: true });
+    // Built once and shared by both platforms: with a key, protecting the
+    // payload twice would be wasted work, and the bytes are identical anyway.
+    const www = await siteEntries(files, job.indexHtmlOverride, job.contentKey);
 
     if (job.android) {
         const { android } = job;
         assertPayloadFits(files, "Android");
         log("info", `repacking the Android shell (${files.length} site file(s))...`);
+        const signingIdentity = await resolveAndroidIdentity(
+            android.signing,
+            toApkSigningIdentity(android.signingIdentity),
+            log,
+        );
         const apk = await repackApk({
             templateApk: await fs.readFile(android.templateApkPath),
             android: job.templateManifest.android,
@@ -131,10 +209,10 @@ export async function runMobileRepack(
             label: job.productName,
             versionName: android.versionName,
             versionCode: android.versionCode,
-            www: siteEntries(files, job.indexHtmlOverride),
+            www,
             shellConfigJson: job.shellConfigJson,
             iconPngBySlot: await readIconSlots(android.iconPngBySlot),
-            signingIdentity: android.signingIdentity,
+            signingIdentity,
             mtime,
         });
         const outputPath = path.join(outputDir, android.outputName);
@@ -158,15 +236,46 @@ export async function runMobileRepack(
                 bundleVersion: ios.bundleVersion,
             },
             orientation: job.orientation,
-            www: siteEntries(files, job.indexHtmlOverride),
+            www,
             shellConfigJson: job.shellConfigJson,
             iconPngBySlot: await readIconSlots(ios.iconPngBySlot),
             mtime,
         });
         const outputPath = path.join(outputDir, ios.outputName);
-        await fs.writeFile(outputPath, ipa);
-        log("info", `wrote ${ios.outputName} (${formatSize(ipa.length)}); the package is unsigned`);
-        artifacts.push(outputPath);
+        if (!ios.signing) {
+            await fs.writeFile(outputPath, ipa);
+            log("info", `wrote ${ios.outputName} (${formatSize(ipa.length)}); the package is unsigned`);
+            artifacts.push(outputPath);
+        } else {
+            // zsign reads one file and writes another, so the repack's output is
+            // staged beside the final artifact - same directory, hence the same
+            // volume, and a game's payload is far too large to route through the
+            // temp dir. It is removed whichever way the signing goes.
+            const unsignedPath = `${outputPath}.unsigned`;
+            await fs.writeFile(unsignedPath, ipa);
+            log("info", `signing ${ios.outputName} (${formatSize(ipa.length)})...`);
+            try {
+                const result = await signIpa({
+                    tool: { available: true, path: ios.signing.toolPath },
+                    unsignedIpaPath: unsignedPath,
+                    signedIpaPath: outputPath,
+                    bundleId: ios.bundleId,
+                    displayName: job.productName,
+                    signing: ios.signing,
+                });
+                log("info",
+                    `signed ${ios.outputName} as ${result.applicationIdentifier} with ${result.signerSubject}, `
+                    + `profile "${result.profileName}" (expires ${result.expiresAt.toISOString().slice(0, 10)})`);
+                if (result.provisionedDeviceCount > 0) {
+                    log("warning",
+                        `this profile only installs on the ${result.provisionedDeviceCount} device(s) `
+                        + "registered to it; any other device will refuse the package");
+                }
+            } finally {
+                await fs.rm(unsignedPath, { force: true });
+            }
+            artifacts.push(outputPath);
+        }
     }
 
     return artifacts;

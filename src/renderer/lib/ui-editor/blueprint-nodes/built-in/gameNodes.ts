@@ -1,7 +1,11 @@
 import {
+    BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LATEST,
+    BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST,
+    BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_WRITE,
     BLUEPRINT_NODE_TYPE_GAME_CHOOSE,
     BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD,
     BLUEPRINT_NODE_TYPE_GAME_GET_BGM_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER,
     BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT,
     BLUEPRINT_NODE_TYPE_GAME_GET_GAME_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_GET_GLOBAL_VOLUME,
@@ -10,11 +14,14 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_CLEAR_TEXT_READ,
     BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE,
     BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ,
+    BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ_BY_ID,
     BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_INTERVAL,
     BLUEPRINT_NODE_TYPE_GAME_GET_SOUND_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR,
     BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_END_MODE,
     BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_FADE_DURATION,
     BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_VOLUME,
@@ -45,11 +52,15 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_SKIP,
     BLUEPRINT_NODE_TYPE_GAME_START_STORY,
     BLUEPRINT_NODE_TYPE_GAME_TOGGLE_DIALOG_DISPLAY,
+    BLUEPRINT_NODE_TYPE_GAME_GET_TRACK_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_SET_TRACK_VOLUME,
 } from "@shared/types/blueprint/graph";
 import {
     BLUEPRINT_VALUE_TYPE_ARRAY,
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
+    BLUEPRINT_VALUE_TYPE_RGBA_COLOR,
 } from "@shared/types/blueprint/valueTypes";
+import { blueprintCharacterColorOrDefault } from "@shared/types/blueprint/characterInfo";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import type {
@@ -58,6 +69,11 @@ import type {
 } from "../../blueprint-runtime/BlueprintHostApiBridge";
 import { resolveDataPinValue } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
+import {
+    BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE,
+    BLUEPRINT_SOUND_PARAM_TRACK,
+    readBlueprintAudioTrackParam,
+} from "./audioTrackParams";
 
 const execIn: BlueprintNodePinDef = { id: "in", kind: "input", semantic: "exec", label: "In" };
 const execNext: BlueprintNodePinDef = { id: "next", kind: "output", semantic: "exec", label: "Next" };
@@ -86,6 +102,24 @@ const saveScreenshotIn: BlueprintNodePinDef = {
     optional: true,
     allowInlineLiteral: true,
 };
+/**
+ * Optional runtime overrides for Start Game's target.
+ *
+ * Without these the scene can only be chosen from a dropdown at author time,
+ * which makes a data-driven launcher impossible: a recollection list knows which
+ * scene to replay only when the player clicks a row. The picker stays for the
+ * hand-authored case ("New Game" starts chapter one), and a wired pin wins over
+ * it - the same precedence the gallery's own artwork pins use.
+ *
+ * `startBlockId` narrows the launch to one row; the host's start-story request
+ * already carries it (row-precise "play from here").
+ */
+const startStoryTargetPins: BlueprintNodePinDef[] = [
+    { id: "storyId", kind: "input", semantic: "data", valueType: "string", label: "Story Id", optional: true },
+    { id: "sceneId", kind: "input", semantic: "data", valueType: "string", label: "Scene Id", optional: true },
+    { id: "startBlockId", kind: "input", semantic: "data", valueType: "string", label: "From Row", optional: true },
+];
+
 const sentenceCpsIn: BlueprintNodePinDef = {
     id: "cps",
     kind: "input",
@@ -220,14 +254,20 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         key: "soundVolume",
         getterType: BLUEPRINT_NODE_TYPE_GAME_GET_SOUND_VOLUME,
         setterType: BLUEPRINT_NODE_TYPE_GAME_SET_SOUND_VOLUME,
-        getterDisplayName: "Get Sound Volume",
-        setterDisplayName: "Set Sound Volume",
+        // "SFX", not "Sound". `Set Sound Volume` was two different nodes: this one, which moves the
+        // player's SFX slider, and the sound-transport node, which changes one playing clip by
+        // handle. An author building a settings page met both in the palette under one name with
+        // nothing to tell them apart. The *type ids* are untouched (`blueprint.game.getSoundVolume`
+        // / `setSoundVolume`), so every graph that already uses them still loads; only the label
+        // moved, and "SFX" is what the seeded bus is called on the project Audio surface anyway.
+        getterDisplayName: "Get SFX Volume",
+        setterDisplayName: "Set SFX Volume",
         pinId: "soundVolume",
-        pinLabel: "Sound Volume",
+        pinLabel: "SFX Volume",
         valueType: "float",
         defaultValue: 1,
         min: 0,
-        keywords: ["game", "preference", "sound", "sfx", "volume", "audio", "nlr"],
+        keywords: ["game", "preference", "sound", "sfx", "effects", "volume", "audio", "nlr"],
     },
     {
         key: "globalVolume",
@@ -283,6 +323,23 @@ function createPreferenceDataPin(meta: GamePreferenceNodeMeta, kind: "input" | "
         pin.allowInlineLiteral = true;
     }
     return pin;
+}
+
+/** Wired pin wins over the inspector picker; see startStoryTargetPins. */
+function resolveStartStoryTarget(
+    ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0],
+    key: "storyId" | "sceneId" | "startBlockId",
+): string {
+    const wired = resolveDataPinValue(ctx.graph, ctx.node.id, key, ctx.params, ctx.blueprintLocals, 0, {
+        hostAdapter: ctx.hostAdapter,
+        eventPayload: ctx.eventPayload,
+        listItemScope: ctx.listItemScope,
+        instanceKey: ctx.instanceKey,
+        executionOwner: ctx.executionOwner,
+    });
+    const fromPin = typeof wired === "string" ? wired.trim() : "";
+    // `startBlockId` has no picker, so params never supplies it.
+    return fromPin || (key === "startBlockId" ? "" : String(ctx.params[key] ?? "").trim());
 }
 
 function resolveSaveId(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0]): string {
@@ -441,6 +498,215 @@ const gamePreferenceBlueprintNodes: BlueprintNodeDef[] = GAME_PREFERENCE_NODE_ME
     return setterNode ? [createPreferenceGetterNode(meta), setterNode] : [createPreferenceGetterNode(meta)];
 });
 
+/**
+ * Per-track volume - the general form of the four fixed volume nodes above.
+ *
+ * Those four address the engine's three seeded buses (plus master) and nothing else, so the moment
+ * an author creates a track the mixer has a strip no settings page can bind to. The motivating case
+ * is per-character voice: `voice/alice` is a real bus with a real gain, and "turn Alice down" is a
+ * slider the player expects to find. These two nodes are that slider's two halves.
+ *
+ * Deliberately **not** a replacement: the four keep their node types, their pins and their
+ * behaviour, because every existing settings page is built on them and because the engine still
+ * carries them as preferences aliased onto the seeded buses. An author who picks `bgm` here and an
+ * author who uses `Set BGM Volume` are moving the same fader.
+ *
+ * The picker is dynamic (the same `AudioTrackService`-backed source the sound nodes' Track select
+ * uses), so a track the author adds appears without a node-catalog change. It shares the param key
+ * `audioTrackId` with those nodes on purpose - that is the key the project's "what references this
+ * track" sweep looks for, so a graph binding a slider counts as a reference.
+ */
+const trackVolumeParam = {
+    key: BLUEPRINT_SOUND_PARAM_TRACK,
+    label: "Track",
+    kind: "select" as const,
+    dynamicOptionsSource: BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE,
+};
+
+const trackVolumeKeywords = [
+    "game", "preference", "track", "bus", "volume", "audio", "mixer", "channel", "character", "voice", "nlr",
+];
+
+const trackVolumeBlueprintNodes: BlueprintNodeDef[] = [
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_GET_TRACK_VOLUME,
+        displayName: "Get Track Volume",
+        category: "Game",
+        keywords: trackVolumeKeywords,
+        graphKinds: [...PURE_GRAPH_KINDS],
+        // Pure, like the four fixed getters, so it can drive a slider's value in a Blueprint Value
+        // graph. That also means `execute` is never called on the data path - the pin is served by
+        // `graphParamResolvers`, and the node type has to be registered there or it reads undefined.
+        isPure: true,
+        isLatent: false,
+        pins: [{ id: "volume", kind: "output", semantic: "data", valueType: "float", label: "Volume" }],
+        inspectorParams: [trackVolumeParam],
+        execute(ctx) {
+            const trackId = readBlueprintAudioTrackParam(ctx.params);
+            return {
+                outputValues: {
+                    volume: trackId ? requireHostApi(ctx).sound.getTrackVolume(trackId) : 1,
+                },
+            };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_SET_TRACK_VOLUME,
+        displayName: "Set Track Volume",
+        category: "Game",
+        keywords: trackVolumeKeywords,
+        graphKinds: [...GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            execIn,
+            execNext,
+            {
+                id: "volume",
+                kind: "input",
+                semantic: "data",
+                valueType: "float",
+                label: "Volume",
+                allowInlineLiteral: true,
+            },
+        ],
+        inspectorParams: [trackVolumeParam],
+        async execute(ctx) {
+            const trackId = readBlueprintAudioTrackParam(ctx.params);
+            if (!trackId) {
+                throw new BlueprintGraphExecutionError("Set Track Volume: pick a track", ctx.node.id);
+            }
+            const raw = resolveDataPinValue(ctx.graph, ctx.node.id, "volume", ctx.params, ctx.blueprintLocals, 1, {
+                hostAdapter: ctx.hostAdapter,
+                eventPayload: ctx.eventPayload,
+                listItemScope: ctx.listItemScope,
+                instanceKey: ctx.instanceKey,
+                executionOwner: ctx.executionOwner,
+            });
+            const volume = typeof raw === "number" ? raw : Number(raw);
+            if (!Number.isFinite(volume)) {
+                throw new BlueprintGraphExecutionError("Volume must be a finite number", ctx.node.id);
+            }
+            // Clamping rather than rejecting is the host's job (and the engine's) - a slider bound
+            // to 0..100 asking for 100 means "as loud as it goes", not "fail the graph".
+            await requireHostApi(ctx).sound.setTrackVolume(trackId, volume);
+            return { nextPort: "next" };
+        },
+    },
+];
+
+/**
+ * Automatic saving. Studio writes these on a timer (project → Game), into a
+ * reserved ring of ids the player-facing save nodes never see - so an author's
+ * Save/Load screen and an Auto Save screen each list only their own.
+ *
+ * Entries carry the save *id*, not the serialized game: a `SavedGameData` blob
+ * is inert inside a graph, whereas an id feeds straight into Load Save / Get
+ * Save Preview / Get Save Metadata / Delete Save. One node composing with the
+ * six that already exist, rather than a parallel family.
+ */
+const autoSaveBlueprintNodes: BlueprintNodeDef[] = [
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_WRITE,
+        displayName: "Auto Save",
+        category: "Game",
+        keywords: ["game", "auto", "autosave", "save", "write", "checkpoint", "slot", "rotate"],
+        graphKinds: [...GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [execIn, execNext],
+        async execute(ctx) {
+            await requireHostApi(ctx).game.writeAutoSave();
+            return { nextPort: "next" };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST,
+        displayName: "List Auto Saves",
+        category: "Game",
+        keywords: ["game", "auto", "autosave", "save", "list", "entries", "slots", "recent", "continue"],
+        graphKinds: [...GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            execIn,
+            execNext,
+            {
+                id: "entries",
+                kind: "output",
+                semantic: "data",
+                valueType: BLUEPRINT_VALUE_TYPE_ARRAY,
+                label: "Entries",
+            },
+            {
+                id: "count",
+                kind: "output",
+                semantic: "data",
+                valueType: "integer",
+                label: "Count",
+            },
+        ],
+        async execute(ctx) {
+            const entries = await requireHostApi(ctx).game.listAutoSaves();
+            return {
+                nextPort: "next",
+                outputValues: {
+                    entries,
+                    count: entries.length,
+                },
+            };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LATEST,
+        displayName: "Get Latest Auto Save",
+        category: "Game",
+        keywords: ["game", "auto", "autosave", "save", "latest", "newest", "continue", "resume", "id"],
+        graphKinds: [...GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            execIn,
+            execNext,
+            {
+                id: "id",
+                kind: "output",
+                semantic: "data",
+                valueType: "string",
+                label: "Id",
+            },
+            {
+                id: "hasAutoSave",
+                kind: "output",
+                semantic: "data",
+                valueType: "boolean",
+                label: "Has Auto Save",
+            },
+            {
+                id: "timestamp",
+                kind: "output",
+                semantic: "data",
+                valueType: "float",
+                label: "Timestamp",
+            },
+        ],
+        // The whole point of this node is the Continue button: pick the newest
+        // autosave and feed its id to Load Save. Deriving it from List Auto
+        // Saves would take three more nodes for the single most common use.
+        async execute(ctx) {
+            const latest = (await requireHostApi(ctx).game.listAutoSaves())[0];
+            return {
+                nextPort: "next",
+                outputValues: {
+                    id: latest?.id ?? "",
+                    hasAutoSave: Boolean(latest),
+                    timestamp: latest?.timestamp ?? 0,
+                },
+            };
+        },
+    },
+];
+
 export const gameBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
@@ -463,6 +729,118 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             return {
                 outputValues: {
                     nametag: requireHostApi(ctx).game.getNametag(),
+                },
+            };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR,
+        displayName: "Get Speaker Avatar",
+        category: "Game",
+        keywords: ["game", "dialog", "avatar", "portrait", "speaker", "character", "face", "expression", "nlr"],
+        graphKinds: ["event", "function", "macro"],
+        isPure: true,
+        isLatent: false,
+        pins: [
+            {
+                id: "avatar",
+                kind: "output",
+                semantic: "data",
+                valueType: BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
+                label: "Avatar",
+            },
+        ],
+        execute(ctx) {
+            return {
+                outputValues: {
+                    avatar: requireHostApi(ctx).game.getSpeakerAvatar(),
+                },
+            };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR,
+        displayName: "Get Speaker Color",
+        category: "Game",
+        keywords: ["game", "dialog", "color", "colour", "accent", "speaker", "character", "nametag", "tint", "nlr"],
+        graphKinds: ["event", "function", "macro"],
+        isPure: true,
+        isLatent: false,
+        pins: [
+            {
+                id: "color",
+                kind: "output",
+                semantic: "data",
+                valueType: BLUEPRINT_VALUE_TYPE_RGBA_COLOR,
+                label: "Color",
+            },
+        ],
+        execute(ctx) {
+            return {
+                outputValues: {
+                    color: requireHostApi(ctx).game.getSpeakerColor(),
+                },
+            };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER,
+        displayName: "Get Character",
+        category: "Game",
+        keywords: ["game", "character", "cast", "name", "color", "colour", "avatar", "portrait", "profile", "nlr"],
+        graphKinds: ["event", "function", "macro"],
+        isPure: true,
+        isLatent: false,
+        pins: [
+            {
+                id: "name",
+                kind: "output",
+                semantic: "data",
+                valueType: "string",
+                label: "Name",
+            },
+            {
+                id: "characterColor",
+                kind: "output",
+                semantic: "data",
+                valueType: BLUEPRINT_VALUE_TYPE_RGBA_COLOR,
+                label: "Color",
+            },
+            {
+                id: "characterAvatar",
+                kind: "output",
+                semantic: "data",
+                valueType: BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
+                label: "Avatar",
+            },
+            // The visible half of "this character was deleted". Without it a dangling reference is
+            // indistinguishable from a character whose name is blank and whose colour is unset -
+            // both would read as empty string / default white with nothing to branch on.
+            {
+                id: "found",
+                kind: "output",
+                semantic: "data",
+                valueType: "boolean",
+                label: "Found",
+            },
+        ],
+        inspectorParams: [
+            {
+                key: "characterId",
+                label: "Character",
+                kind: "select",
+                dynamicOptionsSource: "characters",
+            },
+        ],
+        execute(ctx) {
+            const characterId = String(ctx.params.characterId ?? "").trim();
+            const character = characterId ? requireHostApi(ctx).game.getCharacter(characterId) : null;
+            return {
+                outputValues: {
+                    name: character?.name ?? "",
+                    characterColor: blueprintCharacterColorOrDefault(character?.color),
+                    characterAvatar: character?.avatar ?? null,
+                    found: Boolean(character),
                 },
             };
         },
@@ -618,6 +996,51 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         },
     },
     {
+        type: BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ_BY_ID,
+        displayName: "Has Read Text",
+        category: "Game",
+        keywords: ["game", "text", "read", "heard", "seen", "voice", "line", "extra", "unlock", "id", "nlr"],
+        graphKinds: ["event", "function", "macro"],
+        // Pure, so a voice EXTRA list item can bind its locked look directly
+        // instead of running a graph per row.
+        isPure: true,
+        isLatent: false,
+        pins: [
+            {
+                id: "textId",
+                kind: "input",
+                semantic: "data",
+                valueType: "string",
+                label: "Text Id",
+                allowInlineLiteral: true,
+            },
+            {
+                id: "isRead",
+                kind: "output",
+                semantic: "data",
+                valueType: "boolean",
+                label: "Has Read",
+            },
+        ],
+        execute(ctx) {
+            const wired = resolveDataPinValue(ctx.graph, ctx.node.id, "textId", ctx.params, ctx.blueprintLocals, 0, {
+                hostAdapter: ctx.hostAdapter,
+                eventPayload: ctx.eventPayload,
+                listItemScope: ctx.listItemScope,
+                instanceKey: ctx.instanceKey,
+                executionOwner: ctx.executionOwner,
+            });
+            const textId = String(wired ?? "").trim();
+            return {
+                outputValues: {
+                    // An empty id is "not read" rather than an error: a row whose
+                    // voice unit was never picked simply stays locked.
+                    isRead: textId ? requireHostApi(ctx).game.isTextRead(textId) : false,
+                },
+            };
+        },
+    },
+    {
         type: BLUEPRINT_NODE_TYPE_GAME_CLEAR_TEXT_READ,
         displayName: "Clear Text Read",
         category: "Game",
@@ -668,11 +1091,13 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_GAME_START_STORY,
         displayName: "Start Game",
         category: "Game",
+        // See startStoryTargetPins: the optional pins are what let a data-driven
+        // screen (a recollection list) choose the scene at runtime.
         keywords: ["game", "start", "story", "scene", "nlr", "preview"],
         graphKinds: [...GRAPH_KINDS],
         isPure: false,
         isLatent: true,
-        pins: [execIn],
+        pins: [execIn, ...startStoryTargetPins],
         inspectorParams: [
             {
                 key: "storyId",
@@ -692,15 +1117,20 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             },
         ],
         async execute(ctx) {
-            const storyId = String(ctx.params.storyId ?? "").trim();
-            const sceneId = String(ctx.params.sceneId ?? "").trim();
+            const storyId = resolveStartStoryTarget(ctx, "storyId");
+            const sceneId = resolveStartStoryTarget(ctx, "sceneId");
+            const startBlockId = resolveStartStoryTarget(ctx, "startBlockId");
             if (!storyId) {
-                throw new BlueprintGraphExecutionError("Pick a Story", ctx.node.id);
+                throw new BlueprintGraphExecutionError("Pick a Story, or wire a Story Id", ctx.node.id);
             }
             if (!sceneId) {
-                throw new BlueprintGraphExecutionError("Pick a Scene", ctx.node.id);
+                throw new BlueprintGraphExecutionError("Pick a Scene, or wire a Scene Id", ctx.node.id);
             }
-            await requireHostApi(ctx).game.startStory({ storyId, sceneId });
+            await requireHostApi(ctx).game.startStory({
+                storyId,
+                sceneId,
+                ...(startBlockId ? { startBlockId } : {}),
+            });
             return { nextPort: undefined };
         },
     },
@@ -815,6 +1245,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         },
     },
     ...gamePreferenceBlueprintNodes,
+    ...trackVolumeBlueprintNodes,
     {
         type: BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
         displayName: "Save Game",
@@ -940,4 +1371,5 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             };
         },
     },
+    ...autoSaveBlueprintNodes,
 ];

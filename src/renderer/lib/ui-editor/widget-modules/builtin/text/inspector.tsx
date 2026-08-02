@@ -94,7 +94,13 @@ function TextAppearanceField(props: CustomFieldProps<UIInspectorData>) {
   const { documentService } = props.data;
   const element = props.data.element;
 
+  // Deferred while read-only - see `ContainerAppearanceField` for why this key-filling pass must not
+  // run inside a frozen project. This one also CREATES the model when a text element predates it,
+  // which made selecting any such element on a frozen workspace look like a save failure.
   useLayoutEffect(() => {
+    if (props.readOnly) {
+      return;
+    }
     const f = getTextProps(element);
     const next = isUsableAppearanceModel(appearance)
       ? ensureTextAppearanceHasAllKeys(appearance, f)
@@ -104,7 +110,7 @@ function TextAppearanceField(props: CustomFieldProps<UIInspectorData>) {
         appearance: next,
       });
     }
-  }, [appearance, documentService, element]);
+  }, [appearance, documentService, element, props.readOnly]);
 
   const panelAppearance = isUsableAppearanceModel(appearance) ? appearance : createInitialTextAppearance(flat);
 
@@ -120,6 +126,7 @@ function TextAppearanceField(props: CustomFieldProps<UIInspectorData>) {
       }}
       inspectorData={props.data}
       draftResetKey={element.id}
+      readOnly={props.readOnly}
     />
   );
 }

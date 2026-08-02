@@ -1,7 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
 import {
-    Play,
-    Hammer,
     Package,
     FileText,
     FolderOpen,
@@ -9,25 +6,15 @@ import {
     Archive,
 } from "lucide-react";
 import { ModuleAction, ModuleActionGroup } from "../types";
-import { cn } from "@/lib/utils/cn";
 import { Workspace } from "@/lib/workspace/workspace";
 import { UIService } from "@/lib/workspace/services/ui";
 import { Services } from "@/lib/workspace/services/services";
 import { openWelcomeTab } from "../welcome/openWelcomeTab";
 import { openAboutTab } from "../about/openAboutTab";
 import { getInterface } from "@/lib/app/bridge";
+import { getProjectWriteFreeze } from "@/lib/app/writeFreeze";
 import { Separator } from "../../registry/types";
-import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
-import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
 import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
-import { PreviewService } from "@/lib/workspace/services/core/PreviewService";
-import { BuildService } from "@/lib/workspace/services/core/BuildService";
-import type { DevModeStatus } from "@shared/types/devMode";
-import type { PreviewStatus } from "@shared/types/gameRuntime";
-import type { GameBuildStatus } from "@shared/types/gameBuild";
-import { useWorkspace } from "../../context";
-import { flushUIDocAndGraphIfDirty } from "./flushDevModeAssets";
-import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "./runtimeActionStatus";
 import { openBuildDialog } from "./BuildDialog";
 import { translate, translateN } from "@/lib/i18n";
 
@@ -37,164 +24,39 @@ import { translate, translateN } from "@/lib/i18n";
  */
 
 /**
- * Run project action
- * Executes the current project
- */
-/**
- * Dev mode action
- * Launches dev mode window for the current project
- */
-export const devModeAction: ModuleAction = {
-    id: "narraleaf-studio:dev-mode",
-    icon: <DevModeActionIcon />,
-    tooltip: "Dev Mode",
-    tooltipKey: "actions.devMode.tooltip",
-    onClick: (workspace: Workspace) => {
-        const devModeService = workspace.getContext().services.get<DevModeService>(Services.DevMode);
-        const status = devModeService.getStatus();
-        if (isDevModeRuntimeActive(status)) {
-            void devModeService.stop();
-            return;
-        }
-        void (async () => {
-            try {
-                await flushUIDocAndGraphIfDirty(workspace);
-            } catch (e) {
-                console.error("[DevMode] flush before launch failed", e);
-            }
-            await devModeService.launch({
-                kind: "surface",
-                surfaceId: MAIN_APP_SURFACE_ID,
-            });
-        })();
-    },
-    order: 1,
-};
-
-function DevModeActionIcon() {
-    const { context } = useWorkspace();
-    const [status, setStatus] = useState<DevModeStatus>("idle");
-
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const devModeService = context.services.get<DevModeService>(Services.DevMode);
-        setStatus(devModeService.getStatus());
-        const unsub = devModeService.onStatusChanged(setStatus);
-        return () => {
-            unsub();
-        };
-    }, [context]);
-
-    // Anything but the error tint inherits the button's own text color: idle it is
-    // `text-fg-muted` (and gains the hover brighten), running it is the white of the
-    // danger-filled stop button. Pinning a color here would defeat both.
-    const iconClass = useMemo(() => (status === "error" ? "text-danger" : ""), [status]);
-
-    return <Play className={cn("w-4 h-4", iconClass)} />;
-}
-
-export const previewAction: ModuleAction = {
-    id: "narraleaf-studio:preview",
-    icon: <PreviewActionIcon />,
-    tooltip: "Preview",
-    tooltipKey: "actions.preview.tooltip",
-    onClick: (workspace: Workspace) => {
-        const previewService = workspace.getContext().services.get<PreviewService>(Services.Preview);
-        const status = previewService.getStatus();
-        if (isPreviewRuntimeActive(status)) {
-            void previewService.stop();
-            return;
-        }
-        void previewService.launch({
-            kind: "surface",
-            surfaceId: MAIN_APP_SURFACE_ID,
-        });
-    },
-    order: 2,
-};
-
-function PreviewActionIcon() {
-    const { context } = useWorkspace();
-    const [status, setStatus] = useState<PreviewStatus>("idle");
-
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const previewService = context.services.get<PreviewService>(Services.Preview);
-        setStatus(previewService.getStatus());
-        const unsub = previewService.onStatusChanged(setStatus);
-        return () => {
-            unsub();
-        };
-    }, [context]);
-
-    // See DevModeActionIcon: every state but "error" inherits the button's text color.
-    const iconClass = useMemo(() => (status === "error" ? "text-danger" : ""), [status]);
-
-    return <Hammer className={cn("w-4 h-4", iconClass)} />;
-}
-
-/**
  * Build project action
  * Opens the production build dialog for the current project.
+ *
+ * Dev Mode and Preview are no longer standalone actions — the toolbar's Run split-button
+ * ({@link RunControl}) owns launching and stopping both. **Production Build is now folded into that
+ * button's dropdown too**, to make room in the title bar for the version control widget (plan
+ * 2026-07-28-002 §3), so nothing renders this action's icon in the bar any more.
+ *
+ * It stays REGISTERED regardless, and that is load-bearing rather than tidiness: the macOS native
+ * Dev ▸ Build menu item resolves through the action registry (`useMenuActionHandler` looks the id up
+ * and calls this `onClick`), the command palette derives its Build entry from the same registry, and
+ * `freezeActionPolicy` decides through it that a frozen workspace cannot build. Unregistering would
+ * have broken all three, and only on macOS for the first. `ActionBar` skips rendering it by id
+ * instead - see `ACTIONS_OWNED_BY_RUN_CONTROL` there.
+ *
+ * The icon is a plain glyph, not a live status component. The build's status - and the done/failed
+ * notifications that used to be raised from inside the icon - moved to {@link RunControl}, which is
+ * always mounted: an effect living in an icon fired once per place the icon was rendered, so a build
+ * that finished while the command palette was open announced itself twice.
  */
 export const buildAction: ModuleAction = {
     id: "narraleaf-studio:build",
-    icon: <BuildActionIcon />,
+    icon: <Package className="w-4 h-4" />,
     tooltip: "Build project",
     tooltipKey: "actions.build.tooltip",
+    // Standalone, so it carries its own palette category — it belongs beside Run Dev Mode and Run
+    // Preview, which is where an author looks for it.
+    paletteCategoryKey: "workspace.shell.commandPalette.categoryRun",
     onClick: (workspace: Workspace) => {
         void openBuildDialog(workspace);
     },
     order: 4,
 };
-
-function BuildActionIcon() {
-    const { context } = useWorkspace();
-    const [status, setStatus] = useState<GameBuildStatus>("idle");
-
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const buildService = context.services.get<BuildService>(Services.Build);
-        const uiService = context.services.get<UIService>(Services.UI);
-        let previous = buildService.getStatus();
-        setStatus(previous);
-        const unsub = buildService.onStateChanged(state => {
-            setStatus(state.status);
-            if (state.status !== previous) {
-                if (state.status === "done") {
-                    uiService.showNotification(translate("build.toast.done"), "success");
-                } else if (state.status === "error") {
-                    uiService.showNotification(state.error ?? translate("build.toast.failed"), "error");
-                }
-            }
-            previous = state.status;
-        });
-        return () => {
-            unsub();
-        };
-    }, [context]);
-
-    // Unlike Dev Mode and Preview, a running build does not turn its button into a
-    // stop control, so the busy state brightens the icon itself against the plain
-    // button background.
-    const iconClass = useMemo(() => {
-        if (status === "error") {
-            return "text-danger";
-        }
-        if (status === "preparing" || status === "compiling" || status === "packaging") {
-            return "text-fg";
-        }
-        return "";
-    }, [status]);
-
-    return <Package className={cn("w-4 h-4", iconClass)} />;
-}
 
 /**
  * File action group
@@ -259,12 +121,21 @@ export const fileActionGroup: ModuleActionGroup = {
                     // Refresh the plugin dependency table so the exported package
                     // records exactly which plugins this project needs. Best-effort:
                     // a scan failure must not block the export itself.
-                    try {
-                        await context.services
-                            .get<ProjectDependencyService>(Services.ProjectDependency)
-                            .rescanAndPersist();
-                    } catch (error) {
-                        console.warn("[export] plugin dependency rescan failed", error);
+                    //
+                    // Deferred rather than attempted while the project is frozen. Exporting is
+                    // one of the two things File keeps alive on a frozen workspace, and nobody
+                    // asked for this write - so on a frozen project it only raised "Nothing is
+                    // being saved right now" about the export's own bookkeeping. The table
+                    // already on disk is exported instead, and the rescan lands on the next
+                    // export once the workspace is writable again.
+                    if (getProjectWriteFreeze() === null) {
+                        try {
+                            await context.services
+                                .get<ProjectDependencyService>(Services.ProjectDependency)
+                                .rescanAndPersist();
+                        } catch (error) {
+                            console.warn("[export] plugin dependency rescan failed", error);
+                        }
                     }
 
                     uiService.showNotification(translate("actions.export.chooseFolder"), "info");
@@ -338,7 +209,7 @@ export const helpActionGroup: ModuleActionGroup = {
  * All global actions
  * Array of all actions that should be registered globally
  */
-export const globalActions: ModuleAction[] = [devModeAction, previewAction, buildAction];
+export const globalActions: ModuleAction[] = [buildAction];
 
 /**
  * All global action groups

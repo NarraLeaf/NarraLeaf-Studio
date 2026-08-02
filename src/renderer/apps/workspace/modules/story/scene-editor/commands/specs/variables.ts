@@ -8,7 +8,7 @@ import { defineStoryCommand, type ResolvedArgsOf, type StoryCommandParamSpec, ty
 
 /**
  * Variables: `/set` and its sugars `/inc` `/dec` `/toggle` `/reset`, plus the three declarations
- * `/local` `/var` `/persis`.
+ * `/local` `/save` `/global`.
  *
  * The sugars all lower to the identical `setVariable` block `/set` builds - they differ only in the
  * expression they synthesize - so the compiler and inspector see one shape. The declarations build no
@@ -54,7 +54,19 @@ function withAssignedExpression(
     return { ...payload, expression };
 }
 
-/** `/set gold "text"` where `gold` is a number - only checkable once both params have resolved. */
+/**
+ * `/set gold "text"` where `gold` is a number - only checkable once both params have resolved.
+ *
+ * The issue carries the TARGET's name as well as the expression source. The message names the
+ * variable as the thing that holds a type, and the variable is the only side that can be said to hold
+ * one - reporting `assigned.source` in that role produced the self-contradicting
+ * `This produces string, but "upper("a")" holds number.`
+ *
+ * That wording was wrong from the day it was written and simply unreachable until this round:
+ * `inferStoryExpressionType` used to answer `"number"` for every function call, so a function result
+ * always fitted a number variable and `/set gold upper("a")` never reached this branch. The table in
+ * `FUNCTION_RESULT_TYPES` made the path live, which is when the sentence first got read.
+ */
 function validateAssignmentType(
     args: { readonly variable?: StoryCommandValue; readonly value?: StoryCommandValue },
     ctx: StoryCommandValidateContext,
@@ -72,13 +84,23 @@ function validateAssignmentType(
         return [];
     }
     const span = ctx.spanOf("value");
-    return span ? [{ code: "expressionTypeMismatch", span, value: assigned.source, expected: target.valueType, received: inferred }] : [];
+    return span
+        ? [{
+            code: "expressionTypeMismatch",
+            span,
+            value: assigned.source,
+            variable: target.name,
+            expected: target.valueType,
+            received: inferred,
+        }]
+        : [];
 }
 
 export const set = defineStoryCommand({
     id: "set",
     token: "set",
     category: "data",
+    examples: ["/set gold 100", "/set gold gold + 1", "/set met true"],
     params: {
         variable: VARIABLE,
         value: { hint: "expressionValue", type: { kind: "expression", assignTo: "variable" }, positional: true, greedy: true, core: true },
@@ -123,6 +145,7 @@ export const inc = defineStoryCommand({
     token: "inc",
     aliases: ["add"],
     category: "data",
+    examples: ["/inc gold", "/inc gold 5"],
     params: {
         variable: VARIABLE,
         by: { hint: "amount", type: { kind: "expression" }, positional: true, greedy: true },
@@ -135,6 +158,7 @@ export const dec = defineStoryCommand({
     token: "dec",
     aliases: ["sub"],
     category: "data",
+    examples: ["/dec gold 5"],
     params: {
         variable: VARIABLE,
         by: { hint: "amount", type: { kind: "expression" }, positional: true, greedy: true },
@@ -147,6 +171,7 @@ export const toggle = defineStoryCommand({
     token: "toggle",
     aliases: ["flip"],
     category: "data",
+    examples: ["/toggle met"],
     params: { variable: VARIABLE },
     build(args, ctx) {
         const { block, base, payload, self, name } = setVariableBase(ctx.generateId, args.variable);
@@ -164,6 +189,7 @@ export const reset = defineStoryCommand({
     id: "reset",
     token: "reset",
     category: "data",
+    examples: ["/reset gold"],
     params: { variable: VARIABLE },
     build(args, ctx) {
         const { block, base, payload } = setVariableBase(ctx.generateId, args.variable);
@@ -199,7 +225,7 @@ export function defaultForType(valueType: StoryVariableValueType): StoryLiteralV
 // ---------------------------------------------------------------------------
 
 /**
- * The params every `/local` `/var` `/persis` line takes - identical across all three, because the
+ * The params every `/local` `/save` `/global` line takes - identical across all three, because the
  * only thing that differs between them is the scope, and the scope is the command name.
  *
  * `default` is a {@link StoryCommandParamType constant}, not an expression: a declaration runs once,
@@ -258,11 +284,19 @@ export function declarationFromArgs(args: Readonly<Record<string, StoryCommandVa
     if (!name) {
         return null;
     }
-    const defaultValue = args.default?.kind === "literal" ? args.default.value : undefined;
+    const declaredType = args.type?.kind === "enum" ? args.type.value as StoryVariableValueType : undefined;
+    // An explicit `type=string` outranks how the value happens to read: `/local x "[1,2]" type=string`
+    // asked for the characters, so the source text goes in rather than the list `parseLiteral` made of
+    // them. Only `string` is undone, and deliberately so - `/local flag 1 type=bool` has always stored
+    // the 1 it was handed, and coercing every default to its declared type is a different change with
+    // its own migration question. This one only refuses to CREATE a mismatch the reading introduced.
+    const defaultValue = args.default?.kind === "literal"
+        ? (declaredType === "string" ? args.default.source : args.default.value)
+        : undefined;
     return {
         name,
         // An explicit `type=` wins; otherwise the default's own type is the best evidence available.
-        valueType: args.type?.kind === "enum" ? args.type.value as StoryVariableValueType : inferDeclaredType(defaultValue),
+        valueType: declaredType ?? inferDeclaredType(defaultValue),
         defaultValue,
         description: args.desc?.kind === "text" && args.desc.value.trim() ? args.desc.value.trim() : undefined,
     };
@@ -271,6 +305,10 @@ export function declarationFromArgs(args: Readonly<Record<string, StoryCommandVa
 /**
  * The type of a declaration with no explicit `type=`. Boolean is the fallback for a bare
  * `/local met` because a flag is what an author declares without thinking about types at all.
+ *
+ * The trailing `json` arm was unreachable until `parseLiteral` learned to read a bracketed default:
+ * every value it could produce was a string, a number or a boolean. A list or an object now lands
+ * here, and lands on the arm that was already waiting for it - `/local inv "[1, 2]"` needs no `type=`.
  */
 function inferDeclaredType(defaultValue: StoryLiteralValue | undefined): StoryVariableValueType {
     if (typeof defaultValue === "number") {
@@ -317,26 +355,42 @@ export const declareLocal = defineStoryCommand({
     token: "local",
     aliases: ["scenevar"],
     category: "data",
+    // The json line is quoted because a space still splits a token - quoting is the grouping syntax the
+    // command line already has, and the one an author needs for any default with a space in it.
+    examples: ["/local hp 100", "/local hp 100 type=number desc='Player health'", "/local inv \"[1, 2]\" type=json"],
     params: declarationParams(),
     build: buildDeclaration("scene"),
     validate: validateDeclaration("scene"),
 });
 
+/**
+ * `/save`, not `/var` (§3.6): `var` is every programming language's word for "a variable", so an
+ * author reaches for it to declare a variable of ANY scope - the strongest intuition trap in the whole
+ * set. `/var` stays as an alias, because muscle memory and every existing note that spells it must
+ * keep resolving.
+ *
+ * The token is reserved for this and nothing else (§12.5): **`/save` declares a save-scoped variable;
+ * triggering a save is not a story command and will not become one** - saving is a runtime/UI concern,
+ * and a later `/save` meaning "write a save file" would silently re-point every line already using it.
+ */
 export const declareVar = defineStoryCommand({
     id: "declareVar",
-    token: "var",
-    aliases: ["savedvar"],
+    token: "save",
+    aliases: ["var", "savedvar"],
     category: "data",
+    examples: ["/save chapter 1 type=number"],
     params: declarationParams(),
     build: buildDeclaration("saved"),
     validate: validateDeclaration("saved"),
 });
 
+/** `/global`, not `/persis` (§3.6): `persis` is a truncation, not a word - there is nothing to guess. */
 export const declarePersis = defineStoryCommand({
     id: "declarePersis",
-    token: "persis",
-    aliases: ["persistent", "global"],
+    token: "global",
+    aliases: ["persis", "persistent"],
     category: "data",
+    examples: ["/global seenIntro false type=boolean"],
     params: declarationParams(),
     build: buildDeclaration("persistent"),
     validate: validateDeclaration("persistent"),

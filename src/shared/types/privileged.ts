@@ -1,5 +1,6 @@
-import type { FileDetails, FileStat } from "@shared/utils/fs";
+import type { FileDetails, FileStat, FileEntry } from "@shared/utils/fs";
 import type { FsRequestResult } from "./os";
+import type { FsTextEncoding } from "./textEncoding";
 import type { PluginPermissionRequest } from "./pluginPermissions";
 
 export const PrivilegedCapability = {
@@ -17,14 +18,16 @@ export type PrivilegedActor =
     | { kind: "plugin"; pluginId: string; version?: string };
 
 export type PrivilegedFileSystemCall =
-    | { operation: "selectFile"; filters: string[]; multiple: boolean }
+    /** `title` is the dialog's own title bar. Absent keeps the historical default, so existing callers
+     *  are unaffected; every new caller should say what it is asking the author to pick. */
+    | { operation: "selectFile"; filters: string[]; multiple: boolean; title?: string }
     | { operation: "selectSaveFile"; defaultFileName: string; filters: string[] }
     | { operation: "stat"; path: string }
     | { operation: "list"; path: string }
     | { operation: "details"; path: string }
-    | { operation: "requestRead"; path: string; raw: false; encoding: BufferEncoding }
+    | { operation: "requestRead"; path: string; raw: false; encoding: FsTextEncoding }
     | { operation: "requestRead"; path: string; raw: true }
-    | { operation: "requestWrite"; path: string; raw: false; encoding: BufferEncoding }
+    | { operation: "requestWrite"; path: string; raw: false; encoding: FsTextEncoding }
     | { operation: "requestWrite"; path: string; raw: true }
     | { operation: "ensureRegularFile"; path: string; data: string; encoding?: BufferEncoding }
     | { operation: "writeFileNoFollow"; path: string; data: string; encoding?: BufferEncoding }
@@ -49,7 +52,7 @@ export type PrivilegedFileSystemCallPayload = PrivilegedFileSystemCall & {
 
 export type PrivilegedFileSystemCallResult =
     | FsRequestResult<FileStat>
-    | FsRequestResult<FileStat[]>
+    | FsRequestResult<FileEntry[]>
     | FsRequestResult<FileDetails>
     | FsRequestResult<string>
     | FsRequestResult<string[]>

@@ -28,7 +28,7 @@ function Swatch(props: { color: string; active?: boolean; onPick: (color: string
     return (
         <button
             type="button"
-            className={`h-5 w-5 rounded border transition-transform hover:scale-110 ${
+            className={`h-5 w-5 rounded-md border transition-transform hover:scale-110 ${
                 props.active ? "border-fg ring-2 ring-fg/80 ring-offset-1 ring-offset-surface-raised" : "border-edge-strong"
             }`}
             style={{ backgroundColor: props.color }}
@@ -78,18 +78,19 @@ export function ProjectPalette(props: {
                     </div>
                 </div>
             ))}
-            <div className="mb-2">
-                <div className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle">{t("properties.palette.recent")}</div>
-                {recent.length > 0 ? (
+            {/* Recent is a history, so with no history there is no section — a heading over a line
+                saying the history is empty is the heading twice. It appears the first time a colour
+                is committed from the custom picker below. */}
+            {recent.length > 0 && (
+                <div className="mb-2">
+                    <div className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle">{t("properties.palette.recent")}</div>
                     <div className="flex flex-wrap gap-1">
                         {recent.map(color => (
                             <Swatch key={color} color={color} active={colorKey(color) === activeKey} onPick={pickSwatch} />
                         ))}
                     </div>
-                ) : (
-                    <div className="text-2xs text-fg-subtle">{t("properties.palette.noRecent")}</div>
-                )}
-            </div>
+                </div>
+            )}
             <div className="mt-2 flex items-center gap-2 border-t border-edge pt-2">
                 <span className="text-2xs font-medium tracking-wide text-fg-subtle">{t("properties.palette.custom")}</span>
                 <ColorPickerTrigger

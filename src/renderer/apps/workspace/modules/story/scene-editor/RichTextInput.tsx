@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import type { CSSProperties, KeyboardEvent } from "react";
-import type { StoryInterpolationRef, StoryRichRun } from "@shared/types/story";
+import type { ClipboardEvent, CSSProperties, KeyboardEvent } from "react";
+import type { StoryInlineEvent, StoryInterpolationRef, StoryRichRun } from "@shared/types/story";
 import type { StoryCaretTarget } from "./storySceneEditorTypes";
 import { parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useTranslation } from "@/lib/i18n";
@@ -38,6 +38,12 @@ export type InterpolationClickInfo = {
     anchor: { top: number; left: number; bottom: number };
 };
 
+export type EventClickInfo = {
+    unit: number;
+    value: StoryInlineEvent;
+    anchor: { top: number; left: number; bottom: number };
+};
+
 export type RichTextInputHandle = {
     focus: () => void;
     toggleMark: (mark: "bold" | "italic") => void;
@@ -48,6 +54,10 @@ export type RichTextInputHandle = {
     insertInterpolation: (interp: StoryInterpolationRef) => void;
     updateInterpolationAt: (unit: number, interp: StoryInterpolationRef) => void;
     removeInterpolationAt: (unit: number) => void;
+    /** Insert an event chip; returns the click-info to open its editor right away, or null if it did not land. */
+    insertEvent: (event: StoryInlineEvent) => EventClickInfo | null;
+    updateEventAt: (unit: number, event: StoryInlineEvent) => void;
+    removeEventAt: (unit: number) => void;
     /**
      * Current rich runs read straight from the live editor DOM (bypasses any not-yet-flushed draft).
      * Returns `null` when the editor is not mounted so callers fall back to their own state instead of
@@ -89,6 +99,16 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
      * hands to the row being entered.
      */
     onArrowOut?: (direction: "up" | "down" | "left" | "right", caretX: number | null) => void;
+    /**
+     * `Tab` / `Shift+Tab` with the caret in the field — the parent moves focus to the style toolbar
+     * ("Tab advances within a row"). `backwards` is Shift+Tab, which enters the strip from its far
+     * end, the way stepping backwards into any composite control does.
+     *
+     * Returns whether the key was taken. It has to be answerable at press time rather than assumed:
+     * a row whose toolbar has scrolled out of its pane renders no strip at all, and swallowing Tab
+     * there would leave the key doing nothing with no way to tell why.
+     */
+    onTab?: (backwards: boolean) => boolean;
     /** Backspace pressed with a collapsed caret at the start of an empty line (row demote / delete). */
     onBackspaceAtEmptyStart?: () => void;
     /**
@@ -97,12 +117,37 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
      * Fires for moves *within* the row too, which never reach {@link onArrowOut}.
      */
     onGoalColumnInvalidated?: () => void;
+    /**
+     * A paste carrying more than one line arrived while this row was open for editing.
+     *
+     * The split is here rather than at the handler because it is a fact about the field, not about the
+     * story: **a row is one line.** A single-line paste is left entirely to the browser — the caret,
+     * the marks the text lands in, and this row's own undo stack are all things Chromium gets right
+     * and a re-implementation would only get differently. More than one line is text this field cannot
+     * hold, so it goes to whoever can make rows out of it.
+     *
+     * Returns whether the caller took it; only then is the browser's own paste cancelled, so a handler
+     * that declines still leaves the author with a working paste.
+     */
+    onMultiLinePaste?: (event: ClipboardEvent<HTMLDivElement>) => boolean;
     onPauseClick?: (info: PauseClickInfo) => void;
     onInterpolationClick?: (info: InterpolationClickInfo) => void;
+    onEventClick?: (info: EventClickInfo) => void;
     resolveInterpolationLabel?: ResolveInterpolationLabel;
     onActiveMarksChange?: (marks: ActiveMarks) => void;
+    /**
+     * Render the runs without making the element editable.
+     *
+     * The only property that actually stops typing: gating the commit path is not enough, because a
+     * `contentEditable` element lets the browser place the caret and apply keystrokes without asking
+     * Studio anything. Measured on a frozen workspace before this existed - a row took a whole typed
+     * sentence, showed it, and threw it away on thaw. Chips, marks and colours still render; the
+     * imperative `focus()` and the mount-time caret placement become no-ops.
+     */
+    readOnly?: boolean;
 }>(function RichTextInput(props, ref) {
     const { t } = useTranslation();
+    const readOnly = props.readOnly === true;
     const editorRef = useRef<HTMLDivElement | null>(null);
     const savedRange = useRef<{ start: number; end: number } | null>(null);
     const historyRef = useRef<RichTextHistory>(new RichTextHistory());
@@ -125,6 +170,8 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             pauseSeconds: seconds => t("story.richText.pauseSeconds", { seconds }),
             insertedValue: name => t("story.richText.insertedValue", { name }),
             valueFallback: t("story.richText.valueFallback"),
+            expressionEvent: t("story.richText.expressionEvent"),
+            soundEvent: t("story.richText.soundEvent"),
         },
     };
     const renderOptionsRef = useRef(renderOptions);
@@ -137,6 +184,10 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         }
         const runs = normalizeRuns(props.initialRuns);
         renderRunsToElement(el, runs, renderOptionsRef.current);
+        if (readOnly) {
+            // No focus and no caret: the point is that the author cannot start typing into it.
+            return;
+        }
         el.focus();
         // An explicit range means the author already selected this text in the read-only row and we
         // are carrying their selection across the swap into the editor; a goal column means they
@@ -346,6 +397,17 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             (event.shiftKey ? props.onRedoBeyondRow : props.onUndoBeyondRow)?.();
             return;
         }
+        if (event.key === "Tab" && props.onTab) {
+            // Hand the caret over BEFORE focus leaves. The toolbar gives the line back on Escape and
+            // every one of its commands applies to a selection, but a contentEditable that has lost
+            // focus has no selection left to read — `savedRange` is the only copy, and `onBlur` saves
+            // it too late for a handler that runs on this keystroke.
+            saveSelection();
+            if (props.onTab(event.shiftKey)) {
+                event.preventDefault();
+            }
+            return;
+        }
         if (event.key === "Escape") {
             event.preventDefault();
             props.onExit();
@@ -392,7 +454,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             edges.caretX,
         );
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [getCaretEdges, props.onArrowOut, props.onBackspaceAtEmptyStart, props.onExit, props.onEnter, props.onShiftEnter, props.onUndoBeyondRow, props.onRedoBeyondRow, undo, redo]);
+    }, [getCaretEdges, saveSelection, props.onArrowOut, props.onBackspaceAtEmptyStart, props.onExit, props.onEnter, props.onShiftEnter, props.onTab, props.onUndoBeyondRow, props.onRedoBeyondRow, undo, redo]);
 
     // Keep the toolbar's active state in sync as the caret / selection moves.
     useEffect(() => {
@@ -476,15 +538,15 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         emitChange();
     }, [emitChange, recordStructural]);
 
-    const insertRun = useCallback((run: StoryRichRun) => {
+    const insertRun = useCallback((run: StoryRichRun): number | null => {
         const el = editorRef.current;
         if (!el) {
-            return;
+            return null;
         }
         el.focus();
         const range = getSelectionUnitRange(el) ?? savedRange.current;
         if (!range) {
-            return;
+            return null;
         }
         recordStructural();
         const runs = spliceRuns(domToRuns(el), range.start, range.end, [run]);
@@ -492,15 +554,41 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         setSelectionUnitRange(el, range.start + 1, range.start + 1);
         savedRange.current = { start: range.start + 1, end: range.start + 1 };
         emitChange();
+        // The unit the run was spliced in at - callers auto-opening its editor need it.
+        return range.start;
     }, [emitChange, recordStructural]);
 
-    const insertPause = useCallback((pause: number | true) => insertRun({ pause }), [insertRun]);
-    const insertInterpolation = useCallback((interp: StoryInterpolationRef) => insertRun({ interpolation: interp }), [insertRun]);
+    const insertPause = useCallback((pause: number | true) => { insertRun({ pause }); }, [insertRun]);
+    const insertInterpolation = useCallback((interp: StoryInterpolationRef) => { insertRun({ interpolation: interp }); }, [insertRun]);
+    /**
+     * Insert an event chip and return the info needed to open its editor immediately (unit + the fresh
+     * chip's screen anchor), so the toolbar's insert-then-edit flow is one motion. Returns null when
+     * the insert did not land (no editor / no caret) or the rendered chip cannot be located.
+     */
+    const insertEvent = useCallback((event: StoryInlineEvent): EventClickInfo | null => {
+        const unit = insertRun({ event });
+        const el = editorRef.current;
+        if (unit === null || !el) {
+            return null;
+        }
+        // The just-rendered chip is the [data-event] at this unit offset; measure it for the anchor
+        // the popover positions against, mirroring the click path.
+        const chip = Array.from(el.querySelectorAll<HTMLElement>("[data-event]"))
+            .find(candidate => unitOffsetOfElement(el, candidate) === unit);
+        if (!chip) {
+            return null;
+        }
+        const rect = chip.getBoundingClientRect();
+        return { unit, value: event, anchor: { top: rect.top, left: rect.left, bottom: rect.bottom } };
+    }, [insertRun]);
 
     useImperativeHandle(ref, () => ({
         focus: () => {
             const el = editorRef.current;
-            if (!el) {
+            // Read-only: refuse focus outright. The parent still calls this from the toolbar and popover
+            // paths, and focusing a non-editable div would put a visible focus ring on something that
+            // takes no input.
+            if (!el || readOnly) {
                 return;
             }
             el.focus();
@@ -520,18 +608,22 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         insertInterpolation,
         updateInterpolationAt: (unit, interp) => spliceUnits(unit, 1, [{ interpolation: interp }], true),
         removeInterpolationAt: (unit) => spliceUnits(unit, 1, [], false),
+        insertEvent,
+        updateEventAt: (unit, event) => spliceUnits(unit, 1, [{ event }], true),
+        removeEventAt: (unit) => spliceUnits(unit, 1, [], false),
         getRuns: () => (editorRef.current ? domToRuns(editorRef.current) : null),
-    }), [applyMark, insertPause, insertInterpolation, spliceUnits]);
+    }), [applyMark, insertPause, insertInterpolation, insertEvent, readOnly, spliceUnits]);
 
     return (
         <div
             ref={editorRef}
             className={props.className}
             style={{ ...props.style, caretColor: caretColor ?? undefined }}
-            contentEditable
+            contentEditable={!readOnly}
             suppressContentEditableWarning
             role="textbox"
             aria-multiline="false"
+            aria-readonly={readOnly || undefined}
             data-placeholder={props.placeholder ?? ""}
             onClick={event => {
                 event.stopPropagation();
@@ -562,8 +654,36 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
                         });
                     }
                 }
+                const eventChip = (event.target as HTMLElement).closest?.("[data-event]") as HTMLElement | null;
+                if (el && eventChip && el.contains(eventChip) && props.onEventClick) {
+                    let value: StoryInlineEvent | null = null;
+                    try {
+                        value = JSON.parse(eventChip.dataset.event ?? "") as StoryInlineEvent;
+                    } catch {
+                        value = null;
+                    }
+                    if (value) {
+                        const rect = eventChip.getBoundingClientRect();
+                        props.onEventClick({
+                            unit: unitOffsetOfElement(el, eventChip),
+                            value,
+                            anchor: { top: rect.top, left: rect.left, bottom: rect.bottom },
+                        });
+                    }
+                }
             }}
             onInput={emitChange}
+            onPaste={event => {
+                if (readOnly || !props.onMultiLinePaste) {
+                    return;
+                }
+                if (!/\r?\n/.test(event.clipboardData.getData("text/plain").trim())) {
+                    return;
+                }
+                if (props.onMultiLinePaste(event)) {
+                    event.preventDefault();
+                }
+            }}
             onKeyUp={saveSelection}
             // Clicking into the text states a column as plainly as an arrow does. The row's own
             // mousedown never sees this: a contentEditable counts as an interactive target.

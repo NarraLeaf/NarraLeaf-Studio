@@ -2,7 +2,7 @@ import type {
     StoryActionPayload,
     StoryAnimationAsset,
     StoryBlock,
-    StoryCharacterVariantSelection,
+    StoryCharacterTagSelection,
     StoryConditionRef,
     StoryDocument,
     StoryLayerRef,
@@ -14,9 +14,11 @@ import type {
     StoryVariableRef,
 } from "@shared/types/story";
 import { isStoryExpressionEvaluable, resolveDisplayableTargetRef, savedVariableDefs, sceneVariableDefs } from "@shared/types/story";
+import type { StoryExpressionEnv } from "@shared/utils/storyExpressionEval";
 import { evaluateStoryExpression, isTruthy } from "@shared/utils/storyExpressionEval";
 import {
     getCharacterStageObjectName,
+    getPresetPosition,
     mergeTransformProps,
     normalizeObjectName,
     storyTransformRefFinalProps,
@@ -43,7 +45,7 @@ export type StageSnapshotDiagnostic = {
 export type StageSnapshotImageSource =
     | { type: "asset"; assetId: string }
     | { type: "color"; color: string }
-    | { type: "character"; characterId?: string; formName?: string; variants?: StoryCharacterVariantSelection };
+    | { type: "character"; characterId?: string; pose?: string; tags?: StoryCharacterTagSelection };
 
 /** Residual instant effects to re-apply on the pre-posed element ("clear" = the clear-op ran last). */
 export type StageSnapshotEffects = {
@@ -51,6 +53,27 @@ export type StageSnapshotEffects = {
     clip?: { clipPath: string } | "clear";
     filter?: { filter: string } | "clear";
     darkness?: number;
+};
+
+/**
+ * The stage camera's settled pose (`/camera` pan/zoom/rotate/darken), accumulated up to the target
+ * row. `null` means the camera is at its neutral pose (nothing to pre-pose). Structurally a sibling
+ * of {@link StageSnapshotDisplayable}: `props` are pre-posed like any displayable's transform, and
+ * `effects.darkness` re-applies through the same channel `/camera darken` drives at runtime.
+ *
+ * Scope caveat: the camera is a story-level singleton whose pose persists across scenes, but this
+ * snapshot is computed per scene, so only the launch scene's own `/camera` rows are reconstructed -
+ * a pose set in an earlier scene and carried across a `jump` is not (see the WI-2 report).
+ */
+export type StageSnapshotCamera = {
+    /**
+     * Settled NLR transform props (position/zoom/rotation) - pre-posed via
+     * setDisplayableTransformProps. A `/camera motion` row contributes its animation's settled end
+     * state here, through the same `storyTransformRefFinalProps` a displayable's motion uses.
+     */
+    props: Record<string, unknown>;
+    /** Camera darkness (0-1), the only `/camera` effect; re-applied as `camera.darken(d, 0)`. */
+    effects: StageSnapshotEffects;
 };
 
 export type StageSnapshotDisplayable = {
@@ -87,10 +110,24 @@ export type StoryStageSnapshot = {
     /** Explicitly-assigned variable values (storage key → value). */
     sceneVariables: Record<string, StoryLiteralValue>;
     savedVariables: Record<string, StoryLiteralValue>;
+    /** Settled stage-camera pose accumulated within this scene, or null if neutral. */
+    camera: StageSnapshotCamera | null;
     /** True when the target sits inside an NVL container. */
     nvl: boolean;
     diagnostics: StageSnapshotDiagnostic[];
 };
+
+/**
+ * Lower bound on camera zoom (a zero/negative scale is a broken transform, not a shot). Mirrors the
+ * compiler's `MIN_CAMERA_ZOOM`: the pose is pre-posed straight onto the camera, bypassing the
+ * `compileCameraAction` clamp, so it must be clamped here too.
+ */
+const MIN_CAMERA_ZOOM = 0.05;
+
+/** A finite number or the neutral fallback - a NaN reaching a Transform prop silently kills the animation. */
+function finiteOr(value: number | undefined, fallback: number): number {
+    return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
 
 export function computeStoryStageSnapshot(input: {
     document: StoryDocument;
@@ -130,6 +167,8 @@ class SnapshotWalker {
     private backgroundProps: Record<string, unknown> = {};
     private backgroundEffects: StageSnapshotEffects = {};
     private builtinLayerProps = { backgroundLayer: {} as Record<string, unknown>, displayableLayer: {} as Record<string, unknown> };
+    /** Story-level camera pose accumulated within this scene; null until a `/camera` op sets one. */
+    private camera: StageSnapshotCamera | null = null;
     private nvl = false;
     private reachedTarget = false;
 
@@ -173,6 +212,7 @@ class SnapshotWalker {
             builtinLayerProps: this.builtinLayerProps,
             sceneVariables: this.assignedScene,
             savedVariables: this.assignedSaved,
+            camera: this.camera,
             nvl: this.nvl,
             diagnostics: this.diagnostics,
         };
@@ -231,7 +271,9 @@ class SnapshotWalker {
                 this.visitList(block.childrenIds, insideNvl);
                 return;
             }
-            if (block.payload.control === "repeat" && (block.payload.times ?? 1) !== 1) {
+            if (block.payload.control === "repeat" && (block.payload.until !== undefined || (block.payload.times ?? 1) !== 1)) {
+                // A conditional loop says the same thing more strongly: how many times it would have
+                // run is not knowable without running it, so the snapshot walks the body exactly once.
                 this.diagnostic(block.id, "Preview applies repeated groups once.");
             }
             this.visitList(block.childrenIds, insideNvl);
@@ -243,8 +285,8 @@ class SnapshotWalker {
             return;
         }
 
-        // code / note / declaration: no stage effect (declarations are authoring metadata; their
-        // defaults already seeded the variable store above).
+        // note / declaration: no stage effect (declarations are authoring metadata; their defaults
+        // already seeded the variable store above).
     }
 
     private visitChoice(block: Extract<StoryBlock, { kind: "nodeAction" }>, insideNvl: boolean): void {
@@ -298,7 +340,7 @@ class SnapshotWalker {
             // Unlike the blueprint branch below, this one really evaluates: the preview owns a variable
             // store, and the expression evaluator is the same pure function the compiler emits - so the
             // branch the author sees previewed is the branch the game will take from the same state.
-            return isTruthy(evaluateStoryExpression(condition.expression.ast, ref => this.readVariable(ref, blockId)));
+            return isTruthy(evaluateStoryExpression(condition.expression.ast, this.expressionEnv(blockId)));
         }
         if (condition.kind === "blueprint") {
             // The preview follows the Studio-computed path when available; a blueprint condition that
@@ -365,11 +407,17 @@ class SnapshotWalker {
             case "layer":
                 this.applyLayer(block, payload);
                 return;
+            case "camera":
+                this.applyCamera(block, payload);
+                return;
             case "setVariable":
                 this.applySetVariable(block, payload);
                 return;
             case "video":
                 this.diagnostic(block.id, "Videos are not previewed.");
+                return;
+            case "vfx":
+                this.diagnostic(block.id, "Ambience effects are not previewed.");
                 return;
             case "blueprint":
                 this.diagnostic(block.id, "Story Action Blueprint effects are not simulated in the preview.");
@@ -381,6 +429,20 @@ class SnapshotWalker {
     }
 
     private applyCharacter(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "character" }>): void {
+        if (payload.operation === "setName") {
+            // `/rename` retitles the speaker LABEL and touches no portrait, so it settles no stage
+            // state at all - it must not even `ensure` a record, or renaming a character who was never
+            // shown would conjure a blank one. Falling through to the enter/expression arm below would
+            // be worse still: that arm rebuilds `source` from a payload `setName` never carries, so an
+            // earlier `/face` would silently revert to the default look in a row-precise launch.
+            return;
+        }
+        if (payload.operation === "setMotion" || payload.operation === "setSkin" || payload.operation === "setParams") {
+            // The inside of a puppet's box, which no image record models: the snapshot tracks where a
+            // thing sits and whether it is visible, and a motion changes neither. Falling through
+            // would `ensure` an image record for a character that has no sprite at all.
+            return;
+        }
         const objectName = getCharacterStageObjectName(payload);
         const record = this.ensure("image", objectName, block.id);
         record.autoFit = true;
@@ -393,10 +455,19 @@ class SnapshotWalker {
             record.props = mergeTransformProps(record.props, this.finalProps(payload.transform, "none", block.id));
             return;
         }
-        // enter / expression update the source.
+        // enter / expression update the source. A layered character's expression row is incremental
+        // — it names only the axes it changes — so the snapshot has to accumulate them the way the
+        // engine does, or pre-posing at a later block would drop every earlier axis change.
+        const previous = record.source?.type === "character" ? record.source : null;
+        const carried = payload.operation === "expression" ? previous?.tags : undefined;
         record.source = payload.assetId
             ? { type: "asset", assetId: payload.assetId }
-            : { type: "character", characterId: payload.characterId, formName: payload.formName, variants: payload.variants };
+            : {
+                type: "character",
+                characterId: payload.characterId,
+                pose: payload.pose ?? (payload.operation === "expression" ? previous?.pose : undefined),
+                tags: carried || payload.tags ? { ...carried, ...payload.tags } : undefined,
+            };
         if (payload.operation === "enter") {
             record.visible = true;
             record.props = mergeTransformProps(record.props, this.finalProps(payload.transform, "show", block.id));
@@ -480,6 +551,50 @@ class SnapshotWalker {
             } else if (targetProps.builtin) {
                 this.builtinLayerProps[targetProps.builtin] = mergeTransformProps(this.builtinLayerProps[targetProps.builtin], props);
             }
+        }
+    }
+
+    /**
+     * Accumulate the stage camera's settled pose. Each op writes its own channel and the latest
+     * value wins (matching the runtime, where `/camera` transforms are absolute, not relative);
+     * `reset` returns the camera to neutral, which for a pre-pose means "nothing to apply".
+     *
+     * Values are clamped with the same idiom the compiler's `compileCameraAction` uses, because the
+     * pose is pre-posed directly onto the camera and never passes through that compile path.
+     */
+    private applyCamera(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "camera" }>): void {
+        if (payload.operation === "reset") {
+            this.camera = null;
+            return;
+        }
+        const camera = this.camera ?? (this.camera = { props: {}, effects: {} });
+        switch (payload.operation) {
+            case "motion":
+                // A camera motion settles like any other transform, and this class already holds the
+                // animation assets - so the shot a `/camera motion` row leaves behind is reconstructed
+                // rather than dropped, and a row launch placed after it opens on the same frame the
+                // real playthrough would show.
+                camera.props = mergeTransformProps(camera.props, this.finalProps(payload.motion, "none", block.id));
+                return;
+            case "pan":
+                camera.props.position = getPresetPosition("custom", {
+                    xalign: payload.position?.xalign ?? 0.5,
+                    yalign: payload.position?.yalign ?? 0.5,
+                    ...(payload.position?.xoffset !== undefined ? { xoffset: payload.position.xoffset } : {}),
+                    ...(payload.position?.yoffset !== undefined ? { yoffset: payload.position.yoffset } : {}),
+                });
+                return;
+            case "zoom":
+                camera.props.zoom = Math.max(MIN_CAMERA_ZOOM, finiteOr(payload.zoom, 1));
+                return;
+            case "rotate":
+                camera.props.rotation = finiteOr(payload.rotation, 0);
+                return;
+            case "darken":
+                camera.effects.darkness = Math.min(1, Math.max(0, finiteOr(payload.darkness, 0)));
+                return;
+            default:
+                return;
         }
     }
 
@@ -644,7 +759,45 @@ class SnapshotWalker {
             this.diagnostic(block.id, `Expression \`${payload.expression.source}\` did not resolve; the assignment was skipped in the preview.`);
             return undefined;
         }
-        return evaluateStoryExpression(payload.expression.ast, ref => this.readVariable(ref, block.id));
+        return evaluateStoryExpression(payload.expression.ast, this.expressionEnv(block.id));
+    }
+
+    /**
+     * What an expression may reach in the PREVIEW, and what it may not.
+     *
+     * The variable half really evaluates (see `evaluateCondition`). The other two cannot, and the
+     * answer is the one `storyStageSnapshot` already gives a blueprint condition: do not run it,
+     * return the type's zero, and say so in a diagnostic that names the thing.
+     *
+     *  - **visited / picked.** The record is written by a *playthrough*; this walk is a static read of
+     *    one scene's blocks with no run behind it. Nothing here knows whether the player has been to
+     *    a scene, and a preview that answered "yes" or "no" as if it did would show the author a route
+     *    lock opening or closing for a reason that does not exist.
+     *  - **invoke.** Running the graph would need a live `ScriptCtx` (a storable, a host adapter) that
+     *    this walk has none of; the compiler builds one from the compiled story, which is precisely
+     *    what a preview is not.
+     *
+     * The diagnostic is not decoration. Returning the zero silently is indistinguishable from the
+     * expression having genuinely evaluated to it, which is how "the preview is lying to me" becomes
+     * "the feature is broken" - so the name goes in the message and the test asserts it is produced.
+     */
+    private expressionEnv(blockId: string): StoryExpressionEnv {
+        return {
+            read: ref => this.readVariable(ref, blockId),
+            visited: (ref, name) => {
+                this.diagnostic(
+                    blockId,
+                    ref.kind === "scene"
+                        ? `Scene visits are not tracked in the preview; \`visited(${name})\` reads as false.`
+                        : `Choice picks are not tracked in the preview; \`picked(${name})\` reads as false.`,
+                );
+                return false;
+            },
+            invoke: (_blueprintId, name) => {
+                this.diagnostic(blockId, `Blueprint \`${name}()\` does not run in the preview; it reads as empty.`);
+                return undefined;
+            },
+        };
     }
 
     /** Read a variable out of the preview's own store. Persistent variables have no preview backing. */

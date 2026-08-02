@@ -1,5 +1,6 @@
 import { FsRejectErrorCode } from "@shared/types/os";
 import { RendererError } from "@shared/utils/error";
+import type { BlueprintPersistentVariable } from "@shared/types/blueprint/document";
 import { type UIGraph, type UIGraphDocument, UI_GRAPH_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/graph";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
@@ -9,6 +10,8 @@ import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { Service } from "../Service";
 import { Services, IUIGraphService, WorkspaceContext } from "../services";
+import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver } from "../autosave/DebouncedSaver";
+import { registerAutoSaver } from "../autosave/SaveStatusService";
 import { UuidService } from "../core/UuidService";
 import { EventEmitter } from "../ui/EventEmitter";
 
@@ -23,14 +26,25 @@ export class UIGraphService extends Service<UIGraphService> implements IUIGraphS
     private dirty = false;
     private revision = 0;
     private lastSavedRevision = 0;
-    private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
-    private readonly autoSaveDelay = 800;
+    private readonly autoSaver = new DebouncedSaver({
+        delayMs: DEFAULT_AUTOSAVE_DELAY_MS,
+        maxWaitMs: DEFAULT_AUTOSAVE_MAX_WAIT_MS,
+        save: () => this.save(this.getDocument()),
+        onError: err => console.warn("[UIGraphService] auto-save failed", err),
+    });
+    /**
+     * The persistent variables read off the raw blueprint document at load, before the migration
+     * relocates them to the project-level variable registry (M-VAR). One-shot: VariableRegistryService
+     * consumes this to seed `variables.json` the first time a pre-M-VAR project is opened.
+     */
+    private legacyPersistentVariables: Record<string, BlueprintPersistentVariable> | null = null;
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
         const projectService = ctx.services.get<ProjectService>(Services.Project);
         const uuidService = ctx.services.get<UuidService>(Services.Uuid);
         await depend([filesystemService, projectService, uuidService]);
+        await registerAutoSaver(ctx, depend, "uiGraph", "workspace.shell.save.stores.uiGraph", this.autoSaver);
 
         await this.ensureGraphDir();
         await this.load();
@@ -75,10 +89,8 @@ export class UIGraphService extends Service<UIGraphService> implements IUIGraphS
         const fs = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         await this.ensureGraphDir();
         const documentPath = this.getDocumentPath();
-        if (this.autoSaveTimer) {
-            clearTimeout(this.autoSaveTimer);
-            this.autoSaveTimer = null;
-        }
+        // This write supersedes whatever the timer was going to do.
+        this.autoSaver.cancel();
         const updated: UIGraphDocument = {
             ...document,
             meta: {
@@ -104,6 +116,11 @@ export class UIGraphService extends Service<UIGraphService> implements IUIGraphS
         return this.document;
     }
 
+    /** Write out anything the auto-save timer still owes, and wait for it. */
+    public async flushPendingChanges(): Promise<void> {
+        await this.autoSaver.flush();
+    }
+
     public onGraphsChanged(handler: (doc: UIGraphDocument) => void): () => void {
         return this.events.on("graphsChanged", handler);
     }
@@ -118,6 +135,16 @@ export class UIGraphService extends Service<UIGraphService> implements IUIGraphS
 
     public getRevision(): number {
         return this.revision;
+    }
+
+    /**
+     * The persistent variables the last load read off the raw blueprint document, before the M-VAR
+     * migration relocated them. One-shot: returns them and clears, so the registry seed runs once.
+     */
+    public consumeLegacyPersistentVariables(): Record<string, BlueprintPersistentVariable> | null {
+        const legacy = this.legacyPersistentVariables;
+        this.legacyPersistentVariables = null;
+        return legacy;
     }
 
     public createGraph(input: {
@@ -184,15 +211,7 @@ export class UIGraphService extends Service<UIGraphService> implements IUIGraphS
     }
 
     private scheduleAutoSave(): void {
-        if (this.autoSaveTimer) {
-            clearTimeout(this.autoSaveTimer);
-        }
-        this.autoSaveTimer = setTimeout(() => {
-            this.autoSaveTimer = null;
-            void this.save(this.getDocument()).catch(err => {
-                console.warn("[UIGraphService] auto-save failed", err);
-            });
-        }, this.autoSaveDelay);
+        this.autoSaver.schedule();
     }
 
     private setDirty(value: boolean): void {
@@ -215,6 +234,7 @@ export class UIGraphService extends Service<UIGraphService> implements IUIGraphS
         if (!document.blueprintDocument) {
             throw new RendererError("uigraphs.json is missing blueprintDocument (Blueprint M2 required).");
         }
+        this.legacyPersistentVariables = readRawPersistentVariables(document.blueprintDocument);
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
         const migrated = migrateBlueprintDocumentToLatest(document.blueprintDocument);
         const repaired = repairGlobalMainIfMissing(migrated, () => uuidService.generate());
@@ -262,4 +282,20 @@ export class UIGraphService extends Service<UIGraphService> implements IUIGraphS
             }
         }
     }
+}
+
+/**
+ * Read the (possibly pre-M-VAR) `persistentVariables` map off a raw blueprint document. The field is
+ * no longer on the `BlueprintDocument` type - old files on disk still carry it, and the M-VAR
+ * migration relocates it to the variable registry - so this reads it defensively off the raw object.
+ */
+function readRawPersistentVariables(blueprintDocument: unknown): Record<string, BlueprintPersistentVariable> | null {
+    if (typeof blueprintDocument !== "object" || blueprintDocument === null) {
+        return null;
+    }
+    const raw = (blueprintDocument as { persistentVariables?: unknown }).persistentVariables;
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+        return null;
+    }
+    return raw as Record<string, BlueprintPersistentVariable>;
 }

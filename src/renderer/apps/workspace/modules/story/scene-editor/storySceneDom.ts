@@ -5,8 +5,20 @@ export function isInteractiveTarget(target: EventTarget): boolean {
     return Boolean(element?.closest("button,input,textarea,select,[contenteditable=true]"));
 }
 
-export function isTextInputActive(): boolean {
+/**
+ * Is the caret in something the author is typing into, so the editor should keep its hands off?
+ *
+ * `except` names one field that does not count. The insert slot is the standing exception: it is the
+ * one text input whose paste the editor takes over, so a gesture that means "paste without the wizard"
+ * has to mean the same thing with the caret sitting in it. Without the carve-out `Ctrl+Shift+V` was
+ * simply unreachable there - the flag was never set and the paste opened the wizard the author had
+ * just asked to skip.
+ */
+export function isTextInputActive(except?: HTMLElement | null): boolean {
     const active = document.activeElement;
+    if (except && active === except) {
+        return false;
+    }
     return active instanceof HTMLInputElement
         || active instanceof HTMLTextAreaElement
         || active instanceof HTMLSelectElement

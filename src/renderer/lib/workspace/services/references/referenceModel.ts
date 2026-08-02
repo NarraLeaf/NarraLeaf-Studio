@@ -1,4 +1,5 @@
 import type { StoryAnimationAsset, StoryDocument } from "@shared/types/story";
+import { listSceneBlocksInDocumentOrder, listScenesInDocumentOrder } from "@shared/types/story";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { VoiceDocument } from "@shared/types/voice";
@@ -107,7 +108,7 @@ export function buildReferenceIndex(references: readonly AssetReference[]): Map<
 export function extractStoryAssetReferences(document: StoryDocument, storyName: string): AssetReference[] {
     const references: AssetReference[] = [];
 
-    for (const scene of Object.values(document.scenes)) {
+    for (const scene of listScenesInDocumentOrder(document)) {
         const sceneName = scene.name;
         const detail = `${storyName} › ${sceneName}`;
 
@@ -145,9 +146,21 @@ export function extractStoryAssetReferences(document: StoryDocument, storyName: 
             });
         }
 
-        // `blocks` is a flat record — control-flow nesting lives in id lists, not in the values —
-        // so this covers blocks inside conditions and loops without recursing.
-        for (const block of Object.values(scene.blocks)) {
+        if (isLibraryAssetId(scene.bgm?.assetId)) {
+            references.push({
+                id: `story:${document.id}:${scene.id}:__scene__:bgm`,
+                assetId: scene.bgm!.assetId.trim(),
+                kind: "story",
+                label: sceneName,
+                detail,
+                field: "scene.bgm.assetId",
+                target: { kind: "storyScene", storyId: document.id, sceneId: scene.id, storyName, sceneName },
+            });
+        }
+
+        // Depth first, so the "used by" list under an asset reads down the scene the way the author
+        // wrote it. The record's key order would be UUID order once it has been rewritten once.
+        for (const block of listSceneBlocksInDocumentOrder(scene)) {
             if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
                 pushBlockReference(block.id, "dialogue.voiceAssetId", block.payload.voiceAssetId);
                 continue;
@@ -398,6 +411,23 @@ function extractElementAssetReferences(element: UIElement, ownerLabel: string | 
                 push(childPath, childPath, value);
                 continue;
             }
+            /**
+             * The literal names `surfaceResourcePreload.ts` keys its preload walk on. Until
+             * `nl.video` there was no widget storing a bare asset id under `assetId`, so this walk
+             * only knew `imageFill` / `fontAssetId` plus the `nl.image` legacy branch below - which
+             * means a new widget naming its prop `assetId` was preloaded by the shipped game and
+             * simultaneously invisible to "what uses this asset", the one place an author looks
+             * before deleting it. The two walks now agree on the same names.
+             *
+             * `nl.image`'s bare id is skipped here because the branch below pushes it under this
+             * exact reference id, with a dormancy rule this generic arm cannot express.
+             */
+            if (key === "assetId" || key === "posterAssetId") {
+                if (!(key === "assetId" && element.type === "nl.image")) {
+                    push(childPath, childPath, value);
+                }
+                continue;
+            }
             walkValue(value, childPath, depth);
         }
     };
@@ -509,10 +539,16 @@ export interface ReferenceScannableCharacter {
     id: string;
     name: string;
     thumbnailAssetId?: string | null;
-    forms: ReadonlyArray<{ name: string; variantAssetIds: Readonly<Record<string, string | null | undefined>> }>;
+    /**
+     * Every image the appearance uses, with a slot key that stays stable across renames and a
+     * human-readable detail. Flattened by the caller because the two appearance kinds address their
+     * images differently — a preset character by pose, a layered one by layer and tag — and a
+     * reference does not care which.
+     */
+    appearanceAssets: ReadonlyArray<{ slot: string; detail: string; assetId: string | null | undefined }>;
 }
 
-/** Character slice: profile thumbnail plus every appearance variant asset. */
+/** Character slice: profile thumbnail plus every image the appearance uses. */
 export function extractCharacterAssetReferences(
     characters: readonly ReferenceScannableCharacter[],
 ): AssetReference[] {
@@ -528,20 +564,18 @@ export function extractCharacterAssetReferences(
                 field: "profile.thumbnail",
             });
         }
-        for (const form of character.forms) {
-            for (const [variantName, assetId] of Object.entries(form.variantAssetIds)) {
-                if (!isLibraryAssetId(assetId)) {
-                    continue;
-                }
-                references.push({
-                    id: `char:${character.id}:${form.name}:${variantName}`,
-                    assetId: assetId.trim(),
-                    kind: "character",
-                    label: character.name,
-                    detail: `${form.name} › ${variantName}`,
-                    field: "form.variantAssets",
-                });
+        for (const entry of character.appearanceAssets) {
+            if (!isLibraryAssetId(entry.assetId)) {
+                continue;
             }
+            references.push({
+                id: `char:${character.id}:${entry.slot}`,
+                assetId: entry.assetId.trim(),
+                kind: "character",
+                label: character.name,
+                detail: entry.detail,
+                field: "appearance",
+            });
         }
     }
 

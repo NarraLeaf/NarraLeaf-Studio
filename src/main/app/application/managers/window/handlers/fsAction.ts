@@ -3,10 +3,10 @@ import { IPCEvents, IPCEventType, RequestStatus } from "@shared/types/ipcEvents"
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 import { Fs } from "@shared/utils/fs";
-import { FileStat, FileDetails } from "@shared/utils/fs";
+import { FileStat, FileEntry, FileDetails, DirectorySizeResult } from "@shared/utils/fs";
+import { splitFileEntry } from "@shared/utils/fileEntry";
 import { FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
 import { dialog } from "electron";
-import pathModule from "path";
 import { getRuntimeGrantPolicy } from "../permissions";
 
 function unauthorizedPathResult<T>(fsPath: string): FsRequestResult<T> {
@@ -51,27 +51,25 @@ export class FsListHandler extends IPCHandler<IPCEventType.fsList> {
     readonly name = IPCEventType.fsList;
     readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow, { path }: IPCEvents[IPCEventType.fsList]["data"]): Promise<RequestStatus<FsRequestResult<FileStat[]>>> {
-        const denied = await ensurePathAllowed<FileStat[]>(window, path, "read");
+    public async handle(window: AppWindow, { path }: IPCEvents[IPCEventType.fsList]["data"]): Promise<RequestStatus<FsRequestResult<FileEntry[]>>> {
+        const denied = await ensurePathAllowed<FileEntry[]>(window, path, "read");
         if (denied) return this.success(denied);
 
-        // Use Fs.dirEntries to get all entries (files and directories)
-        // Then convert to FileStat[] format to maintain compatibility
         const dirEntriesResult = await Fs.dirEntries(path);
         if (!dirEntriesResult.ok) {
-            return this.success(dirEntriesResult as FsRequestResult<FileStat[]>);
+            return this.success(dirEntriesResult as FsRequestResult<FileEntry[]>);
         }
 
-        // Convert Dirent[] to FileStat[]
-        const fileStats: FileStat[] = dirEntriesResult.data.map(entry => ({
-            name: pathModule.parse(entry.name).name,
-            ext: pathModule.extname(entry.name) || null,
+        // One split factory (`splitFileEntry`) fills name/ext/fileName; `type` comes off the Dirent.
+        // The plugin-facing `privileged.fs.list` builds its entries the same way - see privilegedAction.ts.
+        const fileEntries: FileEntry[] = dirEntriesResult.data.map(entry => ({
+            ...splitFileEntry(entry.name),
             type: entry.isDirectory() ? "directory" : "file",
         }));
 
         return this.success({
             ok: true,
-            data: fileStats
+            data: fileEntries
         });
     }
 }
@@ -86,6 +84,21 @@ export class FsDetailsHandler extends IPCHandler<IPCEventType.fsDetails> {
 
         const result = await Fs.details(path);
         return this.success(result);
+    }
+}
+
+export class FsDirectorySizeHandler extends IPCHandler<IPCEventType.fsDirectorySize> {
+    readonly name = IPCEventType.fsDirectorySize;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow, { path }: IPCEvents[IPCEventType.fsDirectorySize]["data"]): Promise<RequestStatus<FsRequestResult<DirectorySizeResult>>> {
+        const denied = await ensurePathAllowed<DirectorySizeResult>(window, path, "read");
+        if (denied) return this.success(denied);
+
+        // Shares the build's measurement (`Fs.directorySize`); the asset overview reads this once
+        // instead of walking the tree with one IPC per file.
+        const result = await Fs.directorySize(path);
+        return this.success({ ok: true, data: result });
     }
 }
 
@@ -147,6 +160,43 @@ export class FsRequestReadHandler extends IPCHandler<IPCEventType.fsRequestRead>
     }
 }
 
+/**
+ * Issue a directory grant: one hash under which every file in `path` is readable as
+ * `app://fs/{hash}/{relative/path}`.
+ *
+ * The authorization is the same one a file read passes - the directory itself must already be
+ * inside a granted root - and the per-request containment check in the protocol handler is what
+ * keeps the grant from widening beyond that directory.
+ */
+export class FsRequestReadDirHandler extends IPCHandler<IPCEventType.fsRequestReadDir> {
+    readonly name = IPCEventType.fsRequestReadDir;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow, { path }: IPCEvents[IPCEventType.fsRequestReadDir]["data"]): Promise<RequestStatus<FsRequestResult<string>>> {
+        const denied = await ensurePathAllowed<string>(window, path, "read");
+        if (denied) return this.success(denied);
+
+        const existsResult = await Fs.isDirExists(path);
+        if (!existsResult.ok) {
+            return this.success(existsResult as FsRequestResult<string>);
+        }
+        if (!existsResult.data) {
+            return this.success({
+                ok: false,
+                error: {
+                    code: FsRejectErrorCode.NOT_FOUND,
+                    message: "Directory does not exist: " + path
+                }
+            });
+        }
+
+        const hash = window.app.storageManager.allocateDirectoryHash(path, window.getWebContents().id);
+        window.app.logger.debug(`[fs.readDir] path="${path}"`);
+
+        return this.success({ ok: true, data: hash });
+    }
+}
+
 export class FsRequestWriteHandler extends IPCHandler<IPCEventType.fsRequestWrite> {
     readonly name = IPCEventType.fsRequestWrite;
     readonly type = IPCMessageType.request;
@@ -180,15 +230,12 @@ export class FsRequestWriteHandler extends IPCHandler<IPCEventType.fsRequestWrit
                 });
             }
 
-            // Check if we can write to the target location (try to create a test file)
-            const testPath = path + '.test';
-            try {
-                const writeResult = await Fs.write(testPath, '', encoding);
-                if (writeResult.ok) {
-                    // Clean up test file
-                    await Fs.deleteFile(testPath);
-                }
-            } catch (error) {
+            // Ask the OS whether the directory is writable instead of proving it by creating and
+            // deleting a real `<path>.test` file: that probe put a file the user never asked for
+            // next to their document on every single save, tripped the project watchers, and raced
+            // with itself when two saves overlapped.
+            const writable = await Fs.isWritableDir(dirPath);
+            if (!writable.ok || !writable.data) {
                 window.app.storageManager.cleanup(hash);
                 return this.success({
                     ok: false,
@@ -560,18 +607,33 @@ export class FsGrantFileAccessHandler extends IPCHandler<IPCEventType.fsGrantFil
             if (!fileCheck.ok) {
                 return this.success(fileCheck as FsRequestResult<string[]>);
             }
-            if (!fileCheck.data) {
-                return this.success({
-                    ok: false,
-                    error: {
-                        code: FsRejectErrorCode.NOT_A_FILE,
-                        message: `Dropped path is not a file: ${filePath}`,
-                    },
-                });
+            if (fileCheck.data) {
+                window.app.storageManager.grantFileSystemAccess(window, filePath, grantPolicy.mode, grantPolicy.recursive);
+                grantedPaths.push(filePath);
+                continue;
             }
 
-            window.app.storageManager.grantFileSystemAccess(window, filePath, grantPolicy.mode, grantPolicy.recursive);
-            grantedPaths.push(filePath);
+            // Dropped directories are allowed so a whole folder can be imported at once. The renderer
+            // walks the tree and filters by asset type; grant recursive read on the folder so those
+            // descendant files can be listed, hashed and copied. This mirrors the directory-picker
+            // grant (selectDirectory), scoped to exactly the folder the user dropped.
+            const dirCheck = await Fs.isDir(filePath);
+            if (!dirCheck.ok) {
+                return this.success(dirCheck as FsRequestResult<string[]>);
+            }
+            if (dirCheck.data) {
+                window.app.storageManager.grantFileSystemAccess(window, filePath, grantPolicy.mode, true);
+                grantedPaths.push(filePath);
+                continue;
+            }
+
+            return this.success({
+                ok: false,
+                error: {
+                    code: FsRejectErrorCode.NOT_A_FILE,
+                    message: `Dropped path is not a file or directory: ${filePath}`,
+                },
+            });
         }
 
         return this.success({
