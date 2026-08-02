@@ -1,9 +1,10 @@
 import type { TranslationKey } from "@shared/i18n";
 import type { StoryCommandGroupId } from "./storyCommandCategories";
-import { commandDetailKey, commandLabelKey, listCommandSpecs } from "./commands/registry";
+import { commandDetailKey, commandLabelKey, getDefById, listCommandSpecs, localizedCommandToken } from "./commands/registry";
 import type { AnyStoryCommandSpec } from "./commands/registry";
 import type { StoryCommandParamSpec } from "./commands/spec";
-import { paramTypes, type StoryCommandParamType } from "./storyCommandGrammar";
+import { localizedEnumValue } from "./commands/localizedEnums";
+import { paramHintKey, paramTypes, type StoryCommandParamType } from "./storyCommandGrammar";
 import { STORY_COMMAND_PINYIN } from "./storyCommandPinyin.generated";
 
 /**
@@ -17,6 +18,10 @@ import { STORY_COMMAND_PINYIN } from "./storyCommandPinyin.generated";
  * number's range is — and none of it was reaching the page, which printed `[t=]` and left the author
  * to guess. Deriving the answer from `StoryCommandParamType` means no per-parameter prose has to be
  * written or translated for it, and no parameter can be documented as something it is not.
+ *
+ * Built with the COMMAND-language translator (`editor.localizedCommands`), body and all: this is the
+ * reference FOR that vocabulary, and a page whose signatures are English while the words describing
+ * them are Chinese reads as neither. The panel's chrome around it stays in the interface language.
  */
 
 type ManualTranslate = (key: TranslationKey) => string;
@@ -42,11 +47,15 @@ export type StoryCommandManualParam = {
 export type StoryCommandManualEntry = {
     id: string;
     group: StoryCommandGroupId;
-    /** The canonical `/token`. */
+    /** The `/token` an author types, in the command language - `/背景` where that word parses. */
     token: string;
     /** The bible-notation signature, e.g. `/bg <Image or Color> [t=] [d=]`. */
     signature: string;
-    /** `/`-spelled aliases, e.g. `["/background"]`. */
+    /**
+     * Every other `/`-spelling that reaches this command, e.g. `["/background"]`. The canonical
+     * English token joins the list wherever it is not the one above: it never stops parsing, so a
+     * manual that omitted it would be documenting a narrower grammar than the one that runs.
+     */
     aliases: string[];
     label: string;
     detail: string;
@@ -58,9 +67,11 @@ export type StoryCommandManualEntry = {
 /**
  * What a param's type accepts, in words.
  *
- * Enum and keyword values are printed literally: they are keywords the author types, English in every
- * locale (bible B11), so translating them would be documenting a language the parser does not speak.
- * Everything else names its kind through a key.
+ * Enum and keyword values are printed literally - they are words the author types, not descriptions of
+ * words. Which spelling gets printed is the one that will be accepted back: an enum value goes through
+ * `localizedEnumValue`, the same call the candidate menu shows and inserts, so the page can never
+ * document a word the parser does not speak (bible B11). A keyword has no alias table, so it stays as
+ * it is written in the grammar. Everything else names its kind through a key.
  */
 function describeType(type: StoryCommandParamType, t: ManualTranslate): string {
     switch (type.kind) {
@@ -87,7 +98,7 @@ function describeType(type: StoryCommandParamType, t: ManualTranslate): string {
         case "content":
             return t("story.manual.type.content");
         case "enum":
-            return type.options.map(option => option.value).join(" | ");
+            return type.options.map(option => localizedEnumValue(type, option)).join(" | ");
         case "keyword":
             return type.value;
         case "number":
@@ -122,7 +133,7 @@ function describeNumber(type: Extract<StoryCommandParamType, { kind: "number" }>
 }
 
 function paramHint(name: string, param: StoryCommandParamSpec, t: ManualTranslate): string {
-    return t(`story.paramHint.${param.hint ?? name}` as TranslationKey);
+    return t(`story.paramHint.${paramHintKey({ ...param, name })}` as TranslationKey);
 }
 
 /**
@@ -140,8 +151,17 @@ function paramSlot(name: string, param: StoryCommandParamSpec, t: ManualTranslat
     return param.core ? `<${inner}>` : `[${inner}]`;
 }
 
+/**
+ * The word this command is spelled with here: the same one the completion menu inserts and the same
+ * one the insert line settles on. The page teaches what the editor writes, or it teaches nothing.
+ */
+function manualToken(spec: AnyStoryCommandSpec): string {
+    const def = getDefById(spec.id);
+    return def ? localizedCommandToken(def) : spec.token;
+}
+
 function signatureOf(spec: AnyStoryCommandSpec, t: ManualTranslate): string {
-    const parts = [`/${spec.token}`];
+    const parts = [`/${manualToken(spec)}`];
     for (const [name, param] of Object.entries(spec.params)) {
         parts.push(paramSlot(name, param, t));
     }
@@ -166,9 +186,12 @@ export function buildStoryCommandManual(t: ManualTranslate): StoryCommandManualE
     return listCommandSpecs().map(spec => ({
         id: spec.id,
         group: spec.category,
-        token: `/${spec.token}`,
+        token: `/${manualToken(spec)}`,
         signature: signatureOf(spec, t),
-        aliases: (spec.aliases ?? []).map(alias => `/${alias}`),
+        aliases: [
+            ...(manualToken(spec) === spec.token ? [] : [spec.token]),
+            ...(spec.aliases ?? []),
+        ].map(alias => `/${alias}`),
         label: t(commandLabelKey(spec.id)),
         detail: t(commandDetailKey(spec.id)),
         params: manualParams(spec, t),

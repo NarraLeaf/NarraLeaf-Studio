@@ -1,7 +1,9 @@
 import { STORY_EXPR_FUNCTIONS, STORY_VISITED_CALLS, type StoryVisitedCall } from "@shared/types/story";
 import { formatStoryExpressionName } from "@shared/utils/storyExpressionParser";
-import { freeTargetKind, matchEnumOption, paramTypes, type StoryCommandParam, type StoryCommandParamType } from "./storyCommandGrammar";
+import { freeTargetKind, paramHintKey, paramTypes, type StoryCommandParam, type StoryCommandParamType } from "./storyCommandGrammar";
 import { listCommandDefs } from "./commands/registry";
+import { localizedParamKey, paramMatchesQuery } from "./commands/localizedParams";
+import { localizedEnumValue, matchEnumOptionLocalized } from "./commands/localizedEnums";
 import type { StoryCommandCursor } from "./storyCommandCursor";
 import { BGM_OBJECT_NAME, puppetChannelNames, type StoryCommandContext, type StoryCommandNamedRef, type StoryCommandStageObjectKind, type StoryCommandValue } from "./storyCommandValues";
 
@@ -30,6 +32,12 @@ export type StoryCommandCandidate = {
     detailKind?: StoryCommandStageObjectKind;
     /** Set on command candidates only. */
     commandId?: string;
+    /**
+     * Set on param-name candidates only: the `story.paramHint.*` key naming this slot, for the same
+     * reason `commandId` is carried — the caller owns the locale. The word it resolves to is the one
+     * the inline ghost writes in its angle brackets, so the menu and the hint name a slot alike.
+     */
+    hintKey?: string;
     /**
      * A name backing nothing, offered back to the author anyway. Only ever set where the grammar says
      * a free value is legal, and it is what makes the speaker list never empty - which is what removes
@@ -227,12 +235,18 @@ function candidatesForType(
         case "content":
             return contentCandidates(type, query, context, resolved);
         case "enum":
-            // Completion inserts the CANONICAL value (bible B6): what you pick is what is stored, and
-            // an alias you typed still finds its option.
+            // Completion inserts the word it is SHOWING — this locale's spelling when it has one that
+            // parses, the canonical value otherwise. Storage is unaffected (bible B6): resolution
+            // normalizes either spelling to the canonical value, so what is banked never moves.
+            //
+            // The filter has to see the translated spelling too, or the list empties the moment the
+            // author types the word they were just shown. `matchEnumOptionLocalized` covers the exact
+            // hit; `containsFold` over the same spelling covers the partial one.
             return type.options
-                .filter(option => !query || matchEnumOption(type, query) === option || containsFold(option.value, query)
+                .filter(option => !query || matchEnumOptionLocalized(type, query) === option || containsFold(option.value, query)
+                    || containsFold(localizedEnumValue(type, option), query)
                     || (option.aliases ?? []).some(alias => containsFold(alias, query)))
-                .map(option => ({ value: option.value, label: option.value, detail: option.aliases?.[0] }));
+                .map(option => ({ value: localizedEnumValue(type, option), label: localizedEnumValue(type, option), detail: option.aliases?.[0] }));
         case "keyword":
             return !query || startsWithFold(type.value, query) ? [{ value: type.value, label: type.value }] : [];
         case "boolean":
@@ -385,10 +399,21 @@ export function getCommandCandidates(
         case "expression":
             return candidatesForParam(cursor.param, cursor.query, context, resolved, cursor.call);
         case "paramName":
+            // `paramMatchesQuery` extends the canonical name/alias filter with the active command
+            // locale's spelling: the menu shows "位置" next to `at`, and a filter blind to it would
+            // empty the list the moment the author typed the word they were just shown.
+            //
+            // The completion writes that same word (`localizedParamKey`), not the canonical key — the
+            // rule commands and enum values already follow. `label` stays the canonical key so the
+            // menu can keep showing it alongside; it is still the shortest thing to type by hand and
+            // it parses in every locale.
             return cursor.params
-                .filter(param => !cursor.query || startsWithFold(param.name, cursor.query)
-                    || (param.aliases ?? []).some(alias => startsWithFold(alias, cursor.query)))
-                .map(param => ({ value: param.name, label: param.name, detail: param.aliases?.[0] }));
+                .filter(param => paramMatchesQuery(cursor.def, param, cursor.query))
+                .map(param => ({
+                    value: localizedParamKey(cursor.def, param),
+                    label: param.name,
+                    hintKey: paramHintKey(param),
+                }));
         case "characterName":
             return candidatesForType({ kind: "character", allowTemp: true }, cursor.query, context, {});
         case "greedy":

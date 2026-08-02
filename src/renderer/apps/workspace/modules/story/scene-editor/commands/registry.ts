@@ -1,5 +1,5 @@
-import type { TranslationKey } from "@shared/i18n";
-import { i18nStore, translate } from "@/lib/i18n";
+import { SOURCE_LOCALE, type TranslationKey } from "@shared/i18n";
+import { commandI18nStore, translateCommand } from "@/lib/i18n";
 import type { StoryCommandDef, StoryCommandParam } from "../storyCommandGrammar";
 import type { StoryCommandParamsShape, StoryCommandSpec } from "./spec";
 import { SCENE_COMMANDS } from "./specs/scene";
@@ -121,43 +121,84 @@ function canonicalTokens(): ReadonlySet<string> {
  * The active locale's command labels, folded to a lookup key, mapped to their def: the "translated
  * name → canonical command" table the parser consults so `/背景` resolves to `bg`.
  *
- * Derived, never authored - it tracks the catalog and every locale for free, and only the command
- * *token* is localized (params and their values stay English; the ghost hint and resolver read the
- * canonical grammar). A localized token is additive, never a shadow: an entry is dropped when its
- * folded label is blank, contains whitespace (a multi-word label is not a single inline token), or
- * already spells a canonical English token, so the English pass in {@link getCommandDef} always wins
- * and existing behaviour is unchanged. A label two commands happen to share resolves to the first.
+ * Derived, never authored - it tracks the catalog and every locale for free. Params and enum values
+ * have their own twins of this table (`localizedParams.ts` off `story.paramHint.*`,
+ * `localizedEnums.ts` off `story.enumValue.*`), built the same way and dropping on the same rules. A
+ * localized token is additive, never a shadow: an entry is dropped when its folded label is blank,
+ * contains whitespace (a multi-word label is not a single inline token), or already spells a
+ * canonical English token, so the English pass in {@link getCommandDef} always wins and existing
+ * behaviour is unchanged. A label two commands happen to share resolves to the first.
  *
- * Rebuilt when the locale changes - `translate` reads the active locale, so the cache is keyed on it -
- * and dropped whenever the i18n store notifies, so a plugin language pack that swaps the catalog under
- * a fixed locale re-localizes the parser in step with the menu (which re-renders on the same signal).
+ * **Both directions come out of this one pass.** `accept` is what the parser reads; `insert` is the
+ * spelling a completion drops into the line ({@link localizedCommandToken}). Building them together
+ * is the whole guarantee: a word can only be offered if it was also accepted, so what the menu shows
+ * always round-trips. They were separate once - the menu showed 隐藏 and inserted `hide` - and one
+ * pick then taught the author a word and typed a different one.
+ *
+ * Keyed on the COMMAND locale, not the interface locale (`editor.localizedCommands`; see
+ * `lib/i18n/commandLocale`) - the vocabulary the author types is its own setting, so an English
+ * command line behind a Chinese interface is a supported combination. Dropped whenever that store
+ * notifies, which covers a language switch, "auto" following the interface, and a plugin language
+ * pack swapping the catalog under a fixed locale.
  */
-let localizedTokens: { locale: string; map: ReadonlyMap<string, StoryCommandDef> } | null = null;
-i18nStore.subscribe(() => {
+type LocalizedTokens = {
+    locale: string;
+    /** Folded localized spelling → def. The parser's pass. */
+    accept: ReadonlyMap<string, StoryCommandDef>;
+    /** Def → the spelling to write, as authored (case and all). Only defs that earned one. */
+    insert: ReadonlyMap<StoryCommandDef, string>;
+};
+
+let localizedTokens: LocalizedTokens | null = null;
+commandI18nStore.subscribe(() => {
     localizedTokens = null;
 });
 
-function localizedTokenMap(): ReadonlyMap<string, StoryCommandDef> {
-    const locale = i18nStore.getLocale();
+function localizedTokenTables(): LocalizedTokens {
+    const locale = commandI18nStore.getLocale();
     if (localizedTokens?.locale === locale) {
-        return localizedTokens.map;
+        return localizedTokens;
     }
     const canonical = canonicalTokens();
-    const map = new Map<string, StoryCommandDef>();
+    const accept = new Map<string, StoryCommandDef>();
+    const insert = new Map<StoryCommandDef, string>();
     for (const def of DEFS) {
         const key = commandLabelKey(def.commandId);
-        const raw = translate(key);
-        const label = raw.trim().toLowerCase();
+        const raw = translateCommand(key).trim();
+        const label = raw.toLowerCase();
         // `translate` echoes the key back on a missing entry - that is not a token. A blank or
         // multi-word label is not a single inline token either; a label already spelling a canonical
         // English token is handled by the English pass; a duplicate resolves to the first def.
-        if (!label || raw === key || /\s/.test(label) || canonical.has(label) || map.has(label)) {
+        if (!label || raw === key || /\s/.test(label) || canonical.has(label) || accept.has(label)) {
             continue;
         }
-        map.set(label, def);
+        accept.set(label, def);
+        insert.set(def, raw);
     }
-    localizedTokens = { locale, map };
-    return map;
+    localizedTokens = { locale, accept, insert };
+    return localizedTokens;
+}
+
+function localizedTokenMap(): ReadonlyMap<string, StoryCommandDef> {
+    return localizedTokenTables().accept;
+}
+
+/**
+ * How this command is spelled in the command language: the localized token when it has one that
+ * parses, else the canonical English token.
+ *
+ * The one call every surface that WRITES a command word goes through - the completion menu, and the
+ * line's own verb ({@link localizeCommandVerb}). Whatever comes back is a key of the accept table
+ * above, so it always reads back as this very command; there is no locale in which a menu pick or a
+ * re-spelling produces a line the parser cannot take.
+ */
+export function localizedCommandToken(def: StoryCommandDef): string {
+    // The source locale writes the canonical token, always: the English label is where the token came
+    // from, so anything else here would be the catalog second-guessing the grammar.
+    if (commandI18nStore.getLocale() === SOURCE_LOCALE) {
+        return def.token;
+    }
+    return localizedTokenTables().insert.get(def) ?? def.token;
 }
 
 export function listCommandSpecs(): readonly AnyStoryCommandSpec[] {

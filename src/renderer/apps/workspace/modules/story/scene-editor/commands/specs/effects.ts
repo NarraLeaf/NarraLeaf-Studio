@@ -1,7 +1,7 @@
 import type { StoryDisplayableTargetRef } from "@shared/types/story";
 import { createBlockForCommand } from "../../storyActionCommands";
 import type { StoryCommandValue } from "../../storyCommandValues";
-import { asColor, asDurationMs, asNumber, asTarget, defineStoryCommand, secondsParam, targetParam } from "../spec";
+import { asColor, asDurationMs, asNumber, asTarget, defineStoryCommand, SECONDS_TYPE, secondsParam, targetParam } from "../spec";
 
 /**
  * Screen and displayable effects: `/blink`, `/vignette`, `/fx`, `/transform`.
@@ -54,7 +54,7 @@ export const blink = defineStoryCommand({
     examples: ["/blink", "/blink d=0.2 hold=0.1"],
     params: {
         d: secondsParam(),
-        hold: { hint: "hold", type: { kind: "number", min: 0 } },
+        hold: { hint: "hold", type: SECONDS_TYPE },
         color: { hint: "color", type: { kind: "color" } },
     },
     build: screenEffectBuild("screenBlink"),
@@ -68,7 +68,7 @@ export const vignette = defineStoryCommand({
     examples: ["/vignette", "/vignette d=0.5 opacity=0.6"],
     params: {
         d: secondsParam(),
-        hold: { hint: "hold", type: { kind: "number", min: 0 } },
+        hold: { hint: "hold", type: SECONDS_TYPE },
         color: { hint: "color", type: { kind: "color" } },
         opacity: { hint: "opacity", type: { kind: "number", min: 0, max: 1 } },
     },

@@ -19,9 +19,10 @@ import {
     storyVariableRefKey,
 } from "@shared/types/story";
 import { formatStorySecondsLabel, storyMsToSeconds } from "@shared/utils/storyTime";
-import { translate } from "@/lib/i18n";
+import { translate, translateCommand } from "@/lib/i18n";
 import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformProps";
 import { getQuickParams, quickParamText, type QuickParam } from "./storyQuickParamsModel";
+import { storyVerbLabelKey } from "./storyVerbVocabulary";
 // Two pure tables that happen to live under the story editor: the command taxonomy (the colour unit)
 // and the rich-run model (the one description of what an inline chip reads as). Both are data /
 // pure functions — nothing in this module renders, mounts or touches a workspace service.
@@ -397,7 +398,7 @@ export function storyRowBarColor(block: StoryBlock): string | null {
  * as `gold += 5`: a row that does not say WHICH variable it touches is a row the author has to open
  * to understand, which fails the first principle.
  */
-function variableRefShortLabel(ref: StoryVariableRef, scene?: StoryScene, scenes?: Record<string, StoryScene>): string {
+export function variableRefShortLabel(ref: StoryVariableRef, scene?: StoryScene, scenes?: Record<string, StoryScene>): string {
     if (ref.scope === "persistent") {
         for (const candidate of Object.values(scenes ?? {})) {
             for (const block of Object.values(candidate.blocks)) {
@@ -514,6 +515,22 @@ const CAMERA_PAN_PLACEMENTS: Record<number, StagePlacement> = (["left", "center"
     }, {});
 
 /**
+ * The `at=` word a stored camera position lands on, or `null` when it sits somewhere no word names.
+ *
+ * Exported because two readings of the same row need it — this module's prose summary and the
+ * command-line projection that reads the row back as `/camera pan left`. A second copy of the table
+ * would be a second answer to "which side is this".
+ */
+export function storyCameraPanPlacement(position: Extract<StoryActionPayload, { action: "camera" }>["position"]): StagePlacement | null {
+    const xalign = position?.xalign ?? 0.5;
+    const yalign = position?.yalign ?? 0.5;
+    if (yalign !== 0.5 || position?.xoffset || position?.yoffset) {
+        return null;
+    }
+    return CAMERA_PAN_PLACEMENTS[xalign] ?? null;
+}
+
+/**
  * How a camera row reads: the operation plus the one value it carries. The verb is NOT repeated from
  * the badge, but the knob is named ("Zoom ×1.5", not "×1.5"), because five operations share one badge.
  */
@@ -541,9 +558,7 @@ function describeCamera(
     if (payload.operation === "pan") {
         const xalign = payload.position?.xalign ?? 0.5;
         const yalign = payload.position?.yalign ?? 0.5;
-        const placement = yalign === 0.5 && !payload.position?.xoffset && !payload.position?.yoffset
-            ? CAMERA_PAN_PLACEMENTS[xalign]
-            : undefined;
+        const placement = storyCameraPanPlacement(payload.position);
         return `${operation} ${placement ? translate(`story.position.${placement}`) : `${Math.round(xalign * 100)}% · ${Math.round(yalign * 100)}%`}`;
     }
     return operation;
@@ -557,6 +572,20 @@ function describeCamera(
  * where a background row also paints the picture, and unacceptable as a panel heading — hence the
  * resolver being the caller's to provide rather than a service reached from in here.
  */
+/**
+ * The verb word a row leads with: the name of the command that would produce it, in the COMMAND
+ * language, falling back to `whenUnowned` for the operations no command owns.
+ *
+ * Vocabulary, not prose — so it follows `editor.localizedCommands` and not the interface language,
+ * and it comes from `story.command.<id>.label`, the same string the action creator's menu, the
+ * command manual and the parser's localized token table all read. That shared source is the point:
+ * the author typed "隐藏", so the row says "隐藏". It used to say "退场".
+ */
+function verbWord(payload: StoryActionPayload, whenUnowned: string): string {
+    const key = storyVerbLabelKey(payload);
+    return key === null ? whenUnowned : translateCommand(key);
+}
+
 export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups): string {
     const { scene, scenes } = lookups;
     if (block.kind === "nodeAction") {
@@ -578,8 +607,9 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
         }
         if (payload.action === "character") {
             const name = payload.characterId ? storyCharacterName(lookups, payload.characterId) : (payload.objectName || translate("story.describe.characterFallback"));
-            // Localized verb + the target name ("Enter · Alice"), not the raw English enum ("enter Alice").
-            const operation = translate(`story.describe.charOp.${payload.operation}` as TranslationKey);
+            // The command's own name ("Hide Alice"), so the row reads back the word the author typed.
+            // `charOp` survives only as the fallback for an operation no command owns.
+            const operation = verbWord(payload, translate(`story.describe.charOp.${payload.operation}` as TranslationKey));
             // A rename's whole content is the new label, so the row shows it - "Rename Stranger" would
             // say nothing about what the player is about to read.
             if (payload.operation === "setName") {
@@ -608,21 +638,22 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
             const named = payload.assetId && lookups.assetName
                 ? lookups.assetName(payload.assetId) ?? translate("story.describe.missingAsset")
                 : null;
-            return `${payload.operation} ${payload.objectName || named || payload.assetId || translate("story.describe.unassigned")}`;
+            // `{operation}` used to interpolate the raw enum, so a Chinese author read "setBgm piano".
+            return `${verbWord(payload, payload.operation)} ${payload.objectName || named || payload.assetId || translate("story.describe.unassigned")}`;
         }
         if (payload.action === "setVariable") return describeAssignment(payload, variableRefShortLabel(payload.target, scene, scenes));
         if (payload.action === "wait") return payload.mode === "duration" ? translate("story.describe.waitDuration", { seconds: storyMsToSeconds(payload.durationMs ?? 0) }) : translate("story.describe.waitClick");
-        if (payload.action === "image") return translate("story.describe.image", { operation: payload.operation, name: payload.objectName || translate("story.describe.unnamed") });
-        if (payload.action === "displayable") return `${payload.operation} ${resolveDisplayableTargetRef(scene, payload.target).label || translate("story.describe.targetFallback")}`;
-        if (payload.action === "text") return translate("story.describe.text", { operation: payload.operation, name: payload.objectName || translate("story.describe.unnamed") });
+        if (payload.action === "image") return translate("story.describe.image", { operation: verbWord(payload, payload.operation), name: payload.objectName || translate("story.describe.unnamed") });
+        if (payload.action === "displayable") return `${verbWord(payload, payload.operation)} ${resolveDisplayableTargetRef(scene, payload.target).label || translate("story.describe.targetFallback")}`;
+        if (payload.action === "text") return translate("story.describe.text", { operation: verbWord(payload, payload.operation), name: payload.objectName || translate("story.describe.unnamed") });
         if (payload.action === "layer") {
             const layerName = payload.operation === "create"
                 ? (payload.objectName || translate("story.describe.unnamed"))
                 : (resolveStoryLayerRef(scene, layerActionTargetRef(payload.target, payload.objectName)).name || translate("story.describe.unnamed"));
-            return translate("story.describe.layer", { operation: payload.operation, name: layerName });
+            return translate("story.describe.layer", { operation: verbWord(payload, payload.operation), name: layerName });
         }
-        if (payload.action === "video") return translate("story.describe.video", { operation: payload.operation, name: payload.objectName || translate("story.describe.unnamed") });
-        if (payload.action === "vfx") return translate("story.describe.vfx", { operation: payload.operation, name: payload.objectName || translate("story.describe.unnamed") });
+        if (payload.action === "video") return translate("story.describe.video", { operation: verbWord(payload, payload.operation), name: payload.objectName || translate("story.describe.unnamed") });
+        if (payload.action === "vfx") return translate("story.describe.vfx", { operation: verbWord(payload, payload.operation), name: payload.objectName || translate("story.describe.unnamed") });
         if (payload.action === "nvl") return translate("story.describe.nvl");
         if (payload.action === "blueprint") return translate("story.describe.blueprint");
         if (payload.action === "camera") return describeCamera(payload, lookups.motionName);
