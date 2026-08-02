@@ -12,9 +12,12 @@ import {
 import {
     VcsGetAvailabilityHandler, VcsIsRepositoryHandler, VcsGetInfoHandler, VcsGetHistoryHandler, VcsReadBlobHandler,
     VcsReadRevisionDocumentsHandler, VcsGetChangedPathsHandler, VcsGetThreeWayHandler, VcsGetMergeBaseHandler,
+    VcsDiffRevisionsHandler, VcsDiffWorkingTreeHandler,
     VcsInitRepositoryHandler,
     VcsGetStatusHandler, VcsCommitHandler, VcsCheckpointHandler, VcsRestoreRevisionHandler,
     VcsGetRemoteHandler, VcsSetRemoteHandler, VcsGetSyncStateHandler, VcsPushHandler, VcsSyncHandler, VcsCloneHandler,
+    VcsGetMergeStateHandler, VcsResolveConflictsHandler, VcsUnresolveConflictsHandler,
+    VcsRestartConflictsHandler, VcsAbortMergeHandler,
 } from "./handlers/vcsAction";
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./handlers/projectWizardAction";
 import { WorkspaceExportProjectPackageHandler, WorkspaceImportProjectPackageHandler } from "./handlers/projectPackageAction";
@@ -270,8 +273,15 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new VcsReadBlobHandler(),
         new VcsReadRevisionDocumentsHandler(),
         new VcsGetChangedPathsHandler(),
+        new VcsDiffRevisionsHandler(),
+        new VcsDiffWorkingTreeHandler(),
         new VcsGetThreeWayHandler(),
         new VcsGetMergeBaseHandler(),
+        new VcsGetMergeStateHandler(),
+        new VcsResolveConflictsHandler(),
+        new VcsUnresolveConflictsHandler(),
+        new VcsRestartConflictsHandler(),
+        new VcsAbortMergeHandler(),
         new VcsGetRemoteHandler(),
         new VcsSetRemoteHandler(),
         new VcsGetSyncStateHandler(),

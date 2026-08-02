@@ -10,6 +10,7 @@ import {
     matchDocumentPath,
     normalizeDocumentPath,
 } from "./documentPath";
+import type {DocumentDiff} from "./diff";
 import {AnyDocumentSpec, DocumentKind, DocumentParseContext, DocumentSpec, DocumentSummary} from "./types";
 
 /**
@@ -156,6 +157,16 @@ export interface DocumentSpecDefinition<T> {
     /** Defaults to canonical JSON. Override only for a format that is not JSON at all. */
     serialize?(document: T): string;
     summarize(document: T): DocumentSummary;
+    /**
+     * Optional semantic diff. See {@link DocumentSpec.diff} for the contract - pure, non-throwing,
+     * and bound by `limit` - which this only forwards.
+     *
+     * Forwarding it at all is the point: a definition that quietly dropped `diff` would produce a
+     * spec whose diff is `undefined`, and `documentDiff.ts` reads exactly that to decide between the
+     * semantic and the summary tier. The author would get a working, plausible, lesser answer with
+     * nothing anywhere reporting that the implementation they wrote was never called.
+     */
+    diff?(base: T, head: T, options: {limit: number}): DocumentDiff;
 }
 
 /**
@@ -179,6 +190,7 @@ export function defineDocumentSpec<T>(definition: DocumentSpecDefinition<T>): Do
         parse: definition.parse,
         serialize: serialize ? document => serialize(document) : document => encodeCanonicalJson(document),
         summarize: definition.summarize,
+        ...(definition.diff ? {diff: definition.diff} : {}),
     };
 }
 

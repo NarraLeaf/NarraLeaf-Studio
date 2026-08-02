@@ -285,7 +285,7 @@ function LintEntryRow({
     return (
         <button
             type="button"
-            className="flex w-full items-baseline gap-2 rounded-md px-2 py-0.5 text-left hover:bg-fill-subtle"
+            className="flex w-full cursor-default items-baseline gap-2 rounded-md px-2 py-0.5 text-left hover:bg-fill-subtle"
             onClick={() => onJump(entry)}
         >
             {body}
