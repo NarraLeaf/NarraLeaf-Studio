@@ -7,12 +7,12 @@ import {
     allowsFreeValue,
     freeTargetKind,
     paramTypes,
-    matchEnumOption,
     type StoryCommandParam,
     type StoryCommandParamType,
 } from "./storyCommandGrammar";
 import type { StoryCommandLine, StoryCommandSpan } from "./storyCommandParser";
 import { getCommandSpec } from "./commands/registry";
+import { matchEnumOptionLocalized } from "./commands/localizedEnums";
 import type {
     StoryCommandContext,
     StoryCommandAppearanceRef,
@@ -297,9 +297,11 @@ function resolveAgainstType(
         case "content":
             return resolveContent(type, value, span, context, resolved);
         case "enum": {
-            const option = matchEnumOption(type, value);
+            const option = matchEnumOptionLocalized(type, value);
             // Normalizing the alias to its canonical value happens here, not in the parser: the parser
-            // stays faithful to what was typed, the payload gets what it can store.
+            // stays faithful to what was typed, the payload gets what it can store. A translated
+            // spelling normalizes on exactly the same step, so `t=淡变` banks `fade` (bible B6) and the
+            // project file never carries a locale.
             return option ? { value: { kind: "enum", value: option.value } } : null;
         }
         case "keyword":

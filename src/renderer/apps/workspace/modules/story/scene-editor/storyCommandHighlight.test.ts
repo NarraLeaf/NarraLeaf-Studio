@@ -1,0 +1,89 @@
+import { afterEach, describe, expect, it } from "vitest";
+import { i18nStore } from "@/lib/i18n";
+import { getCommandSegments } from "./storyCommandHighlight";
+
+afterEach(() => {
+    i18nStore.setLocale("en");
+});
+
+/** `[role]text` per segment — compact enough to read a whole line's colouring at a glance. */
+function shape(source: string): string {
+    return getCommandSegments(source).map(segment => `[${segment.role}]${segment.text}`).join("");
+}
+
+describe("getCommandSegments", () => {
+    it("colours by role, not by position", () => {
+        expect(shape("/hide Narra t=fade d=1s")).toBe(
+            "[scaffold]/[verb]hide[scaffold] [target]Narra[scaffold] t=[value]fade[scaffold] d=[value]1s",
+        );
+    });
+
+    it("reproduces the source exactly, so an overlay can sit on the field", () => {
+        // The load-bearing property: the mirror has to occupy the same width as the text beneath it,
+        // character for character, or the colours drift away from the caret as the line grows.
+        for (const source of [
+            "/hide Narra t=fade d=1s",
+            "/bg forest_day",
+            "/say Alice Hello, world",
+            "/set 'boss hp' += 2",
+            "/bg   forest   t=fade  ",
+            "/hi",
+            "/",
+            "",
+            "/背景 forest 转场=淡变",
+        ]) {
+            expect(getCommandSegments(source).map(segment => segment.text).join(""), source).toBe(source);
+        }
+    });
+
+    it("keeps the scaffold muted — the trigger, the binders, the keys and the unit", () => {
+        const scaffold = getCommandSegments("/hide Narra t=fade d=1s")
+            .filter(segment => segment.role === "scaffold")
+            .map(segment => segment.text);
+        expect(scaffold).toEqual(["/", " ", " t=", " d="]);
+    });
+
+    it("gives a half-typed verb its colour rather than letting the line flicker", () => {
+        // `/hi` names no command yet. Going dark on every intermediate keystroke and lighting back up
+        // at the last one is a worse read than simply being the verb slot the whole way.
+        expect(shape("/hi")).toBe("[scaffold]/[verb]hi");
+        expect(shape("/")).toBe("[scaffold]/");
+    });
+
+    it("reads a Chinese line the same way — the roles do not move", () => {
+        // The whole premise of the display-language switch: same skeleton, different skin. Token
+        // roles, order and boundaries all correspond one to one with the English line. The locale has
+        // to be set for the same reason the parser needs it: `背景` is only a command word in Chinese.
+        i18nStore.setLocale("zh");
+        expect(shape("/背景 forest 转场=淡变")).toBe(
+            "[scaffold]/[verb]背景[scaffold] [target]forest[scaffold] 转场=[value]淡变",
+        );
+        expect(shape("/bg forest t=fade")).toBe(
+            "[scaffold]/[verb]bg[scaffold] [target]forest[scaffold] t=[value]fade",
+        );
+    });
+
+    it("gives an unknown command word the verb colour and leaves the rest alone", () => {
+        // In English `背景` names nothing, so there is no grammar to colour the rest by. The verb slot
+        // still reads as the verb slot — the line is being typed, not diagnosed.
+        expect(shape("/背景 forest 转场=淡变")).toBe("[scaffold]/[verb]背景[scaffold] forest 转场=淡变");
+    });
+
+    it("decides target-vs-value by what the slot holds, not by where it sits", () => {
+        // `/bg` names its object `image` and `/hide` names its `target`; both are the thing acted on.
+        expect(shape("/bg forest_day")).toBe("[scaffold]/[verb]bg[scaffold] [target]forest_day");
+        expect(shape("/set gold += 1")).toBe("[scaffold]/[verb]set[scaffold] [target]gold[scaffold] [value]+= 1");
+        // A leading NUMBER is a value, not an object — `/vol 0.5` sets a volume, it does not act on 0.5.
+        expect(shape("/vol 0.5")).toBe("[scaffold]/[verb]vol[scaffold] [value]0.5");
+        expect(shape("/wait 5")).toBe("[scaffold]/[verb]wait[scaffold] [value]5");
+    });
+
+    it("says nothing about a line that is not a command", () => {
+        expect(getCommandSegments("just narration")).toEqual([{ text: "just narration", role: "scaffold" }]);
+        expect(getCommandSegments("#Alice hello")).toEqual([{ text: "#Alice hello", role: "scaffold" }]);
+    });
+
+    it("treats a quoted value as one value, quotes included", () => {
+        expect(shape("/jump 'Scene Name'")).toBe("[scaffold]/[verb]jump[scaffold] [target]'Scene Name'");
+    });
+});

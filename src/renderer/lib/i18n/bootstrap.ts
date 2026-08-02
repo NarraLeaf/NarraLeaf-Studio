@@ -1,5 +1,7 @@
 import { getInterface } from "@/lib/app/bridge";
 import { normalizeLocale, setLocaleContributions } from "@shared/i18n";
+import { LOCALIZED_COMMANDS_KEY } from "@/lib/settings/commandLanguageOptions";
+import { commandI18nStore } from "./commandLocale";
 import { i18nStore } from "./store";
 
 let subscribed = false;
@@ -50,6 +52,11 @@ function applyPreference(): void {
  * "ja") resolves instead of collapsing to the fallback. Subscribes to the
  * main-process broadcasts so changing the language in Settings, or the enabled
  * plugin set changing, updates every window instantly.
+ *
+ * Both locale axes are loaded here. `editor.localizedCommands` needs no
+ * `applyPreference` twin: `commandI18nStore` resolves against the interface
+ * locale on every read, and it subscribes to `i18nStore`, so the interface
+ * language moving is already enough to move it.
  */
 export async function initI18n(): Promise<void> {
     await loadPluginLocales();
@@ -64,12 +71,24 @@ export async function initI18n(): Promise<void> {
         console.warn("[i18n] Failed to load language preference; using default.", error);
     }
 
+    try {
+        const result = await getInterface().app.state.getGlobalState(LOCALIZED_COMMANDS_KEY);
+        if (result.success) {
+            commandI18nStore.setPreference(result.data.value);
+        }
+    } catch (error) {
+        console.warn("[i18n] Failed to load command language preference; following the interface language.", error);
+    }
+
     if (!subscribed) {
         subscribed = true;
         getInterface().app.state.onGlobalStateChanged?.((change) => {
             if (change.key === "app.language") {
                 preference = change.value;
                 applyPreference();
+            }
+            if (change.key === LOCALIZED_COMMANDS_KEY) {
+                commandI18nStore.setPreference(change.value);
             }
         });
         getInterface().plugins?.onLocalesChanged?.(() => {

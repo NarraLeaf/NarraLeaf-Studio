@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { commandI18nStore, i18nStore } from "@/lib/i18n";
+import { LOCALIZED_COMMANDS_DEFAULT } from "@/lib/settings/commandLanguageOptions";
 import type { StoryBlock, StoryDocument, StoryScene } from "@shared/types/story";
 import {
     describeStoryBlock,
@@ -34,11 +36,50 @@ function narration(text: string, id = "n"): StoryBlock {
     };
 }
 
+afterEach(() => {
+    commandI18nStore.setPreference(LOCALIZED_COMMANDS_DEFAULT);
+    i18nStore.setLocale("en");
+});
+
+describe("the verb a row reads back", () => {
+    /**
+     * The seam this closes: the row named the payload's *operation* out of a vocabulary of its own, so
+     * an author who typed 显示 read 入场 back. The word a row says is now the word its command is
+     * called, in the COMMAND language - the same string the menu, the manual and the parser share.
+     */
+    it("says the command's own name, in the command language", () => {
+        const enter = action({ action: "character", operation: "enter", characterId: "c1" });
+        const exit = action({ action: "character", operation: "exit", characterId: "c1" });
+        i18nStore.setLocale("zh");
+        expect(storyRowSentence(enter, withCharacters({ c1: "Nattou" }))).toBe("显示 Nattou");
+        expect(storyRowSentence(exit, withCharacters({ c1: "Nattou" }))).toBe("隐藏 Nattou");
+    });
+
+    it("is vocabulary, so it follows the command language and not the interface", () => {
+        const enter = action({ action: "character", operation: "enter", characterId: "c1" });
+        i18nStore.setLocale("zh");
+        commandI18nStore.setPreference(false);
+        // A Chinese interface with an English vocabulary: the row reads back what this author types.
+        expect(storyRowSentence(enter, withCharacters({ c1: "Nattou" }))).toBe("Show Nattou");
+    });
+
+    it("names the command for every action that has one, not the raw enum", () => {
+        i18nStore.setLocale("zh");
+        // These four used to interpolate `payload.operation` straight into the sentence, so a Chinese
+        // author read "setBgm piano" and "show Sign".
+        expect(storyRowSentence(action({ action: "image", operation: "show", objectName: "Sign" }), bare)).toContain("显示");
+        expect(storyRowSentence(action({ action: "video", operation: "play", objectName: "Intro" }), bare)).toContain("播放");
+        expect(storyRowSentence(action({ action: "audio", operation: "setBgm", objectName: "Piano" }), bare)).toContain("背景音乐");
+        expect(storyRowSentence(action({ action: "layer", operation: "create", objectName: "Fog" }), bare)).toContain("图层");
+    });
+});
+
 describe("storyRowSentence — the sentence the editor shows", () => {
     it("names a character entrance rather than printing its enums", () => {
         const block = action({ action: "character", operation: "enter", characterId: "c1" });
-        // The old debug projection said `character enter · character` here.
-        expect(storyRowSentence(block, withCharacters({ c1: "Nattou" }))).toBe("Enter Nattou");
+        // The old debug projection said `character enter · character` here. The word is the
+        // COMMAND's name, not the payload operation's: the author typed `/show`, so the row says Show.
+        expect(storyRowSentence(block, withCharacters({ c1: "Nattou" }))).toBe("Show Nattou");
     });
 
     it("resolves a background's asset id to its name, and keeps the quick-param token in the line", () => {
@@ -214,7 +255,7 @@ describe("projectStoryRow", () => {
     it("answers the four things a row surface needs in one pass", () => {
         const block = action({ action: "character", operation: "enter", characterId: "c1" });
         expect(projectStoryRow(block, withCharacters({ c1: "Nattou" }))).toEqual({
-            sentence: "Enter Nattou",
+            sentence: "Show Nattou",
             speaker: null,
             barColor: "var(--narraleaf-accent, #40a8c4)",
             containerPill: null,

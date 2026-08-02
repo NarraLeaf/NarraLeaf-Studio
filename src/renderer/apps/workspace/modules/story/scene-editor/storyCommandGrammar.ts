@@ -16,8 +16,13 @@ import type { StoryCommandStageObjectKind, StoryCommandTargetKind, StoryPuppetCh
  *  - parser (`storyCommandParser.ts`): source text → args + syntax/grammar issues. Pure.
  *  - resolution (`storyCommandResolution.ts`): name → id, and every check needing project state.
  *
- * Labels are deliberately absent. Command display text resolves through `story.command.<id>.label`;
- * the token itself is a keyword and stays English (`/bg` in every locale).
+ * Labels are deliberately absent — but *keys* are not. Display text resolves through
+ * `story.command.<id>.label` for a command and `story.paramHint.<key>` for a param slot (see
+ * {@link paramHintKey}); this file names the key and never the string, so the grammar itself carries
+ * no locale data. The canonical spellings — a command's token, a param's `name` and `aliases` — stay
+ * English in every locale and are always accepted on input. What a locale adds is an extra spelling,
+ * never a replacement: see `commands/registry.ts` for commands and `commands/localizedParams.ts` for
+ * params.
  */
 
 /** An enum value the author may type. `aliases` are accepted on input; completion and storage use the canonical `value` (bible B6). */
@@ -208,6 +213,18 @@ export function findParam(def: StoryCommandDef, key: string): StoryCommandParam 
     return def.params.find(param => param.name === normalized)
         ?? def.params.find(param => (param.aliases ?? []).includes(normalized))
         ?? null;
+}
+
+/**
+ * The `story.paramHint.*` key a param answers to: its explicit `hint`, else its payload `name`.
+ *
+ * Lives here rather than beside the ghost hint that first needed it, because it is now the one name
+ * the whole author-facing surface reads a slot by — the ghost, the candidate menu, the manual, the
+ * "why won't this commit" reason, and the localized param alias table. Shared across commands on
+ * purpose: a slot is named once and every command carrying it says the same word.
+ */
+export function paramHintKey(param: StoryCommandParam): string {
+    return param.hint ?? param.name;
 }
 
 export function positionalParams(def: StoryCommandDef): readonly StoryCommandParam[] {

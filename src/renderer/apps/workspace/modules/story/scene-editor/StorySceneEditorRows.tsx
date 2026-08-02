@@ -12,7 +12,7 @@ import type { NormalizedCrop } from "@/lib/utils/headCrop";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { isRowTextEditable } from "./storySceneReadOnly";
-import { useTranslation } from "@/lib/i18n";
+import { useCommandTranslation, useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
 import { getCommandGhost } from "./storyCommandGhost";
 import { getCommandLineDraftReason, getCommandLineReason } from "./storyCommandReason";
@@ -40,7 +40,8 @@ import { localizeSpecCommand, specPaletteCommands } from "./commands/specPalette
 import { browseMenuStops, buildSpecSidebarGroups, dedupeToPrimarySubject, filterSidebarGroups, type StoryCommandMenuStop, type StoryCommandSidebarGroup } from "./commands/specSidebar";
 import { useStoryPluginActionCommands } from "./useStoryPluginActionCommands";
 import { paramTypes } from "./storyCommandGrammar";
-import { getCommandDef } from "./commands/registry";
+import { getCommandDef, localizedCommandToken } from "./commands/registry";
+import { localizeCommandVerb } from "./storyCommandSpelling";
 import { completionFor, defaultHighlights, getCommandCursor, type StoryCommandCursor } from "./storyCommandCursor";
 import { getCommandCandidates, hasCandidateSource, type StoryCommandCandidate } from "./storyCommandCandidates";
 import { parseCommandLine } from "./storyCommandParser";
@@ -1515,14 +1516,22 @@ function candidateIcon(cursor: StoryCommandCursor, candidate: StoryCommandCandid
  */
 function CommandGhostHint(props: { value: string; source: string; caret: number; textStyle: CSSProperties; commandContext: StoryCommandContext; confirmation?: string }) {
     const { t } = useTranslation();
+    // The slot's NAME is vocabulary — the word the author may type as `位置=` — so it follows the
+    // command language. The failure sentence around it is prose and stays in the interface language.
+    const { t: ct } = useCommandTranslation();
     // The ghost and reason parse the canonical "/" line (`source`); the invisible spacer below uses the
     // displayed `value` so it occupies the exact width the author sees ("@" and "/" render differently).
-    const ghost = useMemo(() => getCommandGhost(props.source, props.caret), [props.caret, props.source]);
+    //
+    // `ct` is a dependency of both, though neither takes it as an argument: the parse is NOT a pure
+    // function of (source, caret). The command locale is a hidden third input — it decides whether
+    // `位置=` names a slot — so a locale switch changes the verdict with no keystroke to recompute on.
+    // Without it a mid-typed line keeps its stale answer until the author types again.
+    const ghost = useMemo(() => getCommandGhost(props.source, props.caret), [ct, props.caret, props.source]);
     // Why the line will not commit, if it will not. It outranks the hint: naming the next slot while
     // the line is already broken answers a question the author is no longer asking.
     const reason = useMemo(
         () => getCommandLineReason(props.source, props.commandContext),
-        [props.commandContext, props.source],
+        [ct, props.commandContext, props.source],
     );
     if (!ghost && !reason && !props.confirmation) {
         return null;
@@ -1543,7 +1552,7 @@ function CommandGhostHint(props: { value: string; source: string; caret: number;
             ) : reason ? (
                 <span className="text-danger/80">{`  ${t(reason.key, reason.params)}`}</span>
             ) : (
-                <span className="italic text-fg-subtle">{`<${t(`story.paramHint.${ghost!.hintKey}` as TranslationKey)}>`}</span>
+                <span className="italic text-fg-subtle">{`<${ct(`story.paramHint.${ghost!.hintKey}` as TranslationKey)}>`}</span>
             )}
         </span>
     );
@@ -1576,6 +1585,10 @@ export function InsertRow(props: {
     slashAtAlias: boolean;
 }) {
     const { t } = useTranslation();
+    // The action creator is command vocabulary end to end — command names, their categories, the
+    // param slots — so it reads the command language (`editor.localizedCommands`), which an author may
+    // keep in English behind a Chinese interface. `t` stays for this slot's own chrome.
+    const { t: ct } = useCommandTranslation();
     /**
      * The line being typed lives here, not in the editor's mode.
      *
@@ -1616,13 +1629,13 @@ export function InsertRow(props: {
             [
                 // The typing/filter tier lists one entry per spec — the ranked flat list is the right
                 // shape while filtering, so a verb appears once even though it files under many subjects.
-                ...specPaletteCommands().map(command => localizeSpecCommand(command, t)),
+                ...specPaletteCommands().map(command => localizeSpecCommand(command, ct)),
                 // A plugin action carries the label its own language pack already resolved.
                 ...pluginCommands,
             ],
             chooserQuery,
         ),
-        [chooserQuery, pluginCommands, t],
+        [chooserQuery, ct, pluginCommands],
     );
     // The browse is the sidebar's projection, not a second catalogue: same `accepts` classification
     // (WI-1). Handed over undeduped, because the menu's category column needs both readings of it —
@@ -1630,8 +1643,8 @@ export function InsertRow(props: {
     // each time reads as six commands, not as one that reaches six places), while a chosen category
     // wants the full filing, where `/show` under 图片 is the answer rather than a repeat.
     const sidebarGroups = useMemo(
-        () => buildSpecSidebarGroups(pluginCommands, command => localizeSpecCommand(command, t)),
-        [pluginCommands, t],
+        () => buildSpecSidebarGroups(pluginCommands, command => localizeSpecCommand(command, ct)),
+        [ct, pluginCommands],
     );
     const characterOptions = useMemo(
         () => getSpeakerCandidates(props.characters, props.tempSpeakers, chooserQuery),
@@ -1644,13 +1657,15 @@ export function InsertRow(props: {
     // Where the caret is decides what the slot offers, so it has to be state: `/bg fo|` asks for an
     // image, `/bg forest_day t=|` for a transition, and only the caret tells them apart.
     const [caret, setCaret] = useState(props.mode.initialValue.length);
-    const cursor = useMemo(() => getCommandCursor(source, caret), [caret, source]);
+    // `ct` is a dependency here for the same reason it is one in `CommandGhostHint`: the command
+    // locale is a hidden input to every parse, so a locale switch has to invalidate these too.
+    const cursor = useMemo(() => getCommandCursor(source, caret), [ct, caret, source]);
     // `form=` can only list the forms of the character this line already named, so the candidates need
     // the args resolved so far.
     const resolvedArgs = useMemo(() => {
         const line = parseCommandLine(source);
         return line.kind === "command" && line.def ? resolveCommandLine(line, props.commandContext).args : {};
-    }, [props.commandContext, source]);
+    }, [ct, props.commandContext, source]);
     const argItems = useMemo<StoryCandidateItem[]>(() => {
         if (cursor.kind !== "positional" && cursor.kind !== "paramValue" && cursor.kind !== "paramName") {
             return [];
@@ -1661,19 +1676,27 @@ export function InsertRow(props: {
                 // Values are not unique on their own — two assets may share a name.
                 key: `${index}:${candidate.value}`,
                 value: candidate.value,
-                label: candidate.label,
+                // A param candidate leads with the slot's name in the command language and trails the
+                // canonical key: the word being taught belongs in the reading column, the key it also
+                // answers to in the footnote. It was the other way round, so a zh author read a column
+                // of `t` `d` `at` with the words that explain them pushed to the margin.
+                label: candidate.hintKey
+                    ? ct(`story.paramHint.${candidate.hintKey}` as TranslationKey)
+                    : candidate.label,
                 // The kind a name belongs to is carried untranslated; it shares the subject vocabulary
                 // the category strip already names, so it reads in the author's own language.
-                detail: candidate.detailKind
-                    ? t(commandCategoryLabelKey(subjectGroupId(candidate.detailKind)))
-                    : candidate.detail,
+                detail: candidate.hintKey
+                    ? candidate.label
+                    : candidate.detailKind
+                        ? t(commandCategoryLabelKey(subjectGroupId(candidate.detailKind)))
+                        : candidate.detail,
                 icon: icon?.icon,
                 iconClassName: icon?.className,
                 tag: candidate.free ? t("story.rows.tempSpeaker") : undefined,
                 ...(candidate.free ? { free: true as const } : {}),
             };
         });
-    }, [cursor, props.commandContext, resolvedArgs, t]);
+    }, [ct, cursor, props.commandContext, resolvedArgs, t]);
     // The candidates decide the highlight along with the cursor: an untyped slot and a slot whose best
     // offer is the author's own text both have to leave Enter meaning "submit". See `defaultHighlights`.
     const argMenu = useStoryCandidateMenuState(argItems, defaultHighlights(cursor, argItems));
@@ -1722,7 +1745,10 @@ export function InsertRow(props: {
             // Rebuild the whole line, but keep the trigger the author is using so "@" does not flip to
             // "/" mid-completion. The commit path canonicalizes it either way.
             const trigger = actionTrigger(value, props.slashAtAlias) ?? ACTION_TRIGGER;
-            applyCompletion(`${trigger}${def.token} `, { start: 0, end: value.length });
+            // The word the menu is SHOWING, not the canonical token: a pick that displayed 显示 and
+            // wrote `@show` taught the author nothing they could type. `localizedCommandToken` comes
+            // out of the same pass that built the parser's accept table, so it always reads back.
+            applyCompletion(`${trigger}${localizedCommandToken(def)} `, { start: 0, end: value.length });
             return;
         }
         props.onChooseCommand(commandId);
@@ -1773,8 +1799,22 @@ export function InsertRow(props: {
                     // empty slot; the next keystroke clears the receipt and the placeholder is moot anyway.
                     placeholder={props.mode.confirmation ? "" : t("story.rows.insertPlaceholder", { trigger: props.slashAtAlias ? "@" : "/" })}
                     onChange={event => {
-                        setCaret(event.target.selectionStart ?? event.target.value.length);
-                        setLineValue(event.target.value);
+                        const typed = event.target.value;
+                        const typedCaret = event.target.selectionStart ?? typed.length;
+                        // The verb settles into the command language the moment it is finished, so a
+                        // hand-typed `@show` reads as the `@显示` the menu, the ghost and the committed
+                        // row all say. Almost every keystroke returns null and takes the plain path.
+                        const respelled = localizeCommandVerb(typed, typedCaret, props.slashAtAlias);
+                        if (!respelled) {
+                            setCaret(typedCaret);
+                            setLineValue(typed);
+                            return;
+                        }
+                        setCaret(respelled.caret);
+                        setLineValue(respelled.value);
+                        // Same hand-off as `applyCompletion`: the field is controlled, so the caret has
+                        // to be put back once React has rendered the text that replaced what was typed.
+                        window.requestAnimationFrame(() => props.inputRef.current?.setSelectionRange(respelled.caret, respelled.caret));
                     }}
                     // Fires on caret moves as well as selections — the slot has to follow the caret,
                     // not just the text, or clicking back into `/bg |forest` would still offer transitions.
@@ -2271,6 +2311,9 @@ function ActionCommandMenu(props: {
     frame: AnchoredMenuFrame;
 }) {
     const { t } = useTranslation();
+    // Category names are the subject vocabulary the whole command surface is filed under, so they
+    // follow the command language; the menu's own chrome ("no actions", the key strip) does not.
+    const { t: ct } = useCommandTranslation();
     const listRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
@@ -2326,7 +2369,7 @@ function ActionCommandMenu(props: {
                         <div key={entry.group.id} className="pt-2 first:pt-0">
                             <div className="flex items-center gap-1.5 px-2 pb-1 text-2xs font-medium tracking-wide text-fg-subtle">
                                 <Icon className="h-3 w-3 shrink-0" style={{ color: entry.group.iconColor }} />
-                                <span>{t(commandCategoryLabelKey(entry.group.id))}</span>
+                                <span>{ct(commandCategoryLabelKey(entry.group.id))}</span>
                             </div>
                             {entry.commands.map(command => {
                                 const key = `${entry.group.id}:${command.id}`;
@@ -2370,7 +2413,7 @@ function ActionCommandMenu(props: {
                     <ActionCommandCategoryRow
                         icon={LayoutGrid}
                         iconColor="#a8adb5"
-                        label={t("story.actionCategory.all")}
+                        label={ct("story.actionCategory.all")}
                         active={props.category === ALL_MENU_CATEGORY}
                         empty={!props.reachable.has(ALL_MENU_CATEGORY)}
                         onSelect={() => props.onCategory(ALL_MENU_CATEGORY)}
@@ -2380,7 +2423,7 @@ function ActionCommandMenu(props: {
                             key={category.id}
                             icon={category.icon}
                             iconColor={category.iconColor}
-                            label={t(commandCategoryLabelKey(category.id))}
+                            label={ct(commandCategoryLabelKey(category.id))}
                             active={props.category === category.id}
                             empty={!props.reachable.has(category.id)}
                             onSelect={() => props.onCategory(category.id)}
@@ -2905,12 +2948,17 @@ function TextClickTarget(props: { style?: CSSProperties; className?: string; chi
 /** A draft row's line: the source, and why it has not committed yet. */
 function DraftRowPreview(props: { source: string; commandContext: StoryCommandContext }) {
     const { t } = useTranslation();
+    const { t: ct } = useCommandTranslation();
     const reason = useMemo(
+        // `ct`: the command locale is a hidden input to the parse behind this reason. See `CommandGhostHint`.
         () => getCommandLineDraftReason(props.source, props.commandContext),
-        [props.commandContext, props.source],
+        [ct, props.commandContext, props.source],
     );
+    // The sentence is prose (interface language); the slot name interpolated into it is vocabulary
+    // (command language), so a Chinese author reading an English command line is told the slot is
+    // missing in Chinese and told its name in the word they would have to type.
     const reasonText = reason
-        ? t(reason.key, reason.paramHintKey ? { ...reason.params, slot: t(reason.paramHintKey) } : reason.params)
+        ? t(reason.key, reason.paramHintKey ? { ...reason.params, slot: ct(reason.paramHintKey) } : reason.params)
         : t("story.rows.invalidHint");
     return (
         <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center gap-2">
