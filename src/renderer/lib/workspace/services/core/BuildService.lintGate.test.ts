@@ -207,6 +207,38 @@ describe("BuildService lint gate", () => {
         expect(state.error).toContain("\"count\":1");
     });
 
+    it("says on the console that the build stopped, and where to change that", async () => {
+        const { service, lines } = mount({ run: async () => report([finding("error")]) });
+
+        await service.start(REQUEST);
+
+        // The toast carrying the same sentence is gone in seconds and never archived; this channel
+        // is the record, so a refused run has to explain itself here.
+        expect(lines.some(line => line.channel === BUILD_CONSOLE_CHANNEL
+            && line.level === "error"
+            && line.message.includes("lint.build.blocked("))).toBe(true);
+        // `info`, not `verbose`: the console hides verbose by default, which is the one place this
+        // line must not be.
+        expect(lines.some(line => line.channel === BUILD_CONSOLE_CHANNEL
+            && line.level === "info"
+            && line.message === "lint.build.blockedHint")).toBe(true);
+    });
+
+    it("points at the setting when the sweep itself is what stopped the build", async () => {
+        const { service, lines } = mount({
+            run: async () => {
+                throw new Error("context assembly exploded");
+            },
+        });
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+        await service.start(REQUEST);
+
+        // Same dead end for the author, so the same way out of it.
+        expect(lines.some(line => line.message === "lint.build.blockedHint")).toBe(true);
+        consoleError.mockRestore();
+    });
+
     it("stamps startedAt and platforms on the refusal, so the dashboard can archive it", async () => {
         const { service } = mount({ run: async () => report([finding("error")]) });
 
@@ -233,6 +265,9 @@ describe("BuildService lint gate", () => {
             && line.level === "warning"
             && line.message.includes("story/dead-end"))).toBe(true);
         expect(lines.some(line => line.level === "info" && line.message.includes("story/empty-scene"))).toBe(true);
+        // ...and nothing that reads as a refusal. A warning the default threshold lets through must
+        // not leave "Build stopped" or the way-out-of-it hint sitting in the log beside it.
+        expect(lines.some(line => line.message.includes("lint.build.blocked"))).toBe(false);
     });
 
     it("refuses on the same warnings once the project stops on warnings", async () => {

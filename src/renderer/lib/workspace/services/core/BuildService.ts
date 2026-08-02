@@ -313,6 +313,7 @@ export class BuildService extends Service<BuildService> {
             console.error("[Build] the project check failed to run", error);
             const message = "The project check failed to run";
             consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", message, { source: BUILD_CONSOLE_SOURCE });
+            this.logLintGateHint(consoleService);
             this.updateState({ status: "error", startedAt, finishedAt: Date.now(), platforms, error: message });
             return this.state;
         }
@@ -323,6 +324,14 @@ export class BuildService extends Service<BuildService> {
         if (blocking === 0) {
             return null;
         }
+        // The refusal goes on the console as well as into the state. The state's copy reaches the
+        // author as a toast, which is gone in seconds and never archived; the console is the record
+        // the dashboard keeps per run, and without this line that record ends at "12 warnings in
+        // 1.2s" and never says the build stopped at all - let alone which of those findings stopped
+        // it, which is what the count is for.
+        const refusal = translate("lint.build.blocked", { count: blocking });
+        consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", refusal, { source: BUILD_CONSOLE_SOURCE });
+        this.logLintGateHint(consoleService);
         // `startedAt` and `platforms` carried through for the same reason the gate above carries
         // them: the dashboard archives a refused run as a finished build, and without them its
         // duration is measured from the epoch and it cannot say what it was building.
@@ -331,9 +340,25 @@ export class BuildService extends Service<BuildService> {
             startedAt,
             finishedAt: Date.now(),
             platforms,
-            error: translate("lint.build.blocked", { count: blocking }),
+            error: refusal,
         });
         return this.state;
+    }
+
+    /**
+     * Where the author changes their mind about this gate, printed after every refusal the gate
+     * makes - the blocking findings above, and the sweep that never ran below.
+     *
+     * A build that stops for a reason the author did not ask for is only fair if the setting that
+     * asked for it is findable, and `runOnBuild` defaults to on: for most projects nobody ever chose
+     * this, so nobody knows where to unchoose it. `info` rather than `error` because it is not a
+     * second problem - it is the way out of the first one, and the console hides `verbose` by
+     * default, which would put this line exactly where it does no good.
+     */
+    private logLintGateHint(consoleService: ConsoleService | null): void {
+        consoleService?.log(BUILD_CONSOLE_CHANNEL, "info", translate("lint.build.blockedHint"), {
+            source: BUILD_CONSOLE_SOURCE,
+        });
     }
 
     /** Every finding on the build channel at the level its severity maps to, then one summary. */

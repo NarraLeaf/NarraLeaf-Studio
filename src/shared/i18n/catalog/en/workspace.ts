@@ -700,5 +700,14 @@ export const workspace = {
             message: "Close this workspace?",
             detail: "Any changes you have made will be saved automatically.",
         },
+        // What the workspace says while it is closing. One line per stage of the close the main
+        // process runs (see `WorkspaceCloseStage`); the checkpoint is the one that actually takes
+        // time, and the one that needs naming.
+        closing: {
+            title: "Closing workspace",
+            saving: "Saving your changes…",
+            checkpoint: "Recording a version of the project…",
+            launcher: "Returning to the launcher…",
+        },
     },
 } as const;
