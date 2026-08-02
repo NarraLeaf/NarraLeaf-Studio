@@ -1,5 +1,6 @@
-import { findParam, isFlagParam, paramTypes, positionalParams, type StoryCommandDef, type StoryCommandParam } from "./storyCommandGrammar";
+import { isFlagParam, paramTypes, positionalParams, type StoryCommandDef, type StoryCommandParam } from "./storyCommandGrammar";
 import { getCommandDef } from "./commands/registry";
+import { findParamLocalized } from "./commands/localizedParams";
 import { tokenizeCommandLine, type StoryCommandSpan, type StoryCommandToken } from "./storyCommandParser";
 
 /**
@@ -16,8 +17,14 @@ export type StoryCommandCursor =
     | { kind: "commandName"; query: string; replace: StoryCommandSpan }
     /** A positional slot: the image in `/bg …`, the speaker in `/say …`. */
     | { kind: "positional"; param: StoryCommandParam; query: string; replace: StoryCommandSpan }
-    /** Between args, naming the next one: the `t=` / `d=` of `/bg forest …`. */
-    | { kind: "paramName"; params: readonly StoryCommandParam[]; query: string; replace: StoryCommandSpan }
+    /**
+     * Between args, naming the next one: the `t=` / `d=` of `/bg forest …`.
+     *
+     * Carries the whole `def` alongside the unfilled `params` because a param's localized spelling is
+     * a property of its command, not of the param alone — the `story.paramHint.*` namespace is shared
+     * across commands, so the alias table has to be resolved per def (`commands/localizedParams.ts`).
+     */
+    | { kind: "paramName"; def: StoryCommandDef; params: readonly StoryCommandParam[]; query: string; replace: StoryCommandSpan }
     /** After `key=`, giving that param's value. */
     | { kind: "paramValue"; param: StoryCommandParam; query: string; replace: StoryCommandSpan }
     /** Inside free text that runs to the end of the line. No candidates, by nature. */
@@ -129,7 +136,10 @@ function positionalIndexBefore(def: StoryCommandDef, tokens: readonly StoryComma
         if (firstUnquotedEquals(token.raw) > 0) {
             continue;
         }
-        const flag = findParam(def, token.text);
+        // Localized, because the parser's bare-flag branch is: it reads `循环` as `loop` and so
+        // consumes no positional slot. Asking the canonical-only question here would have the caret
+        // counting a slot the parser did not fill, and offering completions for the wrong one.
+        const flag = findParamLocalized(def, token.text);
         if (flag && isFlagParam(flag) && index > 0) {
             continue;
         }
@@ -146,7 +156,10 @@ function paramsNotYetNamed(def: StoryCommandDef, tokens: readonly StoryCommandTo
         }
         const equals = firstUnquotedEquals(token.raw);
         if (equals > 0) {
-            named.add(token.raw.slice(0, equals).toLowerCase());
+            // Bank the CANONICAL name, not the spelling that was typed: `at=`, `pos=` and `位置=` all
+            // fill one slot, so any of them has to take it off the list of what is still unnamed.
+            const key = token.raw.slice(0, equals);
+            named.add((findParamLocalized(def, key)?.name ?? key).toLowerCase());
         }
     }
     return def.params.filter(param => !param.positional && !named.has(param.name.toLowerCase()));
@@ -175,7 +188,9 @@ function commandCursor(source: string, caret: number): StoryCommandCursor {
     if (active) {
         const equals = firstUnquotedEquals(active.raw);
         if (equals > 0 && caret > active.span.start + equals) {
-            const param = findParam(def, active.raw.slice(0, equals));
+            // Localized lookup, so `位置=|` opens the placement menu the same way `at=|` does. A slot
+            // the author can name has to be a slot the caret can sit in.
+            const param = findParamLocalized(def, active.raw.slice(0, equals));
             if (!param) {
                 return { kind: "none" };
             }
@@ -213,7 +228,7 @@ function commandCursor(source: string, caret: number): StoryCommandCursor {
     }
 
     const query = active ? active.text.slice(0, caret - active.span.start) : "";
-    return { kind: "paramName", params: paramsNotYetNamed(def, tokens, activeStart), query, replace };
+    return { kind: "paramName", def, params: paramsNotYetNamed(def, tokens, activeStart), query, replace };
 }
 
 /**

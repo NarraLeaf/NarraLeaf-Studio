@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type MouseEvent as Rea
 import { createPortal } from "react-dom";
 import type { StoryBlock, StoryScene, StorySceneId } from "@shared/types/story";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
-import { useTranslation } from "@/lib/i18n";
+import { useCommandTranslation, useTranslation } from "@/lib/i18n";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import {
     getQuickParams,
@@ -70,6 +70,11 @@ export function BlockOverview(props: {
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
 }) {
     const { t } = useTranslation();
+    // Subscribed to, not called: the row's verb is the command's own name, and the projection reaches
+    // it through the imperative `translateCommand` — a snapshot with no way to tell React it went
+    // stale. Without this hook a language change leaves every committed row in the old vocabulary
+    // until something else happens to re-render it.
+    useCommandTranslation();
     // Resolved here rather than threaded from the rows host: the projection stays pure and the React
     // layer, which has the service, supplies the lookup (the rule `describeBlockSubject` documents).
     const motionName = useStoryMotionNames();

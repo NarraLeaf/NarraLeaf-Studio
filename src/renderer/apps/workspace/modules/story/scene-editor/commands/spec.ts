@@ -57,7 +57,13 @@ export type StoryCommandValidateContext = {
 export type StoryCommandSpec<P extends StoryCommandParamsShape = StoryCommandParamsShape> = {
     /** Stable identity: keys `story.command.<id>.label` / `.detail` and telemetry. Never shown raw. */
     id: string;
-    /** The canonical keyword. English, never translated (bible B11). */
+    /**
+     * The canonical keyword. English, and always accepted (bible B11).
+     *
+     * Not the only accepted spelling: the active command locale's menu label is derived into an alias
+     * table (`registry.ts`), so `/背景` reaches `bg` too. This one never moves, which is what keeps a
+     * script written in one locale parsing in every other.
+     */
     token: string;
     aliases?: readonly string[];
     /**
@@ -110,8 +116,10 @@ export type StoryCommandSpec<P extends StoryCommandParamsShape = StoryCommandPar
     /**
      * Working lines for the manual, written exactly as an author would type them.
      *
-     * Not translated: a command line is keywords and names, English in every locale (bible B11), and a
-     * localized example would teach a language the parser does not speak.
+     * Written in the canonical English spellings, and left that way in every locale. A locale may add
+     * spellings for the command and its params (bible B11), but the canonical ones are the spellings
+     * that work everywhere — which is exactly what an example should teach — and enum values have no
+     * localized form at all, so a translated example would be part real and part invented.
      *
      * `specs.test.ts` runs every one of these through parse → resolve → build against the suite's
      * fixture project, so an example that stopped being legal fails the suite instead of teaching an

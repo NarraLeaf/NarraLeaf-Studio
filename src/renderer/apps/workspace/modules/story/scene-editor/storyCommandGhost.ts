@@ -1,4 +1,4 @@
-import { paramTypes, positionalParams, type StoryCommandParam } from "./storyCommandGrammar";
+import { paramHintKey, paramTypes, positionalParams, type StoryCommandParam } from "./storyCommandGrammar";
 import { parseCommandLine, tokenizeCommandLine, unfilledParams, type StoryCommandLine } from "./storyCommandParser";
 
 /**
@@ -29,10 +29,12 @@ export type StoryCommandGhost = {
     param: StoryCommandParam;
 };
 
-/** The hint key a param answers to: its explicit `hint`, else its payload `name`. */
-export function paramHintKey(param: StoryCommandParam): string {
-    return param.hint ?? param.name;
-}
+/**
+ * Re-exported from the grammar, where it moved once the candidate menu and the localized param alias
+ * table needed it too. Kept here so the ghost's own callers (and its tests) read it from the module
+ * that describes the ghost.
+ */
+export { paramHintKey };
 
 /**
  * The next unfilled slot at the caret, or null when nothing should be shown.

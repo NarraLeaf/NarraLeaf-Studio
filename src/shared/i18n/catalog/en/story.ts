@@ -401,6 +401,58 @@ export const story = {
         z: "Z-Index",
     },
 
+    /**
+     * The word a command line's enum VALUE is spelled with — the third and last of the three
+     * vocabulary namespaces (`command.*.label`, `paramHint.*`, and this one).
+     *
+     * English deliberately spells each one exactly as its canonical value. That is not filler: it is
+     * what a translator is handed, and it is the fallback a locale gets for any value it has not
+     * translated yet — so a missing entry falls back to a word the parser certainly accepts rather
+     * than to prose that might collide with another option. `localizedEnums.ts` drops any spelling
+     * that merely echoes a canonical value, so these entries change nothing on their own.
+     */
+    enumValue: {
+        // Transitions (`t=`), the unified word list from `commands/transitions.ts`.
+        fade: "fade",
+        slide: "slide",
+        "slide-left": "slide-left",
+        "slide-right": "slide-right",
+        "slide-up": "slide-up",
+        "slide-down": "slide-down",
+        circle: "circle",
+        wipe: "wipe",
+        iris: "iris",
+        blur: "blur",
+        blinds: "blinds",
+        "barn-door": "barn-door",
+        clock: "clock",
+        fan: "fan",
+        dots: "dots",
+        black: "black",
+        darkness: "darkness",
+        none: "none",
+        // Placement (`at=`) and the camera's positional amount.
+        left: "left",
+        center: "center",
+        right: "right",
+        // Camera operations.
+        pan: "pan",
+        zoom: "zoom",
+        rotate: "rotate",
+        darken: "darken",
+        motion: "motion",
+        reset: "reset",
+        // Variable types.
+        boolean: "boolean",
+        number: "number",
+        string: "string",
+        json: "json",
+        // Code languages: proper nouns, left as they are spelled everywhere.
+        javascript: "javascript",
+        typescript: "typescript",
+        narraleaf: "narraleaf",
+    },
+
     view: {
         narrativeOnly: "Narrative only",
         density: "Reading density",

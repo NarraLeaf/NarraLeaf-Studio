@@ -332,9 +332,11 @@ export const story = {
         track: "音轨",
         displayName: "显示名",
         seekTime: "秒数",
-        cameraOperation: "平移 / 推拉 / 旋转 / 压暗 / 运镜 / 复位",
+        cameraOperation: "平移 / 缩放 / 旋转 / 压暗 / 运镜 / 复位",
         cameraAmount: "数值或位置",
-        duration: "秒数",
+        // 这个词会同时出现在三处：候选菜单的左栏、行内提示 `<持续时间>`、以及作者可以直接敲的键
+        // （`持续时间=1` 与 `d=1` 等价）。所以它必须是一个不含空格、在同一条指令里不重名的词。
+        duration: "持续时间",
         transition: "转场",
         reveal: "显隐动画",
         placement: "位置",
@@ -350,6 +352,56 @@ export const story = {
         opacity: "不透明度",
         size: "字号",
         z: "层级",
+    },
+
+    /**
+     * 指令行里"值"的中文写法——三张词表的最后一张（指令名 / 参数名 / 值）。
+     *
+     * 每个词必须是**单个词**（不含空格），并且在同一个可选值集合内互不重复：重名的那个会被
+     * `localizedEnums.ts` 丢掉，作者就再也打不出它。`zoom` 在转场里是"放大显现"、在镜头里是
+     * "推拉"，共用一个键，所以取两边都说得通的"缩放"，并让镜头行的措辞跟着它走。
+     * 未翻译的词（代码语言这类专有名词）直接留空，回落到英文原词——那一定是解析器认得的写法。
+     */
+    enumValue: {
+        // 转场词表（`t=`）
+        fade: "淡变",
+        slide: "推移",
+        "slide-left": "左滑",
+        "slide-right": "右滑",
+        "slide-up": "上滑",
+        "slide-down": "下滑",
+        circle: "圆形",
+        wipe: "擦除",
+        iris: "光圈",
+        blur: "模糊",
+        blinds: "百叶",
+        "barn-door": "对开门",
+        clock: "时钟",
+        fan: "风扇",
+        dots: "圆点",
+        black: "黑场",
+        darkness: "压暗",
+        none: "无",
+        // 位置（`at=`）与镜头的位置型数值
+        left: "左",
+        center: "居中",
+        right: "右",
+        // 镜头操作
+        pan: "平移",
+        zoom: "缩放",
+        rotate: "旋转",
+        darken: "压暗",
+        motion: "运镜",
+        reset: "复位",
+        // 变量类型
+        boolean: "布尔",
+        number: "数字",
+        string: "文本",
+        json: "JSON",
+        // 代码语言是专有名词，中文里也照写——大小写折叠后与原词相同，词表会把它丢掉并回落到原词。
+        javascript: "JavaScript",
+        typescript: "TypeScript",
+        narraleaf: "NarraLeaf",
     },
 
     view: {
@@ -725,13 +777,15 @@ export const story = {
         nvl: "NVL 块",
         blueprint: "蓝图",
         effect: "{effect} 屏幕特效",
+        // 镜头行的措辞就是作者敲进去的那个词（`story.enumValue.*`）——行里读到的和手册里教的
+        // 必须是同一个词，否则又回到"打的是缩放、显示的是推拉"那种割裂。
         cameraOp: {
             pan: "平移",
-            zoom: "推拉",
+            zoom: "缩放",
             rotate: "旋转",
-            darken: "压暗舞台",
+            darken: "压暗",
             motion: "运镜",
-            reset: "复位镜头",
+            reset: "复位",
         },
         condition: "条件",
         branch: "{branch} 分支",
