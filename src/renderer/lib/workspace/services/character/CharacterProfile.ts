@@ -19,7 +19,10 @@ export class CharacterProfile {
             attributes: {},
             thumbnail: null,
             nicknames: [],
-            groupId: undefined,
+            // No `groupId: undefined`. The store is written by the canonical encoder now, which
+            // throws on an `undefined` property instead of dropping it the way `JSON.stringify` did
+            // - so a character created the assigning way is one that cannot be saved. An absent
+            // optional field is spelled by leaving it out, everywhere in this file.
             appearance: emptyAppearance(kind),
         };
         return new CharacterProfile(defaultProfile);
@@ -31,7 +34,8 @@ export class CharacterProfile {
             tags: [...config.tags],
             attributes: { ...config.attributes },
             nicknames: [...config.nicknames],
-            groupId: config.groupId,
+            // `...config` already carries `groupId` when it has one; re-stating it here used to add
+            // the key back as `undefined` for every character that has none.
             appearance: new CharacterAppearance(config.appearance).toJSON(),
         };
         return new CharacterProfile(clonedConfig);
@@ -214,11 +218,18 @@ export class CharacterProfile {
             attributes: { ...this.profile.attributes },
             thumbnail: this.profile.thumbnail,
             nicknames: [...this.profile.nicknames],
-            groupId: this.profile.groupId,
-            color: this.profile.color,
-            portrait: this.profile.portrait,
-            defaultAvatarAssetId: this.profile.defaultAvatarAssetId,
-            voiceTrackId: this.profile.voiceTrackId,
+            // Five optional fields, spread in only when they hold something. Assigning them
+            // unconditionally wrote `"groupId": undefined` for every ungrouped character, which
+            // `JSON.stringify` dropped without a word and the canonical encoder refuses by name -
+            // i.e. it was invisible right up until the store became a document, and then it was a
+            // cast that could not be saved.
+            ...(this.profile.groupId === undefined ? {} : { groupId: this.profile.groupId }),
+            ...(this.profile.color === undefined ? {} : { color: this.profile.color }),
+            ...(this.profile.portrait === undefined ? {} : { portrait: this.profile.portrait }),
+            ...(this.profile.defaultAvatarAssetId === undefined
+                ? {}
+                : { defaultAvatarAssetId: this.profile.defaultAvatarAssetId }),
+            ...(this.profile.voiceTrackId === undefined ? {} : { voiceTrackId: this.profile.voiceTrackId }),
             appearance: this.appearance.toJSON(),
         };
     }

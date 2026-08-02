@@ -140,7 +140,11 @@ function cloneAppearance(appearance: ICharacterAppearance): ICharacterAppearance
                 name: layer.name,
                 axisId: layer.axisId ?? null,
                 assetId: layer.assetId ?? null,
-                options: layer.options ? { ...layer.options } : undefined,
+                // Spread in, never assigned as `undefined`: this clone is what gets written, and the
+                // canonical encoder throws on an `undefined` property rather than dropping it. An
+                // unbound layer carries no `options` key at all, which is also what `setLayerAxis`
+                // leaves behind when it unbinds one (`delete layer.options`).
+                ...(layer.options ? { options: { ...layer.options } } : {}),
             })),
             snapshots: (appearance.snapshots ?? []).map(snapshot => ({
                 id: snapshot.id,
@@ -368,7 +372,10 @@ export class CharacterAppearance {
     public createPose(name: string, folder?: string): CharacterPose | null {
         const preset = this.preset;
         if (!preset) return null;
-        const pose: CharacterPose = { id: newId("p"), name, folder, assetId: null };
+        // `folder` is optional and is left OUT when there is none - `folder: folder` wrote the key
+        // as `undefined` for every pose created outside a folder, which the canonical encoder
+        // refuses. Same rule as `setPoseFolder`, which already deletes rather than clears.
+        const pose: CharacterPose = { id: newId("p"), name, ...(folder ? { folder } : {}), assetId: null };
         preset.poses.push(pose);
         if (!preset.defaultPoseId) {
             preset.defaultPoseId = pose.id;

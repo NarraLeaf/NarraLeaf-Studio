@@ -411,6 +411,195 @@ stage / commit 本身在三种配置下都是 5–20 ms，**开销全在等待**
 `storeKeepAliveSeconds: 1` —— 保住 §6.3「连续调用不反复开关 store」的本意（一批 blob 读之间
 的间隔远小于 1 秒），同时把每次提交的代价从 10 秒压到 1 秒。
 
+---
+
+> **§4.23–§4.30 来自 2026-08-01 的合并实测**（卡 [2026-07-31-004](plans/2026-07-31-004-plan-vcs-diff-and-resolve.md) 的 D0）。
+> 此前仓库里**没有一行代码碰过 Lore 的合并面**，所以这八条全部是第一次测量。脚本是
+> `mergeSpike*.integration.test.ts`（打真 DLL，其中三条要真 loreserver 0.8.5）。
+> **§4.29 值得单独读**：它记的是一条真缺陷，也记着这条缺陷第一次被归因错了——错的那版会让
+> 我们在同步按钮旁边写一句根本不必要的「请重启 Studio」。
+
+### 4.23 automerge 把冲突标记写进 JSON —— 但它同时在旁边留下三份干净的副本
+
+同一个键两边都改，Lore 写的是 **diff3 三段式**标记（`<<<<<<< ours` / `||||||| original` /
+`=======` / `>>>>>>> theirs`），标记直接插在 JSON 结构里，于是**这份文档不再能 `JSON.parse`**：
+
+```
+SyntaxError: Expected double-quoted property name in JSON at position 423
+```
+
+本地 `branchMergeStart` 与远端 `revisionSync` 产出的**字节完全相同**（同一个 sha256），
+所以这是一套机制而不是两套。
+
+**但真正有用的发现是另一半**：同一次合并还会在冲突文件旁边写三个附属文件——
+
+| 文件 | 实测 |
+|---|---|
+| `doc.json~base` | 能 `JSON.parse`，无标记 |
+| `doc.json~mine` | 能 parse，sha256 **与 `blobAt(mine)` 逐字节相同** |
+| `doc.json~theirs` | 能 parse，sha256 **与 `blobAt(theirs)` 逐字节相同** |
+
+也就是说三路合并的三个输入**已经在磁盘上了**，各自是一份完整、可解析的文档。写回管线
+**既不需要读那份带标记的文件，也不需要从 DAG 重建**——计划 §6 里那个「若 automerge 破坏 JSON
+就改用 `threeWay` 重建」的备案，被一个更简单的答案取代了。
+
+**并且这三个附属文件不会进提交**：解决之后提交，修订里只有 `doc.json`（实测
+`sidecarsCommitted: []`）。Lore 自己排除它们，`.loreignore` 不需要为此加规则。
+
+**这条对 Studio 还差半步，已补测**（`sidecarStaging.integration.test.ts`）：上面那次测量是
+「解决完直接 commit」，而 Studio 的提交路径**先 `stage(globals, [root])` 整棵树**，那一刻三个
+附属文件正躺在工作树里。补测结论是 **`stage` 连报都不报它们**（`stagedSidecars: []`），提交里
+仍然只有 `doc.json`。所以 D6 的写回管线不需要为它们做任何排除——但这是**实测**来的，不是从
+上一段推的，两者的提交姿势不一样。
+
+### 4.24 冲突路径**只在事件流里出现一次**，`repositoryStatus` 永远不报
+
+一次冲突合并之后，四种 status 形态**全部返回空列表**：
+
+| 调用 | 结果 |
+|---|---|
+| `repositoryStatus({scan:true})` | `[]` |
+| `repositoryStatus({scan:true, checkDirty:true})` | `[]` |
+| `repositoryStatus({scan:false})` | `[]` |
+| `repositoryStatus({scan:true, paths:[冲突文件]})` | `[]` |
+
+原因是合并已经把结果**记进了暂存修订**，工作树与暂存修订一致，于是「没有变更」。
+`summary` 也全是 0。所以 §4.18 那套「靠 status 找出改了什么」的办法在合并态下完全失效。
+
+**唯一说出路径的地方是事件流**：`BRANCH_MERGE_CONFLICT_FILE`（tag **29**）。
+实测 `revisionSync` **也**发这个 tag（一次 sync 共 13 个事件，tag 直方图
+`{2:1, 5:1, 29:1, 44:1, 45:1, 176:1, 177:1, 178:5, 179:1}`，其中只有 `177`（sync file）和
+`29` 带路径）。
+
+> **既有缺陷，本条直接指出**：[`remote.ts`](../src/main/app/application/managers/vcs/remote.ts)
+> 从 `result.files` 里筛 `conflictUnresolved || conflict` 来列冲突文件，而
+> `REVISION_SYNC_FILE` 的解码器把这两个标志**写死成 `false`**
+> （[`events.ts`](../src/main/app/application/managers/vcs/lore/events.ts)，因为那个结构体
+> 根本没有这两个字段）。所以那个筛选**永远命中不了**，一次冲突同步只能落到 `["*"]` 占位符。
+> 正解是订阅 tag 29，不是查 status。
+
+### 4.25 `branchMergeResolve(paths)` 提交的就是工作树里的字节 —— 逐字节
+
+三个 resolve verb 各自在**独立仓库**里单独调用（三个混在一起调用会让结果不可归因，这是第一轮
+踩过的坑），结果分明：
+
+| verb | 对工作树做什么 | 提交进修订的内容 |
+|---|---|---|
+| `branch_merge_resolve` | **什么都不改**，接受现有字节 | **与我们写进去的第三份内容逐字节相同** |
+| `branch_merge_resolve_mine` | 用 mine **覆写**工作树 | mine |
+| `branch_merge_resolve_theirs` | 用 theirs **覆写**工作树 | theirs |
+
+**所以逐变更解决（计划的第二档）在机制上是通的**：先把合并结果写进工作树，再
+`branchMergeResolve([绝对路径])`，提交出来的就是它。
+
+两条附带实测：
+
+- **不需要 `fileStageMerge`。** 直接 `revisionCommit` 就成功（本地路径与同步路径都是），
+  计划 §1.4 里那个「暂存合并结果」的步骤是多余的。
+- `_mine` / `_theirs` **不发** `BRANCH_MERGE_RESOLVE_FILE` 事件（`files: []`），只有
+  `resolve` 发。想确认哪些路径被解决了，得看工作树，不能看事件。
+
+### 4.26 合并修订确实有两个 parent，但 **parent[0] 是哪一边取决于合并从哪来**
+
+`parents.length === 2` 在提交事件与 `readRevisionGraph` 两处一致，历史列表画合并点的前提成立。
+
+**但顺序不一致**，而 `flattenFirstParent` 只走 parent[0]：
+
+| 合并来源 | parent[0] |
+|---|---|
+| 本地 `branchMergeStart` | **本地分支的 tip**（`parent0IsLocalTip: true`） |
+| 远端 `revisionSync` | **拉下来的那一边**（`parent0IsIncomingTip: true`） |
+
+也就是说一次同步合并之后，「第一父线」是**对方的**线而不是作者自己的。历史列表照现在的写法
+会在同步之后换一条主干。
+
+### 4.27 `branchMergeAbort` 完整回滚工作树
+
+整棵工作树按内容哈希做清单，合并前 / 合并后 / abort 后三次对比：abort 后与合并前
+**逐文件相同**（`differsFromBeforeMerge: []`），三个附属文件也被删干净，status 回到合并前。
+
+**所以「取消合并」这个按钮可以存在**（计划 §4.4 把它挂在这条实测上）。
+
+### 4.28 仓库锁在**同一个进程内**同样是阻塞的
+
+§4.12 说的是「第二个进程会一直等」。实测补充：**同一个进程里**对已经持有的仓库再
+`openStore`，同样永远不返回——第一轮的实验挂死 240 秒就是这个，不是 Lore 慢。
+
+所以任何持有 store 的代码路径必须在下一个打开之前走完 flush → closeStore → release。
+
+### 4.29 ⚠️ **在线提交的内容，写它的那个进程读不回来**
+
+判据只有一个：**提交时 globals 上的 `offline` 标志**。一个已经在服务器上登记过的仓库，
+用 `offline: false` 提交出来的修订，**写它的那个进程取不到它的新内容**：
+
+```
+storageGet: 1/1 get items failed          ← 只针对这次提交新写的内容
+```
+
+三个对照，同一个仓库、同一个进程（`onlineCommitCheck.integration.test.ts`）：
+
+| 情形 | 读回来 |
+|---|---|
+| **没登记服务器**时在线提交 | ✅ 7 字节——所以**光有 `offline:false` 不是判据** |
+| 已登记，**离线**提交 | ✅ 26 字节 |
+| 已登记，**在线**提交 | ❌ `storageGet: 1/1 get items failed` |
+| 在那次在线修订上读**更早**的文件 | ✅ 6 字节 |
+
+最后一行划出了真正的爆炸半径：**坏的不是那个修订，是那次提交新写的片段**。修订树完全正常
+（`listFilesAt` 照给路径、大小、内容地址），同一棵树上更早的内容照读不误。
+`repositoryStatus` / `revisionHistory` 也全程正常——死的**只有 `storageGet`**。
+
+**换一个进程读同一个仓库立刻成功**，所以字节确实落了盘；像是在线会话在内存里把自己刚写的
+片段记成了「远端的」。为什么这样**不知道**。
+
+补救全部无效，别再试：`repositoryFlush`；`closeStore` + `openStore` 重开；等 15 秒 / 45 秒；
+读侧换 `offline:true` / `offline:false`；`storageOpen` 带 `hasRemoteConfig:1` + 真实
+`remoteUrl`；`blobAt` 的 resolve 路线与 `documentsAt` 的 walk 路线（同一个 `readAddress`，
+两条都失败）；`resetLoreLibraryForRetry()` 的两种调用顺序——它只丢掉 JS 侧的 `LoreLibrary`
+缓存，**从不 unload 那个 DLL**，第二次 `koffi.load` 拿到的是同一个 HMODULE。
+
+> **这一条曾被写成「同步毒死整个进程」，那是夹具造成的假象**，保留在此是因为它值得记住：
+> 当时每一次失败的读，读的都是 `commitAll(onlineGlobals, …)` 的产物，于是「同步之后连同步
+> 之前的提交也读不出」看起来成立——而那条「之前的提交」本身就是在线提交。**归因错了就会
+> 修错东西**：照那个版本，Studio 该在同步按钮旁边写「请重启」，而真相是同步一切正常。
+
+**对 Studio 的后果（按真实姿势实测，不是推断）**：`VcsManager.globalsFor` 是
+`offline: !options.online`，只有五个网络动词才 spread `offline:false`，**提交走的是离线
+globals**。所以：
+
+- 一次真同步之后，作者自己的提交**和从服务器收到的修订**都读得出来（收到的 `other.json`
+  69 字节，本地此前从没有过这份内容）——同步只是**下载**片段，不新写内容；
+- 两个互不相干的服务器仓库放在同一个进程里，published → 克隆 A → 同步 A → 同步 B 四个阶段
+  逐个读，**A、B 全程都读得出**——没有跨工程波及；
+- **已发布的 V5a 没有因此受损**，同步之后不需要让作者重启。
+
+**唯一会踩到它的是本卡自己**：冲突解决之后那次 commit 如果走在线 globals，作者刚解决出来的
+字节就会在当前进程里读不回来。所以 **D6 的写回管线必须用离线 globals 提交**——合并是在线
+动作，提交不是，这两件事在同一条管线里必须用不同的 globals。这条没有测过，因为那条管线还
+不存在；写它的时候按这条来，并在它的集成测试里钉住。
+
+### 4.30 `readRevisionGraph` 只覆盖当前分支，于是 `threeWay` 对任何跨分支合并都答「没有 base」
+
+这一条是 **Studio 侧的缺陷**，不是 Lore 的，但它是在测 Lore 的时候掉出来的。
+
+`readRevisionGraph(globals)` 走的是 `history(globals, {limit})`，**不传 branch 就只给当前分支**。
+实测一次 main/feature 的两侧合并：
+
+```
+currentBranchGraph:      ["#1 e40c23c2", "#2 3475cd9d"]     ← 只有 main
+featureBranchGraph:      ["#1 e40c23c2", "#2 18730fe6"]
+theirsTipInCurrentGraph: false
+baseFromCurrentGraph:    null          ← mergeBase 找不到，因为对面的 tip 不在图里
+baseFromUnionGraph:      e40c23c2…     ← 两个分支的图合起来就找到了，且就是真正的 base
+```
+
+于是 `threeWay` 返回 `base: undefined`。而 `threeWay` 的注释明写「base 缺失 = add/add，
+**绝不能当空文件**」——照这个契约，**每一次普通的跨分支冲突都会被判成 add/add**，
+逐变更合并会整个走错分支。
+
+修法有两个，都成立：把两边分支的 `history` 并起来再算 LCA；或者干脆**用 §4.23 的
+`~base` 附属文件**——合并态下它就在磁盘上，比重算 LCA 更直接也更便宜。
+
 ## 5. 服务端策略
 
 ### 5.1 P0：不需要任何服务端，也不需要包装

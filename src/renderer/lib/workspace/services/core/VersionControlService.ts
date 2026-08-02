@@ -11,6 +11,8 @@ import type {
     VcsInitOptions,
     VcsPushResult,
     VcsRepositoryInfo,
+    VcsRevisionDiffResult,
+    VcsWorkingTreeDiffResult,
     VcsSyncResult,
     VcsSyncState,
     VcsRestoreOptions,
@@ -679,6 +681,41 @@ export class VersionControlService extends Service<VersionControlService> implem
         if (!(await this.isAvailable())) return [];
         const result = await getInterface().vcs.getChangedPaths(this.projectPath(), from, to);
         return result.success ? result.data.paths : [];
+    }
+
+    /**
+     * What changed between two revisions, as changes rather than as bytes.
+     *
+     * Null means this host has no version control, which is the one answer a caller can render as
+     * "nothing to show here". Everything else throws, for {@link readBlob}'s reason: an empty change
+     * list is what "nothing changed" looks like, and handing one back for a failed read would tell
+     * the author two versions are identical when nobody managed to compare them.
+     *
+     * **Not cached here, and deliberately.** The main process caches this pair (revisions are
+     * immutable, so the answer cannot go stale) and a second cache in the renderer would only add a
+     * copy that survives a project switch. Its sibling below must never be cached anywhere.
+     */
+    public async diffRevisions(from: RevisionId, to: RevisionId): Promise<VcsRevisionDiffResult | null> {
+        if (!(await this.isAvailable())) return null;
+        const result = await getInterface().vcs.diffRevisions(this.projectPath(), from, to);
+        if (!result.success) throw new Error(result.error);
+        return result.data;
+    }
+
+    /**
+     * What the author has changed since the last version, as changes rather than as bytes.
+     *
+     * **Never cache this and never poll it**, which is the same rule {@link refreshStatus} carries
+     * and for both of its reasons: the working tree has already moved on by the time this resolves,
+     * and the status read underneath it SCANS - a scan that finds a new directory records it into
+     * staged state, so a poll manufactures deletions of directories that never existed (docs §4.17).
+     * It runs when a person asks to see what changed, and at no other time.
+     */
+    public async diffWorkingTree(): Promise<VcsWorkingTreeDiffResult | null> {
+        if (!(await this.isAvailable())) return null;
+        const result = await getInterface().vcs.diffWorkingTree(this.projectPath());
+        if (!result.success) throw new Error(result.error);
+        return result.data;
     }
 
     /**

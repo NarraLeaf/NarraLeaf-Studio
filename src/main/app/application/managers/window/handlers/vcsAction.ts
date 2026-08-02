@@ -5,13 +5,17 @@ import type {
     VcsAvailability,
     VcsCommitResult,
     VcsHistoryEntry,
+    VcsMergeResolveResult,
+    VcsMergeState,
     VcsPushResult,
     VcsRepositoryInfo,
     VcsRestoreResult,
+    VcsRevisionDiffResult,
     VcsStatus,
     VcsSyncResult,
     VcsSyncState,
     VcsThreeWayResult,
+    VcsWorkingTreeDiffResult,
 } from "@shared/types/vcs";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
@@ -28,11 +32,15 @@ import { IPCHandler } from "./IPCHandler";
  * conflict - they add to the author's own branch and never move the working tree - so none of
  * them needed a resolve UI to exist first.
  *
- * {@link VcsRestoreRevisionHandler} is the exception and the only one in this file that
- * overwrites the author's files. It still needs no resolve UI, for a reason worth stating: it
- * does not MERGE anything. It writes one revision's content over the working tree and records
- * that as a new revision, so there are never two sides to reconcile. Merge, which does have
- * two, remains deliberately absent.
+ * {@link VcsRestoreRevisionHandler} is one exception: it overwrites the author's files. It
+ * still needs no resolve UI, for a reason worth stating - it does not MERGE anything. It
+ * writes one revision's content over the working tree and records that as a new revision, so
+ * there are never two sides to reconcile.
+ *
+ * The merge handlers at the bottom are the other exception, and they are the first thing here
+ * that reckons with two sides at once. What they deliberately do NOT do is commit: settling a
+ * path leaves the merge open, and the author closes it with an ordinary
+ * {@link VcsCommitHandler} when they are satisfied.
  */
 
 /**
@@ -255,6 +263,50 @@ export class VcsGetChangedPathsHandler extends IPCHandler<IPCEventType.vcsGetCha
     }
 }
 
+/**
+ * What changed between two revisions, document by document.
+ *
+ * The expensive half of this is bounded rather than paged: at most 200 changes per document,
+ * documents over 8MiB reported by size alone, and past 2000 changed paths nothing is read at all.
+ * Every one of those shows up in the answer as `complete: false`, which a caller must draw - a
+ * truncated list presented as a whole one is worse than no list, because the author acts on it.
+ *
+ * Answered from a per-session cache when the same pair has been asked before. Sound only because
+ * revisions are immutable; the working-tree comparison below shares none of it.
+ */
+export class VcsDiffRevisionsHandler extends IPCHandler<IPCEventType.vcsDiffRevisions> {
+    readonly name = IPCEventType.vcsDiffRevisions;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath, from, to }: IPCEvents[IPCEventType.vcsDiffRevisions]["data"],
+    ): Promise<RequestStatus<VcsRevisionDiffResult>> {
+        return this.tryUse(() => window.app.getVcsManager().diffRevisions(projectPath, from, to));
+    }
+}
+
+/**
+ * What the author has changed since the last version.
+ *
+ * Two properties the caller has to respect, both of them the same rule from opposite sides:
+ * **nothing caches this** - the working tree is different by the time the answer arrives - and
+ * **nothing may poll it**, because the status read underneath scans, and a scan that discovers a
+ * new directory records it into staged state, after which removing that directory reads as a
+ * deletion for the rest of the session (docs §4.17).
+ */
+export class VcsDiffWorkingTreeHandler extends IPCHandler<IPCEventType.vcsDiffWorkingTree> {
+    readonly name = IPCEventType.vcsDiffWorkingTree;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath }: IPCEvents[IPCEventType.vcsDiffWorkingTree]["data"],
+    ): Promise<RequestStatus<VcsWorkingTreeDiffResult>> {
+        return this.tryUse(() => window.app.getVcsManager().diffWorkingTree(projectPath));
+    }
+}
+
 export class VcsGetThreeWayHandler extends IPCHandler<IPCEventType.vcsGetThreeWay> {
     readonly name = IPCEventType.vcsGetThreeWay;
     readonly type = IPCMessageType.request;
@@ -403,5 +455,103 @@ export class VcsGetMergeBaseHandler extends IPCHandler<IPCEventType.vcsGetMergeB
         return this.tryUse(async () => ({
             base: await window.app.getVcsManager().getMergeBase(projectPath, a, b),
         }));
+    }
+}
+
+/**
+ * Whether this project is in the middle of a merge, and which paths are still open.
+ *
+ * **Ask it on opening a project, not only after a sync.** The merge lives in the
+ * repository rather than in Studio, so a window closed on a conflicted sync reopens onto
+ * the same unfinished merge with nothing in memory to say so. The answer is rebuilt from
+ * the repository and from what the merge left on disk; the paths cannot come from a
+ * status read, which reports an empty file list for the whole of a merge (docs §4.24).
+ *
+ * Cheap and local: one non-scanning status call plus a walk of the versioned working set.
+ */
+export class VcsGetMergeStateHandler extends IPCHandler<IPCEventType.vcsGetMergeState> {
+    readonly name = IPCEventType.vcsGetMergeState;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath }: IPCEvents[IPCEventType.vcsGetMergeState]["data"],
+    ): Promise<RequestStatus<VcsMergeState>> {
+        return this.tryUse(() => window.app.getVcsManager().getMergeState(projectPath));
+    }
+}
+
+/**
+ * Settle conflicted paths by taking one side, or by taking the working tree as it stands.
+ *
+ * **This records nothing.** Settling is not committing: the merge stays open until a
+ * commit closes it, which is what lets an author decide one file, look at the result and
+ * then decide the next. The caller commits through `vcs.commit` when they are done.
+ *
+ * `mine` and `theirs` OVERWRITE the working tree for those paths, so the caller must
+ * re-read every document it named - an editor still holding the pre-merge bytes will
+ * write them back over the side the author just chose. `working-tree` changes no bytes
+ * and accepts whatever is on disk, which is how an answer neither side wrote is settled.
+ */
+export class VcsResolveConflictsHandler extends IPCHandler<IPCEventType.vcsResolveConflicts> {
+    readonly name = IPCEventType.vcsResolveConflicts;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath, paths, choice }: IPCEvents[IPCEventType.vcsResolveConflicts]["data"],
+    ): Promise<RequestStatus<VcsMergeResolveResult>> {
+        return this.tryUse(() => window.app.getVcsManager().resolveConflicts(projectPath, paths, choice));
+    }
+}
+
+/** Undo a choice: these paths go back to unsettled, with all three sides still on disk. */
+export class VcsUnresolveConflictsHandler extends IPCHandler<IPCEventType.vcsUnresolveConflicts> {
+    readonly name = IPCEventType.vcsUnresolveConflicts;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath, paths }: IPCEvents[IPCEventType.vcsUnresolveConflicts]["data"],
+    ): Promise<RequestStatus<VcsMergeResolveResult>> {
+        return this.tryUse(() => window.app.getVcsManager().unresolveConflicts(projectPath, paths));
+    }
+}
+
+/**
+ * Merge these paths again from scratch, DISCARDING what is in the working tree for them.
+ *
+ * The difference from unresolving: that takes a decision back, this throws the bytes away
+ * too. The way out of a merge result the author edited into something they no longer want.
+ */
+export class VcsRestartConflictsHandler extends IPCHandler<IPCEventType.vcsRestartConflicts> {
+    readonly name = IPCEventType.vcsRestartConflicts;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath, paths }: IPCEvents[IPCEventType.vcsRestartConflicts]["data"],
+    ): Promise<RequestStatus<VcsMergeState>> {
+        return this.tryUse(() => window.app.getVcsManager().restartConflicts(projectPath, paths));
+    }
+}
+
+/**
+ * Abandon the merge and put the working tree back to before it started.
+ *
+ * A COMPLETE rollback, and that is measured rather than hoped for (docs §4.27): every
+ * file back to its pre-merge content, the merge's own leftovers deleted, the repository
+ * where it was. It writes the author's files, so the caller must re-read every document
+ * once it resolves.
+ */
+export class VcsAbortMergeHandler extends IPCHandler<IPCEventType.vcsAbortMerge> {
+    readonly name = IPCEventType.vcsAbortMerge;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath }: IPCEvents[IPCEventType.vcsAbortMerge]["data"],
+    ): Promise<RequestStatus<VcsMergeState>> {
+        return this.tryUse(() => window.app.getVcsManager().abortMerge(projectPath));
     }
 }
