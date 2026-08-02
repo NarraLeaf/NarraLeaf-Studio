@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Asset, AssetGroup } from '@/lib/workspace/services/assets/types';
 import {
     ASSET_CATEGORY_EXTENSIONS,
@@ -33,6 +33,7 @@ import {
     validateNewTextFileName,
 } from './newTextFileName';
 import { openAssetPreviewTabsInEditor } from '../dnd/openDraggedAssetsInEditor';
+import type { ModelImportSelection } from '../components/ModelImportWizard';
 import { platformDefaultLineEnding } from '../editors/text/textEditableFiles';
 import { toPersistedEol } from '../editors/text/textDocumentPreferences';
 
@@ -201,6 +202,15 @@ export function useAssetActions({
     }, []);
 
     /**
+     * The pending model-import wizard, and the group its result lands in.
+     *
+     * Held here rather than in the panel because the group is decided at the moment the author
+     * clicks Import - on a section header, on a folder row, from the context menu - and by the time
+     * the wizard closes there is nothing left pointing at it.
+     */
+    const [modelImportRequest, setModelImportRequest] = useState<{ groupId?: string } | null>(null);
+
+    /**
      * The rows the next action applies to. Every action shares this so the row the user pointed at
      * and the row that changes are the same one.
      */
@@ -272,8 +282,18 @@ export function useAssetActions({
      *
      * Every entry point resolves its paths first and comes through here, so a retry is just this
      * function again with the paths that did not make it — no second trip through the picker.
+     *
+     * `entryByPath` is the model wizard's arm: it has already read the manifests and knows which
+     * file in each folder is the entry, so it says so rather than leaving the importer's own
+     * detection to reach the same conclusion a second time — which it cannot, for the one case that
+     * matters, a folder holding two models where detection deliberately refuses to guess.
      */
-    const runImport = useCallback(async (category: AssetCategory, paths: string[], groupId?: string) => {
+    const runImport = useCallback(async (
+        category: AssetCategory,
+        paths: string[],
+        groupId?: string,
+        entryByPath?: Record<string, string>,
+    ) => {
         const ctx = contextRef.current;
         if (!ctx || paths.length === 0) return;
         const uiService = ctx.services.get<UIService>(Services.UI);
@@ -316,9 +336,21 @@ export function useAssetActions({
                     failures.push(...perFile.flatMap((assetResult, index) =>
                         assetResult.success ? [] : [{ path: bucket.paths[index], error: assetResult.error }]
                     ));
-                    importedAssets.push(...perFile.flatMap(assetResult =>
-                        assetResult.success && assetResult.data ? [assetResult.data as Asset] : []
-                    ));
+                    for (const [index, assetResult] of perFile.entries()) {
+                        if (!assetResult.success || !assetResult.data) {
+                            continue;
+                        }
+                        const asset = assetResult.data as Asset;
+                        importedAssets.push(asset);
+
+                        // Written straight after the copy, while the 1:1 correspondence with the
+                        // source path is still in hand — the asset record itself no longer says
+                        // which folder it came from.
+                        const entry = entryByPath?.[bucket.paths[index]];
+                        if (entry) {
+                            await svc.patchAssetExtras(asset, { modelEntry: entry });
+                        }
+                    }
                     completed += bucket.paths.length;
                 }
 
@@ -416,13 +448,14 @@ export function useAssetActions({
             }
             paths = expansion.files;
         } else if (isBundleAssetCategory(category)) {
-            // A model bundle is authored as a folder and imported as one asset, so the picker asks
-            // for folders. An extension-filtered file dialog cannot express "this whole tree".
-            const selection = await getInterface().fs.selectDirectory(true);
-            if (!selection.success || !selection.data.ok) {
-                return;
-            }
-            paths = selection.data.data;
+            // A model bundle is authored as a folder and imported as one asset, and which folder
+            // that is is exactly what a bare picker cannot settle: the author has one character's
+            // folder, or its parent, or a library of twelve, and no way to tell which the dialog
+            // wants. So the wizard asks for the kind, searches the tree itself, and comes back
+            // through `completeModelImport` with the folders it found. The drop path above keeps
+            // going straight in - a dropped folder already names itself.
+            setModelImportRequest({ groupId });
+            return;
         } else {
             // Picked here rather than inside the importer so the queue knows the file list up front:
             // it is what "3 of 20" counts against, and what a retry replays. The filter is the
@@ -441,6 +474,30 @@ export function useAssetActions({
     const handleRetryImport = useCallback(async (category: AssetCategory, paths: string[], groupId?: string) => {
         await runImport(category, paths, groupId);
     }, [runImport]);
+
+    /**
+     * Import the folders the model wizard settled on, into the group the author started from.
+     *
+     * The freeze is re-checked here and not only at the point the wizard opened: the dialog is a
+     * conversation, and a working-tree re-read can begin while it is on screen. A write let through
+     * on the strength of a check made several clicks ago is the shape of the silent no-op the freeze
+     * latch exists to prevent.
+     */
+    const completeModelImport = useCallback(async (selection: ModelImportSelection[]) => {
+        const request = modelImportRequest;
+        setModelImportRequest(null);
+        if (!request || selection.length === 0 || freeze.frozen) {
+            return;
+        }
+        await runImport(
+            AssetCategory.Model,
+            selection.map(entry => entry.rootPath),
+            request.groupId,
+            Object.fromEntries(selection.map(entry => [entry.rootPath, entry.entry])),
+        );
+    }, [freeze.frozen, modelImportRequest, runImport]);
+
+    const cancelModelImport = useCallback(() => setModelImportRequest(null), []);
 
     const handleImportRemote = useCallback(async (category: AssetCategory) => {
         if (!context || !inputDialog) return;
@@ -924,5 +981,9 @@ export function useAssetActions({
         handleDelete,
         handleCreateMagicTags,
         handleApplyMagicTags,
+        /** Non-null while the model import wizard is on screen. */
+        modelImportRequest,
+        completeModelImport,
+        cancelModelImport,
     };
 }
