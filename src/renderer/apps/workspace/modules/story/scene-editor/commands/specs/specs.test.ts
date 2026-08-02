@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { StoryBlock } from "@shared/types/story";
 import { BUILTIN_AUDIO_TRACKS, resolveAudioTrack } from "@shared/types/audioTrack";
-import { parseCommandLine } from "../../storyCommandParser";
+import { canCommit, parseCommandLine } from "../../storyCommandParser";
 import { resolveCommandLine, type StoryCommandContext } from "../../storyCommandResolution";
 import { getCommandSpec, listCommandSpecs } from "../registry";
 import { opensInspectorAfterCommit } from "../spec";
@@ -22,6 +22,8 @@ const CONTEXT: StoryCommandContext = {
     characters: [{ id: "c1", name: "Alice" }, { id: "c2", name: "Doll" }],
     tempSpeakers: ["Zoe"],
     scenes: [{ id: "s1", name: "Chapter 2" }],
+    choiceOptions: [{ id: "o1", name: "Refuse her" }, { id: "o2", name: "Say yes" }],
+    valueBlueprints: [{ id: "bp1", name: "Bonus" }, { id: "bp2", name: "Story Value" }],
     // The three seeded buses under the ids the engine's channels have always had, plus one bus of
     // the author's own - a line written against a track that is NOT the fallback for its shape is
     // the only way `track=` is observable in a payload at all.
@@ -529,6 +531,69 @@ describe("logic and effects", () => {
         expect(build("/race")).toMatchObject({ payload: { control: "race", mode: "any" } });
         expect(build("/sequence")).toMatchObject({ payload: { control: "sequence", mode: "do" } });
         expect(build("/repeat 3")).toMatchObject({ payload: { control: "repeat", times: 3 } });
+    });
+
+    /**
+     * The unquoted path, and the reason `/until` is a command instead of a word after `/repeat`.
+     *
+     * `/repeat until gold >= 10` cannot parse: the skippable rule only dispatches on closed value
+     * sets, so `times` swallows the `until` token and faults instead of yielding to an expression
+     * slot. A greedy positional on its own command claims the tail verbatim, which is what makes the
+     * quotes unnecessary here - and conditions are almost always multi-token.
+     */
+    it("/until builds a conditional loop with no quotes and no count", () => {
+        const block = build("/until gold >= 100");
+        expect(block).toMatchObject({
+            kind: "control",
+            payload: { control: "repeat", until: { kind: "expression", expression: { source: "gold >= 100" } } },
+        });
+        expect((block as { payload: { times?: number } }).payload.times).toBeUndefined();
+        expect(canCommit(parseCommandLine("/until gold >= 100"))).toBe(true);
+        // Same block either way - `/until` is a spelling of the payload, not a second kind of loop.
+        expect(block.payload).toEqual(build("/repeat until=\"gold >= 100\"").payload);
+    });
+
+    it("/until refuses a line with no condition, and a non-boolean one", () => {
+        // Core: unlike `/repeat`, there is no count to fall back on, so an empty line would build a
+        // group with no way to stop.
+        expect(canCommit(parseCommandLine("/until"))).toBe(false);
+        expect(issuesOf("/until gold + 1")).toEqual(["expressionNotBoolean"]);
+    });
+
+    it("/repeat until builds a conditional loop, and carries no count beside it", () => {
+        const block = build("/repeat until=\"gold >= 100\"");
+        expect(block).toMatchObject({
+            kind: "control",
+            payload: { control: "repeat", until: { kind: "expression", expression: { source: "gold >= 100" } } },
+        });
+        // The two forms are exclusive in the payload as well as on the line: the default block's
+        // `times: 2` must not survive under an `until`, or the inspector would offer to edit a number
+        // the compiler never reads.
+        expect((block as { payload: { times?: number } }).payload.times).toBeUndefined();
+        // A single-token condition needs no quotes; the same `expects: "boolean"` check applies.
+        expect(build("/repeat until=met")).toMatchObject({ payload: { until: { kind: "expression" } } });
+        expect(issuesOf("/repeat until=\"gold + 1\"")).toEqual(["expressionNotBoolean"]);
+    });
+
+    it("/repeat refuses a count and a stop condition on one line", () => {
+        expect(issuesOf("/repeat 3 until=\"gold >= 100\"")).toEqual(["repeatTimesAndUntil"]);
+    });
+
+    it("/break builds the loop exit", () => {
+        expect(build("/break")).toMatchObject({ kind: "control", payload: { control: "break" } });
+    });
+
+    /**
+     * `core` is a per-param flag and cannot express "one of these two". While `times` carried it, a
+     * `/repeat until=…` line parsed clean, resolved clean, built the right block - and Enter still
+     * refused it, naming a slot the author had deliberately left empty. `build()` above never saw
+     * that, because it asks the parser and the resolver and not the commit gate.
+     */
+    it("commits both repeat forms, and the bare container", () => {
+        expect(canCommit(parseCommandLine("/repeat 3"))).toBe(true);
+        expect(canCommit(parseCommandLine("/repeat until=\"gold >= 100\""))).toBe(true);
+        expect(canCommit(parseCommandLine("/repeat"))).toBe(true);
+        expect(canCommit(parseCommandLine("/break"))).toBe(true);
     });
 
     it("/if builds the bare condition container - the expression rides to the scaffolded branch", () => {

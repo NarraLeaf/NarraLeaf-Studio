@@ -14,6 +14,7 @@ import type {
     StoryVariableRef,
 } from "@shared/types/story";
 import { isStoryExpressionEvaluable, resolveDisplayableTargetRef, savedVariableDefs, sceneVariableDefs } from "@shared/types/story";
+import type { StoryExpressionEnv } from "@shared/utils/storyExpressionEval";
 import { evaluateStoryExpression, isTruthy } from "@shared/utils/storyExpressionEval";
 import {
     getCharacterStageObjectName,
@@ -270,7 +271,9 @@ class SnapshotWalker {
                 this.visitList(block.childrenIds, insideNvl);
                 return;
             }
-            if (block.payload.control === "repeat" && (block.payload.times ?? 1) !== 1) {
+            if (block.payload.control === "repeat" && (block.payload.until !== undefined || (block.payload.times ?? 1) !== 1)) {
+                // A conditional loop says the same thing more strongly: how many times it would have
+                // run is not knowable without running it, so the snapshot walks the body exactly once.
                 this.diagnostic(block.id, "Preview applies repeated groups once.");
             }
             this.visitList(block.childrenIds, insideNvl);
@@ -282,8 +285,8 @@ class SnapshotWalker {
             return;
         }
 
-        // code / note / declaration: no stage effect (declarations are authoring metadata; their
-        // defaults already seeded the variable store above).
+        // note / declaration: no stage effect (declarations are authoring metadata; their defaults
+        // already seeded the variable store above).
     }
 
     private visitChoice(block: Extract<StoryBlock, { kind: "nodeAction" }>, insideNvl: boolean): void {
@@ -337,7 +340,7 @@ class SnapshotWalker {
             // Unlike the blueprint branch below, this one really evaluates: the preview owns a variable
             // store, and the expression evaluator is the same pure function the compiler emits - so the
             // branch the author sees previewed is the branch the game will take from the same state.
-            return isTruthy(evaluateStoryExpression(condition.expression.ast, ref => this.readVariable(ref, blockId)));
+            return isTruthy(evaluateStoryExpression(condition.expression.ast, this.expressionEnv(blockId)));
         }
         if (condition.kind === "blueprint") {
             // The preview follows the Studio-computed path when available; a blueprint condition that
@@ -756,7 +759,45 @@ class SnapshotWalker {
             this.diagnostic(block.id, `Expression \`${payload.expression.source}\` did not resolve; the assignment was skipped in the preview.`);
             return undefined;
         }
-        return evaluateStoryExpression(payload.expression.ast, ref => this.readVariable(ref, block.id));
+        return evaluateStoryExpression(payload.expression.ast, this.expressionEnv(block.id));
+    }
+
+    /**
+     * What an expression may reach in the PREVIEW, and what it may not.
+     *
+     * The variable half really evaluates (see `evaluateCondition`). The other two cannot, and the
+     * answer is the one `storyStageSnapshot` already gives a blueprint condition: do not run it,
+     * return the type's zero, and say so in a diagnostic that names the thing.
+     *
+     *  - **visited / picked.** The record is written by a *playthrough*; this walk is a static read of
+     *    one scene's blocks with no run behind it. Nothing here knows whether the player has been to
+     *    a scene, and a preview that answered "yes" or "no" as if it did would show the author a route
+     *    lock opening or closing for a reason that does not exist.
+     *  - **invoke.** Running the graph would need a live `ScriptCtx` (a storable, a host adapter) that
+     *    this walk has none of; the compiler builds one from the compiled story, which is precisely
+     *    what a preview is not.
+     *
+     * The diagnostic is not decoration. Returning the zero silently is indistinguishable from the
+     * expression having genuinely evaluated to it, which is how "the preview is lying to me" becomes
+     * "the feature is broken" - so the name goes in the message and the test asserts it is produced.
+     */
+    private expressionEnv(blockId: string): StoryExpressionEnv {
+        return {
+            read: ref => this.readVariable(ref, blockId),
+            visited: (ref, name) => {
+                this.diagnostic(
+                    blockId,
+                    ref.kind === "scene"
+                        ? `Scene visits are not tracked in the preview; \`visited(${name})\` reads as false.`
+                        : `Choice picks are not tracked in the preview; \`picked(${name})\` reads as false.`,
+                );
+                return false;
+            },
+            invoke: (_blueprintId, name) => {
+                this.diagnostic(blockId, `Blueprint \`${name}()\` does not run in the preview; it reads as empty.`);
+                return undefined;
+            },
+        };
     }
 
     /** Read a variable out of the preview's own store. Persistent variables have no preview backing. */

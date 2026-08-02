@@ -384,9 +384,20 @@ function matchCompoundAssignment(value: string): { op: "+" | "-" | "*" | "/"; re
     return match && match[2].trim() !== "" ? { op: match[1] as "+" | "-" | "*" | "/", rest: match[2] } : null;
 }
 
-/** The scope chain an expression's identifiers resolve through, built from the same context everything else reads. */
+/**
+ * The scope chain an expression's identifiers resolve through, built from the same context everything
+ * else reads - now including the three name tables that are not variables at all: scenes for
+ * `visited(…)`, choice options for `picked(…)`, and value blueprints for a call.
+ *
+ * One builder for all four, rather than a second resolution pass, for the reason this whole module
+ * exists: the candidate list reads the same context, so the menu can never offer a scene name that
+ * then fails to resolve.
+ */
 export function expressionScope(context: StoryCommandContext): StoryExpressionScope {
-    return createStoryExpressionScope(context.variables.map(entry => ({ name: entry.name, ref: entry.ref })));
+    return createStoryExpressionScope(
+        context.variables.map(entry => ({ name: entry.name, ref: entry.ref })),
+        { scenes: context.scenes, options: context.choiceOptions, blueprints: context.valueBlueprints },
+    );
 }
 
 function variableTypeOf(context: StoryCommandContext, ref: StoryVariableRef): StoryVariableValueType | undefined {

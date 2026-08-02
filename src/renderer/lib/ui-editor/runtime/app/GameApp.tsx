@@ -77,6 +77,12 @@ import {
     createEmptyCompiledNlrStory,
     type CompiledNlrStory,
 } from "@/lib/ui-editor/runtime/game/storyCompiler";
+import {
+    isStoryVisited,
+    STORY_VISITED_OPTIONS_KEY,
+    STORY_VISITED_SCENES_KEY,
+    type StoryVisitedKey,
+} from "@/lib/ui-editor/runtime/game/storyVisited";
 import { computeStoryStageSnapshot } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
 import { createPuppetStageHandle, loadPuppetBackends } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
 import { sceneVariableDefs, savedVariableDefs } from "@shared/types/story";
@@ -681,6 +687,60 @@ export function GameApp(props: GameAppProps): ReactNode {
         await core.scopeBridge.persistenceSetAsync(BLUEPRINT_TEXT_READ_PERSISTENCE_KEY, []);
         core.scopeBridge.globalSet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY, false);
     }, [core]);
+
+    /**
+     * The visited record, read straight off the live `Storable` (see `runtime/game/storyVisited`).
+     *
+     * Read rather than mirrored into global state, unlike the text-read flag next door: the record
+     * only ever changes while the story runs, and a mirror would need a write beat on every scene
+     * entry and every pick just to stay honest. Both callbacks resolve the namespace through the
+     * CURRENT compile (`nlrCompiledRef`), because a recompile mints a new namespace name.
+     *
+     * No live game means no record, which reads as "not visited" rather than throwing - a title
+     * screen asking whether a route is unlocked has to render before any game exists.
+     */
+    const readVisited = useCallback((key: StoryVisitedKey, id: string): boolean => {
+        const liveGame = nlrLiveGameRef.current;
+        const namespaceName = nlrCompiledRef.current?.visitedNamespaceName;
+        if (!liveGame || !namespaceName || !id) {
+            return false;
+        }
+        try {
+            return isStoryVisited(liveGame.getStorable(), namespaceName, key, id);
+        } catch {
+            return false;
+        }
+    }, []);
+
+    const isSceneVisitedInGame = useCallback((sceneId: string): boolean => {
+        return readVisited(STORY_VISITED_SCENES_KEY, sceneId);
+    }, [readVisited]);
+
+    const isOptionPickedInGame = useCallback((optionId: string): boolean => {
+        return readVisited(STORY_VISITED_OPTIONS_KEY, optionId);
+    }, [readVisited]);
+
+    const clearVisitedInGame = useCallback((): void => {
+        const liveGame = nlrLiveGameRef.current;
+        const namespaceName = nlrCompiledRef.current?.visitedNamespaceName;
+        if (!liveGame || !namespaceName) {
+            return;
+        }
+        try {
+            const storable = liveGame.getStorable();
+            if (!storable.hasNamespace(namespaceName)) {
+                return;
+            }
+            // Emptied rather than `reset()`: reset restores the namespace's construction defaults,
+            // which happen to be the same two empty arrays today, but tying "wipe" to "whatever the
+            // defaults are" would quietly change meaning if a default were ever seeded.
+            const namespace = storable.getNamespace(namespaceName);
+            namespace.set(STORY_VISITED_SCENES_KEY, []);
+            namespace.set(STORY_VISITED_OPTIONS_KEY, []);
+        } catch {
+            // A storable that refuses the write is not worth crashing a settings page over.
+        }
+    }, []);
 
     /**
      * Surface a failed save screenshot to the Blueprint console. Capture is best-effort — the save
@@ -1531,6 +1591,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             onIsCurrentTextRead: isCurrentTextReadInGame,
             onIsTextRead: hasReadTextInGame,
             onClearTextRead: clearTextReadInGame,
+            onIsSceneVisited: isSceneVisitedInGame,
+            onIsOptionPicked: isOptionPickedInGame,
+            onClearVisited: clearVisitedInGame,
             onSelectChoice: selectChoiceInGame,
             onNext: nextInGame,
             onSkip: skipInGame,
@@ -1784,6 +1847,9 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onIsCurrentTextRead: isCurrentTextReadInGame,
                     onIsTextRead: hasReadTextInGame,
                     onClearTextRead: clearTextReadInGame,
+                    onIsSceneVisited: isSceneVisitedInGame,
+                    onIsOptionPicked: isOptionPickedInGame,
+                    onClearVisited: clearVisitedInGame,
                     onSelectChoice: selectChoiceInGame,
                     onNext: nextInGame,
                     onSkip: skipInGame,

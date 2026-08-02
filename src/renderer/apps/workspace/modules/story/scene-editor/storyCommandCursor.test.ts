@@ -13,6 +13,8 @@ const CONTEXT: StoryCommandContext = {
     characters: [{ id: "c1", name: "Alice" }, { id: "c2", name: "Bob" }, { id: "c3", name: "Doll" }, { id: "c4", name: "Ghost" }],
     tempSpeakers: ["Zoe"],
     scenes: [{ id: "s1", name: "Chapter 2" }],
+    choiceOptions: [{ id: "o1", name: "Refuse her" }, { id: "o2", name: "Say yes" }],
+    valueBlueprints: [{ id: "bp1", name: "Bonus" }, { id: "bp2", name: "Story Value" }],
     audioTracks: [{ id: "bgm", name: "Music" }, { id: "sound", name: "SFX" }, { id: "t_amb", name: "Ambience" }],
     labels: ["intro", "retry"],
     variables: [{ name: "gold", ref: { scope: "scene", variableId: "v1" }, valueType: "number" }],
@@ -119,6 +121,19 @@ describe("getCommandCursor", () => {
         expect(at("/set gold 'Comp|")).toMatchObject({ kind: "expression", query: "Comp", replace: { start: 10, end: 15 } });
         // An apostrophe inside a double-quoted string is data, not an opening quote.
         expect(at("/set gold \"don't\" + go|")).toMatchObject({ kind: "expression", query: "go" });
+    });
+
+    it("knows when the caret is inside a visited / picked argument", () => {
+        // The one piece of enclosing syntax the cursor tracks, because inside those two calls the
+        // vocabulary is entirely different - an entity name, never a variable or a function.
+        expect(at("/set flag visited(Chap|)")).toMatchObject({ kind: "expression", query: "Chap", call: "visited" });
+        expect(at("/set flag picked( Ref|")).toMatchObject({ kind: "expression", query: "Ref", call: "picked" });
+        // Quoted argument: the region rule still applies, and the enclosing call is still known.
+        expect(at("/set flag visited('Chap|ter 2')")).toMatchObject({ kind: "expression", query: "Chap", call: "visited" });
+        // A real function call is not one of the two, and a bare fragment has no enclosing call.
+        const enclosing = (marked: string) => (at(marked) as { call?: string }).call;
+        expect(enclosing("/set gold min(go|)")).toBeUndefined();
+        expect(enclosing("/set gold go|")).toBeUndefined();
     });
 });
 
@@ -257,13 +272,39 @@ describe("getCommandCandidates", () => {
             variable: { kind: "variable" as const, ref: { scope: "scene" as const, variableId: "v1" }, valueType, name: "gold" },
         });
         // Every slot in the command line should be a pick rather than a memory test, and an
-        // expression's operands are names - so the variable list is always on offer.
-        expect(values("/set gold |")).toEqual(["gold"]);
-        expect(values("/set gold |", variable("number"))).toEqual(["gold"]);
+        // expression's operands are names - so the variable list is always on offer, and with it the
+        // two other things a bare identifier position accepts: a value blueprint (a name the project
+        // declares, offered like a variable) and the two record reads (syntax nobody can guess at).
+        // The whitelist stays hidden until something is typed - see the next test for why.
+        expect(values("/set gold |")).toEqual(["gold", "Bonus()", "'Story Value'()", "visited(", "picked("]);
+        expect(values("/set gold |", variable("number"))).toEqual(["gold", "Bonus()", "'Story Value'()", "visited(", "picked("]);
         // A boolean target leads with its constants: setting a flag to true is the common case, and
         // it must not sit below a list of variable names. This is the behaviour the old dependent
         // literal slot had, kept intact.
-        expect(values("/set gold |", variable("boolean"))).toEqual(["true", "false", "gold"]);
+        expect(values("/set gold |", variable("boolean"))[0]).toBe("true");
+        expect(values("/set gold |", variable("boolean"))[1]).toBe("false");
+    });
+
+    it("swaps the whole vocabulary inside visited( / picked(", () => {
+        // Not "adds scenes to the list": a variable name cannot go there at all, so offering one
+        // would be offering a line that then refuses to resolve.
+        expect(values("/set flag visited(|)")).toEqual(["Chapter 2"]);
+        expect(values("/set flag picked(|)")).toEqual(["Refuse her", "Say yes"]);
+        expect(values("/set flag picked(Say|)")).toEqual(["Say yes"]);
+    });
+
+    it("completes a blueprint call whole, quoting the name only where the lexer needs it", () => {
+        // `'Story Value'()` must be taken verbatim; the expression slot's usual "quote a value with a
+        // space" rule would wrap it a second time and produce `''Story Value'()'`.
+        expect(completionFor(at("/set gold Sto|"), "'Story Value'()")).toEqual({
+            text: "'Story Value'()",
+            replace: { start: 10, end: 13 },
+        });
+        // A scene name with spaces, inside `visited(`, still goes through the quoting rule.
+        expect(completionFor(at("/set flag visited(Chap|)"), "Chapter 2")).toEqual({
+            text: "'Chapter 2'",
+            replace: { start: 18, end: 22 },
+        });
     });
 
     it("offers the function whitelist once the author starts typing one", () => {
