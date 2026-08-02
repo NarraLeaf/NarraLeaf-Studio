@@ -132,6 +132,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_IS_OPTION_PICKED,
     BLUEPRINT_NODE_TYPE_GAME_IS_SCENE_VISITED,
     BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ,
+    BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ_BY_ID,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
@@ -1458,6 +1459,43 @@ function resolveGetTrackVolumeNodeOutput(
 }
 
 /**
+ * `Has Read Text` - the text-read record's by-id reader.
+ *
+ * Its own resolver, node-type gated, and dispatched AHEAD of {@link resolveGameNodeOutput} for a
+ * reason that is easy to get wrong: this node's output port is `isRead`, the same bare port id that
+ * `Is Text Read` publishes. That function matches on bare port ids across the whole game family, so
+ * simply adding this node to its whitelist would answer `isCurrentTextRead()` - "is the line on
+ * screen right now read" - to a node that asks "has *this* id ever been read". Plausible boolean,
+ * wrong question, and nothing would ever flag it.
+ *
+ * Unlike its visited siblings the id is a data INPUT PIN, not a `params` id, so this resolver has to
+ * walk the graph (wired edge, or on-card inline literal) exactly as `execute()` does. That is why it
+ * takes `graph`/`nodeId`/`blueprintLocals`/`depth` and the others do not.
+ *
+ * An empty id, and no host, read as false rather than `undefined`: the pin is a non-nullable
+ * boolean, and "not read" is the right answer for an EXTRA row whose voice unit is not wired yet.
+ */
+function resolveTextReadByIdNodeOutput(
+    graph: DataPinGraph,
+    nodeId: string,
+    nodeType: string,
+    portId: string,
+    params: Record<string, unknown>,
+    blueprintLocals: Record<string, unknown> | undefined,
+    depth: number,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    if (nodeType !== BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ_BY_ID || portId !== "isRead") {
+        return undefined;
+    }
+    const textId = String(resolveInput(graph, nodeId, "textId", params, blueprintLocals, depth, runtime) ?? "").trim();
+    if (!textId) {
+        return false;
+    }
+    return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.isTextRead(textId) === true;
+}
+
+/**
  * `Is Scene Visited` / `Is Option Picked` - the visited record's readers.
  *
  * Its own resolver, node-type gated, for the same reason `Get Character` has one: these read a
@@ -2578,6 +2616,20 @@ function resolveSelfOutput(
         selfNode.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING
     ) {
         return resolvePageNodeOutput(portId, runtime);
+    }
+    // Ahead of the game whitelist below, which would otherwise capture this node's `isRead` port.
+    const textReadByIdOutput = resolveTextReadByIdNodeOutput(
+        graph,
+        nodeId,
+        selfNode.type,
+        portId,
+        selfNode.params ?? {},
+        blueprintLocals,
+        depth,
+        runtime,
+    );
+    if (textReadByIdOutput !== undefined) {
+        return textReadByIdOutput;
     }
     const visitedOutput = resolveVisitedNodeOutput(
         selfNode.type,
