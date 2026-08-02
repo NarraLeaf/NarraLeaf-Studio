@@ -323,7 +323,7 @@ spec.serialize(合并结果) → 原子写进工作树
 | **D3** | `vcs-changes` tab | D2 | ✅ **完成 2026-08-01**（`a514b367`）。两种模式都真机跑过；**`builtInEditors` 是死代码**（`registry.ts:55` 无任何消费者），所以走的是 `EditorTabDefinition` + `openOrUpdate` 这条活路 |
 | **D4** | 三个真 `spec.diff` | D1 | ✅ **完成 2026-08-01**（`0aa2fc5f`）。characters 全量接入（含 serialize）；story / assets-metadata **只做读侧**，`serialize` 明确抛错而不是悄悄改写作者的文件。`undefined` 审计实得 **11 处**（预计 ~6），**其中 2 处在迁移函数里**。顺带修掉 D1 漏的 `DocumentSpecDefinition.diff` 静默丢弃 |
 | **D5** | 合并绑定 | D0 | ✅ **完成 2026-08-01**（`88bbcc4c`）。`merge.ts` + 5 个 IPC；三个冲突标志已通到渲染进程（真机 `getStatus` 里看到了）；**冲突同步现在能报出文件名**（此前恒为 `["*"]`）；「合并进行中」判据是 `revisionMerged && revisionStaged`，单看前者会把每个合并过的工程永久判成合并中 |
-| **D6** | 解决第一档 | D5, D3 | 整份取一边；写回管线（§4.4）；接 V4 重载与 `afterRevision` |
+| **D6** | 解决第一档 | D5, D3 | ✅ **完成 2026-08-01**（`562309da`）。整份取一边 + 写回 + V4 重载 + `afterRevision`。**§4.4 的管线按实测改了三处**：不调 `_mine`/`_theirs`（同步后它们跟附属文件是反的，§4.31——照名字做会每次丢掉作者自己的工作）、不需要 `fileStageMerge`（§4.25）、收尾提交必须走**离线** globals（§4.29）。另外补了两件计划没写的：提交被拒**不回滚**（§4.32），以及**带未解决合并的工程原本根本打不开**（§4.33，真机验收拦下的）|
 | **D7** | 解决第二档 | D6, D4 | `merge3`；**localization 与 assets-metadata 先行** |
 | **D8** | story 的 merge3 | D7 | 场景级/块级合并 + 不可合并判据 |
 
@@ -333,6 +333,13 @@ spec.serialize(合并结果) → 原子写进工作树
 > **看出来两个「说了假话」的缺陷并已修**（`2d74a408`）：① 被列为「已修改」的文件展开说「内部没有差异」——两句都是真的，
 > 因为那次改动只是规范化重写，但作者无法把它和 bug 区分开；② 一个新增的 20 字节 `.txt` 自称「Not read / 太大、非文本或读不出」。
 > 这两条都不是测试能发现的。
+
+> **D6 真机验收（2026-08-01，orchestrator 亲驱）**：造一个真冲突（`editor/story/index.json`，
+> 三个附属文件齐全）→ 开工程 → 轨道出现「合并进行中 / 1 file needs a side chosen」→ 解决面板
+> 每行 Keep mine / Keep theirs → Finish。结果：合并关闭、修订 `#69`、文件里是
+> **「the author wrote this」**、无冲突标记、附属文件已清、JSON 可解析。
+> **「Keep mine 真的留下了我的」正是 §4.31 那个陷阱的验收判据**——照 verb 名字做的话这里会是对方的内容。
+> 验收顺带修掉三处 `1 file(s)` 假复数（仓库本来就有 `one`/`other` 约定）。
 
 **D0 排最前**，因为 D5 之后的一切都建立在「Lore 的 automerge 到底做了什么」上。
 **D6 单独就让合并可用**，第二档是改善不是及格线。
