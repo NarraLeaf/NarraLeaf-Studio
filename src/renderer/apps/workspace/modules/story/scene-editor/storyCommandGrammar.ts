@@ -30,6 +30,20 @@ export type StoryCommandEnumOption = {
     /** The canonical value - what completion inserts and the payload mapping receives. */
     value: string;
     aliases?: readonly string[];
+    /**
+     * Where this option's author-facing word comes from, when `story.enumValue.<value>` is not it.
+     *
+     * Exists for one reason: a value that ALSO appears in the property inspector must read the same
+     * on both surfaces, and the inspector names the thing the value produces rather than the word
+     * that produces it. `t=fade` is one word to the parser but two looks to a reader — 淡入 going in,
+     * 淡出 going out — so the option set for each direction points at the label the inspector already
+     * uses for the preset it will write.
+     *
+     * Display only: the canonical value and every alias keep parsing, and the localized word this
+     * names is added to the accept table beside them (see `commands/localizedEnums.ts`), so the menu
+     * still only ever shows a word it would take back.
+     */
+    labelKey?: string;
 };
 
 export type StoryCommandParamType =

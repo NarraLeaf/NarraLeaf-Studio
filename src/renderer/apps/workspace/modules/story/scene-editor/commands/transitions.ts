@@ -86,9 +86,39 @@ const SUPPORTED: Record<StoryTransitionContext, readonly StoryTransitionWord[]> 
     nvl: ["fade", "none"],
 };
 
+/**
+ * The word the PROPERTY INSPECTOR shows for whatever this word writes in this context.
+ *
+ * The two surfaces name the same setting, so they say the same thing: a `/hide` row's `t=fade` and
+ * the inspector's 变换 → 预设 are one field, and reading 淡变 on the left while the right says 淡出
+ * was the whole complaint. The direction the verb decides is exactly what makes one word need two
+ * labels, which is why this is keyed on the context and not on the word alone.
+ *
+ * `null` where nothing on the right names it — the value then keeps its own `story.enumValue.*` word.
+ */
+function inspectorLabelKey(context: StoryTransitionContext, word: StoryTransitionWord): string | null {
+    if (word === "none") {
+        return "common.none";
+    }
+    if (context === "scene" || context === "character") {
+        const kind = transitionKindFor(context, word);
+        return kind ? `storyInspector.transition.${kind}` : null;
+    }
+    const preset = transformPresetFor(context, word);
+    if (!preset) {
+        return null;
+    }
+    // The inspector calls this preset "slide reveal"; the vocabulary calls the word `wipe`. One
+    // catalog entry, spelled under the inspector's own name for it.
+    return `storyInspector.transformPreset.${preset === "wipe" ? "slideReveal" : preset}`;
+}
+
 /** The enum options a `t=` param offers in a given context - unified words, canonical-first. */
 export function transitionOptions(context: StoryTransitionContext): readonly StoryCommandEnumOption[] {
-    return SUPPORTED[context].map(word => ({ value: word, aliases: WORD_ALIASES[word] }));
+    return SUPPORTED[context].map(word => {
+        const labelKey = inspectorLabelKey(context, word);
+        return { value: word, aliases: WORD_ALIASES[word], ...(labelKey ? { labelKey } : {}) };
+    });
 }
 
 /** Every word a context supports - what an `unsupportedOption` issue lists as allowed. */
