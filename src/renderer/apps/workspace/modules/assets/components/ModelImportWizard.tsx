@@ -224,7 +224,7 @@ export function ModelImportWizard(props: {
         return (
             <div className="space-y-3 py-1">
                 <div className="flex items-center gap-2">
-                    <span className="shrink-0 rounded border border-edge px-1.5 py-0.5 text-2xs text-fg-muted">
+                    <span className="shrink-0 rounded-md border border-edge px-1.5 py-0.5 text-2xs text-fg-muted">
                         {t(FAMILY_LABEL[phase.family])}
                     </span>
                     {"root" in phase && phase.root ? (

@@ -545,7 +545,7 @@ function ConflictRow({
                     title={t(expanded ? "documentDiff.resolve.change.collapse" : "documentDiff.resolve.change.expand")}
                     aria-label={t(expanded ? "documentDiff.resolve.change.collapse" : "documentDiff.resolve.change.expand")}
                     aria-expanded={expanded}
-                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-fg-subtle transition-colors cursor-default hover:bg-fill hover:text-fg"
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-fg-subtle transition-colors cursor-default hover:bg-fill hover:text-fg"
                 >
                     {expanded
                         ? <ChevronDown className="h-3 w-3" />
@@ -694,7 +694,7 @@ function MergeChangeRow({
                         type="button"
                         disabled={disabled}
                         onClick={() => onChoose(other)}
-                        className="shrink-0 rounded px-1 text-2xs text-fg-subtle opacity-0 transition-opacity cursor-default hover:text-fg group-hover/change:opacity-100 focus-visible:opacity-100 disabled:opacity-50"
+                        className="shrink-0 rounded-md px-1 text-2xs text-fg-subtle opacity-0 transition-opacity cursor-default hover:text-fg group-hover/change:opacity-100 focus-visible:opacity-100 disabled:opacity-50"
                     >
                         {t(other === "mine" ? "documentDiff.resolve.change.useMine" : "documentDiff.resolve.change.useTheirs")}
                     </button>
