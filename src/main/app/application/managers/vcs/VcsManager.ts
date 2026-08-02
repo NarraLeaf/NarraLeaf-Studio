@@ -1,3 +1,4 @@
+import fs from "fs/promises";
 import path from "path";
 import type {
     VcsAvailability,
@@ -5,16 +6,21 @@ import type {
     VcsCheckpointReason,
     VcsCommitOptions,
     VcsCommitResult,
+    VcsConflictChoice,
     VcsHistoryEntry,
+    VcsMergeResolveResult,
+    VcsMergeState,
     VcsRepositoryInfo,
     VcsPushResult,
     VcsRestoreOptions,
     VcsRestoreResult,
+    VcsRevisionDiffResult,
     VcsRevisionKind,
     VcsStatus,
     VcsSyncResult,
     VcsSyncState,
     VcsThreeWayResult,
+    VcsWorkingTreeDiffResult,
 } from "@shared/types/vcs";
 import { composeVcsIdentity } from "@shared/types/vcs";
 import { BaseApp } from "../../baseApp";
@@ -24,6 +30,11 @@ import { getVcsAvailability, requireVcsBackend, type VcsBackend } from "./backen
 // at load time. See backend.ts for why that matters.
 import type { LoreGlobals, LoreHex, StoreHandle } from "./lore";
 import type { InitRepositoryOptions } from "./repository";
+// Value imports, and safe to be ones for the same reason as the two below: pure policy over bytes,
+// with the reader imported for types alone. `documentDiff` is also where the main process picks up
+// `@shared/documents/specs`, so this edge is what populates the document registry in this process.
+import { diffRevisions } from "./diff/revisionDiff";
+import { diffWorkingTree } from "./diff/workingTreeDiff";
 // Value import, and safe to be one: this module only touches `fs` and the working-set predicate,
 // and imports the reader for types alone.
 import { materializeRevisionSnapshot, type RevisionSnapshotResult } from "./revisionSnapshot";
@@ -77,6 +88,19 @@ interface VcsSession {
      * {@link VcsManager.closeProject}.
      */
     details: Map<LoreHex, RevisionDetails>;
+    /**
+     * Comparisons between two revisions, keyed `from..to`.
+     *
+     * Cacheable for exactly the reason {@link details} is: **both revisions are immutable**, so
+     * the answer cannot go stale. The line this draws is the same one that keeps the graph out of
+     * {@link details} - anything anchored to the working tree or to a moving head must not be here,
+     * and {@link VcsManager.diffWorkingTree} therefore has no cache at all.
+     *
+     * Bounded, unlike {@link details}, because an entry is not a handful of metadata: it is up to
+     * 200 changes for each of up to 2000 documents, and an author stepping through a long history
+     * would otherwise accumulate all of it for the life of the window.
+     */
+    diffs: Map<string, VcsRevisionDiffResult>;
 }
 
 /**
@@ -147,7 +171,37 @@ function isNothingToCommit(error: unknown): boolean {
 }
 
 /**
- * The one spelling of a project path this manager keys on.
+ * A project path this layer cannot work in, said so before anything acts on it.
+ *
+ * Named rather than anonymous for the reason {@link isNothingToCommit} explains: callers
+ * tell errors apart by name across a boundary where `instanceof` is not reliable.
+ */
+export class VcsProjectPathError extends Error {
+    constructor(readonly projectPath: string) {
+        super(
+            `Version control needs an absolute project path with no control characters, got `
+            + `${JSON.stringify(projectPath)}. One that arrives relative, or with a newline or a `
+            + `tab in it, has usually been through a layer that read its backslashes as escapes: `
+            + `"D:\\Temp\\nls\\back" comes out of that as "D:Temp", a newline, "ls", a backspace, `
+            + `"ack".`,
+        );
+        this.name = "VcsProjectPathError";
+    }
+}
+
+/**
+ * Characters no path handed to this layer may contain.
+ *
+ * NUL everywhere: it terminates a C string, so a path carrying one means something different
+ * on the far side of the FFI boundary than it does here. The rest of the C0 range on Windows
+ * only, where such a name cannot exist at all - POSIX permits a newline in a filename and this
+ * is not the place to decide otherwise.
+ */
+const FORBIDDEN_PATH_CHARACTERS = process.platform === "win32" ? /[\u0000-\u001f]/ : /\u0000/;
+
+/**
+ * The one spelling of a project path this manager works in: absolute, with this platform's
+ * separators, and refused outright when it is neither.
  *
  * **Two spellings of one directory used to be two projects here**, and the consequence was not a
  * duplicated cache - it was a process deadlocking against itself. The session map and the operation
@@ -160,15 +214,36 @@ function isNothingToCommit(error: unknown): boolean {
  *
  * The two spellings are not hypothetical. Window-close paths take the path from the window's props
  * while the renderer sends the one out of the project config, and nothing has ever required those
- * to agree on a separator.
+ * to agree on a separator. `path.resolve` unifies them, and makes the path absolute, which the
+ * backend requires anyway (§4.4 - relative paths resolve against the process working directory,
+ * which is never the project).
  *
- * `path.resolve` unifies separators and makes the path absolute, which the backend requires anyway
- * (§4.4 - relative paths resolve against the process working directory, which is never the
- * project). Case is folded on Windows only, where the filesystem is case-insensitive and
- * `D:\Demo` and `D:\demo` are one directory holding one lock.
+ * **Which is exactly why a path that is not already absolute has to be refused rather than
+ * resolved.** `path.resolve` does not report that it had to invent a root; it silently answers
+ * with one built from the Electron main process's working directory. A caller that hands over
+ * `D:Temp\demo` - the shape a `D:\Temp\demo` takes after one round of backslash-escape processing
+ * somewhere upstream - would have a repository created under Studio's own install directory and be
+ * told it succeeded, with a `root` in the reply nobody asked for. Refusing costs nothing (every
+ * real project path in Studio originates in the main process, from a native dialog or a config
+ * file) and turns a silent relocation into a sentence naming the likely cause.
+ *
+ * Case is folded by {@link projectKey} on Windows only, where the filesystem is case-insensitive
+ * and `D:\Demo` and `D:\demo` are one directory holding one lock.
  */
+function projectRoot(projectPath: string): string {
+    if (
+        typeof projectPath !== "string"
+        || !path.isAbsolute(projectPath)
+        || FORBIDDEN_PATH_CHARACTERS.test(projectPath)
+    ) {
+        throw new VcsProjectPathError(String(projectPath));
+    }
+    return path.resolve(projectPath);
+}
+
+/** The key the session map and the operation queue use. See {@link projectRoot}. */
 function projectKey(projectPath: string): string {
-    const resolved = path.resolve(projectPath);
+    const resolved = projectRoot(projectPath);
     return process.platform === "win32" ? resolved.toLowerCase() : resolved;
 }
 
@@ -181,6 +256,16 @@ function projectKey(projectPath: string): string {
  * this presents to an author - a spinner that never stops - so the wait announces itself.
  */
 const SLOW_STORE_OPEN_MS = 5_000;
+
+/**
+ * How many revision comparisons one session keeps.
+ *
+ * Not a measurement, a bound: a comparison is orders of magnitude larger than the revision
+ * metadata cached beside it, and stepping through a hundred versions must not turn into a hundred
+ * change lists held for the life of the window. Twenty-four covers going back and forth across a
+ * page of history, which is the pattern the cache exists for.
+ */
+const MAX_CACHED_REVISION_DIFFS = 24;
 
 export class VcsManager extends Manager {
     private readonly sessions = new Map<string, VcsSession>();
@@ -340,9 +425,9 @@ export class VcsManager extends Manager {
      */
     private openSession(projectPath: string, key: string, backend: VcsBackend): Promise<VcsSession> {
         const pending = (async (): Promise<VcsSession> => {
-            // The resolved path rather than the key: the key is case-folded for lookup and this is
-            // what is handed to the backend and used to build absolute paths off.
-            const root = path.resolve(projectPath);
+            // The normalized path rather than the key: the key is case-folded for lookup and this
+            // is what is handed to the backend and used to build absolute paths off.
+            const root = projectRoot(projectPath);
             const globals = this.globalsFor(root);
             const store = await this.openStoreAnnouncingDelay(backend, globals, root);
 
@@ -370,7 +455,9 @@ export class VcsManager extends Manager {
                 throw error;
             }
 
-            const session: VcsSession = { root, store, repositoryId, globals, details: new Map() };
+            const session: VcsSession = {
+                root, store, repositoryId, globals, details: new Map(), diffs: new Map(),
+            };
             this.sessions.set(key, session);
             this.app.logger.info("[Vcs] Opened session", root, repositoryId);
             return session;
@@ -424,7 +511,7 @@ export class VcsManager extends Manager {
     ): Promise<VcsRepositoryInfo> {
         return this.serialize(projectPath, async () => {
             const backend = await requireVcsBackend();
-            const root = path.resolve(projectPath);
+            const root = projectRoot(projectPath);
             const globals = this.globalsFor(root);
             // Decided before the attempt, because the cleanup below must not run when
             // the answer is "it was already one": that path can have a LIVE SESSION on
@@ -997,6 +1084,101 @@ export class VcsManager extends Manager {
         });
     }
 
+    /**
+     * What changed between two revisions, as changes rather than as bytes.
+     *
+     * **Cached per session, and that is safe because revisions are immutable** - the same pair can
+     * never answer differently, which is the identical argument {@link VcsSession.details} rests
+     * on. A failed read is deliberately NOT cached: it is a fact about this process rather than
+     * about the revisions - the measured case is a process that cannot read back what it wrote
+     * with an online commit (docs/version-control.md §4.29) - and caching it would leave a session
+     * answering with a failure that has already passed.
+     *
+     * Inside the per-project queue like every other verb, so a comparison and a commit cannot
+     * interleave on one store handle.
+     */
+    public async diffRevisions(projectPath: string, from: string, to: string): Promise<VcsRevisionDiffResult> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            const key = `${from}..${to}`;
+            const cached = session.diffs.get(key);
+            if (cached) return cached;
+
+            const result = await diffRevisions(
+                {
+                    changedPaths: (a, b) => backend.changedPaths(session.globals, a, b),
+                    documentsAt: (revision, paths) => backend.documentsAt(
+                        session.globals,
+                        session.store,
+                        session.repositoryId,
+                        revision,
+                        { paths },
+                    ),
+                },
+                { from, to, onDegrade: (reason) => this.app.logger.info("[Vcs] Diff degraded:", reason) },
+            );
+
+            if (!result.readFailure) {
+                this.rememberDiff(session, key, result);
+            }
+            return result;
+        });
+    }
+
+    /**
+     * What the author has changed since the last version.
+     *
+     * **Never cached, and the rule has no exceptions.** The working tree changes under Studio
+     * between any two calls - by the author's own editing, by an auto-save, by their other tools -
+     * so a remembered answer is a list of changes that may no longer exist, shown beside files that
+     * no longer match it. It is also the input to the resolve flow, where a stale row means taking a
+     * side on a change that is not there.
+     *
+     * The status read underneath scans, which is not a pure operation (§4.17), so this must be
+     * called because someone asked and never on a timer.
+     */
+    public async diffWorkingTree(projectPath: string): Promise<VcsWorkingTreeDiffResult> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            return diffWorkingTree(
+                {
+                    status: () => backend.getStatus(session.globals),
+                    documentsAt: (revision, paths) => backend.documentsAt(
+                        session.globals,
+                        session.store,
+                        session.repositoryId,
+                        revision,
+                        { paths },
+                    ),
+                    readWorking: async (relative) => {
+                        // Through the backend's own guard rather than a `path.join`: a status entry
+                        // is repository-relative text and this is the line that would otherwise read
+                        // any file on the disk (§4.16 - the compiler cannot tell the two directions
+                        // of path apart).
+                        const absolute = backend.repositoryPath(session.root, relative);
+                        return fs.readFile(absolute).catch(() => null);
+                    },
+                },
+                { onDegrade: (reason) => this.app.logger.info("[Vcs] Diff degraded:", reason) },
+            );
+        });
+    }
+
+    /**
+     * Remember one comparison, dropping the oldest once the cap is reached.
+     *
+     * Insertion order rather than recency: `Map` preserves it for free, and the access pattern this
+     * bounds is walking a history rail, where the oldest entry is also the one furthest from where
+     * the author is looking.
+     */
+    private rememberDiff(session: VcsSession, key: string, result: VcsRevisionDiffResult): void {
+        if (session.diffs.size >= MAX_CACHED_REVISION_DIFFS) {
+            const oldest = session.diffs.keys().next();
+            if (!oldest.done) session.diffs.delete(oldest.value);
+        }
+        session.diffs.set(key, result);
+    }
+
     /** Common ancestor of two revisions. Computed locally; Lore exposes no such API. */
     public async getMergeBase(projectPath: string, a: string, b: string): Promise<string | undefined> {
         return this.serialize(projectPath, async () => {
@@ -1046,7 +1228,7 @@ export class VcsManager extends Manager {
      * placeholder and leaves whatever is on the server alone.
      */
     public async setRemote(projectPath: string, url: string | null): Promise<void> {
-        const root = path.resolve(projectPath);
+        const root = projectRoot(projectPath);
         // Read BEFORE the session is closed, and needed only for the connect path: the
         // registration has to carry this project's own repository id, or the name on the
         // server would resolve to a different repository than the one that pushes to it.
@@ -1172,6 +1354,120 @@ export class VcsManager extends Manager {
         });
     }
 
+    // -- merge ----------------------------------------------------------------
+
+    /**
+     * Whether this project is in the middle of a merge, and which paths are still open.
+     *
+     * **Ask this on opening a project, not only after a sync.** A merge is repository state
+     * and outlives the process that started it: the author can close the window on a
+     * conflicted sync and reopen it tomorrow, and nothing in this class remembers. The
+     * answer is reconstructed from the repository and from what the merge left on disk -
+     * see `merge.ts` for exactly which signals, and for the one that is not an inference.
+     *
+     * A pure read on the offline globals: no socket, and `scan: false`, so it is not the
+     * kind of status call that records staged state as a side effect (§4.17).
+     */
+    public async getMergeState(projectPath: string): Promise<VcsMergeState> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            return backend.readMergeState(session.globals, session.root);
+        });
+    }
+
+    /**
+     * Settle conflicted paths by taking one side, or by taking the working tree as it is.
+     *
+     * **Records nothing.** Settling a path is not committing it - the merge stays open
+     * until a commit closes it, which is what lets the author decide one file, look at the
+     * result, and decide the next. The caller commits when the author says so, through
+     * {@link commit}, whose globals are offline - and they must stay offline: a commit made
+     * through online globals on a server-registered repository cannot be read back by the
+     * process that wrote it (§4.29), so the author's own resolution would be unreadable in
+     * the session that made it.
+     *
+     * `mine` and `theirs` OVERWRITE the working tree, so the pending saves are flushed
+     * first and inside the lock for the same reason a sync flushes them: a debounced
+     * auto-save landing a moment later writes the author's pre-merge document back over
+     * the side they just chose.
+     *
+     * The caller must re-read every document this touched.
+     */
+    public async resolveConflicts(
+        projectPath: string,
+        paths: readonly string[],
+        choice: VcsConflictChoice,
+    ): Promise<VcsMergeResolveResult> {
+        return this.serialize(projectPath, async () => {
+            if (this.flushPendingSaves) {
+                await this.flushPendingSaves(projectPath).catch((error) => {
+                    this.app.logger.warn("[Vcs] Could not flush pending saves before resolving", error);
+                });
+            }
+            const { session, backend } = await this.sessionFor(projectPath);
+            const result = await backend.resolveConflicts(session.globals, session.root, paths, choice);
+            this.app.logger.info(
+                "[Vcs] Resolved", session.root, `${paths.length} path(s) as ${choice};`,
+                `${result.state.conflicts.length} left`,
+            );
+            return result;
+        });
+    }
+
+    /** Put settled paths back into the unresolved state, undoing a choice. */
+    public async unresolveConflicts(
+        projectPath: string,
+        paths: readonly string[],
+    ): Promise<VcsMergeResolveResult> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            return backend.unresolveConflicts(session.globals, session.root, paths);
+        });
+    }
+
+    /**
+     * Redo the automatic merge for these paths, discarding what is in the working tree.
+     *
+     * The way back from a half-edited merge result, and it throws away bytes - so the
+     * pending saves are flushed first, and the caller must re-read afterwards.
+     */
+    public async restartConflicts(projectPath: string, paths: readonly string[]): Promise<VcsMergeState> {
+        return this.serialize(projectPath, async () => {
+            if (this.flushPendingSaves) {
+                await this.flushPendingSaves(projectPath).catch((error) => {
+                    this.app.logger.warn("[Vcs] Could not flush pending saves before restarting a merge", error);
+                });
+            }
+            const { session, backend } = await this.sessionFor(projectPath);
+            return backend.restartConflicts(session.globals, session.root, paths);
+        });
+    }
+
+    /**
+     * Abandon the merge and put the working tree back to what it was before it started.
+     *
+     * **A complete rollback, measured rather than assumed** (§4.27): every file back to its
+     * pre-merge content, the merge inputs deleted, the status header where it was. That
+     * measurement is the only reason this is offered at all - a cancel that left a
+     * half-merged tree would be worse than no cancel.
+     *
+     * It writes the author's files, so it carries a restore's obligations: pending saves
+     * flushed first and inside the lock, and every document re-read once it resolves.
+     */
+    public async abortMerge(projectPath: string): Promise<VcsMergeState> {
+        return this.serialize(projectPath, async () => {
+            if (this.flushPendingSaves) {
+                await this.flushPendingSaves(projectPath).catch((error) => {
+                    this.app.logger.warn("[Vcs] Could not flush pending saves before abandoning a merge", error);
+                });
+            }
+            const { session, backend } = await this.sessionFor(projectPath);
+            const state = await backend.abortMerge(session.globals, session.root);
+            this.app.logger.info("[Vcs] Abandoned the merge", session.root);
+            return state;
+        });
+    }
+
     /**
      * Copy a repository from a server into a local directory.
      *
@@ -1188,7 +1484,7 @@ export class VcsManager extends Manager {
         destination: string,
         options: { onProgress?: (transferred: number, total: number) => void } = {},
     ): Promise<{ root: string; branch: string; fileCount: number }> {
-        const root = path.resolve(destination);
+        const root = projectRoot(destination);
         return this.serialize(root, async () => {
             const backend = await requireVcsBackend();
             const globals = this.globalsFor(root, { online: true });

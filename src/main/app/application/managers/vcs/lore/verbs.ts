@@ -19,6 +19,13 @@ import {
     type LoreDiffFilePayload,
     type LoreHistoryEntryPayload,
     type LoreHistoryPayload,
+    type LoreMergeAbortBeginPayload,
+    type LoreMergeConflictFilePayload,
+    type LoreMergeResolveFilePayload,
+    type LoreMergeResolveRevisionPayload,
+    type LoreMergeStartBeginPayload,
+    type LoreMergeStartEndPayload,
+    type LoreMergeUnresolveFilePayload,
     type LoreMetadataPayload,
     type LoreRepositoryCreatePayload,
     type LoreRevisionInfoPayload,
@@ -521,6 +528,169 @@ export async function switchBranch(
     });
 }
 
+// -- merge ------------------------------------------------------------------
+
+/**
+ * The verbs that produce and settle a two-sided write.
+ *
+ * Everything else on this surface only ever adds a revision on top of one history, so
+ * nothing above it has ever had to describe "both sides changed this". These are the
+ * exception, and three properties of them shape every wrapper below:
+ *
+ *  - **The merge state lives in the repository, not in Studio.** Between a start and a
+ *    commit the repository is in an in-progress merge that outlives the process. A
+ *    caller cannot hold the progress in memory and must be able to re-read it.
+ *  - **Every `paths` argument is ABSOLUTE** (§4.4/§4.16), like `fileStage` and unlike
+ *    everything `repositoryStatus` reports back. A relative path resolves against the
+ *    process CWD and is then ignored for being outside the repository.
+ *  - **What the automerge does to Studio's own content is not known here.** These
+ *    wrappers transcribe the ABI and nothing more; the behavioural questions are the
+ *    subject of `mergeSpike.integration.test.ts`, and no answer to them is encoded in
+ *    this file.
+ */
+
+export interface MergeStartResult {
+    begin: LoreMergeStartBeginPayload | undefined;
+    /** Absent when the call reported no end event, which is not the same as "no conflicts". */
+    end: LoreMergeStartEndPayload | undefined;
+    /** Repository-relative paths, one per conflict event. */
+    conflicts: string[];
+}
+
+/**
+ * Merge another branch into the current one, writing the working tree.
+ *
+ * `noCommit` is exposed because the two modes are different products: committing
+ * immediately is only defensible when nothing conflicted, and stopping short of a
+ * commit is what leaves the author a tree to resolve. The caller decides which it is
+ * asking for rather than discovering it from the result.
+ */
+export async function branchMergeStart(
+    globals: LoreGlobals,
+    options: { branch: string; message?: string; noCommit?: boolean },
+): Promise<MergeStartResult> {
+    const result = await invoke("branchMergeStart", globals, {
+        branch: scopeString(options.branch),
+        message: scopeString(options.message),
+        noCommit: options.noCommit ? 1 : 0,
+        // Links are Lore's cross-repository composition feature. Studio has no interface
+        // for them, so a merge is never asked to reason about one.
+        link: scopeString(undefined),
+        ignoreLinks: 0,
+    });
+    return {
+        begin: result.first<LoreMergeStartBeginPayload>(LoreTag.BRANCH_MERGE_START_BEGIN),
+        end: result.first<LoreMergeStartEndPayload>(LoreTag.BRANCH_MERGE_START_END),
+        conflicts: result.of<LoreMergeConflictFilePayload>(LoreTag.BRANCH_MERGE_CONFLICT_FILE)
+            .map((event) => event.path),
+    };
+}
+
+export interface MergeResolveResult {
+    /** Paths Lore acknowledged as resolved. */
+    files: string[];
+    /** Present when settling these paths finished the merge and produced a revision. */
+    revision: LoreMergeResolveRevisionPayload | undefined;
+}
+
+/**
+ * Mark paths resolved, taking whatever bytes are in the working tree.
+ *
+ * The only resolve verb that can express an answer neither side wrote, which is what a
+ * per-change merge produces - and the reason this whole path can exist despite Lore
+ * having no in-memory revision write API (§4.10): the caller writes the file, then says
+ * it is settled.
+ */
+export async function branchMergeResolve(
+    globals: LoreGlobals,
+    absolutePaths: readonly string[],
+): Promise<MergeResolveResult> {
+    return collectResolve(await invoke("branchMergeResolve", globals, {
+        paths: scopeStringArray(absolutePaths),
+    }));
+}
+
+/** Settle paths by taking this side's bytes wholesale. */
+export async function branchMergeResolveMine(
+    globals: LoreGlobals,
+    absolutePaths: readonly string[],
+): Promise<MergeResolveResult> {
+    return collectResolve(await invoke("branchMergeResolveMine", globals, {
+        paths: scopeStringArray(absolutePaths),
+    }));
+}
+
+/** Settle paths by taking the incoming side's bytes wholesale. */
+export async function branchMergeResolveTheirs(
+    globals: LoreGlobals,
+    absolutePaths: readonly string[],
+): Promise<MergeResolveResult> {
+    return collectResolve(await invoke("branchMergeResolveTheirs", globals, {
+        paths: scopeStringArray(absolutePaths),
+    }));
+}
+
+function collectResolve(result: Awaited<ReturnType<typeof invoke>>): MergeResolveResult {
+    return {
+        files: result.of<LoreMergeResolveFilePayload>(LoreTag.BRANCH_MERGE_RESOLVE_FILE)
+            .map((event) => event.path),
+        revision: result.first<LoreMergeResolveRevisionPayload>(LoreTag.BRANCH_MERGE_RESOLVE_REVISION),
+    };
+}
+
+/** Put paths back into the unresolved state, undoing a resolve decision. */
+export async function branchMergeUnresolve(
+    globals: LoreGlobals,
+    absolutePaths: readonly string[],
+): Promise<string[]> {
+    const result = await invoke("branchMergeUnresolve", globals, {
+        paths: scopeStringArray(absolutePaths),
+    });
+    return result.of<LoreMergeUnresolveFilePayload>(LoreTag.BRANCH_MERGE_UNRESOLVE_FILE).map((event) => event.path);
+}
+
+/** Redo the automatic merge for paths, discarding whatever is in the working tree for them. */
+export async function branchMergeRestart(
+    globals: LoreGlobals,
+    absolutePaths: readonly string[],
+): Promise<void> {
+    await invoke("branchMergeRestart", globals, { paths: scopeStringArray(absolutePaths) });
+}
+
+/**
+ * Abandon the merge.
+ *
+ * Whether this leaves the working tree exactly as it was before the merge started is
+ * NOT established - it is E5 of the spike - and until it is, nothing above this may
+ * offer it as a "cancel" the author can trust.
+ */
+export async function branchMergeAbort(globals: LoreGlobals): Promise<LoreMergeAbortBeginPayload | undefined> {
+    const result = await invoke("branchMergeAbort", globals, {
+        link: scopeString(undefined),
+        ignoreLinks: 0,
+    });
+    return result.first<LoreMergeAbortBeginPayload>(LoreTag.BRANCH_MERGE_ABORT_BEGIN);
+}
+
+/**
+ * Stage merge results for the commit that closes a merge.
+ *
+ * Separate from {@link stage}, and it is an open question whether a merge commit needs
+ * it, needs the ordinary stage, or needs neither - see E3 of the spike. The result is
+ * read through the same tolerant accessors as {@link stage} so that a verb which
+ * reports nothing is an empty answer rather than a throw.
+ */
+export async function stageMerge(
+    globals: LoreGlobals,
+    absolutePaths: readonly string[],
+): Promise<StageResult> {
+    const result = await invoke("fileStageMerge", globals, { paths: scopeStringArray(absolutePaths) });
+    return {
+        files: result.of<LoreStageFilePayload>(LoreTag.FILE_STAGE_FILE),
+        counts: result.first<LoreStageEndPayload>(LoreTag.FILE_STAGE_END),
+    };
+}
+
 // -- remote -----------------------------------------------------------------
 
 /**
@@ -585,11 +755,30 @@ export async function pushBranch(
 
 export interface SyncResult {
     target: LoreSyncTargetPayload | undefined;
-    /** Files the sync wrote or removed in the working tree. */
+    /**
+     * Files the sync wrote or removed in the working tree.
+     *
+     * **Their conflict flags are all false and always will be** - the sync file struct
+     * has no such fields, so the decoder fills them in as `false` (see `events.ts`).
+     * Filtering this list for conflicts finds nothing no matter how many there were;
+     * {@link conflicts} is where they are named.
+     */
     files: LoreStatusFilePayload[];
     revisions: LoreSyncRevisionPayload[];
     /** The last progress report, which carries the automerge and conflict counters. */
     progress: LoreSyncProgressPayload | undefined;
+    /**
+     * Repository-relative paths the sync's automerge could not settle.
+     *
+     * From `BRANCH_MERGE_CONFLICT_FILE` - the same event a branch merge emits, which is
+     * the measured evidence that a sync merge and a branch merge are one mechanism
+     * rather than two (docs/version-control.md §4.24). **This is the only place a
+     * conflicted path is ever named**: `repositoryStatus` reports an empty file list in
+     * every one of its four forms once the merge has recorded itself as the staged
+     * revision, so nothing after the fact can recover this list from the repository.
+     * Whatever the caller does not keep here has to be reconstructed off disk.
+     */
+    conflicts: string[];
 }
 
 /**
@@ -629,6 +818,10 @@ export async function syncRevision(
         files: result.of<LoreStatusFilePayload>(LoreTag.REVISION_SYNC_FILE),
         revisions: result.of<LoreSyncRevisionPayload>(LoreTag.REVISION_SYNC_REVISION),
         progress: result.of<LoreSyncProgressPayload>(LoreTag.REVISION_SYNC_PROGRESS).at(-1),
+        // Read off the SAME event a branch merge uses, not off the sync file events -
+        // see the field's own note for why the obvious place has nothing in it.
+        conflicts: result.of<LoreMergeConflictFilePayload>(LoreTag.BRANCH_MERGE_CONFLICT_FILE)
+            .map((event) => event.path),
     };
 }
 

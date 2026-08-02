@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { CSSProperties, ReactNode, RefObject, MouseEvent } from "react";
+import type { ClipboardEvent, CSSProperties, ReactNode, RefObject, MouseEvent } from "react";
 import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Hash, Image, LayoutGrid, List, Music, Play, Plus, Route, Trash2, TriangleAlert, UserRoundPlus, Variable, Video } from "lucide-react";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
 import { useSortable } from "@dnd-kit/sortable";
@@ -133,6 +133,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
         onToggleCollapsed: () => actions.toggleCollapsed(blockId),
         onStartTextEdit: () => actions.startTextEdit(blockId),
         onEditRichChange: (value: string, runs: StoryRichRun[]) => actions.editRichChange(blockId, value, runs),
+        onMultiLinePaste: (event: ClipboardEvent<HTMLDivElement>) => actions.pasteIntoRowText(blockId, event),
         onCommitTextEdit: actions.commitTextEdit,
         onExitTextEdit: actions.exitTextEdit,
         onContinue: actions.continueRow,
@@ -453,6 +454,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                             editorRef={textInputRef}
                             initialCaret={props.editInitialCaret}
                             onEditRichChange={on.onEditRichChange}
+                            onMultiLinePaste={on.onMultiLinePaste}
                             onCommitTextEdit={on.onCommitTextEdit}
                             onExitTextEdit={on.onExitTextEdit}
                             onContinue={on.onContinue}
@@ -571,6 +573,7 @@ function TextEditBox(props: {
     editorRef: RefObject<RichTextInputHandle | null>;
     initialCaret?: StoryCaretTarget;
     onEditRichChange: (value: string, runs: StoryRichRun[]) => void;
+    onMultiLinePaste: (event: ClipboardEvent<HTMLDivElement>) => boolean;
     onCommitTextEdit: () => void;
     onExitTextEdit: () => void;
     onContinue: () => void;
@@ -748,6 +751,7 @@ function TextEditBox(props: {
                 style={textStyle}
                 placeholder={editorPlaceholder(props.block, t)}
                 onChange={props.onEditRichChange}
+                onMultiLinePaste={props.onMultiLinePaste}
                 onBlur={handleBlur}
                 onExit={props.onExitTextEdit}
                 onEnter={props.onContinue}

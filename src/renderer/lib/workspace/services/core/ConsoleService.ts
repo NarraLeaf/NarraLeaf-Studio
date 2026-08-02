@@ -366,13 +366,21 @@ export class ConsoleService extends Service<ConsoleService> {
     }
 
     /**
-     * The last unconsumed {@link requestFocus}, for a panel that mounted after the request.
-     * Reading it clears it - a stale request must not steal the tab the author has since chosen.
+     * The standing {@link requestFocus}, for a panel that mounts after the request was made.
+     *
+     * Deliberately does NOT clear on read. `panels.show()` can remount the panel, and a remount
+     * restores the *persisted* tab - so a request that cleared itself the first time it was applied
+     * was immediately undone by the very remount that revealed the panel, which is how starting a
+     * test still landed the author on an empty `build` tab. The request stands until the author
+     * picks a tab themselves ({@link clearPendingFocusRequest}) or another run supersedes it.
      */
-    public takePendingFocusRequest(): ConsoleChannelId | null {
-        const pending = this.pendingFocusRequest;
+    public peekPendingFocusRequest(): ConsoleChannelId | null {
+        return this.pendingFocusRequest;
+    }
+
+    /** The author chose a tab by hand; their choice outranks any run's request from here on. */
+    public clearPendingFocusRequest(): void {
         this.pendingFocusRequest = null;
-        return pending;
     }
 
     public getEntries(channel: ConsoleChannelId): ConsoleEntry[] {

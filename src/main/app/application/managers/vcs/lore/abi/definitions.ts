@@ -269,6 +269,26 @@ export const LORE_STRUCTS = {
     LoreBranchSwitchArgs: { branch: "LoreString", revision: "LoreString", reset: "uint8_t", bare: "uint8_t" },
     LoreBranchInfoArgs: { branch: "LoreString" },
 
+    // -- merge args -------------------------------------------------------------
+    // Every `paths` field here is a `LoreStringArray` of ABSOLUTE paths, for the same
+    // reason `fileStage` is (§4.4/§4.16): Lore resolves a relative path against the
+    // process CWD, which is never the project directory, and then ignores it for being
+    // outside the repository.
+    LoreBranchMergeStartArgs: {
+        branch: "LoreString",
+        message: "LoreString",
+        noCommit: "uint8_t",
+        link: "LoreString",
+        ignoreLinks: "uint8_t",
+    },
+    LoreBranchMergeResolveArgs: { paths: "LoreStringArray" },
+    LoreBranchMergeResolveMineArgs: { paths: "LoreStringArray" },
+    LoreBranchMergeResolveTheirsArgs: { paths: "LoreStringArray" },
+    LoreBranchMergeAbortArgs: { link: "LoreString", ignoreLinks: "uint8_t" },
+    LoreBranchMergeUnresolveArgs: { paths: "LoreStringArray" },
+    LoreBranchMergeRestartArgs: { paths: "LoreStringArray" },
+    LoreFileStageMergeArgs: { paths: "LoreStringArray" },
+
     // -- events -----------------------------------------------------------------
     LoreMetadataEventData: { key: "LoreString", value: "LoreMetadata" },
     LoreErrorEventData: { errorType: "uint32_t", errorInner: "LoreString" },
@@ -504,6 +524,27 @@ export const LORE_STRUCTS = {
     },
     LoreBranchCreateEventData: { name: "LoreString", latest: "LoreHash", isCommit: "uint8_t" },
     LoreBranchSwitchEndEventData: { branch: "LoreBranchSwitchData" },
+
+    // -- merge events -----------------------------------------------------------
+    // Declared last because `LoreBranchMergeStartEndEventData` embeds the sync progress
+    // struct BY VALUE, and koffi resolves a type name when the struct that mentions it
+    // is declared, not when it is used.
+    LoreBranchMergeStartBeginEventData: {
+        branch: "LoreBranchId",
+        revision: "LoreHash",
+        revisionNumber: "uint64_t",
+    },
+    LoreBranchMergeStartEndEventData: {
+        stats: "LoreRevisionSyncProgressEventData",
+        signature: "LoreHash",
+        hasConflicts: "uint8_t",
+    },
+    LoreBranchMergeConflictFileEventData: { path: "LoreString" },
+    LoreBranchMergeResolveFileEventData: { path: "LoreString" },
+    LoreBranchMergeResolveRevisionEventData: { repository: "LoreRepositoryId", revision: "LoreHash" },
+    LoreBranchMergeAbortBeginEventData: { stateStagedRevision: "LoreHash", stateCurrentRevision: "LoreHash" },
+    LoreBranchMergeAbortEndEventData: { unused: "uint32_t" },
+    LoreBranchMergeUnresolveFileEventData: { path: "LoreString" },
 } as const satisfies Readonly<Record<string, LoreStructDefinition>>;
 
 export type LoreStructName = keyof typeof LORE_STRUCTS;
@@ -568,6 +609,17 @@ export const LORE_EVENT_TAGS = {
     REVISION_SYNC_FILE: 177,
     REVISION_SYNC_PROGRESS: 178,
     REVISION_SYNC_REVISION: 179,
+    // -- merge ----------------------------------------------------------------
+    // Numerically scattered rather than contiguous, which is why each one is
+    // transcribed from the extracted enum rather than derived from a neighbour.
+    BRANCH_MERGE_ABORT_BEGIN: 17,
+    BRANCH_MERGE_ABORT_END: 18,
+    BRANCH_MERGE_CONFLICT_FILE: 29,
+    BRANCH_MERGE_UNRESOLVE_FILE: 31,
+    BRANCH_MERGE_RESOLVE_FILE: 42,
+    BRANCH_MERGE_RESOLVE_REVISION: 43,
+    BRANCH_MERGE_START_BEGIN: 44,
+    BRANCH_MERGE_START_END: 45,
 } as const;
 
 export type LoreEventTagName = keyof typeof LORE_EVENT_TAGS;
@@ -659,6 +711,19 @@ export const LORE_VERBS = {
     branchCreate: { symbol: "lore_branch_create", args: "LoreBranchCreateArgs" },
     branchSwitch: { symbol: "lore_branch_switch", args: "LoreBranchSwitchArgs" },
     branchInfo: { symbol: "lore_branch_info", args: "LoreBranchInfoArgs" },
+    // -- merge ----------------------------------------------------------------
+    // Merge state lives in the repository, not in Studio: starting a merge writes the
+    // working tree and leaves the repository in an in-progress state that survives a
+    // crash or a closed window, so every one of these is a step in a sequence rather
+    // than a self-contained call.
+    branchMergeStart: { symbol: "lore_branch_merge_start", args: "LoreBranchMergeStartArgs" },
+    branchMergeResolve: { symbol: "lore_branch_merge_resolve", args: "LoreBranchMergeResolveArgs" },
+    branchMergeResolveMine: { symbol: "lore_branch_merge_resolve_mine", args: "LoreBranchMergeResolveMineArgs" },
+    branchMergeResolveTheirs: { symbol: "lore_branch_merge_resolve_theirs", args: "LoreBranchMergeResolveTheirsArgs" },
+    branchMergeAbort: { symbol: "lore_branch_merge_abort", args: "LoreBranchMergeAbortArgs" },
+    branchMergeUnresolve: { symbol: "lore_branch_merge_unresolve", args: "LoreBranchMergeUnresolveArgs" },
+    branchMergeRestart: { symbol: "lore_branch_merge_restart", args: "LoreBranchMergeRestartArgs" },
+    fileStageMerge: { symbol: "lore_file_stage_merge", args: "LoreFileStageMergeArgs" },
     // -- remote ---------------------------------------------------------------
     // The four that touch the network, plus the config read that says whether a
     // remote is configured at all. Every one of them needs `offline: false` on its
