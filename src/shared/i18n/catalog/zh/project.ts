@@ -75,19 +75,19 @@ export const project = {
     },
     game: {
         autoSaveTitle: "自动保存",
-        autoSaveDescription: "玩家在游戏中时按间隔自动保存进度，崩溃或误关窗口只损失片刻，而不是一整段游玩",
+        autoSaveDescription: "按间隔自动保存进度，崩溃时只损失片刻，而不是一整段游玩",
         autoSaveIntervalTitle: "保存间隔",
-        autoSaveIntervalDescription: "多久检查一次。剧情没有推进就不会写入，因此挂机不产生任何开销",
+        autoSaveIntervalDescription: "多久检查一次。剧情没有推进就不会写入",
         autoSaveIntervalUnit: "秒",
         autoSaveSlotsTitle: "保留数量",
-        autoSaveSlotsDescription: "自动存档在这么多个槽位间轮转，最旧的先被覆盖。它们不会混进玩家自己的存档槽，用「列出自动存档」节点读取",
+        autoSaveSlotsDescription: "自动存档在这么多个槽位间轮转，最旧的先被覆盖，不会混进玩家自己的存档槽",
     },
     // 音频子页：一条总线一行，字段收在折叠里。下面这些是「标签」不是「标题」——
     // 原先每个字段各带一段说明，三条轨道就是三遍同样的话，现在只在 intro 里说一次。
     audio: {
         // 什么是总线、音量如何逐级相乘，在分区顶部说一次。它吸收了原来的
         // nameDescription / parentDescription / volumeDescription 三段。
-        intro: "轨道就是一条总线：它汇入上级总线，或直接汇入主输出。片段的实际音量等于它自身的电平乘以其上每一条总线的音量，总线只能衰减、不能放大。改名是安全的——引用按 id 保存",
+        intro: "轨道就是一条总线：它汇入上级总线，或直接汇入主输出。片段的实际音量等于自身电平乘以其上每一条总线的音量，总线只能衰减。改名是安全的",
         add: "新建轨道",
         newTrackName: "新建轨道",
         nameTitle: "名称",
@@ -125,9 +125,9 @@ export const project = {
     settings: {
         allowHttpTitle: "允许 HTTP",
         allowHttpDescription: "关闭时，游戏将被限制在应用协议内，所有 HTTP/HTTPS 请求均会被阻止",
-        allowHttpWebHint: "对 Web 导出不适用：网页游戏本身经由 HTTP(S) 分发，此设置仅影响桌面构建",
+        allowHttpWebHint: "对 Web 导出不适用，此设置仅影响桌面构建",
         encryptAssetsTitle: "加密资源",
-        encryptAssetsDescription: "在打包及预览版本中加密资源、插件代码与剧本数据，让解包变得困难，但不影响开发模式",
+        encryptAssetsDescription: "在打包及预览版本中加密资源、插件代码与剧本数据，不影响开发模式",
         encryptAssetsWebHint: "对 Web 导出不适用：Web 构建始终不加密资源",
         orientationTitle: "移动端方向",
         orientationDescription: "移动端构建启动时锁定的屏幕方向",
@@ -142,7 +142,7 @@ export const project = {
         scanning: "正在扫描项目…",
         empty: "没有插件依赖，本项目仅使用 Studio 内置功能",
         banner: {
-            blocked: "由于已安装版本不兼容，本项目中的部分插件已被禁用，请更新或重新安装以恢复完整功能",
+            blocked: "部分插件在本项目中被禁用：已安装版本不兼容。请更新或重新安装",
             warnings: "部分依赖项需要处理，某个插件版本过旧或某项软依赖不可用",
         },
         status: {

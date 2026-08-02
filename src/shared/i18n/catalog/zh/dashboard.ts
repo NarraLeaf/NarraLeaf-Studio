@@ -104,6 +104,6 @@ export const dashboard = {
         clear: "清空本项目统计数据",
         clearConfirm: "确定清空本项目的统计数据？",
         clearDetail:
-            "仅清除已记录的活动历史：写作曲线、活跃时长、编辑次数与构建记录。场景数、字数、角色数与本地化进度都是从项目本身实时计算的，不会受到影响。此操作无法撤销！",
+            "清除写作曲线、活跃时长、编辑次数与构建记录。从项目本身算出的数字不受影响。此操作无法撤销",
     },
 } satisfies LocaleNamespace<"dashboard">;

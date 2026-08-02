@@ -12,6 +12,7 @@ import { createInputDialog } from "@/lib/components/dialogs";
 import { SearchBox } from "./components/SearchBox";
 import { FilterSystem, type ActiveFilter } from "./components/FilterSystem";
 import { ImportQueueStrip } from "./components/ImportQueueStrip";
+import { ModelImportWizard } from "./components/ModelImportWizard";
 
 import { useAssetData } from "./state/useAssetData";
 import { useMultiSelection } from "./state/useMultiSelection";
@@ -301,7 +302,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
 
     const {
         handleCreateGroup, handleCreateTextFile, handleCopy, handleCut, handlePaste, handleRename, handleReplaceContent, handleDelete, handleImport, handleRetryImport, handleImportToGroup, handleImportRemote,
-        handleCreateMagicTags, handleApplyMagicTags
+        handleCreateMagicTags, handleApplyMagicTags,
+        modelImportRequest, completeModelImport, cancelModelImport
     } = useAssetActions({
         context, inputDialog, assets, groups, selectedItems, clipboard, contextMenuTarget,
         focusedItemId, onActionComplete, setClipboard, setActionLoading, expandGroup, importQueue
@@ -719,7 +721,12 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                 </div>
                 
                 <ContextMenu items={contextMenu} position={menuState.position} visible={menuState.visible} onClose={closeContextMenu} />
-                <MagicTagDialog 
+                <ModelImportWizard
+                    visible={modelImportRequest !== null}
+                    onClose={cancelModelImport}
+                    onImport={(selection) => void completeModelImport(selection)}
+                />
+                <MagicTagDialog
                     visible={magicTagDialogVisible}
                     assets={magicTagAssets}
                     template={magicTagTemplate}

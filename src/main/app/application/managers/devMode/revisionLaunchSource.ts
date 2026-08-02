@@ -31,7 +31,7 @@ export interface DevModeLaunchSource {
  */
 export function devModeRevisionRefusalMessage(revision: RevisionId | undefined, detail: string): string {
     const named = revision ? `version ${revision.slice(0, 12)}` : "the version you are looking at";
-    return `Dev Mode could not run ${named}: ${detail} Nothing was run - while you are looking at an `
+    return `Dev Mode could not run ${named}: ${detail} Nothing was run. While you are looking at an `
         + `older version, Dev Mode will not silently run your current files instead. Leave the version `
         + `you are looking at to run those.`;
 }

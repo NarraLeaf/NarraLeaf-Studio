@@ -163,11 +163,11 @@ export const documentDiff = {
      */
     tier: {
         summary: "Summary only",
-        summaryHint: "Nothing compared the contents. These are the numbers each version reports about itself.",
+        summaryHint: "The contents were not compared. These are the numbers each version reports about itself.",
         structural: "Structural",
-        structuralHint: "Compared by JSON structure alone. Nothing here knows what these values mean, so generated ids and reordered lists read as changes.",
+        structuralHint: "Compared by JSON structure alone, so generated ids and reordered lists read as changes.",
         opaque: "Not read",
-        opaqueHint: "Too large, not text, or unreadable - only its size is reported.",
+        opaqueHint: "Too large, not text, or unreadable. Only its size is reported.",
     },
     rows: {
         loading: "Reading the comparison…",
@@ -197,7 +197,7 @@ export const documentDiff = {
         empty: "Nothing differs between these two versions",
         emptyWorkingTree: "Nothing has changed since the last version",
         readFailure: "The bytes for this comparison could not be read: {error}",
-        incomplete: "{shown} of {total} changed paths were compared. The rest were left out to stay inside the comparison budget.",
+        incomplete: "{shown} of {total} changed paths were compared. The rest were left out.",
         documentsOmitted: "{count} more files are not listed here.",
         unavailable: "Version control is not available in this project.",
     },
