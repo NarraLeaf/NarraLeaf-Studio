@@ -94,6 +94,86 @@ export interface DocumentDiff {
     readonly tier: DocumentDiffTier;
 }
 
+/**
+ * What a three-way merge did with one path, and whether it is still the author's to decide.
+ *
+ * `auto-*` says one side changed and the other did not, so there was a right answer and it was
+ * taken; the author may still flip it. `conflict` says both sides changed it differently and
+ * nothing here is entitled to choose - see {@link DocumentMerge3.document} for what the merged
+ * document holds until they do.
+ */
+export type DocumentMergeOutcome = "auto-mine" | "auto-theirs" | "conflict";
+
+/** What one side holds at a path. `present: false` is a side that does not have it at all. */
+export interface DocumentMergeSide {
+    readonly present: boolean;
+    /**
+     * The side's value, as plain JSON. Absent when the side does not hold the path.
+     *
+     * Carried rather than previewed because a conflict is a choice: the surface has to draw
+     * both translations, both asset records, both of whatever this is, and a truncated preview
+     * is not something an author can decide on. Bounded by the fact that a decision is taken on
+     * one entry of a keyed collection - never on the document.
+     */
+    readonly value?: unknown;
+}
+
+/**
+ * One decision a three-way merge took or is waiting on.
+ *
+ * **Addressed by the same `path` a {@link DocumentChange} uses**, and that is the design rather
+ * than a convenience: the premise is that a comparison and a resolution are one list seen twice,
+ * so a spec's `diff` and its `merge3` name the same thing with the same path and a surface can
+ * put a decision beside the change it belongs to. A second addressing scheme here would make
+ * that impossible to do reliably and easy to do wrongly.
+ *
+ * An empty `path` names the document itself - what a spec that cannot merge a document at all
+ * answers with, as one whole-document conflict rather than by pretending to have merged it.
+ */
+export interface DocumentMergeDecision {
+    readonly path: readonly string[];
+    readonly outcome: DocumentMergeOutcome;
+    /**
+     * How to read the row, when this format has words for it.
+     *
+     * Optional for the same reason {@link DocumentSpec.diff} is optional: a format whose merge
+     * is implemented before its semantic diff has no label vocabulary yet, and inventing a key
+     * here would put an untranslated dotted path in front of the author - the exact failure
+     * `documentDiffKeys.test.ts` exists to catch. A surface must have a fallback for a decision
+     * with no label; it must never invent one that looks translated.
+     */
+    readonly label?: DocumentChangeLabel;
+    /** The author's own word for this thing, on the same terms as {@link DocumentChange.subject}. */
+    readonly subject?: string;
+    readonly mine: DocumentMergeSide;
+    readonly theirs: DocumentMergeSide;
+}
+
+/**
+ * The result of a three-way merge: a document that can always be written, plus what was decided.
+ *
+ * The invariant that makes per-change resolution possible at all is on {@link document}: it is a
+ * complete, valid document of this format at every moment, including while conflicts are still
+ * open. Nothing in it is a marker, a hole or a half-value, so the author can stop halfway,
+ * Studio can write the file, and the merge can be picked up again later.
+ */
+export interface DocumentMerge3<T> {
+    /**
+     * The merged document, with every `auto-*` decision applied and every conflict left holding
+     * **base** - or **mine**, when there is no base.
+     *
+     * Base rather than either side because holding a side is taking the decision: an author who
+     * never looks at the row would ship whichever one this code happened to prefer, and nothing
+     * would ever say so. Base is the one value that is not a choice - it is where both sides
+     * started - and when there is no base at all (add/add) mine is the only other value that is
+     * demonstrably already in this author's tree.
+     */
+    readonly document: T;
+    readonly decisions: readonly DocumentMergeDecision[];
+    /** How many of {@link decisions} are still the author's, i.e. `outcome === "conflict"`. */
+    readonly conflicts: number;
+}
+
 /** One document's changes, as a revision or working-tree comparison reports them. */
 export interface DocumentDiffEntry {
     /** Repository-relative, forward slashes - the same spelling the change lists use. */

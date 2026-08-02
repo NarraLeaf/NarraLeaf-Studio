@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mergeBase } from "./revisionReader";
+import { graphCoversAncestry, mergeBase } from "./revisionReader";
 import type { RevisionNode } from "./lore";
 
 /**
@@ -97,5 +97,41 @@ describe("mergeBase", () => {
         // process is a far worse failure than a wrong answer.
         const dag = graph(["a", 1, ["b"]], ["b", 2, ["a"]]);
         expect(() => mergeBase(dag, "a", "b")).not.toThrow();
+    });
+});
+
+/**
+ * The precondition `mergeBase` never stated, and the reason §4.30 was invisible.
+ *
+ * A graph that stops short of one side's ancestry does not report anything: `mergeBase` walks
+ * parents through the map, an absent parent simply ends the walk, and the answer that comes back
+ * is "no common ancestor" - which is spelled the same as the genuine unrelated-histories answer
+ * and means the opposite thing. Every ordinary cross-branch conflict was classified add/add for a
+ * year on that spelling. This is what makes the two tellable apart before anyone acts on either.
+ */
+describe("graphCoversAncestry", () => {
+    it("accepts a graph holding the tip and everything above it", () => {
+        const dag = graph(["a", 1, []], ["b", 2, ["a"]], ["c", 3, ["b"]]);
+        expect(graphCoversAncestry(dag, "c")).toBe(true);
+    });
+
+    it("rejects a graph that does not hold the tip at all", () => {
+        // Exactly the measured §4.30 shape: the current branch's history, asked about the tip of
+        // the branch being merged in.
+        const mainOnly = graph(["base", 1, []], ["mine", 2, ["base"]]);
+        expect(graphCoversAncestry(mainOnly, "theirs")).toBe(false);
+        expect(mergeBase(mainOnly, "mine", "theirs")).toBeUndefined();
+    });
+
+    it("rejects a graph whose walk runs off the end of a parent link", () => {
+        // A limited history read: the tip is present, its parent is named, and the parent's own
+        // entry was never returned. Nothing about `mergeBase`'s answer would say so.
+        const truncated = graph(["c", 3, ["b"]], ["b", 2, ["a"]]);
+        expect(graphCoversAncestry(truncated, "c")).toBe(false);
+    });
+
+    it("terminates on a cycle rather than hanging", () => {
+        const dag = graph(["a", 1, ["b"]], ["b", 2, ["a"]]);
+        expect(graphCoversAncestry(dag, "a")).toBe(true);
     });
 });
