@@ -3,7 +3,7 @@ import { Namespace } from "@shared/types/ipc";
 import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "@shared/types/menu";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
-import type { BlueprintPersistenceProjectRef, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
+import type { BlueprintPersistenceProjectRef, WorkspaceCloseStage, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import type { MissingRecentProject } from "@shared/types/state/appStateTypes";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, WorkspaceViewRequest } from "@shared/types/window";
@@ -209,6 +209,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onRequest(IPCEventType.workspaceConfirmClose, handler),
         onFlushPendingSaves: (handler: () => Promise<RequestStatus<{ flushed: boolean }>>) =>
             ipcClient.onRequest(IPCEventType.workspaceFlushPendingSaves, handler),
+        onCloseProgress: (handler: (stage: WorkspaceCloseStage | null) => void) =>
+            ipcClient.onMessage(IPCEventType.workspaceCloseProgress, (data) => handler(data.stage)),
         onResolveAssetUrl: (handler: (payload: { assetId: string; assetType?: string }) => Promise<RequestStatus<{ url: string }>>) =>
             ipcClient.onRequest(IPCEventType.workspaceResolveAssetUrl, handler),
         onResolveImageAssetUrl: (handler: (payload: { assetId: string }) => Promise<RequestStatus<{ url: string }>>) =>
