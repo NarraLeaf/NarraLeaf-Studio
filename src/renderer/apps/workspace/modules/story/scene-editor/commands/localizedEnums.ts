@@ -54,17 +54,34 @@ function canonicalValues(options: readonly StoryCommandEnumOption[]): ReadonlySe
     return values;
 }
 
+/**
+ * Every author-facing spelling an option answers to, most-preferred first.
+ *
+ * Two sources, and both are ACCEPTED: the word the inspector shows for this option
+ * ({@link StoryCommandEnumOption.labelKey}) and the vocabulary's own `story.enumValue.*` word. The
+ * first is what the menus display, so the two surfaces read alike; the second is what an author may
+ * already have typed, and dropping it would break lines that parse today.
+ */
+function spellingsOf(option: StoryCommandEnumOption): string[] {
+    const keys = [option.labelKey, `story.enumValue.${option.value}`].filter(Boolean) as string[];
+    return keys
+        .map(key => ({ key, raw: translateCommand(key as TranslationKey) }))
+        .filter(entry => entry.raw !== entry.key)
+        .map(entry => entry.raw.trim())
+        .filter(Boolean);
+}
+
 function buildMap(options: readonly StoryCommandEnumOption[]): ReadonlyMap<string, StoryCommandEnumOption> {
     const canonical = canonicalValues(options);
     const map = new Map<string, StoryCommandEnumOption>();
     for (const option of options) {
-        const key = `story.enumValue.${option.value}` as TranslationKey;
-        const raw = translateCommand(key);
-        const label = raw.trim().toLowerCase();
-        if (!label || raw === key || /\s/.test(label) || canonical.has(label) || map.has(label)) {
-            continue;
+        for (const spelling of spellingsOf(option)) {
+            const label = spelling.toLowerCase();
+            if (/\s/.test(label) || canonical.has(label) || map.has(label)) {
+                continue;
+            }
+            map.set(label, option);
         }
-        map.set(label, option);
     }
     return map;
 }
@@ -105,7 +122,14 @@ export function matchEnumOptionLocalized(type: EnumType, raw: string): StoryComm
  * reads, so it always round-trips.
  */
 export function localizedEnumValue(type: EnumType, option: StoryCommandEnumOption): string {
-    const key = `story.enumValue.${option.value}` as TranslationKey;
-    const raw = translateCommand(key).trim();
-    return mapFor(type).get(raw.toLowerCase()) === option ? raw : option.value;
+    const table = mapFor(type);
+    // First spelling that survived the drop rules for THIS option — the inspector's word when it has
+    // one, else the vocabulary's own. Whatever comes back is a key of the accept table, so the menu
+    // still shows only what it would take back.
+    for (const spelling of spellingsOf(option)) {
+        if (table.get(spelling.toLowerCase()) === option) {
+            return spelling;
+        }
+    }
+    return option.value;
 }
