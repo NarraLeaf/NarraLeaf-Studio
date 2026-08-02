@@ -106,10 +106,10 @@ export const build = {
         aliasEmpty: "No signing key in this keystore",
         keyPasswordSame: "Same as the keystore password",
         macIdentityLoading: "Reading the keychain…",
-        macIdentityEmpty: "This Mac holds no code-signing certificate. Install your Developer ID certificate in Keychain Access, or import it as a certificate file instead.",
+        macIdentityEmpty: "No code-signing certificate in this Mac's keychain. Install one in Keychain Access, or import a certificate file.",
         macIdentityNotDeveloperId: "not for distribution",
         notarized: "Notarized with Apple",
-        notNotarized: "Not notarized - Gatekeeper warns players on first launch",
+        notNotarized: "Not notarized; Gatekeeper warns players on first launch",
         kind: {
             "windows-pfx": "Certificate file",
             "windows-store": "Windows certificate store",
@@ -174,15 +174,15 @@ export const build = {
         // Carries the cache path so an author on an offline machine still has a
         // way through: download the file elsewhere and save it there.
         "build-dependency-unavailable":
-            "{plugin} needs the build dependency {dependency} for {platform}, which is not cached here and could not be "
-            + "fetched from {url} ({reason}). Download it yourself and save it as {path} to build without a network.",
+            "{plugin} needs {dependency} for {platform}. It is not cached here, and fetching it from {url} failed "
+            + "({reason}). Save it as {path} to build without a network.",
         // Not an error: the game still builds and runs. What it loses is
         // whatever that program did, with nothing in the artifact to say so.
         "sidecar-target-missing":
             "{plugin} ships no {sidecar} program for {platform}, so anything it provides is missing from that build.",
         "sidecar-crossbuild-exec-bit":
-            "Windows cannot mark a file executable, so {plugin}'s {sidecar} program would ship into the {platform} "
-            + "artifact unable to run. Build the {targetPlatform} target on a {targetPlatform} machine.",
+            "{plugin}'s {sidecar} program would ship into the {platform} artifact unable to run: Windows cannot mark "
+            + "a file executable. Build the {targetPlatform} target on a {targetPlatform} machine.",
         "encryption-key-unavailable": "Asset protection is on, but its key could not be resolved.",
         "web-unprotected": "Asset protection does not apply to the web export; its files ship unprotected.",
         "mobile-template-missing": "The mobile shell templates are unavailable: {reason}",
@@ -190,30 +190,30 @@ export const build = {
         "version-uncodable": "Version {version} cannot be encoded as an Android version code (major up to 2099, minor and patch up to 999).",
         "appid-android-adjusted": "The app id {appId} is not a valid Android package name; the build ships {applicationId}.",
         "bundleid-ios-adjusted": "The app id {appId} is not a valid iOS bundle identifier; the build ships {bundleId}.",
-        unsigned: "This build is not code-signed. Players may see a warning from macOS Gatekeeper or Windows SmartScreen the first time they open the game. Choose a signing credential to change that.",
-        "unsigned-android": "The Android build is signed with a local debug identity for sideloading. Choose your release keystore to sign it as yourself - either way, Google Play accepts only AAB packages, which this pipeline does not produce.",
+        unsigned: "Not code-signed. Players may see a warning from macOS Gatekeeper or Windows SmartScreen on first launch. Choose a signing credential to avoid it.",
+        "unsigned-android": "Signed with a local debug identity, which is only good for sideloading. Choose your release keystore to sign it as yourself.",
         // The chain caveat belongs here rather than on a later error: this is
         // what an author reads while they are exporting the .p12, and a leaf-only
         // export fails the signing step outright.
-        "unsigned-ios": "The iOS build is an unsigned .ipa, and iOS installs nothing unsigned. Choose an Apple signing credential to sign it here. When you export the .p12 from Keychain Access, include the issuing certificate chain and not just your own certificate - signing fails without it.",
-        "signing-credential-missing": "The signing credential this project uses for {platform} is not on this machine. Import it here, or clear the selection to build {platform} unsigned - key material never travels with a project.",
-        "signing-credential-expired": "The {platform} signing certificate is outside its validity window ({notBefore} to {notAfter}), so signing will fail. Renew it with the issuer and import the replacement.",
-        "signing-credential-expiring": "The {platform} signing certificate expires on {notAfter}, in {days} day(s). Builds signed and timestamped before then stay valid afterwards, but new ones need a renewed certificate.",
-        "signing-secret-unavailable": "The password for the {platform} signing credential cannot be read on this machine: it is sealed with the system keyring, which is unavailable here or belonged to a different user account. Import the credential again to store the password afresh.",
-        "signing-tool-missing": "Signing the {platform} build needs {tool}, which this machine does not have. Install it and make sure it is on your PATH, then reopen this dialog.",
-        "signing-host-unsupported": "This machine runs {host}, which cannot sign the {platform} build with the selected credential: its private key is held by an operating-system service that only exists on that platform - the Windows certificate store, or the macOS keychain that Apple's codesign reads. Build this target on a machine of that platform.",
-        "signing-needs-network": "Signing the {platform} build reaches the network: signatures are timestamped by a certificate authority, cloud signing and Apple notarization run remotely, and a host missing a signing tool downloads it first. Everything else about this build works offline.",
-        "signing-macos-identity-missing": "No certificate named {identity} is in this Mac's keychain, so codesign has nothing to sign with. Install it in Keychain Access, or choose another certificate here.",
-        "signing-macos-identity-unusable": "The certificate {identity} is in this Mac's keychain, but it cannot sign: it has expired, its private key is not there, or its issuing chain is incomplete. Open it in Keychain Access to see which - a certificate imported without Apple's intermediate certificate is the usual cause.",
-        "signing-macos-not-developer-id": "{identity} is not a \"Developer ID Application\" certificate. The build will be signed and will run on this Mac, but Gatekeeper refuses it on anyone else's and Apple will not notarize it. Only a Developer ID certificate works for software distributed outside the App Store.",
-        "signing-android-not-play": "The signed APK is for sideloading and for stores that accept APKs, such as itch.io. Google Play is not one of them: it accepts only AAB packages, which this pipeline does not produce.",
-        "signing-ios-profile-mismatch": "The app id {bundleId} is not covered by the provisioning profile, which is issued for {profileAppId}. iOS refuses to install an app the profile does not name - change the project identifier, or import the profile that covers it.",
+        "unsigned-ios": "This .ipa is unsigned, and iOS installs nothing unsigned. Choose an Apple signing credential. Export the .p12 from Keychain Access with its issuing certificate chain, or signing fails.",
+        "signing-credential-missing": "The {platform} signing credential is not on this machine; key material never travels with a project. Import it here, or clear the selection to build {platform} unsigned.",
+        "signing-credential-expired": "The {platform} signing certificate is not valid today ({notBefore} to {notAfter}), so signing will fail. Renew it with the issuer and import the replacement.",
+        "signing-credential-expiring": "The {platform} signing certificate expires on {notAfter}, in {days} day(s). Builds signed before then stay valid; later ones need a renewed certificate.",
+        "signing-secret-unavailable": "The password for the {platform} signing credential cannot be read on this machine. Import the credential again to store it afresh.",
+        "signing-tool-missing": "Signing the {platform} build needs {tool}, which this machine does not have. Install it, put it on your PATH, then reopen this dialog.",
+        "signing-host-unsupported": "This machine runs {host} and cannot sign for {platform} with the selected credential: its private key lives in a system service that only exists on that platform. Build this target on a {platform} machine.",
+        "signing-needs-network": "Signing the {platform} build needs a network connection. Everything else about this build works offline.",
+        "signing-macos-identity-missing": "No certificate named {identity} is in this Mac's keychain. Install it in Keychain Access, or choose another certificate here.",
+        "signing-macos-identity-unusable": "The certificate {identity} cannot sign: it has expired, its private key is missing, or its issuing chain is incomplete. Open it in Keychain Access to see which.",
+        "signing-macos-not-developer-id": "{identity} is not a \"Developer ID Application\" certificate. The build runs on this Mac, but Gatekeeper refuses it on anyone else's and Apple will not notarize it.",
+        "signing-android-not-play": "A signed APK works for sideloading and for stores such as itch.io. Google Play accepts only AAB packages, which this pipeline does not produce.",
+        "signing-ios-profile-mismatch": "The app id {bundleId} is not covered by the provisioning profile, which is issued for {profileAppId}. Change the project identifier, or import the profile that covers it.",
         "cross-build-download": "Cross-building for {platforms} downloads Electron on first use (cached afterwards).",
         "output-not-writable": "Cannot write to {outputDir}.",
         "output-not-empty": "The output folder already has files in it; this build overwrites matching names.",
     },
-    webStaticNotice: "The Web build is a static site you can host on any web server. Asset encryption and the HTTP restriction do not apply to it.",
-    unsignedNotice: "Builds are not code-signed. Players may see a security warning from macOS Gatekeeper or Windows SmartScreen the first time they open the game; a signing certificate is needed for a warning-free install.",
+    webStaticNotice: "The Web build is a static site for any web server. Asset encryption and the HTTP restriction do not apply to it.",
+    unsignedNotice: "Builds are not code-signed. Players may see a warning from macOS Gatekeeper or Windows SmartScreen on first launch.",
     selectAtLeastOne: "Select at least one platform and format.",
     toast: {
         submitted: "Build task submitted. See the console for progress.",

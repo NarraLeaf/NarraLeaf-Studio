@@ -99,7 +99,7 @@ export const wizard = {
         },
         application: {
             title: "Application",
-            description: "Common application settings. Most of these settings cannot be changed after project initialization.",
+            description: "Most of these cannot be changed once the project is created.",
         },
         projectName: "Project Name",
         projectNamePlaceholder: "Enter project name…",
@@ -129,7 +129,7 @@ export const wizard = {
             // additionally do, which is the one thing this choice is not otherwise visible as.
             loreHint: "A version history is created inside the project folder, recording it as the first version.",
             unavailablePlatform: "Version control is not available on this machine, so the project is created without it.",
-            unavailableInstallation: "Version control is not available in this installation of Studio, so the project is created without it.",
+            unavailableInstallation: "Version control is not available in this Studio build, so the project is created without it.",
         },
         projectLocation: "Project Location",
         projectLocationPlaceholder: "Enter project location…",
@@ -167,7 +167,7 @@ export const wizard = {
             failedTitle: "Could not import the project",
             generic: "Could not import the project package.",
             notAProjectTitle: "This is not a NarraLeaf Studio project",
-            notAProject: "The package unpacked, but it contains no Studio project file, so Studio cannot open it. What was unpacked is in {path}. Check you were given the right file, then try again.",
+            notAProject: "The package unpacked, but there is no Studio project file in it. What was unpacked is in {path}. Check you were given the right file, then try again.",
         },
     },
     // The clone flow's first page. Deliberately short: everything else about the project is
@@ -214,7 +214,7 @@ export const wizard = {
             // project. The files are named because they are real, they are why this folder cannot
             // be reused, and nothing else on screen says where they went.
             notAProjectTitle: "This is not a NarraLeaf Studio project",
-            notAProject: "The copy finished, but it contains no Studio project file, so Studio cannot open it. What was copied is in {path}. Check the address with whoever set up the project, then choose a different empty folder and try again.",
+            notAProject: "The copy finished, but there is no Studio project file in it. What was copied is in {path}. Check the address with whoever set up the project, then try again with a different empty folder.",
         },
     },
     review: {
@@ -240,9 +240,9 @@ export const wizard = {
         locationRequired: "Project location is required",
         templateRequired: "Project template is required",
         invalidPath: "Invalid path",
-        notADirectory: "Selected path exists but is not a directory. Please choose a directory or create a new one.",
-        cannotWrite: "Cannot write to the selected directory. Please check permissions or choose a different location.",
-        notEmpty: "Directory is not empty. Please choose an empty directory or create a new one.",
+        notADirectory: "That path exists but is not a directory. Choose a directory, or create a new one.",
+        cannotWrite: "Cannot write to that directory. Check its permissions, or choose another.",
+        notEmpty: "That directory is not empty. Choose an empty one, or create a new one.",
         validationFailed: "Directory validation failed",
         failedToValidate: "Failed to validate directory",
         checkExistenceFailed: "Failed to check directory existence",

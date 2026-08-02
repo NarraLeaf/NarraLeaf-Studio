@@ -110,7 +110,7 @@ function describeType(type: StoryCommandParamType, t: ManualTranslate): string {
 function describeNumber(type: Extract<StoryCommandParamType, { kind: "number" }>, t: ManualTranslate): string {
     const base = t(type.integer ? "story.manual.type.integer" : "story.manual.type.number");
     if (type.min !== undefined && type.max !== undefined) {
-        return `${base} ${type.min}–${type.max}`;
+        return `${base} ${type.min}-${type.max}`;
     }
     if (type.min !== undefined) {
         return `${base} ≥ ${type.min}`;

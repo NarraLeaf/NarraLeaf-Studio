@@ -123,6 +123,6 @@ export function workspaceFrozenMessage(reason: WorkspaceFreezeKind, operation: W
     const remedy = reason === "revision"
         ? "Leave the revision you are looking at, or unfreeze the workspace, and try again."
         : "Unfreeze the workspace and try again.";
-    return `The ${operation} is unavailable while this workspace is frozen - what it produced would `
+    return `The ${operation} is unavailable while this workspace is frozen: what it produced would `
         + `not be what you are looking at. ${remedy}`;
 }
