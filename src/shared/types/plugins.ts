@@ -147,6 +147,18 @@ export type PluginContributes = {
      */
     runtimeData?: string[];
     /**
+     * Test ids this plugin registers with `app.services.tests` (see
+     * `docs/plugin-test-protocol.md`). Declaring them lets the Launcher say what
+     * a plugin checks before any of its code runs, and registering an
+     * undeclared id throws at load.
+     *
+     * Unlike every other code-backed contribution here, this one derives no
+     * install permission — a test only ever executes because the author picked
+     * it out of the Run > Test dialog and pressed Start, so there is no ambient
+     * capability to consent to at install time.
+     */
+    tests?: string[];
+    /**
      * Capability domains the `runtime` entry may use. Each maps 1:1 onto a
      * namespace on `app.game`, and an undeclared domain is absent from that
      * object rather than present-and-throwing — so what the install prompt

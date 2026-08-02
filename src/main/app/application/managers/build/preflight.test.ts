@@ -69,6 +69,7 @@ describe("sidecar preflight", () => {
             contributes: {
                 blueprintNodes: [],
                 widgets: [],
+                tests: [],
                 runtimeData: [],
                 locales: [],
                 runtimeCapabilities: [],

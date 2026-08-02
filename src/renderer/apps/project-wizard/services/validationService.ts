@@ -2,6 +2,7 @@ import { transliterate } from "transliteration";
 import { translate } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
 import { FsRequestResult } from "@shared/types/os";
+import { parseVcsRemoteUrl } from "@shared/types/vcs";
 import { ProjectData, DirectoryValidationResult, ValidationErrors } from "../types";
 
 /**
@@ -215,6 +216,18 @@ export class ValidationService {
                 // No check on `versionControl`: it is a closed union with a default, so unlike the
                 // free-form string it used to be there is no "not chosen yet" state to guard.
                 return projectData.location !== undefined &&
+                       projectData.location.trim() !== "";
+            // Nothing to validate: the import page collects nothing, because both of its choices
+            // are made in native dialogs after the button is pressed.
+            case "import":
+                return true;
+            case "source":
+            // The clone page asks for nothing of its own - it acts on what Source collected - so
+            // it is valid under exactly the same conditions. Falls through rather than repeating
+            // them, because two copies would be one copy away from a button that can be pressed
+            // on a page whose inputs are incomplete.
+            case "clone":
+                return parseVcsRemoteUrl(projectData.remoteUrl) !== null &&
                        projectData.location.trim() !== "";
             case "review":
                 return projectData.name.trim() !== "" &&

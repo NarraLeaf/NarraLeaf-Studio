@@ -82,22 +82,27 @@ export const project = {
         autoSaveSlotsTitle: "保留数量",
         autoSaveSlotsDescription: "自动存档在这么多个槽位间轮转，最旧的先被覆盖。它们不会混进玩家自己的存档槽，用「列出自动存档」节点读取",
     },
-    // 音频子页。刻意不放标签：控件通过 aria 名称告知辅助技术，行上可见的一切都是数值。
+    // 音频子页：一条总线一行，字段收在折叠里。下面这些是「标签」不是「标题」——
+    // 原先每个字段各带一段说明，三条轨道就是三遍同样的话，现在只在 intro 里说一次。
     audio: {
+        // 什么是总线、音量如何逐级相乘，在分区顶部说一次。它吸收了原来的
+        // nameDescription / parentDescription / volumeDescription 三段。
+        intro: "轨道就是一条总线：它汇入上级总线，或直接汇入主输出。片段的实际音量等于它自身的电平乘以其上每一条总线的音量，总线只能衰减、不能放大。改名是安全的——引用按 id 保存",
         add: "新建轨道",
         newTrackName: "新建轨道",
         nameTitle: "名称",
-        nameDescription: "这条总线在 Studio 里的显示名。引用按 id 保存，改名不会影响任何指向它的地方",
         parentTitle: "汇入",
-        parentDescription: "这条总线汇入的上级。从这里到主输出之间的每一条总线，音量都会逐级相乘",
         parentMaster: "主输出",
         volumeTitle: "音量",
-        volumeDescription: "这条总线自身的电平，实时作用于其上及其下播放的一切。总线只能衰减，不能放大",
         volumeUnit: "%",
         loopTitle: "默认循环",
         loopDescription: "在这条轨道上播放的片段默认循环，除非播放它的动作另有指定",
         duplicate: "复制",
         delete: "删除",
+        // 展开后紧挨着「删除」：确认框接下来要说的就是这个数字。
+        usedBy: {
+            other: "被 {count} 处引用",
+        },
         deleteConfirm: "删除「{name}」？",
         // 诚实地说明后果：指向这条轨道的地方不会被改写，从此各自按自身形态对应的内置总线解析——
         // 具体落到哪一条取决于播放的是什么，在这里点名某一条只会是猜测。

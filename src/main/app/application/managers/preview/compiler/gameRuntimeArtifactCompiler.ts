@@ -795,7 +795,12 @@ async function copyRuntimePlugins(input: {
     projectPath: string;
     runtimePlugins: GameRuntimePluginSource[];
     target: PackTarget;
-    /** Absent on preview and web compiles: those ship no sidecars. */
+    /**
+     * Absent on web compiles only - a static site has no process to spawn. A
+     * preview passes the *host's* key and does ship sidecars, which is the point:
+     * exercising one should not cost a full production build. See the field of
+     * the same name on GameRuntimeArtifactInput.
+     */
     sidecarPlatformKey?: string;
     hostUserDataDir?: string;
 }): Promise<GameRuntimePackPluginEntry[]> {

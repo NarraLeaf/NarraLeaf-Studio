@@ -176,6 +176,26 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
         panelStateLoadedRef.current = true;
     }, [panelId, panelStateService]);
 
+    // A run that started before this panel mounted still gets its tab. Read after the stored state
+    // above, so a standing request wins over the remembered tab - it is the more recent intent.
+    // This runs on every mount, not just the first: `panels.show()` can remount the panel, and the
+    // stored-state effect above would otherwise restore the tab the run was meant to replace.
+    useEffect(() => {
+        const pending = consoleService?.peekPendingFocusRequest();
+        if (pending) {
+            setActiveChannel(pending);
+        }
+    }, [consoleService]);
+
+    useEffect(() => {
+        if (!consoleService) {
+            return;
+        }
+        return consoleService.onFocusRequested(({ channel }) => {
+            setActiveChannel(channel);
+        });
+    }, [consoleService]);
+
     useEffect(() => {
         if (!panelStateService || !panelStateLoadedRef.current) {
             return;
@@ -324,7 +344,12 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                                         ? "bg-surface text-fg"
                                         : "text-fg-muted hover:bg-fill-subtle hover:text-fg"
                                 }`}
-                                onClick={() => setActiveChannel(channel.id)}
+                                onClick={() => {
+                                    // Picking a tab by hand outranks any run's standing request,
+                                    // which would otherwise re-apply itself on the next remount.
+                                    consoleService?.clearPendingFocusRequest();
+                                    setActiveChannel(channel.id);
+                                }}
                             >
                                 <span>{channelLabel(t, channel)}</span>
                                 <span

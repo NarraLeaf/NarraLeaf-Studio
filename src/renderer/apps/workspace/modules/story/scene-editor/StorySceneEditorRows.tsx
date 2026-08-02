@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CSSProperties, ReactNode, RefObject, MouseEvent } from "react";
-import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Hash, Image, List, Music, Play, Plus, Route, Trash2, TriangleAlert, UserRoundPlus, Variable, Video } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Hash, Image, LayoutGrid, List, Music, Play, Plus, Route, Trash2, TriangleAlert, UserRoundPlus, Variable, Video } from "lucide-react";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
 import { useSortable } from "@dnd-kit/sortable";
 import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryCharacterTagSelection, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
@@ -31,11 +31,13 @@ import {
     commandCategoryLabelKey,
     getCommandCategory,
     getCommandGroup,
+    STORY_COMMAND_CATEGORIES,
     subjectGroupId,
+    type StoryCommandCategoryId,
 } from "./storyCommandCategories";
 import { searchActionCommands } from "./storyCommandSearch";
 import { localizeSpecCommand, specPaletteCommands } from "./commands/specPalette";
-import { browseMenuStops, buildSpecSidebarGroups, dedupeToPrimarySubject, type StoryCommandMenuStop, type StoryCommandSidebarGroup } from "./commands/specSidebar";
+import { browseMenuStops, buildSpecSidebarGroups, dedupeToPrimarySubject, filterSidebarGroups, type StoryCommandMenuStop, type StoryCommandSidebarGroup } from "./commands/specSidebar";
 import { useStoryPluginActionCommands } from "./useStoryPluginActionCommands";
 import { paramTypes } from "./storyCommandGrammar";
 import { getCommandDef } from "./commands/registry";
@@ -1618,20 +1620,20 @@ export function InsertRow(props: {
         ),
         [chooserQuery, pluginCommands, t],
     );
-    // The empty-state browse is the sidebar's projection, not a second catalogue: same `accepts`
-    // classification (WI-1), and the same one-row-per-command collapse the sidebar's unfiltered list
-    // uses. This menu has no subject filter — it is the whole vocabulary at once — and a verb repeated
-    // under six subjects with the same sentence each time reads as six commands, not as one that
-    // reaches six places. Which places it reaches is the manual's job to say.
-    const browseGroups = useMemo(
-        () => dedupeToPrimarySubject(buildSpecSidebarGroups(pluginCommands, command => localizeSpecCommand(command, t))),
+    // The browse is the sidebar's projection, not a second catalogue: same `accepts` classification
+    // (WI-1). Handed over undeduped, because the menu's category column needs both readings of it —
+    // 全部 collapses to one row per command (a verb repeated under six subjects with the same sentence
+    // each time reads as six commands, not as one that reaches six places), while a chosen category
+    // wants the full filing, where `/show` under 图片 is the answer rather than a repeat.
+    const sidebarGroups = useMemo(
+        () => buildSpecSidebarGroups(pluginCommands, command => localizeSpecCommand(command, t)),
         [pluginCommands, t],
     );
     const characterOptions = useMemo(
         () => getSpeakerCandidates(props.characters, props.tempSpeakers, chooserQuery),
         [chooserQuery, props.characters, props.tempSpeakers],
     );
-    const actionMenu = useActionCommandMenuState(actionOptions, chooserQuery, browseGroups);
+    const actionMenu = useActionCommandMenuState(actionOptions, chooserQuery, sidebarGroups);
     const characterMenu = useCharacterPickerState(characterOptions);
     const textStyle = useStoryEditorTextStyle();
 
@@ -1809,6 +1811,10 @@ export function InsertRow(props: {
                                 return;
                             }
                         }
+                        // ←/→ are never the menu's: they belong to the caret in the line being typed,
+                        // in EVERY chooser. The command menu's category column is a mouse-driven
+                        // filter for that reason — a column that took the arrows would cost `@shwo`
+                        // its one-character fix, and the whole point of the slot is that it is text.
                         // Tab and Enter both take the highlight. Keeping them identical here is the
                         // point: the highlight is the pointer, so whichever key the author reaches for
                         // does what the menu is showing. Tab no longer cycles categories.
@@ -1875,9 +1881,12 @@ export function InsertRow(props: {
                 </div>
                 {actionMenuOpen ? (
                     <ActionCommandMenu
-                        browse={actionMenu.browse}
-                        groups={actionMenu.browseGroups}
+                        ranked={actionMenu.ranked}
+                        sections={actionMenu.sections}
                         stops={actionMenu.stops}
+                        category={actionMenu.category}
+                        reachable={actionMenu.reachable}
+                        onCategory={actionMenu.chooseCategory}
                         activeKey={actionMenu.activeStop?.key ?? null}
                         onHighlight={actionMenu.selectKey}
                         onChoose={chooseCommandCandidate}
@@ -2045,40 +2054,94 @@ function useAnchoredMenuFrame(anchorRef: RefObject<HTMLElement | null>, open: bo
     return frame;
 }
 
+/** The category column's "no filter" entry — where the menu opens, and where it stays until asked. */
+const ALL_MENU_CATEGORY = "all";
+type MenuCategory = typeof ALL_MENU_CATEGORY | StoryCommandCategoryId;
+
 /**
- * State for the inline `/` command menu, in two display modes decided by whether the author has typed
- * a query yet:
- *  - **browse** (empty query): the whole command set laid out under subject headers, the SAME
- *    projection the sidebar shows (`buildSpecSidebarGroups`) — a generic verb appears under every
- *    subject its `accepts` names, so an author browsing 图片 finds "显示" exactly where the sidebar
- *    puts it. The two menus are one source now; the `/` browse is no longer a second catalogue filed
- *    single-point by `category` (plan 2026-07-26-003 WI-1).
- *  - **filter** (a query): the matcher's ranked hits, flat across categories, best match first — the
- *    ranking is the point, so headers (and the multi-subject repetition) would only get in its way.
+ * State for the inline `/` command menu: a category column on the left, its commands on the right.
  *
- * `browseGroups` is the pre-derived sidebar projection (empty query); `options` is the ranked flat
- * list for the query. Either way the highlight walks `stops` — one stop per rendered row, keyed by
- * `group:id` so a verb that files under six subjects is six distinct stops. That composite key is what
- * keeps rule 2 true: one keypress moves one stop, one row is `active`, and Enter takes the row on
- * screen rather than the first row that shares its id (see {@link browseMenuStops}).
+ * The column replaces nothing — the two display modes below are still the ones the typed text decides,
+ * and 全部 (the default) leaves both exactly as they were. What it adds is the other way to narrow, for
+ * an author who knows the *kind* of thing they want and not its name:
+ *  - **browse** (empty query): the command set laid out under subject headers, the SAME projection the
+ *    sidebar shows (`buildSpecSidebarGroups`) — a generic verb appears under every subject its
+ *    `accepts` names, so an author browsing 图片 finds "显示" exactly where the sidebar puts it. The two
+ *    menus are one source now; the `/` browse is no longer a second catalogue filed single-point by
+ *    `category` (plan 2026-07-26-003 WI-1).
+ *  - **filter** (a query): under 全部, the matcher's ranked hits, flat across categories, best match
+ *    first — the ranking is the point, so headers (and the multi-subject repetition) would only get in
+ *    its way. Under a chosen category the sections stay and the query ranks *within* them, which is
+ *    what makes "sound, something about fading" reachable in two moves.
+ *
+ * Which subjects a category shows follows the sidebar's rule, for the same reason it does there: 全部
+ * is the whole vocabulary at once and collapses to one row per command, while a chosen category brings
+ * the full filing back — "everything I can do to an Image" has to list `/show`, and there it is the
+ * answer rather than a repeat.
+ *
+ * The column takes no keys. ↑/↓ walk the commands and Enter takes one, exactly as they did before the
+ * column existed; ←/→ stay the caret's, in this chooser as in every other. A column that answered to
+ * the arrows would have to take them from the text being typed, and the slot is a line of text first —
+ * `@shwo` has to be fixable with one ← and one keystroke. So the category is chosen with the pointer,
+ * and it narrows what the keyboard then walks.
+ *
+ * `allGroups` is the undeduped sidebar projection; `options` is the ranked flat list for the query.
+ * Either way the highlight walks `stops` — one stop per rendered row, keyed by `group:id` so a verb
+ * that files under six subjects is six distinct stops. That composite key is what keeps rule 2 true:
+ * one keypress moves one stop, one row is `active`, and Enter takes the row on screen rather than the
+ * first row that shares its id (see {@link browseMenuStops}).
  */
 function useActionCommandMenuState(
     options: PaletteActionCommand[],
     query: string,
-    browseGroups: readonly StoryCommandSidebarGroup[],
+    allGroups: readonly StoryCommandSidebarGroup[],
 ) {
     const browse = query.trim() === "";
-    // The rows the menu shows, in the order the highlight walks them: the sidebar projection while
-    // browsing, the raw ranked list (one row per command) while filtering.
-    const stops = useMemo<readonly StoryCommandMenuStop[]>(() => {
+    const [category, setCategory] = useState<MenuCategory>(ALL_MENU_CATEGORY);
+    // 全部 with a query is the one case that stays flat: the ranking is the answer there, and a header
+    // over each hit would only argue with it.
+    const ranked = category === ALL_MENU_CATEGORY && !browse;
+
+    /** The sections the right column shows — the chosen category's filing, narrowed by the query. */
+    const sections = useMemo<readonly StoryCommandSidebarGroup[]>(() => {
+        const scoped = category === ALL_MENU_CATEGORY
+            ? dedupeToPrimarySubject(allGroups)
+            : filterSidebarGroups(allGroups, category);
         if (browse) {
-            return browseMenuStops(browseGroups);
+            return scoped;
         }
-        return options.map(command => {
-            const group = getCommandGroup(command.group);
-            return { key: `${group.id}:${command.id}`, group, command };
-        });
-    }, [browse, browseGroups, options]);
+        return scoped
+            .map(entry => ({ ...entry, commands: searchActionCommands(entry.commands, query) }))
+            .filter(entry => entry.commands.length > 0);
+    }, [allGroups, browse, category, query]);
+
+    /**
+     * Which categories the current query can still reach, so the column can dim the ones it cannot.
+     * Dimmed, not hidden: a column whose entries come and go as you type is a column you cannot aim at.
+     */
+    const reachable = useMemo<ReadonlySet<MenuCategory>>(() => {
+        const reached = new Set<MenuCategory>();
+        for (const entry of allGroups) {
+            const hits = browse ? entry.commands : searchActionCommands(entry.commands, query);
+            if (hits.length > 0) {
+                reached.add(ALL_MENU_CATEGORY);
+                reached.add(entry.group.category);
+            }
+        }
+        return reached;
+    }, [allGroups, browse, query]);
+
+    // The rows the menu shows, in the order the highlight walks them: the ranked flat list under 全部
+    // with a query, the section projection everywhere else.
+    const stops = useMemo<readonly StoryCommandMenuStop[]>(() => {
+        if (ranked) {
+            return options.map(command => {
+                const group = getCommandGroup(command.group);
+                return { key: `${group.id}:${command.id}`, group, command };
+            });
+        }
+        return browseMenuStops(sections);
+    }, [options, ranked, sections]);
     const [activeKey, setActiveKey] = useState<string | null>(null);
     const activeStop = stops.find(stop => stop.key === activeKey) ?? stops[0] ?? null;
 
@@ -2090,6 +2153,15 @@ function useActionCommandMenuState(
         setActiveKey(key);
     };
 
+    /**
+     * Picking a category is a pointer gesture only, and it does not move the highlight itself — the
+     * effect above does, because the new category is a new `stops` and the old key is not in it.
+     */
+    const chooseCategory = (next: MenuCategory) => {
+        setCategory(next);
+    };
+
+    /** ↑/↓ — one step down the commands. Wraps. The category column is never what the arrows walk. */
     const move = (direction: -1 | 1) => {
         if (stops.length === 0) {
             return;
@@ -2100,8 +2172,11 @@ function useActionCommandMenuState(
     };
 
     return {
-        browse,
-        browseGroups,
+        ranked,
+        sections,
+        reachable,
+        category,
+        chooseCategory,
         stops,
         activeStop,
         activeKey,
@@ -2142,10 +2217,49 @@ function ActionCommandMenuRow(props: {
     );
 }
 
+/**
+ * One entry in the menu's category column.
+ *
+ * `onMouseDown` rather than `onClick`, like every row in this menu: the slot's textarea holds focus,
+ * and a click that lands after the blur has already closed the chooser picks nothing.
+ *
+ * The chosen one wears a plain fill, never the accent the command rows use: the accent means "Enter
+ * takes this", and only one thing in the menu can mean that. A category is what the list is OF.
+ */
+function ActionCommandCategoryRow(props: {
+    icon: typeof LayoutGrid;
+    iconColor: string;
+    label: string;
+    active: boolean;
+    empty: boolean;
+    onSelect: () => void;
+}) {
+    const Icon = props.icon;
+    return (
+        <button
+            type="button"
+            title={props.label}
+            aria-current={props.active ? "true" : undefined}
+            className={[
+                "flex h-7 w-full shrink-0 items-center gap-1.5 rounded-md px-1.5 text-xs transition-colors",
+                props.active ? "bg-fill text-fg" : "text-fg-muted hover:bg-fill hover:text-fg",
+                props.empty && !props.active ? "opacity-45" : "",
+            ].join(" ")}
+            onMouseDown={props.onSelect}
+        >
+            <Icon className="h-3.5 w-3.5 shrink-0" style={{ color: props.iconColor }} />
+            <span className="min-w-0 flex-1 truncate text-left">{props.label}</span>
+        </button>
+    );
+}
+
 function ActionCommandMenu(props: {
-    browse: boolean;
-    groups: readonly StoryCommandSidebarGroup[];
+    ranked: boolean;
+    sections: readonly StoryCommandSidebarGroup[];
     stops: readonly StoryCommandMenuStop[];
+    category: MenuCategory;
+    reachable: ReadonlySet<MenuCategory>;
+    onCategory: (category: MenuCategory) => void;
     activeKey: string | null;
     onHighlight: (key: string) => void;
     onChoose: (commandId: string) => void;
@@ -2165,6 +2279,70 @@ function ActionCommandMenu(props: {
         });
     }, [props.activeKey]);
 
+    // A new category is a new list, so it starts at its top rather than wherever the last one was
+    // scrolled to — the highlight moves to the first row, and it has to be the row you can see.
+    useEffect(() => {
+        if (listRef.current) {
+            listRef.current.scrollTop = 0;
+        }
+    }, [props.category]);
+
+    const rows = (
+        <>
+            {props.stops.length === 0 ? (
+                // Centred in the whole column: the category column holds the menu open at its own
+                // height, so a top-left line of text sits alone against a tall empty box and reads as
+                // a list that failed to draw rather than as the answer "there is nothing here".
+                <div className="flex h-full items-center justify-center">
+                    <button type="button" className="rounded-md px-3 py-2 text-center text-sm text-fg-muted hover:bg-fill" onMouseDown={props.onCancel}>
+                        {t("story.actionCreator.noActions")}
+                    </button>
+                </div>
+            ) : props.ranked ? (
+                // 全部 with a query: the matcher's ranking, flat and best-first — headers would fight it.
+                props.stops.map(stop => (
+                    <ActionCommandMenuRow
+                        key={stop.key}
+                        stop={stop}
+                        active={stop.key === props.activeKey}
+                        onHighlight={props.onHighlight}
+                        onChoose={props.onChoose}
+                    />
+                ))
+            ) : (
+                // The sidebar's projection, one section per subject, so the author sees "here is
+                // everything you can do to an image" — a verb appearing under several subjects is
+                // several rows, each its own highlight stop.
+                props.sections.map(entry => {
+                    const Icon = entry.group.icon;
+                    return (
+                        // The gap above a header separates it from the section before it, so the first
+                        // one must not have it: it would sit the right column 8px lower than the left,
+                        // and it is the one offset the two columns are lined up on.
+                        <div key={entry.group.id} className="pt-2 first:pt-0">
+                            <div className="flex items-center gap-1.5 px-2 pb-1 text-2xs font-medium tracking-wide text-fg-subtle">
+                                <Icon className="h-3 w-3 shrink-0" style={{ color: entry.group.iconColor }} />
+                                <span>{t(commandCategoryLabelKey(entry.group.id))}</span>
+                            </div>
+                            {entry.commands.map(command => {
+                                const key = `${entry.group.id}:${command.id}`;
+                                return (
+                                    <ActionCommandMenuRow
+                                        key={key}
+                                        stop={{ key, group: entry.group, command }}
+                                        active={key === props.activeKey}
+                                        onHighlight={props.onHighlight}
+                                        onChoose={props.onChoose}
+                                    />
+                                );
+                            })}
+                        </div>
+                    );
+                })
+            )}
+        </>
+    );
+
     return createPortal(
         <div
             className="z-[70] w-[420px] overflow-hidden rounded-xl border border-edge bg-surface-raised shadow-xl"
@@ -2174,53 +2352,44 @@ function ActionCommandMenu(props: {
                 event.stopPropagation();
             }}
         >
-            {props.stops.length === 0 ? (
-                <button type="button" className="w-full px-3 py-2 text-left text-sm text-fg-muted hover:bg-fill" onMouseDown={props.onCancel}>
-                    {t("story.actionCreator.noActions")}
-                </button>
-            ) : (
-                <div ref={listRef} className="nl-no-scrollbar max-h-64 overflow-auto p-1">
-                    {props.browse ? (
-                        // Empty query: the sidebar's projection, one section per subject, so the author
-                        // sees "here is everything you can do to an image" — a verb appearing under
-                        // several subjects is several rows, each its own highlight stop.
-                        props.groups.map(entry => {
-                            const Icon = entry.group.icon;
-                            return (
-                                <div key={entry.group.id}>
-                                    <div className="flex items-center gap-1.5 px-2 pb-1 pt-2 text-2xs font-medium tracking-wide text-fg-subtle">
-                                        <Icon className="h-3 w-3 shrink-0" style={{ color: entry.group.iconColor }} />
-                                        <span>{t(commandCategoryLabelKey(entry.group.id))}</span>
-                                    </div>
-                                    {entry.commands.map(command => {
-                                        const key = `${entry.group.id}:${command.id}`;
-                                        return (
-                                            <ActionCommandMenuRow
-                                                key={key}
-                                                stop={{ key, group: entry.group, command }}
-                                                active={key === props.activeKey}
-                                                onHighlight={props.onHighlight}
-                                                onChoose={props.onChoose}
-                                            />
-                                        );
-                                    })}
-                                </div>
-                            );
-                        })
-                    ) : (
-                        // A query: the matcher's ranking, flat and best-first — headers would fight it.
-                        props.stops.map(stop => (
-                            <ActionCommandMenuRow
-                                key={stop.key}
-                                stop={stop}
-                                active={stop.key === props.activeKey}
-                                onHighlight={props.onHighlight}
-                                onChoose={props.onChoose}
-                            />
-                        ))
-                    )}
+            {/* A fixed height, not a cap. Under `max-h`, the box took the taller column's height, and
+                the category column is 284px against the cap's 288 — so a category whose commands did
+                not fill the panel (镜头 has one, 工具 three) shrank the whole menu by those 4px and
+                grew it back on the way out. Switching category is the one thing this column exists
+                for, and it flinched every time. Same size whatever is open; only the right column
+                scrolls. */}
+            <div className="flex h-72">
+                {/* Pointer-only, by design: the arrows belong to the caret in the line being typed.
+                    So the chosen category wears a plain fill and the accent stays on the command row —
+                    one live highlight, and it is always the one Enter will take. */}
+                <div className="nl-no-scrollbar flex w-[96px] shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-edge bg-surface-sunken p-1 pt-3">
+                    <ActionCommandCategoryRow
+                        icon={LayoutGrid}
+                        iconColor="#a8adb5"
+                        label={t("story.actionCategory.all")}
+                        active={props.category === ALL_MENU_CATEGORY}
+                        empty={!props.reachable.has(ALL_MENU_CATEGORY)}
+                        onSelect={() => props.onCategory(ALL_MENU_CATEGORY)}
+                    />
+                    {STORY_COMMAND_CATEGORIES.map(category => (
+                        <ActionCommandCategoryRow
+                            key={category.id}
+                            icon={category.icon}
+                            iconColor={category.iconColor}
+                            label={t(commandCategoryLabelKey(category.id))}
+                            active={props.category === category.id}
+                            empty={!props.reachable.has(category.id)}
+                            onSelect={() => props.onCategory(category.id)}
+                        />
+                    ))}
                 </div>
-            )}
+                {/* Both columns open at the same height — `pt-3` here and on the categories, and no
+                    gap above the first section header, so a browse, a ranked list and the category
+                    column all start on one line. */}
+                <div ref={listRef} className="nl-no-scrollbar min-w-0 flex-1 overflow-auto p-1 pt-3">
+                    {rows}
+                </div>
+            </div>
         </div>,
         globalThis.document.body,
     );

@@ -81,24 +81,30 @@ export const project = {
         autoSaveSlotsTitle: "Autosaves kept",
         autoSaveSlotsDescription: "Autosaves rotate through this many slots, oldest overwritten first. They stay out of the player's own save slots and are read with the List Auto Saves node.",
     },
-    // The Audio sub-page: the project's mixer, as a tree of buses. Labelled rows with descriptions,
-    // exactly like Details / Game / Runtimes / Linting - in project settings the control IS the
-    // content, so it needs a title that says what the number means.
+    // The Audio sub-page: the project's mixer, as a tree of buses. One collapsed row per bus with
+    // its fields behind a disclosure, so the labels below are labels rather than headings - the
+    // explanation they used to each carry is stated once, in `intro`. A paragraph repeated on every
+    // track is noise; the same paragraph once is documentation.
     audio: {
+        // What a bus is and how the mix multiplies, said once at the top of the section. This
+        // absorbed the former per-field `nameDescription` / `parentDescription` / `volumeDescription`.
+        intro: "A track is a bus: it feeds another bus, or the master output. A clip plays at its own level times every bus above it, and a bus can quieten but never amplify. Renaming is safe — references are stored by id.",
         add: "Add track",
         newTrackName: "New Track",
         nameTitle: "Name",
-        nameDescription: "What this bus is called across Studio. References are stored by id, so renaming one is safe.",
         parentTitle: "Routes into",
-        parentDescription: "The bus this one feeds. Every bus between here and the master output multiplies its volume in.",
         parentMaster: "Master output",
         volumeTitle: "Volume",
-        volumeDescription: "This bus's own level, applied live to everything playing on it or below it. A bus can quieten, never amplify.",
         volumeUnit: "%",
         loopTitle: "Loop by default",
         loopDescription: "Clips played on this track repeat unless the action that plays them says otherwise.",
         duplicate: "Duplicate",
         delete: "Delete",
+        // Sits beside Delete inside an open bus: the count the confirmation is about to be about.
+        usedBy: {
+            one: "Used by {count} reference",
+            other: "Used by {count} references",
+        },
         deleteConfirm: "Delete \"{name}\"?",
         // The honest consequence: nothing pointing at this track is rewritten, so those references
         // resolve to the seeded bus for their own shape from now on - which one depends on what is

@@ -4,6 +4,7 @@ import path from "path";
 import {
     VCS_UNCONFIGURED_REMOTE,
     isVcsRemoteConfigured,
+    parseVcsRemoteUrl,
     type VcsPushResult,
     type VcsSyncResult,
     type VcsSyncState,
@@ -137,16 +138,20 @@ export async function writeRemote(root: string, url: string | null): Promise<voi
  * repository's name on the server, and it is the name a collaborator clones by. A URL
  * without one is also rejected by the backend outright (`parsing repository URL: Invalid
  * URL`), so this catches the same mistake earlier and in words.
+ *
+ * The rule itself lives in `@shared/types/vcs` because the project wizard applies it too,
+ * while it is still a field the author can correct. This wrapper is the throwing form,
+ * with the sentence that names what is missing.
  */
 export function parseRemoteUrl(url: string): { origin: string; name: string } {
-    const match = /^(lore:\/\/[^/?#\s]+)\/([^/?#\s]+)\/*$/i.exec(url.trim());
-    if (!match) {
+    const parsed = parseVcsRemoteUrl(url);
+    if (!parsed) {
         throw new RemoteConfigError(
             "A server address needs a name for this project on it, like"
             + " lore://studio.example.lan:41337/my-game",
         );
     }
-    return { origin: match[1], name: match[2] };
+    return parsed;
 }
 
 /**

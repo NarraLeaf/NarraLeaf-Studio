@@ -50,6 +50,10 @@ import {
     PreviewStopHandler,
 } from "./handlers/previewAction";
 import {
+    GameTestLaunchHandler,
+    GameTestStopHandler,
+} from "./handlers/gameTestAction";
+import {
     GameBuildCancelHandler,
     GameBuildGetStatusHandler,
     GameBuildPreflightHandler,
@@ -175,6 +179,10 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new PreviewLaunchHandler(),
         new PreviewStopHandler(),
         new PreviewGetStatusHandler(),
+
+        // Game sessions owned by a test run (not by the Run button)
+        new GameTestLaunchHandler(),
+        new GameTestStopHandler(),
 
         // Production game build handlers
         new GameBuildStartHandler(),

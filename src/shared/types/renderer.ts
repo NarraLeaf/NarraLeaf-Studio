@@ -1,7 +1,7 @@
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
-import { BlueprintPersistenceProjectRef, RequestStatus, WorkspaceFreezeKind } from "./ipcEvents";
+import { BlueprintPersistenceProjectRef, RequestStatus, WorkspaceCloseStage, WorkspaceFreezeKind } from "./ipcEvents";
 import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "./menu";
 import { FsRequestResult, PlatformInfo } from "./os";
@@ -12,6 +12,7 @@ import { GlobalStateKeys } from "./state/globalState";
 import type { MissingRecentProject } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
+import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
 import type {
     MacSigningIdentity,
@@ -48,7 +49,8 @@ import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions
 
 export interface RendererPrivilegedInterface {
     fs: {
-        selectFile(actor: PrivilegedActor, filters: string[], multiple: boolean): Promise<RequestStatus<FsRequestResult<string[]>>>;
+        /** `title` titles the native picker; omitting it keeps the historical default. */
+        selectFile(actor: PrivilegedActor, filters: string[], multiple: boolean, title?: string): Promise<RequestStatus<FsRequestResult<string[]>>>;
         /** Native save dialog; resolves to the chosen path, or null when cancelled. */
         selectSaveFile(actor: PrivilegedActor, defaultFileName: string, filters: string[]): Promise<RequestStatus<FsRequestResult<string | null>>>;
         stat(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileStat>>>;
@@ -202,6 +204,12 @@ export interface RendererPreloadedInterface {
          * workspace context - see the note on `onConfirmClose`.
          */
         onFlushPendingSaves(handler: () => Promise<RequestStatus<{ flushed: boolean }>>): AppEventToken;
+        /**
+         * Follow the close the main process is running on this window's behalf, so the workspace
+         * can show what it is waiting on. `null` means the close was called off and the window is
+         * staying. Registered on mount for the same reason as the two handlers above.
+         */
+        onCloseProgress(handler: (stage: WorkspaceCloseStage | null) => void): AppEventToken;
         onResolveAssetUrl(handler: (payload: { assetId: string; assetType?: string }) => Promise<RequestStatus<{ url: string }>>): AppEventToken;
         onResolveImageAssetUrl(handler: (payload: { assetId: string }) => Promise<RequestStatus<{ url: string }>>): AppEventToken;
         onBlueprintNavigateFromPreview(handler: (payload: PreviewStudioBlueprintOpenPayload) => void): AppEventToken;
@@ -325,6 +333,19 @@ export interface RendererPreloadedInterface {
         launch(projectPath: string, entry: GameRuntimeLaunchEntry): Promise<RequestStatus<{ status: PreviewStatus }>>;
         stop(projectPath: string): Promise<RequestStatus<{ status: PreviewStatus }>>;
         getStatus(projectPath: string): Promise<RequestStatus<{ status: PreviewStatus }>>;
+    };
+
+    /**
+     * Game processes owned by a test run.
+     *
+     * No `getStatus`: everything a test needs to know arrives on `onEvent`, in order. A polled
+     * status could not distinguish the two exits a test cares about, which is the reason this
+     * namespace exists next to `preview` rather than inside it.
+     */
+    gameTest: {
+        launch(request: GameTestLaunchRequest): Promise<RequestStatus<GameTestLaunchResult>>;
+        stop(projectPath: string, sessionId: string): Promise<RequestStatus<void>>;
+        onEvent(handler: (payload: GameTestEventPayload) => void): AppEventToken;
     };
 
     /**
