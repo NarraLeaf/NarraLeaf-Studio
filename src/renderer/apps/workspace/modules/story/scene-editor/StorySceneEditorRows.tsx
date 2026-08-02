@@ -4,11 +4,8 @@ import type { ClipboardEvent, CSSProperties, ReactNode, RefObject, MouseEvent } 
 import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Hash, Image, LayoutGrid, List, Music, Play, Plus, Route, Trash2, TriangleAlert, UserRoundPlus, Variable, Video } from "lucide-react";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
 import { useSortable } from "@dnd-kit/sortable";
-import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryCharacterTagSelection, StoryDocument, StoryRichRun, StoryScene, StorySceneId } from "@shared/types/story";
-import { representativeAssetId } from "@shared/utils/characterVariant";
+import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryDocument, StoryRichRun, StoryScene, StorySceneId } from "@shared/types/story";
 import { HeadThumbnail } from "@/apps/workspace/modules/characters/editors/components/HeadThumbnail";
-import { useCompositedSprite } from "@/lib/workspace/hooks/useCompositedSprite";
-import type { NormalizedCrop } from "@/lib/utils/headCrop";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { isRowTextEditable } from "./storySceneReadOnly";
@@ -18,12 +15,9 @@ import { getCommandGhost } from "./storyCommandGhost";
 import { getCommandLineDraftReason, getCommandLineReason } from "./storyCommandReason";
 import { isMacPlatform } from "@/lib/app/platform";
 import { formatKeybinding } from "@/lib/workspace/services/ui/KeybindingService";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
-import type { Asset } from "@/lib/workspace/services/assets/types";
-import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
-import { useBadgeImageUrl, type BadgeImageSource } from "./storyBadgeImageCache";
+import { useCharacterFace } from "./storyCharacterFace";
 import { resolveStoryMotionPreviewTarget } from "../../story-motion/storyMotionPreviewTarget";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import type { PaletteActionCommand } from "./storyActionCommands";
@@ -1198,7 +1192,7 @@ function RowNesting({ depth, nextDepth, opensBlock, stopAt, plateBottom, highlig
  * drawn in front of them would be a fourth left edge.
  */
 function GroupExpressionBead({ block, characters }: { block: StoryBlock; characters: Character[] }) {
-    const { url: imageUrl, frame, showingSprite } = useCharacterBadgeImage(block, undefined, characters);
+    const { url: imageUrl, frame, showingSprite } = useCharacterFace(block, undefined, characters, "inline");
     return (
         <span className="relative ml-[calc((var(--nl-story-avatar,28px)-1rem)/2)] h-4 w-4 shrink-0 overflow-hidden rounded-full border border-edge bg-fill-subtle">
             {imageUrl ? (
@@ -2814,108 +2808,9 @@ function CharacterSelectTrigger(props: {
 }
 
 /**
- * Which character and appearance a row's badge should picture, and whether to resolve a
- * differential-specific sprite (vs. fall straight through to the profile thumbnail).
- *
- * A character action row (`/show`, `/face`…) pictures its own payload's form/variants. A dialogue row
- * pictures the speaker's accumulated appearance (WI-3) — but only when one exists; a speaker who has
- * not been shown keeps the plain thumbnail, so a line before any `/show` does not invent a look.
- */
-function getBadgeImageSpec(
-    block: StoryBlock,
-    appearance: CharacterAppearanceRef | undefined,
-): { characterId: string; pose?: string; tags?: StoryCharacterTagSelection; resolveVariant: boolean } | null {
-    if (block.kind === "action" && block.payload.action === "character" && block.payload.characterId) {
-        return { characterId: block.payload.characterId, pose: block.payload.pose, tags: block.payload.tags, resolveVariant: true };
-    }
-    if (block.kind === "nodeAction" && block.payload.action === "dialogue" && block.payload.characterId) {
-        // Only a *shown* appearance pictures an avatar — a placement-only appearance (a `/move` on a
-        // never-shown speaker, used by the group-header dropdown) must not invent a look (WI-3, M3.1).
-        return { characterId: block.payload.characterId, pose: appearance?.pose, tags: appearance?.tags, resolveVariant: appearance?.shown === true };
-    }
-    return null;
-}
-
-/**
- * Longest edge of a composited badge sprite. The plate itself tops out at 40px (U1's comfortable
- * density) and the head crop reads a sub-rectangle of it, so this is the largest useful size at 2x.
- */
-const BADGE_COMPOSITE_PX = 96;
-
-/**
- * The sprite `Asset` + portrait frame a character badge should picture, resolved against the same
- * rule the runtime uses (shared `representativeAssetId`). The frame is the pose's own portrait
- * override, else the profile default; `undefined` lets the badge fall back to the automatic head
- * crop. The `Asset` object (not just its id) is returned because a sprite is a *project* asset and
- * loads through the asset library, not the editor store.
- *
- * A layered character has no single sprite: this returns its bottom-most drawing layer, which the
- * badge uses only until the composite of the whole stack arrives (and as the fallback when the
- * compositor cannot draw). See {@link useCharacterBadgeImage}.
- */
-function resolveCharacterBadgeImage(
-    character: Character,
-    pose: string | undefined,
-    tags: StoryCharacterTagSelection | undefined,
-    lookupAsset: (assetId: string) => Asset<AssetType.Image> | null,
-): { asset: Asset<AssetType.Image> | null; frame?: NormalizedCrop } {
-    const appearance = character.profile.appearance;
-    const summary = appearance.getKind() === "preset"
-        ? { kind: "preset" as const, poses: appearance.getPoses().map(p => ({ id: p.id, name: p.name, assetId: p.assetId })), defaultPoseId: appearance.getDefaultPoseId() }
-        : { kind: "layered" as const, canvas: appearance.getCanvas(), axes: appearance.getAxes(), layers: appearance.getLayers() };
-    const assetId = representativeAssetId(summary, { poseId: pose, tags });
-    const frame = (pose ? appearance.getPose(pose)?.portrait : undefined) ?? character.profile.getPortrait();
-    return { asset: assetId ? lookupAsset(assetId) : null, frame };
-}
-
-/**
- * The framed avatar a character row should picture: the differential sprite when a look applies
- * (loaded from the project asset library, framed on the face), else the character thumbnail (an editor
- * asset, already a square crop). Both share the id-keyed object-URL cache so one sprite is read — and
- * its head located — once no matter how many rows show it.
- */
-function useCharacterBadgeImage(
-    block: StoryBlock,
-    appearance: CharacterAppearanceRef | undefined,
-    characters: Character[],
-): { url: string | null; frame?: NormalizedCrop; showingSprite: boolean } {
-    const spec = getBadgeImageSpec(block, appearance);
-    const character = spec ? characters.find(next => next.profile.getId() === spec.characterId) : undefined;
-    // The appearance stores asset ids; the badge cache needs the `Asset` record to fetch bytes, so
-    // the id is resolved against the live library here rather than embedded in the character store
-    // (which is what the old variant slots did, and what made a renamed or replaced asset go stale).
-    const { context, isInitialized } = useWorkspace();
-    const lookupAsset = useCallback((assetId: string): Asset<AssetType.Image> | null => {
-        if (!context || !isInitialized) {
-            return null;
-        }
-        const assets = context.services.get<AssetsService>(Services.Assets).getAssets();
-        return assets?.[AssetType.Image]?.[assetId] ?? null;
-    }, [context, isInitialized]);
-    const resolved = character && spec?.resolveVariant
-        ? resolveCharacterBadgeImage(character, spec.pose, spec.tags, lookupAsset)
-        : { asset: null as Asset<AssetType.Image> | null, frame: undefined };
-    const thumbnailId = character?.profile.getThumbnail() ?? null;
-    const source: BadgeImageSource | null = resolved.asset
-        ? { kind: "project", asset: resolved.asset }
-        : thumbnailId
-            ? { kind: "editor", fileId: thumbnailId }
-            : null;
-    const fallbackUrl = useBadgeImageUrl(source);
-    // A layered character is a stack, so the badge shows the whole thing composited. The single-asset
-    // path above still runs: it is what the badge shows while the composite is being drawn, which
-    // keeps a scrolling list from flashing empty plates.
-    const layered = character && spec?.resolveVariant && character.profile.appearance.getKind() === "layered"
-        ? character
-        : null;
-    const composite = useCompositedSprite(layered, { tags: spec?.tags }, BADGE_COMPOSITE_PX);
-    const url = composite.url ?? fallbackUrl;
-    return { url, frame: resolved.frame, showingSprite: Boolean(composite.url) || resolved.asset !== null };
-}
-
-/**
  * A row's leading plate: a speaker's face on a dialogue row, the command's category glyph on every
- * other one.
+ * other one — a character command included, since its face now rides inline beside the name it acts
+ * on (see {@link StoryLineCharacterFace}) and the plate is where the row says what is being *done*.
  *
  * `portrait` is what separates the two. A dialogue plate follows the reading density (U1) — 28px in
  * compact, 40px in comfortable, where it becomes the block's own column — because a differential
@@ -2926,7 +2821,7 @@ function BlockBadge({ block, characters, appearance }: { block: StoryBlock; char
     const { label, icon: Icon, iconColor } = getBlockBadgeInfo(block);
     // A differential-resolved sprite (framed on the face) when a look applies; otherwise the profile
     // thumbnail (already a square crop, shown as-is); otherwise the category icon.
-    const { url: imageUrl, frame, showingSprite } = useCharacterBadgeImage(block, appearance, characters);
+    const { url: imageUrl, frame, showingSprite } = useCharacterFace(block, appearance, characters, "plate");
 
     return (
         <span

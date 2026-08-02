@@ -108,6 +108,27 @@ export type StoryCommandLineEdit = {
     apply: (next: string) => StoryBlock["payload"];
 };
 
+/**
+ * A picture the line draws INSIDE itself, immediately before the token that starts at {@link at}.
+ *
+ * Recorded here rather than found by the renderer because the writer is the only thing that knows
+ * where it put the name: a surface guessing "the first target-coloured token" would be a second,
+ * weaker copy of {@link writeLine}, and would start decorating the wrong word the day a command
+ * leads with something else. Same contract as {@link StoryCommandLineEdit} — an offset into
+ * `source`, which only the trigger character can ever shift.
+ *
+ * The line stays plain text: `source` is unchanged, so it still parses, still round-trips, and a
+ * surface that ignores ornaments (the overlay above the live field, which has to match the textarea
+ * character for character) loses nothing.
+ */
+export type StoryCommandLineOrnament = {
+    /** Offset in `source` the picture sits before — the first character of the token it belongs to. */
+    at: number;
+    kind: "character";
+    /** Who is pictured. */
+    id: string;
+};
+
 export type StoryCommandLineProjection = {
     /**
      * The line in CANONICAL form — a leading "/", whatever trigger the author's setting displays.
@@ -117,6 +138,8 @@ export type StoryCommandLineProjection = {
     source: string;
     /** Every value a click can change, by where it sits in {@link source}. */
     edits: readonly StoryCommandLineEdit[];
+    /** Every picture the line draws inside itself, by where it sits in {@link source}. */
+    ornaments: readonly StoryCommandLineOrnament[];
 };
 
 /** What the projection needs beyond the row itself — every lookup the prose projection already takes. */
@@ -185,6 +208,8 @@ type Arg = {
     apply?: (next: string) => StoryBlock["payload"];
     /** Offered alongside a number's input, when the slot has a house set (`/wait`). */
     presets?: readonly number[];
+    /** A picture drawn immediately before this arg — see {@link StoryCommandLineOrnament}. */
+    ornament?: Omit<StoryCommandLineOrnament, "at">;
     /** The options of a {@link StoryCommandLineControl} "choice" — a list no param type can hold. */
     choices?: readonly { value: string; label: string }[];
     /**
@@ -320,6 +345,7 @@ function controlFor(param: StoryCommandParam | null, entry: Arg): StoryCommandLi
 function writeLine(def: StoryCommandDef | null, verb: string, args: readonly (Arg | null)[]): StoryCommandLineProjection {
     let source = ACTION_TRIGGER + verb;
     const edits: StoryCommandLineEdit[] = [];
+    const ornaments: StoryCommandLineOrnament[] = [];
     for (const entry of args) {
         if (!entry) {
             continue;
@@ -330,6 +356,9 @@ function writeLine(def: StoryCommandDef | null, verb: string, args: readonly (Ar
             source += `${def && param ? localizedParamKey(def, param) : entry.param}=`;
         }
         const start = source.length;
+        if (entry.ornament) {
+            ornaments.push({ ...entry.ornament, at: start });
+        }
         source += quoteValue(entry.enum && param ? enumWord(param, entry.value) : entry.value, param?.greedy === true);
         // Only a NUMBER takes the unit — `/wait click` fills the same slot as `/wait 2` and must not
         // come back as `clicks`. It rides INSIDE the edit span: a click on `1s` opens the editor a
@@ -340,7 +369,7 @@ function writeLine(def: StoryCommandDef | null, verb: string, args: readonly (Ar
             edits.push({ span: { start, end: source.length }, control, value: entry.editValue ?? entry.value, apply: entry.apply });
         }
     }
-    return { source, edits };
+    return { source, edits, ornaments };
 }
 
 // ---------------------------------------------------------------------------
@@ -550,7 +579,12 @@ function characterSentence(
     const appearance = appearanceChoice(payload, lookups);
     const form = positional("form", appearanceWord(payload, lookups), appearance ?? {});
     // `/show` and `/hide` name their subject `target`, the rest `character` — one pick, two slots.
-    const who = pickCharacter(payload, lookups) ?? {};
+    // The face rides with the name in both: it is the row's picture of WHO, and a row that pictures
+    // its subject inline is a row whose plate is free to say what is being done to them.
+    const who = {
+        ...(pickCharacter(payload, lookups) ?? {}),
+        ...(payload.characterId ? { ornament: { kind: "character" as const, id: payload.characterId } } : {}),
+    };
     // A character's entrance and exit are driven by the TRANSFORM's duration, not the transition's —
     // the same field `hide()` reads (see `getQuickParams`), so that is the one an edit must write.
     const duration = arg("d", seconds(payload.transform?.durationMs), {
