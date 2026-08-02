@@ -376,6 +376,27 @@ export interface VcsFileChange {
     conflicted: boolean;
     /** A conflict nobody has resolved yet - the only kind that blocks a commit. */
     conflictUnresolved: boolean;
+    /**
+     * The backend reconciled this path on its own, without anyone choosing.
+     *
+     * The first of three flags that say HOW a conflict was settled, as opposed to the two
+     * above, which say whether there is one. They were being decoded and thrown away, and
+     * dropping them is how a surface ends up unable to tell "merged automatically" from
+     * "the author decided".
+     *
+     * **Optional because no producer has ever set one.** Measured: a status read taken
+     * while a conflicted merge is open reports NO FILES AT ALL - the merge has already
+     * recorded its result as the staged revision, so nothing is pending
+     * (docs/version-control.md §4.24, pinned in `merge.integration.test.ts`). So `false`
+     * and absent mean the same thing here, which is "nobody said", and a caller must not
+     * read either as "not settled that way". The paths a merge left open come from
+     * {@link VcsMergeState.conflicts}, which is rebuilt from disk rather than from this.
+     */
+    conflictAutomerged?: boolean;
+    /** Settled by taking this project's side. See {@link conflictAutomerged} for the caveat. */
+    conflictMine?: boolean;
+    /** Settled by taking the incoming side. See {@link conflictAutomerged} for the caveat. */
+    conflictTheirs?: boolean;
     /** Where a move or copy came from. Absent for every other kind. */
     fromPath?: string;
 }
@@ -507,6 +528,83 @@ export interface VcsSyncResult {
     conflicts: string[];
     /** True when nothing was behind: the working tree already matched the server. */
     alreadyCurrent: boolean;
+}
+
+/**
+ * Whether this project is in the middle of a merge, and what is still open.
+ *
+ * **A merge outlives the process that started it.** It lives in the repository, not in
+ * Studio, so the author can close the window on an unresolved sync and reopen it a day
+ * later - which is the whole reason this is a question that can be ASKED rather than a
+ * value handed back by the operation that caused it.
+ *
+ * Both fields below are reconstructed from what a merge leaves on disk. Neither comes
+ * from the status file list: measured, a status read during a conflicted merge reports
+ * no files at all, because the merge has already recorded its own result as the staged
+ * revision and the working tree agrees with it (docs/version-control.md §4.24).
+ */
+export interface VcsMergeState {
+    /**
+     * A merge has begun here and has not been recorded as a revision yet.
+     *
+     * False the moment the merge is committed or abandoned, and false in the ordinary
+     * life of a project. While it is true, the working tree holds two sides' work and a
+     * plain commit is what closes it.
+     */
+    inProgress: boolean;
+    /**
+     * The revision being merged in, when the backend named one.
+     *
+     * Only ever present while {@link inProgress}: the field it comes from keeps its last
+     * value after the merge is recorded, so reporting it afterwards would describe a
+     * merge that is over as one that is happening.
+     */
+    incoming?: RevisionId;
+    /**
+     * Repository-relative paths the merge could not settle on its own.
+     *
+     * **This is "the merge left these to a human", not "these are still undecided", and
+     * the difference is measured rather than a nicety.** A path stays on this list after
+     * the author settles it: settling records no per-path mark anywhere Studio can read -
+     * the file that says so is the backend's own, the status call reports nothing for the
+     * whole of a merge, and two of the three settle verbs emit no events at all. The list
+     * shrinks only when the merge is committed or abandoned.
+     *
+     * The one observation that DOES separate settled from unsettled is the commit itself:
+     * committing with a path still unsettled fails with `Unable to commit when <path> is
+     * still in conflict`. That is a write, so it is the backstop rather than a probe -
+     * which is why a surface that wants to show progress must remember the author's own
+     * decisions for the life of the window, and must not present that memory as the
+     * repository's state after a restart.
+     *
+     * Ordered by path, so a list drawn from it does not reshuffle between two reads.
+     */
+    conflicts: string[];
+}
+
+/**
+ * Which side a conflicted path is settled with.
+ *
+ * `working-tree` is the one that can express an answer neither side wrote: the caller
+ * writes the bytes first and this says they are final. The other two overwrite the
+ * working tree with one side wholesale and are the only ones available for content
+ * Studio cannot merge - binaries, documents with no spec, anything over the size budget.
+ */
+export type VcsConflictChoice = "working-tree" | "mine" | "theirs";
+
+/** What settling some paths did. */
+export interface VcsMergeResolveResult {
+    /**
+     * Paths the backend acknowledged, repository-relative.
+     *
+     * **Empty is not a failure for `mine` and `theirs`**: measured, those two report no
+     * per-file events at all and only `working-tree` names what it settled
+     * (docs/version-control.md §4.25). A caller that needs to know what is left asks
+     * {@link VcsMergeState} again rather than reading this.
+     */
+    files: string[];
+    /** What is still open afterwards, re-read rather than inferred. */
+    state: VcsMergeState;
 }
 
 export interface VcsStatus {

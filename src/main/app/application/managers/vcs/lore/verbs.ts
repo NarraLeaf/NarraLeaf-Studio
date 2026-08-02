@@ -755,11 +755,30 @@ export async function pushBranch(
 
 export interface SyncResult {
     target: LoreSyncTargetPayload | undefined;
-    /** Files the sync wrote or removed in the working tree. */
+    /**
+     * Files the sync wrote or removed in the working tree.
+     *
+     * **Their conflict flags are all false and always will be** - the sync file struct
+     * has no such fields, so the decoder fills them in as `false` (see `events.ts`).
+     * Filtering this list for conflicts finds nothing no matter how many there were;
+     * {@link conflicts} is where they are named.
+     */
     files: LoreStatusFilePayload[];
     revisions: LoreSyncRevisionPayload[];
     /** The last progress report, which carries the automerge and conflict counters. */
     progress: LoreSyncProgressPayload | undefined;
+    /**
+     * Repository-relative paths the sync's automerge could not settle.
+     *
+     * From `BRANCH_MERGE_CONFLICT_FILE` - the same event a branch merge emits, which is
+     * the measured evidence that a sync merge and a branch merge are one mechanism
+     * rather than two (docs/version-control.md §4.24). **This is the only place a
+     * conflicted path is ever named**: `repositoryStatus` reports an empty file list in
+     * every one of its four forms once the merge has recorded itself as the staged
+     * revision, so nothing after the fact can recover this list from the repository.
+     * Whatever the caller does not keep here has to be reconstructed off disk.
+     */
+    conflicts: string[];
 }
 
 /**
@@ -799,6 +818,10 @@ export async function syncRevision(
         files: result.of<LoreStatusFilePayload>(LoreTag.REVISION_SYNC_FILE),
         revisions: result.of<LoreSyncRevisionPayload>(LoreTag.REVISION_SYNC_REVISION),
         progress: result.of<LoreSyncProgressPayload>(LoreTag.REVISION_SYNC_PROGRESS).at(-1),
+        // Read off the SAME event a branch merge uses, not off the sync file events -
+        // see the field's own note for why the obvious place has nothing in it.
+        conflicts: result.of<LoreMergeConflictFilePayload>(LoreTag.BRANCH_MERGE_CONFLICT_FILE)
+            .map((event) => event.path),
     };
 }
 
