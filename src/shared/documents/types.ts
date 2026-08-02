@@ -36,7 +36,17 @@ export type DocumentKind =
     | "voice"
     | "assets-metadata"
     | "assets-groups"
-    | "blueprint";
+    | "blueprint"
+    /**
+     * The project's cast, at `editor/services/character.json`.
+     *
+     * Not one of the fourteen above and not derived from the same list: it is a service STORE, and
+     * the only one in `editor/services/` that holds the author's content rather than Studio's own
+     * state (`@shared/vcs/serviceStores` is what decides that). It is a kind here because the
+     * motivating example of a semantic diff is a character's - "Alice's angry differential points at
+     * a different image" - and without a spec that sentence has no model that can express it.
+     */
+    | "characters";
 
 /**
  * One number worth showing about a document, e.g. how many scenes a story has.

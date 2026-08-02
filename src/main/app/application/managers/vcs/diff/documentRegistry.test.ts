@@ -39,6 +39,28 @@ describe("document specs are registered in the main process", () => {
         expect(specForDocumentPath("editor/localization/keys.json")?.kind).toBe("localization-keys");
     });
 
+    /**
+     * The three formats D4 added, and the one way their implementation can be present and never
+     * called: `defineDocumentSpec` has to FORWARD `diff` from the definition onto the spec. A
+     * definition that dropped it produces a spec whose `diff` is `undefined`, which is exactly what
+     * `diffDocumentBytes` reads to fall back to the summary tier - so the author would get a
+     * working, plausible, lesser answer, with nothing anywhere reporting that the semantic diff
+     * somebody wrote is dead code.
+     */
+    it("resolves the wave-2 documents and keeps the semantic diff they declare", () => {
+        const paths = {
+            characters: "editor/services/character.json",
+            story: "editor/story/stories/story-1/storydoc.json",
+            "assets-metadata": "assets/assets.metadata.image.json",
+        };
+
+        for (const [kind, path] of Object.entries(paths)) {
+            const spec = specForDocumentPath(path);
+            expect(spec?.kind, path).toBe(kind);
+            expect(typeof spec?.diff, `${kind} declares a diff but the spec does not carry one`).toBe("function");
+        }
+    });
+
     it("answers undefined for a path no spec claims, rather than throwing", () => {
         expect(specForDocumentPath("assets/content/ab/cd/portrait.png")).toBeUndefined();
         // An absolute path is what the backend reports on some surfaces (docs §4.16); the
