@@ -41,9 +41,30 @@ describe("getQuickParams", () => {
         expect(withTransition[0].apply({ kind: "duration", ms: 700 })).toMatchObject({ transition: { kind: "dissolve", durationMs: 700 } });
     });
 
-    it("exposes the enter/exit transition duration but nothing for move/expression", () => {
-        expect(getQuickParams(action({ action: "character", operation: "enter", characterId: "c1", transition: { kind: "fadeIn", durationMs: 200 } }))[0]).toMatchObject({ id: "d" });
+    it("exposes the enter/exit duration off the TRANSFORM - the field `d=` writes", () => {
+        // The regression this pins: `/show Inko t=fade d=20` puts 20s on the transform and leaves the
+        // (unused) transition without a duration, so a token reading the transition printed `d 0s`
+        // beside the row that had just been given 20.
+        const enter = getQuickParams(action({
+            action: "character", operation: "enter", characterId: "c1",
+            transform: { preset: "center", durationMs: 20000 },
+            transition: { kind: "fadeIn" },
+        }));
+        expect(enter[0]).toMatchObject({ id: "d", value: { kind: "duration", ms: 20000 } });
+        expect(enter[0].apply({ kind: "duration", ms: 400 })).toMatchObject({ transform: { preset: "center", durationMs: 400 } });
+
+        const exit = getQuickParams(action({ action: "character", operation: "exit", characterId: "c1", transform: { preset: "fadeOut", durationMs: 250 } }));
+        expect(exit[0].value).toMatchObject({ kind: "duration", ms: 250 });
+    });
+
+    it("offers no enter/exit token when the timing is not the row's to give", () => {
+        // A bound Story Motion keeps its timing in its keyframes (the `/camera motion` rule), and a row
+        // with no transform at all has no number to edit rather than a zero to invent.
+        expect(getQuickParams(action({ action: "character", operation: "enter", characterId: "c1", transform: { mode: "animation", animationId: "anim1" } }))).toEqual([]);
+        expect(getQuickParams(action({ action: "character", operation: "enter", characterId: "c1" }))).toEqual([]);
+        // `move` and `expression` carry no token at all: neither is declared with `quickParams`.
         expect(getQuickParams(action({ action: "character", operation: "expression", characterId: "c1", transition: { kind: "fadeIn", durationMs: 200 } }))).toEqual([]);
+        expect(getQuickParams(action({ action: "character", operation: "move", characterId: "c1", transform: { preset: "left", durationMs: 300 } }))).toEqual([]);
     });
 });
 
