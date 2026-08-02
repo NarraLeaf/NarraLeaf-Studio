@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
+import { Loader2 } from "lucide-react";
 import type { WorkspaceCloseStage } from "@shared/types/ipcEvents";
 import { getInterface } from "@/lib/app/bridge";
-import { ProgressIndeterminate } from "@/lib/components/elements/Progress";
 import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
 
@@ -32,9 +32,13 @@ const STAGE_MESSAGE: Record<WorkspaceCloseStage, TranslationKey> = {
  * the close can be asked for at any moment, including while the project is still loading and
  * including on the error screen, and all of those windows take just as long to close.
  *
- * There is no progress *fraction* here because there is no honest one to show - the checkpoint is
- * a single call into the version-control backend that answers when it answers. The sweep says
- * "still working" and the line above it says what the work is.
+ * A spinner rather than a bar, and deliberately: in this app a bar means a real fraction (the
+ * wizard's steps, the asset import queue, the localization and voice panels all fill one from a
+ * count), and there is no fraction to show here - the checkpoint is a single call into the
+ * version-control backend that answers when it answers. "Working, duration unknown" is a spinning
+ * `Loader2` everywhere else in the Studio, so it is one here too. It also survives
+ * `prefers-reduced-motion`, which `.animate-spin` is carved out of in styles.css: a stopped
+ * indicator over a window that is not responding would read as the hang it exists to explain.
  */
 export function WorkspaceClosingOverlay() {
     const { t } = useTranslation();
@@ -72,11 +76,13 @@ export function WorkspaceClosingOverlay() {
             <div
                 role="status"
                 aria-live="polite"
-                className="relative w-[320px] max-w-full bg-surface-overlay border border-edge rounded-lg shadow-2xl px-5 py-4 animate-fade-in"
+                className="relative w-[340px] max-w-full bg-surface-overlay border border-edge rounded-lg shadow-2xl px-5 py-4 animate-fade-in"
             >
                 <p className="text-sm font-medium text-fg">{t("workspace.shell.closing.title")}</p>
-                <p className="mt-1 text-xs text-fg-muted">{t(STAGE_MESSAGE[stage])}</p>
-                <ProgressIndeterminate size="sm" className="mt-3" />
+                <div className="mt-2 flex items-start gap-3">
+                    <Loader2 className="mt-0.5 h-4 w-4 flex-shrink-0 animate-spin text-primary" />
+                    <p className="text-sm text-fg-muted">{t(STAGE_MESSAGE[stage])}</p>
+                </div>
             </div>
         </div>
     );
