@@ -34,6 +34,15 @@ export type StoryTransitionWord =
     | "black"
     | "darkness"
     | "zoom"
+    // The transform presets the inspector offers that no word reached. They are the same field a
+    // `t=` writes (`StoryTransformRef.preset`), so a look an author could pick on the right had no
+    // spelling on the left — and a row showing it could not be typed back. One word each, named
+    // after the preset, since there is nothing to unify: unlike `fade`, they read the same in both
+    // directions.
+    | "scale"
+    | "rotate"
+    | "opacity"
+    | "darken"
     | "none";
 
 /**
@@ -69,14 +78,47 @@ const SUPPORTED: Record<StoryTransitionContext, readonly StoryTransitionWord[]> 
     // offered on `/bg` `/jump` alongside the classics, but not on portrait swaps or stage objects.
     scene: ["fade", "slide", "circle", "wipe", "iris", "blinds", "barn-door", "clock", "fan", "dots", "blur", "black", "darkness", "none"],
     character: ["fade", "slide", "circle", "wipe", "blur", "none"],
-    reveal: ["fade", "slide-left", "slide-right", "slide-up", "slide-down", "zoom", "circle", "wipe", "none"],
-    conceal: ["fade", "slide-left", "slide-right", "slide-up", "slide-down", "zoom", "circle", "wipe", "none"],
+    // Every preset the inspector's own dropdown offers, so the two surfaces reach the same set of
+    // looks — `left` / `center` / `right` excepted: those are the SAME field written through `at=`,
+    // which is the slot the vocabulary already gives a placement (bible §1.2).
+    reveal: ["fade", "slide-left", "slide-right", "slide-up", "slide-down", "zoom", "scale", "rotate", "opacity", "darken", "circle", "wipe", "none"],
+    conceal: ["fade", "slide-left", "slide-right", "slide-up", "slide-down", "zoom", "scale", "rotate", "opacity", "darken", "circle", "wipe", "none"],
     nvl: ["fade", "none"],
 };
 
+/**
+ * The word the PROPERTY INSPECTOR shows for whatever this word writes in this context.
+ *
+ * The two surfaces name the same setting, so they say the same thing: a `/hide` row's `t=fade` and
+ * the inspector's 变换 → 预设 are one field, and reading 淡变 on the left while the right says 淡出
+ * was the whole complaint. The direction the verb decides is exactly what makes one word need two
+ * labels, which is why this is keyed on the context and not on the word alone.
+ *
+ * `null` where nothing on the right names it — the value then keeps its own `story.enumValue.*` word.
+ */
+function inspectorLabelKey(context: StoryTransitionContext, word: StoryTransitionWord): string | null {
+    if (word === "none") {
+        return "common.none";
+    }
+    if (context === "scene" || context === "character") {
+        const kind = transitionKindFor(context, word);
+        return kind ? `storyInspector.transition.${kind}` : null;
+    }
+    const preset = transformPresetFor(context, word);
+    if (!preset) {
+        return null;
+    }
+    // The inspector calls this preset "slide reveal"; the vocabulary calls the word `wipe`. One
+    // catalog entry, spelled under the inspector's own name for it.
+    return `storyInspector.transformPreset.${preset === "wipe" ? "slideReveal" : preset}`;
+}
+
 /** The enum options a `t=` param offers in a given context - unified words, canonical-first. */
 export function transitionOptions(context: StoryTransitionContext): readonly StoryCommandEnumOption[] {
-    return SUPPORTED[context].map(word => ({ value: word, aliases: WORD_ALIASES[word] }));
+    return SUPPORTED[context].map(word => {
+        const labelKey = inspectorLabelKey(context, word);
+        return { value: word, aliases: WORD_ALIASES[word], ...(labelKey ? { labelKey } : {}) };
+    });
 }
 
 /** Every word a context supports - what an `unsupportedOption` issue lists as allowed. */
@@ -133,6 +175,10 @@ const REVEAL_PRESETS: Partial<Record<StoryTransitionWord, NonNullable<StoryTrans
     "slide-up": "slideUp",
     "slide-down": "slideDown",
     zoom: "zoom",
+    scale: "scale",
+    rotate: "rotate",
+    opacity: "opacity",
+    darken: "darken",
     circle: "circleReveal",
     wipe: "wipe",
     none: "none",
@@ -155,4 +201,35 @@ export function transformPresetFor(context: "reveal" | "conceal" | "nvl", word: 
         return word === "fade" ? "fadeIn" : word === "none" ? "none" : undefined;
     }
     return (context === "reveal" ? REVEAL_PRESETS : CONCEAL_PRESETS)[word as StoryTransitionWord];
+}
+
+/**
+ * The word a stored value came from — the inverse of the two lookups above, for the row that has to
+ * read a committed block back as the line that would produce it.
+ *
+ * Searched in `SUPPORTED` order rather than over the raw table, so the word a context PREFERS wins
+ * when two spell the same stored value: a character `fadeIn` reads back as `fade`, the word the
+ * author typed, not as whichever alias the object literal happened to list first.
+ *
+ * `null` when nothing in this context names the value. That is a real case — the inspector writes
+ * kinds no line can express — and the caller decides what to print instead; it must not invent a word
+ * the parser would reject.
+ */
+function wordFor<T>(context: StoryTransitionContext, stored: T | undefined, of: (word: StoryTransitionWord) => T | undefined): StoryTransitionWord | null {
+    // An absent stored value is "nothing to name", never a match against a word this context does not
+    // map — every unmapped word answers `undefined` too, and `undefined === undefined` would pick one.
+    if (stored === undefined) {
+        return null;
+    }
+    return SUPPORTED[context].find(word => of(word) === stored) ?? null;
+}
+
+/** The unified word behind a stored `StoryTransitionRef.kind`, or `null` when no word names it. */
+export function transitionWordFor(context: "scene" | "character", kind: StoryTransitionRef["kind"]): StoryTransitionWord | null {
+    return wordFor(context, kind, word => transitionKindFor(context, word));
+}
+
+/** The unified word behind a stored transform preset, or `null` when no word names it. */
+export function transitionWordForPreset(context: "reveal" | "conceal" | "nvl", preset: StoryTransformRef["preset"] | undefined): StoryTransitionWord | null {
+    return wordFor(context, preset, word => transformPresetFor(context, word));
 }

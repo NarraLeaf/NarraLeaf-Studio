@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type MouseEvent as Rea
 import { createPortal } from "react-dom";
 import type { StoryBlock, StoryScene, StorySceneId } from "@shared/types/story";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
-import { useTranslation } from "@/lib/i18n";
+import { useCommandTranslation, useTranslation } from "@/lib/i18n";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import {
     getQuickParams,
@@ -12,6 +12,15 @@ import {
 } from "@/lib/story/storyQuickParamsModel";
 import { characterRowLookup } from "./storySceneBlockUtils";
 import { useStoryMotionNames } from "./useStoryMotionNames";
+import {
+    StoryCommandLineBox,
+    StoryCommandLineText,
+    useStoryCommandLine,
+    useStoryCommandLineContext,
+} from "./StoryCommandLineView";
+import { StoryLineValueToken } from "./StoryLineValueToken";
+import { StoryLineCharacterFace } from "./storyCharacterFace";
+import type { StoryCommandLineProjection } from "./storyCommandLine";
 import { storyActionRowFragments, type StoryRowFragment } from "@/lib/story/storyRowProjection";
 import type { Character } from "@/lib/workspace/services/character/Character";
 
@@ -70,16 +79,34 @@ export function BlockOverview(props: {
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
 }) {
     const { t } = useTranslation();
+    // Subscribed to, not called: the row's verb is the command's own name, and the projection reaches
+    // it through the imperative `translateCommand` — a snapshot with no way to tell React it went
+    // stale. Without this hook a language change leaves every committed row in the old vocabulary
+    // until something else happens to re-render it.
+    useCommandTranslation();
     // Resolved here rather than threaded from the rows host: the projection stays pure and the React
     // layer, which has the service, supplies the lookup (the rule `describeBlockSubject` documents).
     const motionName = useStoryMotionNames();
-    const fragments = blockOverview(props.block, props.characters, props.scene, props.scenes, key => t(key), motionName);
+    const line = useStoryCommandLine(props.block, props.characters, props.scene, props.scenes);
 
+    if (line) {
+        return (
+            <StoryCommandLineRow
+                line={line}
+                block={props.block}
+                characters={props.characters}
+                textStyle={props.textStyle}
+                scenes={props.scenes}
+                onUpdatePayload={props.onUpdatePayload}
+            />
+        );
+    }
+
+    const fragments = blockOverview(props.block, props.characters, props.scene, props.scenes, key => t(key), motionName);
     return (
-        // Italic, and no fragment brighter than `fg-muted`: an action row is a stage direction, and it
-        // sits on the same left edge as the prose it directs, so tone is the only thing left to tell
-        // the two apart. Making that tone quiet — rather than a colour that competes with the words —
-        // is what stops a screenful of rows reading as noise.
+        // The rows no command owns keep the old reading: italic, and no fragment brighter than
+        // `fg-muted`. A stage direction that cannot be typed as a line has no skeleton to echo, so it
+        // stays prose rather than borrowing the syntax colours of a line it is not.
         <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center gap-1 truncate text-sm italic text-fg-muted" style={props.textStyle}>
             {fragments.map((fragment, index) =>
                 fragment.kind === "text"
@@ -90,18 +117,45 @@ export function BlockOverview(props: {
     );
 }
 
-/** The bare clickable tokens for a set of quick params, reused wherever a row draws its own summary. */
-export function QuickParamsInline(props: {
-    params: QuickParam[];
+/**
+ * A committed row as the command line that produced it: the same coloured skeleton the live field
+ * shows, dimmed.
+ *
+ * Dimmed by opacity on the whole line rather than by a second, darker palette — one palette is what
+ * makes "typed" and "committed" read as two states of one thing instead of two designs. Every option
+ * the line carries stays first-class inside it: values keep their colour and only add the dotted
+ * underline that says a click will edit them.
+ *
+ * The one thing the row has that the typed line does not is the faces: a character command draws its
+ * subject's portrait in front of the name, at the line's own font size. It is the row that can afford
+ * it — the live field is a mirror over a textarea and has to stay text-for-text.
+ */
+function StoryCommandLineRow(props: {
+    line: StoryCommandLineProjection;
+    block: StoryBlock;
+    characters: Character[];
+    textStyle?: CSSProperties;
     scenes?: Record<StorySceneId, StoryScene>;
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
 }) {
+    const { trigger } = useStoryCommandLineContext();
     return (
-        <>
-            {props.params.map(param => (
-                <QuickParamToken key={param.id} param={param} scenes={props.scenes} onApply={props.onUpdatePayload} />
-            ))}
-        </>
+        <StoryCommandLineBox className="opacity-80" style={props.textStyle}>
+            <StoryCommandLineText
+                source={props.line.source}
+                trigger={trigger}
+                edits={props.line.edits}
+                renderEdit={(edit, content) => (
+                    <StoryLineValueToken edit={edit} onApply={props.onUpdatePayload}>{content}</StoryLineValueToken>
+                )}
+                ornaments={props.line.ornaments}
+                // The block, not the ornament's id: the picture is of this row's own look — the pose
+                // and tags in its payload — and the id is what says the line names a character at all.
+                renderOrnament={ornament => (
+                    <StoryLineCharacterFace key={ornament.id} block={props.block} characters={props.characters} />
+                )}
+            />
+        </StoryCommandLineBox>
     );
 }
 

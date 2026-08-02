@@ -105,6 +105,10 @@ export const settings = {
             label: "用“@”打开动作创建",
             description: "以防中文输入法的「/」与「、」冲突",
         },
+        localizedCommands: {
+            label: "指令跟随界面语言",
+            description: "关掉它，动作创建里的指令名、参数名与取值保持英文。无论显示哪种语言，英文写法始终可用",
+        },
         electronMirror: {
             label: "Electron 下载镜像",
             description: "下载 Electron 所用的镜像地址，留空则使用官方源",

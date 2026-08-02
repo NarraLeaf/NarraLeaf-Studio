@@ -4,7 +4,8 @@ import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type D
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
-import { useTranslation } from "@/lib/i18n";
+import { useCommandTranslation, useTranslation } from "@/lib/i18n";
+import { getDefById, localizedCommandToken } from "./commands/registry";
 import type { EditorComponentProps } from "../../types";
 import { PanelPosition } from "../../../registry/types";
 import { Services } from "@/lib/workspace/services/services";
@@ -48,6 +49,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import type { TranslationKey } from "@shared/i18n";
 import { getCharacterName, getContainerHeaderInfo, getTextSegment } from "./storySceneBlockUtils";
 import { StoryFindBar } from "./StoryFindBar";
+import { StoryCommandLineProvider } from "./StoryCommandLineView";
 import {
     findRangesInText,
     getSegmentSlot,
@@ -88,14 +90,25 @@ import {
 /**
  * What an empty scene offers as a starting point. Deliberately the three things a first scene almost
  * always needs — a backdrop, someone on stage, someone talking — rather than a tour of the vocabulary;
- * the manual is one click away for the rest. The lines are not translated: a command is keywords, and
- * these are meant to be typed as they read.
+ * the manual is one click away for the rest.
+ *
+ * Held as command ids, not as literal text: these lines are meant to be typed as they read, so they
+ * are spelled the way the editor itself spells them (`localizedCommandToken`) and carry the trigger
+ * this author actually uses. A chip that says `/show` under an editor that writes `@显示` is teaching
+ * the wrong word on the first screen a new author ever sees.
  */
-const EMPTY_SCENE_EXAMPLES: readonly { line: string; key: TranslationKey }[] = [
-    { line: "/bg", key: "story.sceneEditor.emptyExampleBg" },
-    { line: "/show", key: "story.sceneEditor.emptyExampleShow" },
-    { line: "/say", key: "story.sceneEditor.emptyExampleSay" },
+const EMPTY_SCENE_EXAMPLES: readonly { commandId: string; key: TranslationKey }[] = [
+    // Spec ids, not tokens - `/bg` is the command whose id is "background" (see `specs/scene.ts`).
+    { commandId: "background", key: "story.sceneEditor.emptyExampleBg" },
+    { commandId: "show", key: "story.sceneEditor.emptyExampleShow" },
+    { commandId: "say", key: "story.sceneEditor.emptyExampleSay" },
 ];
+
+/** The chip's text: the author's trigger plus the command's spelling in the command language. */
+function emptyExampleLine(commandId: string, trigger: string): string {
+    const def = getDefById(commandId);
+    return `${trigger}${def ? localizedCommandToken(def) : commandId}`;
+}
 
 /**
  * The context a row inherits from rows above it: the speaker of the dialogue run it belongs to, or the
@@ -392,6 +405,10 @@ function StorySceneOverviewBlock(props: {
 
 export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentProps<StorySceneEditorTabPayload | undefined>) {
     const { t } = useTranslation();
+    // Subscribed to, not called: the empty scene's example chips spell their commands through the
+    // registry's imperative read, which cannot tell React it went stale. Without this the chips keep
+    // the old vocabulary after a language change until something else re-renders the tab.
+    useCommandTranslation();
     // Adding, duplicating, reordering and deleting rows write the scene. Reading it, playing from a row,
     // opening the inspector, changing the row density and using Find all stay live while frozen -
     // density is editor state, not project data, and Find without Replace only navigates.
@@ -1766,6 +1783,9 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
 
     return (
         <StoryEditorTextStyleProvider density={editor.density}>
+        {/* Resolved once for the whole scene: every committed row reads itself back as a command line,
+            and each of these lookups is an IPC round trip or a service subscription per mount. */}
+        <StoryCommandLineProvider slashAtAlias={editor.slashAtAlias} commandContext={editor.commandContext}>
         <StoryRowActionsContext.Provider value={effectiveRowActions}>
         <div
             ref={editor.rootRef}
@@ -2059,9 +2079,9 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         <p>{t("story.sceneEditor.emptyHint", { trigger: editor.slashAtAlias ? "@" : "/" })}</p>
                         <ul className="flex flex-col gap-1">
                             {EMPTY_SCENE_EXAMPLES.map(example => (
-                                <li key={example.line} className="flex flex-wrap items-baseline gap-x-2">
+                                <li key={example.commandId} className="flex flex-wrap items-baseline gap-x-2">
                                     <code className="rounded-md border border-edge-subtle bg-surface-sunken px-1.5 py-0.5 font-mono text-2xs text-fg-muted">
-                                        {example.line}
+                                        {emptyExampleLine(example.commandId, editor.slashAtAlias ? "@" : "/")}
                                     </code>
                                     <span className="text-2xs">{t(example.key)}</span>
                                 </li>
@@ -2149,6 +2169,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             ) : null}
         </div>
         </StoryRowActionsContext.Provider>
+        </StoryCommandLineProvider>
         </StoryEditorTextStyleProvider>
     );
 }

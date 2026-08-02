@@ -1,7 +1,5 @@
 import {
-    findParam,
     isFlagParam,
-    matchEnumOption,
     paramTypes,
     positionalParams,
     type StoryCommandDef,
@@ -9,6 +7,9 @@ import {
     type StoryCommandParamType,
 } from "./storyCommandGrammar";
 import { getCommandDef } from "./commands/registry";
+import { findParamLocalized } from "./commands/localizedParams";
+import { numberValueOfLocalized } from "./commands/localizedUnits";
+import { matchEnumOptionLocalized } from "./commands/localizedEnums";
 import type { StoryCommandSpan } from "./storyCommandValues";
 
 export type { StoryCommandSpan };
@@ -160,12 +161,17 @@ function stripQuotes(raw: string): string {
 function acceptsType(type: StoryCommandParamType, value: string): boolean {
     switch (type.kind) {
         case "enum":
-            return matchEnumOption(type, value) !== null;
+            // Localized: a value is the last word of the sentence, and `t=淡变` was failing as a word
+            // no option matched rather than as anything the author could act on. English first by
+            // construction of the table, so `t=fade` parses identically in every command language.
+            return matchEnumOptionLocalized(type, value) !== null;
         case "keyword":
             return value.trim().toLowerCase() === type.value.toLowerCase();
         case "number": {
-            const parsed = Number(value);
-            if (value.trim() === "" || !Number.isFinite(parsed)) {
+            // Localized: the row prints `持续时间=1秒`, so that spelling has to parse — English first
+            // by construction of the table, so `d=1s` behaves identically in every command language.
+            const parsed = numberValueOfLocalized(type, value);
+            if (parsed === null) {
                 return false;
             }
             if (type.integer && !Number.isInteger(parsed)) {
@@ -274,7 +280,7 @@ function parseCommand(source: string): Extract<StoryCommandLine, { kind: "comman
         // something this command declares" - which is the same question the named branch below asks,
         // just asked one step earlier.
         const pending = positionals[positionalIndex];
-        const namesRealParam = equals > 0 && findParam(def, token.raw.slice(0, equals)) !== null;
+        const namesRealParam = equals > 0 && findParamLocalized(def, token.raw.slice(0, equals)) !== null;
         if (pending?.greedy && !namesRealParam) {
             const span = { start: token.span.start, end: source.length };
             seen.add(pending.name);
@@ -292,7 +298,7 @@ function parseCommand(source: string): Extract<StoryCommandLine, { kind: "comman
             const value = stripQuotes(token.raw.slice(equals + 1));
             const keySpan = { start: token.span.start, end: token.span.start + equals };
             const valueSpan = { start: token.span.start + equals + 1, end: token.span.end };
-            const param = findParam(def, key);
+            const param = findParamLocalized(def, key);
             if (!param) {
                 issues.push({ code: "unknownParam", span: keySpan, key });
             } else if (seen.has(param.name)) {
@@ -310,7 +316,10 @@ function parseCommand(source: string): Extract<StoryCommandLine, { kind: "comman
         // A bare token naming an unfilled named boolean is a flag: `/bgm battle loop` (bible B5).
         // Bound only after the first positional has been consumed (or when there are none), so a
         // leading value that happens to spell a flag name still fills the slot the author meant.
-        const flagParam = findParam(def, token.text);
+        // Localized too, so a flag reads in one language throughout. The existing
+        // `positionalIndex > 0` guard is what keeps this safe: a leading `/bgm 循环` still fills the
+        // track slot, so a name that happens to spell a flag is only read as one after the values are.
+        const flagParam = findParamLocalized(def, token.text);
         if (flagParam && isFlagParam(flagParam) && !seen.has(flagParam.name) && (positionalIndex > 0 || positionals.length === 0)) {
             seen.add(flagParam.name);
             args.push({ param: flagParam, key: token.text, keySpan: token.span, value: "true", valueSpan: token.span });

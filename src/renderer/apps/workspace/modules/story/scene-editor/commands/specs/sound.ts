@@ -1,7 +1,7 @@
 import type { StoryActionPayload, StoryBlock } from "@shared/types/story";
 import { createBlockForCommand, type ActionCommandId } from "../../storyActionCommands";
 import { BGM_OBJECT_NAME, type StoryCommandValue } from "../../storyCommandValues";
-import { asAudioTrackId, asBoolean, asDurationMs, asNumber, asTarget, asText, audioTrackParam, defineStoryCommand, targetParam } from "../spec";
+import { asAudioTrackId, asBoolean, asDurationMs, asNumber, asTarget, asText, audioTrackParam, defineStoryCommand, SECONDS_TYPE, targetParam } from "../spec";
 import { deriveObjectName, vfxOperationBlock } from "../payloadHelpers";
 
 /**
@@ -91,7 +91,7 @@ export const bgm = defineStoryCommand({
         // behaviour every `/bgm` line written before tracks existed already had.
         track: audioTrackParam(),
         vol: { aliases: ["volume"], hint: "vol", type: { kind: "number", min: 0, max: 1 } },
-        fade: { hint: "fade", type: { kind: "number", min: 0 } },
+        fade: { hint: "fade", type: SECONDS_TYPE },
         loop: { hint: "loop", type: { kind: "boolean" } },
     },
     build(args, ctx) {
@@ -137,7 +137,7 @@ export const sound = defineStoryCommand({
         vol: { aliases: ["volume"], hint: "vol", type: { kind: "number", min: 0, max: 1 } },
         // The compiler has always fed `fade` into `Sound.play()` on this row; only the spec omitted
         // the key, so a fade-in was reachable from the inspector and not from the line.
-        fade: { hint: "fade", type: { kind: "number", min: 0 } },
+        fade: { hint: "fade", type: SECONDS_TYPE },
         loop: { hint: "loop", type: { kind: "boolean" } },
     },
     // A named sound is addressable later (`/stop hit`); the name derives from the file like `/image`.
@@ -184,7 +184,7 @@ export const vol = defineStoryCommand({
     params: {
         target: targetParam(["audio"], { skippable: true }),
         volume: { aliases: ["vol"], hint: "volume", type: { kind: "number", min: 0, max: 1 }, positional: true, core: true },
-        fade: { hint: "fade", type: { kind: "number", min: 0 } },
+        fade: { hint: "fade", type: SECONDS_TYPE },
     },
     build: (args, ctx) => audioControlBlock("soundVolume", args, ctx.generateId, payload => {
         const volume = asNumber(args.volume);
@@ -220,7 +220,7 @@ export const stop = defineStoryCommand({
         // `video` widens both the legal lines and the sidebar: the verb now files under 视频 as well
         // as 声音 (§4.2), which is the whole reason four video capabilities cost one new token.
         target: targetParam(["audio", "video"], { fallbackKind: "audio" }),
-        fade: { hint: "fade", type: { kind: "number", min: 0 } },
+        fade: { hint: "fade", type: SECONDS_TYPE },
     },
     build: (args, ctx) => mediaControlBlock("stopSound", { video: "stop" }, args, ctx),
 });
@@ -236,7 +236,7 @@ export const pause = defineStoryCommand({
         // `Sound.pause` has always taken a fade and the compiler has always passed it; the spec was
         // the only thing that did not, which made ducking music out reachable only from the
         // inspector. A video or overlay target ignores it, exactly as it ignores `/stop`'s.
-        fade: { hint: "fade", type: { kind: "number", min: 0 } },
+        fade: { hint: "fade", type: SECONDS_TYPE },
     },
     build: (args, ctx) => mediaControlBlock("pauseSound", { video: "pause", vfx: "pause" }, args, ctx),
 });
@@ -249,7 +249,7 @@ export const resume = defineStoryCommand({
     params: {
         target: targetParam(["audio", "video", "vfx"], { fallbackKind: "audio" }),
         /** The other half of `/pause`'s fade - a duck out and back in are one gesture, two lines. */
-        fade: { hint: "fade", type: { kind: "number", min: 0 } },
+        fade: { hint: "fade", type: SECONDS_TYPE },
     },
     build: (args, ctx) => mediaControlBlock("resumeSound", { video: "resume", vfx: "resume" }, args, ctx),
 });
@@ -276,7 +276,7 @@ export const seek = defineStoryCommand({
     examples: ["/seek clip 12", "/seek bgm 30"],
     params: {
         target: targetParam(["video", "audio"], { core: true, fallbackKind: "audio" }),
-        time: { hint: "seekTime", type: { kind: "number", min: 0 }, positional: true, core: true },
+        time: { hint: "seekTime", type: SECONDS_TYPE, positional: true, core: true },
     },
     build(args, ctx): StoryBlock {
         const target = asTarget(args.target);
