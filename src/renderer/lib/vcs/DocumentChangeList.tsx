@@ -6,6 +6,7 @@ import {
     buildDocumentChangeRows,
     CHANGE_KIND_GLYPH,
     CHANGE_KIND_TINT,
+    documentDiffEmptyKey,
     documentDiffTierCaption,
     resolveDocumentChangeLabel,
     type DocumentChangeRow,
@@ -43,11 +44,28 @@ export interface DocumentChangeListProps {
      * number instead. Never nothing: a list that stops at its limit in silence is read as complete.
      */
     readonly footer?: ReactNode;
+    /**
+     * Whether the whole document appeared or disappeared, when the caller knows.
+     *
+     * It suppresses the tier caption, and the reason is that the caption would otherwise say
+     * something false. A document that was added has nothing to be compared against, so the engine
+     * reports it as one `opaque` row on purpose - but `opaque`'s caption reads "Not read" and its
+     * hint offers "too large, not text, or unreadable", none of which happened. Seen in the real
+     * app: a new 20-byte `.txt` announced itself as unreadable.
+     *
+     * A caption is a caveat about how the rows below were produced. For a document that is wholly
+     * added or removed there is exactly one row and it is not in doubt, so there is no caveat.
+     *
+     * A boolean rather than a change kind because the two callers speak different vocabularies -
+     * the working-tree list says `deleted` and the diff model says `removed` - and a prop typed as
+     * either one silently accepts the other's spelling as "not whole" rather than failing.
+     */
+    readonly wholeDocument?: boolean;
 }
 
-export function DocumentChangeList({ diff, limit, dense = false, footer }: DocumentChangeListProps) {
+export function DocumentChangeList({ diff, limit, dense = false, footer, wholeDocument }: DocumentChangeListProps) {
     const { t } = useTranslation();
-    const caption = documentDiffTierCaption(diff.tier);
+    const caption = wholeDocument ? null : documentDiffTierCaption(diff.tier);
     const { rows, hidden } = buildDocumentChangeRows(diff, limit);
     const textSize = dense ? "text-2xs" : "text-xs";
 
@@ -63,7 +81,7 @@ export function DocumentChangeList({ diff, limit, dense = false, footer }: Docum
             )}
 
             {rows.length === 0 && (
-                <p className={cn(textSize, "text-fg-subtle")}>{t("documentDiff.rows.empty")}</p>
+                <p className={cn(textSize, "text-fg-subtle")}>{t(documentDiffEmptyKey(diff.tier))}</p>
             )}
 
             {rows.map(row => (

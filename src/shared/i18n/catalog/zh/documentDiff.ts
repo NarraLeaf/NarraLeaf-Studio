@@ -114,6 +114,11 @@ export const documentDiff = {
     rows: {
         loading: "正在读取差异…",
         empty: "这个文件内部没有差异",
+        // 三种「空」。「已修改」配上「没有差异」读起来是自相矛盾，而每一档能给出的
+        // 说法强度不一样，理由见 documentDiffEmptyKey。
+        emptyFormatting: "只有格式变了",
+        emptyUntracked: "编辑器记录的内容没有变化",
+        emptyCounts: "总数没有变化",
         notInspected: "这个文件没有被查看",
         moreInGroup: "另有 {count} 处",
         viewAll: "查看全部 {count} 处",
