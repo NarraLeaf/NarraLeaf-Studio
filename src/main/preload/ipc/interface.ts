@@ -22,7 +22,7 @@ import type { DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/dev
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import type { PrivilegedActor } from "@shared/types/privileged";
-import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
+import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
@@ -421,6 +421,9 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         /** Settles paths; records nothing. `mine`/`theirs` rewrite the working tree - re-read them. */
         resolveConflicts: (projectPath: string, paths: string[], choice: VcsConflictChoice) =>
             ipcClient.invoke(IPCEventType.vcsResolveConflicts, { projectPath, paths, choice }) as Promise<RequestStatus<VcsMergeResolveResult>>,
+        /** Takes one side per path AND commits, as one act. Writes files: re-read afterwards. */
+        completeMerge: (projectPath: string, decisions: VcsMergeDecision[], options?: VcsCommitOptions) =>
+            ipcClient.invoke(IPCEventType.vcsCompleteMerge, { projectPath, decisions, options }) as Promise<RequestStatus<VcsMergeCompletion>>,
         unresolveConflicts: (projectPath: string, paths: string[]) =>
             ipcClient.invoke(IPCEventType.vcsUnresolveConflicts, { projectPath, paths }) as Promise<RequestStatus<VcsMergeResolveResult>>,
         /** Merges these paths again, discarding the working-tree bytes for them. */

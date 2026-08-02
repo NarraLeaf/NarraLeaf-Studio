@@ -5,6 +5,7 @@ import type {
     VcsAvailability,
     VcsCommitResult,
     VcsHistoryEntry,
+    VcsMergeCompletion,
     VcsMergeResolveResult,
     VcsMergeState,
     VcsPushResult,
@@ -38,9 +39,10 @@ import { IPCHandler } from "./IPCHandler";
  * there are never two sides to reconcile.
  *
  * The merge handlers at the bottom are the other exception, and they are the first thing here
- * that reckons with two sides at once. What they deliberately do NOT do is commit: settling a
- * path leaves the merge open, and the author closes it with an ordinary
- * {@link VcsCommitHandler} when they are satisfied.
+ * that reckons with two sides at once. All but one of them deliberately do NOT commit: settling a
+ * path leaves the merge open, which is what lets an author decide one file and look at the result
+ * before deciding the next. {@link VcsCompleteMergeHandler} is the one that closes it, and it does
+ * both halves at once precisely so that nothing else can commit in between.
  */
 
 /**
@@ -502,6 +504,33 @@ export class VcsResolveConflictsHandler extends IPCHandler<IPCEventType.vcsResol
         { projectPath, paths, choice }: IPCEvents[IPCEventType.vcsResolveConflicts]["data"],
     ): Promise<RequestStatus<VcsMergeResolveResult>> {
         return this.tryUse(() => window.app.getVcsManager().resolveConflicts(projectPath, paths, choice));
+    }
+}
+
+/**
+ * Take one side per path and close the merge with a commit.
+ *
+ * The one merge handler that DOES record, and it is deliberately the only way to do both halves:
+ * a renderer that settled and then committed through {@link VcsCommitHandler} would leave a window
+ * in which the checkpoint timer closes the author's merge under its own message and kind. Here they
+ * are one queued act.
+ *
+ * It writes the author's files - each side overwrites its path - and then adds a revision, so the
+ * caller carries a restore's obligations: hold the workspace in its view, release before leaving
+ * it, and re-read every document afterwards.
+ *
+ * A path the merge has not settled and the author did not decide comes back as a failure carrying
+ * the backend's own sentence, which names that path.
+ */
+export class VcsCompleteMergeHandler extends IPCHandler<IPCEventType.vcsCompleteMerge> {
+    readonly name = IPCEventType.vcsCompleteMerge;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath, decisions, options }: IPCEvents[IPCEventType.vcsCompleteMerge]["data"],
+    ): Promise<RequestStatus<VcsMergeCompletion>> {
+        return this.tryUse(() => window.app.getVcsManager().completeMerge(projectPath, decisions, options ?? {}));
     }
 }
 

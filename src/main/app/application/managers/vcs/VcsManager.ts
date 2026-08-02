@@ -8,7 +8,10 @@ import type {
     VcsCommitResult,
     VcsConflictChoice,
     VcsHistoryEntry,
+    VcsMergeCompletion,
+    VcsMergeDecision,
     VcsMergeResolveResult,
+    VcsMergeSideChoice,
     VcsMergeState,
     VcsRepositoryInfo,
     VcsPushResult,
@@ -134,6 +137,25 @@ const CHECKPOINT_MESSAGES: Readonly<Record<VcsCheckpointReason, string>> = {
 };
 
 const DEFAULT_COMMIT_MESSAGE = "Commit";
+
+/**
+ * What a merge the author did not name records.
+ *
+ * Not translated, for the reason on {@link CHECKPOINT_MESSAGES}: this sentence is permanent
+ * repository content that travels to the collaborator whose work was just merged, and a history
+ * that reads in whichever language happened to be selected is worse than one that reads in English
+ * throughout.
+ */
+const DEFAULT_MERGE_MESSAGE = "Merge";
+
+/**
+ * The two sides a path can be taken from, in the order they are applied.
+ *
+ * A constant rather than a literal in the loop so the two choices cannot drift from
+ * {@link VcsMergeSideChoice} - adding a third whole-side verb upstream is then a type error here
+ * rather than a side that is silently never applied.
+ */
+const MERGE_SIDES: readonly VcsMergeSideChoice[] = ["mine", "theirs"];
 
 /** How much of a revision id names it in a commit message when the caller had no label. */
 const RESTORE_MESSAGE_HASH_LENGTH = 12;
@@ -1411,6 +1433,83 @@ export class VcsManager extends Manager {
                 `${result.state.conflicts.length} left`,
             );
             return result;
+        });
+    }
+
+    /**
+     * Take one side per path, then close the merge with a commit.
+     *
+     * **The whole of tier one, and one operation on purpose.** Settling and recording are the
+     * same queued act, because a merge left settled-but-uncommitted is a window in which anything
+     * else that commits closes it: the checkpoint timer would record the author's merge under
+     * "Checkpoint", labelled `checkpoint`, and their own press would then be told nothing has
+     * changed. Inside one `serialize` block that cannot happen.
+     *
+     * The order, and why each step is where it is:
+     *
+     *  1. **Flush the renderer's pending saves**, first and inside the lock - the same reason a
+     *     commit does it, plus the sharper one a sync has: the resolve below OVERWRITES the paths
+     *     it names, so a debounced auto-save landing a moment later writes the author's pre-merge
+     *     document back over the side they just chose.
+     *  2. **Settle, one call per side.** Grouped rather than one call per path: each of these
+     *     flushes the repository, and a flush waits out the store keep-alive window (§4.22), so
+     *     per-path calls would cost a second each on a merge with two hundred files.
+     *  3. **Commit**, through `commitWorkingTree`, which is where the remaining three obligations
+     *     already live: it confirms there is something to commit with a NON-scanning status read
+     *     (§4.17), writes `narraleaf.kind` BEFORE the commit rather than after (§4.21 - the
+     *     metadata verb writes the staged revision, so a label set afterwards lands on the next
+     *     one), and flushes before reporting success (§4.11 - an unflushed commit can be lost
+     *     outright, and it is a race rather than a stable failure).
+     *
+     * **Committed through the session's OFFLINE globals, and that is not incidental** (§4.29).
+     * A merge is an online act; the commit that closes it must not be. Measured: on a repository
+     * registered with a server, a revision committed under `offline: false` cannot have its new
+     * content read back by the process that wrote it - the author's freshly resolved file would be
+     * unreadable in the very session that resolved it, until Studio restarted. `session.globals`
+     * is offline by construction (see {@link globalsFor}); nothing here may spread `offline: false`
+     * over it, and `merge.integration.test.ts` reads the bytes back through this same manager to
+     * keep that true.
+     *
+     * No `fileStageMerge`: measured, a plain commit records a settled merge, and the merge's own
+     * `~base`/`~mine`/`~theirs` files are excluded by the backend even when the whole tree is
+     * staged first (§4.23), which is exactly what this commit does.
+     *
+     * The caller must re-read every document afterwards - every settled path was rewritten - and
+     * must hold the workspace in its view for the duration, releasing before it leaves it.
+     */
+    public async completeMerge(
+        projectPath: string,
+        decisions: readonly VcsMergeDecision[],
+        options: VcsCommitOptions = {},
+    ): Promise<VcsMergeCompletion> {
+        return this.serialize(projectPath, async () => {
+            if (this.flushPendingSaves) {
+                await this.flushPendingSaves(projectPath).catch((error) => {
+                    this.app.logger.warn("[Vcs] Could not flush pending saves before completing a merge", error);
+                });
+            }
+
+            const { session, backend } = await this.sessionFor(projectPath);
+            const globals = { ...session.globals, identity: this.resolveIdentity(options.identity) };
+
+            for (const choice of MERGE_SIDES) {
+                const paths = decisions.filter((decision) => decision.choice === choice)
+                    .map((decision) => decision.path);
+                if (paths.length === 0) continue;
+                await backend.resolveConflicts(globals, session.root, paths, choice);
+            }
+
+            const revision = await backend.commitWorkingTree(globals, {
+                message: options.message?.trim() || DEFAULT_MERGE_MESSAGE,
+                kind: "commit",
+            });
+            const state = await backend.readMergeState(globals, session.root);
+            this.app.logger.info(
+                "[Vcs] Completed merge", session.root, revision.revision,
+                `${decisions.length} path(s) settled`,
+                state.inProgress ? "MERGE STILL OPEN" : "",
+            );
+            return { revision, state };
         });
     }
 

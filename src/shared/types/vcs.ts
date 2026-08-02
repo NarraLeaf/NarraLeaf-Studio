@@ -540,8 +540,11 @@ export interface VcsSyncResult {
     /**
      * Paths the merge could not settle, which the author must resolve before committing.
      *
-     * Empty in the ordinary case. Studio has no resolve interface yet, so a non-empty
-     * list is reported and the operation stops rather than pretending it can be handled.
+     * Empty in the ordinary case. A non-empty list is REPORTED and the sync stops there: it does
+     * not carry the author into the resolve surface, which they reach by pressing something. Same
+     * discipline as never creating a repository on their behalf, and forced by the mechanism too -
+     * these paths exist only in the sync's own event stream (docs §4.24), so handing them over has
+     * to be deliberate.
      */
     conflicts: string[];
     /** True when nothing was behind: the working tree already matched the server. */
@@ -607,18 +610,57 @@ export interface VcsMergeState {
  * writes the bytes first and this says they are final. The other two overwrite the
  * working tree with one side wholesale and are the only ones available for content
  * Studio cannot merge - binaries, documents with no spec, anything over the size budget.
+ *
+ * **`mine` is always the author's own side and `theirs` the incoming one**, which is not
+ * what the backend verbs of those names do after a sync - see `resolveConflicts` in
+ * `vcs/merge.ts` for the measurement and for what Studio does instead.
  */
 export type VcsConflictChoice = "working-tree" | "mine" | "theirs";
+
+/**
+ * The two choices that take a file WHOLE, which is the whole of tier one.
+ *
+ * Derived from {@link VcsConflictChoice} rather than written out again, so a fourth verb added
+ * to the backend cannot appear here without someone deciding whether it takes a side whole.
+ * `working-tree` is deliberately excluded: it means "the caller has already written the answer",
+ * which is per-change resolution and a later milestone.
+ */
+export type VcsMergeSideChoice = Exclude<VcsConflictChoice, "working-tree">;
+
+/**
+ * One conflicted path and the side the author chose for it.
+ *
+ * Per PATH rather than one choice for the whole merge, because taking every file from one side is
+ * rarely what anyone means - and per file is still tier one, since each file is taken whole.
+ */
+export interface VcsMergeDecision {
+    /** Repository-relative, as {@link VcsMergeState.conflicts} reports it. */
+    path: string;
+    choice: VcsMergeSideChoice;
+}
+
+/**
+ * What closing a merge did: the revision it recorded, and what the merge looks like afterwards.
+ *
+ * `state` is re-read rather than assumed empty. A merge that still lists conflicts here is a
+ * defect worth seeing rather than one to hide - and the backend refuses the commit outright while
+ * anything is genuinely unsettled, naming the path, so this resolving at all already means the
+ * decisions covered everything.
+ */
+export interface VcsMergeCompletion {
+    revision: VcsCommitResult;
+    state: VcsMergeState;
+}
 
 /** What settling some paths did. */
 export interface VcsMergeResolveResult {
     /**
      * Paths the backend acknowledged, repository-relative.
      *
-     * **Empty is not a failure for `mine` and `theirs`**: measured, those two report no
-     * per-file events at all and only `working-tree` names what it settled
-     * (docs/version-control.md §4.25). A caller that needs to know what is left asks
-     * {@link VcsMergeState} again rather than reading this.
+     * **Empty is not a failure.** Measured, only the verb that accepts the working tree
+     * reports per-file events at all (docs/version-control.md §4.25) - which is now the
+     * verb every choice goes through, so this is usually populated, and a caller that
+     * needs to know what is LEFT asks {@link VcsMergeState} again rather than reading this.
      */
     files: string[];
     /** What is still open afterwards, re-read rather than inferred. */

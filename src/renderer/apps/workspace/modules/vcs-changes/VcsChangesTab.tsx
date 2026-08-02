@@ -8,22 +8,25 @@ import { DocumentChangeList } from "@/lib/vcs/DocumentChangeList";
 import { buildDocumentChangeRows, CHANGE_KIND_GLYPH, CHANGE_KIND_TINT } from "@/lib/vcs/documentChangeView";
 import { useDocumentDiff, type DocumentDiffRequest } from "@/lib/vcs/useDocumentDiff";
 import { shortRevision, splitChangePath } from "../../components/layout/versionRailModel";
+import { VcsResolvePanel } from "./VcsResolvePanel";
 import type { VcsChangesPayload } from "./vcsChangesIds";
 
 /**
  * The same `DocumentChange` list the version rail expands, at editor width.
  *
  * It exists because the rail cannot be the only home for this. A 320px column can show eight rows
- * of one file's changes and nothing more, and conflict resolution - which is the same list with a
- * side to take per row (plan 2026-07-31-004 §3.2, D6) - has nowhere to live in a column that narrow.
- * So this is a tab rather than a modal: a comparison is a document, and the workspace already opens
- * documents in tabs, which is also what lets the author keep one open beside the editors they are
- * about to change.
+ * of one file's changes and nothing more, and conflict resolution - the same list with a side to
+ * take per row (plan 2026-07-31-004 §3.2) - has nowhere to live in a column that narrow. So this is
+ * a tab rather than a modal: a comparison is a document, and the workspace already opens documents
+ * in tabs, which is also what lets the author keep one open beside the editors they are about to
+ * change.
  *
- * **Read-only by construction, therefore never gated on the freeze.** Nothing here can write project
- * data even in principle, and a frozen workspace - which is what a revision preview IS - is exactly
- * the state an author is in when they want to know what changed. The rule is `freezeGuard`'s third
- * bullet: navigation, selection and inspection are never touched.
+ * **The comparison half is read-only by construction, therefore never gated on the freeze.** Nothing
+ * below can write project data even in principle, and a frozen workspace - which is what a revision
+ * preview IS - is exactly the state an author is in when they want to know what changed. The rule is
+ * `freezeGuard`'s third bullet: navigation, selection and inspection are never touched. The resolve
+ * mode is the exception and consults the guard itself, because taking a side rewrites files; see
+ * `VcsResolvePanel`, which is a separate component so that the two cannot share a hook.
  *
  * **Never re-reads on its own.** The working-tree comparison scans, and a scan records newly
  * discovered directories into staged state (docs §4.17), so the only re-read is the button in the
@@ -44,10 +47,17 @@ const TAB_ROW_BUDGET = 1000;
 const DOCUMENT_ROW_CEILING = 200;
 
 export function VcsChangesTab({ payload }: { payload?: VcsChangesPayload }) {
-    const { t } = useTranslation();
     // A tab restored from a persisted layout can arrive without one; the working tree is the answer
     // that is always meaningful, where a revision pair invented here would name versions at random.
     const mode: VcsChangesPayload = payload ?? { mode: "working-tree" };
+    // Dispatched here rather than branched inside one body, because the two halves must not share
+    // hooks: a comparison SCANS (docs §4.17), and a resolve view that mounted the comparison hook
+    // would run that scan every time an author opened the merge - for a list it never draws.
+    return mode.mode === "resolve" ? <VcsResolvePanel /> : <DocumentComparison mode={mode} />;
+}
+
+function DocumentComparison({ mode }: { mode: Exclude<VcsChangesPayload, { mode: "resolve" }> }) {
+    const { t } = useTranslation();
     const request = useMemo<DocumentDiffRequest>(
         () => (mode.mode === "between" ? { mode: "between", from: mode.from, to: mode.to } : { mode: "working-tree" }),
         [mode.mode, mode.mode === "between" ? mode.from : null, mode.mode === "between" ? mode.to : null],
@@ -199,7 +209,7 @@ function DocumentSection({ entry, limit }: { entry: DocumentDiffEntry; limit: nu
 
 /** What the header says this tab is comparing. Both sides are always named, or the tab is a mystery. */
 function comparisonHeading(
-    payload: VcsChangesPayload,
+    payload: Exclude<VcsChangesPayload, { mode: "resolve" }>,
     head: string | undefined,
     t: Translator["t"],
 ): string {
