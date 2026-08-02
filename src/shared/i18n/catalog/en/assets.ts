@@ -159,6 +159,82 @@ export const assets = {
         remoteInvalidUrl: "Please enter a valid URL",
         remoteFailedTitle: "Failed to import remote asset",
     },
+    /**
+     * The guided import for model bundles — the one asset type an author has a *folder* of rather
+     * than files, and the one whose contents Studio can check before it copies them.
+     *
+     * Two things every string here has to keep straight. The kind picked on the first step decides
+     * which manifests are looked for and nothing else: no runtime is installed, contacted or
+     * required by anything this dialog does. And the checks are about **files being present**, not
+     * about the model being good — nothing here may read as though Studio had validated a model.
+     */
+    modelImport: {
+        title: "Import Models",
+        familyStep: "What kind of model is this?",
+        /** Said up front because the runtime installer is the step authors expect to be blocked by. */
+        familyNoRuntime: "Nothing is installed here. A drawing runtime is set up later, on the character that uses the model.",
+        family: {
+            live2d: "Live2D Cubism",
+            live2dHint: "A folder holding a .model3.json, or Cubism 2's model.json.",
+            spine: "Spine",
+            spineHint: "A folder holding a .skel or .json skeleton beside its .atlas.",
+        },
+        folderStep: "Choose a folder",
+        folderHint: "One model's folder, or a folder holding several — everything inside is searched.",
+        chooseFolder: "Choose Folder…",
+        changeFolder: "Change…",
+        rescan: "Scan again",
+        scanning: "Scanning…",
+        foundCount: {
+            one: "{count} model found",
+            other: "{count} models found",
+        },
+        noneFound: "No {family} models in this folder.",
+        noneFoundHint: "Check the kind chosen above, then check the folder — it should be the one the exporter wrote.",
+        entry: "Entry",
+        /** Row subtitle: what the folder holds, before any of it is copied. */
+        fileSummary: "{count} files · {size}",
+        selectAll: "Select all",
+        selectNone: "Select none",
+        importAction: "Import",
+        importCount: {
+            one: "Import {count} model",
+            other: "Import {count} models",
+        },
+        /** Why a row starts unticked, and that ticking it anyway is allowed. */
+        blockedHint: "Models with missing files start unticked. Tick one to import it as it is.",
+        problemCount: {
+            one: "{count} problem",
+            other: "{count} problems",
+        },
+        problem: {
+            missing: "Missing {role}: {path}",
+            unusableReference: "The {role} “{raw}” is outside this folder and will not be copied with it.",
+            manifestUnreadable: "{path} could not be read.",
+            atlasMissing: "No atlas beside the skeleton — {path} was expected.",
+            atlasEmpty: "{path} names no image.",
+            nestedModel: "Holds another model, {path}, which this folder would bring along.",
+        },
+        /** How a missing file is named. Lower-case: these are read mid-sentence. */
+        role: {
+            moc: "model file",
+            texture: "texture",
+            physics: "physics file",
+            pose: "pose file",
+            displayInfo: "display info file",
+            userData: "user data file",
+            expression: "expression",
+            motion: "motion",
+            sound: "sound",
+            skeleton: "skeleton",
+            atlas: "atlas",
+            page: "page image",
+        },
+        failedTitle: "Could not scan that folder",
+        unreadable: "That folder could not be read.",
+        /** Refused rather than truncated: a partial listing would report present files as missing. */
+        tooManyFiles: "That folder holds {count} files, too many to check. Pick the folder the models are in.",
+    },
     menu: {
         newGroup: "New Group",
         newSubGroup: "New Sub-Group",
