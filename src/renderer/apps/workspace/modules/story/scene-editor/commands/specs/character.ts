@@ -18,8 +18,8 @@ import {
     type StoryCommandParamsShape,
     type StoryCommandValidateContext,
 } from "../spec";
-import { vfxOperationBlock, withPlacementTransform, withRevealTransform, withTransitionRef } from "../payloadHelpers";
-import { mergedTransitionOptions, supportedTransitionWords, transformPresetFor, transitionKindFor } from "../transitions";
+import { vfxOperationBlock, withPlacementTransform, withRevealTransform } from "../payloadHelpers";
+import { supportedTransitionWords, transformPresetFor, transitionOptions } from "../transitions";
 
 /**
  * The generic verbs and the character commands: `/show`, `/hide`, `/move`, `/face`, `/motion`,
@@ -82,13 +82,16 @@ function validateTransitionForTarget(
     if (!span) {
         return [];
     }
+    const context = direction === "show" ? "reveal" : "conceal";
+    // A character now animates through the same reveal/conceal presets a stage object does (see
+    // `buildShowHide`), so it is judged against the same table rather than against the portrait-swap
+    // transitions it no longer writes.
     if (target.type === "character") {
-        if (transitionKindFor("character", word) === undefined) {
-            return [{ code: "unsupportedOption", span, value: word, allowed: supportedTransitionWords("character") }];
+        if (transformPresetFor(context, word) === undefined) {
+            return [{ code: "unsupportedOption", span, value: word, allowed: supportedTransitionWords(context) }];
         }
         return [];
     }
-    const context = direction === "show" ? "reveal" : "conceal";
     // Video and vfx are not Displayables, so the reveal/conceal preset table does not describe them
     // at all - there is no legal word to name, and reporting against a table they do not use would be
     // reporting the wrong thing.
@@ -174,11 +177,23 @@ function buildShowHide<P extends StoryCommandParamsShape>(
         if (args.form?.kind === "characterForm" && args.form.refId) {
             applyAppearanceRef(payload, args.form.refId, args.form.axisId);
         }
-        const transform = direction === "show"
+        // `t=` lands on the TRANSFORM, not on the transition ref.
+        //
+        // The engine ignores a character's transition on the way in and out: `enter` compiles to
+        // `char(src).show(showTransform)` and `exit` to `hide(transform)` — a transition only applies
+        // where the image source is swapped, which is `expression`. Writing `transition` here filled a
+        // field nothing reads, and the row and the inspector then showed two different answers to
+        // "how does this character leave" (the inspector edits the transform, which is the live one).
+        //
+        // Placement wins when both are given, the rule `/image` already follows: a transform holds one
+        // preset, and `at=` is the more specific instruction.
+        const placed = direction === "show"
             ? withPlacementTransform(payload.transform, args.at, args.d)
             : withPlacementTransform(payload.transform, undefined, args.d);
-        const transition = withTransitionRef(payload.transition, "character", args.t, undefined);
-        return { ...block, payload: { ...payload, ...(transform ? { transform } : {}), ...(transition ? { transition } : {}) } };
+        const transform = direction === "show" && args.at
+            ? placed
+            : withRevealTransform(placed, direction === "show" ? "reveal" : "conceal", args.t, args.d);
+        return { ...block, payload: { ...payload, ...(transform ? { transform } : {}) } };
     }
 
     // An ambience overlay fades rather than shows: its own payload, and `d=` is the fade the action
@@ -222,7 +237,7 @@ export const show = defineStoryCommand({
         target: targetParam(SHOW_HIDE_ACCEPTS, { core: true }),
         form: { hint: "form", type: { kind: "characterForm", dependsOn: "target" }, positional: true },
         at: placementParam(),
-        t: { aliases: ["transition"], hint: "transition", type: { kind: "enum", options: mergedTransitionOptions("character", "reveal") } },
+        t: { aliases: ["transition"], hint: "transition", type: { kind: "enum", options: transitionOptions("reveal") } },
         d: secondsParam(),
     },
     build: (args, ctx) => buildShowHide("show", args, ctx),
@@ -242,7 +257,7 @@ export const hide = defineStoryCommand({
     quickParams: ["d"],
     params: {
         target: targetParam(SHOW_HIDE_ACCEPTS, { core: true }),
-        t: { aliases: ["transition"], hint: "transition", type: { kind: "enum", options: mergedTransitionOptions("character", "conceal") } },
+        t: { aliases: ["transition"], hint: "transition", type: { kind: "enum", options: transitionOptions("conceal") } },
         d: secondsParam(),
     },
     build: (args, ctx) => buildShowHide("hide", args, ctx),

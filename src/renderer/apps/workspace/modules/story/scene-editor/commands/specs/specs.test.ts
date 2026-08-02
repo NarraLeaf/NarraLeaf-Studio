@@ -113,6 +113,8 @@ describe("scene commands", () => {
 
 describe("generic verbs (bible B3)", () => {
     it("/show dispatches on the target: a character enters", () => {
+        // `at=` wins the preset when both are given — a transform holds one, and a placement is the
+        // more specific instruction. The rule `/image` already followed.
         expect(build("/show Alice smile at=left t=fade d=0.3")).toMatchObject({
             kind: "action",
             payload: {
@@ -121,9 +123,21 @@ describe("generic verbs (bible B3)", () => {
                 characterId: "c1",
                 pose: "t1",
                 transform: { preset: "left", durationMs: 300 },
-                transition: { kind: "fadeIn" },
             },
         });
+    });
+
+    it("a character enters and leaves through its TRANSFORM, which is the field the engine plays", () => {
+        // Not `transition`: `enter` compiles to `char(src).show(transform)` and `exit` to
+        // `hide(transform)`, so a transition ref written here would be a setting nothing reads — and
+        // the inspector, which edits the transform, would show a different answer than the row.
+        expect(build("/show Alice t=fade")).toMatchObject({
+            payload: { action: "character", operation: "enter", transform: { preset: "fadeIn" } },
+        });
+        expect(build("/hide Alice t=fade")).toMatchObject({
+            payload: { action: "character", operation: "exit", transform: { preset: "fadeOut" } },
+        });
+        expect(build("/hide Alice t=fade").payload).not.toHaveProperty("transition.kind", "fadeIn");
     });
 
     it("/show dispatches on the target: an image reveals through its transform preset", () => {
@@ -160,7 +174,12 @@ describe("generic verbs (bible B3)", () => {
 
     it("rejects a target nothing answers to, and an unsupported word for the resolved context", () => {
         expect(issuesOf("/show nobody")).toEqual(["unknownTarget"]);
-        expect(issuesOf("/show Alice t=zoom")).toEqual(["unsupportedOption"]);
+        // Every subject `/show` reaches now animates through the SAME reveal table, so a word outside
+        // it is refused by the grammar itself rather than surviving to resolution: `zoom` reaches a
+        // character exactly as it reaches an image, and `blinds` (a whole-screen transition) reaches
+        // neither.
+        expect(issuesOf("/show Alice t=zoom")).toEqual([]);
+        expect(parseCommandLine("/show Alice t=blinds")).toMatchObject({ issues: [{ code: "badValue" }] });
         expect(issuesOf("/show hero smile")).toEqual(["unknownForm"]);
     });
 

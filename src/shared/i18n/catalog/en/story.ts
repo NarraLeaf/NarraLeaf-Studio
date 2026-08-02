@@ -431,6 +431,9 @@ export const story = {
         black: "black",
         darkness: "darkness",
         none: "none",
+        // The transform presets `t=` reaches on a show/hide that the transition words did not name.
+        scale: "scale",
+        opacity: "opacity",
         // Placement (`at=`) and the camera's positional amount.
         left: "left",
         center: "center",
