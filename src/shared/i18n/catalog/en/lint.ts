@@ -104,6 +104,13 @@ export const lint = {
             description: "One name declared in two places",
             message: "{variable} is declared twice as a persistent variable",
         },
+        variablesRandomOutsideAssignment: {
+            title: "Random outside an assignment",
+            description: "A random value somewhere it is re-rolled instead of kept",
+            message: "{fn}() is re-rolled every time this condition is tested, so the branch can change on its own. Roll it once with /set, then test that variable",
+            messageChoiceOption: "{fn}() is re-rolled every time the menu draws, so this option will flicker. Roll it once with /set, then test that variable",
+            messageInterpolation: "{fn}() is re-rolled every time this line draws, so the value keeps changing. Roll it once with /set, then show that variable",
+        },
         textOverlong: {
             title: "Overlong line",
             description: "A line wider than the dialogue box holds",

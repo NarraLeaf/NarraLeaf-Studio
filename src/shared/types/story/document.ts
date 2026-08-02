@@ -43,7 +43,52 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
 // and v8 were. A v11 Studio would ignore the field and fall back to key order, which the canonical
 // serializer sorts by UUID - so it would open the document, show the scenes in a random order, and
 // save that as if the author had arranged it. Refusing the document is the point.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 12 as const;
+// v13 does two things at once, because both change what a block may BE and one migration has to see
+// the other's output. (a) The `code` block kind is gone. It had a language picker and a source
+// editor and had never run: the compiler skipped every one of them with a warning, so the whole
+// affordance was a promise the runtime never kept. Its rows migrate to `note` with the source
+// carried over verbatim - authors typed real code into them, and dropping it would be silent data
+// loss. (b) A `repeat` group may now carry `until` (a condition, compiled to the engine's
+// `whileLoop`) instead of `times`, and there is a new `{control:"break"}` row.
+// Neither half is additive, and in opposite directions. A v12 Studio reading a v13 document would
+// find a control payload whose `control` is `"break"` and an `until` it does not know, and would
+// compile the loop as a one-shot `repeat` with no iteration at all - a scene that runs, silently
+// wrong. Reading the other way, a v12 document's `code` rows no longer typecheck as blocks at all.
+// So the bump makes an older Studio refuse rather than reinterpret.
+// v14 adds two node kinds to the story expression language: `array` (the `[1, 2, 3]` literal) and
+// `index` (the `inv[0]` / `flags["ch1"]` subscript), which together are what finally lets a `json`
+// variable be READ - it could always be stored, and until now every use of one had to detour through
+// a blueprint. The whitelist grows by 22 collection and string functions in the same change, but
+// functions need no version: an unknown name has always parsed to `invalid`, which is a tree the
+// compiler refuses, so an older Studio fails loudly on those already.
+// No migration. A v13 document cannot contain either node - they did not exist to be written - so
+// there is nothing to rewrite and the ladder in `migrateStoryDocumentToLatest` gets no new step,
+// only the unconditional stamp it already ends with.
+// The bump is still not optional, and this is the one direction that matters: a v13 Studio reading a
+// v14 expression would meet a node kind absent from every one of its switches. `isStoryExpressionEvaluable`
+// returns `undefined` for it, the compiler reads that as falsy and quietly drops the expression, and
+// the evaluator's exhaustive switch falls through to `undefined` - so an inventory check would read
+// as empty rather than as broken. Refusing the document is the point.
+// v15 adds two more node kinds to the story expression language, and both are *references* rather
+// than computations: `visited` (`visited(序章)` / `picked(那句拒绝)`, a read of the visited record in
+// `runtime/game/storyVisited.ts`) and `invoke` (`bonus()`, a call to a `mode:"value"` Story Action
+// Blueprint whose Return Value becomes the expression's). Between them they close the last two
+// places where an expression had to detour through a blueprint: a route/one-shot check, which only
+// the blueprint nodes could ask, and an assignment right-hand side, which was the one slot of the
+// three that could not name a blueprint at all (interpolation and conditions both already could).
+// Both store an id and carry the author's name for display and repair only - the same convention as
+// `var` / `StoryVariableRef` / `StoryLayerRef` - so renaming a scene, rewording an option or
+// renaming a blueprint cannot break a reference.
+// No migration, for the same reason v14 needed none: a v14 document cannot contain either node, so
+// the ladder in `migrateStoryDocumentToLatest` gains no step, only the stamp it already ends with.
+// The bump is about the other direction, and here the silent-wrong-answer is worse than v14's. A
+// v14 Studio reading `visited(序章)` meets a node kind absent from every switch it has:
+// `isStoryExpressionEvaluable` returns `undefined`, the compiler reads that as falsy and drops the
+// expression, and the branch it guarded stops being taken. The author sees a route lock that never
+// engages and a one-shot option that never greys out - i.e. a story that runs, plausibly, and gates
+// nothing. An `invoke` fails the same way, silently turning a computed bonus into "no bonus".
+// Refusing the document is the point.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 15 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -281,14 +326,13 @@ export type StoryPersistentDefinitionLegacy = {
     meta?: StoryMeta;
 };
 
-export type StoryBlockKind = "nodeAction" | "action" | "control" | "jump" | "code" | "note" | "invalid" | "declaration";
+export type StoryBlockKind = "nodeAction" | "action" | "control" | "jump" | "note" | "invalid" | "declaration";
 
 export type StoryBlock =
     | StoryNodeActionBlock
     | StoryActionBlock
     | StoryControlBlock
     | StoryJumpBlock
-    | StoryCodeBlock
     | StoryNoteBlock
     | StoryInvalidBlock
     | StoryDeclarationBlock;
@@ -312,7 +356,6 @@ export type StoryNodeActionBlock = StoryBlockBase<"nodeAction", StoryNodeActionP
 export type StoryActionBlock = StoryBlockBase<"action", StoryActionPayload>;
 export type StoryControlBlock = StoryBlockBase<"control", StoryControlPayload>;
 export type StoryJumpBlock = StoryBlockBase<"jump", StoryJumpPayload>;
-export type StoryCodeBlock = StoryBlockBase<"code", StoryCodePayload>;
 export type StoryNoteBlock = StoryBlockBase<"note", StoryNotePayload>;
 export type StoryInvalidBlock = StoryBlockBase<"invalid", StoryInvalidPayload>;
 export type StoryDeclarationBlock = StoryBlockBase<"declaration", StoryDeclarationPayload>;
@@ -727,6 +770,35 @@ export type StoryControlPayload =
           control: "sequence" | "parallel" | "race" | "repeat";
           mode?: "do" | "doAsync" | "all" | "allAsync" | "any";
           times?: number;
+          /**
+           * A conditional loop (schema v13), on `repeat` only: run the body over and over **until**
+           * this condition becomes true. Mutually exclusive with {@link times} - `until` present is
+           * what selects the conditional form, and the two together are a command-line error.
+           *
+           * Read the name literally, because the engine's is the opposite. `until` is a STOP
+           * condition; NLR's `Control.whileLoop` takes a CONTINUE condition, so the compiler passes
+           * it the negation. Anything that evaluates this - a preview, a lint, a second compiler -
+           * has to do the same, and getting it backwards produces a loop that runs zero times or
+           * forever rather than an error anyone can see.
+           *
+           * The body is not guaranteed to run: like a while loop, the condition is tested first, so
+           * an `until` that is already true skips the group entirely. There is deliberately no
+           * "test at the end" variant - one loop shape is enough, and the author can put the row
+           * before the group.
+           */
+          until?: StoryConditionRef;
+      }
+    | {
+          /**
+           * Leave the innermost enclosing loop (`Control.breakLoop`) - the escape hatch a conditional
+           * loop needs, since an `until` that a body can no longer satisfy has no other way out.
+           *
+           * Carries nothing and takes no children: it is a single instruction, so unlike every other
+           * `control` row it is not a container. Legal only inside a `repeat` body; the compiler
+           * diagnoses a stray one rather than emitting it, because the engine's own error for a
+           * `breakLoop` with no loop around it arrives at play time, on the player's screen.
+           */
+          control: "break";
       }
     | {
           /**
@@ -753,13 +825,6 @@ export type StoryControlPayload =
 export type StoryJumpPayload = {
     targetSceneId: StorySceneId;
     transition?: StoryTransitionRef;
-};
-
-export type StoryCodePayload = {
-    language: "typescript" | "javascript" | "narraleaf";
-    source: string;
-    folded?: boolean;
-    advanced?: boolean;
 };
 
 export type StoryNotePayload = {

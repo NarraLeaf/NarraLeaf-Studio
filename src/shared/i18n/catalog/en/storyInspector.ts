@@ -491,6 +491,14 @@ export const storyInspector = {
             any: "Any",
         },
         times: "Times",
+        loopKind: "Loop",
+        loopKindTimes: "A number of times",
+        loopKindUntil: "Until a condition",
+        until: "Stop when",
+        // Spells out the two things the token itself does not: it is a STOP condition, and it is
+        // tested before the body, so a condition already true means the group never runs.
+        untilHint: "The group repeats while this is false, and stops the moment it becomes true. Checked before each pass.",
+        breakHint: "Leaves the repeat group around this row. It does nothing outside one.",
         branch: "Branch",
         elseHint: "Else branch runs when previous branches do not match.",
     },
@@ -498,11 +506,6 @@ export const storyInspector = {
     condition: {
         brokenExpression: "This expression no longer resolves - a variable it reads may have been renamed or deleted. The branch evaluates false until it is fixed.",
         clear: "Clear condition",
-    },
-
-    code: {
-        language: "Language",
-        source: "Source",
     },
 
     declaration: {

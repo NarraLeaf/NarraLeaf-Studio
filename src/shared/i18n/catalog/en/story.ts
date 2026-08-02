@@ -569,6 +569,8 @@ export const story = {
     },
     repeat: {
         times: "times",
+        // The header reads "Repeat until <condition>", so this is a preposition, not a label.
+        until: "until",
     },
     bulkDelete: {
         confirm: "Delete {count} selected rows?",
@@ -638,7 +640,11 @@ export const story = {
         declarePersis: { label: "Global variable", detail: "Declare an app-level variable blueprints can read" },
         if: { label: "If", detail: "Branch on a condition" },
         menu: { label: "Menu", detail: "Let the player choose" },
-        repeat: { label: "Repeat", detail: "Run the enclosed actions a number of times" },
+        repeat: { label: "Repeat", detail: "Run the enclosed actions a set number of times — for a condition instead, use /until" },
+        // The detail carries the one thing the token cannot: `until` says when to STOP, so the group
+        // runs while the condition is false. Named as a stop condition because that is what it is.
+        until: { label: "Until", detail: "Repeat the enclosed actions until a condition becomes true — it is checked before each pass" },
+        break: { label: "Break", detail: "Leave the repeat group this row sits in" },
         parallel: { label: "Parallel", detail: "Run the enclosed actions together" },
         race: { label: "Race", detail: "Run all, continue when the first finishes" },
         sequence: { label: "Sequence", detail: "Run the enclosed actions in order" },
@@ -646,7 +652,6 @@ export const story = {
         // and /goto does not, and no author can guess which from the token alone.
         label: { label: "Label", detail: "Mark a place in this scene for /goto to reach" },
         goto: { label: "Go to", detail: "Move the play head to a label in this scene — unlike /jump, the scene keeps running" },
-        code: { label: "Code", detail: "A script block" },
         blueprint: { label: "Blueprint", detail: "Run a Story Action Blueprint" },
         blink: { label: "Blink", detail: "Screen blink effect" },
         vignette: { label: "Vignette", detail: "Screen vignette effect" },
@@ -663,6 +668,7 @@ export const story = {
         elseIf: "Else if",
         else: "Otherwise",
         repeat: "Repeat",
+        repeatUntil: "Repeat until",
         parallel: "Run at the same time",
         race: "Race, first to finish",
         sequence: "In order",
@@ -695,8 +701,8 @@ export const story = {
         control: "Control",
         label: "Label",
         goto: "Go to",
+        break: "Break",
         jump: "Jump",
-        code: "Code",
         note: "Note",
         invalid: "Invalid",
     },
@@ -758,8 +764,8 @@ export const story = {
         branch: "{branch} branch",
         label: "Label {name}",
         goto: "Go to {name}",
+        break: "Break out of the loop",
         jump: "Jump {scene}",
-        code: "{language} code",
         note: "Note",
         invalid: "Invalid command",
         sceneUnassigned: "unassigned",

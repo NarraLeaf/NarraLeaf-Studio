@@ -100,6 +100,13 @@ export const lint = {
             description: "同一个名字在两处声明",
             message: "{variable} 被声明了两个不同的持久变量",
         },
+        variablesRandomOutsideAssignment: {
+            title: "赋值之外的随机数",
+            description: "随机值出现在会被反复重算的位置",
+            message: "{fn}() 每次判断这个条件都会重掷一次，分支会自己变。先用 /set 掷进一个变量，再判断那个变量",
+            messageChoiceOption: "{fn}() 每次绘制菜单都会重掷一次，这个选项会闪。先用 /set 掷进一个变量，再判断那个变量",
+            messageInterpolation: "{fn}() 每次绘制这一行都会重掷一次，显示的值会一直变。先用 /set 掷进一个变量，再显示那个变量",
+        },
         textOverlong: {
             title: "行太长",
             description: "超出对话框能放下的宽度",

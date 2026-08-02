@@ -3,6 +3,7 @@ import type {
     StoryActionPayload,
     StoryBlock,
     StoryBlockId,
+    StoryConditionRef,
     StoryDocument,
     StoryExpr,
     StoryScene,
@@ -191,8 +192,14 @@ export type StoryContainerHeaderInfo = {
     role: StoryContainerRole;
     /** Branch (if / else-if) headers carry an editable condition; else / others do not. */
     hasCondition: boolean;
-    /** Repeat groups expose an inline repeat count. */
+    /** Counted repeat groups expose an inline repeat count. Never set together with {@link repeatUntil}. */
     repeatTimes?: number;
+    /**
+     * Conditional repeat groups (`/repeat until=…`) expose the stop condition instead of a count.
+     * Which of the two is defined IS the form of the loop - there is no third field saying which,
+     * because the payload does not have one either (`until` present selects the conditional form).
+     */
+    repeatUntil?: StoryConditionRef;
 };
 
 /** Header descriptor for a container block - the pill text + which inline editors it exposes. */
@@ -211,10 +218,20 @@ export function getStoryContainerHeaderInfo(block: StoryBlock): StoryContainerHe
             return { pill, role: "branch", hasCondition: payload.branch !== "else" };
         }
         // Not containers, so they have no header at all - they render as ordinary rows.
-        if (payload.control === "label" || payload.control === "goto") {
+        if (payload.control === "label" || payload.control === "goto" || payload.control === "break") {
             return null;
         }
         if (payload.control === "repeat") {
+            // `until` is what selects the conditional form, so it is read first: a group carrying one
+            // is never shown a count, even if a stale `times` survived beside it.
+            if (payload.until !== undefined) {
+                return {
+                    pill: translate("story.containerHeader.repeatUntil"),
+                    role: "group",
+                    hasCondition: false,
+                    repeatUntil: payload.until,
+                };
+            }
             return { pill: translate("story.containerHeader.repeat"), role: "group", hasCondition: false, repeatTimes: payload.times ?? 1 };
         }
         if (payload.control === "parallel") {
@@ -272,7 +289,7 @@ export type StoryBlockBadgeId =
     | "background" | "character" | "audio" | "variable" | "wait" | "image"
     | "transform" | "displayable" | "text" | "layer" | "video" | "vfx" | "nvl"
     | "blueprint" | "camera" | "effect"
-    | "label" | "goto" | "control" | "jump" | "code" | "invalid" | "declaration" | "note";
+    | "label" | "goto" | "break" | "control" | "jump" | "invalid" | "declaration" | "note";
 
 export type StoryBlockBadge = {
     id: StoryBlockBadgeId;
@@ -331,10 +348,12 @@ export function storyBlockBadge(block: StoryBlock): StoryBlockBadge {
         // would otherwise wear the generic "Control" of a container they are not.
         if (block.payload.control === "label") return badge("label", "story.badge.label", "flow");
         if (block.payload.control === "goto") return badge("goto", "story.badge.goto", "flow");
+        // Same reasoning as label/goto: a break is an exit, not a container, and the generic
+        // "Control" badge would file it beside the group it is trying to leave.
+        if (block.payload.control === "break") return badge("break", "story.badge.break", "flow");
         return badge("control", "story.badge.control", "flow");
     }
     if (block.kind === "jump") return badge("jump", "story.badge.jump", "scene");
-    if (block.kind === "code") return badge("code", "story.badge.code", "utils");
     if (block.kind === "invalid") return badge("invalid", "story.badge.invalid", null);
     if (block.kind === "declaration") {
         return badge("declaration", `story.badge.declare.${block.payload.scope}` as TranslationKey, "data");
@@ -401,6 +420,49 @@ function variableRefShortLabel(ref: StoryVariableRef, scene?: StoryScene, scenes
         }
     }
     return translate("story.describe.variableFallback");
+}
+
+/**
+ * One-line, id-free summary of a condition - what a `/repeat until` header prints.
+ *
+ * Deliberately not shared with the editor's own `conditionSummary`: that one is a React component's
+ * helper and takes a `t` from the hook, while this module is React-free and reads the active locale
+ * through `translate`. The shapes it has to answer for are the same three, and both must stay
+ * id-free - a header saying `var_9f3c > 0` is a header the author has to open the inspector to read.
+ */
+export function storyConditionSummary(
+    condition: StoryConditionRef | undefined,
+    scene?: StoryScene,
+    scenes?: Record<string, StoryScene>,
+): string {
+    if (!condition) {
+        return translate("story.condition.summarySet");
+    }
+    if (condition.kind === "blueprint") {
+        return translate("story.condition.summaryGraph");
+    }
+    if (condition.kind === "expression") {
+        // An empty source is the "not filled in yet" state the inspector creates when the author
+        // switches a loop to its conditional form, so it reads as a prompt rather than as blank.
+        return condition.expression.source.trim() || translate("story.condition.summaryExpression");
+    }
+    const name = variableRefShortLabel(condition.target, scene, scenes);
+    const operator = translate(`story.condition.op${conditionOperatorSuffix(condition.operator)}` as TranslationKey);
+    const suffix = condition.operator === "equals" || condition.operator === "notEquals"
+        ? ` ${String(condition.value ?? "")}`
+        : "";
+    return `${name} ${operator}${suffix}`.trim();
+}
+
+/** `isTrue` → `IsOn`: the catalog spells these in plain language, not in operator names. */
+function conditionOperatorSuffix(operator: Extract<StoryConditionRef, { kind: "variable" }>["operator"]): string {
+    switch (operator) {
+        case "isTrue": return "IsOn";
+        case "isFalse": return "IsOff";
+        case "equals": return "Equals";
+        case "notEquals": return "NotEquals";
+        case "exists": return "Exists";
+    }
 }
 
 /**
@@ -573,13 +635,11 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
         // to find which one a goto points at.
         if (block.payload.control === "label") return translate("story.describe.label", { name: block.payload.name || translate("story.describe.unnamed") });
         if (block.payload.control === "goto") return translate("story.describe.goto", { name: block.payload.targetLabel || translate("story.describe.unnamed") });
+        if (block.payload.control === "break") return translate("story.describe.break");
         return block.payload.control;
     }
     if (block.kind === "jump") {
         return translate("story.describe.jump", { scene: getStorySceneName(scenes, block.payload.targetSceneId) });
-    }
-    if (block.kind === "code") {
-        return translate("story.describe.code", { language: block.payload.language });
     }
     if (block.kind === "invalid") {
         // The author's own text is the most useful thing to show them - it never parsed, so there is
@@ -664,6 +724,9 @@ export function storyRowFragments(
         fragments.push({ kind: "text", text: container.pill });
         if (container.repeatTimes !== undefined) {
             fragments.push({ kind: "text", text: `${container.repeatTimes} ${translate("story.repeat.times")}` });
+        }
+        if (container.repeatUntil !== undefined) {
+            fragments.push({ kind: "text", text: storyConditionSummary(container.repeatUntil, lookups.scene, lookups.scenes) });
         }
     }
     const segment = getStoryTextSegment(block);

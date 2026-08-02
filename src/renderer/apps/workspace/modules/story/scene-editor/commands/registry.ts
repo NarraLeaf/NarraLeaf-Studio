@@ -56,6 +56,19 @@ const DEFS: readonly StoryCommandDef[] = ALL_SPECS.map(specToDef);
 const SPEC_BY_ID = new Map<string, AnyStoryCommandSpec>(ALL_SPECS.map(spec => [spec.id, spec]));
 const DEF_BY_ID = new Map<string, StoryCommandDef>(DEFS.map(def => [def.commandId, def]));
 
+/**
+ * Tokens a retired command burned: spelled by no spec, and claimable by none.
+ *
+ * A token is not just a name, it is what a stored line RE-PARSES as. `invalid` rows keep the author's
+ * source text verbatim, the script codec round-trips scenes through their command lines, and both
+ * paths re-run the parser over text written years ago. So handing a dead token to a new command does
+ * not free a name - it silently reinterprets every old line that still spells it, as the new
+ * command's semantics, with no diagnostic anywhere. `/code` (schema v13) is the first of these: the
+ * block kind is gone, and a `/code typescript` line left in a project must keep failing to resolve
+ * rather than one day meaning something.
+ */
+const RESERVED_TOKENS: ReadonlySet<string> = new Set(["code", "script"]);
+
 // Duplicate ids or tokens are authoring mistakes worth failing loudly on, at import time.
 if (SPEC_BY_ID.size !== ALL_SPECS.length) {
     throw new Error("Duplicate story command spec id.");
@@ -66,6 +79,9 @@ if (SPEC_BY_ID.size !== ALL_SPECS.length) {
         for (const token of [spec.token, ...(spec.aliases ?? [])]) {
             if (tokens.has(token)) {
                 throw new Error(`Duplicate story command token or alias: "${token}".`);
+            }
+            if (RESERVED_TOKENS.has(token)) {
+                throw new Error(`Reserved story command token or alias: "${token}" belonged to a retired command.`);
             }
             tokens.add(token);
         }

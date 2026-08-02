@@ -428,16 +428,18 @@ export const storyInspector = {
             any: "任一",
         },
         times: "次数",
+        loopKind: "循环方式",
+        loopKindTimes: "按次数",
+        loopKindUntil: "直到条件成立",
+        until: "何时停止",
+        untilHint: "条件为假时不断重复，一旦成立立即停止。每轮开始前检查，因此一开始就成立的条件会让整组一次都不执行",
+        breakHint: "跳出本行所在的重复组。不在重复组里时它什么也不做",
         branch: "分支",
         elseHint: "当之前的分支均不匹配时，运行 Else 分支",
     },
     condition: {
         brokenExpression: "该表达式已无法解析--它引用的变量可能被重命名或删除了。修复前该分支恒为假",
         clear: "清除条件",
-    },
-    code: {
-        language: "语言",
-        source: "源码",
     },
     declaration: {
         name: "名称",

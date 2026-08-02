@@ -1464,6 +1464,12 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         const storyOptions: BlueprintInspectorParamSelectOption[] = storyEntries
             .map(story => ({ value: story.id, label: story.name || t("blueprint.options.untitledStory") }));
         const storySceneOptions: BlueprintInspectorParamSelectOption[] = [];
+        // The `Is Option Picked` picker. Author order, same as the scene list above, and labelled
+        // "<scene> / <option text>": an option's own text is rarely unique across a story ("Yes."
+        // appears everywhere), so the scene it belongs to is what makes the row identifiable. The
+        // VALUE is the option row's block id - a rewrite of the text must not invalidate a graph
+        // that already points at it, which is the same reason the scene picker stores scene ids.
+        const storyChoiceOptions: BlueprintInspectorParamSelectOption[] = [];
         for (const story of storyEntries) {
             const storyDocument = storyDocumentsById[story.id];
             if (!storyDocument) {
@@ -1477,11 +1483,26 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 if (!scene) {
                     continue;
                 }
+                const sceneLabel = scene.name || scene.runtimeName || t("blueprint.options.untitledScene");
                 storySceneOptions.push({
                     value: scene.id,
-                    label: scene.name || scene.runtimeName || t("blueprint.options.untitledScene"),
+                    label: sceneLabel,
                     meta: { storyId: story.id },
                 });
+                // Block order within the scene, not `rootBlockIds` order: an option is a child of a
+                // choice row, so a document-order walk would have to descend anyway, and the block
+                // table is already the flat form of that.
+                for (const block of Object.values(scene.blocks)) {
+                    if (block?.kind !== "nodeAction" || block.payload.action !== "choiceOption") {
+                        continue;
+                    }
+                    const optionText = block.payload.text.value.trim();
+                    storyChoiceOptions.push({
+                        value: block.id,
+                        label: `${sceneLabel} / ${optionText || t("blueprint.options.untitledChoiceOption")}`,
+                        meta: { storyId: story.id },
+                    });
+                }
             }
         }
         // Named localization keys: pick by source text, key name as context.
@@ -1509,6 +1530,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             surfaces: surfaceOptions,
             stories: storyOptions,
             storyScenes: storySceneOptions,
+            storyChoiceOptions,
             characters: characterOptions,
             localizationKeys: localizationKeyOptions,
             // The `Play Sound` Track picker. Author order, built-ins first - the same order the

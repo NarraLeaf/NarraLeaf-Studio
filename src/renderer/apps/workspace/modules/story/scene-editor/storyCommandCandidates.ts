@@ -1,4 +1,5 @@
-import { STORY_EXPR_FUNCTIONS } from "@shared/types/story";
+import { STORY_EXPR_FUNCTIONS, STORY_VISITED_CALLS, type StoryVisitedCall } from "@shared/types/story";
+import { formatStoryExpressionName } from "@shared/utils/storyExpressionParser";
 import { freeTargetKind, matchEnumOption, paramTypes, type StoryCommandParam, type StoryCommandParamType } from "./storyCommandGrammar";
 import { listCommandDefs } from "./commands/registry";
 import type { StoryCommandCursor } from "./storyCommandCursor";
@@ -145,6 +146,8 @@ function candidatesForType(
     query: string,
     context: StoryCommandContext,
     resolved: Readonly<Record<string, StoryCommandValue>>,
+    /** The `visited(` / `picked(` the caret sits inside, when it does. See {@link StoryCommandCursor}. */
+    call?: StoryVisitedCall,
 ): StoryCommandCandidate[] {
     switch (type.kind) {
         case "asset":
@@ -235,6 +238,13 @@ function candidatesForType(
         case "boolean":
             return ["true", "false"].filter(value => !query || value.startsWith(query.toLowerCase())).map(value => ({ value, label: value }));
         case "expression": {
+            // Inside `visited(` / `picked(` the vocabulary is not the expression language's at all -
+            // it is one entity name - so the whole variable/function offer is replaced rather than
+            // added to. Offering `gold` where only a scene may go would be offering a line that
+            // cannot resolve.
+            if (call) {
+                return refCandidates(call === "visited" ? context.scenes : context.choiceOptions, query);
+            }
             // Inside an expression the query is the identifier fragment under the caret (the cursor
             // layer extracts it), so the offer is every variable in scope plus the function whitelist.
             //
@@ -249,9 +259,24 @@ function candidatesForType(
                 ...context.variables
                     .filter(entry => !query || containsFold(entry.name, query))
                     .map(entry => ({ value: entry.name, label: entry.name, detail: entry.valueType })),
+                // Blueprints sit with the variables, not with the functions, because that is what
+                // they are here: a name the project declares, offered unprompted for the same reason.
+                // The inserted text is the whole CALL, and the name is quoted when the lexer would
+                // otherwise split it - the default "Story Value" has a space in it, so the unquoted
+                // spelling would not parse at all.
+                ...context.valueBlueprints
+                    .filter(entry => !query || containsFold(entry.name, query))
+                    .map(entry => ({ value: `${formatStoryExpressionName(entry.name)}()`, label: entry.name, detail: "bp" })),
                 ...STORY_EXPR_FUNCTIONS
                     .filter(fn => query !== "" && startsWithFold(fn, query))
                     .map(fn => ({ value: `${fn}(`, label: fn, detail: "fn" })),
+                // The two record reads complete like functions but ARE offered on an empty query,
+                // where the whitelist is not. The rule the whitelist follows is "do not bury the
+                // variables under ten names an author already knows"; these are two names an author
+                // has no way to discover, and two rows below the variables bury nothing.
+                ...STORY_VISITED_CALLS
+                    .filter(name => !query || startsWithFold(name, query))
+                    .map(name => ({ value: `${name}(`, label: name, detail: "fn" })),
             ];
         }
         case "constant":
@@ -273,9 +298,10 @@ function candidatesForParam(
     query: string,
     context: StoryCommandContext,
     resolved: Readonly<Record<string, StoryCommandValue>>,
+    call?: StoryVisitedCall,
 ): StoryCommandCandidate[] {
     // A union offers every branch's candidates, in declaration order.
-    return paramTypes(param).flatMap(type => candidatesForType(type, query, context, resolved));
+    return paramTypes(param).flatMap(type => candidatesForType(type, query, context, resolved, call));
 }
 
 /**
@@ -355,8 +381,9 @@ export function getCommandCandidates(
                 .map(def => ({ value: def.token, label: "", commandId: def.commandId }));
         case "positional":
         case "paramValue":
-        case "expression":
             return candidatesForParam(cursor.param, cursor.query, context, resolved);
+        case "expression":
+            return candidatesForParam(cursor.param, cursor.query, context, resolved, cursor.call);
         case "paramName":
             return cursor.params
                 .filter(param => !cursor.query || startsWithFold(param.name, cursor.query)

@@ -371,6 +371,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             sceneId,
             scene,
             persistentVariables: blueprintService?.listPersistentVariables() ?? [],
+            // For the `mode:"value"` blueprints an expression may call by name. Rebuilt with the rest
+            // of the context on `blueprintRevision`, so renaming one in the blueprint editor changes
+            // what the command line resolves without a reload.
+            blueprintDocument: blueprintService?.getBlueprintDocument() ?? null,
             puppetByCharacterId,
             audioTracks,
         }),

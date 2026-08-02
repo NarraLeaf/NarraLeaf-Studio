@@ -77,6 +77,7 @@ export type LintRuleId =
     | "variables/undeclared"
     | "variables/unused"
     | "variables/name-collision"
+    | "variables/random-outside-assignment"
     | "text/overlong"
     | "text/empty"
     | "localization/missing"

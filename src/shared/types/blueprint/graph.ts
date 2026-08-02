@@ -819,6 +819,20 @@ export const BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ = "blueprint.game.isTextRead"
 export const BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ_BY_ID = "blueprint.game.isTextReadById" as const;
 /** Wipe the persisted text-read record (all stories); works with or without a running game. */
 export const BLUEPRINT_NODE_TYPE_GAME_CLEAR_TEXT_READ = "blueprint.game.clearTextRead" as const;
+/**
+ * The visited record - the two questions a VN asks constantly and Studio could not answer: has the
+ * player been down this route, and have they already said this line.
+ *
+ * Deliberately NOT built on the text-read record above. That one is written when a line is
+ * *displayed*, so every option of a menu the player merely opened counts as read; these are written
+ * when a scene actually starts and when an option is actually picked. Both are keyed by Studio id
+ * (scene id / option row block id), so a rename or a rewrite does not invalidate a record, and both
+ * live in the saved domain - loading an older save rewinds them.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_IS_SCENE_VISITED = "blueprint.game.isSceneVisited" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_IS_OPTION_PICKED = "blueprint.game.isOptionPicked" as const;
+/** Wipe the running game's visited record. The `Clear Text Read` of this family. */
+export const BLUEPRINT_NODE_TYPE_GAME_CLEAR_VISITED = "blueprint.game.clearVisited" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_CHOOSE = "blueprint.game.choose" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_NEXT = "blueprint.game.next" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SKIP = "blueprint.game.skip" as const;

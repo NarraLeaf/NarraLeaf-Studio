@@ -253,6 +253,54 @@ describe("computeStoryStageSnapshot", () => {
         expect(elseResult.displayables.map(d => d.objectName)).toEqual(["else-img"]);
     });
 
+    it("degrades visited / picked / invoke to their zero AND says so", () => {
+        // The preview has no playthrough behind it and no ScriptCtx to run a graph with, so all three
+        // read as their zero. Asserting the DIAGNOSTIC is the whole point of the test: a silent zero
+        // is indistinguishable from the expression having genuinely evaluated to it, which is how
+        // "the preview is lying" becomes "the feature is broken".
+        const document = baseDocument({
+            set: block("set", "action", {
+                action: "setVariable",
+                target: { scope: "scene", variableId: "flag" },
+                expression: { source: "bonus()", ast: { kind: "invoke", blueprintId: "bp1", name: "bonus" } },
+            }),
+            condition: block("condition", "control", { control: "condition" }, null, ["if-branch", "else-branch"]),
+            "if-branch": block("if-branch", "control", {
+                control: "conditionBranch",
+                branch: "if",
+                condition: {
+                    kind: "expression",
+                    expression: {
+                        source: "visited(序章)",
+                        ast: { kind: "visited", target: { kind: "scene", sceneId: "sc_prologue" }, name: "序章" },
+                    },
+                },
+            }, "condition", ["show-if"]),
+            "else-branch": block("else-branch", "control", { control: "conditionBranch", branch: "else" }, "condition", ["show-else"]),
+            "show-if": block("show-if", "action", { action: "image", operation: "show", objectName: "if-img" }, "if-branch"),
+            "show-else": block("show-else", "action", { action: "image", operation: "show", objectName: "else-img" }, "else-branch"),
+            target: say("target"),
+        }, ["set", "condition", "target"]);
+
+        const result = snapshot(document, "target");
+        // `visited(…)` read false, so the else branch ran; `bonus()` read empty, so the assignment
+        // wrote null rather than a number the author would then chase.
+        expect(result.displayables.map(d => d.objectName)).toEqual(["else-img"]);
+        expect(result.sceneVariables).toEqual({ flag: null });
+        expect(result.diagnostics).toEqual([
+            {
+                level: "warning",
+                blockId: "set",
+                message: "Blueprint `bonus()` does not run in the preview; it reads as empty.",
+            },
+            {
+                level: "warning",
+                blockId: "if-branch",
+                message: "Scene visits are not tracked in the preview; `visited(序章)` reads as false.",
+            },
+        ]);
+    });
+
     it("takes the branch containing the target and skips earlier un-taken choices", () => {
         const document = baseDocument({
             "early-choice": block("early-choice", "nodeAction", { action: "choice" }, null, ["early-option"]),

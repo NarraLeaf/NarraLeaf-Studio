@@ -1,3 +1,4 @@
+import type { TranslationKey } from "@shared/i18n/catalog";
 import type { BlueprintDocument, BlueprintGraphNode } from "@shared/types/blueprint/document";
 import {
     collectStoryExpressionVariables,
@@ -13,6 +14,7 @@ import {
     type StoryConditionRef,
     type StoryDeclarationBlock,
     type StoryExpr,
+    type StoryExprFunction,
     type StoryScene,
     type StorySceneId,
     type StoryTextSegment,
@@ -41,6 +43,9 @@ import type { LintFinding, LintLocation, LintRule } from "../types";
  * Scope decides reach, exactly as the compiler resolves it: `scene` binds within its own scene,
  * `saved` within its document, `persistent` across the project - story `/persis` rows AND the
  * project variable registry, which is a legitimate declaration site of its own.
+ *
+ * `variables/random-outside-assignment` is the odd one out: it is about *when* a value is computed
+ * rather than whether it resolves. Its reasoning lives above `RANDOM_FUNCTIONS` below.
  */
 
 /** One place a variable is read or written. */
@@ -91,9 +96,127 @@ function collectExpressionVariableNames(expr: StoryExpr, into: Map<string, strin
         case "call":
             expr.args.forEach(arg => collectExpressionVariableNames(arg, into));
             return;
+        case "array":
+            expr.items.forEach(item => collectExpressionVariableNames(item, into));
+            return;
+        case "index":
+            collectExpressionVariableNames(expr.target, into);
+            collectExpressionVariableNames(expr.index, into);
+            return;
         case "literal":
         case "invalid":
+        // Neither names a variable. `visited`/`picked` address the visited record and `invoke`
+        // addresses a blueprint, and a blueprint's own variable reads are already counted by
+        // `collectBlueprintVariableUses` scanning its graph nodes - counting them again from the
+        // call site would not change any finding, but it would make the two scans disagree about
+        // what a "use" is.
+        case "visited":
+        case "invoke":
             return;
+    }
+}
+
+/**
+ * The two non-pure entries in `STORY_EXPR_FUNCTIONS`, and the criterion for where they may sit.
+ *
+ * The expression language has no notion of *when* a tree is evaluated, so the same `random()` call
+ * means different things in different slots. What separates the legal sites from the reported ones
+ * is therefore not *which* slot it is, but whether that slot's evaluation count is the one the
+ * author was asking for:
+ *
+ *  - **Once, deliberately.** A `setVariable` right-hand side compiles to a `Script.execute` and runs
+ *    exactly once, writing the roll into the storable. That is a dice roll, and it is what an author
+ *    reaches for the function to do.
+ *  - **Once per iteration, deliberately.** A `repeat … until` condition is re-tested every time
+ *    round the loop, which is what a loop condition *is*. `/repeat until random() < 0.1` - keep
+ *    going until we get lucky - is a legitimate and useful line, and a roll that held still there
+ *    would hang the loop rather than fix it. Exempt on purpose; the `repeat` case in the scan below
+ *    is written out so the exemption is visible rather than inferred from silence.
+ *  - **Re-run behind the author's back.** Every other slot compiles to a lambda or an NLR dynamic
+ *    word that is evaluated on each test and each render, with nothing in the authored line saying
+ *    so: `/if random() < 0.5` takes a fresh branch each time it is reached; a choice option's
+ *    `hiddenWhen` / `disabledWhen` re-rolls on every menu paint (`conditionToLambda` in
+ *    `storyCompiler.ts`), so the option visibly flickers; an inline `{randomInt(1,6)}` shows a
+ *    different number every time the line redraws.
+ *
+ * Only the third bullet is a finding, and its failure mode is not "wrong value once" - it is a value
+ * that will not hold still *within a single playthrough*, which reads to the author as an engine bug
+ * rather than as their own mistake. Moving that from runtime weirdness to an authoring-time error is
+ * the whole reason the rule exists, and the fix never varies: roll once into a variable with `/set`,
+ * then read that variable.
+ *
+ * The `/set` sugars need no carve-out. `/inc gold randomInt(1,3)` lowers to a `setVariable` carrying
+ * an `expression`, i.e. one of the legal sites, so it is accepted for exactly the right reason
+ * rather than by being special-cased.
+ */
+const RANDOM_FUNCTIONS: ReadonlySet<StoryExprFunction> = new Set<StoryExprFunction>(["random", "randomInt"]);
+
+/**
+ * The first `random`/`randomInt` call anywhere in a tree, by name, or `null`.
+ *
+ * First rather than all: an author who wrote `randomInt(1,6) + randomInt(1,6)` in a condition made
+ * one mistake, and the repair moves the whole expression regardless of how many calls it holds. The
+ * walk mirrors `collectStoryExpressionVariables` node for node - notably it descends into a *pure*
+ * call's arguments too, because `max(0, randomInt(1,6))` is just as unstable as the bare call.
+ */
+function findRandomCall(expr: StoryExpr): StoryExprFunction | null {
+    switch (expr.kind) {
+        case "call": {
+            if (RANDOM_FUNCTIONS.has(expr.fn)) {
+                return expr.fn;
+            }
+            for (const arg of expr.args) {
+                const found = findRandomCall(arg);
+                if (found) {
+                    return found;
+                }
+            }
+            return null;
+        }
+        case "unary":
+            return findRandomCall(expr.operand);
+        case "binary":
+            return findRandomCall(expr.left) ?? findRandomCall(expr.right);
+        case "ternary":
+            return findRandomCall(expr.test)
+                ?? findRandomCall(expr.consequent)
+                ?? findRandomCall(expr.alternate);
+        case "array":
+            // A list literal is as good a hiding place as an argument list: `[randomInt(1,6)]` in a
+            // condition re-rolls on every test exactly like the bare call would.
+            for (const item of expr.items) {
+                const found = findRandomCall(item);
+                if (found) {
+                    return found;
+                }
+            }
+            return null;
+        case "index":
+            // Both halves, and the index especially - `table[randomInt(0, 2)]` is the idiomatic way
+            // to write "pick one at random", and it is unstable for the same reason.
+            return findRandomCall(expr.target) ?? findRandomCall(expr.index);
+        case "literal":
+        case "var":
+        case "invalid":
+        case "visited":
+            return null;
+        case "invoke":
+            // NOT a finding, and this is a decision rather than an oversight.
+            //
+            // The rule is about a value that will not hold still across re-evaluations of the same
+            // slot. An `invoke` in a condition or an interpolation is re-run on every test and every
+            // repaint - but that is what naming a blueprint in those two slots has ALWAYS meant
+            // (`StoryConditionRef` and `StoryInterpolationRef` have had a `blueprint` arm since
+            // before this rule existed, and neither is reported), and `invoke` is a second spelling
+            // of the same call, not a new capability. Reporting it here would make the spelling
+            // decide the verdict on identical behaviour.
+            //
+            // Nor can this walk tell a stable graph from an unstable one: the instability would live
+            // inside the graph, behind a `Random` node this scan cannot see. Whether *that* deserves
+            // a rule is a blueprint-side question, and answering it half-way here - reporting every
+            // call because some calls might roll - would fire on the overwhelmingly common case of a
+            // graph that just reads state.
+            return null;
     }
 }
 
@@ -471,6 +594,118 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
                     ...(site ? { target: blockTarget(site.entry, site.scene, site.block.id) } : {}),
                 });
             }
+            return findings;
+        },
+    },
+    {
+        id: "variables/random-outside-assignment",
+        category: "variables",
+        defaultSeverity: "error",
+        slug: "variablesRandomOutsideAssignment",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+
+            for (const entry of ctx.stories) {
+                for (const scene of listScenesInDocumentOrder(entry.document)) {
+                    if (!scene) {
+                        continue;
+                    }
+
+                    const report = (fn: StoryExprFunction, blockId: StoryBlockId, messageKey: TranslationKey) => {
+                        findings.push({
+                            ruleId: "variables/random-outside-assignment",
+                            messageKey,
+                            messageParams: { fn },
+                            location: storyLocation(entry, scene, blockId),
+                            target: blockTarget(entry, scene, blockId),
+                        });
+                    };
+
+                    // One finding per condition slot, not per call: `hiddenWhen` and `disabledWhen`
+                    // are separate mistakes, but two rolls inside one of them are still one.
+                    const checkCondition = (
+                        condition: StoryConditionRef | undefined,
+                        blockId: StoryBlockId,
+                        messageKey: TranslationKey,
+                    ) => {
+                        if (condition?.kind !== "expression") {
+                            return;
+                        }
+                        const fn = findRandomCall(condition.expression.ast);
+                        if (fn) {
+                            report(fn, blockId, messageKey);
+                        }
+                    };
+
+                    const checkSegment = (segment: StoryTextSegment | undefined, blockId: StoryBlockId) => {
+                        for (const run of segment?.rich ?? []) {
+                            if (!("interpolation" in run) || run.interpolation.kind !== "expression") {
+                                continue;
+                            }
+                            const fn = findRandomCall(run.interpolation.expression.ast);
+                            if (fn) {
+                                report(fn, blockId, "lint.rule.variablesRandomOutsideAssignment.messageInterpolation");
+                            }
+                        }
+                    };
+
+                    // Live rows only, for the same reason `undeclared` reads them: a disabled row is
+                    // compiled out, so nothing it holds can be re-evaluated at runtime, and an
+                    // error-severity finding against a row that cannot run is a false positive.
+                    //
+                    // `note` blocks carry text segments too and are deliberately absent: the compiler
+                    // has no `note` case at all, so an expression in one never evaluates even once.
+                    for (const block of liveBlocks(scene)) {
+                        switch (block.kind) {
+                            case "nodeAction":
+                                if (block.payload.action === "narration" || block.payload.action === "dialogue") {
+                                    checkSegment(block.payload.text, block.id);
+                                } else if (block.payload.action === "choice") {
+                                    checkSegment(block.payload.prompt, block.id);
+                                } else {
+                                    checkSegment(block.payload.text, block.id);
+                                    checkCondition(
+                                        block.payload.hiddenWhen,
+                                        block.id,
+                                        "lint.rule.variablesRandomOutsideAssignment.messageChoiceOption",
+                                    );
+                                    checkCondition(
+                                        block.payload.disabledWhen,
+                                        block.id,
+                                        "lint.rule.variablesRandomOutsideAssignment.messageChoiceOption",
+                                    );
+                                }
+                                break;
+                            case "control":
+                                switch (block.payload.control) {
+                                    case "conditionBranch":
+                                        checkCondition(
+                                            block.payload.condition,
+                                            block.id,
+                                            "lint.rule.variablesRandomOutsideAssignment.message",
+                                        );
+                                        break;
+                                    case "repeat":
+                                        // `repeat.until` is a fourth `StoryConditionRef` slot and the
+                                        // one condition a roll belongs in, so it is skipped - spelled
+                                        // out as its own case rather than swallowed by `default`,
+                                        // because a reader who finds `until` unchecked has to be able
+                                        // to tell a decision from an oversight. A loop condition is
+                                        // *meant* to be re-tested each iteration: that is not a value
+                                        // failing to hold still, it is the loop working. See the
+                                        // `RANDOM_FUNCTIONS` header for the full criterion.
+                                        break;
+                                    default:
+                                        break;
+                                }
+                                break;
+                            default:
+                                break;
+                        }
+                    }
+                }
+            }
+
             return findings;
         },
     },

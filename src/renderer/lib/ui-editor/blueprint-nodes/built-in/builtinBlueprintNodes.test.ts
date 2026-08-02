@@ -379,6 +379,9 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     isCurrentTextRead: () => false,
                     isTextRead: () => false,
                     clearTextRead: async () => undefined,
+                    isSceneVisited: () => false,
+                    isOptionPicked: () => false,
+                    clearVisited: () => undefined,
                     choose: async () => undefined,
                     next: async () => undefined,
                     skip: async () => undefined,
@@ -505,6 +508,9 @@ function createPageNavigationHostAdapter(
                     isCurrentTextRead: () => false,
                     isTextRead: () => false,
                     clearTextRead: async () => undefined,
+                    isSceneVisited: () => false,
+                    isOptionPicked: () => false,
+                    clearVisited: () => undefined,
                     choose: async () => undefined,
                     next: async () => undefined,
                     skip: async () => undefined,
@@ -638,6 +644,9 @@ function createGameSaveHostAdapter(options: {
                     clearTextRead: async () => {
                         options.clearTextReadCalls?.push(true);
                     },
+                    isSceneVisited: () => false,
+                    isOptionPicked: () => false,
+                    clearVisited: () => undefined,
                     choose: async (index: number) => {
                         options.chosenIndexes?.push(index);
                     },

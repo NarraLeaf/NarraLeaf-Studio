@@ -74,8 +74,7 @@ export type ActionCommandId =
     | "jump"
     | "waitDuration"
     | "waitClick"
-    | "note"
-    | "code";
+    | "note";
 
 /**
  * One entry in a command menu, from either source: a spec (see `commands/specPalette.ts`) or a
@@ -239,8 +238,6 @@ export function createBlockForCommand(commandId: ActionCommandId, generateId: ()
             return { ...base, kind: "action", payload: { action: "wait", mode: "click" } };
         case "note":
             return { ...base, kind: "note", payload: { text: { textId, role: "note", value: initialText } } };
-        case "code":
-            return { ...base, kind: "code", payload: { language: "narraleaf", source: initialText, advanced: true, folded: false } };
         case "narration":
         default:
             return { ...base, kind: "nodeAction", payload: { action: "narration", text: { textId, role: "narration", value: initialText } } };

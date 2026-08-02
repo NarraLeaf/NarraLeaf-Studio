@@ -1,5 +1,5 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 30 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 31 as const;
 
 /** Global runtime state key mirrored from the active NarraLeaf dialog hook. */
 export const BLUEPRINT_GAME_NAMETAG_STATE_KEY = "game.dialog.nametag" as const;
@@ -487,6 +487,30 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             purity: "effectful",
             callableFromBinding: false,
             async: true,
+            input: {},
+            output: null,
+        },
+        isSceneVisited: {
+            capabilityId: "game.isSceneVisited",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: { sceneId: "" },
+            output: false,
+        },
+        isOptionPicked: {
+            capabilityId: "game.isOptionPicked",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: { optionId: "" },
+            output: false,
+        },
+        clearVisited: {
+            capabilityId: "game.clearVisited",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: false,
             input: {},
             output: null,
         },

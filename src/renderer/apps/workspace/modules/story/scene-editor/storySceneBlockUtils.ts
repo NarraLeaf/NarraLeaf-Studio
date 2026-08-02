@@ -1,4 +1,4 @@
-import { Aperture, Bookmark, Clock, Code, CornerUpLeft, Eye, FileText, GitBranch, Image, Layers, MessageSquare, Move, Music, Puzzle, Route, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video, Wind } from "lucide-react";
+import { Aperture, Bookmark, Clock, CornerUpLeft, Eye, FileText, GitBranch, Image, Layers, LogOut, MessageSquare, Move, Music, Puzzle, Route, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video, Wind } from "lucide-react";
 import type { StoryBlock, StoryBlockId, StoryRichRun, StoryScene, StorySceneId, StoryTextSegment } from "@shared/types/story";
 import { richIfMeaningful } from "./richText";
 import type { Character } from "@/lib/workspace/services/character/Character";
@@ -89,7 +89,7 @@ export function buildDialogueAppearances(scene: StoryScene): Map<StoryBlockId, C
 /**
  * Whether a row survives the "narrative only" filter (WI-6): narration, dialogue, choice prompts and
  * options, and studio notes. Everything else — action (including expression), control, jump,
- * declaration, code, invalid — is staging and hides. A whitelist, so a new staging kind hides by default.
+ * declaration, invalid — is staging and hides. A whitelist, so a new staging kind hides by default.
  */
 export function isNarrativeRow(block: StoryBlock): boolean {
     if (block.kind === "note") {
@@ -286,9 +286,11 @@ export function canAcceptChildren(block: StoryBlock | undefined): boolean {
     if (!block) {
         return false;
     }
-    // `label` and `goto` are the two control rows that are NOT containers: a label is a point and a
-    // goto is a move, neither has a body. Everything else under `control` groups rows.
-    if (block.kind === "control" && (block.payload.control === "label" || block.payload.control === "goto")) {
+    // `label`, `goto` and `break` are the control rows that are NOT containers: a label is a point,
+    // a goto is a move and a break is an exit - none has a body. Everything else under `control`
+    // groups rows.
+    if (block.kind === "control"
+        && (block.payload.control === "label" || block.payload.control === "goto" || block.payload.control === "break")) {
         return false;
     }
     return block.kind === "control" ||
@@ -354,9 +356,9 @@ const BADGE_ICONS: Record<StoryBlockBadgeId, typeof FileText> = {
     effect: Sparkles,
     label: Bookmark,
     goto: CornerUpLeft,
+    break: LogOut,
     control: Settings2,
     jump: Route,
-    code: Code,
     invalid: TriangleAlert,
     declaration: Variable,
     note: StickyNote,

@@ -18,6 +18,11 @@ export const storyExpr = {
         unknownScopePrefix: "\"{prefix}\" is not a scope. Use scene, saved or persis.",
         unknownFunction: "There is no \"{name}\" function.",
         badArity: "{fn} takes {expected} argument(s), not {received}.",
+        unknownVisitedTarget: "{call} does not know anything called \"{name}\".",
+        unknownBlueprint: "There is no story value blueprint named \"{name}\".",
+        blueprintTakesNoArguments: "\"{name}\" is a blueprint, and a blueprint call takes no arguments.",
+        ambiguousReference: "More than one thing is called \"{name}\" — rename one.",
+        blueprintShadowsFunction: "\"{name}\" is a built-in function, so it cannot also name a blueprint. Rename the blueprint, or write '{name}'() to call it.",
     },
     /** Checks the *command line* adds on top of parsing, where the slot expects a particular shape. */
     check: {
@@ -51,6 +56,7 @@ export const storyExpr = {
         notPuppetCharacter: "{value} is not drawn by a runtime, so it has no motion or skin to set.",
         ambiguousName: "More than one thing is called \"{value}\" — rename one.",
         conflictingParams: "{keys} cannot both be set on one line — split it in two.",
+        repeatTimesAndUntil: "A repeat runs a set number of times or until a condition — not both. Drop one.",
         expressionError: "{message}",
         expressionNotBoolean: "A condition has to be a true/false test, like gold >= 100.",
         expressionTypeMismatch: "This produces {received}, but \"{value}\" holds {expected}.",

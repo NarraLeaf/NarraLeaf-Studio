@@ -76,6 +76,25 @@ export type StoryCommandContext = {
     tempSpeakers: readonly string[];
     scenes: readonly StoryCommandNamedRef[];
     /**
+     * Every choice option in the STORY, by the text the player reads - what `picked(…)` resolves
+     * against.
+     *
+     * Document-wide rather than scene-scoped, because the whole use is cross-scene: "did they turn
+     * her down back in the prologue" is asked three chapters later. The `id` is the option row's
+     * `block.id`, which is exactly the key the visited record stores.
+     */
+    choiceOptions: readonly StoryCommandNamedRef[];
+    /**
+     * The `mode:"value"` Story Action Blueprints an expression may call - what `bonus()` resolves
+     * against.
+     *
+     * Only `value`: an `action` blueprint may use latent nodes and has no return, and a `condition`
+     * one belongs to the single condition slot that owns it. Value blueprints are the ones the
+     * authoring-time gate already holds to synchronous, pure nodes, which is what makes them safe to
+     * evaluate inside an expression.
+     */
+    valueBlueprints: readonly StoryCommandNamedRef[];
+    /**
      * The project's audio tracks, by the name the author gave them - what `/bgm theme track=Ambience`
      * resolves against.
      *
@@ -145,7 +164,8 @@ export type StoryPuppetParamSpec = {
 };
 
 export const EMPTY_STORY_COMMAND_CONTEXT: StoryCommandContext = {
-    images: [], audio: [], videos: [], characters: [], tempSpeakers: [], scenes: [], audioTracks: [], labels: [], variables: [], appearanceByCharacterId: {},
+    images: [], audio: [], videos: [], characters: [], tempSpeakers: [], scenes: [], choiceOptions: [], valueBlueprints: [],
+    audioTracks: [], labels: [], variables: [], appearanceByCharacterId: {},
     puppetCharacterIds: [],
     puppetByCharacterId: {},
     stageObjects: EMPTY_STORY_COMMAND_STAGE_OBJECTS,
@@ -241,6 +261,12 @@ export type StoryCommandResolutionIssue =
     | { code: "ambiguousName"; span: StoryCommandSpan; value: string }
     /** Two args a one-op-per-block command cannot honour together. */
     | { code: "conflictingParams"; span: StoryCommandSpan; keys: readonly string[] }
+    /**
+     * `/repeat 3 until="hp <= 0"` - a count AND a stop condition. Its own code rather than
+     * `conflictingParams` because the fix is the opposite one: those two args split into two lines,
+     * these two are two ways of saying the same thing and one has to go.
+     */
+    | { code: "repeatTimesAndUntil"; span: StoryCommandSpan }
     /** An enum value this command's variant of the shared vocabulary does not support (`/bg t=zoom`). */
     | { code: "unsupportedOption"; span: StoryCommandSpan; value: string; allowed: readonly string[] }
     /** Carries the whole underlying {@link StoryExpressionIssue} - its params make the message worth having. */

@@ -73,6 +73,7 @@ import {
     type StoryContainerHeaderInfo,
 } from "./storySceneBlockUtils";
 import { ConditionPopover } from "./ConditionPopover";
+import { EMPTY_EXPRESSION_CONDITION } from "./ConditionEditor";
 import { BlockOverview, getQuickParams, QuickParamsInline, type QuickParam } from "./storyQuickParams";
 import { actionTrigger, ACTION_TRIGGER, insertChooserType, toCanonicalCommandLine } from "./commandTrigger";
 import { useStoryRowActions } from "./storyRowActions";
@@ -436,6 +437,14 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                     ) : null}
                     {containerInfo?.repeatTimes !== undefined ? (
                         <RepeatTimesField block={block} onUpdatePayload={on.onUpdatePayload} />
+                    ) : null}
+                    {containerInfo?.repeatUntil !== undefined ? (
+                        <RepeatUntilChip
+                            block={block}
+                            scene={scene}
+                            document={document}
+                            onUpdatePayload={on.onUpdatePayload}
+                        />
                     ) : null}
                     {expressionMember ? (
                         <GroupExpressionMember block={block} characters={characters} />
@@ -1003,7 +1012,7 @@ function RowPlayAction(props: { block: StoryBlock; active: boolean; onPlay: () =
     const { block } = props;
     // Rows with no runtime behaviour have no meaningful "play from here" — starting there would
     // silently begin somewhere else.
-    if (block.kind === "note" || block.kind === "code" || block.kind === "invalid") {
+    if (block.kind === "note" || block.kind === "invalid") {
         return null;
     }
     const branchEntry = (block.kind === "nodeAction" && block.payload.action === "choiceOption")
@@ -1335,6 +1344,62 @@ function ConditionChip(props: {
                     onChange={condition => props.onUpdatePayload({ ...payload, condition })}
                     onClear={() => {
                         props.onUpdatePayload({ ...payload, condition: undefined });
+                        setAnchor(null);
+                    }}
+                    onClose={() => setAnchor(null)}
+                />
+            ) : null}
+        </>
+    );
+}
+
+/**
+ * Editable stop-condition chip on a `/repeat until` header - the counted loop's stepper, for the
+ * conditional form.
+ *
+ * Deliberately the same popover the branch chip opens rather than a chip of its own: an author who
+ * has written one condition has written all of them, and a second condition editor would be a second
+ * set of rules to learn for the same object.
+ */
+function RepeatUntilChip(props: {
+    block: StoryBlock;
+    scene: StoryScene;
+    document: StoryDocument;
+    onUpdatePayload: (payload: StoryBlock["payload"]) => void;
+}) {
+    const { t } = useTranslation();
+    const [anchor, setAnchor] = useState<{ top: number; left: number; bottom: number } | null>(null);
+    const block = props.block;
+    if (block.kind !== "control" || block.payload.control !== "repeat" || block.payload.until === undefined) {
+        return null;
+    }
+    const payload = block.payload;
+    return (
+        <>
+            <button
+                type="button"
+                className="min-w-0 max-w-[240px] truncate rounded-md border border-edge bg-fill-subtle px-2 py-0.5 text-xs text-fg-muted transition-colors hover:border-primary/50 hover:text-fg"
+                onClick={event => {
+                    event.stopPropagation();
+                    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+                    setAnchor({ top: rect.top, left: rect.left, bottom: rect.bottom });
+                }}
+                onMouseDown={event => event.stopPropagation()}
+            >
+                {conditionSummary(payload.until, props.scene, props.document, t)}
+            </button>
+            {anchor ? (
+                <ConditionPopover
+                    anchor={anchor}
+                    document={props.document}
+                    sceneId={props.scene.id}
+                    value={payload.until}
+                    // Both writers coalesce: dropping `until` would silently turn this back into a
+                    // counted loop, which is a different construct. Emptying the condition keeps the
+                    // form; the inspector's loop-mode select is the one place that switches it.
+                    onChange={until => props.onUpdatePayload({ ...payload, until: until ?? EMPTY_EXPRESSION_CONDITION })}
+                    onClear={() => {
+                        props.onUpdatePayload({ ...payload, until: EMPTY_EXPRESSION_CONDITION });
                         setAnchor(null);
                     }}
                     onClose={() => setAnchor(null)}
