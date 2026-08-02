@@ -200,9 +200,18 @@ export function asTarget(value: StoryCommandValue | undefined): Extract<StoryCom
 // Shared param fragments - the vocabulary table of the bible (§1.2). One key, one meaning.
 // ---------------------------------------------------------------------------
 
+/**
+ * A time in seconds — the one numeric shape in the whole vocabulary that carries a unit.
+ *
+ * Every slot measured in seconds shares it, so `d=1s`, `fade=0.5s` and `/wait 2s` are one rule rather
+ * than four. The unit is optional on input and is what a committed row prints (`持续时间=1s`), which is
+ * the point of declaring it: a row may only show a line the author could have typed.
+ */
+export const SECONDS_TYPE: StoryCommandParamType = { kind: "number", min: 0, unit: "s" };
+
 /** `d=` - a duration in seconds. */
 export function secondsParam(hint = "duration"): StoryCommandParamSpec {
-    return { aliases: ["duration"], hint, type: { kind: "number", min: 0 } };
+    return { aliases: ["duration"], hint, type: SECONDS_TYPE };
 }
 
 /** The `at=` word list (bible §1.2). Exported so a positional placement slot spells the same three words. */

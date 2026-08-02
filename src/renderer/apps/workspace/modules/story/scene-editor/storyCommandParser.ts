@@ -8,6 +8,7 @@ import {
 } from "./storyCommandGrammar";
 import { getCommandDef } from "./commands/registry";
 import { findParamLocalized } from "./commands/localizedParams";
+import { numberValueOfLocalized } from "./commands/localizedUnits";
 import { matchEnumOptionLocalized } from "./commands/localizedEnums";
 import type { StoryCommandSpan } from "./storyCommandValues";
 
@@ -167,8 +168,10 @@ function acceptsType(type: StoryCommandParamType, value: string): boolean {
         case "keyword":
             return value.trim().toLowerCase() === type.value.toLowerCase();
         case "number": {
-            const parsed = Number(value);
-            if (value.trim() === "" || !Number.isFinite(parsed)) {
+            // Localized: the row prints `持续时间=1秒`, so that spelling has to parse — English first
+            // by construction of the table, so `d=1s` behaves identically in every command language.
+            const parsed = numberValueOfLocalized(type, value);
+            if (parsed === null) {
                 return false;
             }
             if (type.integer && !Number.isInteger(parsed)) {
