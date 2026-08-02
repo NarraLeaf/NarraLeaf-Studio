@@ -1,5 +1,5 @@
 import { createBlockForCommand } from "../../storyActionCommands";
-import { asNumber, defineStoryCommand, secondsParam } from "../spec";
+import { asNumber, defineStoryCommand, SECONDS_TYPE, secondsParam } from "../spec";
 import { withRevealTransform, withTransitionRef } from "../payloadHelpers";
 import { transitionOptions } from "../transitions";
 import { storySecondsToMs } from "@shared/utils/storyTime";
@@ -77,7 +77,7 @@ export const wait = defineStoryCommand({
     quickParams: ["seconds"],
     params: {
         // `/wait 2` pauses two seconds, `/wait click` (or a bare `/wait`) waits for the player.
-        seconds: { hint: "waitFor", type: [{ kind: "keyword", value: "click" }, { kind: "number", min: 0 }], positional: true },
+        seconds: { hint: "waitFor", type: [{ kind: "keyword", value: "click" }, SECONDS_TYPE], positional: true },
     },
     build(args, ctx) {
         const block = createBlockForCommand("waitClick", ctx.generateId);

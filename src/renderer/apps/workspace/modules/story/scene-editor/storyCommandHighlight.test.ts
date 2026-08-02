@@ -14,7 +14,7 @@ function shape(source: string): string {
 describe("getCommandSegments", () => {
     it("colours by role, not by position", () => {
         expect(shape("/hide Narra t=fade d=1s")).toBe(
-            "[scaffold]/[verb]hide[scaffold] [target]Narra[scaffold] t=[value]fade[scaffold] d=[value]1s",
+            "[scaffold]/[verb]hide[scaffold] [target]Narra[scaffold] t=[value]fade[scaffold] d=[value]1[scaffold]s",
         );
     });
 
@@ -40,7 +40,9 @@ describe("getCommandSegments", () => {
         const scaffold = getCommandSegments("/hide Narra t=fade d=1s")
             .filter(segment => segment.role === "scaffold")
             .map(segment => segment.text);
-        expect(scaffold).toEqual(["/", " ", " t=", " d="]);
+        // The `s` is in here on purpose: `1s` is one second, and the unit says which KIND of one it
+        // is — the same job the key does — so it recedes with the key rather than lighting up as a value.
+        expect(scaffold).toEqual(["/", " ", " t=", " d=", "s"]);
     });
 
     it("gives a half-typed verb its colour rather than letting the line flicker", () => {
