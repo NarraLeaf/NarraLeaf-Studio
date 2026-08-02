@@ -215,7 +215,8 @@ export const show = defineStoryCommand({
     aliases: ["enter"],
     category: "character",
     examples: ["/show Alice", "/show Alice smile at=left", "/show hero t=fade d=0.3"],
-    // Inline quick-edit (WI-2): the enter transition duration (the transition kind stays inspector-only).
+    // Inline quick-edit (WI-2): how long the entrance takes - the duration this line writes onto the
+    // show transform, which is what drives a character's entrance (the placement `at=` stays a word).
     quickParams: ["d"],
     params: {
         target: targetParam(SHOW_HIDE_ACCEPTS, { core: true }),
@@ -237,7 +238,7 @@ export const hide = defineStoryCommand({
     aliases: ["exit"],
     category: "character",
     examples: ["/hide Alice", "/hide hero t=fade d=0.3"],
-    // Inline quick-edit (WI-2): the exit transition duration (the transition kind stays inspector-only).
+    // Inline quick-edit (WI-2): how long the exit takes - the same transform duration `hide()` reads.
     quickParams: ["d"],
     params: {
         target: targetParam(SHOW_HIDE_ACCEPTS, { core: true }),
