@@ -51,8 +51,11 @@ import type {
     VcsCheckpointReason,
     VcsCommitOptions,
     VcsCommitResult,
+    VcsConflictChoice,
     VcsHistoryEntry,
     VcsInitOptions,
+    VcsMergeResolveResult,
+    VcsMergeState,
     VcsRepositoryInfo,
     VcsRestoreOptions,
     VcsRestoreResult,
@@ -240,6 +243,11 @@ export enum IPCEventType {
     vcsDiffWorkingTree = "vcs.diffWorkingTree",
     vcsGetThreeWay = "vcs.getThreeWay",
     vcsGetMergeBase = "vcs.getMergeBase",
+    vcsGetMergeState = "vcs.getMergeState",
+    vcsResolveConflicts = "vcs.resolveConflicts",
+    vcsUnresolveConflicts = "vcs.unresolveConflicts",
+    vcsRestartConflicts = "vcs.restartConflicts",
+    vcsAbortMerge = "vcs.abortMerge",
     vcsGetRemote = "vcs.getRemote",
     vcsSetRemote = "vcs.setRemote",
     vcsGetSyncState = "vcs.getSyncState",
@@ -718,6 +726,48 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { projectPath: string; a: RevisionId; b: RevisionId },
         response: { base?: RevisionId };
+    };
+    /**
+     * Whether a merge is open here, and which paths are still unsettled.
+     *
+     * Worth asking on project open and not only after a sync: a merge is repository
+     * state and survives closing the window (docs §4.23-§4.24).
+     */
+    [IPCEventType.vcsGetMergeState]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: VcsMergeState;
+    };
+    /**
+     * **Records nothing** - the merge stays open until a commit closes it. `mine` and
+     * `theirs` overwrite the working tree, so re-read the paths afterwards.
+     */
+    [IPCEventType.vcsResolveConflicts]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; paths: string[]; choice: VcsConflictChoice },
+        response: VcsMergeResolveResult;
+    };
+    [IPCEventType.vcsUnresolveConflicts]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; paths: string[] },
+        response: VcsMergeResolveResult;
+    };
+    /** **Discards the working-tree bytes** for these paths and merges them again. */
+    [IPCEventType.vcsRestartConflicts]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; paths: string[] },
+        response: VcsMergeState;
+    };
+    /** **Writes the working tree** back to before the merge. Re-read every document. */
+    [IPCEventType.vcsAbortMerge]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: VcsMergeState;
     };
     /** Local read: the configured server, or null. Opens no socket. */
     [IPCEventType.vcsGetRemote]: {

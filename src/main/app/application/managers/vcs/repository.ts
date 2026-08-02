@@ -584,6 +584,13 @@ function toFileChange(file: LoreStatusFilePayload): VcsFileChange {
         dirty: file.dirty,
         conflicted: file.conflict,
         conflictUnresolved: file.conflictUnresolved,
+        // Carried rather than dropped, and honestly labelled where they are declared:
+        // measured, status reports NO files at all while a merge is open (§4.24), so
+        // none of these three has ever been seen set. The paths a merge left open come
+        // from `merge.ts`, not from here.
+        conflictAutomerged: file.conflictAutomerged,
+        conflictMine: file.conflictMine,
+        conflictTheirs: file.conflictTheirs,
         fromPath: file.fromPath || undefined,
     };
 }

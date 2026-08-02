@@ -6,7 +6,10 @@ import type {
     VcsCheckpointReason,
     VcsCommitOptions,
     VcsCommitResult,
+    VcsConflictChoice,
     VcsHistoryEntry,
+    VcsMergeResolveResult,
+    VcsMergeState,
     VcsRepositoryInfo,
     VcsPushResult,
     VcsRestoreOptions,
@@ -1297,6 +1300,120 @@ export class VcsManager extends Manager {
                 result.conflicts.length ? `CONFLICTS: ${result.conflicts.join(", ")}` : "",
             );
             return result;
+        });
+    }
+
+    // -- merge ----------------------------------------------------------------
+
+    /**
+     * Whether this project is in the middle of a merge, and which paths are still open.
+     *
+     * **Ask this on opening a project, not only after a sync.** A merge is repository state
+     * and outlives the process that started it: the author can close the window on a
+     * conflicted sync and reopen it tomorrow, and nothing in this class remembers. The
+     * answer is reconstructed from the repository and from what the merge left on disk -
+     * see `merge.ts` for exactly which signals, and for the one that is not an inference.
+     *
+     * A pure read on the offline globals: no socket, and `scan: false`, so it is not the
+     * kind of status call that records staged state as a side effect (§4.17).
+     */
+    public async getMergeState(projectPath: string): Promise<VcsMergeState> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            return backend.readMergeState(session.globals, session.root);
+        });
+    }
+
+    /**
+     * Settle conflicted paths by taking one side, or by taking the working tree as it is.
+     *
+     * **Records nothing.** Settling a path is not committing it - the merge stays open
+     * until a commit closes it, which is what lets the author decide one file, look at the
+     * result, and decide the next. The caller commits when the author says so, through
+     * {@link commit}, whose globals are offline - and they must stay offline: a commit made
+     * through online globals on a server-registered repository cannot be read back by the
+     * process that wrote it (§4.29), so the author's own resolution would be unreadable in
+     * the session that made it.
+     *
+     * `mine` and `theirs` OVERWRITE the working tree, so the pending saves are flushed
+     * first and inside the lock for the same reason a sync flushes them: a debounced
+     * auto-save landing a moment later writes the author's pre-merge document back over
+     * the side they just chose.
+     *
+     * The caller must re-read every document this touched.
+     */
+    public async resolveConflicts(
+        projectPath: string,
+        paths: readonly string[],
+        choice: VcsConflictChoice,
+    ): Promise<VcsMergeResolveResult> {
+        return this.serialize(projectPath, async () => {
+            if (this.flushPendingSaves) {
+                await this.flushPendingSaves(projectPath).catch((error) => {
+                    this.app.logger.warn("[Vcs] Could not flush pending saves before resolving", error);
+                });
+            }
+            const { session, backend } = await this.sessionFor(projectPath);
+            const result = await backend.resolveConflicts(session.globals, session.root, paths, choice);
+            this.app.logger.info(
+                "[Vcs] Resolved", session.root, `${paths.length} path(s) as ${choice};`,
+                `${result.state.conflicts.length} left`,
+            );
+            return result;
+        });
+    }
+
+    /** Put settled paths back into the unresolved state, undoing a choice. */
+    public async unresolveConflicts(
+        projectPath: string,
+        paths: readonly string[],
+    ): Promise<VcsMergeResolveResult> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            return backend.unresolveConflicts(session.globals, session.root, paths);
+        });
+    }
+
+    /**
+     * Redo the automatic merge for these paths, discarding what is in the working tree.
+     *
+     * The way back from a half-edited merge result, and it throws away bytes - so the
+     * pending saves are flushed first, and the caller must re-read afterwards.
+     */
+    public async restartConflicts(projectPath: string, paths: readonly string[]): Promise<VcsMergeState> {
+        return this.serialize(projectPath, async () => {
+            if (this.flushPendingSaves) {
+                await this.flushPendingSaves(projectPath).catch((error) => {
+                    this.app.logger.warn("[Vcs] Could not flush pending saves before restarting a merge", error);
+                });
+            }
+            const { session, backend } = await this.sessionFor(projectPath);
+            return backend.restartConflicts(session.globals, session.root, paths);
+        });
+    }
+
+    /**
+     * Abandon the merge and put the working tree back to what it was before it started.
+     *
+     * **A complete rollback, measured rather than assumed** (§4.27): every file back to its
+     * pre-merge content, the merge inputs deleted, the status header where it was. That
+     * measurement is the only reason this is offered at all - a cancel that left a
+     * half-merged tree would be worse than no cancel.
+     *
+     * It writes the author's files, so it carries a restore's obligations: pending saves
+     * flushed first and inside the lock, and every document re-read once it resolves.
+     */
+    public async abortMerge(projectPath: string): Promise<VcsMergeState> {
+        return this.serialize(projectPath, async () => {
+            if (this.flushPendingSaves) {
+                await this.flushPendingSaves(projectPath).catch((error) => {
+                    this.app.logger.warn("[Vcs] Could not flush pending saves before abandoning a merge", error);
+                });
+            }
+            const { session, backend } = await this.sessionFor(projectPath);
+            const state = await backend.abortMerge(session.globals, session.root);
+            this.app.logger.info("[Vcs] Abandoned the merge", session.root);
+            return state;
         });
     }
 

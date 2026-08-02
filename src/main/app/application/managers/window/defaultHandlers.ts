@@ -16,6 +16,8 @@ import {
     VcsInitRepositoryHandler,
     VcsGetStatusHandler, VcsCommitHandler, VcsCheckpointHandler, VcsRestoreRevisionHandler,
     VcsGetRemoteHandler, VcsSetRemoteHandler, VcsGetSyncStateHandler, VcsPushHandler, VcsSyncHandler, VcsCloneHandler,
+    VcsGetMergeStateHandler, VcsResolveConflictsHandler, VcsUnresolveConflictsHandler,
+    VcsRestartConflictsHandler, VcsAbortMergeHandler,
 } from "./handlers/vcsAction";
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./handlers/projectWizardAction";
 import { WorkspaceExportProjectPackageHandler, WorkspaceImportProjectPackageHandler } from "./handlers/projectPackageAction";
@@ -267,6 +269,11 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new VcsDiffWorkingTreeHandler(),
         new VcsGetThreeWayHandler(),
         new VcsGetMergeBaseHandler(),
+        new VcsGetMergeStateHandler(),
+        new VcsResolveConflictsHandler(),
+        new VcsUnresolveConflictsHandler(),
+        new VcsRestartConflictsHandler(),
+        new VcsAbortMergeHandler(),
         new VcsGetRemoteHandler(),
         new VcsSetRemoteHandler(),
         new VcsGetSyncStateHandler(),
