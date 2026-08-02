@@ -112,6 +112,11 @@ export const settings = {
             label: "Use “@” to open the action creator",
             description: "Avoids the clash between / and 、 in Chinese input methods.",
         },
+        localizedCommands: {
+            label: "Show story commands in the interface language",
+            description:
+                "Turn this off to keep the action creator's command names, parameter names and values in English. Their English spellings work either way.",
+        },
         electronMirror: {
             label: "Electron download mirror",
             description:

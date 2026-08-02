@@ -1,5 +1,6 @@
 import type { TranslationKey } from "@shared/i18n";
 import { missingCoreParams, parseCommandLine, type StoryCommandIssue, type StoryCommandLine } from "./storyCommandParser";
+import { paramHintKey } from "./storyCommandGrammar";
 import type { StoryExpressionIssue } from "@shared/utils/storyExpressionParser";
 import { resolveCommandLine, type StoryCommandContext, type StoryCommandResolutionIssue } from "./storyCommandResolution";
 
@@ -19,7 +20,11 @@ import { resolveCommandLine, type StoryCommandContext, type StoryCommandResoluti
 export type StoryCommandReason = {
     key: TranslationKey;
     params: Record<string, string | number>;
-    /** When set, the caller translates this hint key and substitutes it for `params.slot`. */
+    /**
+     * When set, the caller translates this hint key and substitutes it for `params.slot` — in the
+     * COMMAND language, not the interface one. `params.slot` carries the untranslated fallback so a
+     * caller that does not care still renders something.
+     */
     paramHintKey?: TranslationKey;
 };
 
@@ -69,10 +74,11 @@ export function getCommandLineDraftReason(source: string, context: StoryCommandC
     if (missing.length === 0) {
         return null;
     }
+    const hint = paramHintKey(missing[0]);
     return {
         key: "storyExpr.reason.missingCore" as TranslationKey,
-        params: { token: line.token ?? "", slot: missing[0].hint ?? missing[0].name },
-        paramHintKey: `story.paramHint.${missing[0].hint ?? missing[0].name}` as TranslationKey,
+        params: { token: line.token ?? "", slot: hint },
+        paramHintKey: `story.paramHint.${hint}` as TranslationKey,
     };
 }
 

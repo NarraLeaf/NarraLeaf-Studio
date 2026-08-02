@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { StoryBlock } from "@shared/types/story";
 import { BUILTIN_AUDIO_TRACKS, resolveAudioTrack } from "@shared/types/audioTrack";
+import { getQuickParams } from "@/lib/story/storyQuickParamsModel";
 import { parseCommandLine } from "../../storyCommandParser";
 import { resolveCommandLine, type StoryCommandContext } from "../../storyCommandResolution";
 import { getCommandSpec, listCommandSpecs } from "../registry";
@@ -136,6 +137,19 @@ describe("generic verbs (bible B3)", () => {
             payload: { action: "image", operation: "hide", objectName: "hero", transform: { preset: "fadeOut" } },
         });
         expect(build("/hide Alice")).toMatchObject({ payload: { action: "character", operation: "exit" } });
+    });
+
+    it("the row token reads back the `d=` the author typed, for a character and an image alike", () => {
+        // The seam that drifted: the spec wrote `d=` to the transform while the row token read it off
+        // the transition, so every character row printed "0s". Asserted end to end — parse, resolve,
+        // build, then project — because neither half is wrong on its own, only the pair.
+        const ms = (source: string) => getQuickParams(build(source)).find(param => param.id === "d")?.value;
+        expect(ms("/hide Alice t=fade d=2")).toMatchObject({ kind: "duration", ms: 2000 });
+        expect(ms("/show Alice at=left d=0.3")).toMatchObject({ kind: "duration", ms: 300 });
+        // Known boundary, asserted so it is a decision and not a surprise: a stage object resolves to
+        // an image/text/displayable payload, and `getQuickParams` has no branch for those, so `d=` is
+        // stored on the transform (see the `/hide hero` case above) but earns no inline token yet.
+        expect(ms("/hide hero t=fade d=1.5")).toBeUndefined();
     });
 
     it("/show reaches text, video and layer targets too", () => {
