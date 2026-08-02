@@ -322,7 +322,7 @@ export type PluginStorageService = {
 };
 
 /** Why project data is currently read-only: an older version is on screen, or the author froze it. */
-export type PluginFreezeReason = "revision" | "manual";
+export type PluginFreezeReason = "revision" | "manual" | "merge";
 
 /**
  * The state of the project a plugin's data lives in.

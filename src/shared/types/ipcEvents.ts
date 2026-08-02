@@ -55,6 +55,8 @@ import type {
     VcsConflictChoice,
     VcsHistoryEntry,
     VcsInitOptions,
+    VcsMergeCompletion,
+    VcsMergeDecision,
     VcsMergeResolveResult,
     VcsMergeState,
     VcsRepositoryInfo,
@@ -252,6 +254,7 @@ export enum IPCEventType {
     vcsGetMergeBase = "vcs.getMergeBase",
     vcsGetMergeState = "vcs.getMergeState",
     vcsResolveConflicts = "vcs.resolveConflicts",
+    vcsCompleteMerge = "vcs.completeMerge",
     vcsUnresolveConflicts = "vcs.unresolveConflicts",
     vcsRestartConflicts = "vcs.restartConflicts",
     vcsAbortMerge = "vcs.abortMerge",
@@ -288,7 +291,7 @@ export type BlueprintPersistenceProjectRef = {
  * A third kind added to the reason will fail to compile at the reporting call site, which is the
  * right place to be asked what to say about it.
  */
-export type WorkspaceFreezeKind = "revision" | "manual";
+export type WorkspaceFreezeKind = "revision" | "manual" | "merge";
 
 /**
  * Which part of the close a workspace is currently waiting on.
@@ -769,6 +772,20 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { projectPath: string; paths: string[]; choice: VcsConflictChoice },
         response: VcsMergeResolveResult;
+    };
+    /**
+     * Take one side per path and close the merge with a commit - the whole of tier one, as ONE
+     * operation.
+     *
+     * One call rather than "resolve, then commit" from the renderer, because the two halves must
+     * not be interleavable: anything else that commits in between (the checkpoint timer) would
+     * close the author's merge under a different message and a different kind.
+     */
+    [IPCEventType.vcsCompleteMerge]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; decisions: VcsMergeDecision[]; options?: VcsCommitOptions },
+        response: VcsMergeCompletion;
     };
     [IPCEventType.vcsUnresolveConflicts]: {
         type: IPCMessageType.request,
