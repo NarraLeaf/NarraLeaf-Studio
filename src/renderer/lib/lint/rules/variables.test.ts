@@ -28,7 +28,10 @@ import { VARIABLES_LINT_RULES } from "./variables";
  * are the ones that would make the rule unusable if they fired - a `/set` right-hand side and the
  * sugar that lowers to one (rolling a die into a variable is the whole reason the function exists),
  * plus a `/repeat until` condition, which is exempt by decision rather than by omission and so is
- * asserted here so nobody "fixes" it later.
+ * asserted here so nobody "fixes" it later. That exemption is that rule's alone: the shared
+ * `collectVariableUses` walk reads the same slot, which the `undeclared` and `unused` cases pin from
+ * the other side - one rule may skip a slot for *when* it evaluates, none may skip it for *whether*
+ * it reads.
  */
 
 // --- fixtures ---------------------------------------------------------------
@@ -127,8 +130,9 @@ const expr = (source: string, ast: StoryExpr): StoryExpression => ({ source, ast
 const num = (value: number): StoryExpr => ({ kind: "literal", value });
 const call = (fn: "random" | "randomInt" | "max", args: StoryExpr[]): StoryExpr =>
     ({ kind: "call", fn, args });
-const binary = (op: "+" | "*" | ">" | "<", left: StoryExpr, right: StoryExpr): StoryExpr =>
+const binary = (op: "+" | "*" | ">" | "<" | ">=", left: StoryExpr, right: StoryExpr): StoryExpr =>
     ({ kind: "binary", op, left, right });
+const varRead = (target: StoryVariableRef, name: string): StoryExpr => ({ kind: "var", target, name });
 
 /** `/set luck randomInt(1, 6)` - the one site a roll is allowed to live at. */
 const setFromRandom = (id: string, target: StoryVariableRef): BlockSpec => ({
@@ -336,6 +340,26 @@ describe("variables/undeclared", () => {
         expect(findings[0].messageParams).toEqual({ variable: "bonus" });
     });
 
+    // Same `collectVariableUses` gap as the `unused` case below: both scans share the walk, so an
+    // unscanned slot cost `undeclared` a real error as well as costing `unused` a false one.
+    it("reads a variable named only in a /repeat until condition", () => {
+        const ctx = createTestLintContext({
+            stories: [
+                story("s1", "Main", [
+                    scene("sc1", "Prologue", [
+                        repeatUntil("r1", "Gold >= 10", binary(">=", varRead({ scope: "scene", variableId: "v1" }, "Gold"), num(10))),
+                    ]),
+                ]),
+            ],
+        });
+
+        const findings = run("variables/undeclared", ctx);
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageParams).toEqual({ variable: "Gold" });
+        expect(findings[0].target).toMatchObject({ kind: "storyBlock", blockId: "r1" });
+    });
+
     it("reads a variable interpolated into a line", () => {
         const ctx = createTestLintContext({
             stories: [story("s1", "Main", [scene("sc1", "Prologue", [interpolatingLine("b1", { scope: "saved", variableId: "v9" })])])],
@@ -495,6 +519,34 @@ describe("variables/unused", () => {
             blueprintDocument: blueprintWithNode({ persistentVariableId: "pk-1" }),
         });
         expect(run("variables/unused", ctx)).toEqual([]);
+    });
+
+    /**
+     * `repeat.until` is the fourth `StoryConditionRef` slot and the last one `collectVariableUses`
+     * learned about; while it was unscanned, a scene holding nothing but `gold: number = 0` and
+     * `Repeat until gold >= 10` reported `gold` as never used - a warning telling the author to delete
+     * the variable the loop depends on.
+     *
+     * The second declaration is the control. Without it, a green assertion here would be satisfied
+     * just as well by a rule that had stopped reporting anything at all.
+     */
+    it("counts a read that happens only in a /repeat until condition", () => {
+        const ctx = createTestLintContext({
+            stories: [
+                story("s1", "Main", [
+                    scene("sc1", "Prologue", [
+                        declaration("v1", "scene", "Gold"),
+                        declaration("v2", "scene", "Silver"),
+                        repeatUntil("r1", "Gold >= 10", binary(">=", varRead({ scope: "scene", variableId: "v1" }, "Gold"), num(10))),
+                    ]),
+                ]),
+            ],
+        });
+
+        const findings = run("variables/unused", ctx);
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageParams).toEqual({ variable: "Silver" });
     });
 
     it("says nothing about an empty project", () => {

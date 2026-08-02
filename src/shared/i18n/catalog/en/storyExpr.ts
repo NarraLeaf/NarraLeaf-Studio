@@ -59,7 +59,11 @@ export const storyExpr = {
         repeatTimesAndUntil: "A repeat runs a set number of times or until a condition — not both. Drop one.",
         expressionError: "{message}",
         expressionNotBoolean: "A condition has to be a true/false test, like gold >= 100.",
-        expressionTypeMismatch: "This produces {received}, but \"{value}\" holds {expected}.",
+        // `{variable}` is the assignment target, never the expression source: the variable is the only
+        // side of `/set` that HOLDS a declared type. Both `{expected}` and `{received}` are always one
+        // of boolean/number/string here (a `json` target accepts anything and an undecidable
+        // expression infers `unknown`, and neither reaches this message), so the articles always read.
+        expressionTypeMismatch: "\"{variable}\" holds a {expected}, so it cannot take a {received}.",
         duplicateVariable: "\"{value}\" already exists — pick another name, or use /set to change it.",
         unknownTarget: "Nothing on stage is named \"{value}\".",
         unsupportedOption: "\"{value}\" does not apply here. Try: {allowed}.",

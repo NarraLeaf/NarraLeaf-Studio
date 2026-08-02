@@ -287,6 +287,16 @@ function collectVariableUses(scene: StoryScene, blocks: readonly StoryBlock[]): 
             case "control":
                 if (block.payload.control === "conditionBranch") {
                     pushCondition(block.payload.condition, block.id);
+                } else if (block.payload.control === "repeat") {
+                    // `repeat.until` is the fourth `StoryConditionRef` slot, and it must be scanned
+                    // here even though `random-outside-assignment` below deliberately exempts the very
+                    // same slot. The two scans ask different questions: that rule is about *when* a
+                    // value is recomputed (a loop condition is meant to be re-tested, so a roll in one
+                    // is fine), while this one is about *whether* a variable is read at all - and a
+                    // read is a read however many times it happens. Leaving it out reported
+                    // `/repeat until gold >= 10`'s only reader as `variables/unused`, and would have
+                    // let `undeclared` miss a deleted variable the loop still names.
+                    pushCondition(block.payload.until, block.id);
                 }
                 break;
             case "note":
@@ -694,6 +704,11 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
                                         // *meant* to be re-tested each iteration: that is not a value
                                         // failing to hold still, it is the loop working. See the
                                         // `RANDOM_FUNCTIONS` header for the full criterion.
+                                        //
+                                        // The exemption is THIS rule's alone. `collectVariableUses`
+                                        // scans the same slot unconditionally, and must: it asks
+                                        // whether a variable is read, not how often, so skipping
+                                        // `until` there would report a loop's only reader as unused.
                                         break;
                                     default:
                                         break;

@@ -45,6 +45,7 @@ import { completionFor, defaultHighlights, getCommandCursor, type StoryCommandCu
 import { getCommandCandidates, hasCandidateSource, type StoryCommandCandidate } from "./storyCommandCandidates";
 import { parseCommandLine } from "./storyCommandParser";
 import { resolveCommandLine, type StoryCommandContext } from "./storyCommandResolution";
+import type { StoryCommandValue } from "./storyCommandValues";
 import { StoryCommandCandidateMenu, useStoryCandidateMenuState, type StoryCandidateItem } from "./StoryCommandCandidateMenu";
 import { RichTextInput, type ActiveMarks, type EventClickInfo, type InterpolationClickInfo, type PauseClickInfo, type RichTextInputHandle } from "./RichTextInput";
 import { RichTextToolbar } from "./RichTextToolbar";
@@ -1566,6 +1567,52 @@ function candidateIcon(cursor: StoryCommandCursor, candidate: StoryCommandCandid
 }
 
 /**
+ * What the argument menu offers at this caret: the candidates, whether the panel opens at all, and
+ * whether anything starts out highlighted.
+ *
+ * Pure and locale-free, so the admission rule can be pinned by a test without mounting a row — the
+ * component only adds labels and icons on top of it. It is a named function rather than the three
+ * inline conditions it replaces, because inline conditions are exactly how the `expression` arm went
+ * missing: `getCommandCursor` has answered `expression` for every `/set`, `/if` and `/until`
+ * right-hand side since it was written, the model has always had candidates ready for it (variables,
+ * blueprints, `visited(` scenes, `picked(` options), and the gates listed only `positional` /
+ * `paramValue` / `paramName`. The result was a menu that had never once rendered in an expression
+ * slot — the model was right and had no way out.
+ *
+ * The open rule, unchanged: an empty list still opens at a value position where the author typed
+ * something a param *could* have matched — that is the "no matches" the speaker picker also shows,
+ * and it is the honest answer to "does this name exist?". It stays shut for a param with nothing to
+ * enumerate (a duration, a colour), where "no matches" would be nonsense, and at a `k=` position,
+ * where an empty list means every param is already given and there is nothing left to say.
+ */
+export function argMenuOffer(
+    cursor: StoryCommandCursor,
+    context: StoryCommandContext,
+    resolved: Readonly<Record<string, StoryCommandValue>>,
+): { open: boolean; candidates: readonly StoryCommandCandidate[]; autoHighlight: boolean } {
+    // A value position completes to a value: a positional, a `k=` value, or the identifier fragment
+    // under the caret inside a greedy expression. All three share the open rule above; `paramName` is
+    // the one that does not.
+    const valuePosition = cursor.kind === "positional" || cursor.kind === "paramValue" || cursor.kind === "expression";
+    if (!valuePosition && cursor.kind !== "paramName") {
+        return { open: false, candidates: [], autoHighlight: false };
+    }
+    const candidates = getCommandCandidates(cursor, context, resolved);
+    const open = valuePosition
+        ? candidates.length > 0 || (cursor.query.length > 0 && hasCandidateSource(cursor.param, context, resolved))
+        : candidates.length > 0;
+    // The highlight stays `defaultHighlights`'s call — one rule, not a second one invented here. Worth
+    // restating what it decides for the arm this function has just let through, because it will read
+    // like an omission to whoever sees the menu next: an expression NEVER default-highlights, and that
+    // is the author's ruling rather than an oversight. In an expression the author is writing, not
+    // picking, so Enter has to keep meaning "commit this line" and ←/→ have to keep meaning "move the
+    // caret" — a menu that opened with `gold` lit would make `/set gold gold + 1` + Enter insert a
+    // variable instead of submitting. ↑/↓ create a highlight when the author wants one (the same key
+    // every other chooser here answers to), and Tab still takes the first candidate.
+    return { open, candidates, autoHighlight: defaultHighlights(cursor, candidates) };
+}
+
+/**
  * The grey `<Var Name>` that trails the caret on a command line.
  *
  * Rendered as a mirror of the typed text — the text itself repeated but invisible, then the hint —
@@ -1716,11 +1763,13 @@ export function InsertRow(props: {
         const line = parseCommandLine(source);
         return line.kind === "command" && line.def ? resolveCommandLine(line, props.commandContext).args : {};
     }, [props.commandContext, source]);
+    // The whole menu decision — what to show, whether to open, what (if anything) starts highlighted.
+    const argOffer = useMemo(
+        () => argMenuOffer(cursor, props.commandContext, resolvedArgs),
+        [cursor, props.commandContext, resolvedArgs],
+    );
     const argItems = useMemo<StoryCandidateItem[]>(() => {
-        if (cursor.kind !== "positional" && cursor.kind !== "paramValue" && cursor.kind !== "paramName") {
-            return [];
-        }
-        return getCommandCandidates(cursor, props.commandContext, resolvedArgs).map((candidate, index) => {
+        return argOffer.candidates.map((candidate, index) => {
             const icon = candidateIcon(cursor, candidate);
             return {
                 // Values are not unique on their own — two assets may share a name.
@@ -1738,23 +1787,15 @@ export function InsertRow(props: {
                 ...(candidate.free ? { free: true as const } : {}),
             };
         });
-    }, [cursor, props.commandContext, resolvedArgs, t]);
-    // The candidates decide the highlight along with the cursor: an untyped slot and a slot whose best
-    // offer is the author's own text both have to leave Enter meaning "submit". See `defaultHighlights`.
-    const argMenu = useStoryCandidateMenuState(argItems, defaultHighlights(cursor, argItems));
+    }, [argOffer, cursor, t]);
+    // The candidates decide the highlight along with the cursor: an untyped slot, a slot whose best
+    // offer is the author's own text, and every expression slot all have to leave Enter meaning
+    // "submit". See `defaultHighlights`, and `argMenuOffer` for why the expression case is deliberate.
+    const argMenu = useStoryCandidateMenuState(argItems, argOffer.autoHighlight);
 
-    /**
-     * The argument menu owns the slot whenever the caret is past the command name.
-     *
-     * An empty list still opens when the author typed something a param *could* have matched — that is
-     * the "no matches" the speaker picker also shows. It stays shut for a param with nothing to
-     * enumerate (a duration, a colour), where "no matches" would be nonsense, and at a `k=` position,
-     * where an empty list means every param is already given and there is nothing left to say.
-     */
-    const argValuePosition = cursor.kind === "positional" || cursor.kind === "paramValue";
-    const argMenuOpen = chooser === "action"
-        && (cursor.kind === "paramName" ? argItems.length > 0
-            : argValuePosition && (argItems.length > 0 || (cursor.query.length > 0 && hasCandidateSource(cursor.param, props.commandContext, resolvedArgs))));
+    // The argument menu owns the slot whenever the caret is past the command name and `argMenuOffer`
+    // says there is something to show.
+    const argMenuOpen = chooser === "action" && argOffer.open;
     const actionMenuOpen = chooser === "action" && cursor.kind === "commandName";
 
     /**

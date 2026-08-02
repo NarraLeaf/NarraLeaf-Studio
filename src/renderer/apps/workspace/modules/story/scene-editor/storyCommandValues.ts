@@ -273,8 +273,15 @@ export type StoryCommandResolutionIssue =
     | { code: "expressionError"; span: StoryCommandSpan; value: string; issue: StoryExpressionIssue }
     /** `/if gold` - parses fine, but a condition that is not a comparison is nearly always unfinished. */
     | { code: "expressionNotBoolean"; span: StoryCommandSpan; value: string; received: StoryExprType }
-    /** `/set gold "rich"` where `gold` is a number - the expression's result type cannot be stored. */
-    | { code: "expressionTypeMismatch"; span: StoryCommandSpan; value: string; expected: StoryVariableValueType; received: StoryExprType }
+    /**
+     * `/set gold "rich"` where `gold` is a number - the expression's result type cannot be stored.
+     *
+     * Two names, because the message has two roles to fill and they are NOT interchangeable:
+     * `variable` is the assignment target (the thing that *holds* `expected`), `value` is the
+     * expression source under the span (the thing that *produces* `received`). Wording the message
+     * with only `value` is what made it say the expression held the variable's type.
+     */
+    | { code: "expressionTypeMismatch"; span: StoryCommandSpan; value: string; variable: string; expected: StoryVariableValueType; received: StoryExprType }
     /** `/local gold` where a variable of that name already exists in that scope. */
     | { code: "duplicateVariable"; span: StoryCommandSpan; value: string }
     /** `/set += 1` - a compound assignment with no variable to compound against. */

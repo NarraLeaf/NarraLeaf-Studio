@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { storyExpr as en } from "@shared/i18n/catalog/en/storyExpr";
+import { createTranslator } from "@shared/i18n";
+import type { TranslationKey } from "@shared/i18n";
 import { getCommandLineReason } from "./storyCommandReason";
 import type { StoryCommandContext } from "./storyCommandResolution";
 import { EMPTY_STORY_COMMAND_CONTEXT } from "./storyCommandResolution";
@@ -78,6 +80,36 @@ describe("getCommandLineReason", () => {
     it("reports a value the variable cannot hold, and a condition that is not a test", () => {
         expect(reasonFor("/set gold \"rich\"")).toBe(en.reason.expressionTypeMismatch);
         expect(reasonFor("/if gold")).toBe(en.reason.expressionNotBoolean);
+    });
+
+    /**
+     * The subject of "holds" is the VARIABLE.
+     *
+     * The message used to fill that role with the expression source and read
+     * `This produces string, but "upper("a")" holds number.` - `upper("a")` is the side that produces
+     * a string, and `gold` is the side that holds a number, so the sentence contradicted itself. The
+     * assertion is written on the rendered text in both locales rather than on the params, because
+     * the defect was in the wording and a params-only check would have passed throughout.
+     *
+     * Reachable only since `inferStoryExpressionType` gained a per-function result table: while every
+     * call inferred as `number`, a function result always fitted a number variable and this branch
+     * could not be hit.
+     */
+    it("names the variable, not the expression, as the thing that holds a type", () => {
+        const reason = getCommandLineReason("/set gold upper(\"a\")", CONTEXT);
+
+        expect(reason?.key).toBe("storyExpr.reason.expressionTypeMismatch" as TranslationKey);
+        if (!reason) {
+            return;
+        }
+        for (const locale of ["en", "zh"] as const) {
+            const text = createTranslator(locale).t(reason.key, reason.params);
+            expect(text, locale).toContain("gold");
+            expect(text, locale).toContain("number");
+            expect(text, locale).toContain("string");
+            // The expression source must not appear at all: there is no role left for it to fill.
+            expect(text, locale).not.toContain("upper");
+        }
     });
 
     it("reports a malformed line", () => {
