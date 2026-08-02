@@ -13,6 +13,7 @@ import {
 import type { StoryCommandLine, StoryCommandSpan } from "./storyCommandParser";
 import { getCommandSpec } from "./commands/registry";
 import { matchEnumOptionLocalized } from "./commands/localizedEnums";
+import { numberValueOfLocalized } from "./commands/localizedUnits";
 import type {
     StoryCommandContext,
     StoryCommandAppearanceRef,
@@ -309,8 +310,10 @@ function resolveAgainstType(
                 ? { value: { kind: "keyword", value: type.value } }
                 : null;
         case "number": {
-            const parsed = Number(value);
-            return value.trim() !== "" && Number.isFinite(parsed) ? { value: { kind: "number", value: parsed } } : null;
+            // Through the grammar's own reader, so a unit the parser accepted (`d=1s`) is a unit the
+            // payload gets the number out of, rather than a NaN nobody reported.
+            const parsed = numberValueOfLocalized(type, value);
+            return parsed === null ? null : { value: { kind: "number", value: parsed } };
         }
         case "boolean": {
             // The human spellings collapse to the canonical pair here (bible B5).

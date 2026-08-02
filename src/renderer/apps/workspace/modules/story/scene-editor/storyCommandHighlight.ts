@@ -1,4 +1,5 @@
 import { paramTypes, type StoryCommandParam } from "./storyCommandGrammar";
+import { unitSuffixLength } from "./commands/localizedUnits";
 import { parseCommandLine, type StoryCommandSpan } from "./storyCommandParser";
 
 /**
@@ -62,6 +63,7 @@ function isTargetParam(param: StoryCommandParam | null): boolean {
     return param !== null && paramTypes(param).some(type => ENTITY_KINDS.has(type.kind));
 }
 
+
 /**
  * The roles of a command line, in source order and non-overlapping.
  *
@@ -89,7 +91,16 @@ export function getCommandHighlights(source: string): readonly StoryCommandHighl
         }
         const isPositional = arg.key === null;
         const role: StoryCommandRole = isPositional && isTargetParam(arg.param) ? "target" : "value";
-        highlights.push({ span: arg.valueSpan, role });
+        // The unit is not part of the value: `1s` is one second, and the `s` (or `秒`) says which
+        // *kind* of one it is — the same job the param key does. Left out of the span, it falls
+        // through to scaffold. Measured by the same reader the parser uses, so a spelling that was
+        // accepted is a spelling that recedes.
+        //
+        // Only on an unquoted token, where the span and the text line up character for character. A
+        // quoted `d="1s"` would otherwise shed its closing quote instead of its unit.
+        const quoted = arg.valueSpan.end - arg.valueSpan.start !== arg.value.length;
+        const unit = quoted ? 0 : unitSuffixLength(arg.param, arg.value);
+        highlights.push({ span: { ...arg.valueSpan, end: arg.valueSpan.end - unit }, role });
     }
     return highlights.sort((a, b) => a.span.start - b.span.start);
 }

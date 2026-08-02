@@ -453,6 +453,19 @@ export const story = {
         narraleaf: "narraleaf",
     },
 
+    /**
+     * The unit a numeric value is written with — the fourth vocabulary namespace, built and dropped on
+     * exactly the same rules as the three above (`localizedUnits.ts`).
+     *
+     * Keyed by the canonical unit the grammar declares. English spells it as itself for the same
+     * reason `enumValue` does: it is the translator's anchor and the fallback a locale that has not
+     * translated it gets — a spelling the parser certainly accepts.
+     */
+    unit: {
+        /** Seconds. Every duration, fade and hold in the vocabulary is measured in these. */
+        s: "s",
+    },
+
     view: {
         narrativeOnly: "Narrative only",
         density: "Reading density",
