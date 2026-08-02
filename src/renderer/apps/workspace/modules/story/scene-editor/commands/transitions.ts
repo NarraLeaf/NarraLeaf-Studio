@@ -34,6 +34,15 @@ export type StoryTransitionWord =
     | "black"
     | "darkness"
     | "zoom"
+    // The transform presets the inspector offers that no word reached. They are the same field a
+    // `t=` writes (`StoryTransformRef.preset`), so a look an author could pick on the right had no
+    // spelling on the left — and a row showing it could not be typed back. One word each, named
+    // after the preset, since there is nothing to unify: unlike `fade`, they read the same in both
+    // directions.
+    | "scale"
+    | "rotate"
+    | "opacity"
+    | "darken"
     | "none";
 
 /**
@@ -69,8 +78,11 @@ const SUPPORTED: Record<StoryTransitionContext, readonly StoryTransitionWord[]> 
     // offered on `/bg` `/jump` alongside the classics, but not on portrait swaps or stage objects.
     scene: ["fade", "slide", "circle", "wipe", "iris", "blinds", "barn-door", "clock", "fan", "dots", "blur", "black", "darkness", "none"],
     character: ["fade", "slide", "circle", "wipe", "blur", "none"],
-    reveal: ["fade", "slide-left", "slide-right", "slide-up", "slide-down", "zoom", "circle", "wipe", "none"],
-    conceal: ["fade", "slide-left", "slide-right", "slide-up", "slide-down", "zoom", "circle", "wipe", "none"],
+    // Every preset the inspector's own dropdown offers, so the two surfaces reach the same set of
+    // looks — `left` / `center` / `right` excepted: those are the SAME field written through `at=`,
+    // which is the slot the vocabulary already gives a placement (bible §1.2).
+    reveal: ["fade", "slide-left", "slide-right", "slide-up", "slide-down", "zoom", "scale", "rotate", "opacity", "darken", "circle", "wipe", "none"],
+    conceal: ["fade", "slide-left", "slide-right", "slide-up", "slide-down", "zoom", "scale", "rotate", "opacity", "darken", "circle", "wipe", "none"],
     nvl: ["fade", "none"],
 };
 
@@ -133,6 +145,10 @@ const REVEAL_PRESETS: Partial<Record<StoryTransitionWord, NonNullable<StoryTrans
     "slide-up": "slideUp",
     "slide-down": "slideDown",
     zoom: "zoom",
+    scale: "scale",
+    rotate: "rotate",
+    opacity: "opacity",
+    darken: "darken",
     circle: "circleReveal",
     wipe: "wipe",
     none: "none",
