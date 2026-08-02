@@ -63,7 +63,7 @@ export const blueprint = {
             puppetBackendMissing: "Model widget “{name}” names no runtime",
             puppetBackendMissingHint: "Pick a runtime from this project's runtimes/puppet folder.",
             puppetBudget: "This Surface draws {count} models at once; only {limit} can be drawn",
-            puppetBudgetHint: "Each model holds a WebGL context and the browser keeps about 16 alive. Beyond {limit} the extra widgets show a notice instead of a model.",
+            puppetBudgetHint: "Past {limit}, the extra widgets show a notice instead of a model.",
             containerImageMissing: "Container “{name}” uses image fill without an asset",
             containerImageMissingHint: "Pick an image asset or switch fill type.",
             buttonImageMissing: "Button “{name}” uses image background without an asset",

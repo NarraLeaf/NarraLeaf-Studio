@@ -132,7 +132,7 @@ export function inspectLive2DSdkArchive(archive: Buffer): Live2DSdkArchive {
     if (!core) {
         throw new Error(
             `This archive has a ${INFO_FILE} but no ${CORE_FILE}. `
-            + "That is the Cubism Core, and the runtime cannot be built without it — "
+            + "That is the Cubism Core, and the runtime cannot be built without it: "
             + "the SDK for Web archive contains it, the Cubism Editor download does not.",
         );
     }

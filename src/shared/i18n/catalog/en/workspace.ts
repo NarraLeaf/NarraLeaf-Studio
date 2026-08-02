@@ -7,7 +7,7 @@ export const workspace = {
     localization: {
         panel: {
             languagesTitle: "Languages",
-            languagesHint: "Languages of the game itself. The source language is the one you write in; every other language is translated against it.",
+            languagesHint: "Languages of the game itself. The source is the one you write in; the rest are translated against it.",
             addLanguage: "Add language",
             codePlaceholder: "Code (en, ja, zh-CN…)",
             namePlaceholder: "Display name",
@@ -75,7 +75,7 @@ export const workspace = {
     voice: {
         panel: {
             languagesTitle: "Voice languages",
-            languagesHint: "Languages you have voice-over for. Independent of text languages, so you can voice a game in Japanese while its text stays English.",
+            languagesHint: "Languages you have voice-over for. Independent of the text languages.",
             addLanguage: "Add voice language",
             codePlaceholder: "Code (ja, en, zh-CN…)",
             namePlaceholder: "Display name",
@@ -319,23 +319,23 @@ export const workspace = {
         save: {
             failedTitle: "Couldn't save {file}",
             failedDetailTransient: "Still retrying in the background. {error}",
-            failedDetailPermanent: "This one needs your attention — retrying will not help until it is fixed. {error}",
+            failedDetailPermanent: "Retrying will not help until this is fixed. {error}",
             retry: "Retry now",
-            consoleFailed: "write failed ({code}, attempt {attempt}): {path} - {error}",
+            consoleFailed: "write failed ({code}, attempt {attempt}): {path} · {error}",
             consoleRecovered: "write succeeded: {path}",
             flushFailed: "could not flush {label}: {error}",
             // The read side: a document that is on disk but cannot be understood. The wording leads
             // with what did NOT happen, because the fear this raises is "has Studio eaten my work?".
             unreadableTitle: "Couldn't read {file}",
-            unreadableDetail: "{reason} The file was left exactly as it was — nothing has been written over it.",
+            unreadableDetail: "{reason} The file was left exactly as it was; nothing has been written over it.",
             unreadableDetailQuarantined: "{reason} The file was left exactly as it was, and a copy of it is at {path}.",
-            consoleUnreadable: "read failed ({kind}): {path} - {reason}",
+            consoleUnreadable: "read failed ({kind}): {path} · {reason}",
             consoleQuarantined: "kept a copy of the unreadable file at {path}",
             // A write refused because the workspace is frozen. Not a failure: nothing is wrong, and
             // nothing will be retried. The wording has to say why, or it reads as a bug.
             frozenTitle: "Nothing is being saved right now",
-            frozenDetailRevision: "You are looking at version {version}. Your project files are left untouched until you go back to the current version.",
-            frozenDetailManual: "The workspace is frozen, so changes are not written to your project. Unfreeze it to start saving again.",
+            frozenDetailRevision: "You are looking at version {version}. Your project files stay untouched until you go back to the current version.",
+            frozenDetailManual: "The workspace is frozen. Unfreeze it to start saving again.",
             consoleFrozen: "write refused, workspace frozen ({reason}): {path}",
             // Names for the things that hold project data - used when a flush fails, and again when a
             // working-tree re-read cannot reach one of them.
@@ -374,7 +374,7 @@ export const workspace = {
             // for all of them: the author has to learn "this is what a frozen project looks like"
             // once, not read a different excuse on each button. The controls are disabled rather
             // than hidden precisely so there is something to hover.
-            unavailable: "Not available while the project is frozen — unfreeze it to use this again.",
+            unavailable: "Not available while the project is frozen. Unfreeze it to use this again.",
         },
         // Browsing history in the real editors, until the version rail exists. "Previous" rather than
         // a picker on purpose: choosing a revision needs a list, the list is the rail, and a milestone
@@ -442,7 +442,7 @@ export const workspace = {
             restoreNotRecordedTitle: "Your files were restored, but the version was not submitted",
             restoreNotRecordedDetail:
                 "Your project files are now the ones from version {version}. Submitting that as a new "
-                + "version failed ({error}). Nothing is lost - press \"{action}\" to submit it yourself.",
+                + "version failed ({error}). Nothing is lost; press \"{action}\" to submit it yourself.",
             // A project with no repository. Named for what is missing, not for the mechanism.
             //
             // Short because two of its three homes are narrow: the status-bar cell and the top-bar
