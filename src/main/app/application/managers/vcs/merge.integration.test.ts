@@ -3,6 +3,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { afterAll, describe, expect, it } from "vitest";
+import { mergeDecisionKey } from "@shared/documents/mergeApply";
 import { VCS_UNCONFIGURED_REMOTE_URL, isVcsPlatformSupported } from "@shared/types/vcs";
 import {
     branchMergeResolveMine,
@@ -71,6 +72,25 @@ const OTHER_THEIRS_TEXT = `${JSON.stringify({ id: "other", note: "theirs" }, nul
 /** An answer NEITHER side wrote, which is the only thing `working-tree` can express. */
 const THIRD_TEXT = `${JSON.stringify({ id: "scene", title: "Prologue (agreed)", version: 7 }, null, 2)}\n`;
 
+/**
+ * A real document format for the per-change tier, and it has to be a real one.
+ *
+ * `doc.json` above is deliberately format-less - tier one never looks inside a file - but tier two
+ * is only reachable through a registered spec's `merge3`, so it needs a path the registry claims.
+ * A translation library is the case plan 2026-07-31-004 §4.3 puts first: translators do not
+ * partition a file, they take the keys they can do, so almost every unit is touched by exactly one
+ * side and the handful both touched is the whole question.
+ */
+const LOCALE_DOCUMENT = "editor/localization/ja.json";
+const localeUnit = (target: string) => ({ target, sourceHash: "h", status: "translated" });
+function localeText(units: Record<string, ReturnType<typeof localeUnit>>): string {
+    return `${JSON.stringify({ schemaVersion: 1, locale: "ja", units }, null, 2)}\n`;
+}
+/** One unit both sides retranslated, and one unit each that only one side has. */
+const LOCALE_BASE = localeText({ greeting: localeUnit("base") });
+const LOCALE_MINE = localeText({ greeting: localeUnit("mine"), fromMine: localeUnit("only mine") });
+const LOCALE_THEIRS = localeText({ greeting: localeUnit("theirs"), fromTheirs: localeUnit("only theirs") });
+
 const roots: string[] = [];
 const held: LoreGlobals[] = [];
 
@@ -96,6 +116,12 @@ function online(root: string): LoreGlobals {
 
 function write(root: string, relative: string, contents: string): void {
     fs.writeFileSync(path.join(root, relative), contents, "utf-8");
+}
+
+/** `write`, for a path with directories in it - the document specs all live under one. */
+function writeDeep(root: string, relative: string, contents: string): void {
+    fs.mkdirSync(path.dirname(path.join(root, relative)), { recursive: true });
+    write(root, relative, contents);
 }
 
 function read(root: string, relative: string): string {
@@ -600,14 +626,25 @@ describe.skipIf(!remoteEnabled)("a conflicted sync", () => {
      * online here would be the §4.29 trap: the process that writes such a revision cannot
      * read its new content back, and the failure would look like a defect in this feature.
      */
-    async function divergedProject(name: string): Promise<{ root: string; globals: LoreGlobals }> {
+    interface DivergedSides {
+        /** Repository-relative, forward slashes. Created with its directories. */
+        readonly file: string;
+        readonly base: string;
+        readonly mine: string;
+        readonly theirs: string;
+    }
+
+    async function divergedProject(
+        name: string,
+        sides: DivergedSides = { file: DOCUMENT, base: BASE_TEXT, mine: MINE_TEXT, theirs: THEIRS_TEXT },
+    ): Promise<{ root: string; globals: LoreGlobals }> {
         const authorRoot = tmp(`nl-merge-${name}-author-`);
         const authorGlobals = offline(authorRoot);
         const created = await createRepository(authorGlobals, {
             repositoryUrl: VCS_UNCONFIGURED_REMOTE_URL,
             description: "merge spec",
         });
-        write(authorRoot, DOCUMENT, BASE_TEXT);
+        writeDeep(authorRoot, sides.file, sides.base);
         await commitAll(authorGlobals, authorRoot, "base");
 
         const url = serverUrl(name);
@@ -619,14 +656,14 @@ describe.skipIf(!remoteEnabled)("a conflicted sync", () => {
         // A second machine edits the same document and pushes.
         const cloneRoot = path.join(tmp(`nl-merge-${name}-clone-`), "project");
         await cloneInto(online(cloneRoot), { repositoryUrl: url });
-        write(cloneRoot, DOCUMENT, THEIRS_TEXT);
+        writeDeep(cloneRoot, sides.file, sides.theirs);
         await commitAll(offline(cloneRoot), cloneRoot, "theirs");
         await pushToRemote(online(cloneRoot));
         await releaseRepository(online(cloneRoot));
 
         // The author edits the SAME document without syncing first, so the two diverge on
         // the one file. Their push is refused with the sentence that names the remedy.
-        write(authorRoot, DOCUMENT, MINE_TEXT);
+        writeDeep(authorRoot, sides.file, sides.mine);
         await commitAll(authorGlobals, authorRoot, "mine");
         await expect(pushToRemote(online(authorRoot))).rejects.toThrow(/diverged/i);
         return { root: authorRoot, globals: authorGlobals };
@@ -731,6 +768,82 @@ describe.skipIf(!remoteEnabled)("a conflicted sync", () => {
                 path: DOCUMENT,
             });
             expect(sha256(bytes)).toBe(sha256(Buffer.from(MINE_TEXT, "utf-8")));
+        } finally {
+            await manager.closeProject(fixture.root);
+        }
+    }, 300_000);
+
+    /**
+     * **Tier two end to end: a document neither side wrote, recorded and read back.**
+     *
+     * This is the whole of what per-change resolution has to prove, and it is only provable against
+     * a real server: Studio's merges are all syncs, and a sync is the origin where the side-named
+     * verbs are INVERTED (§4.31). The composed document keeps both people's new translations and
+     * takes the incoming side for the one unit they both retranslated - an answer that is in neither
+     * `~mine` nor `~theirs`, which is exactly what tier one cannot express.
+     *
+     * Four rules are asserted, and nothing else in the build would catch any of them:
+     *
+     *  - **the three copies drive the merge**, so the decision list is built without a revision
+     *    graph and without `getMergeBase`'s single-branch blind spot (§4.30);
+     *  - **the working tree holds the composed document**, settled with the PLAIN resolve verb,
+     *    which commits the working tree byte for byte (§4.25);
+     *  - **the bytes are readable back IN THIS PROCESS** - the §4.29 guard. The merge is an online
+     *    act and the commit that closes it is not; if anyone ever spreads `offline: false` over that
+     *    commit, the author's freshly composed file becomes unreadable in the very session that
+     *    wrote it, and this is the line that fails;
+     *  - **the merge is over**, with the three copies gone, so nothing reports one afterwards.
+     */
+    it("settles one document change by change and reads the result back", async () => {
+        const fixture = await divergedProject("perchange", {
+            file: LOCALE_DOCUMENT,
+            base: LOCALE_BASE,
+            mine: LOCALE_MINE,
+            theirs: LOCALE_THEIRS,
+        });
+        await releaseRepository(fixture.globals);
+
+        const manager = new VcsManager(fakeApp());
+        try {
+            const synced = await manager.sync(fixture.root);
+            expect(synced.conflicts).toEqual([LOCALE_DOCUMENT]);
+
+            const document = await manager.getMergeDocument(fixture.root, LOCALE_DOCUMENT);
+            expect(document.blocked).toBeUndefined();
+            expect(document.documentKind).toBe("localization");
+            // One real question, and two changes that had a right answer and got it. Taking the file
+            // whole from either side would discard one of the two people's new translation.
+            expect(document.conflicts).toBe(1);
+            expect(document.decisions.map((entry) => [entry.path.join("/"), entry.outcome])).toEqual([
+                ["units/greeting", "conflict"],
+                ["units/fromMine", "auto-mine"],
+                ["units/fromTheirs", "auto-theirs"],
+            ]);
+
+            const done = await manager.completeMerge(fixture.root, [{
+                path: LOCALE_DOCUMENT,
+                choice: "per-change",
+                // Only the answered conflict travels. The two automatic rows are recomputed in the
+                // main process from the same three files, which is what keeps a window from being
+                // able to settle a path with a value the repository never held.
+                changes: { [mergeDecisionKey(["units", "greeting"])]: "theirs" },
+            }], { message: "merged the translations" });
+
+            const written = JSON.parse(read(fixture.root, LOCALE_DOCUMENT));
+            expect(written.units.greeting.target).toBe("theirs");
+            expect(written.units.fromMine.target).toBe("only mine");
+            expect(written.units.fromTheirs.target).toBe("only theirs");
+            expect(done.state.inProgress).toBe(false);
+            expect(done.state.conflicts).toEqual([]);
+            expect(fs.readdirSync(path.join(fixture.root, "editor", "localization"))).toEqual(["ja.json"]);
+
+            const bytes = await manager.readBlob({
+                projectPath: fixture.root,
+                revision: done.revision.revision,
+                path: LOCALE_DOCUMENT,
+            });
+            expect(sha256(bytes)).toBe(sha256(Buffer.from(read(fixture.root, LOCALE_DOCUMENT), "utf-8")));
+            expect(JSON.parse(bytes.toString("utf-8")).units.greeting.target).toBe("theirs");
         } finally {
             await manager.closeProject(fixture.root);
         }

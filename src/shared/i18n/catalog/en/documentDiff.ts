@@ -135,6 +135,18 @@ export const documentDiff = {
         groupRemoved: "Group removed",
         groupRenamed: "Group renamed",
     },
+    /**
+     * One translation unit, as a three-way merge reads it.
+     *
+     * Emitted only by `merge3` - this format has no semantic diff yet - and there is no `subject`
+     * beside them: a unit id is a story text id or a `key:`/`char:` handle, never a word the author
+     * typed. What identifies the row for them is the two translations drawn underneath it.
+     */
+    localization: {
+        added: "Translation added",
+        removed: "Translation removed",
+        changed: "Translation changed",
+    },
     /** Tier 1, one `assets.metadata.<type>.json` shard: the author's metadata for their assets. */
     assets: {
         added: "Asset added",
@@ -225,5 +237,44 @@ export const documentDiff = {
         abandonConfirm: "Abandon this merge?",
         abandonConfirmDetail:
             "Every file goes back to what it was before you got these versions from the server, including the ones that merged on their own. Nothing of yours is lost - you can get them again whenever you like.",
+        /**
+         * Tier two: choosing change by change inside one file.
+         *
+         * Two words carry the whole distinction and neither may be dropped. `auto` is the row that
+         * was already decided BY THE MERGE, not by the author - it is drawn as settled, with the
+         * other side reachable on hover, because pressing nothing there is the right answer almost
+         * always. A `conflict` row has no such default at all, and the reasons under `blocked` are
+         * why a file has no per-change list rather than an empty one.
+         */
+        change: {
+            expand: "Show the changes inside",
+            collapse: "Hide the changes inside",
+            loading: "Reading both versions…",
+            /** Said once above the list, so no row has to repeat it. */
+            heading: "Merged automatically unless marked. Hover a merged row to take the other side.",
+            none: "Both versions of this file agree on everything inside it.",
+            auto: "Merged",
+            /** The one an author can flip on a merged row; only one of the two is ever offered. */
+            useMine: "Use mine",
+            useTheirs: "Use theirs",
+            /** A side that does not have this entry at all - which is what taking it would do. */
+            absent: "Not there",
+            /** Fields past the few a row draws. Nothing is hidden that a choice depends on. */
+            moreFields: "+{count} more",
+            undecided: {
+                one: "{count} change still needs a side",
+                other: "{count} changes still need a side",
+            },
+            /** Back to tier one, and each of these says which wall was hit. */
+            blocked: {
+                title: "This file has to be kept whole from one side.",
+                noSpec: "Studio does not know this file's format, so it cannot merge parts of it.",
+                noMerge3: "Studio can read this format but cannot yet merge two versions of it change by change.",
+                readOnly: "Studio can merge this format but cannot write the result back yet, so the whole file has to come from one side.",
+                tooLarge: "This file is too large to merge change by change.",
+                tooMany: "There are too many changes in this file to decide one at a time.",
+                unreadable: "One of the two versions could not be read, so only the whole file can be taken.",
+            },
+        },
     },
 } as const;

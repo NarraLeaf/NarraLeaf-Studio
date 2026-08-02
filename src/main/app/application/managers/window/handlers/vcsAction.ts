@@ -6,6 +6,7 @@ import type {
     VcsCommitResult,
     VcsHistoryEntry,
     VcsMergeCompletion,
+    VcsMergeDocument,
     VcsMergeResolveResult,
     VcsMergeState,
     VcsPushResult,
@@ -480,6 +481,30 @@ export class VcsGetMergeStateHandler extends IPCHandler<IPCEventType.vcsGetMerge
         { projectPath }: IPCEvents[IPCEventType.vcsGetMergeState]["data"],
     ): Promise<RequestStatus<VcsMergeState>> {
         return this.tryUse(() => window.app.getVcsManager().getMergeState(projectPath));
+    }
+}
+
+/**
+ * The three-way merge of one conflicted document, change by change - tier two.
+ *
+ * **Only some documents have one, and which ones is an answer rather than a silence.** A path
+ * whose format has no spec, whose spec has no `merge3`, whose spec cannot write itself back, or
+ * whose sides are too large or unreadable comes back with `blocked` set and stays at tier one in
+ * the same list. Hiding it would present "Studio cannot do this here" and "there is nothing left
+ * to decide here" as the same empty row.
+ *
+ * Records nothing and remembers nothing, like every other read in a merge: the decisions the
+ * author takes on this live in the window that asked (docs §4.24).
+ */
+export class VcsGetMergeDocumentHandler extends IPCHandler<IPCEventType.vcsGetMergeDocument> {
+    readonly name = IPCEventType.vcsGetMergeDocument;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath, path }: IPCEvents[IPCEventType.vcsGetMergeDocument]["data"],
+    ): Promise<RequestStatus<VcsMergeDocument>> {
+        return this.tryUse(() => window.app.getVcsManager().getMergeDocument(projectPath, path));
     }
 }
 
