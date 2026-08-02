@@ -31,7 +31,21 @@ export type WorkspaceFreezeReason =
     /** The author is browsing a past revision. `label` is what to call it in the UI. */
     | { kind: "revision"; revision: RevisionId; label?: string }
     /** Entered by hand, from the command palette. */
-    | { kind: "manual" };
+    | { kind: "manual" }
+    /**
+     * A merge is open and left files it could not settle.
+     *
+     * **Not entered by anything the author pressed** - it is armed while the workspace is starting,
+     * before a service has parsed a document, because the tree underneath is not one version of the
+     * project: some files are the merge's automatic result and the conflicted ones are unparseable
+     * (docs §4.23). What the editors show is the author's own side, read out of the merge's copies
+     * (`@/lib/app/mergeConflictReads`), so an edit saved here would write pre-merge content over the
+     * merge's own result - which is precisely what this latch refuses.
+     *
+     * The way out is finishing or abandoning the merge, not `thaw`, and the rail's strip offers
+     * that instead of its usual escape.
+     */
+    | { kind: "merge" };
 
 export type WorkspaceFreeze = {
     /** The project whose data is frozen. Writes anywhere else are none of this module's business. */

@@ -1564,7 +1564,7 @@ export class GameBuildManager {
                     source: "Build",
                     message: "the Android build is signed with your release keystore instead of the local debug "
                         + "identity; a device that has a debug-signed build of this game must uninstall it first. "
-                        + "A signed APK is for sideloading and stores that take APKs - Google Play accepts only AABs, "
+                        + "A signed APK is for sideloading and stores that take APKs; Google Play accepts only AABs, "
                         + "which this pipeline does not produce.",
                 });
             }

@@ -319,7 +319,12 @@ export class SaveStatusService extends Service<SaveStatusService> {
                 ? translate("workspace.shell.save.frozenDetailRevision", {
                     version: refusal.reason.label ?? refusal.reason.revision,
                 })
-                : translate("workspace.shell.save.frozenDetailManual"),
+                // A merge gets its own sentence rather than the manual one, because the remedy is
+                // opposite: there is nothing to "unfreeze" - the way out is finishing the merge,
+                // and an author told to unfreeze would look for a control that is not there.
+                : refusal.reason.kind === "merge"
+                    ? translate("workspace.shell.save.frozenDetailMerge")
+                    : translate("workspace.shell.save.frozenDetailManual"),
         });
     }
 

@@ -3,6 +3,7 @@ import {compileDocumentPathPattern} from "../documentPath";
 import {defineDocumentSpec} from "../registry";
 import {isJsonObject, parameterFromPath, rejectNewerSchema, requireDocumentObject, requireOptionalMap} from "./parseHelpers";
 import {diffStoryDocument} from "./storyDiff";
+import {merge3Story} from "./storyMerge3";
 
 /**
  * `editor/story/stories/<storyId>/storydoc.json` - one story: its chapters, its scenes, its rows.
@@ -75,6 +76,17 @@ export const storyDocumentSpec = defineDocumentSpec<StoryDocument>({
         ],
     }),
     diff: diffStoryDocument,
+    /**
+     * Declared even though {@link serialize} above refuses, and the pairing is not an oversight.
+     *
+     * `merge3` is a pure function over two parsed documents: it is correct, it is testable, and the
+     * decision list it produces is what a resolve surface draws. What it cannot do yet is finish -
+     * the write-back step (plan 2026-07-31-004 §4.4) calls `serialize`, which throws here until the
+     * story format is adopted for writing. So the second tier can COMPARE and DECIDE a story today
+     * and cannot COMMIT one; whoever lifts that has to run the story migration in shared code first,
+     * which is what the note on this module is about.
+     */
+    merge3: merge3Story,
 });
 
 /** Rows across every scene - the number that actually tracks how much story there is. */

@@ -8,6 +8,7 @@ import { AppHost, AppProtocol } from "@shared/types/constants";
 import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { refuseFrozenWrite, refuseReloadingWrite } from "@/lib/app/writeFreeze";
 import { readProjectDataFromSource } from "@/lib/app/documentSource";
+import { mergeConflictReadPath } from "@/lib/app/mergeConflictReads";
 import { getInterface } from "@/lib/app/bridge";
 
 /**
@@ -99,7 +100,14 @@ export class BaseFileSystemService {
 
     public static async read(path: string, encoding: FsTextEncoding): Promise<FsRequestResult<string>> {
         const substituted = await this.readFromDocumentSource(path, encoding);
-        return substituted ?? this.fetch(path, encoding);
+        if (substituted) {
+            return substituted;
+        }
+        // After the source and never before it: a revision view answers for the whole project, and
+        // a merge's leftovers on disk are not part of any revision. Below it, one more redirection
+        // for the handful of paths an open merge has made unparseable - see `mergeConflictReads`,
+        // which is what lets a project mid-merge be opened at all.
+        return this.fetch(mergeConflictReadPath(path) ?? path, encoding);
     }
 
     public static async readRaw(path: string): Promise<FsRequestResult<Uint8Array>> {

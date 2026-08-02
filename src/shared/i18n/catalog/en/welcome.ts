@@ -23,19 +23,19 @@ export const welcome = {
         title: "Getting Started",
         step1: {
             title: "Explore the Workspace",
-            description: "The left sidebar contains the asset manager and other panels. The right side can add property inspectors and other tools.",
+            description: "Panels live in the left sidebar; inspectors and other tools go on the right.",
         },
         step2: {
             title: "Manage Assets",
-            description: "Import images, audio, video, etc. into the Assets panel.",
+            description: "Import images, audio and video into the Assets panel.",
         },
         step3: {
             title: "Create Story",
-            description: "Create game scenes and dialogs using the story editor.",
+            description: "Write scenes and dialogue in the story editor.",
         },
         step4: {
             title: "Test Run",
-            description: "Click the run button to preview the game effect, and debug and modify as needed.",
+            description: "Press Run to play the game and see your changes.",
         },
     },
 } as const;

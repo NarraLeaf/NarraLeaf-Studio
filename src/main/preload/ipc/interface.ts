@@ -22,7 +22,7 @@ import type { DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/dev
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import type { PrivilegedActor } from "@shared/types/privileged";
-import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
+import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
@@ -418,9 +418,21 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         /** Is a merge open here? Repository state, so ask on project open, not only after a sync. */
         getMergeState: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.vcsGetMergeState, { projectPath }) as Promise<RequestStatus<VcsMergeState>>,
+        /**
+         * Tier two: the three-way merge of ONE conflicted document, change by change.
+         *
+         * Reads the three copies the merge left beside the file; records nothing. `blocked` set
+         * means this path stays at tier one and says why - not every document can be settled this
+         * way, and the difference has to be visible rather than a missing control.
+         */
+        getMergeDocument: (projectPath: string, path: string) =>
+            ipcClient.invoke(IPCEventType.vcsGetMergeDocument, { projectPath, path }) as Promise<RequestStatus<VcsMergeDocument>>,
         /** Settles paths; records nothing. `mine`/`theirs` rewrite the working tree - re-read them. */
         resolveConflicts: (projectPath: string, paths: string[], choice: VcsConflictChoice) =>
             ipcClient.invoke(IPCEventType.vcsResolveConflicts, { projectPath, paths, choice }) as Promise<RequestStatus<VcsMergeResolveResult>>,
+        /** Takes one side per path AND commits, as one act. Writes files: re-read afterwards. */
+        completeMerge: (projectPath: string, decisions: VcsMergeDecision[], options?: VcsCommitOptions) =>
+            ipcClient.invoke(IPCEventType.vcsCompleteMerge, { projectPath, decisions, options }) as Promise<RequestStatus<VcsMergeCompletion>>,
         unresolveConflicts: (projectPath: string, paths: string[]) =>
             ipcClient.invoke(IPCEventType.vcsUnresolveConflicts, { projectPath, paths }) as Promise<RequestStatus<VcsMergeResolveResult>>,
         /** Merges these paths again, discarding the working-tree bytes for them. */

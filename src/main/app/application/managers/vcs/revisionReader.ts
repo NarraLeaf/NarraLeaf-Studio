@@ -4,6 +4,7 @@ import {
     closeTree,
     flushRepository,
     history,
+    listBranches,
     listTreeChildren,
     loadTree,
     LORE_NODE_TYPE,
@@ -230,13 +231,104 @@ function normalizeRepositoryRelative(path: string): string {
     return path.replace(/\\/g, "/").replace(/^\.?\//, "");
 }
 
-/** Load the revision DAG for the current branch. */
+/**
+ * Load the revision DAG for the CURRENT branch.
+ *
+ * `history` with no `branch` is scoped to the branch the working tree is on, which is what
+ * the history list wants and is NOT enough to reason about a merge - see
+ * {@link readMergeGraph}.
+ */
 export async function readRevisionGraph(
     globals: LoreGlobals,
     limit = 0,
 ): Promise<Map<LoreHex, RevisionNode>> {
     const { nodes } = await history(globals, { limit });
     return nodes;
+}
+
+/**
+ * Whether `graph` holds `tip` and every revision reachable from it.
+ *
+ * The precondition {@link mergeBase} silently needs: it walks parent links through the map,
+ * so a parent that is not in the map simply ends the walk, and a graph missing one side of a
+ * fork answers "no common ancestor" for two revisions that plainly have one. Checking it is
+ * what separates "there is no base" from "we could not see far enough to find one".
+ */
+export function graphCoversAncestry(
+    graph: ReadonlyMap<LoreHex, RevisionNode>,
+    tip: LoreHex,
+): boolean {
+    const seen = new Set<LoreHex>();
+    const stack: LoreHex[] = [tip];
+    while (stack.length > 0) {
+        const revision = stack.pop();
+        if (!revision || seen.has(revision)) continue;
+        seen.add(revision);
+        const node = graph.get(revision);
+        if (!node) return false;
+        for (const parent of node.parents) stack.push(parent);
+    }
+    return true;
+}
+
+/**
+ * The DAG covering every side of a merge, not just the branch the working tree happens to be on.
+ *
+ * **This is the fix for docs/version-control.md §4.30.** `readRevisionGraph` reads
+ * `history(globals)` with no branch, so on a main/feature merge it held only main's revisions:
+ * the incoming tip was absent, `mergeBase` found no common ancestor, and `threeWay` therefore
+ * answered `base: undefined`. Since an absent base is defined to mean add/add, EVERY ordinary
+ * cross-branch conflict would have been classified add/add and tier two would have refused or
+ * mis-merged all of them - measured in `mergeSpike2.integration.test.ts` (L0).
+ *
+ * The LCA is recomputed rather than read off the `~base` sidecar §4.23 found on disk, and the
+ * choice is deliberate. The sidecar is the better source for D6's write-back, which runs
+ * inside an open merge and already knows the conflicted path; this function is addressed by
+ * two REVISIONS and answers for any pair - a comparison between two arbitrary points in
+ * history, a merge that has not been started, a path Lore automerged and wrote no sidecar for.
+ * A sidecar read would answer none of those, and it cannot tell an add/add from a path Lore
+ * merged cleanly, which is the distinction the whole contract rests on.
+ *
+ * Widened in three steps, cheapest first, because each one is a backend round trip:
+ * the current branch; then each uncovered tip's own ancestry; then, only if that still leaves
+ * a hole, every branch in the repository. A scope that fails to read is skipped rather than
+ * thrown from - the caller decides what an incomplete graph means, and
+ * {@link graphCoversAncestry} is how it finds out.
+ */
+export async function readMergeGraph(
+    globals: LoreGlobals,
+    tips: readonly LoreHex[],
+): Promise<Map<LoreHex, RevisionNode>> {
+    const graph = new Map(await readRevisionGraph(globals));
+    const covered = (): boolean => tips.every((tip) => graphCoversAncestry(graph, tip));
+
+    const absorb = async (scope: { revision?: LoreHex; branch?: string }): Promise<void> => {
+        try {
+            const { nodes } = await history(globals, scope);
+            for (const [revision, node] of nodes) {
+                if (!graph.has(revision)) graph.set(revision, node);
+            }
+        } catch {
+            // An unreadable scope is not a failure here: a repository with an archived or
+            // half-written branch would otherwise take the whole merge down with it.
+        }
+    };
+
+    for (const tip of tips) {
+        if (graphCoversAncestry(graph, tip)) continue;
+        await absorb({ revision: tip });
+    }
+    if (covered()) return graph;
+
+    try {
+        for (const branch of await listBranches(globals, { archived: true })) {
+            await absorb({ branch: branch.name });
+            if (covered()) break;
+        }
+    } catch {
+        // Same reasoning: an incomplete graph is reported through the return value.
+    }
+    return graph;
 }
 
 /**
@@ -317,20 +409,43 @@ function ancestors(graph: ReadonlyMap<LoreHex, RevisionNode>, start: LoreHex): S
     return seen;
 }
 
+/**
+ * Why {@link ThreeWay.base} is what it is.
+ *
+ * Three of these four leave `base` undefined and they do NOT mean the same thing, which is
+ * the whole reason this field exists. `absent-in-base` and `no-common-ancestor` are the two
+ * genuine add/adds - the merge really has nothing to align on, and a caller taking a side is
+ * taking a decision the author has to make. `indeterminate` is Studio failing to read far
+ * enough (§4.30), and a caller that treats it as add/add reports a conflict that does not
+ * exist, on every ordinary cross-branch merge. Collapsing them into "base is undefined" is
+ * exactly the defect this layer shipped with.
+ */
+export type ThreeWayBaseStatus =
+    /** A common ancestor was found and it holds this file. */
+    | "found"
+    /** A common ancestor was found and this file is not in it: add/add. */
+    | "absent-in-base"
+    /** The graph is complete and the two sides share no ancestor at all: add/add. */
+    | "no-common-ancestor"
+    /** The graph could not be completed, so no claim is made either way. NOT an add/add. */
+    | "indeterminate";
+
 export interface ThreeWay {
     base: Buffer | undefined;
     mine: Buffer;
     theirs: Buffer;
     baseRevision: LoreHex | undefined;
+    baseStatus: ThreeWayBaseStatus;
 }
 
 /**
  * The three inputs a custom merge needs.
  *
- * `base` is undefined when the two sides share no ancestor (unrelated histories) or
- * when the file did not exist in the base revision. The caller must treat that as an
- * add/add conflict rather than assuming an empty base - assuming would silently
- * accept one side.
+ * `base` is undefined when the two sides share no ancestor (unrelated histories), when the
+ * file did not exist in the base revision, or when the DAG could not be read completely. The
+ * caller must treat the first two as an add/add conflict rather than assuming an empty base -
+ * assuming would silently accept one side - and must treat the third as neither, which is
+ * what {@link ThreeWay.baseStatus} is for.
  */
 export async function threeWay(
     globals: LoreGlobals,
@@ -340,7 +455,10 @@ export async function threeWay(
     theirs: LoreHex,
     repositoryRelativePath: string,
 ): Promise<ThreeWay> {
-    const graph = await readRevisionGraph(globals);
+    // Both sides' ancestries, not the current branch's: the incoming tip of a cross-branch
+    // merge is not on the branch the working tree is on (§4.30).
+    const graph = await readMergeGraph(globals, [mine, theirs]);
+    const complete = graphCoversAncestry(graph, mine) && graphCoversAncestry(graph, theirs);
     const baseRevision = mergeBase(graph, mine, theirs);
 
     const [mineBytes, theirsBytes] = await Promise.all([
@@ -349,13 +467,16 @@ export async function threeWay(
     ]);
 
     let base: Buffer | undefined;
+    let baseStatus: ThreeWayBaseStatus = complete ? "no-common-ancestor" : "indeterminate";
     if (baseRevision) {
         try {
             base = await blobAt(globals, store, repository, baseRevision, repositoryRelativePath);
+            baseStatus = "found";
         } catch {
             // Absent from the base revision: an add/add, not an empty file.
             base = undefined;
+            baseStatus = "absent-in-base";
         }
     }
-    return { base, mine: mineBytes, theirs: theirsBytes, baseRevision };
+    return { base, mine: mineBytes, theirs: theirsBytes, baseRevision, baseStatus };
 }

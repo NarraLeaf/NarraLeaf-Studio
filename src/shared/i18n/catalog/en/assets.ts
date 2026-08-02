@@ -18,7 +18,7 @@ export const assets = {
         moreReferences: "…and {count} more",
         unverifiedTitle: "Cannot check what uses these assets",
         unverifiedMessage:
-            "The reference index could not be read, so there is no way to tell whether anything still points at these assets. Delete them anyway?",
+            "The reference index could not be read, so nothing can say whether these are still in use. Delete them anyway?",
         confirmTitle: {
             one: "Delete {count} item?",
             other: "Delete {count} items?",
@@ -172,7 +172,7 @@ export const assets = {
         title: "Import Models",
         familyStep: "What kind of model is this?",
         /** Said up front because the runtime installer is the step authors expect to be blocked by. */
-        familyNoRuntime: "Nothing is installed here. A drawing runtime is set up later, on the character that uses the model.",
+        familyNoRuntime: "Nothing is installed here. The drawing runtime is set up later, on the character.",
         family: {
             live2d: "Live2D Cubism",
             live2dHint: "A folder holding a .model3.json, or Cubism 2's model.json.",
@@ -180,7 +180,7 @@ export const assets = {
             spineHint: "A folder holding a .skel or .json skeleton beside its .atlas.",
         },
         folderStep: "Choose a folder",
-        folderHint: "One model's folder, or a folder holding several — everything inside is searched.",
+        folderHint: "One model's folder, or a folder holding several. Everything inside is searched.",
         chooseFolder: "Choose Folder…",
         changeFolder: "Change…",
         rescan: "Scan again",
@@ -190,7 +190,7 @@ export const assets = {
             other: "{count} models found",
         },
         noneFound: "No {family} models in this folder.",
-        noneFoundHint: "Check the kind chosen above, then check the folder — it should be the one the exporter wrote.",
+        noneFoundHint: "Check the kind chosen above, then the folder. It should be the one the exporter wrote.",
         entry: "Entry",
         /** Row subtitle: what the folder holds, before any of it is copied. */
         fileSummary: "{count} files · {size}",
@@ -211,7 +211,7 @@ export const assets = {
             missing: "Missing {role}: {path}",
             unusableReference: "The {role} “{raw}” is outside this folder and will not be copied with it.",
             manifestUnreadable: "{path} could not be read.",
-            atlasMissing: "No atlas beside the skeleton — {path} was expected.",
+            atlasMissing: "No atlas beside the skeleton; {path} was expected.",
             atlasEmpty: "{path} names no image.",
             nestedModel: "Holds another model, {path}, which this folder would bring along.",
         },

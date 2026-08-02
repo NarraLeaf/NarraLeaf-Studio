@@ -2,7 +2,7 @@
 export const widgetChrome = {
     docker: {
         insert: "Insert {name}",
-        drawing: "Drawing {name} - drag on canvas to create",
+        drawing: "Drawing {name}: drag on canvas to create",
         moreInsertElements: "More insert elements",
         components: "Components",
         openComponentLibrary: "Open Component Library",

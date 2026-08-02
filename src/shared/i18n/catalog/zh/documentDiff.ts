@@ -95,6 +95,12 @@ export const documentDiff = {
         groupRemoved: "删除分组",
         groupRenamed: "分组改名",
     },
+    /** 只有 merge3 会用到；这个格式还没有语义 diff，行旁边也不放 subject（单元 id 不是作者写的字）。 */
+    localization: {
+        added: "新增译文",
+        removed: "删除译文",
+        changed: "译文改动",
+    },
     assets: {
         added: "新增素材",
         removed: "删除素材",
@@ -107,9 +113,9 @@ export const documentDiff = {
         summary: "仅概要",
         summaryHint: "没有比较内容本身，这些是两个版本各自报告的数字。",
         structural: "结构级",
-        structuralHint: "仅按 JSON 结构比较。这里没有任何东西知道这些值是什么意思，所以生成的 id 和重排过的数组都会被算成改动。",
+        structuralHint: "仅按 JSON 结构比较，所以生成的 id 和重排过的数组都会被算成改动。",
         opaque: "未读取",
-        opaqueHint: "太大、不是文本、或者读不出来——只能报告体积。",
+        opaqueHint: "太大、不是文本、或者读不出来，只能报告体积。",
     },
     rows: {
         loading: "正在读取差异…",
@@ -139,8 +145,74 @@ export const documentDiff = {
         empty: "这两个版本之间没有差异",
         emptyWorkingTree: "自上一个版本以来没有改动",
         readFailure: "读不出这次对比要用的字节：{error}",
-        incomplete: "{total} 条变更路径里比较了 {shown} 条，其余为了不超出比较预算被略过。",
+        incomplete: "{total} 条变更路径里比较了 {shown} 条，其余被略过。",
         documentsOmitted: "另有 {count} 个文件没有列出。",
         unavailable: "这个工程没有可用的版本控制。",
+    },
+    /**
+     * 整份取一边地收尾一次合并。
+     *
+     * 用词是「保留我的／保留对方的」而不是后端的 mine/theirs：按下「从服务器获取」的作者
+     * 是在跟同伴的改动对齐，不是在做三路合并。
+     *
+     * `notSaved` 是这整个界面之所以诚实的那一句——哪些冲突已经决定过，没有任何地方读得出来，
+     * 所以这份记录只属于这个窗口；说出来，好过暗示一份关掉标签页就没了的进度。
+     */
+    resolve: {
+        tab: "合并",
+        merging: "这个工程的两个版本正在合并",
+        none: "这个工程没有正在进行的合并。",
+        automerged: "全部自动合并完成，收尾即可记成一个版本。",
+        count: {
+            one: "有 {count} 个文件两边都改过，请选择保留哪一边。",
+            other: "有 {count} 个文件两边都改过，请选择保留哪一边。",
+        },
+        takeMine: "保留我的",
+        takeTheirs: "保留对方的",
+        takeAllMine: "全部保留我的",
+        takeAllTheirs: "全部保留对方的",
+        rowsOmitted: "另有 {count} 个文件没有列出，可用上面两个链接一次选完。",
+        finish: "完成合并",
+        finishUndecided: {
+            one: "还有 {count} 个文件没选边",
+            other: "还有 {count} 个文件没选边",
+        },
+        notSaved: "这些选择只在这个窗口开着时有效；按下完成之前不会写入任何文件。",
+        abandon: "放弃合并",
+        abandonConfirm: "放弃这次合并？",
+        abandonConfirmDetail:
+            "所有文件都会回到从服务器获取之前的样子，包括那些已经自动合并好的。你自己的东西不会丢——想要的时候随时可以再获取一次。",
+        /**
+         * 第二档：在一个文件内部逐条变更选边。
+         *
+         * `auto` 那一档是**合并自己**已经定下来的，不是作者定的，所以画成已决定、把另一边收进
+         * 悬停里——绝大多数时候什么都不按才是对的答案。`conflict` 那一档则一边都不预选。
+         * `blocked` 下面几句说的是「为什么这个文件没有逐条列表」，而不是「列表是空的」。
+         */
+        change: {
+            expand: "展开内部变更",
+            collapse: "收起内部变更",
+            loading: "正在读取两个版本…",
+            heading: "未标注的都是自动合并的结果。把鼠标放到某一行上可以改用另一边。",
+            none: "这个文件的两个版本内部完全一致。",
+            auto: "已自动合并",
+            useMine: "改用我的",
+            useTheirs: "改用对方的",
+            absent: "这一边没有",
+            moreFields: "另有 {count} 项",
+            undecided: {
+                one: "还有 {count} 条变更没选边",
+                other: "还有 {count} 条变更没选边",
+            },
+            blocked: {
+                title: "这个文件只能整份取一边。",
+                noSpec: "Studio 不认识这个文件的格式，没法只合并其中一部分。",
+                noMerge3: "Studio 能读这个格式，但还不能把两个版本逐条合并。",
+                readOnly: "Studio 能合并这个格式，但还写不回去，所以整个文件只能取一边。",
+                tooLarge: "这个文件太大，没法逐条合并。",
+                tooMany: "这个文件里的变更太多，没法一条一条地决定。",
+                unreadable: "两个版本里有一个读不出来，所以只能整份取一边。",
+            },
+        },
     },
 } satisfies LocaleNamespace<"documentDiff">;

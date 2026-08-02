@@ -5,10 +5,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { isVcsPlatformSupported } from "@shared/types/vcs";
 import {
     commit,
+    createBranch,
     createRepository,
     flushRepository,
     releaseRepository,
     stage,
+    switchBranch,
     type LoreGlobals,
     type StoreHandle,
 } from "./lore";
@@ -18,8 +20,11 @@ import {
     changedPaths,
     closeStore,
     documentsAt,
+    graphCoversAncestry,
     listFilesAt,
+    mergeBase,
     openStore,
+    readMergeGraph,
     readRepositoryIdentity,
     readRevisionGraph,
     threeWay,
@@ -228,6 +233,11 @@ describe.skipIf(!supported)("revisionReader", () => {
         expect(read.get("assets/added-in-a-later-revision.bin")).toEqual(Buffer.from("later"));
     }, 180_000);
 
+    it("reports a base status of found for a base that is really there", async () => {
+        const result = await threeWay(globals, store, repositoryId, rev3, rev2, REL);
+        expect(result.baseStatus).toBe("found");
+    }, 120_000);
+
     it("reports an absent base rather than an empty one for a file added on one side", async () => {
         // add/add: the file does not exist in the common ancestor. Treating the
         // missing base as an empty file silently accepts one side of the merge, so
@@ -241,5 +251,139 @@ describe.skipIf(!supported)("revisionReader", () => {
         // Either the read of the older side fails outright or the base is absent -
         // what must never happen is a zero-length Buffer standing in for "absent".
         expect(older?.base).toBeUndefined();
+        // And when it IS absent it says which kind of absent: the ancestor exists, the file
+        // is not in it. An "indeterminate" here would mean the graph read fell short.
+        if (older) expect(older.baseStatus).toBe("absent-in-base");
     }, 120_000);
+});
+
+/**
+ * The §4.30 regression, on a real two-branch repository.
+ *
+ * Measured during D0 and recorded in docs/version-control.md §4.30: `readRevisionGraph` reads
+ * `history` with no branch, so it only ever held the CURRENT branch. On a main/feature merge the
+ * incoming tip was therefore not in the graph at all, `mergeBase` answered nothing, and `threeWay`
+ * reported `base: undefined` - which its own contract defines as add/add. Every ordinary
+ * cross-branch conflict would have been classified add/add, and tier-two resolution would have
+ * refused or mis-merged all of them.
+ *
+ * A separate repository from the suite above because it needs a branch topology, and Lore's
+ * repository lock is exclusive within one process (§4.28) - so this one is opened, read and
+ * released inside each test rather than held across the file.
+ */
+describe.skipIf(!supported)("threeWay across branches", () => {
+    const BRANCHED = "doc.json";
+    const BASE_BYTES = Buffer.from("base\n");
+    const MINE_BYTES = Buffer.from("mine\n");
+    const THEIRS_BYTES = Buffer.from("theirs\n");
+    const ADDED_BY_MINE = Buffer.from("added on main\n");
+    const ADDED_BY_THEIRS = Buffer.from("added on feature\n");
+    const ONLY_ON_BOTH = "added-on-both.txt";
+
+    let branchRoot: string;
+    let branchGlobals: LoreGlobals;
+    let branchRepository: string;
+    let baseRevision: string;
+    let mineRevision: string;
+    let theirsRevision: string;
+
+    beforeAll(async () => {
+        if (!supported) return;
+
+        branchRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "nl-reader-branch-")));
+        branchGlobals = { repositoryPath: branchRoot, offline: true, identity: "test@narraleaf", cache: true };
+        const created = await createRepository(branchGlobals, {
+            repositoryUrl: "lore://127.0.0.1:41337/test",
+            description: "reader branch test",
+        });
+        branchRepository = created.repository;
+
+        const commitHere = async (files: Record<string, Buffer>, message: string): Promise<string> => {
+            for (const [relative, bytes] of Object.entries(files)) {
+                const absolute = path.join(branchRoot, relative);
+                fs.mkdirSync(path.dirname(absolute), { recursive: true });
+                fs.writeFileSync(absolute, bytes);
+            }
+            await stage(branchGlobals, [branchRoot]);
+            const revision = await commit(branchGlobals, message);
+            await flushRepository(branchGlobals);
+            return revision.revision;
+        };
+
+        baseRevision = await commitHere({ [BRANCHED]: BASE_BYTES }, "base");
+
+        await createBranch(branchGlobals, "feature");
+        await switchBranch(branchGlobals, { branch: "feature" });
+        theirsRevision = await commitHere(
+            { [BRANCHED]: THEIRS_BYTES, [ONLY_ON_BOTH]: ADDED_BY_THEIRS },
+            "theirs",
+        );
+
+        await switchBranch(branchGlobals, { branch: "main" });
+        mineRevision = await commitHere(
+            { [BRANCHED]: MINE_BYTES, [ONLY_ON_BOTH]: ADDED_BY_MINE },
+            "mine",
+        );
+    }, 300_000);
+
+    afterAll(async () => {
+        if (!branchRoot) return;
+        await releaseRepository(branchGlobals).catch(() => undefined);
+        fs.rmSync(branchRoot, { recursive: true, force: true });
+    });
+
+    it("reads a graph covering both sides, where the current branch's does not", async () => {
+        // The measurement, reproduced: the current branch's graph does not contain the other
+        // side's tip, so nothing computed from it can find their common ancestor.
+        const currentBranchOnly = await readRevisionGraph(branchGlobals);
+        expect(currentBranchOnly.has(theirsRevision)).toBe(false);
+        expect(graphCoversAncestry(currentBranchOnly, theirsRevision)).toBe(false);
+        expect(mergeBase(currentBranchOnly, mineRevision, theirsRevision)).toBeUndefined();
+
+        const merged = await readMergeGraph(branchGlobals, [mineRevision, theirsRevision]);
+        expect(graphCoversAncestry(merged, mineRevision)).toBe(true);
+        expect(graphCoversAncestry(merged, theirsRevision)).toBe(true);
+        expect(mergeBase(merged, mineRevision, theirsRevision)).toBe(baseRevision);
+    }, 300_000);
+
+    it("finds the base of a cross-branch merge", async () => {
+        // FAILS BEFORE THE FIX: `baseRevision` came back undefined and `base` with it, so the
+        // commonest merge in the system was reported as an add/add.
+        const store = await openStore(branchGlobals, branchRoot);
+        try {
+            const sides = await threeWay(
+                branchGlobals, store, branchRepository, mineRevision, theirsRevision, BRANCHED,
+            );
+            expect(sides.baseRevision).toBe(baseRevision);
+            expect(sides.baseStatus).toBe("found");
+            expect(sides.base).toEqual(BASE_BYTES);
+            expect(sides.mine).toEqual(MINE_BYTES);
+            expect(sides.theirs).toEqual(THEIRS_BYTES);
+        } finally {
+            await flushRepository(branchGlobals).catch(() => undefined);
+            await closeStore(branchGlobals, store).catch(() => undefined);
+            await releaseRepository(branchGlobals).catch(() => undefined);
+        }
+    }, 300_000);
+
+    it("still answers an absent base for a file both branches added independently", async () => {
+        // The other half of the fix, and the one a wider graph could have destroyed: a genuine
+        // add/add has to keep answering `undefined`. The two sides share an ancestor - so the
+        // graph is complete and `baseRevision` is set - and the file simply is not in it.
+        const store = await openStore(branchGlobals, branchRoot);
+        try {
+            const sides = await threeWay(
+                branchGlobals, store, branchRepository, mineRevision, theirsRevision, ONLY_ON_BOTH,
+            );
+            expect(sides.baseRevision).toBe(baseRevision);
+            expect(sides.base).toBeUndefined();
+            expect(sides.baseStatus).toBe("absent-in-base");
+            expect(sides.mine).toEqual(ADDED_BY_MINE);
+            expect(sides.theirs).toEqual(ADDED_BY_THEIRS);
+        } finally {
+            await flushRepository(branchGlobals).catch(() => undefined);
+            await closeStore(branchGlobals, store).catch(() => undefined);
+            await releaseRepository(branchGlobals).catch(() => undefined);
+        }
+    }, 300_000);
 });

@@ -43,7 +43,7 @@ export const story = {
             roundtrip: "Round-trip",
             roundtripDetail: "Carries the scene's data, so the file can be imported back.",
             review: "Review",
-            reviewDetail: "Prose only — clean to read and to diff. Cannot be imported.",
+            reviewDetail: "Prose only, clean to read and to diff. Cannot be imported.",
         },
         exported: "Exported to {path}",
         importTitle: "Import Script",
@@ -90,7 +90,7 @@ export const story = {
             duplicateAnchor: "A line was copied; the copies were given new identities.",
             unknownRun: "A formatting marker names formatting this script does not carry.",
             unplaceableLine: "A new line has nowhere to go here.",
-            speakerUnresolved: "A speaker name was edited on a line that binds no character; the original name was kept. The line's text still changed.",
+            speakerUnresolved: "This line binds no character, so the original speaker name was kept. Its text still changed.",
         },
     },
     // Pasting a wall of prose into a scene. The wizard asks one question — who is speaking — and
@@ -107,7 +107,7 @@ export const story = {
             one: "…and {count} more row",
             other: "…and {count} more rows",
         },
-        noSpeakers: "No speaker labels — every line becomes narration.",
+        noSpeakers: "No speaker labels; every line becomes narration.",
         targetFor: "Who {label} is",
         willBeCreated: "Will be created",
         separator: {
@@ -144,7 +144,7 @@ export const story = {
     },
     flow: {
         tabTitle: "Scene Flow",
-        tabTitleNamed: "Scene Flow — {name}",
+        tabTitleNamed: "Scene Flow: {name}",
         node: {
             blocks: {
                 one: "{count} block",
@@ -171,7 +171,7 @@ export const story = {
             // Deliberately not "dead end": an arm whose own nested fork does the jumping falls
             // through too, and so does one that simply plays a line and rejoins the scene.
             fallsThrough: "continues",
-            fallsThroughTitle: "No jump of its own — the scene continues past the fork",
+            fallsThroughTitle: "No jump of its own; the scene continues past the fork",
             forkCount: {
                 one: "{count} branch",
                 other: "{count} branches",
@@ -199,7 +199,7 @@ export const story = {
             noDecisions: "No decisions",
             // A path can stop in a scene that is not an ending, and calling that an ending is a lie.
             stopsHere: "stops here",
-            stopsHereTitle: "A path stops here without this being an ending — it looped back, or an option ran out of continuations",
+            stopsHereTitle: "A path stops here but this is not an ending: it looped back, or an option ran out of continuations",
             diagnostics: {
                 unreachableEndings: {
                     one: "{count} ending no route reaches",
@@ -218,7 +218,7 @@ export const story = {
             hintArrival: "Scene chips show the value on arrival",
             arrivalTitle: "Value on arrival, before this scene's own changes",
             finalTitle: "Value at the end of this route",
-            rangeChip: "{name} {min}–{max}",
+            rangeChip: "{name} {min}-{max}",
             valueChip: "{name} {value}",
             unknownChip: "{name} ?",
         },
@@ -544,9 +544,9 @@ export const story = {
         sceneMusicVolume: "Volume",
         sceneMusicLoop: "Loop",
         sceneMusicFade: "Fade in (s)",
-        sceneMusicLoopRegion: "Loops {from}s – {to}s",
+        sceneMusicLoopRegion: "Loops {from}s to {to}s",
         // Intro→loop: the head plays once, then the body repeats. Three markers, still one line.
-        sceneMusicIntroLoop: "Plays {from}s, loops {loop}s – {to}s",
+        sceneMusicIntroLoop: "Plays {from}s, loops {loop}s to {to}s",
         sceneMusicFromIn: "Starts at {from}s",
         sceneMusicWholeClip: "Whole clip",
         backgroundResolveError: "Image asset could not be resolved: {error}",
@@ -649,7 +649,7 @@ export const story = {
      */
     command: {
         background: { label: "Background", detail: "Set the scene background image or color" },
-        jump: { label: "Jump", detail: "Go to another scene — unloads it and starts it over, unlike /goto" },
+        jump: { label: "Jump", detail: "Go to another scene, unloading this one. Unlike /goto" },
         wait: { label: "Wait", detail: "Pause for seconds, or for a click" },
         nvl: { label: "NVL", detail: "Toggle the stacked dialogue panel" },
         show: { label: "Show", detail: "Show a character or a stage object" },
@@ -664,7 +664,7 @@ export const story = {
         image: { label: "Image", detail: "Put an image on stage" },
         text: { label: "Text", detail: "Put text on stage" },
         video: { label: "Video", detail: "Put a video on stage" },
-        vfx: { label: "Ambience", detail: "A looping full-screen overlay — petals, rain, dust, light" },
+        vfx: { label: "Ambience", detail: "A looping full-screen overlay: petals, rain, dust, light" },
         layer: { label: "Layer", detail: "Create a render layer" },
         swap: { label: "Swap", detail: "Replace an object's image or text" },
         play: { label: "Play", detail: "Play a video" },
@@ -700,13 +700,13 @@ export const story = {
         // The two details name each other: the whole difference is that /jump unloads the scene
         // and /goto does not, and no author can guess which from the token alone.
         label: { label: "Label", detail: "Mark a place in this scene for /goto to reach" },
-        goto: { label: "Go to", detail: "Move the play head to a label in this scene — unlike /jump, the scene keeps running" },
+        goto: { label: "Go to", detail: "Move the play head to a label in this scene. Unlike /jump, the scene keeps running" },
         blueprint: { label: "Blueprint", detail: "Run a Story Action Blueprint" },
         blink: { label: "Blink", detail: "Screen blink effect" },
         vignette: { label: "Vignette", detail: "Screen vignette effect" },
         // The detail line is where "kept across scenes" belongs — every command has one, and it is the
         // first thing an author reads about the camera in the slash menu and the command reference.
-        camera: { label: "Camera", detail: "Pan, zoom, rotate or darken the stage camera — kept across scenes" },
+        camera: { label: "Camera", detail: "Pan, zoom, rotate or darken the stage camera. Kept across scenes" },
         fx: { label: "Effect", detail: "Apply an effect to an object" },
         transform: { label: "Transform", detail: "Move, scale or rotate an object" },
         note: { label: "Note", detail: "A Studio-only note" },

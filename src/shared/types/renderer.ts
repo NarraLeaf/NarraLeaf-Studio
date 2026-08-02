@@ -45,7 +45,7 @@ import type {
 } from "./privileged";
 import { AppEventToken } from "./app";
 import type { LocaleContribution } from "@shared/i18n";
-import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingTreeDiffResult } from "./vcs";
+import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -467,6 +467,19 @@ export interface RendererPreloadedInterface {
          */
         getMergeState(projectPath: string): Promise<RequestStatus<VcsMergeState>>;
         /**
+         * Tier two: the three-way merge of ONE conflicted document, change by change.
+         *
+         * Built from the three copies the merge left beside the file, so it needs no revision
+         * graph and no base lookup. Records nothing and remembers nothing - the choices taken on
+         * it live in the window that asked, exactly as the whole-file ones do.
+         *
+         * **`blocked` is a normal answer and must be drawn.** Most paths have no spec, most specs
+         * have no three-way merge yet, and one that has one may still refuse to write itself back;
+         * all three keep the path at tier one, and hiding the row would make "Studio cannot do
+         * this here" indistinguishable from "there is nothing left to decide here".
+         */
+        getMergeDocument(projectPath: string, path: string): Promise<RequestStatus<VcsMergeDocument>>;
+        /**
          * Settle conflicted paths by taking one side, or by taking the working tree as it is.
          *
          * **Records nothing.** Settling is not committing: the merge stays open until
@@ -480,6 +493,21 @@ export interface RendererPreloadedInterface {
          * gets settled: write the file first, then call this.
          */
         resolveConflicts(projectPath: string, paths: string[], choice: VcsConflictChoice): Promise<RequestStatus<VcsMergeResolveResult>>;
+        /**
+         * Take one side per path and close the merge with a commit.
+         *
+         * The whole of "take one side, whole", as ONE operation: settling and recording are a
+         * single queued act so that nothing - notably the checkpoint timer - can commit the
+         * author's merge in between under its own message and kind.
+         *
+         * **This writes the author's files** (each side overwrites its path) and then records a
+         * revision, so the caller carries a restore's obligations: hold the workspace in its
+         * view, release before leaving it, and re-read every document once it resolves.
+         *
+         * A path left out of `decisions` that the merge has not settled makes the commit fail
+         * with the backend's own sentence, which names the path.
+         */
+        completeMerge(projectPath: string, decisions: VcsMergeDecision[], options?: VcsCommitOptions): Promise<RequestStatus<VcsMergeCompletion>>;
         /** Undo a choice. All three sides are still on disk, so it costs nothing. */
         unresolveConflicts(projectPath: string, paths: string[]): Promise<RequestStatus<VcsMergeResolveResult>>;
         /**
