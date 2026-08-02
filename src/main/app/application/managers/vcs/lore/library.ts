@@ -160,6 +160,26 @@ function registerTypes() {
     return registered;
 }
 
+/**
+ * koffi's global configuration is settable only while NO library is loaded, and this
+ * module never unloads lorelib. So a SECOND {@link loadLoreLibrary} - which is exactly
+ * what {@link resetLoreLibraryForRetry} exists to cause - throws
+ * `Cannot change Koffi configuration once a library has been loaded`, and because the
+ * throw happens before the load, every later Lore call in the process throws the same
+ * thing. Measured: the first reset took the whole process's version control down.
+ *
+ * Same shape as the type registry above: process-global, applied exactly once.
+ */
+let configured = false;
+
+function configureKoffiOnce(): void {
+    if (configured) return;
+    // Async calls run on koffi's worker pool. The defaults are small; a clone or a
+    // large stage can have many in flight, and Lore's own threads need stack room.
+    koffi.config({ max_async_calls: 1024, async_stack_size: 2 * 1024 * 1024 });
+    configured = true;
+}
+
 let library: LoreLibrary | null = null;
 
 /**
@@ -178,9 +198,7 @@ export function loadLoreLibrary(): LoreLibrary {
     const libraryPath = resolveLoreLibraryPath();
     const { types, callbackPrototype } = registerTypes();
 
-    // Async calls run on koffi's worker pool. The defaults are small; a clone or a
-    // large stage can have many in flight, and Lore's own threads need stack room.
-    koffi.config({ max_async_calls: 1024, async_stack_size: 2 * 1024 * 1024 });
+    configureKoffiOnce();
 
     let loaded: koffi.IKoffiLib;
     try {

@@ -163,3 +163,6 @@ package-lock.json
 # Generated plugin API declarations (regenerate with: yarn build:plugin-types)
 packages/plugin-types/dist/
 packages/plugin-types/.gen/
+
+# D0 spike output, kept out of the repository: the conclusions live in docs/version-control.md
+spike*.out
