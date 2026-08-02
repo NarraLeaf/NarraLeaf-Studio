@@ -128,6 +128,6 @@ export function workspaceFrozenMessage(reason: WorkspaceFreezeKind, operation: W
         : reason === "merge"
             ? "Finish the merge in the version panel - choose which side to keep for each file - and try again."
             : "Unfreeze the workspace and try again.";
-    return `The ${operation} is unavailable while this workspace is frozen - what it produced would `
+    return `The ${operation} is unavailable while this workspace is frozen: what it produced would `
         + `not be what you are looking at. ${remedy}`;
 }

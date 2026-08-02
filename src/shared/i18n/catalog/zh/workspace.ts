@@ -4,7 +4,7 @@ export const workspace = {
     localization: {
         panel: {
             languagesTitle: "语言",
-            languagesHint: "游戏本体的语言：源语言是你所使用的编写语言，其他所有语言都会以此为基准进行翻译",
+            languagesHint: "游戏本体的语言。源语言是你编写时用的那一种，其余都以它为基准翻译",
             addLanguage: "添加语言",
             codePlaceholder: "代码（en、ja、zh-CN…）",
             namePlaceholder: "显示名称",
@@ -72,7 +72,7 @@ export const workspace = {
     voice: {
         panel: {
             languagesTitle: "配音语言",
-            languagesHint: "游戏已有配音的语言。与文本语言相互独立，你可以在文本保持英文的同时录制日语配音。",
+            languagesHint: "游戏已有配音的语言，与文本语言相互独立。",
             addLanguage: "添加配音语言",
             codePlaceholder: "代码（ja、en、zh-CN…）",
             namePlaceholder: "显示名称",
@@ -307,24 +307,24 @@ export const workspace = {
         save: {
             failedTitle: "无法保存 {file}",
             failedDetailTransient: "正在后台继续重试。{error}",
-            failedDetailPermanent: "这一条需要你处理——在修复之前重试也无济于事。{error}",
+            failedDetailPermanent: "在修复之前重试也无济于事。{error}",
             retry: "立即重试",
-            consoleFailed: "写入失败（{code}，第 {attempt} 次尝试）：{path} - {error}",
+            consoleFailed: "写入失败（{code}，第 {attempt} 次尝试）：{path} · {error}",
             consoleRecovered: "写入成功：{path}",
             flushFailed: "{label} 刷盘失败：{error}",
             // 读取侧：文件在盘上，但读不懂。文案先说「没发生什么」——这时作者最怕的是「Studio 把我的东西吃了」。
             unreadableTitle: "无法读取 {file}",
             unreadableDetail: "{reason} 文件保持原样，没有任何内容被覆盖。",
             unreadableDetailQuarantined: "{reason} 文件保持原样，其副本已保存在 {path}。",
-            consoleUnreadable: "读取失败（{kind}）：{path} - {reason}",
+            consoleUnreadable: "读取失败（{kind}）：{path} · {reason}",
             consoleQuarantined: "已保留无法读取的文件副本：{path}",
             // 因工作区冻结而被拒绝的写入。这不是失败：没有出错，也不会重试。文案必须说清原因，
             // 否则读起来就是个 bug。
             frozenTitle: "当前不会保存任何改动",
             frozenDetailRevision: "你正在查看版本 {version}。在回到当前版本之前，项目文件不会被改动。",
-            frozenDetailManual: "工作区已冻结，改动不会写入项目。解除冻结后才会重新保存。",
+            frozenDetailManual: "工作区已冻结，解除冻结后才会重新保存。",
             // 合并没有「解除冻结」这一步：工作树里同时放着两边，只有把合并做完才行。
-            frozenDetailMerge: "有一次合并还没做完，改动不会写入项目。到版本面板把合并完成后才会重新保存。",
+            frozenDetailMerge: "有一次合并还没做完，到版本面板把合并完成后才会重新保存。",
             consoleFrozen: "写入被拒绝，工作区已冻结（{reason}）：{path}",
             // 持有项目数据的各方名称：刷盘失败时用，重读工作树失败时也用。
             stores: {
@@ -360,7 +360,7 @@ export const workspace = {
             // 顶栏中被冻结关掉的每一个控件的悬浮提示。故意所有控件共用一句：作者只需要认一次
             // 「冻结的项目就是这个样子」，而不是在每个按钮上读一套不同的说辞。控件是禁用而不是
             // 隐藏，正是为了给这句话留一个可悬浮的落点。
-            unavailable: "项目冻结期间不可用——解除冻结后即可继续使用。",
+            unavailable: "项目冻结期间不可用，解除冻结后即可继续使用。",
         },
         // 用真编辑器浏览历史，在版本轨道做出来之前的入口。故意只做「上一个版本」而不是选择器：
         // 选版本需要一份列表，那份列表就是轨道本身；而一个人手上够不着的里程碑没法验收。
@@ -416,7 +416,7 @@ export const workspace = {
             restoreNotRecordedTitle: "文件已经恢复了，但这个版本没能提交",
             restoreNotRecordedDetail:
                 "你的项目文件现在是版本 {version} 的内容。把它提交成一个新版本时失败了（{error}）。"
-                + "什么都没丢——按「{action}」就能自己提交一次。",
+                + "什么都没丢，按「{action}」就能自己提交一次。",
             // 还没有版本库的项目。按「缺什么」命名，而不是按机制命名。
             //
             // 原文案是「没有版本历史」，与下面的 `noHistory`（仓库存在但还没有版本）几乎撞车。

@@ -200,7 +200,7 @@ export class DevModeManager {
         this.emitWorkspaceConsoleLog(session, {
             level: "info",
             source: "Dev Mode",
-            message: `running version ${source.revision.slice(0, 12)}, not your current files - that is`
+            message: `running version ${source.revision.slice(0, 12)}, not your current files, because that is`
                 + " what the workspace is showing. Asset files still come from your project.",
         });
     }

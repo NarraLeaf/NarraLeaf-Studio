@@ -105,6 +105,6 @@ export const dashboard = {
         clear: "Clear this project's statistics",
         clearConfirm: "Clear this project's statistics?",
         clearDetail:
-            "Only the recorded activity history is erased: the writing curve, active time, edit counts and build history. Scene, word, character and localization counts are calculated from the project itself and will not change. This cannot be undone.",
+            "Erases the writing curve, active time, edit counts and build history. Counts read from the project itself do not change. This cannot be undone.",
     },
 } as const;

@@ -141,20 +141,20 @@ export const storyInspector = {
 
     transitionHint: {
         dissolve: "Crossfades from the previous image to the new one.",
-        blurDissolve: "Crossfades while blurring, a dreamy flashback / dream-state dissolve.",
+        blurDissolve: "Crossfades while blurring, for flashbacks and dream states.",
         fadeIn: "Fades the new image in from a start position offset.",
-        maskCircle: "Circular reveal / close driven by an animated mask radius.",
-        softIris: "Feathered circular reveal, the soft-edged counterpart of Mask circle.",
-        maskWipe: "Hard-edged directional reveal. The new image is uncovered by a sweeping straight edge (no feather).",
-        softWipe: "Feathered directional wipe. The new image erases in with a soft gradient edge.",
-        blinds: "Venetian blinds reveal. Slats widen to uncover the new image.",
-        barnDoor: "Barn doors. Two soft edges close from opposite sides toward the centre.",
-        clock: "Clock wipe. A radial edge sweeps a full turn around the centre.",
-        fan: "Fan / windmill. Several blades sweep in parallel around the centre.",
-        dots: "Polka dots. A grid of dots grows until the cells flood together.",
-        slide: "Push. The new image slides in from one edge as the old one slides out.",
-        darkness: "Darkness. Swaps to the new image at the starting darkness and animates its brightness to the ending one - 1 → 0 emerges out of black, 0 → 1 dims into it.",
-        throughColor: "Covers the frame with a solid colour (using the chosen pattern), holds, then uncovers on the new image. The target appears only after the colour hold. Covers fade-to-black/white, soft wipe through black, blinds black hold, iris to black, and flash (hold 0).",
+        maskCircle: "A hard-edged circle opens or closes over the frame.",
+        softIris: "The same circle with a feathered edge.",
+        maskWipe: "A straight edge sweeps across, uncovering the new image.",
+        softWipe: "The same sweep with a soft gradient edge.",
+        blinds: "Slats widen to uncover the new image.",
+        barnDoor: "Two soft edges close from opposite sides toward the centre.",
+        clock: "A radial edge sweeps a full turn around the centre.",
+        fan: "Several blades sweep in parallel around the centre.",
+        dots: "A grid of dots grows until the cells flood together.",
+        slide: "The new image slides in from one edge as the old one slides out.",
+        darkness: "Swaps images at the starting darkness, then animates to the ending one. 1 → 0 emerges out of black, 0 → 1 dims into it.",
+        throughColor: "Covers the frame with a colour, holds, then uncovers on the new image. Use it for fade to black or white, iris to black, and flash (hold 0).",
     },
 
     wipeDirection: {
@@ -200,9 +200,9 @@ export const storyInspector = {
     // Named by the material each mode is FOR, not by the CSS keyword: the choice is a production fact
     // about the clip, and the keyword alone only helps someone who already knows the answer.
     vfxBlend: {
-        normal: "Normal — transparent clip (alpha WebM)",
-        screen: "Screen — glow on black",
-        multiply: "Multiply — shadow on white",
+        normal: "Normal (transparent alpha WebM)",
+        screen: "Screen (glow on black)",
+        multiply: "Multiply (shadow on white)",
         lighten: "Lighten",
         colorDodge: "Color dodge",
         overlay: "Overlay",
@@ -496,7 +496,7 @@ export const storyInspector = {
     },
 
     condition: {
-        brokenExpression: "This expression no longer resolves - a variable it reads may have been renamed or deleted. The branch evaluates false until it is fixed.",
+        brokenExpression: "This expression no longer resolves; a variable it reads may have been renamed or deleted. The branch stays false until it is fixed.",
         clear: "Clear condition",
     },
 

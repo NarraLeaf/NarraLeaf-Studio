@@ -17,26 +17,26 @@ export const welcome = {
         },
     },
     reopenHint: {
-        menu: "您可以随时在 帮助 → 打开欢迎页 中查看此页",
-        palette: "您可以随时在命令面板中搜索「打开欢迎页」查看此页",
+        menu: "随时可以在 帮助 → 打开欢迎页 回到这里",
+        palette: "随时可以在命令面板中搜索「打开欢迎页」回到这里",
     },
     gettingStarted: {
         title: "快速开始",
         step1: {
             title: "熟悉工作区",
-            description: "左侧边栏包含素材管理器及其他面板，右侧可添加属性检查器等其他工具",
+            description: "面板在左侧边栏，检查器等工具放在右侧",
         },
         step2: {
             title: "管理资源",
-            description: "将图片、音频、视频等导入到资源面板",
+            description: "把图片、音频与视频导入资源面板",
         },
         step3: {
             title: "创建故事",
-            description: "使用故事编辑器创建游戏场景和对话",
+            description: "在故事编辑器里写场景和对话",
         },
         step4: {
             title: "预览运行",
-            description: "点击运行按钮预览游戏效果，并按需调试和修改",
+            description: "点运行就能试玩，看到改动的效果",
         },
     },
 } satisfies LocaleNamespace<"welcome">;
