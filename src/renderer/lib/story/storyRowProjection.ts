@@ -379,7 +379,7 @@ export function storyRowBarColor(block: StoryBlock): string | null {
  * as `gold += 5`: a row that does not say WHICH variable it touches is a row the author has to open
  * to understand, which fails the first principle.
  */
-function variableRefShortLabel(ref: StoryVariableRef, scene?: StoryScene, scenes?: Record<string, StoryScene>): string {
+export function variableRefShortLabel(ref: StoryVariableRef, scene?: StoryScene, scenes?: Record<string, StoryScene>): string {
     if (ref.scope === "persistent") {
         for (const candidate of Object.values(scenes ?? {})) {
             for (const block of Object.values(candidate.blocks)) {
@@ -453,6 +453,22 @@ const CAMERA_PAN_PLACEMENTS: Record<number, StagePlacement> = (["left", "center"
     }, {});
 
 /**
+ * The `at=` word a stored camera position lands on, or `null` when it sits somewhere no word names.
+ *
+ * Exported because two readings of the same row need it — this module's prose summary and the
+ * command-line projection that reads the row back as `/camera pan left`. A second copy of the table
+ * would be a second answer to "which side is this".
+ */
+export function storyCameraPanPlacement(position: Extract<StoryActionPayload, { action: "camera" }>["position"]): StagePlacement | null {
+    const xalign = position?.xalign ?? 0.5;
+    const yalign = position?.yalign ?? 0.5;
+    if (yalign !== 0.5 || position?.xoffset || position?.yoffset) {
+        return null;
+    }
+    return CAMERA_PAN_PLACEMENTS[xalign] ?? null;
+}
+
+/**
  * How a camera row reads: the operation plus the one value it carries. The verb is NOT repeated from
  * the badge, but the knob is named ("Zoom ×1.5", not "×1.5"), because five operations share one badge.
  */
@@ -480,9 +496,7 @@ function describeCamera(
     if (payload.operation === "pan") {
         const xalign = payload.position?.xalign ?? 0.5;
         const yalign = payload.position?.yalign ?? 0.5;
-        const placement = yalign === 0.5 && !payload.position?.xoffset && !payload.position?.yoffset
-            ? CAMERA_PAN_PLACEMENTS[xalign]
-            : undefined;
+        const placement = storyCameraPanPlacement(payload.position);
         return `${operation} ${placement ? translate(`story.position.${placement}`) : `${Math.round(xalign * 100)}% · ${Math.round(yalign * 100)}%`}`;
     }
     return operation;
