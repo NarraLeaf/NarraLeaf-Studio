@@ -5,12 +5,13 @@ import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
 import { PreviewService } from "@/lib/workspace/services/core/PreviewService";
 import { BuildService } from "@/lib/workspace/services/core/BuildService";
 import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "../actions/runtimeActionStatus";
+import { getTestRunService } from "../testing";
 import type { TranslationKey } from "@shared/i18n";
 import type { DevModeStatus } from "@shared/types/devMode";
 import type { PreviewStatus } from "@shared/types/gameRuntime";
 import type { GameBuildStatus } from "@shared/types/gameBuild";
 
-export type RunModeKind = "devMode" | "preview" | "production";
+export type RunModeKind = "devMode" | "preview" | "production" | "test";
 
 /** The one mode currently surfaced by the status bar, or null when nothing is running. */
 export interface ActiveRunMode {
@@ -52,18 +53,24 @@ function isBuildActive(status: GameBuildStatus): boolean {
 }
 
 /**
- * Which run mode the status bar reports, resolved from the Dev Mode, Preview and Build services.
+ * Which run mode the status bar reports, resolved from the Test, Dev Mode, Preview and Build
+ * services.
  *
  * The run session (Dev Mode / Preview) wins over a Build: the split-button that launches it is the
  * primary control, and a build already surfaces its own progress in the console and its own toolbar
  * button. Dev Mode and Preview are mutually exclusive (the Run button only starts the selected one),
  * so the order between them never actually decides anything.
+ *
+ * A test outranks all three. It holds the run slot (ruling R7) and it is the only one of the four
+ * that can be *hosting* one of the others - a windowed test owns a game process, and the cell has to
+ * name the thing the Stop button would actually stop.
  */
 export function useActiveRunMode(): ActiveRunMode | null {
     const { context } = useWorkspace();
     const [devStatus, setDevStatus] = useState<DevModeStatus>("idle");
     const [previewStatus, setPreviewStatus] = useState<PreviewStatus>("idle");
     const [buildStatus, setBuildStatus] = useState<GameBuildStatus>("idle");
+    const [testRunning, setTestRunning] = useState(false);
 
     useEffect(() => {
         if (!context) {
@@ -92,6 +99,28 @@ export function useActiveRunMode(): ActiveRunMode | null {
         return build.onStateChanged(state => setBuildStatus(state.status));
     }, [context]);
 
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const testRun = getTestRunService(context);
+        const sync = () => setTestRunning(testRun.getActiveRun() !== null);
+        sync();
+        return testRun.onChanged(sync);
+    }, [context]);
+
+    if (testRunning) {
+        return {
+            kind: "test",
+            labelKey: "test.statusBar.label",
+            // The one phase a run record can be in that is not terminal - and terminal states are
+            // reported by the report tab, not by a cell that is meant to vanish when nothing runs.
+            phaseKey: PHASE("running"),
+            // A test run is bounded work in progress rather than a steady state like a launched
+            // preview, so it spins.
+            busy: true,
+        };
+    }
     if (isDevModeRuntimeActive(devStatus)) {
         return {
             kind: "devMode",
