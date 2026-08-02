@@ -117,6 +117,15 @@ function expressionReason(issue: StoryExpressionIssue): StoryCommandReason {
             return { key, params: { prefix: issue.prefix } };
         case "badArity":
             return { key, params: { fn: issue.fn, expected: issue.expected, received: issue.received } };
+        case "unknownVisitedTarget":
+            // `call` is the author's own word (`visited` / `picked`), not a translated label: it is
+            // what they typed, and echoing it is what makes the message point at their line.
+            return { key, params: { call: issue.call, name: issue.name } };
+        case "unknownBlueprint":
+        case "blueprintTakesNoArguments":
+        case "ambiguousReference":
+        case "blueprintShadowsFunction":
+            return { key, params: { name: issue.name } };
         case "unexpectedEnd":
         case "unterminatedString":
         case "unbalancedParen":
@@ -145,6 +154,8 @@ function resolutionReason(issue: StoryCommandResolutionIssue): StoryCommandReaso
             return { key: reasonKey(issue.code), params: { value: issue.value, allowed: issue.allowed.join(", ") } };
         case "conflictingParams":
             return { key: reasonKey(issue.code), params: { keys: issue.keys.join(" / ") } };
+        case "repeatTimesAndUntil":
+            return { key: reasonKey(issue.code), params: {} };
         case "expressionError":
             // Report the *inner* issue directly rather than wrapping it: "no variable named gold" is
             // the whole message, and a generic "invalid expression: …" prefix adds nothing.

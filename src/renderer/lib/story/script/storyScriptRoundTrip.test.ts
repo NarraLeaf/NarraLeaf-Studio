@@ -185,7 +185,9 @@ function randomOpaqueBlock(rng: Rng, id: string, newId: () => string): StoryBloc
         case 5:
             return block(id, "action", { action: "camera", operation: "zoom", zoom: 1.4 });
         case 6:
-            return block(id, "code", { language: "javascript", source: "// nothing\nconst a = 1;", folded: true });
+            // A leaf control row - `break` is the shape schema v13 added and the one the `»` label
+            // has to stand in for now that the `code` block it replaced here is gone.
+            return block(id, "control", { control: "break" });
         case 7:
             return block(id, "invalid", { source: "/set gold" });
         case 8:

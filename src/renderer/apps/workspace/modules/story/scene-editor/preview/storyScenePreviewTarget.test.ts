@@ -42,23 +42,21 @@ describe("resolvePreviewTargetBlockId", () => {
         expect(resolvePreviewTargetBlockId(scene, "branch")).toBe("condition");
     });
 
-    it("falls back to the nearest previous previewable block for code and note rows", () => {
+    it("falls back to the nearest previous previewable block for note rows", () => {
         const scene = makeScene({
             a: say("a"),
             note: block("note", "note", { text: "Remember" }),
-            code: block("code", "code", { language: "narraleaf", source: "x" }),
             b: say("b"),
-        }, ["a", "note", "code", "b"]);
-        expect(resolvePreviewTargetBlockId(scene, "code")).toBe("a");
+        }, ["a", "note", "b"]);
         expect(resolvePreviewTargetBlockId(scene, "note")).toBe("a");
     });
 
-    it("previews the scene start when a code row has no previous previewable block", () => {
+    it("previews the scene start when a note row has no previous previewable block", () => {
         const scene = makeScene({
-            code: block("code", "code", { language: "narraleaf", source: "x" }),
+            note: block("note", "note", { text: "Remember" }),
             a: say("a"),
-        }, ["code", "a"]);
-        expect(resolvePreviewTargetBlockId(scene, "code")).toBeNull();
+        }, ["note", "a"]);
+        expect(resolvePreviewTargetBlockId(scene, "note")).toBeNull();
     });
 
     it("keeps option and branch rows as playback start points, unlike the snapshot target", () => {
@@ -79,7 +77,7 @@ describe("resolvePreviewTargetBlockId", () => {
         expect(resolvePlaybackStartBlockId(scene, "missing")).toBeNull();
     });
 
-    it("falls back past code and note rows when starting playback", () => {
+    it("falls back past note rows when starting playback", () => {
         const scene = makeScene({
             a: say("a"),
             note: block("note", "note", { text: { textId: "n", value: "Remember", role: "note" } }),
@@ -87,12 +85,12 @@ describe("resolvePreviewTargetBlockId", () => {
         expect(resolvePlaybackStartBlockId(scene, "note")).toBe("a");
     });
 
-    it("resolves a code row inside a choice option to the option's parent choice", () => {
+    it("resolves a note row inside a choice option to the option's parent choice", () => {
         const scene = makeScene({
             choice: block("choice", "nodeAction", { action: "choice" }, null, ["option"]),
-            option: block("option", "nodeAction", { action: "choiceOption", text: { textId: "t", value: "Go", role: "choiceText" } }, "choice", ["code"]),
-            code: block("code", "code", { language: "narraleaf", source: "x" }, "option"),
+            option: block("option", "nodeAction", { action: "choiceOption", text: { textId: "t", value: "Go", role: "choiceText" } }, "choice", ["note"]),
+            note: block("note", "note", { text: "Remember" }, "option"),
         }, ["choice"]);
-        expect(resolvePreviewTargetBlockId(scene, "code")).toBe("choice");
+        expect(resolvePreviewTargetBlockId(scene, "note")).toBe("choice");
     });
 });

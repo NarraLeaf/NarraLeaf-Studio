@@ -26,6 +26,7 @@ import { soundBlueprintNodes } from "./soundNodes";
 import { structuralBlueprintNodes } from "./structuralNodes";
 import { textInputBlueprintNodes } from "./textInputNodes";
 import { storyVariableBlueprintNodes } from "./storyVariableNodes";
+import { visitedBlueprintNodes } from "./visitedNodes";
 import { stringBlueprintNodes } from "./stringNodes";
 import { textBlueprintNodes } from "./textNodes";
 import { widgetPropertyBlueprintNodes } from "./widgetPropertyNodes";
@@ -48,6 +49,7 @@ export { localVariableBlueprintNodes } from "./localVariableNodes";
 export { mathBlueprintNodes } from "./mathNodes";
 export { persistentVariableBlueprintNodes } from "./persistentVariableNodes";
 export { storyVariableBlueprintNodes } from "./storyVariableNodes";
+export { visitedBlueprintNodes } from "./visitedNodes";
 export { sliderBlueprintNodes } from "./sliderNodes";
 export { soundBlueprintNodes } from "./soundNodes";
 export { textInputBlueprintNodes } from "./textInputNodes";
@@ -64,6 +66,7 @@ export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
     ...fnBlueprintNodes,
     ...frameBlueprintNodes,
     ...gameBlueprintNodes,
+    ...visitedBlueprintNodes,
     ...backlogBlueprintNodes,
     ...controlFlowBlueprintNodes,
     ...dataBlueprintNodes,

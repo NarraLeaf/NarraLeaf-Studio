@@ -327,6 +327,27 @@ export type BlueprintHostApiRuntime = {
         isTextRead: (textId: string) => boolean;
         /** Wipe the persisted text-read record (all stories). */
         clearTextRead: () => Promise<void>;
+        /**
+         * Has the player ever ENTERED this scene, by Studio scene id.
+         *
+         * Not the same question as `isTextRead`: that record is written when a line is displayed,
+         * this one when a scene actually starts. Saved-domain, so loading an older save rewinds it.
+         */
+        isSceneVisited: (sceneId: string) => boolean;
+        /**
+         * Has the player ever PICKED this choice option, by the option row's Studio block id. The
+         * one thing the text-read record structurally cannot answer - a menu that merely appeared
+         * marks every option of it read.
+         */
+        isOptionPicked: (optionId: string) => boolean;
+        /**
+         * Wipe the visited record of the running game.
+         *
+         * Synchronous, unlike `clearTextRead`: the record lives in the live `Storable`, not in host
+         * persistence, so there is nothing to await. It is also scoped to the running session - with
+         * no game up there is no record, and the call is a no-op instead of an error.
+         */
+        clearVisited: () => void;
         choose: (index: number) => Promise<void>;
         next: () => Promise<void>;
         skip: () => Promise<void>;
@@ -499,6 +520,14 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     /** Per-id read check. Absent without a tracker (story preview); reads as false. */
     onIsTextRead?: (textId: string) => boolean;
     onClearTextRead?: () => Promise<void> | void;
+    /**
+     * The visited record (see `runtime/game/storyVisited`). Absent when no story is running - a
+     * settings page or a main menu opened before the first game reads everything as "not visited",
+     * which is the correct answer there rather than an error.
+     */
+    onIsSceneVisited?: (sceneId: string) => boolean;
+    onIsOptionPicked?: (optionId: string) => boolean;
+    onClearVisited?: () => void;
     onSelectChoice?: (index: number) => Promise<void> | void;
     onNext?: () => Promise<void> | void;
     onSkip?: () => Promise<void> | void;
@@ -1607,6 +1636,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onIsCurrentTextRead,
         onIsTextRead,
         onClearTextRead,
+        onIsSceneVisited,
+        onIsOptionPicked,
+        onClearVisited,
         onSelectChoice,
         onNext,
         onSkip,
@@ -2948,6 +2980,35 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     // directly and drop the mirrored flag.
                     await scope.persistenceSetAsync(BLUEPRINT_TEXT_READ_PERSISTENCE_KEY, []);
                     scope.globalSet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY, false);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            isSceneVisited: (sceneId: string) => {
+                const cap = "game.isSceneVisited";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // No running story is "nothing visited", not an error: a main menu asking
+                    // whether a route is unlocked must render, and the honest answer there is false.
+                    return onIsSceneVisited ? onIsSceneVisited(sceneId) : false;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            isOptionPicked: (optionId: string) => {
+                const cap = "game.isOptionPicked";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return onIsOptionPicked ? onIsOptionPicked(optionId) : false;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            clearVisited: () => {
+                const cap = "game.clearVisited";
+                emitHostCall(emit, cap, "call");
+                try {
+                    onClearVisited?.();
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

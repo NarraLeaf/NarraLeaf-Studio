@@ -340,13 +340,19 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
     if (version < 12) {
         migrated = migrateStoryDocumentV11toV12(migrated);
     }
+    if (version < 13) {
+        migrated = migrateStoryDocumentV12toV13(migrated);
+    }
     // v4 (the `invalid` block kind and dialogue's `speakerName`), v7 (the block-level `disabled`
-    // flag), v8 (the `event` rich-text run) and v11 (a withdrawn marker block - see the version
-    // history in document.ts) are purely additive: an older document is already valid at the new
-    // version, so there is no step for any of them - only the stamp (a v7 document falls through
-    // every step above and is stamped v12). v9 (M-VAR, the persistent `StoryVariableRef` rename),
-    // v10 (the character appearance rework - `formName`/`variants` become `pose`/`tags`) and v12
-    // (the explicit order of chapter-less scenes) are NOT additive, so each has a real step.
+    // flag), v8 (the `event` rich-text run), v11 (a withdrawn marker block - see the version
+    // history in document.ts), v14 (the expression language's `array`/`index` nodes) and v15 (its
+    // `visited`/`invoke` nodes) are purely additive: an older document is already valid at the new
+    // version - it cannot contain a node kind that did not exist to be written - so there is no step
+    // for any of them, only the stamp (a v7 document falls through every step above and is stamped
+    // v15). v9 (M-VAR, the persistent `StoryVariableRef` rename),
+    // v10 (the character appearance rework - `formName`/`variants` become `pose`/`tags`), v12
+    // (the explicit order of chapter-less scenes) and v13 (the `code` block kind's removal) are NOT
+    // additive, so each has a real step.
     //
     // The stamp is unconditional, and has to be. Each migrator above ends by writing
     // STORY_DOCUMENT_SCHEMA_VERSION rather than the version it actually produces, so the ladder only
@@ -355,6 +361,58 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
     // v2 tests kept passing because V2toV3 stamps whatever the constant currently says. Landing the
     // stamp here means the next additive bump cannot reopen that hole.
     return { ...migrated, schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION };
+}
+
+/**
+ * v12→v13: the `code` block kind is gone; every one of its rows becomes a `note` carrying the source.
+ *
+ * The source is copied byte for byte, at the end of the note, after one header line naming the
+ * language the row declared. Nothing about the block ever ran - the compiler skipped it with a
+ * warning - so there is no behaviour to preserve; what there IS is text an author typed, sometimes
+ * real code, and deleting the row would be silent data loss on a save the author did not ask for.
+ * A note is the only kind that stores arbitrary prose and compiles to nothing, which is what a code
+ * block already was in practice.
+ *
+ * The `textId` is derived from the block id rather than generated, for two reasons: this function has
+ * no id service (it runs on a parsed object, off any React tree), and a derived id makes the step
+ * idempotent - running it twice cannot mint a second translation unit for the same row.
+ */
+function migrateStoryDocumentV12toV13(document: StoryDocument): StoryDocument {
+    const scenes: Record<StorySceneId, StoryScene> = {};
+    for (const [sceneId, scene] of Object.entries(document.scenes ?? {})) {
+        const blocks: Record<StoryBlockId, StoryBlock> = {};
+        for (const [blockId, block] of Object.entries(scene.blocks ?? {})) {
+            blocks[blockId] = migrateCodeBlockToNote(block);
+        }
+        scenes[sceneId] = { ...scene, blocks };
+    }
+    return { ...document, scenes };
+}
+
+/** The legacy `code` payload, as it survives only in documents on disk. */
+type LegacyCodePayload = {
+    language?: unknown;
+    source?: unknown;
+};
+
+function migrateCodeBlockToNote(block: StoryBlock): StoryBlock {
+    if ((block.kind as string) !== "code") {
+        return block;
+    }
+    const payload = block.payload as LegacyCodePayload;
+    const source = typeof payload.source === "string" ? payload.source : "";
+    const language = typeof payload.language === "string" && payload.language.trim() ? payload.language.trim() : "narraleaf";
+    // Header first, source last and untouched: `endsWith(source)` is the property the migration test
+    // pins, so a future edit to the header cannot start reformatting what the author wrote.
+    const value = `[code block (${language}), no longer supported]\n${source}`;
+    return {
+        id: block.id,
+        kind: "note",
+        parentId: block.parentId,
+        childrenIds: block.childrenIds,
+        ...(block.disabled ? { disabled: block.disabled } : {}),
+        payload: { text: { textId: `code_${block.id}`, role: "note", value } },
+    };
 }
 
 /**

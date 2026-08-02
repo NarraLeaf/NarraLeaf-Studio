@@ -73,9 +73,11 @@ import type {
     StoryVariableRef,
 } from "@shared/types/story";
 import {
+    collectStoryExpressionInvocations,
     collectStoryExpressionVariables,
     duplicateSceneLabels,
     isStoryExpressionEvaluable,
+    storyVisitedRefId,
     layerActionTargetRef,
     listScenesInDocumentOrder,
     sceneLabelNames,
@@ -86,7 +88,7 @@ import {
     storyPersistentDefs,
     storyVariableRefKey,
 } from "@shared/types/story";
-import type { StoryExpressionReader } from "@shared/utils/storyExpressionEval";
+import type { StoryExpressionEnv } from "@shared/utils/storyExpressionEval";
 import { evaluateStoryExpression, isTruthy, strictEquals, toDisplayString } from "@shared/utils/storyExpressionEval";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
@@ -138,6 +140,14 @@ import {
     type CompileStoryActionScriptInput,
     type StoryActionFnCatalog,
 } from "./storyActionBlueprint";
+import {
+    createStoryVisitedPersistent,
+    isStoryVisited,
+    markStoryVisitedStatement,
+    STORY_VISITED_OPTIONS_KEY,
+    STORY_VISITED_SCENES_KEY,
+    type StoryVisitedContent,
+} from "./storyVisited";
 
 /**
  * App-level persistent variable bridge (shared with UI blueprints). `get` reads a cached snapshot
@@ -392,6 +402,12 @@ export type CompiledNlrStory = {
      */
     savedNamespaceName: string;
     /**
+     * Storable namespace holding the visited record (see `./storyVisited`), resolved the same way as
+     * {@link CompiledNlrStory.savedNamespaceName}. Hosts read `Is Scene Visited` / `Is Option Picked`
+     * out of it. Empty when the compile builds no visited namespace (the boot-time empty story).
+     */
+    visitedNamespaceName: string;
+    /**
      * Per-scene Storable namespace holding that scene's "scene" (editor: Local) variables, keyed by
      * Studio scene id. A scene-local namespace only exists while its scene is the active one at
      * runtime (it is re-seeded on entry and removed on exit).
@@ -498,6 +514,11 @@ type SceneCompileContext = {
     avatarBoundCharacterIds: Set<string>;
     /** Single NLR Persistent (Storable-backed, per-save) holding all "saved" variables. */
     savedPersistent: Persistent<Record<string, StoryLiteralValue>>;
+    /**
+     * The visited record's Persistent (see `./storyVisited`). Compile-wide like `savedPersistent`,
+     * because the record is: a scene entered from another scene must land in the same two sets.
+     */
+    visitedPersistent: Persistent<StoryVisitedContent>;
     /** Scene-scope declaration table of this scene (variableId → def), scanned once per compile. */
     sceneVariables: Record<string, StorySceneVariableDefinition>;
     /** Document-wide "saved" declaration table (variableId → def), scanned once per compile. */
@@ -626,6 +647,7 @@ export function createEmptyCompiledNlrStory(): CompiledNlrStory {
         avatarAssetIdByUrl: new Map(),
         actionIdBindings: [],
         savedNamespaceName: "",
+        visitedNamespaceName: "",
         sceneLocalNamespaceNames: {},
         diagnostics: [],
     };
@@ -679,6 +701,10 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         Object.assign(savedDefaults, input.launch.snapshot.savedVariables);
     }
     const savedPersistent = nlrStory.createPersistent(SAVED_PERSISTENT_NAMESPACE, savedDefaults);
+    // Deliberately NOT seeded from `input.launch`: a row-precise launch fabricates a starting state,
+    // and pretending the player had already walked the scenes on the way there would put fake
+    // entries in a record whose whole job is to say where the player has actually been.
+    const visitedPersistent = createStoryVisitedPersistent(nlrStory);
     const persistentDefaults = collectPersistentDefaults(input.document);
     const persistentVariables = input.persistentVariables ?? {};
     const persistentView = collectPersistentView(input.document, persistentVariables);
@@ -706,6 +732,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             avatarAssetIdByUrl,
             avatarBoundCharacterIds,
             savedPersistent,
+            visitedPersistent,
             sceneVariables: sceneVariableDefs(scene),
             savedVariables,
             persistentDefaults,
@@ -738,7 +765,15 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         // Seed declared scene-local defaults at the head of the scene's statement list. They must be
         // statements (not build-time sets): `Scene.local.init` resets the namespace on every scene
         // entry, so the seeds have to re-run each time the scene starts.
-        const seeds: NlrStatement[] = [];
+        //
+        // The visit is recorded from the same position, and for the same reason: it belongs to the
+        // moment the scene STARTS, and it must re-run on every entry (a re-entry after a load has to
+        // put the id back). Nothing an author writes is involved - Ink's `visited`, Ren'Py's
+        // `seen_label` and Yarn's `visited()` are all automatic, and a feature that needs a manual
+        // marker row on every scene is a feature nobody turns on.
+        const seeds: NlrStatement[] = [
+            markStoryVisitedStatement(visitedPersistent, STORY_VISITED_SCENES_KEY, scene.id),
+        ];
         for (const def of Object.values(ctx.sceneVariables)) {
             if (def.defaultValue !== undefined) {
                 seeds.push(nlrScene.local.set(def.storageKey, def.defaultValue as any));
@@ -765,6 +800,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             avatarAssetIdByUrl,
             avatarBoundCharacterIds,
             savedPersistent,
+            visitedPersistent,
             savedVariables,
             persistentDefaults,
             persistentKeys,
@@ -803,6 +839,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         sceneId: entryScene.id,
         actionIdBindings,
         savedNamespaceName: DevTools.getNamespaceName(savedPersistent),
+        visitedNamespaceName: DevTools.getNamespaceName(visitedPersistent),
         sceneLocalNamespaceNames,
         diagnostics,
         characters,
@@ -830,6 +867,7 @@ async function buildLaunchEntryScene(params: {
     avatarAssetIdByUrl: Map<string, string>;
     avatarBoundCharacterIds: Set<string>;
     savedPersistent: Persistent<Record<string, StoryLiteralValue>>;
+    visitedPersistent: Persistent<StoryVisitedContent>;
     savedVariables: Record<string, StorySavedVariableDefinition>;
     persistentDefaults: Record<string, StoryLiteralValue>;
     persistentKeys: Set<string>;
@@ -891,6 +929,7 @@ async function buildLaunchEntryScene(params: {
         avatarAssetIdByUrl: params.avatarAssetIdByUrl,
         avatarBoundCharacterIds: params.avatarBoundCharacterIds,
         savedPersistent: params.savedPersistent,
+        visitedPersistent: params.visitedPersistent,
         sceneVariables: sceneVariableDefs(scene),
         savedVariables: params.savedVariables,
         persistentDefaults: params.persistentDefaults,
@@ -1067,6 +1106,10 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
     }
     Object.assign(savedDefaults, snapshot.savedVariables);
     const savedPersistent = nlrStory.createPersistent(SAVED_PERSISTENT_NAMESPACE, savedDefaults);
+    // The preview compiles a single row, not a playthrough, so nothing here ever records a visit -
+    // the namespace exists only because `SceneCompileContext` requires one and a choice row inside
+    // the previewed block still compiles its (never-taken) option branches.
+    const visitedPersistent = createStoryVisitedPersistent(nlrStory);
 
     // Snapshot background wins; otherwise the scene's default initial background.
     const backgroundSrc = snapshot.background?.assetId
@@ -1099,6 +1142,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         avatarAssetIdByUrl: new Map(),
         avatarBoundCharacterIds: new Set(),
         savedPersistent,
+        visitedPersistent,
         sceneVariables: sceneVariableDefs(scene),
         savedVariables,
         persistentDefaults: collectPersistentDefaults(input.document),
@@ -1276,6 +1320,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         sceneId: scene.id,
         actionIdBindings,
         savedNamespaceName: DevTools.getNamespaceName(savedPersistent),
+        visitedNamespaceName: DevTools.getNamespaceName(visitedPersistent),
         sceneLocalNamespaceNames: { [scene.id]: DevTools.getNamespaceName(previewScene.local) },
         diagnostics,
         characters: ctx.characters,
@@ -1653,6 +1698,9 @@ async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<
         if (block.payload.control === "label" || block.payload.control === "goto") {
             return compileLabelControl(ctx, block, block.payload);
         }
+        if (block.payload.control === "break") {
+            return compileBreak(ctx, block);
+        }
         return compileControlGroup(ctx, block);
     }
 
@@ -1678,11 +1726,6 @@ async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<
     if (block.kind === "declaration") {
         // Authoring metadata, not a runtime action: the scanned variable tables carry its meaning,
         // and the scene-head seeds carry its default. Nothing to emit, nothing to warn about.
-        return [];
-    }
-
-    if (block.kind === "code") {
-        diagnostic(ctx, "warning", block.id, "Code/Script blocks are not part of the NLR Story action surface and were skipped.");
         return [];
     }
 
@@ -1730,6 +1773,12 @@ async function compilePreviewTargetOwnStatements(ctx: SceneCompileContext, block
             return compileCondition(ctx, block);
         }
         if (block.payload.control === "conditionBranch") {
+            return [];
+        }
+        if (block.payload.control === "break") {
+            // The preview compiles this row on its own, without the loop it belongs to. Emitting
+            // `breakLoop()` there is an engine error at play time, so the preview holds instead.
+            diagnostic(ctx, "warning", block.id, "Preview holds at the break; it needs its loop to do anything.");
             return [];
         }
         return compileControlGroup(ctx, block);
@@ -2033,14 +2082,14 @@ function buildInterpolationWord(
             diagnostic(ctx, "warning", blockId, `Inline expression \`${expression.source}\` did not resolve; interpolation skipped.`);
             return null;
         }
-        const readerFor = buildExpressionReader(ctx, expression.ast, blockId);
-        if (!readerFor) {
+        const envFor = buildExpressionEnv(ctx, expression.ast, blockId);
+        if (!envFor) {
             return null;
         }
         // `toDisplayString`, not `String(...)`: a null variable renders as nothing rather than as the
         // word "null" in the middle of a line of dialogue.
         return applyInterpolationWordMarks(new Word((((scriptCtx: ScriptCtx) =>
-            toDisplayString(evaluateStoryExpression(expression.ast, readerFor(scriptCtx)))) as unknown) as any), marks);
+            toDisplayString(evaluateStoryExpression(expression.ast, envFor(scriptCtx)))) as unknown) as any), marks);
     }
     const target = interp.target;
     if (target.scope === "scene") {
@@ -2938,7 +2987,16 @@ async function compileChoice(ctx: SceneCompileContext, block: Extract<StoryBlock
             prompt: optionSegment.value || segmentHasInterpolation(optionSegment)
                 ? (buildLocalizedSentencePrompt(ctx, optionSegment, option.id) as any)
                 : "Option",
-            action: await compileBlockList(ctx, option.childrenIds) as any,
+            // The pick is recorded at the head of the option's OWN branch, which is the one place
+            // that runs if and only if the player chose this option. Recording anywhere else (with
+            // the menu, or via the engine's text-read record) would count an option the player only
+            // ever looked at - and "did they pick it" is the entire reason this record exists.
+            // It goes ahead of the option's authored rows so a `goto` in the first row cannot skip
+            // past it, and it survives an empty option (the branch is then just this one statement).
+            action: [
+                markStoryVisitedStatement(ctx.visitedPersistent, STORY_VISITED_OPTIONS_KEY, option.id),
+                ...await compileBlockList(ctx, option.childrenIds),
+            ] as any,
             config: {
                 hidden: conditionToLambda(ctx, option.payload.hiddenWhen, option.id),
                 disabled: conditionToLambda(ctx, option.payload.disabledWhen, option.id),
@@ -3027,10 +3085,105 @@ function compileLabelControl(
     return [recordStatement(ctx, Control.jump(target), block)];
 }
 
+/**
+ * `/break` - leave the innermost `repeat`.
+ *
+ * Faulted here rather than left to the engine when there is no loop above it. NLR's `breakLoop`
+ * outside a loop is a play-time error, which for a stray row means the author finds out on the
+ * player's screen; an `error` diagnostic finds them in the editor and refuses the production build.
+ */
+function compileBreak(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "control" }>): NlrStatement[] {
+    let parentId = block.parentId;
+    let insideLoop = false;
+    while (parentId) {
+        const parent = ctx.scene.blocks[parentId];
+        if (!parent) {
+            break;
+        }
+        if (parent.kind === "control" && parent.payload.control === "repeat") {
+            insideLoop = true;
+            break;
+        }
+        parentId = parent.parentId;
+    }
+    if (!insideLoop) {
+        diagnostic(ctx, "error", block.id, "Break is not inside a repeat group; there is no loop for it to leave.");
+        return [];
+    }
+    return [recordStatement(ctx, Control.breakLoop(), block)];
+}
+
+/**
+ * The ceiling an `until` loop is allowed to reach before it is cut off.
+ *
+ * A conditional loop needs one, and this language in particular. The expression language has no side
+ * effects a *condition* can produce, so a condition over variables the body never assigns is not a
+ * slow loop - it is an exactly-never-terminating one, with no error, no frame, and no way for the
+ * player to tell the game from a hang. Ten thousand iterations of a body that draws nothing costs
+ * milliseconds, and any real loop that legitimately wants more of them is a script, not a scene.
+ */
+export const STORY_WHILE_LOOP_MAX_ITERATIONS = 10000;
+
+/**
+ * The engine-facing lambda for a `/repeat until` group.
+ *
+ * Two inversions live here and both are easy to read past:
+ *
+ *  1. **The negation.** `until` is a STOP condition ("go round again until the door opens"), and
+ *     `Control.whileLoop` takes a CONTINUE condition. So the value handed to the engine is `!until`.
+ *     Written as an explicit `=== false`-style negation rather than folded into the condition builder,
+ *     because `conditionToLambda` is shared with `/if` and the branch there must NOT be inverted.
+ *  2. **The counter resets on exit, not on entry.** There is no "loop entered" hook - the condition
+ *     lambda is all we get - so the tally is cleared at the moment it answers "stop". A loop nested
+ *     inside another therefore starts fresh on every outer pass, instead of spending one shared
+ *     budget across all of them and cutting later passes short.
+ */
+function whileLoopCondition(until: (scriptCtx: ScriptCtx) => boolean, blockId: string): NlrCondition {
+    let iterations = 0;
+    return (scriptCtx: ScriptCtx) => {
+        if (iterations >= STORY_WHILE_LOOP_MAX_ITERATIONS) {
+            // Runtime, not compile time: the diagnostics array was handed back to the caller long ago,
+            // and nothing about the document says this loop will spin. The console is where a Dev Mode
+            // session reads it.
+            console.warn(
+                `[storyCompiler] Repeat-until loop (block ${blockId}) stopped after ${STORY_WHILE_LOOP_MAX_ITERATIONS} iterations; its condition never became true.`,
+            );
+            iterations = 0;
+            return false;
+        }
+        if (until(scriptCtx)) {
+            iterations = 0;
+            return false;
+        }
+        iterations += 1;
+        return true;
+    };
+}
+
 async function compileControlGroup(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "control" }>): Promise<NlrStatement[]> {
     const payload = block.payload as Extract<StoryControlPayload, { control: "sequence" | "parallel" | "race" | "repeat" }>;
     const children = await compileBlockList(ctx, block.childrenIds);
     const mode = payload.mode ?? (payload.control === "parallel" ? "all" : payload.control === "race" ? "any" : "do");
+    // `until` selects the conditional form. A group that carries one is never a counted repeat, even
+    // if a stale `times` rode along - the schema calls them mutually exclusive and this is where it
+    // has to be true.
+    if (payload.control === "repeat" && payload.until) {
+        const until = conditionToLambda(ctx, payload.until, block.id);
+        // `falseCondition` is the single value every unresolvable arm of `conditionToLambda` returns,
+        // so the identity check is exact. It matters here far more than it does for `/if`: a branch
+        // that tests false is a branch that does not run, while a STOP condition that can never
+        // become true is a loop that never ends. Refusing to emit the group is the only answer that
+        // is not "spin until the ceiling catches you".
+        if (!until || until === falseCondition) {
+            diagnostic(ctx, "error", block.id, "Repeat-until loop has no usable condition; the group was skipped.");
+            return [];
+        }
+        // The `Lambda` arm of `NlrCondition` is an empty class - structurally `{}`, so it neither
+        // narrows nor excludes anything - and no arm of `conditionToLambda` ever produces one. The
+        // assertion says that, rather than letting the vestigial arm block the call.
+        const untilFn = until as (scriptCtx: ScriptCtx) => boolean;
+        return [recordStatement(ctx, Control.whileLoop(whileLoopCondition(untilFn, block.id) as any, children as any), block)];
+    }
     const chain = payload.control === "repeat"
         ? Control.repeat(Math.max(0, payload.times ?? 1), children as any)
         : mode === "doAsync"
@@ -3675,15 +3828,22 @@ function resolveVariableSlot(ctx: SceneCompileContext, ref: StoryVariableRef, bl
 }
 
 /**
- * Build the reader an expression evaluates against, with every referenced variable's slot resolved up
- * front. Returns null when any of them fails to resolve: an expression that silently treated a
- * deleted variable as `0` would produce a plausible wrong number, which is worse than not running.
+ * Build the environment an expression evaluates against, with everything it reaches outside its own
+ * tree resolved up front: every referenced variable's slot, and every blueprint it calls.
+ *
+ * Returns null when any of them fails to resolve. That is the whole doctrine of this function - an
+ * expression that silently treated a deleted variable as `0`, or a deleted blueprint as `null`, would
+ * produce a plausible wrong number, which is worse than not running at all.
+ *
+ * The visited capability needs no resolution pass: the record is addressed by the very ids the
+ * `visited` node carries, so there is nothing that can fail to bind. An id naming a scene the author
+ * has since deleted simply never appears in the record, which is exactly "not visited".
  */
-function buildExpressionReader(
+function buildExpressionEnv(
     ctx: SceneCompileContext,
     expr: StoryExpr,
     blockId: string,
-): ((scriptCtx: ScriptCtx) => StoryExpressionReader) | null {
+): ((scriptCtx: ScriptCtx) => StoryExpressionEnv) | null {
     const slots = new Map<string, StoryVariableSlot>();
     for (const ref of collectStoryExpressionVariables(expr)) {
         const slot = resolveVariableSlot(ctx, ref, blockId);
@@ -3692,21 +3852,58 @@ function buildExpressionReader(
         }
         slots.set(storyVariableRefKey(ref), slot);
     }
+
+    // One compile input per callee, built here rather than per evaluation: `buildStoryActionScriptInput`
+    // is pure assembly, but doing it inside the lambda would rebuild it on every branch test and every
+    // dialogue repaint.
+    const invocations = new Map<string, CompileStoryActionScriptInput>();
+    for (const call of collectStoryExpressionInvocations(expr)) {
+        if (!ctx.blueprintDocument) {
+            diagnostic(ctx, "warning", blockId, `Expression calls \`${call.name}()\`, which needs the project blueprint document; the expression was skipped.`);
+            return null;
+        }
+        invocations.set(
+            call.blueprintId,
+            buildStoryActionScriptInput(ctx, call.blueprintId, message => diagnostic(ctx, "warning", blockId, message)),
+        );
+    }
+
     const persistence = ctx.persistence;
     const persistentDefaults = ctx.persistentDefaults;
+    // Resolved once at compile time like `savedNamespaceName`: the accessor is what keeps this in step
+    // with the engine's own prefix convention instead of reconstructing it (see `storyVisited.ts`).
+    const visitedNamespace = DevTools.getNamespaceName(ctx.visitedPersistent);
 
-    return (scriptCtx: ScriptCtx) => ref => {
-        const slot = slots.get(storyVariableRefKey(ref));
-        if (!slot) {
-            return undefined;
-        }
-        if (slot.kind === "host") {
-            const stored = persistence?.get(slot.key) as StoryLiteralValue | undefined;
-            // Declared persistent rows read as their default until the host first stores a value.
-            return stored === undefined ? persistentDefaults[slot.key] : stored;
-        }
-        return scriptCtx.storable.getNamespace(slot.namespace).get(slot.key) as StoryLiteralValue | undefined;
-    };
+    return (scriptCtx: ScriptCtx) => ({
+        read: ref => {
+            const slot = slots.get(storyVariableRefKey(ref));
+            if (!slot) {
+                return undefined;
+            }
+            if (slot.kind === "host") {
+                const stored = persistence?.get(slot.key) as StoryLiteralValue | undefined;
+                // Declared persistent rows read as their default until the host first stores a value.
+                return stored === undefined ? persistentDefaults[slot.key] : stored;
+            }
+            return scriptCtx.storable.getNamespace(slot.namespace).get(slot.key) as StoryLiteralValue | undefined;
+        },
+        // Read live off the storable on every test, not captured: a `repeat until picked(…)` and a
+        // choice option's `hiddenWhen` both have to see the record as it stands now.
+        visited: ref => isStoryVisited(
+            scriptCtx.storable,
+            visitedNamespace,
+            ref.kind === "scene" ? STORY_VISITED_SCENES_KEY : STORY_VISITED_OPTIONS_KEY,
+            storyVisitedRefId(ref),
+        ),
+        invoke: blueprintId => {
+            const input = invocations.get(blueprintId);
+            // Unreachable: every callee in the tree was collected above or this function returned
+            // null. Answering `undefined` rather than throwing keeps that true even if it stops being.
+            return input
+                ? evaluateStoryActionBlueprintValueSync(input, scriptCtx) as StoryLiteralValue | undefined
+                : undefined;
+        },
+    });
 }
 
 function setVariable(
@@ -3770,15 +3967,15 @@ function setVariableFromExpression(
         diagnostic(ctx, "warning", blockId, `Expression \`${expression.source}\` did not resolve; the assignment was skipped.`);
         return null;
     }
-    const readerFor = buildExpressionReader(ctx, expression.ast, blockId);
+    const envFor = buildExpressionEnv(ctx, expression.ast, blockId);
     const slot = resolveVariableSlot(ctx, target, blockId);
-    if (!readerFor || !slot) {
+    if (!envFor || !slot) {
         return null;
     }
     const persistence = ctx.persistence;
 
     return Script.execute(scriptCtx => {
-        const result = evaluateStoryExpression(expression.ast, readerFor(scriptCtx));
+        const result = evaluateStoryExpression(expression.ast, envFor(scriptCtx));
         if (slot.kind === "host") {
             void persistence?.set(slot.key, result);
             return;
@@ -3797,13 +3994,13 @@ function conditionToLambda(ctx: SceneCompileContext, condition: StoryConditionRe
             diagnostic(ctx, "warning", blockId, `Condition \`${expression.source}\` did not resolve; it evaluates false.`);
             return falseCondition;
         }
-        const readerFor = buildExpressionReader(ctx, expression.ast, blockId);
-        if (!readerFor) {
+        const envFor = buildExpressionEnv(ctx, expression.ast, blockId);
+        if (!envFor) {
             return falseCondition;
         }
         // Re-read on every test, like the blueprint condition beside it: a branch inside a loop must
         // see the value as it stands now, not as it stood when the scene compiled.
-        return (scriptCtx: ScriptCtx) => isTruthy(evaluateStoryExpression(expression.ast, readerFor(scriptCtx)));
+        return (scriptCtx: ScriptCtx) => isTruthy(evaluateStoryExpression(expression.ast, envFor(scriptCtx)));
     }
     if (condition.kind === "blueprint") {
         if (!ctx.blueprintDocument) {

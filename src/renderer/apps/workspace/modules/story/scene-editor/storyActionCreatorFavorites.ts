@@ -21,15 +21,20 @@ export const FAVORITES_SETTING_KEY = "story.actionCreator.starredActionIds";
 /**
  * Legacy palette id → spec id, or `null` for "this command no longer exists as a menu entry".
  *
- * The two nulls are the whole of the loss, and both are deliberate:
+ * The three nulls are the whole of the loss, and all three are deliberate:
  *  - `conditionIf` was a duplicate of `condition` down to the constructor (D3), removed by §6;
  *  - `narration` has no spec because narration is not a command - a bare line of text IS narration
- *    (bible §2 retired the token), so there is nothing for the entry to point at.
- * Typed as a total map over the id union so a future id cannot quietly skip this table.
+ *    (bible §2 retired the token), so there is nothing for the entry to point at;
+ *  - `code` was deleted outright in schema v13 (the block never ran), and its token is reserved, so
+ *    there is deliberately nothing for a starred `/code` to land on.
+ * Typed as a total map over the id union so a future id cannot quietly skip this table. `code` is
+ * spelled explicitly beside the union because it is no longer a member of it, and a stored favourite
+ * still carrying the id has to be recognised rather than kept as an unknown plugin action.
  */
-export const LEGACY_FAVORITE_TO_SPEC_ID: Readonly<Record<ActionCommandId | "conditionIf", string | null>> = {
+export const LEGACY_FAVORITE_TO_SPEC_ID: Readonly<Record<ActionCommandId | "conditionIf" | "code", string | null>> = {
     narration: null,
     conditionIf: null,
+    code: null,
 
     dialogue: "say",
     choice: "menu",
@@ -92,7 +97,6 @@ export const LEGACY_FAVORITE_TO_SPEC_ID: Readonly<Record<ActionCommandId | "cond
     declareSavedVariable: "declareVar",
     declarePersistentVariable: "declarePersis",
     executeScript: "blueprint",
-    code: "code",
     note: "note",
 };
 

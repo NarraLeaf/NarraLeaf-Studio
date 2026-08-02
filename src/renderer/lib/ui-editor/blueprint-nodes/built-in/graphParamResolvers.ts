@@ -129,6 +129,8 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY,
     BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
     BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE,
+    BLUEPRINT_NODE_TYPE_GAME_IS_OPTION_PICKED,
+    BLUEPRINT_NODE_TYPE_GAME_IS_SCENE_VISITED,
     BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
@@ -1456,6 +1458,39 @@ function resolveGetTrackVolumeNodeOutput(
 }
 
 /**
+ * `Is Scene Visited` / `Is Option Picked` - the visited record's readers.
+ *
+ * Its own resolver, node-type gated, for the same reason `Get Character` has one: these read a
+ * `params` id, which {@link resolveGameNodeOutput}'s bare port-id lookup never sees.
+ *
+ * Being here at all is the point. A pure node's output is NOT resolved by running `execute()` - the
+ * executor only ever walks exec flow, so a pure node is read on demand through `resolveSelfOutput`,
+ * and a pure node nobody registered here resolves to `undefined` downstream with no error and no
+ * diagnostic. (The registry sweep in `graphParamResolvers.test.ts` guards exec nodes only, since a
+ * pure node publishes no `outputValues` for it to check.)
+ *
+ * Nothing picked, or no host, reads as false rather than `undefined`: the pin is a non-nullable
+ * boolean, and "not visited" is the correct answer for a gallery row that is not wired yet.
+ */
+function resolveVisitedNodeOutput(
+    nodeType: string,
+    portId: string,
+    params: Record<string, unknown>,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    const game = runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game;
+    if (nodeType === BLUEPRINT_NODE_TYPE_GAME_IS_SCENE_VISITED && portId === "isVisited") {
+        const sceneId = String(params.sceneId ?? "").trim();
+        return sceneId ? game?.isSceneVisited(sceneId) === true : false;
+    }
+    if (nodeType === BLUEPRINT_NODE_TYPE_GAME_IS_OPTION_PICKED && portId === "isPicked") {
+        const optionId = String(params.optionId ?? "").trim();
+        return optionId ? game?.isOptionPicked(optionId) === true : false;
+    }
+    return undefined;
+}
+
+/**
  * `Get Character` - the addressable one. Kept out of {@link resolveGameNodeOutput} and dispatched
  * ahead of it because that function matches on bare port ids across the whole game family, and this
  * node's outputs would otherwise be captured by the speaker-scoped branches.
@@ -2543,6 +2578,15 @@ function resolveSelfOutput(
         selfNode.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING
     ) {
         return resolvePageNodeOutput(portId, runtime);
+    }
+    const visitedOutput = resolveVisitedNodeOutput(
+        selfNode.type,
+        portId,
+        selfNode.params ?? {},
+        runtime,
+    );
+    if (visitedOutput !== undefined) {
+        return visitedOutput;
     }
     const getCharacterOutput = resolveGetCharacterNodeOutput(
         selfNode.type,

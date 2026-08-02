@@ -52,7 +52,7 @@ function resolveRunnableBlock(scene: StoryScene, blockId: string | null): StoryB
 }
 
 function isNonPreviewableKind(block: StoryBlock): boolean {
-    return block.kind === "code" || block.kind === "note";
+    return block.kind === "note";
 }
 
 /** Depth-first block ids in execution order (the order the compiler emits statements). */

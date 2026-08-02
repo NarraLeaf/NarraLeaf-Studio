@@ -772,7 +772,7 @@ describe("story document migration ladder", () => {
     // The regression that shipped: bumping the constant without adding a step left v3 documents
     // falling through migrateStoryDocumentToLatest untouched, so every existing project threw
     // "migration is not implemented" and its story panel would not open.
-    it.each([[1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11]])("brings a v%i document to the current schema", version => {
+    it.each([[1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11], [12]])("brings a v%i document to the current schema", version => {
         expect(normalizeStoryDocument(docAtVersion(version), "2026-07-16T00:00:00.000Z").schemaVersion)
             .toBe(STORY_DOCUMENT_SCHEMA_VERSION);
     });
@@ -886,6 +886,76 @@ describe("story document migration ladder", () => {
         // The declaration payload is untouched (it is a variable, not a ref).
         const decl = migrated.scenes[sceneId].blocks["persis-decl"] as { payload: { storageKey: string; name: string } };
         expect(decl.payload).toMatchObject({ storageKey: "persis-decl", name: "Gold" });
+    });
+
+    /**
+     * v12→v13 deletes a block kind, so the only thing it can get wrong is losing what the row held.
+     * The source is asserted byte-for-byte rather than "contains something like it": authors put real
+     * code in these blocks, and a migration that reformatted, trimmed or re-indented it would be data
+     * loss that no diff review would catch.
+     */
+    describe("v12→v13 code blocks become notes", () => {
+        const SOURCE = "  const a = 1;\n\n\tif (a) {\n  return \"don't\";\n}\n";
+
+        function v12WithCodeBlock(payload: Record<string, unknown>): StoryDocument {
+            const document = docAtVersion(12);
+            const sceneId = Object.keys(document.scenes)[0];
+            const scene = document.scenes[sceneId];
+            return {
+                ...document,
+                scenes: {
+                    [sceneId]: {
+                        ...scene,
+                        rootBlockIds: ["c1"],
+                        blocks: { c1: { id: "c1", parentId: null, childrenIds: [], kind: "code", payload } },
+                    },
+                },
+            } as unknown as StoryDocument;
+        }
+
+        function migratedBlock(payload: Record<string, unknown>) {
+            const migrated = migrateStoryDocumentToLatest(v12WithCodeBlock(payload));
+            expect(migrated.schemaVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+            const sceneId = Object.keys(migrated.scenes)[0];
+            return migrated.scenes[sceneId].blocks.c1;
+        }
+
+        it("keeps the source verbatim, at the end of the note", () => {
+            const block = migratedBlock({ language: "typescript", source: SOURCE });
+            expect(block.kind).toBe("note");
+            const value = (block as { payload: { text: { value: string } } }).payload.text.value;
+            // Byte equality of the tail: whatever the header line says, the author's bytes end the note.
+            expect(value.endsWith(SOURCE)).toBe(true);
+            expect(value.slice(value.length - SOURCE.length)).toBe(SOURCE);
+            // The language is the one thing the note has to state, since the payload field is gone.
+            expect(value).toContain("typescript");
+        });
+
+        it("survives an empty or malformed payload rather than dropping the row", () => {
+            expect(migratedBlock({}).kind).toBe("note");
+            expect(migratedBlock({ source: 12 as unknown as string }).kind).toBe("note");
+        });
+
+        it("keeps the row's id, place in the tree and disabled flag", () => {
+            const document = docAtVersion(12);
+            const sceneId = Object.keys(document.scenes)[0];
+            const scene = document.scenes[sceneId];
+            const v12 = {
+                ...document,
+                scenes: {
+                    [sceneId]: {
+                        ...scene,
+                        rootBlockIds: ["group"],
+                        blocks: {
+                            group: { id: "group", parentId: null, childrenIds: ["c1"], kind: "control", payload: { control: "sequence" } },
+                            c1: { id: "c1", parentId: "group", childrenIds: [], kind: "code", disabled: true, payload: { language: "javascript", source: SOURCE } },
+                        },
+                    },
+                },
+            } as unknown as StoryDocument;
+            const block = migrateStoryDocumentToLatest(v12).scenes[sceneId].blocks.c1;
+            expect(block).toMatchObject({ id: "c1", kind: "note", parentId: "group", disabled: true });
+        });
     });
 
     it("migrates v6 forward additively — a bump only, every block untouched (no invented `disabled`)", () => {

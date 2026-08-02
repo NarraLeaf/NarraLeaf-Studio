@@ -1,10 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { BlurDissolve, Darkness, DevTools, Push, Reveal, ThroughColor, Transition } from "narraleaf-react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { BlurDissolve, Control, Darkness, DevTools, Push, Reveal, ThroughColor, Transition } from "narraleaf-react";
 import type { CharacterAppearanceSummary, DevModeCharacterSummary } from "@shared/types/devMode";
-import type { StoryActionPayload, StoryAnimationAsset, StoryBlock, StoryDocument, StoryTransitionRef } from "@shared/types/story";
+import type { StoryActionPayload, StoryAnimationAsset, StoryBlock, StoryConditionRef, StoryDocument, StoryTransitionRef } from "@shared/types/story";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import { BUILTIN_AUDIO_TRACKS } from "@shared/types/audioTrack";
-import { compileStudioStoryToNlr, resolveBundleEntry } from "@/lib/ui-editor/runtime/game/storyCompiler";
+import { compileStudioStoryToNlr, resolveBundleEntry, STORY_WHILE_LOOP_MAX_ITERATIONS } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
 
 /** A character with no sprites: enough to be a speaker, which is all these cases need. */
@@ -1164,7 +1164,7 @@ describe("compileStudioStoryToNlr", () => {
         });
     });
 
-    it("compiles choice, condition, variables, and skips script-only blocks with diagnostics", async () => {
+    it("compiles choice, condition and variables", async () => {
         const optionChild = narrationBlock("option-child", "text-option-child", "Selected");
         optionChild.parentId = "option";
         const option: StoryBlock = {
@@ -1225,14 +1225,6 @@ describe("compileStudioStoryToNlr", () => {
             childrenIds: ["if-branch"],
             payload: { control: "condition" },
         };
-        const code: StoryBlock = {
-            id: "code",
-            kind: "code",
-            parentId: null,
-            childrenIds: [],
-            payload: { language: "narraleaf", source: "Script.action()", advanced: true },
-        };
-
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument({
                 choice,
@@ -1241,8 +1233,7 @@ describe("compileStudioStoryToNlr", () => {
                 condition,
                 "if-branch": branch,
                 "set-var": setVariable,
-                code,
-            }, ["choice", "condition", "code"]),
+            }, ["choice", "condition"]),
             sceneId: "scene-1",
         });
 
@@ -1251,13 +1242,7 @@ describe("compileStudioStoryToNlr", () => {
             "condition",
             "set-var",
         ]));
-        expect(compiled.diagnostics).toEqual([
-            {
-                level: "warning",
-                blockId: "code",
-                message: "Code/Script blocks are not part of the NLR Story action surface and were skipped.",
-            },
-        ]);
+        expect(compiled.diagnostics).toEqual([]);
     });
 
     it("validates persistent references against the declared set (bible §3.3)", async () => {
@@ -1322,7 +1307,14 @@ describe("compileStudioStoryToNlr", () => {
             .map((action: any) => action?.type as string));
         const seedStatements = statementTypes.filter(types => types.includes("persistent:set"));
         expect(seedStatements).toHaveLength(1);
-        expect(statementTypes[0]).toContain("persistent:set");
+        // Head of the scene, but no longer index 0: the visited record's `script:action` is seeded
+        // ahead of the variable defaults (see `storyVisited.ts`). What matters is that the seed runs
+        // before any authored row, so the search is bounded by the first bound action instead of
+        // being pinned to a literal index.
+        const firstAuthoredIndex = statementTypes.findIndex(types => types.includes("character:say"));
+        const seedIndex = statementTypes.findIndex(types => types.includes("persistent:set"));
+        expect(seedIndex).toBeGreaterThanOrEqual(0);
+        expect(seedIndex).toBeLessThan(firstAuthoredIndex);
     });
 
     describe("expression assignments and conditions", () => {
@@ -3294,5 +3286,129 @@ describe("story audio", () => {
 
         expect(compiled.diagnostics).toEqual([]);
         expect(compiled.actionIdBindings.map(binding => binding.blockId)).toEqual(["music", "jump"]);
+    });
+});
+
+/**
+ * `/repeat until` — the seam where a Studio word and an engine word mean opposite things.
+ *
+ * `until` is a STOP condition; `Control.whileLoop` takes a CONTINUE condition. Everything here is
+ * about the compiler doing that inversion, and about what happens when the condition never comes
+ * true — which, in a language whose conditions cannot have side effects, is a hang with no error.
+ */
+describe("repeat until", () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    /** `gold >= 100` over the scene declaration `baseDocument` already carries. */
+    const GOLD_AT_LEAST_100: StoryConditionRef = {
+        kind: "expression",
+        expression: {
+            source: "gold >= 100",
+            ast: {
+                kind: "binary",
+                op: ">=",
+                left: { kind: "var", target: { scope: "scene", variableId: "gold" }, name: "gold" },
+                right: { kind: "literal", value: 100 },
+            },
+        },
+    };
+
+    /** A ScriptCtx stub whose only job is to answer what `gold` currently is. */
+    const ctxWithGold = (gold: number) => ({
+        storable: { getNamespace: () => ({ get: () => gold }) },
+    }) as never;
+
+    async function compileLoop(until: StoryConditionRef | undefined, extra: Record<string, StoryBlock> = {}) {
+        const spy = vi.spyOn(Control, "whileLoop");
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                loop: { id: "loop", kind: "control", parentId: null, childrenIds: ["body"], payload: { control: "repeat", until } },
+                body: narrationBlock("body", "text-body", "Again"),
+                ...extra,
+            }, ["loop"]),
+            sceneId: "scene-1",
+        });
+        return { compiled, spy };
+    }
+
+    it("compiles to whileLoop with the condition NEGATED", async () => {
+        const { compiled, spy } = await compileLoop(GOLD_AT_LEAST_100);
+        expect(compiled.diagnostics).toEqual([]);
+        expect(spy).toHaveBeenCalledTimes(1);
+
+        const condition = spy.mock.calls[0][0] as (ctx: never) => boolean;
+        // The whole inversion, in two lines: `until` false means keep going, `until` true means stop.
+        expect(condition(ctxWithGold(0))).toBe(true);
+        expect(condition(ctxWithGold(100))).toBe(false);
+    });
+
+    it("stops at the iteration ceiling when the condition never becomes true", async () => {
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+        const { spy } = await compileLoop(GOLD_AT_LEAST_100);
+        const condition = spy.mock.calls[0][0] as (ctx: never) => boolean;
+
+        // `gold` never reaches 100, so nothing but the ceiling can end this.
+        for (let i = 0; i < STORY_WHILE_LOOP_MAX_ITERATIONS; i += 1) {
+            expect(condition(ctxWithGold(0))).toBe(true);
+        }
+        expect(condition(ctxWithGold(0))).toBe(false);
+        expect(warn).toHaveBeenCalledTimes(1);
+
+        // The tally resets on exit, not on entry - a loop nested inside another must not spend one
+        // shared budget across every outer pass and cut the later ones short.
+        expect(condition(ctxWithGold(0))).toBe(true);
+    });
+
+    it("refuses a loop whose condition cannot resolve, rather than emitting one that never ends", async () => {
+        const { compiled, spy } = await compileLoop({
+            kind: "expression",
+            // `nope` is not declared anywhere, so the expression is unevaluable. For an `/if` that is
+            // a branch that tests false; for a stop condition it is a loop with no way out.
+            expression: { source: "nope", ast: { kind: "var", target: { scope: "scene", variableId: "nope" }, name: "nope" } },
+        });
+        expect(spy).not.toHaveBeenCalled();
+        expect(compiled.diagnostics.some(d => d.level === "error" && d.blockId === "loop")).toBe(true);
+    });
+
+    it("keeps the counted form on a repeat with no until", async () => {
+        const spy = vi.spyOn(Control, "whileLoop");
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                loop: { id: "loop", kind: "control", parentId: null, childrenIds: ["body"], payload: { control: "repeat", times: 3 } },
+                body: narrationBlock("body", "text-body", "Again"),
+            }, ["loop"]),
+            sceneId: "scene-1",
+        });
+        expect(compiled.diagnostics).toEqual([]);
+        expect(spy).not.toHaveBeenCalled();
+    });
+});
+
+/** `/break` — legal inside a loop, an authoring error outside one. */
+describe("break", () => {
+    it("emits inside a repeat body and faults outside one", async () => {
+        const inside = await compileStudioStoryToNlr({
+            document: baseDocument({
+                loop: { id: "loop", kind: "control", parentId: null, childrenIds: ["brk"], payload: { control: "repeat", times: 3 } },
+                brk: { id: "brk", kind: "control", parentId: "loop", childrenIds: [], payload: { control: "break" } },
+            }, ["loop"]),
+            sceneId: "scene-1",
+        });
+        expect(inside.diagnostics).toEqual([]);
+        expect(inside.actionIdBindings.map(binding => binding.blockId)).toContain("brk");
+
+        const outside = await compileStudioStoryToNlr({
+            document: baseDocument({
+                brk: { id: "brk", kind: "control", parentId: null, childrenIds: [], payload: { control: "break" } },
+            }, ["brk"]),
+            sceneId: "scene-1",
+        });
+        // An error, not a warning: the engine's own answer to a stray breakLoop arrives at play time,
+        // on the player's screen, so the production build has to refuse it here.
+        expect(outside.diagnostics).toEqual([
+            { level: "error", blockId: "brk", message: "Break is not inside a repeat group; there is no loop for it to leave." },
+        ]);
     });
 });

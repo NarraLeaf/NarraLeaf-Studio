@@ -2,7 +2,6 @@ import type {
     StoryActionPayload,
     StoryBlock,
     StoryBlockId,
-    StoryCodePayload,
     StoryConditionRef,
     StoryControlPayload,
     StoryDeclarationPayload,
@@ -59,7 +58,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { StoryActionBlueprintPreviewCard } from "./StoryActionBlueprintPreviewCard";
-import { ConditionEditor } from "./ConditionEditor";
+import { ConditionEditor, EMPTY_EXPRESSION_CONDITION } from "./ConditionEditor";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { describeBlockSubject, getBlockBadgeInfo } from "./storySceneBlockUtils";
 import { useStoryMotionNames } from "./useStoryMotionNames";
@@ -416,13 +415,6 @@ const branchOptions = (t: TFunc): SelectOption[] => [
     { value: "else", label: t("storyInspector.branch.else") },
 ];
 
-// Language names are product / technology proper nouns and are not translated.
-const CODE_LANGUAGE_OPTIONS: SelectOption[] = [
-    { value: "narraleaf", label: "NarraLeaf" },
-    { value: "typescript", label: "TypeScript" },
-    { value: "javascript", label: "JavaScript" },
-];
-
 export function ActionInspector(props: {
     block: StoryBlock;
     document: StoryDocument;
@@ -680,9 +672,6 @@ function InspectorFields(props: {
                 />
             </div>
         );
-    }
-    if (block.kind === "code") {
-        return <CodePayloadFields payload={block.payload} onChange={props.onUpdatePayload} />;
     }
     if (block.kind === "note") {
         return (
@@ -2712,34 +2701,76 @@ function ControlPayloadFields(props: { document: StoryDocument; sceneId: StorySc
             </div>
         );
     }
+    if (props.payload.control === "break") {
+        return <div className="text-sm text-fg-muted">{t("storyInspector.control.breakHint")}</div>;
+    }
     if (props.payload.control !== "conditionBranch") {
         const groupPayload = props.payload as Extract<StoryControlPayload, { control: "sequence" | "parallel" | "race" | "repeat" }>;
+        const isRepeat = groupPayload.control === "repeat";
+        const conditional = isRepeat && groupPayload.until !== undefined;
         return (
-            <div className="nl-field-grid">
-                <SelectField
-                    label={t("storyInspector.control.control")}
-                    options={[
-                        { value: "sequence", label: t("storyInspector.control.sequence") },
-                        { value: "parallel", label: t("storyInspector.control.parallel") },
-                        { value: "race", label: t("storyInspector.control.race") },
-                        { value: "repeat", label: t("storyInspector.control.repeat") },
-                    ]}
-                    value={groupPayload.control}
-                    onChange={control => props.onChange({ ...groupPayload, control: control as "sequence" | "parallel" | "race" | "repeat" })}
-                />
-                <SelectField
-                    label={t("storyInspector.field.mode")}
-                    options={[
-                        { value: "do", label: t("storyInspector.control.mode.do") },
-                        { value: "doAsync", label: t("storyInspector.control.mode.doAsync") },
-                        { value: "all", label: t("storyInspector.control.mode.all") },
-                        { value: "allAsync", label: t("storyInspector.control.mode.allAsync") },
-                        { value: "any", label: t("storyInspector.control.mode.any") },
-                    ]}
-                    value={groupPayload.mode ?? "do"}
-                    onChange={mode => props.onChange({ ...groupPayload, mode: mode as "do" | "doAsync" | "all" | "allAsync" | "any" })}
-                />
-                <NumberField label={t("storyInspector.control.times")} value={groupPayload.times} onChange={times => props.onChange({ ...groupPayload, times })} />
+            <div className="grid grid-cols-1 gap-3">
+                <div className="nl-field-grid">
+                    <SelectField
+                        label={t("storyInspector.control.control")}
+                        options={[
+                            { value: "sequence", label: t("storyInspector.control.sequence") },
+                            { value: "parallel", label: t("storyInspector.control.parallel") },
+                            { value: "race", label: t("storyInspector.control.race") },
+                            { value: "repeat", label: t("storyInspector.control.repeat") },
+                        ]}
+                        value={groupPayload.control}
+                        onChange={control => {
+                            const next = control as "sequence" | "parallel" | "race" | "repeat";
+                            // `until` belongs to `repeat` alone - a sequence that kept one would be a
+                            // field no path reads and every future reader has to explain away.
+                            props.onChange(next === "repeat" ? { ...groupPayload, control: next } : { ...groupPayload, control: next, until: undefined });
+                        }}
+                    />
+                    <SelectField
+                        label={t("storyInspector.field.mode")}
+                        options={[
+                            { value: "do", label: t("storyInspector.control.mode.do") },
+                            { value: "doAsync", label: t("storyInspector.control.mode.doAsync") },
+                            { value: "all", label: t("storyInspector.control.mode.all") },
+                            { value: "allAsync", label: t("storyInspector.control.mode.allAsync") },
+                            { value: "any", label: t("storyInspector.control.mode.any") },
+                        ]}
+                        value={groupPayload.mode ?? "do"}
+                        onChange={mode => props.onChange({ ...groupPayload, mode: mode as "do" | "doAsync" | "all" | "allAsync" | "any" })}
+                    />
+                    {isRepeat ? (
+                        <SelectField
+                            label={t("storyInspector.control.loopKind")}
+                            options={[
+                                { value: "times", label: t("storyInspector.control.loopKindTimes") },
+                                { value: "until", label: t("storyInspector.control.loopKindUntil") },
+                            ]}
+                            value={conditional ? "until" : "times"}
+                            // The switch is a swap, not an overlay: the form it leaves keeps no field
+                            // behind, because a stored `times` under an `until` loop is a number the
+                            // header would offer to edit and the compiler would never read.
+                            onChange={kind => props.onChange(kind === "until"
+                                ? { ...groupPayload, times: undefined, until: groupPayload.until ?? EMPTY_EXPRESSION_CONDITION }
+                                : { ...groupPayload, until: undefined, times: groupPayload.times ?? 2 })}
+                        />
+                    ) : null}
+                    {isRepeat && !conditional ? (
+                        <NumberField label={t("storyInspector.control.times")} value={groupPayload.times} onChange={times => props.onChange({ ...groupPayload, times })} />
+                    ) : null}
+                </div>
+                {conditional ? (
+                    <div className="flex flex-col gap-2">
+                        <div className={FIELD_LABEL_CLASS}>{t("storyInspector.control.until")}</div>
+                        <ConditionEditor
+                            document={props.document}
+                            sceneId={props.sceneId}
+                            value={groupPayload.until}
+                            onChange={until => props.onChange({ ...groupPayload, until: until ?? EMPTY_EXPRESSION_CONDITION })}
+                        />
+                        <div className="text-2xs text-fg-subtle">{t("storyInspector.control.untilHint")}</div>
+                    </div>
+                ) : null}
             </div>
         );
     }
@@ -2781,28 +2812,6 @@ function ControlPayloadFields(props: { document: StoryDocument; sceneId: StorySc
             ) : (
                 <div className="text-sm text-fg-muted">{t("storyInspector.control.elseHint")}</div>
             )}
-        </div>
-    );
-}
-
-function CodePayloadFields(props: { payload: StoryCodePayload; onChange: (payload: StoryBlock["payload"]) => void }) {
-    const { t } = useTranslation();
-    return (
-        <div className="grid grid-cols-1 gap-2">
-            <div className="max-w-xs">
-                <SelectField
-                    label={t("storyInspector.code.language")}
-                    options={CODE_LANGUAGE_OPTIONS}
-                    value={props.payload.language}
-                    onChange={language => props.onChange({ ...props.payload, language: language as StoryCodePayload["language"] })}
-                />
-            </div>
-            <LabeledTextarea
-                label={t("storyInspector.code.source")}
-                className="min-h-28 font-mono"
-                value={props.payload.source}
-                onChange={source => props.onChange({ ...props.payload, source })}
-            />
         </div>
     );
 }

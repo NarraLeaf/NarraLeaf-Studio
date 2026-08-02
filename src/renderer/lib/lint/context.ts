@@ -14,7 +14,7 @@ import type { LintingConfiguration } from "../workspace/project/configuration";
  * The snapshot every lint rule reads.
  *
  * Assembled once per sweep by `LintService.buildContext()` and then frozen in practice: a rule is a
- * pure function of this value. That is the whole reason 26 rules are testable without a running
+ * pure function of this value. That is the whole reason every rule is testable without a running
  * app - `createTestLintContext()` (see `testContext.ts`) hands a rule test an empty-but-valid one.
  *
  * Two shapes deserve a note:

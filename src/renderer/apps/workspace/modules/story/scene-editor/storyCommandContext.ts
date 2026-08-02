@@ -1,3 +1,4 @@
+import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { StoryDocument, StoryScene, StorySceneId } from "@shared/types/story";
 import { savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story/declarations";
 import { sceneLabelNames } from "@shared/types/story/labels";
@@ -9,6 +10,7 @@ import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { AssetsMap } from "@/lib/workspace/services/assets/types";
 import { listSceneDisplayableTargets } from "../../story-motion/storyMotionPreviewTarget";
+import { segmentPlainText } from "./storyFindReplace";
 import type { StoryCommandAppearanceRef, StoryCommandContext, StoryCommandNamedRef, StoryCommandStageObjects, StoryCommandVariableEntry } from "./storyCommandResolution";
 import type { StoryPuppetVocabulary } from "./storyCommandValues";
 
@@ -120,6 +122,51 @@ function collectStageObjects(document: StoryDocument | null, sceneId: StoryScene
     return { image: [...image], text: [...text], layer: [...layer], video: [...video], audio: [...audio], vfx: [...vfx] };
 }
 
+/**
+ * Every choice option in the document, by the text the player reads - the table `picked(…)` resolves
+ * against.
+ *
+ * Scanned off the raw block map rather than walked in document order: an option is addressed by name
+ * and the order it comes back in decides nothing (a duplicate name is reported as ambiguous, not
+ * resolved by position). Disabled rows are included on purpose - a row switched off for the afternoon
+ * is still the option the author is writing a check about, and having the reference break the moment
+ * they toggle it would be the worse failure.
+ */
+export function choiceOptionRefs(document: StoryDocument | null): StoryCommandNamedRef[] {
+    const options: StoryCommandNamedRef[] = [];
+    for (const scene of Object.values(document?.scenes ?? {})) {
+        for (const block of Object.values(scene?.blocks ?? {})) {
+            if (block.kind !== "nodeAction" || block.payload.action !== "choiceOption") {
+                continue;
+            }
+            const name = segmentPlainText(block.payload.text).trim();
+            if (name) {
+                options.push({ id: block.id, name });
+            }
+        }
+    }
+    return options;
+}
+
+/**
+ * The `mode:"value"` Story Action Blueprints, by name - the table a blueprint call resolves against.
+ *
+ * `mode` is read off the owner rather than off some separate index because the owner IS the identity
+ * of a story blueprint (self-referential: the owner key equals the blueprint id). An `action`
+ * blueprint is excluded because it may run latent nodes and returns nothing; a `condition` one
+ * because it belongs to the single condition slot that created it.
+ */
+export function valueBlueprintRefs(document: BlueprintDocument | null | undefined): StoryCommandNamedRef[] {
+    const refs: StoryCommandNamedRef[] = [];
+    for (const blueprint of Object.values(document?.blueprints ?? {})) {
+        const owner = blueprint?.owner;
+        if (owner?.kind === "storyAction" && owner.mode === "value" && blueprint.name.trim()) {
+            refs.push({ id: blueprint.id, name: blueprint.name.trim() });
+        }
+    }
+    return refs;
+}
+
 export function buildStoryCommandContext(input: {
     assets: AssetsMap | undefined;
     characters: readonly Character[];
@@ -128,6 +175,12 @@ export function buildStoryCommandContext(input: {
     scene: StoryScene | null;
     /** Blueprint-declared persistent (game-level) variables from the M-VAR registry; empty when none. */
     persistentVariables?: readonly VariableRegistryEntry[];
+    /**
+     * The project's blueprint document, for the `mode:"value"` blueprints an expression may call.
+     * Omitted wherever no project is open, which reports every blueprint name as unknown - the honest
+     * answer when the list could not be read at all.
+     */
+    blueprintDocument?: BlueprintDocument | null;
     /**
      * What each puppet character's model reported about itself, for the ones that have been asked and
      * answered. Omit a character - or the whole map - and the surface degrades to free text.
@@ -179,6 +232,8 @@ export function buildStoryCommandContext(input: {
         tempSpeakers: input.document ? collectTempSpeakers(input.document).map(speaker => speaker.name) : [],
         // A scene is addressed by the name the author sees in the panel, not its runtimeName.
         scenes: Object.values(input.document?.scenes ?? {}).map(entry => ({ id: entry.id, name: entry.name })),
+        choiceOptions: choiceOptionRefs(input.document),
+        valueBlueprints: valueBlueprintRefs(input.blueprintDocument),
         // Order preserved from the service (built-ins first), so the completion menu leads with the
         // three tracks every project has rather than sorting them under a custom one.
         audioTracks: (input.audioTracks ?? []).map(track => ({ id: track.id, name: track.name })),
