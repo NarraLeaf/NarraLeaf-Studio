@@ -44,7 +44,7 @@ export const storyExpr = {
         repeatTimesAndUntil: "重复要么按次数，要么到条件成立为止，不能同时写。请去掉其中一个",
         expressionError: "{message}",
         expressionNotBoolean: "条件必须是真假判断，例如 gold >= 100",
-        expressionTypeMismatch: "这里得到的是 {received}，而「{value}」存放的是 {expected}",
+        expressionTypeMismatch: "「{variable}」存放的是 {expected}，无法存入 {received}",
         duplicateVariable: "「{value}」已存在——换个名字，或用 /set 修改它的值",
         unknownTarget: "舞台上没有名为「{value}」的对象",
         unsupportedOption: "「{value}」不适用于此处，可用：{allowed}",

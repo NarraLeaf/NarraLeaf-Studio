@@ -54,7 +54,19 @@ function withAssignedExpression(
     return { ...payload, expression };
 }
 
-/** `/set gold "text"` where `gold` is a number - only checkable once both params have resolved. */
+/**
+ * `/set gold "text"` where `gold` is a number - only checkable once both params have resolved.
+ *
+ * The issue carries the TARGET's name as well as the expression source. The message names the
+ * variable as the thing that holds a type, and the variable is the only side that can be said to hold
+ * one - reporting `assigned.source` in that role produced the self-contradicting
+ * `This produces string, but "upper("a")" holds number.`
+ *
+ * That wording was wrong from the day it was written and simply unreachable until this round:
+ * `inferStoryExpressionType` used to answer `"number"` for every function call, so a function result
+ * always fitted a number variable and `/set gold upper("a")` never reached this branch. The table in
+ * `FUNCTION_RESULT_TYPES` made the path live, which is when the sentence first got read.
+ */
 function validateAssignmentType(
     args: { readonly variable?: StoryCommandValue; readonly value?: StoryCommandValue },
     ctx: StoryCommandValidateContext,
@@ -72,7 +84,16 @@ function validateAssignmentType(
         return [];
     }
     const span = ctx.spanOf("value");
-    return span ? [{ code: "expressionTypeMismatch", span, value: assigned.source, expected: target.valueType, received: inferred }] : [];
+    return span
+        ? [{
+            code: "expressionTypeMismatch",
+            span,
+            value: assigned.source,
+            variable: target.name,
+            expected: target.valueType,
+            received: inferred,
+        }]
+        : [];
 }
 
 export const set = defineStoryCommand({

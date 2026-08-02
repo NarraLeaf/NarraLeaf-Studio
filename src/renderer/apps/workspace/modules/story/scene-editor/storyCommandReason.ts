@@ -165,6 +165,9 @@ function resolutionReason(issue: StoryCommandResolutionIssue): StoryCommandReaso
         case "compoundWithoutTarget":
             return { key: "storyExpr.check.compoundWithoutTarget" as TranslationKey, params: {} };
         case "expressionTypeMismatch":
-            return { key: reasonKey(issue.code), params: { value: issue.value, expected: issue.expected, received: issue.received } };
+            // `variable`, not `value`: the variable is what holds a declared type. The message used to
+            // fill that role with the expression source and read back as a contradiction
+            // (`This produces string, but "upper("a")" holds number.`).
+            return { key: reasonKey(issue.code), params: { variable: issue.variable, expected: issue.expected, received: issue.received } };
     }
 }
