@@ -1,5 +1,5 @@
 import { createContext, useContext } from "react";
-import type { MouseEvent } from "react";
+import type { ClipboardEvent, MouseEvent } from "react";
 import type { StoryBlock, StoryBlockId, StoryRichRun } from "@shared/types/story";
 import type { StoryStagePlacement } from "./storySceneEditorTypes";
 
@@ -32,6 +32,11 @@ export type StoryRowActions = {
     /** Open this row's text for in-place editing (no-op on a row that carries none). */
     startTextEdit: (blockId: StoryBlockId) => void;
     editRichChange: (blockId: StoryBlockId, value: string, runs: StoryRichRun[]) => void;
+    /**
+     * A multi-line paste landed in this row's text field. Returns whether it was taken — a row is one
+     * line, so more than one goes to the paste pipeline, and anything it declines stays the browser's.
+     */
+    pasteIntoRowText: (blockId: StoryBlockId, event: ClipboardEvent<HTMLDivElement>) => boolean;
     commitTextEdit: () => void;
     exitTextEdit: () => void;
     /** Enter while editing: commit and open a continuation row. */
@@ -77,6 +82,7 @@ const NOOP_ACTIONS: StoryRowActions = {
     toggleCollapsed: () => {},
     startTextEdit: () => {},
     editRichChange: () => {},
+    pasteIntoRowText: () => false,
     commitTextEdit: () => {},
     exitTextEdit: () => {},
     continueRow: () => {},

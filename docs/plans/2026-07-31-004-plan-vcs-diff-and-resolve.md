@@ -30,7 +30,7 @@ diff）**，加上 **V5 的后半（冲突解决）**。远端卡
 | 没有 spec 的文档怎么办 | **通用 JSON 结构 diff**，并且在界面上**标记为「结构级」**，不冒充语义级。二进制只报增删改 + 字节数 +（图像）缩略图 |
 | diff 在哪个进程跑 | **主进程。** blob 只有主进程够得着（docs §2.3），且 `readRevisionDocuments` 已经是「一次树遍历、一批读」 |
 | Lore 有合并 API 吗 | **有，而且很全**：`branch_merge_start / _into / _resolve / _resolve_mine / _resolve_theirs / _abort / _unresolve / _restart`、`file_stage_merge`、`file_reset_to_last_merged` 全在导出表里。**一个都还没绑** |
-| Lore 的 automerge 对 JSON 做什么 | **未知，必须先测。** 实验见 §7，这是 D5–D8 的硬前置 |
+| Lore 的 automerge 对 JSON 做什么 | ~~未知~~ **已实测（2026-08-01，见 `version-control.md` §4.23–§4.30）**：写 diff3 冲突标记，文档不再可 parse——**但同一次合并在旁边留下三份干净可解析的副本**，写回不需要重建。**另外测出 §4.29：同步之后该进程再也读不出任何内容**，这一条现在就在损坏已发布的 V5a |
 | 冲突能自动解决吗 | **不能，也不假装能。** 第一档永远是「整份取一边」；逐变更是第二档；两边都重构了同一棵场景树时**明说无法合并**并退回第一档 |
 | 变更行能点了吗 | 能。`ChangeRow` 自己的注释说「一个高亮之后点开什么都没有的行，正是这个面板一直小心不去做的承诺」。本卡就是让它做得出这个承诺 |
 
@@ -103,7 +103,13 @@ Studio 现在**造不出一个冲突**：`syncRevision` 传 `forwardChanges: 0`�
 所以本卡是**第一次**让 Studio 有两边。在 D5 落地之前，`VcsFileChange.conflictUnresolved` 在真实使用
 中永远是 false。
 
-### 1.6 五个未测量的事实
+### 1.6 五个未测量的事实 —— **已于 2026-08-01 全部测完**
+
+> 五条的答案与另外三条计划没问到的，全部写在
+> [`version-control.md` §4.23–§4.30](../version-control.md)。**动 D5–D8 之前先读那八条**，
+> 其中三条推翻了本卡下文的写法：附属文件让 §6 的「重建」备案作废（§4.23）、冲突路径只能从
+> tag 29 拿（§4.24）、以及 §4.29 这个必须先修掉才谈得上 diff 的阻塞缺陷。下面保留原始问题
+> 陈述，因为它解释了每条实验为什么值得做。
 
 以下每一条都**不知道**，并且每一条都能改变设计。§7 给出 settle 它们的脚本。
 
@@ -311,15 +317,22 @@ spec.serialize(合并结果) → 原子写进工作树
 
 | # | 里程碑 | 依赖 | 产出 |
 |---|---|---|---|
-| **D0** | 实测：§1.6 的五个未知 | — | 五个脚本（§7）+ 结论写回 `version-control.md` §4 |
-| **D1** | diff 的地基 | H1 | `shared/documents/diff.ts`、通用 JSON 结构 diff、`vcs/diff/`、两个 IPC、**主进程 import specs 并断言注册表非空**。**没有任何界面** |
-| **D2** | 变更行可点 | D1 | 就地展开 8 行摘要 + loading 态 |
-| **D3** | `vcs-changes` tab | D2 | `working-tree` 与 `between` 两种模式 |
-| **D4** | 三个真 `spec.diff` | D1 | story / assets-metadata / characters |
-| **D5** | 合并绑定 | D0 | 六个 verb；补上被丢掉的三个冲突标志 |
+| **D0** | 实测：§1.6 的五个未知 | — | ✅ **完成 2026-08-01**。`mergeSpike*.integration.test.ts` + 结论写回 `version-control.md` **§4.23–§4.30**（八条，多出来的三条比原来的五条更重要） |
+| **D1** | diff 的地基 | H1 | ✅ **完成 2026-08-01**（`5a24f901`）。`shared/documents/diff.ts`、`jsonStructuralDiff.ts`、`vcs/diff/` 三件、两个 IPC、`documentRegistry.test.ts`（**改前 4 条断言挂 3 条**）。五个 project 类型干净、591 测试全绿。真机验收并入 D2——D1 没有界面，能在真机上单独确认的只有「specs 真的进了 main 的产物」，已用实际构建配置（`build-main.js` 的 external 清单）跑 esbuild 确认五个 kind 与 `registerDocumentSpec` 都在产物里 |
+| **D2** | 变更行可点 | D1 | ✅ **完成 2026-08-01**（`a514b367`）。就地展开、8 行上限、loading/错误/未查看三态、tier 一行淡字。真机验收见下 |
+| **D3** | `vcs-changes` tab | D2 | ✅ **完成 2026-08-01**（`a514b367`）。两种模式都真机跑过；**`builtInEditors` 是死代码**（`registry.ts:55` 无任何消费者），所以走的是 `EditorTabDefinition` + `openOrUpdate` 这条活路 |
+| **D4** | 三个真 `spec.diff` | D1 | ✅ **完成 2026-08-01**（`0aa2fc5f`）。characters 全量接入（含 serialize）；story / assets-metadata **只做读侧**，`serialize` 明确抛错而不是悄悄改写作者的文件。`undefined` 审计实得 **11 处**（预计 ~6），**其中 2 处在迁移函数里**。顺带修掉 D1 漏的 `DocumentSpecDefinition.diff` 静默丢弃 |
+| **D5** | 合并绑定 | D0 | ✅ **完成 2026-08-01**（`88bbcc4c`）。`merge.ts` + 5 个 IPC；三个冲突标志已通到渲染进程（真机 `getStatus` 里看到了）；**冲突同步现在能报出文件名**（此前恒为 `["*"]`）；「合并进行中」判据是 `revisionMerged && revisionStaged`，单看前者会把每个合并过的工程永久判成合并中 |
 | **D6** | 解决第一档 | D5, D3 | 整份取一边；写回管线（§4.4）；接 V4 重载与 `afterRevision` |
 | **D7** | 解决第二档 | D6, D4 | `merge3`；**localization 与 assets-metadata 先行** |
 | **D8** | story 的 merge3 | D7 | 场景级/块级合并 + 不可合并判据 |
+
+> **真机验收（2026-08-01，orchestrator 亲驱，工程 `D:/Temp/nls-d2acc`，仓库 #66）**：四档在真数据上**全部命中**——
+> `character.json` semantic、`audio-tracks.json` summary、`uidoc.json` structural（`elements` / `meta > updatedAt` 带
+> `旧 → 新`）、`assets/*.json` opaque；历史行 hover 出对比图标 → 开出 `#65 → #66` 的 tab。
+> **看出来两个「说了假话」的缺陷并已修**（`2d74a408`）：① 被列为「已修改」的文件展开说「内部没有差异」——两句都是真的，
+> 因为那次改动只是规范化重写，但作者无法把它和 bug 区分开；② 一个新增的 20 字节 `.txt` 自称「Not read / 太大、非文本或读不出」。
+> 这两条都不是测试能发现的。
 
 **D0 排最前**，因为 D5 之后的一切都建立在「Lore 的 automerge 到底做了什么」上。
 **D6 单独就让合并可用**，第二档是改善不是及格线。

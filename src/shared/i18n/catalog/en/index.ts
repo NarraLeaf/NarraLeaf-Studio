@@ -42,6 +42,7 @@ import { defaultDoc } from "./defaultDoc";
 import { build } from "./build";
 import { dashboard } from "./dashboard";
 import { lint } from "./lint";
+import { documentDiff } from "./documentDiff";
 import { test } from "./test";
 
 export const en = {
@@ -78,5 +79,6 @@ export const en = {
     build,
     dashboard,
     lint,
+    documentDiff,
     test,
 } as const;

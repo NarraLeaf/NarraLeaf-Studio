@@ -30,15 +30,16 @@ import { isVcsPlatformSupported } from "@shared/types/vcs";
 /**
  * The whole Lore-facing surface, as one object.
  *
- * Three modules rather than one because reading history, creating a repository and
- * talking to a server are genuinely different jobs, but they share a single plug:
- * adding a second dynamic import elsewhere would give the "never reach the binding at
- * startup" rule a second place to be broken.
+ * Four modules rather than one because reading history, creating a repository, talking
+ * to a server and settling a merge are genuinely different jobs, but they share a
+ * single plug: adding a second dynamic import elsewhere would give the "never reach the
+ * binding at startup" rule a second place to be broken.
  */
 export type VcsBackend =
     & typeof import("./revisionReader")
     & typeof import("./repository")
-    & typeof import("./remote");
+    & typeof import("./remote")
+    & typeof import("./merge");
 
 let cached: VcsBackend | null = null;
 let availability: VcsAvailability | null = null;
@@ -75,17 +76,18 @@ export async function loadVcsBackend(): Promise<VcsBackend | null> {
         try {
             // Dynamic on purpose: these imports are what reach the native library, and
             // a static one would run `koffi.load()` during main-process startup.
-            const [reader, repository, remote] = await Promise.all([
+            const [reader, repository, remote, merge] = await Promise.all([
                 import("./revisionReader"),
                 import("./repository"),
                 import("./remote"),
+                import("./merge"),
             ]);
             // Force the load now rather than at first use, so availability reflects
             // whether the library actually opened rather than merely whether the
             // module resolved.
             const { loadLoreLibrary } = await import("./lore");
             loadLoreLibrary();
-            cached = { ...reader, ...repository, ...remote };
+            cached = { ...reader, ...repository, ...remote, ...merge };
             availability = { available: true };
             return cached;
         } catch (error) {

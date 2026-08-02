@@ -252,8 +252,13 @@ export async function pushToRemote(onlineGlobals: LoreGlobals): Promise<VcsPushR
  * on top of.
  *
  * Conflicts are REPORTED, not thrown. A conflicted sync has already written most of the
- * tree, so "it failed" would be a lie; the author needs the file list and the honest
- * statement that Studio cannot resolve them yet.
+ * tree, so "it failed" would be a lie; the author needs the file list and to be left in
+ * the merge the sync opened.
+ *
+ * **The returned paths are the only copy of that list the process ever gets.** They come
+ * out of the event stream and nothing can ask for them again - `repositoryStatus` reports
+ * an empty file list for the whole of a conflicted merge (§4.24). After this call the
+ * paths are recovered from disk instead, by `readMergeState` in `merge.ts`.
  */
 export async function syncFromRemote(
     onlineGlobals: LoreGlobals,
@@ -265,13 +270,13 @@ export async function syncFromRemote(
             : undefined,
     });
 
-    // The per-file events carry no conflict flag of their own; the revision events do,
-    // and the progress counter says how many there were. Both are consulted because a
-    // count with no paths would be unactionable and paths with no count would miss a
-    // conflict the backend reported only in the summary.
-    const conflicts = result.files
-        .filter((file) => file.conflictUnresolved || file.conflict)
-        .map((file) => file.path);
+    // **From the event stream, not from the file list.** The per-file sync events have no
+    // conflict fields in their struct at all - the decoder writes `false` into them - so
+    // the filter this used to run could never match, and every conflicted sync degraded to
+    // the "*" placeholder below. The paths come from the merge conflict event the sync
+    // emits alongside them (docs/version-control.md §4.24), and the progress counter is
+    // still consulted: a count with no paths must not read as a clean sync.
+    const conflicts = result.conflicts;
     const conflicted = (result.progress?.fileConflict ?? 0) > 0 || conflicts.length > 0;
 
     return {
