@@ -61,6 +61,27 @@ describe("document specs are registered in the main process", () => {
         }
     });
 
+    /**
+     * The same forwarding question for D7's `merge3`, asked at the registry rather than at the
+     * definition, because this is where the merge pipeline will reach for it: a path off a
+     * conflict event, resolved to a spec, asked whether it can merge one entry at a time.
+     *
+     * It fails worse than `diff` did. A dropped `diff` costs a lesser change list; a dropped
+     * `merge3` silently sends every conflict back to the first tier, where the only move is to
+     * take one side of the whole file - and the author is never told the per-change resolution
+     * they can see in the interface was not the one that ran.
+     */
+    it("keeps the three-way merge the localization and asset specs declare", () => {
+        for (const [kind, path] of Object.entries({
+            localization: "editor/localization/zh-CN.json",
+            "assets-metadata": "assets/assets.metadata.image.json",
+        })) {
+            const spec = specForDocumentPath(path);
+            expect(spec?.kind, path).toBe(kind);
+            expect(typeof spec?.merge3, `${kind} declares merge3 but the spec does not carry one`).toBe("function");
+        }
+    });
+
     it("answers undefined for a path no spec claims, rather than throwing", () => {
         expect(specForDocumentPath("assets/content/ab/cd/portrait.png")).toBeUndefined();
         // An absolute path is what the backend reports on some surfaces (docs §4.16); the

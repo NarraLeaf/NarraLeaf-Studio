@@ -600,6 +600,25 @@ baseFromUnionGraph:      e40c23c2…     ← 两个分支的图合起来就找�
 修法有两个，都成立：把两边分支的 `history` 并起来再算 LCA；或者干脆**用 §4.23 的
 `~base` 附属文件**——合并态下它就在磁盘上，比重算 LCA 更直接也更便宜。
 
+> **已修（D7 模型半，2026-08-01）**：取的是第一种。`revisionReader.ts` 加了
+> `readMergeGraph(globals, tips)`（当前分支 → 每个未覆盖的 tip 走 `history({revision})` →
+> 仍有洞才并全部分支）与 `graphCoversAncestry(graph, tip)`，`threeWay` 改用前者。
+> **实测：`history(globals, {revision: theirs})` 一步就够**，它给的 2 个节点里就有真 base，
+> 分支兜底那步在普通两分支拓扑上不会跑到。
+>
+> **没用 `~base` 附属文件，理由是寻址方式不同**：`threeWay` 是按「两个修订」提问的，要对
+> 任意一对修订作答（历史里两点比较、还没开始的合并、Lore 自动合掉因而根本没写附属文件的
+> 路径）；附属文件只在合并进行中、且只为冲突路径存在，上面三种它一个都答不了，也分不出
+> 「add/add」和「Lore 干净合掉了」。附属文件仍是 D6 写回管线的正解——那条路径确实在合并态里。
+>
+> 同时补上的是**「找不到 base」的两种含义要分开**：`ThreeWay.baseStatus` 现在是
+> `found` / `absent-in-base` / `no-common-ancestor` / `indeterminate`。前两者之外，
+> **`indeterminate`（图没读全）绝不能当 add/add** —— 把它们拼成同一个 `base: undefined`
+> 正是本条缺陷发货时的样子。
+>
+> **还没修**：`VcsManager.getMergeBase` 仍旧走 `readRevisionGraph`，同一个洞原样还在
+> （`VcsManager.ts` 属于 D6 的地盘，本卡没碰）。
+
 ## 5. 服务端策略
 
 ### 5.1 P0：不需要任何服务端，也不需要包装

@@ -1,7 +1,14 @@
-import {buildDocumentDiff, DocumentChange, DocumentDiff} from "../diff";
+import {
+    buildDocumentDiff,
+    DocumentChange,
+    DocumentDiff,
+    DocumentMerge3,
+    DocumentMergeDecision,
+} from "../diff";
 import {compileDocumentPathPattern} from "../documentPath";
 import {defineDocumentSpec} from "../registry";
 import {authoredName, change, diffKeyed, fromToParams, sameJsonValue} from "./diffHelpers";
+import {countConflicts, decision, mergeKeyed} from "./mergeHelpers";
 import {isJsonObject, parameterFromPath, requireDocumentObject} from "./parseHelpers";
 
 /**
@@ -100,7 +107,59 @@ export const assetsMetadataSpec = defineDocumentSpec<AssetsMetadataShard>({
         counts: [{key: "assets", value: Object.keys(shard.assets).length}],
     }),
     diff: diffAssetsMetadata,
+    merge3: merge3AssetsMetadata,
 });
+
+/**
+ * Three-way merge of one asset shard - the commonest collaboration case in the whole system.
+ *
+ * Two people importing different assets must come out as two independent additions, and it is
+ * free rather than clever: the shard is a flat map keyed by asset id, so nothing here lines
+ * anything up by position and nothing can decide that two unrelated imports touched the same
+ * thing. The same property the semantic diff rests on.
+ *
+ * **Order is appended, never conflicted.** The shard's key order is data - it is the asset
+ * browser's row order, and the order file beside it exists precisely to preserve it against a
+ * canonical write (`renderer/lib/workspace/services/assets/assetOrder.ts`). But it is *recovered
+ * import order*, not something the author arranged: there is no reorder gesture in the panel and
+ * every insertion appends. So two sides that both appended have not disagreed about anything, and
+ * {@link mergeKeyed} answers with mine's order followed by the ids only theirs has. This is the
+ * contrast with an author-arranged array, which is taken whole from one side and never interleaved.
+ *
+ * **One decision per asset, not per field.** Fields inside one record are not merged across sides
+ * even though they could be, because `hash` is the digest of the bytes actually stored under this
+ * id: a record built from one side's `hash` and the other side's `name` or `ext` describes a file
+ * that does not exist, and it would look perfectly well-formed doing it.
+ */
+export function merge3AssetsMetadata(
+    base: AssetsMetadataShard | undefined,
+    mine: AssetsMetadataShard,
+    theirs: AssetsMetadataShard,
+): DocumentMerge3<AssetsMetadataShard> {
+    const assets = mergeKeyed(base?.assets, mine.assets, theirs.assets);
+    const decisions: DocumentMergeDecision[] = assets.rows.map(row => {
+        const present = (row.mine.value ?? row.theirs.value ?? row.base.value) as AssetMetadataEntry | undefined;
+        // Which of the three words this row gets is decided by the BASE, not by which side is
+        // empty: "mine does not have it" is an addition by them when the base did not have it
+        // either, and a removal by me when it did. The two read identically from the sides alone.
+        const label = row.mine.present && row.theirs.present && row.base.present ? LABEL.changed
+            : !row.mine.present || !row.theirs.present ? (row.base.present ? LABEL.removed : LABEL.added)
+                : LABEL.added;
+        return decision(["assets", row.key], row, {
+            label,
+            subject: authoredName(present?.name),
+        });
+    });
+
+    return {
+        // From mine because it is read off the file name, so all three sides carry the same one -
+        // `parse` takes it from the path, not from a field, and the three sides are three versions
+        // of one path.
+        document: {type: mine.type, assets: assets.merged},
+        decisions,
+        conflicts: countConflicts(decisions),
+    };
+}
 
 export function diffAssetsMetadata(
     base: AssetsMetadataShard,
