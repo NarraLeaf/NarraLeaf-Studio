@@ -187,7 +187,11 @@ function DocumentSection({ entry, limit }: { entry: DocumentDiffEntry; limit: nu
                 )}
             </div>
             <div className="mt-1 pl-3.5">
-                <DocumentChangeList diff={entry.diff} limit={limit} />
+                <DocumentChangeList
+                    diff={entry.diff}
+                    limit={limit}
+                    wholeDocument={entry.kind === "added" || entry.kind === "removed"}
+                />
             </div>
         </section>
     );

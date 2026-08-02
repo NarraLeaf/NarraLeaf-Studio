@@ -160,6 +160,11 @@ export const documentDiff = {
     rows: {
         loading: "Reading the comparison…",
         empty: "Nothing differs inside this file",
+        // Three ways of being empty, because "modified" plus "nothing differs" reads as a
+        // contradiction and each tier can support a different claim. See documentDiffEmptyKey.
+        emptyFormatting: "Only formatting changed",
+        emptyUntracked: "Nothing the editor tracks changed",
+        emptyCounts: "The totals are unchanged",
         notInspected: "This file was not inspected",
         moreInGroup: "{count} more inside",
         viewAll: "View all {count}",

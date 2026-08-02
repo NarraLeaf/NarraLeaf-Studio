@@ -232,6 +232,41 @@ export function documentDiffTierCaption(tier: DocumentDiffTier): DocumentDiffTie
 }
 
 /**
+ * What to say when a file the change list calls modified turns out to have no rows.
+ *
+ * A single "nothing differs inside this file" reads as a contradiction, and it was one:
+ * measured in the real app, a project's `character.json` is listed as modified while its
+ * semantic diff is empty, because opening the project rewrote the store into canonical
+ * bytes without altering a single thing the editor models. The list said eight changed,
+ * the expansion said nothing changed, and both were true - which is worse than either
+ * being wrong, because the author has no way to tell that from a bug.
+ *
+ * So the message says what the tier can actually support:
+ *
+ *  - `structural` compared the parsed JSON and found it equal, so the bytes differ only in
+ *    formatting or key order. That is a specific claim and it is safe to make.
+ *  - `semantic` only ever knows that its own model is unchanged - the difference could be
+ *    formatting, or a field the spec deliberately ignores. Claiming "only formatting"
+ *    here would be a specific claim the spec has not earned.
+ *  - `summary` compared counts. Equal counts are not an equal document, and saying so is
+ *    the whole point of the tier being named.
+ *  - `opaque` never produces an empty list, but the fallback stays honest rather than
+ *    unreachable-by-assumption.
+ */
+export function documentDiffEmptyKey(tier: DocumentDiffTier): TranslationKey {
+    switch (tier) {
+        case "structural":
+            return "documentDiff.rows.emptyFormatting" as TranslationKey;
+        case "semantic":
+            return "documentDiff.rows.emptyUntracked" as TranslationKey;
+        case "summary":
+            return "documentDiff.rows.emptyCounts" as TranslationKey;
+        case "opaque":
+            return "documentDiff.rows.empty" as TranslationKey;
+    }
+}
+
+/**
  * The marker each kind of change wears, as one character.
  *
  * A glyph rather than an icon because these sit inside a row that already carries one for the FILE,
