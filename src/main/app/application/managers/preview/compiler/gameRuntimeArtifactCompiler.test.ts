@@ -162,7 +162,7 @@ describe("game runtime artifact compiler", () => {
             entries: { runtime: "runtime.js" },
             contributes: {
                 blueprintNodes: ["acme.sample-plugin.node"],
-                widgets: [], runtimeData: [], locales: [],
+                widgets: [], tests: [], runtimeData: [], locales: [],
                 runtimeCapabilities: [], sidecars: [], buildDependencies: [],
             },
             permissions: [],
@@ -512,7 +512,7 @@ describe("game runtime artifact compiler", () => {
             entries: { runtime: "runtime.js" },
             contributes: {
                 blueprintNodes: ["acme.sample-plugin.node"],
-                widgets: [], runtimeData: [], locales: [],
+                widgets: [], tests: [], runtimeData: [], locales: [],
                 runtimeCapabilities: [], sidecars: [], buildDependencies: [],
             },
             permissions: [],
@@ -719,6 +719,7 @@ async function writeSidecarPlugin(input: {
         contributes: {
             blueprintNodes: [],
             widgets: [],
+            tests: [],
             runtimeData: [],
             locales: [],
             runtimeCapabilities: [],

@@ -1,5 +1,6 @@
 import { LoadingScreen, MissingProjectConfigScreen } from "./components";
 import { ErrorScreen } from "./components/ErrorScreen";
+import { WorkspaceClosingOverlay } from "./components/WorkspaceClosingOverlay";
 import { WorkspaceLayout } from "./components/layout";
 import { WorkspaceProvider, useWorkspace } from "./context";
 import { useModuleLoader } from "./hooks/useModuleLoader";
@@ -61,15 +62,20 @@ function InitializedWorkspace({ children }: { children: React.ReactNode }) {
  */
 export function WorkSpaceApp() {
     return (
-        <WorkspaceProvider>
-            <InitializedWorkspace>
-                <RegistryProvider>
-                    <WorkspaceAssetDragProvider>
-                        <WorkspaceContent />
-                    </WorkspaceAssetDragProvider>
-                </RegistryProvider>
-            </InitializedWorkspace>
-        </WorkspaceProvider>
+        <>
+            <WorkspaceProvider>
+                <InitializedWorkspace>
+                    <RegistryProvider>
+                        <WorkspaceAssetDragProvider>
+                            <WorkspaceContent />
+                        </WorkspaceAssetDragProvider>
+                    </RegistryProvider>
+                </InitializedWorkspace>
+            </WorkspaceProvider>
+            {/* Outside the provider: a window that is still loading, or showing the error screen,
+                takes just as long to close as one with a project open in it. */}
+            <WorkspaceClosingOverlay />
+        </>
     );
 }
 

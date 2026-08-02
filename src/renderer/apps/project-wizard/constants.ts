@@ -1,5 +1,26 @@
-import { CheckCircle, FileText, Package, Zap } from "lucide-react";
-import { ProjectTemplate, LicenseOption, ResolutionOption, VersionControlOption, BackupOption } from "./types";
+import { CheckCircle, CloudDownload, FileText, Package, Upload, Zap } from "lucide-react";
+import { ProjectFlow, ProjectTemplate, LicenseOption, ResolutionOption, VersionControlOption, BackupOption, WizardStep } from "./types";
+
+/**
+ * The pages each first-page choice leads to, in order.
+ *
+ * **The two "bring one in" flows are short on purpose.** Everything the create flow asks on
+ * Details and Settings - name, app id, stage size, licence, author, version control - is already
+ * decided for a project that exists somewhere else, and travels with it. Asking would either be
+ * ignored or would overwrite what that project's own author chose.
+ *
+ * Import is two pages rather than three because it has nothing to collect: the package and the
+ * folder are both chosen through native dialogs that the main process puts up, so there is no
+ * field for a page to hold.
+ *
+ * In all three the last page is the only one that does anything - nothing is written, unpacked or
+ * fetched until the author is standing on it and presses the button.
+ */
+export const WIZARD_FLOW_STEPS: Record<ProjectFlow, WizardStep[]> = {
+    create: ["template", "details", "settings", "review"],
+    import: ["template", "import"],
+    clone: ["template", "source", "clone"],
+};
 
 /**
  * Project templates configuration
@@ -21,6 +42,7 @@ export const projectTemplates: ProjectTemplate[] = [
     // },
     {
         id: "empty",
+        flow: "create",
         name: "Empty",
         nameKey: "wizard.template.options.empty.name",
         description: "Start with a blank project and build from scratch",
@@ -28,6 +50,43 @@ export const projectTemplates: ProjectTemplate[] = [
         icon: FileText,
         category: "Custom",
         categoryKey: "wizard.template.options.empty.category"
+    },
+    /**
+     * Ordered between "blank" and "from a server", which is the order these actually happen in.
+     *
+     * A package is the answer when somebody handed you a file - a colleague's export, a backup,
+     * a template someone published. It is a more common way to receive a project than a server
+     * is, and it used to be an unlabelled upload arrow in the launcher's toolbar.
+     */
+    {
+        id: "import",
+        flow: "import",
+        name: "From a package",
+        nameKey: "wizard.template.options.import.name",
+        description: "Unpack a project someone exported as a .nlspkg file",
+        descriptionKey: "wizard.template.options.import.description",
+        icon: Upload,
+        category: "Existing project",
+        categoryKey: "wizard.template.options.import.category"
+    },
+    /**
+     * Not a template, and it sits here anyway.
+     *
+     * This card creates no files of its own - it copies a project that someone else already made.
+     * But the question the first page really asks is "where is this project coming from", and a
+     * project from a server is one of the answers. Putting it anywhere else means an author who
+     * came here to join a colleague's project has to first learn that this is not the place.
+     */
+    {
+        id: "clone",
+        flow: "clone",
+        name: "From a server",
+        nameKey: "wizard.template.options.clone.name",
+        description: "Copy a project that already exists on a version-control server",
+        descriptionKey: "wizard.template.options.clone.description",
+        icon: CloudDownload,
+        category: "Existing project",
+        categoryKey: "wizard.template.options.clone.category"
     }
 ];
 
@@ -95,6 +154,7 @@ export const defaultProjectData = {
     licenseCustom: "",
     resolution: "1920x1080",
     appId: "",
+    remoteUrl: "",
     // Pre-selected, the way "git" was: a new project is the one moment where turning version
     // control on costs nothing and turning it on later means the work before that point is
     // unrecorded. It is still a choice the author sees twice - on this step and on the review -

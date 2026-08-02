@@ -7,6 +7,7 @@ import type { LintingConfiguration, MobileConfiguration, NetworkConfiguration, S
 import type { LintContext } from "@/lib/lint/context";
 import type { LintReport } from "@/lib/lint/types";
 import type { LintRunOptions } from "@/lib/lint/engine";
+import type { RegisteredTest, TestAvailability, TestId, TestRunRecord } from "@/lib/testing/types";
 import type {
     LocalizationConfiguration,
     LocalizationDocument,
@@ -158,6 +159,8 @@ enum Services {
     Build = "build",
     /** Project-wide lint: context assembly, the rule sweep, and the last report */
     Lint = "lint",
+    /** Tests against the author's game: the registry, the one run slot, and this session's history */
+    TestRun = "testRun",
     Console = "console",
     /** Ref-counted FontFace + blob URLs for UI editor widgets */
     UIEditorFontFace = "uiEditorFontFace",
@@ -981,6 +984,28 @@ interface ILintService extends IService {
     onReportChanged(handler: (report: LintReport | null) => void): () => void;
 }
 
+/**
+ * Test runs against the author's game (see `@/lib/testing`).
+ *
+ * One run at a time per project (ruling R7): `start` rejects while another is active, because a run
+ * contends with Dev Mode and Preview for the same compiled artifacts and the same Stop affordance.
+ * `getAvailability` is the definition's own answer with the host's gates on top - notably that a
+ * `windowed` test is unavailable while the workspace is frozen, while a `headless` one stays
+ * available exactly as `lint:project` does (ruling R9).
+ */
+interface ITestRunService extends IService {
+    listTests(): RegisteredTest[];
+    getAvailability(id: TestId): TestAvailability;
+    /** Resolves the run id once the run is accepted - not when it finishes. */
+    start(testId: TestId): Promise<string>;
+    cancel(runId: string): void;
+    getActiveRun(): TestRunRecord | null;
+    getRun(runId: string): TestRunRecord | null;
+    /** This session's history, newest first. Never persisted: a verdict is about a moment. */
+    listRuns(): TestRunRecord[];
+    onChanged(listener: () => void): () => void;
+}
+
 interface IDebugService extends IService { }
 
 // Helper Services
@@ -1130,6 +1155,7 @@ export {
     ICharacterService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, IConsoleService, UIEditorStateEvents,
     IProjectDependencyService, IVoiceService, IVariableRegistryService, IAudioTrackService, IPuppetDescriptionService,
+    ITestRunService,
     Services, WorkspaceContext
 };
 
