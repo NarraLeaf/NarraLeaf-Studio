@@ -24,7 +24,7 @@ export const pluginPermission = {
     filesystem: {
         type: "File System Permission Request",
         title: "{plugin} requests file access",
-        body1: "This plugin will be able to use the requested file system control after you approve it.",
+        body1: "Once approved, this plugin can use the file system access it asked for.",
         bodyPermanent: "Choosing Allow Once grants this only for the current Studio session.",
         bodySession: "This request is for the current Studio session.",
         permissionRecursive: "{mode} inside {path}",
@@ -33,13 +33,13 @@ export const pluginPermission = {
     api: {
         type: "Plugin API Permission Request",
         title: "{plugin} requests {capability}",
-        body1: "This plugin will be able to call the requested Studio API after approval.",
-        body2: "Only approve this if the plugin needs the capability for the action you started.",
+        body1: "Once approved, this plugin can call the Studio API it asked for.",
+        body2: "Only approve if it needs this for the action you started.",
     },
     trust: {
         type: "Plugin Trust Request",
         title: "{requester} requests to trust {plugin}",
-        body1: "Trusted plugins can be enabled by Studio without repeating the initial trust prompt.",
+        body1: "Studio can enable a trusted plugin without asking again.",
         body2: "Only trust plugins from sources you recognize.",
         permission: "Trust this plugin identity",
     },
