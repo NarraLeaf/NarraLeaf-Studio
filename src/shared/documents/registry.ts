@@ -10,7 +10,7 @@ import {
     matchDocumentPath,
     normalizeDocumentPath,
 } from "./documentPath";
-import type {DocumentDiff} from "./diff";
+import type {DocumentDiff, DocumentMerge3} from "./diff";
 import {AnyDocumentSpec, DocumentKind, DocumentParseContext, DocumentSpec, DocumentSummary} from "./types";
 
 /**
@@ -167,6 +167,18 @@ export interface DocumentSpecDefinition<T> {
      * nothing anywhere reporting that the implementation they wrote was never called.
      */
     diff?(base: T, head: T, options: {limit: number}): DocumentDiff;
+    /**
+     * Optional three-way merge. See {@link DocumentSpec.merge3} for the contract - `base`
+     * absent is add/add, an open conflict holds base, decisions carry `DocumentChange` paths -
+     * which this only forwards.
+     *
+     * Forwarded here for the reason `diff` had to be: D1 declared `diff` on the spec interface
+     * and forgot it in this definition, so `defineDocumentSpec` dropped it and every
+     * implementation written against it would have been dead code that nothing reported. The
+     * failure mode for `merge3` is worse than for `diff`, because the fallback is not a lesser
+     * list - it is the whole file being resolved from one side.
+     */
+    merge3?(base: T | undefined, mine: T, theirs: T): DocumentMerge3<T>;
 }
 
 /**
@@ -191,6 +203,7 @@ export function defineDocumentSpec<T>(definition: DocumentSpecDefinition<T>): Do
         serialize: serialize ? document => serialize(document) : document => encodeCanonicalJson(document),
         summarize: definition.summarize,
         ...(definition.diff ? {diff: definition.diff} : {}),
+        ...(definition.merge3 ? {merge3: definition.merge3} : {}),
     };
 }
 
