@@ -12,6 +12,14 @@ import {
 } from "@/lib/story/storyQuickParamsModel";
 import { characterRowLookup } from "./storySceneBlockUtils";
 import { useStoryMotionNames } from "./useStoryMotionNames";
+import {
+    StoryCommandLineBox,
+    StoryCommandLineText,
+    useStoryCommandLine,
+    useStoryCommandLineContext,
+} from "./StoryCommandLineView";
+import { StoryLineValueToken } from "./StoryLineValueToken";
+import type { StoryCommandLineProjection } from "./storyCommandLine";
 import { storyActionRowFragments, type StoryRowFragment } from "@/lib/story/storyRowProjection";
 import type { Character } from "@/lib/workspace/services/character/Character";
 
@@ -78,13 +86,24 @@ export function BlockOverview(props: {
     // Resolved here rather than threaded from the rows host: the projection stays pure and the React
     // layer, which has the service, supplies the lookup (the rule `describeBlockSubject` documents).
     const motionName = useStoryMotionNames();
-    const fragments = blockOverview(props.block, props.characters, props.scene, props.scenes, key => t(key), motionName);
+    const line = useStoryCommandLine(props.block, props.characters, props.scene, props.scenes);
 
+    if (line) {
+        return (
+            <StoryCommandLineRow
+                line={line}
+                textStyle={props.textStyle}
+                scenes={props.scenes}
+                onUpdatePayload={props.onUpdatePayload}
+            />
+        );
+    }
+
+    const fragments = blockOverview(props.block, props.characters, props.scene, props.scenes, key => t(key), motionName);
     return (
-        // Italic, and no fragment brighter than `fg-muted`: an action row is a stage direction, and it
-        // sits on the same left edge as the prose it directs, so tone is the only thing left to tell
-        // the two apart. Making that tone quiet — rather than a colour that competes with the words —
-        // is what stops a screenful of rows reading as noise.
+        // The rows no command owns keep the old reading: italic, and no fragment brighter than
+        // `fg-muted`. A stage direction that cannot be typed as a line has no skeleton to echo, so it
+        // stays prose rather than borrowing the syntax colours of a line it is not.
         <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center gap-1 truncate text-sm italic text-fg-muted" style={props.textStyle}>
             {fragments.map((fragment, index) =>
                 fragment.kind === "text"
@@ -95,18 +114,33 @@ export function BlockOverview(props: {
     );
 }
 
-/** The bare clickable tokens for a set of quick params, reused wherever a row draws its own summary. */
-export function QuickParamsInline(props: {
-    params: QuickParam[];
+/**
+ * A committed row as the command line that produced it: the same coloured skeleton the live field
+ * shows, dimmed.
+ *
+ * Dimmed by opacity on the whole line rather than by a second, darker palette — one palette is what
+ * makes "typed" and "committed" read as two states of one thing instead of two designs. Every option
+ * the line carries stays first-class inside it: values keep their colour and only add the dotted
+ * underline that says a click will edit them.
+ */
+function StoryCommandLineRow(props: {
+    line: StoryCommandLineProjection;
+    textStyle?: CSSProperties;
     scenes?: Record<StorySceneId, StoryScene>;
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
 }) {
+    const { trigger } = useStoryCommandLineContext();
     return (
-        <>
-            {props.params.map(param => (
-                <QuickParamToken key={param.id} param={param} scenes={props.scenes} onApply={props.onUpdatePayload} />
-            ))}
-        </>
+        <StoryCommandLineBox className="opacity-80" style={props.textStyle}>
+            <StoryCommandLineText
+                source={props.line.source}
+                trigger={trigger}
+                edits={props.line.edits}
+                renderEdit={(edit, content) => (
+                    <StoryLineValueToken edit={edit} onApply={props.onUpdatePayload}>{content}</StoryLineValueToken>
+                )}
+            />
+        </StoryCommandLineBox>
     );
 }
 

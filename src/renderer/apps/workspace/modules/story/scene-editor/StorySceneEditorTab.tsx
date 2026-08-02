@@ -49,6 +49,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import type { TranslationKey } from "@shared/i18n";
 import { getCharacterName, getContainerHeaderInfo, getTextSegment } from "./storySceneBlockUtils";
 import { StoryFindBar } from "./StoryFindBar";
+import { StoryCommandLineProvider } from "./StoryCommandLineView";
 import {
     findRangesInText,
     getSegmentSlot,
@@ -1782,6 +1783,9 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
 
     return (
         <StoryEditorTextStyleProvider density={editor.density}>
+        {/* Resolved once for the whole scene: every committed row reads itself back as a command line,
+            and each of these lookups is an IPC round trip or a service subscription per mount. */}
+        <StoryCommandLineProvider slashAtAlias={editor.slashAtAlias} commandContext={editor.commandContext}>
         <StoryRowActionsContext.Provider value={effectiveRowActions}>
         <div
             ref={editor.rootRef}
@@ -2165,6 +2169,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             ) : null}
         </div>
         </StoryRowActionsContext.Provider>
+        </StoryCommandLineProvider>
         </StoryEditorTextStyleProvider>
     );
 }
