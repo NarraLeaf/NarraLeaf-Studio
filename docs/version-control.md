@@ -446,6 +446,12 @@ SyntaxError: Expected double-quoted property name in JSON at position 423
 **并且这三个附属文件不会进提交**：解决之后提交，修订里只有 `doc.json`（实测
 `sidecarsCommitted: []`）。Lore 自己排除它们，`.loreignore` 不需要为此加规则。
 
+**这条对 Studio 还差半步，已补测**（`sidecarStaging.integration.test.ts`）：上面那次测量是
+「解决完直接 commit」，而 Studio 的提交路径**先 `stage(globals, [root])` 整棵树**，那一刻三个
+附属文件正躺在工作树里。补测结论是 **`stage` 连报都不报它们**（`stagedSidecars: []`），提交里
+仍然只有 `doc.json`。所以 D6 的写回管线不需要为它们做任何排除——但这是**实测**来的，不是从
+上一段推的，两者的提交姿势不一样。
+
 ### 4.24 冲突路径**只在事件流里出现一次**，`repositoryStatus` 永远不报
 
 一次冲突合并之后，四种 status 形态**全部返回空列表**：

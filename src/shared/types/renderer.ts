@@ -44,7 +44,7 @@ import type {
 } from "./privileged";
 import { AppEventToken } from "./app";
 import type { LocaleContribution } from "@shared/i18n";
-import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsHistoryEntry, VcsInitOptions, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingTreeDiffResult } from "./vcs";
+import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -432,6 +432,50 @@ export interface RendererPreloadedInterface {
         /** base/mine/theirs for a merge. A missing `base` is an add/add, not an empty file. */
         getThreeWay(projectPath: string, mine: RevisionId, theirs: RevisionId, path: string): Promise<RequestStatus<VcsThreeWayResult>>;
         getMergeBase(projectPath: string, a: RevisionId, b: RevisionId): Promise<RequestStatus<{ base?: RevisionId }>>;
+        /**
+         * Whether this project is in the middle of a merge, and which paths are still open.
+         *
+         * **Ask on project open, not only after a sync.** A merge lives in the repository
+         * and outlives the window: an author who closes Studio on a conflicted sync reopens
+         * onto the same unfinished merge, and nothing in memory remembers it. Cheap and
+         * local - a non-scanning status read plus a walk of the versioned working set.
+         *
+         * `conflicts` is empty for a merge with nothing left to decide, which is NOT the
+         * same as `inProgress: false` - the merge is open until it is committed or
+         * abandoned.
+         */
+        getMergeState(projectPath: string): Promise<RequestStatus<VcsMergeState>>;
+        /**
+         * Settle conflicted paths by taking one side, or by taking the working tree as it is.
+         *
+         * **Records nothing.** Settling is not committing: the merge stays open until
+         * `commit` closes it, which is what lets the author decide one file, look, and then
+         * decide the next.
+         *
+         * `mine` and `theirs` OVERWRITE the working tree for those paths, so re-read every
+         * document named - an editor still holding the pre-merge bytes writes them straight
+         * back over the side the author just chose. `working-tree` writes nothing and
+         * accepts the bytes on disk verbatim, which is how an answer neither side wrote
+         * gets settled: write the file first, then call this.
+         */
+        resolveConflicts(projectPath: string, paths: string[], choice: VcsConflictChoice): Promise<RequestStatus<VcsMergeResolveResult>>;
+        /** Undo a choice. All three sides are still on disk, so it costs nothing. */
+        unresolveConflicts(projectPath: string, paths: string[]): Promise<RequestStatus<VcsMergeResolveResult>>;
+        /**
+         * Merge these paths again from scratch, DISCARDING the working-tree bytes for them.
+         *
+         * Unresolving takes a decision back; this throws the edits away as well. Re-read
+         * every path named.
+         */
+        restartConflicts(projectPath: string, paths: string[]): Promise<RequestStatus<VcsMergeState>>;
+        /**
+         * Abandon the merge and put the working tree back to before it started.
+         *
+         * A COMPLETE rollback - measured, not hoped for: every file back to its pre-merge
+         * content and the merge's leftovers deleted. It writes the author's files, so
+         * re-read every document once it resolves.
+         */
+        abortMerge(projectPath: string): Promise<RequestStatus<VcsMergeState>>;
         /**
          * The server this project synchronises with, or null when it has none.
          *
