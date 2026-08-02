@@ -177,9 +177,11 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
     }, [panelId, panelStateService]);
 
     // A run that started before this panel mounted still gets its tab. Read after the stored state
-    // above, so a pending request wins over the remembered tab - it is the more recent intent.
+    // above, so a standing request wins over the remembered tab - it is the more recent intent.
+    // This runs on every mount, not just the first: `panels.show()` can remount the panel, and the
+    // stored-state effect above would otherwise restore the tab the run was meant to replace.
     useEffect(() => {
-        const pending = consoleService?.takePendingFocusRequest();
+        const pending = consoleService?.peekPendingFocusRequest();
         if (pending) {
             setActiveChannel(pending);
         }
@@ -190,9 +192,6 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
             return;
         }
         return consoleService.onFocusRequested(({ channel }) => {
-            // Consume the pending copy too, or a later remount would re-apply this same request
-            // and yank the author off whatever tab they moved to in the meantime.
-            consoleService.takePendingFocusRequest();
             setActiveChannel(channel);
         });
     }, [consoleService]);
@@ -345,7 +344,12 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                                         ? "bg-surface text-fg"
                                         : "text-fg-muted hover:bg-fill-subtle hover:text-fg"
                                 }`}
-                                onClick={() => setActiveChannel(channel.id)}
+                                onClick={() => {
+                                    // Picking a tab by hand outranks any run's standing request,
+                                    // which would otherwise re-apply itself on the next remount.
+                                    consoleService?.clearPendingFocusRequest();
+                                    setActiveChannel(channel.id);
+                                }}
                             >
                                 <span>{channelLabel(t, channel)}</span>
                                 <span
