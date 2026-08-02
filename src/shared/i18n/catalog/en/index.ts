@@ -42,6 +42,7 @@ import { defaultDoc } from "./defaultDoc";
 import { build } from "./build";
 import { dashboard } from "./dashboard";
 import { lint } from "./lint";
+import { documentDiff } from "./documentDiff";
 
 export const en = {
     common,
@@ -77,4 +78,5 @@ export const en = {
     build,
     dashboard,
     lint,
+    documentDiff,
 } as const;
