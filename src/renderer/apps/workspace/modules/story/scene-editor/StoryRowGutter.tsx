@@ -148,10 +148,13 @@ export function StoryRowGutter(props: {
             </StoryGutterCell>
         );
     }
+    // Both halves come from the one badge lookup, which is what keeps this mark and the manual entry
+    // that could have written the row identical: `icon` is the command's own glyph, `iconColor` the
+    // hue of the category it is filed under (and the danger tone for a line that does not resolve).
     const badge = getBlockBadgeInfo(block);
     return (
         <StoryGutterCell active={props.active}>
-            <StoryCommandGlyphMark icon={badge.icon} label={badge.label} />
+            <StoryCommandGlyphMark icon={badge.icon} label={badge.label} color={badge.iconColor} />
         </StoryGutterCell>
     );
 }

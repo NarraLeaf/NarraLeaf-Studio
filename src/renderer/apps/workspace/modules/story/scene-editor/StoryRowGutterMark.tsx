@@ -16,12 +16,12 @@ import {
  *
  *  - a character is a **picture** — a portrait, or a colour disc bearing their first grapheme;
  *  - the narrator is a **hollow ring** — around a quote, drawn by the same hand as everything else here;
- *  - a directive is a **bare line drawing** — monochrome, with no container at all.
+ *  - a directive is a **bare line drawing** — no container at all, in its category's hue.
  *
- * What keeps the last two apart is the ring, not the material inside it: hollow is the narrator's and
- * nothing else's, and a directive is never given a container of any kind. A filled or coloured
- * directive glyph would break the arrangement outright, which is why {@link StoryCommandGlyphMark}
- * takes no colour prop.
+ * What keeps the last two apart is the container, not the ink inside it: hollow is the narrator's and
+ * nothing else's, and a directive is never given a container of any kind. That is what lets a
+ * directive carry colour without joining the script — a coloured mark still has to be a picture or a
+ * ring to read as a voice, and this one is neither.
  */
 
 /**
@@ -278,23 +278,33 @@ export function StoryNarratorRingMark(props: { glyph?: string; label: string }) 
 }
 
 /**
- * A directive: a bare stroke icon, and nothing around it (§2, §3.2).
+ * A directive: a bare stroke icon in its category's hue, and nothing around it (§2, §3.2).
  *
- * **No container and no colour.** Both were there before and both had to go. The container made a
- * directive look like a speaker whose portrait had failed to load; the colour — one hue per command
- * category — was the single loudest thing in a scene, so a column of machine instructions out-shouted
- * the script they exist to serve. What tells one directive from another is now the icon itself, and
- * what tells the whole class apart from the script is the row's background (§1).
+ * **No container**, and that half is not negotiable: the container is what made a directive look like
+ * a speaker whose portrait had failed to load, and it is the container — not the ink — that the
+ * "有脸的是剧本" reading rests on.
+ *
+ * **Colour** is the command manual's category hue, the same value the manual's own list, the `/` menu
+ * and the property card paint the very same command with. It was dropped once, when a directive's
+ * glyph came from its badge id and was therefore shared by a whole category: colour and glyph then
+ * said the identical thing twice, at the volume of the loudest thing on screen, so removing the louder
+ * copy cost nothing. It costs something now — the glyph names the VERB and the hue names the SUBJECT,
+ * which are two different halves of the line — and a column that carries both is a column an author
+ * can scan for "the sound rows" without reading a word.
+ *
+ * It stays quiet by the two properties that were doing the work all along, neither of which is
+ * greyness: the hues are the design system's low-saturation set, and the glyph is drawn small
+ * ({@link COMMAND_GLYPH_PX}) at a light stroke ({@link COMMAND_STROKE}) with no fill anywhere near it.
  *
  * The icon comes from the app's own family (lucide) at the family's own 24 grid, so a command added
  * next year is automatically the same drawing as the ones here.
  */
-export function StoryCommandGlyphMark(props: { icon: LucideIcon; label: string }) {
+export function StoryCommandGlyphMark(props: { icon: LucideIcon; label: string; color: string }) {
     const Icon = props.icon;
     return (
         <Icon
-            className="shrink-0 text-fg-muted"
-            style={{ width: COMMAND_GLYPH_PX, height: COMMAND_GLYPH_PX }}
+            className="shrink-0"
+            style={{ width: COMMAND_GLYPH_PX, height: COMMAND_GLYPH_PX, color: props.color }}
             strokeWidth={COMMAND_STROKE}
             aria-label={props.label}
         />
