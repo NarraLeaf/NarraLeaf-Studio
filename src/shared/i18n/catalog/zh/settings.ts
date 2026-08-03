@@ -113,6 +113,15 @@ export const settings = {
             label: "指令只显示参数值",
             description: "更紧凑地显示行内指令",
         },
+        storyRowHighlight: {
+            label: "高亮故事行",
+            description: "给其中一类行加一层底色，让它和其余的行一眼分开。",
+            options: {
+                none: "不高亮",
+                script: "高亮对话行",
+                command: "高亮指令行",
+            },
+        },
         electronMirror: {
             label: "Electron 下载镜像",
             description: "下载 Electron 所用的镜像地址，留空则使用官方源",

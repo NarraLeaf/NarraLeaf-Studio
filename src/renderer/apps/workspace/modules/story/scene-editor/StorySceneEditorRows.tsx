@@ -58,6 +58,7 @@ import { STORY_MARK_PX, STORY_ROW_CONTENT_PAD_PX } from "./StoryRowGutterMark";
 import { characterIdentity, StoryRowGutter } from "./StoryRowGutter";
 import { characterSpeakerIdentity, STORY_SPEAKER_CLASS, storySpeakerHueStyle, type StorySpeakerIdentity } from "./storySpeakerIdentity";
 import type { StoryEditorDensity } from "./storyEditorSessionStore";
+import type { StoryRowHighlight } from "@/lib/settings/storyRowHighlightOptions";
 import type { CharacterAppearanceRef, EditorMode, StoryCaretTarget, StoryStagePlacement, VisibleStoryRow } from "./storySceneEditorTypes";
 import {
     canAcceptChildren,
@@ -112,6 +113,13 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
      * crosses the memo boundary and re-renders the rows at the new metrics.
      */
     density: StoryEditorDensity;
+    /**
+     * Which layer wears a tint (`editor.storyRowHighlight`). A prop rather than a hook read per row:
+     * the hook costs an IPC round trip per mount and a scene is hundreds of rows, so the tab resolves
+     * it once — and as a prop it crosses the memo boundary, which is what makes the whole list repaint
+     * when the author changes it.
+     */
+    rowHighlight: StoryRowHighlight;
 }) {
     const { t } = useTranslation();
     const { row, scene, document, characters, selected, active, collapsed, editing, textInputRef } = props;
@@ -176,13 +184,16 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
      * scene, the tinted rows recede and what is left is very nearly a plain script.
      */
     /**
-     * Which of the two layers this row is in (gutter 规范 §1) — and therefore whether it takes a tint.
+     * Whether this row's layer is the one the author asked to have painted (`editor.storyRowHighlight`).
      *
-     * Script rows keep the page's own background; machinery gets a block of it, which is what lifts a
-     * directive out of the narrative flow without giving it a colour, a badge or a border. Read down a
-     * scene, the tinted rows recede and what is left is very nearly a plain script.
+     * The LAYERS are not optional — a row either gets performed or it does not, and the gutter mark
+     * says which on every row in every mode. What the setting decides is whether that fact is also
+     * painted, and which half carries the paint: the script (for writing) or the directives (for
+     * staging). Neither, by default, because on a script-heavy scene the tint only repeats what the
+     * mark already said.
      */
-    const machine = storyRowLayer(block) === "machine";
+    const highlighted = props.rowHighlight !== "none"
+        && storyRowLayer(block) === (props.rowHighlight === "script" ? "script" : "machine");
     /**
      * A continuation: a later line of the paragraph that opened above it (§2). It drops its name — the
      * paragraph was named once, at its head — and its gutter carries the run's rule instead of a mark.
@@ -299,14 +310,14 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
             {block.kind === "action" && block.payload.action === "setBackground" ? (
                 <BackgroundRowArtwork payload={block.payload} selected={selected} active={active} />
             ) : null}
-            {machine && !selected && !active ? (
+            {highlighted && !selected && !active ? (
                 /*
-                 * The machine layer's tint (gutter 规范 §1) — the FIRST thing the eye is asked to
-                 * decide, and the only thing the row's background ever means.
+                 * The layer tint (gutter 规范 §1) — the only thing a row's background ever means, and
+                 * the one part of the two-layer model the author gets to turn off.
                  *
                  * What it replaced was a 3px category-coloured bar at the row's left edge: one hue per
                  * command group, so a screen of directives was also a screen of coloured bars, and the
-                 * loudest thing in a scene was the machinery rather than the script. §3.2 forbids it
+                 * loudest thing in a scene was the machinery rather than the script. §3.2 forbids that
                  * outright — a directive's channel is monochrome line, nothing else — and what the bar
                  * was actually for (telling a `/bg` row from a `/sound` one) the row's own verb glyph
                  * now does, without spending colour on it.
