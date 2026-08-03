@@ -42,6 +42,7 @@ import {
 } from "./storySelection";
 import { stopVoiceAudition } from "./voiceAudition";
 import { STORY_DENSITY_METRICS, StoryEditorTextStyleProvider, storyEditorRootStyle } from "./storyEditorTextStyle";
+import { useStoryRowHighlight } from "@/apps/workspace/hooks/useStoryRowHighlight";
 import { StoryRowActionsContext, type StoryRowActions } from "./storyRowActions";
 import { StoryPasteWizardModal } from "./StoryPasteWizardModal";
 import { toReadOnlyStoryKeybindings, toReadOnlyStoryRowActions } from "./storySceneReadOnly";
@@ -799,6 +800,9 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const rowListRef = useRef<HTMLDivElement | null>(null);
     const [rowListMargin, setRowListMargin] = useState(0);
 
+    // Read once for the whole list. As a prop it crosses the rows' memo boundary, which is what makes
+    // them all repaint when the author changes it in the (separate) Settings window.
+    const rowHighlight = useStoryRowHighlight();
     const estimatedRowHeight = STORY_DENSITY_METRICS[editor.density].rowBox + ROW_VERTICAL_PADDING_PX;
     const rowVirtualizer = useVirtualizer({
         count: editor.visibleRows.length,
@@ -1959,6 +1963,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     textInputRef={editor.textInputRef}
                                     tempSpeakers={editor.tempSpeakers}
                                     density={editor.density}
+                                    rowHighlight={rowHighlight}
                                 />
                                 )}
                                 {editor.shouldRenderActiveInsertSlot && editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId && editor.editorMode.slot.afterBlockId === row.block.id ? (

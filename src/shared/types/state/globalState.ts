@@ -106,6 +106,16 @@ export interface GlobalStateType extends Record<string, any> {
      * than one modifier. See lib/settings/commandParamNameOptions.
      */
     "editor.hideParamNames": boolean;
+    /**
+     * Which of the story editor's two layers (gutter 规范 §1) wears a background tint: the script, the
+     * directives, or neither.
+     *
+     * Purely a reading aid — the layers exist whether or not they are painted, and the gutter's mark
+     * says which one a row is in on every row regardless. `"none"` by default, because on a
+     * script-heavy scene the tint repeats what the mark already said. See
+     * lib/settings/storyRowHighlightOptions.
+     */
+    "editor.storyRowHighlight": "none" | "script" | "command";
     "workspace.restoreLastWorkspace": boolean;
     /**
      * Ask for confirmation before a workspace window closes.
@@ -226,6 +236,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "editor.maxActiveEditors": 8,
     "editor.localizedCommands": true,
     "editor.hideParamNames": false,
+    "editor.storyRowHighlight": "none",
     "workspace.restoreLastWorkspace": true,
     "workspace.confirmBeforeClose": false,
     "workspace.returnToLauncherOnClose": true,
