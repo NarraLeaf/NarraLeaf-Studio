@@ -33,11 +33,12 @@
     --nl-story-row-box: 28px;
 
     /*
-     * Story editor speaker-name column. The scene editor root overrides it with a width measured from
-     * that scene's own cast; this baseline is the floor, so a row rendered outside that root still has
-     * a column to hang its nametag in instead of collapsing onto the words.
+     * Story editor gutter mark column — the "who is speaking" column (docs: gutter 规范 §6). Fixed,
+     * not density-scaled: its whole value is that every mark in a scene lands on one vertical line.
+     * The scene editor root republishes it from STORY_MARK_PX; this baseline keeps a row rendered
+     * outside that root (tests, isolated previews) on the same grid.
      */
-    --nl-story-name: 56px;
+    --nl-story-mark: 26px;
 
     /*
      * Alpha of the editor's reading surfaces (`.nl-editor-surface` below). Studio windows override
