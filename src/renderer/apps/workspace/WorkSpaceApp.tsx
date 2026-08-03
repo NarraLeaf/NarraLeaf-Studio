@@ -1,6 +1,7 @@
-import { LoadingScreen, MissingProjectConfigScreen } from "./components";
+import { MissingProjectConfigScreen } from "./components";
 import { ErrorScreen } from "./components/ErrorScreen";
 import { WorkspaceClosingOverlay } from "./components/WorkspaceClosingOverlay";
+import { WorkspaceOpeningOverlay } from "./components/WorkspaceOpeningOverlay";
 import { WorkspaceLayout } from "./components/layout";
 import { WorkspaceProvider, useWorkspace } from "./context";
 import { useModuleLoader } from "./hooks/useModuleLoader";
@@ -38,12 +39,12 @@ function WorkspaceContent() {
 }
 
 function InitializedWorkspace({ children }: { children: React.ReactNode }) {
-    const { isInitialized, error, retry } = useWorkspace();
+    const { isInitialized, error, startupStage, retry } = useWorkspace();
 
-    // Show loading screen while initializing
+    // Say what is taking the time while the workspace boots. The overlay keeps the window blank for
+    // a beat first, so a project that opens instantly still opens straight into the editor.
     if (!isInitialized && !error) {
-        // return <LoadingScreen message="Initializing workspace..." />;
-        return <></>;
+        return <WorkspaceOpeningOverlay stage={startupStage} />;
     }
 
     // Show error screen if initialization failed
