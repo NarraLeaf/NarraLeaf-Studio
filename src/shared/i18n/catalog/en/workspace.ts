@@ -146,7 +146,6 @@ export const workspace = {
         errorExported: "Logs saved to {path}",
         errorExportFailed: "Could not export the logs: {error}",
         errorOpenFailed: "Could not open that folder: {error}",
-        initializing: "Initializing workspace…",
         notAProjectTitle: "This folder is not a NarraLeaf project",
         notAProjectDetail: "No .nlproj file was found.",
         openLauncher: "Open launcher",
@@ -721,6 +720,16 @@ export const workspace = {
             saving: "Saving your changes…",
             checkpoint: "Recording a version of the project…",
             launcher: "Returning to the launcher…",
+        },
+        // The same, on the way in. One line per stage of the startup the renderer runs (see
+        // `WorkspaceStartupStage`). They name what the window is waiting on rather than what it is
+        // doing internally: "services" and "interface" are the author's editor arriving, not a list
+        // of objects being constructed.
+        opening: {
+            title: "Opening workspace",
+            preparing: "Opening the project…",
+            services: "Loading the project's content…",
+            interface: "Preparing the editor…",
         },
     },
 } as const;
