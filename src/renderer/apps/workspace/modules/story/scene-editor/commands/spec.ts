@@ -1,3 +1,4 @@
+import type { LucideIcon } from "lucide-react";
 import type { StoryBlock } from "@shared/types/story";
 import { storySecondsToMs } from "@shared/utils/storyTime";
 import type { StoryCommandParam, StoryCommandParamType } from "../storyCommandGrammar";
@@ -75,6 +76,22 @@ export type StoryCommandSpec<P extends StoryCommandParamsShape = StoryCommandPar
      * the flat surfaces - the `/` browse menu and the command reference - print them under.
      */
     category: StoryCommandGroupId;
+    /**
+     * The command's own glyph - what every surface that NAMES this command draws beside it: the `/`
+     * menu, the action creator's list and command page, and a committed row's plate (through
+     * `storyVerbCommandId`, which is the same block→command relation the row's verb already reads).
+     *
+     * Required, and per-command rather than per-group, because the group icon was answering the wrong
+     * question. A group is the COLOUR unit (`storyCommandCategories.ts`) - eleven hues that say which
+     * subject a line acts on - and drawing its icon too meant all eleven sound commands wore one Music
+     * note and all nine character commands one person: the column of glyphs said "sound, sound, sound"
+     * where the words beside it already did, and never "this one stops it, this one seeks it". The
+     * colour still files the row by subject; the icon now says the verb, so the two carry different
+     * halves of the sentence instead of the same half twice.
+     *
+     * Distinctness is the point, so no two specs share one - `specs.test.ts` fails when they do.
+     */
+    icon: LucideIcon;
     params: P;
     /**
      * Build the finished block from the resolved args - declarations included, since v6 made a

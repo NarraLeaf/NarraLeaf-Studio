@@ -1,6 +1,5 @@
 import type { TranslationKey } from "@shared/i18n";
 import type { PaletteActionCommand } from "../storyActionCommands";
-import { getCommandGroup } from "../storyCommandCategories";
 import { commandDetailKey, commandLabelKey, listCommandSpecs } from "./registry";
 
 /**
@@ -18,7 +17,9 @@ const SPEC_PALETTE: readonly PaletteActionCommand[] = listCommandSpecs().map(spe
     group: spec.category,
     label: spec.id,
     detail: "",
-    icon: getCommandGroup(spec.category).icon,
+    // The spec's own glyph, not its group's: the icon says the verb while the group's colour still
+    // says the subject (see `StoryCommandSpec.icon`).
+    icon: spec.icon,
     aliases: [spec.token, ...(spec.aliases ?? [])].map(alias => `/${alias}`),
 }));
 

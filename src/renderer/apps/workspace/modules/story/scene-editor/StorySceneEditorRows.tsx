@@ -2381,9 +2381,9 @@ function ActionCommandMenuRow(props: {
     onChoose: (commandId: string) => void;
 }) {
     const { command, group } = props.stop;
-    // The icon follows the SECTION, not the command's own filing: `/show` listed under 图片 must not
-    // wear a person glyph just because its `category` says 角色 (the sidebar's rule, shared here).
-    const Icon = group.icon;
+    // The glyph is the COMMAND's, the colour is the SECTION's (the sidebar's rule, shared here): the
+    // icon says the verb, the hue says the subject it is filed under.
+    const Icon = command.icon;
     return (
         <button
             type="button"
