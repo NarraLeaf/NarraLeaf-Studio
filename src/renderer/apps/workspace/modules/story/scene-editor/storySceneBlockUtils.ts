@@ -104,10 +104,49 @@ export function isNarrativeRow(block: StoryBlock): boolean {
     return false;
 }
 
-type GroupSpeaker = { characterId?: string; speakerName?: string };
+/**
+ * The two layers a row can belong to (gutter 规范 §1) — the first and coarsest thing the eye is asked
+ * to decide, and the one the row's BACKGROUND carries.
+ *
+ * The original arrangement laid narration, dialogue and directives out as three peers, which is why
+ * narration had nowhere to live: it is not a kind of dialogue and it is certainly not a directive. It
+ * is two questions, not one.
+ *
+ *  - `"script"` — words that get performed. Whether a specific person says them (dialogue) or nobody
+ *    does (narration) is the SECOND question, and the gutter mark answers it.
+ *  - `"machine"` — everything that never reaches the player as speech: directives, control flow,
+ *    variable declarations, studio notes, and unresolved drafts. It takes a tint so it steps out of
+ *    the narrative flow, which is how the default view reads as very nearly a plain script.
+ *
+ * A choice and its options file under `"machine"` despite showing the player words, and that is a
+ * judgement rather than an oversight: in this editor those rows ARE the branching structure — they
+ * hold children, fold, and carry conditions — so they read as the machinery that presents a choice
+ * rather than as a line somebody speaks. Their words are still in the row, in full.
+ */
+export type StoryRowLayer = "script" | "machine";
 
-/** Whether two dialogue speakers are the same run: character id wins; a bare, non-empty name ties otherwise. */
+/** Which of the two layers a row belongs to. A whitelist: a new kind is machinery until argued otherwise. */
+export function storyRowLayer(block: StoryBlock): StoryRowLayer {
+    if (block.kind === "nodeAction") {
+        const action = block.payload.action;
+        return action === "narration" || action === "dialogue" ? "script" : "machine";
+    }
+    return "machine";
+}
+
+/**
+ * A voice, for the purpose of deciding where a paragraph starts.
+ *
+ * `narrator: true` is its own case rather than a reserved name, so no character an author could
+ * actually create can collide with it.
+ */
+type GroupSpeaker = { narrator?: true; characterId?: string; speakerName?: string };
+
+/** Whether two speakers are the same run: the narrator ties with itself; a character id wins; a bare, non-empty name ties otherwise. */
 function sameGroupSpeaker(a: GroupSpeaker, b: GroupSpeaker): boolean {
+    if (a.narrator || b.narrator) {
+        return Boolean(a.narrator && b.narrator);
+    }
     if (a.characterId || b.characterId) {
         return Boolean(a.characterId) && a.characterId === b.characterId;
     }
@@ -115,20 +154,42 @@ function sameGroupSpeaker(a: GroupSpeaker, b: GroupSpeaker): boolean {
 }
 
 /**
- * Annotate rows with their dialogue-group role (WI-5), a pure render projection over the visible
- * sequence. A run is consecutive dialogue rows with the same speaker *under the same container*; a
- * same-character `expression` row rides along without breaking it (it renders as an in-group
- * differential note). Any other kind — or a change of `parentId` — ends the run, so an option body's
- * last line never groups with a same-speaker line that lives outside the container (adjacency in the
- * flattened list is not adjacency in the tree). Only dialogue and in-group expression rows are cloned;
- * every other row is returned untouched, so referential identity is preserved where it can be.
+ * The speaker a row belongs to a paragraph as, or `null` when it can neither open nor continue one.
+ *
+ * Narration is here alongside dialogue, and that is the whole change (gutter 规范 §2): a run of
+ * consecutive lines in one voice is one paragraph, 不做特例. The narrator is a voice like any other,
+ * so its lines group too — named once at the head, joined by the gutter's rule after that. Leaving it
+ * out was the old model's tell that narration had never been given a place: it was the one kind of
+ * speech that re-announced itself on every single line.
+ */
+function rowGroupSpeaker(block: StoryBlock): GroupSpeaker | null {
+    if (block.kind !== "nodeAction") {
+        return null;
+    }
+    if (block.payload.action === "narration") {
+        return { narrator: true };
+    }
+    if (block.payload.action === "dialogue") {
+        return { characterId: block.payload.characterId, speakerName: block.payload.speakerName };
+    }
+    return null;
+}
+
+/**
+ * Annotate rows with their paragraph role, a pure render projection over the visible sequence.
+ *
+ * A run is consecutive rows in the same voice — narration, or one character's dialogue — *under the
+ * same container*; a same-character `expression` row rides along without breaking a dialogue run (it
+ * renders as an in-group differential note). Any other kind, a change of voice, or a change of
+ * `parentId` ends the run, so an option body's last line never groups with a same-speaker line that
+ * lives outside the container (adjacency in the flattened list is not adjacency in the tree). Only
+ * rows inside a run are cloned; every other row is returned untouched, so referential identity is
+ * preserved where it can be.
  *
  * `groupContinues` is set on any row of a run whose very next row is still one of its members — heads
  * and members alike. It is not a grouping rule (the runs are exactly the ones the loop below already
- * found), only the one fact a row cannot see about itself: whether the attribution rail has to leave
- * its bottom edge. A head without it never reaches the lines it attributes; a MEMBER without it is
- * the last line of the run, which is what lets the rail finish with an end instead of running off the
- * bottom of the last row into whatever follows.
+ * found), only the one fact a row cannot see about itself: whether its paragraph carries on past its
+ * own bottom edge, which is what tells the gutter's continuation rule how far to run.
  */
 export function annotateDialogueGroups(rows: VisibleStoryRow[]): VisibleStoryRow[] {
     let groupSpeaker: GroupSpeaker | null = null;
@@ -137,8 +198,8 @@ export function annotateDialogueGroups(rows: VisibleStoryRow[]): VisibleStoryRow
         const block = row.block;
         const parentId = block.parentId ?? null;
         const sameContainer = groupSpeaker !== null && groupParentId === parentId;
-        if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
-            const speaker: GroupSpeaker = { characterId: block.payload.characterId, speakerName: block.payload.speakerName };
+        const speaker = rowGroupSpeaker(block);
+        if (speaker) {
             if (sameContainer && sameGroupSpeaker(groupSpeaker!, speaker)) {
                 return { ...row, groupRole: "member" as const };
             }
