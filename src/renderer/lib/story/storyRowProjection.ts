@@ -190,6 +190,19 @@ export type StoryContainerRole = "condition" | "branch" | "group" | "menu" | "op
 export type StoryContainerHeaderInfo = {
     /** Plain-language pill label shown on the accordion header (proper case, no ALL-CAPS). */
     pill: string;
+    /**
+     * The command that WRITES this container, when one does — the id, not a word, because the word is
+     * the command language's to choose (`story.command.<id>.label`) and only the editor's registry can
+     * spell it.
+     *
+     * Set for the seven containers an author can type into being (`/if` `/repeat` `/until` `/parallel`
+     * `/race` `/sequence` `/nvl` `/menu`), and deliberately absent for the four header rows that no
+     * line produces: the condition BRANCHES (if / else-if / else, which `/if` scaffolds and the
+     * footer's buttons add) and a choice OPTION. Those keep {@link pill} and its prose styling, on the
+     * rule the rest of the editor already follows — a row prints a command line only when it IS one,
+     * and a header wearing `@否则` would teach a word the parser cannot take back.
+     */
+    commandId?: string;
     role: StoryContainerRole;
     /** Branch (if / else-if) headers carry an editable condition; else / others do not. */
     hasCondition: boolean;
@@ -208,7 +221,9 @@ export function getStoryContainerHeaderInfo(block: StoryBlock): StoryContainerHe
     if (block.kind === "control") {
         const payload = block.payload;
         if (payload.control === "condition") {
-            return { pill: translate("story.containerHeader.condition"), role: "condition", hasCondition: false };
+            // The container IS the `/if` line: the command builds this block and scaffolds the first
+            // branch under it, so this is the row an author's `/if` wrote.
+            return { pill: translate("story.containerHeader.condition"), commandId: "if", role: "condition", hasCondition: false };
         }
         if (payload.control === "conditionBranch") {
             const pill = payload.branch === "if"
@@ -228,26 +243,27 @@ export function getStoryContainerHeaderInfo(block: StoryBlock): StoryContainerHe
             if (payload.until !== undefined) {
                 return {
                     pill: translate("story.containerHeader.repeatUntil"),
+                    commandId: "until",
                     role: "group",
                     hasCondition: false,
                     repeatUntil: payload.until,
                 };
             }
-            return { pill: translate("story.containerHeader.repeat"), role: "group", hasCondition: false, repeatTimes: payload.times ?? 1 };
+            return { pill: translate("story.containerHeader.repeat"), commandId: "repeat", role: "group", hasCondition: false, repeatTimes: payload.times ?? 1 };
         }
         if (payload.control === "parallel") {
-            return { pill: translate("story.containerHeader.parallel"), role: "group", hasCondition: false };
+            return { pill: translate("story.containerHeader.parallel"), commandId: "parallel", role: "group", hasCondition: false };
         }
         if (payload.control === "race") {
-            return { pill: translate("story.containerHeader.race"), role: "group", hasCondition: false };
+            return { pill: translate("story.containerHeader.race"), commandId: "race", role: "group", hasCondition: false };
         }
-        return { pill: translate("story.containerHeader.sequence"), role: "group", hasCondition: false };
+        return { pill: translate("story.containerHeader.sequence"), commandId: "sequence", role: "group", hasCondition: false };
     }
     if (block.kind === "action" && block.payload.action === "nvl") {
-        return { pill: translate("story.containerHeader.nvl"), role: "nvl", hasCondition: false };
+        return { pill: translate("story.containerHeader.nvl"), commandId: "nvl", role: "nvl", hasCondition: false };
     }
     if (block.kind === "nodeAction" && block.payload.action === "choice") {
-        return { pill: translate("story.containerHeader.menu"), role: "menu", hasCondition: false };
+        return { pill: translate("story.containerHeader.menu"), commandId: "menu", role: "menu", hasCondition: false };
     }
     if (block.kind === "nodeAction" && block.payload.action === "choiceOption") {
         return { pill: translate("story.containerHeader.option"), role: "option", hasCondition: false };

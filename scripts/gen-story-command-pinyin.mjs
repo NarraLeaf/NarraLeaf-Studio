@@ -31,13 +31,24 @@ const PINYIN = {
     档: "dang", 全: "quan", 局: "ju", 条: "tiao", 件: "jian", 选: "xuan", 项: "xiang", 复: "fu",
     并: "bing", 行: "xing", 竞: "jing", 顺: "shun", 序: "xu", 代: "dai", 码: "ma", 蓝: "lan",
     闪: "shan", 屏: "ping", 暗: "an", 角: "jiao", 特: "te", 备: "bei", 注: "zhu",
+    // The vocabulary the retired `actionCommand:` anchor kept this generator from ever reaching:
+    // every label added or renamed while it was throwing on startup.
+    作: "zuo", 参: "can", 数: "shu", 皮: "pi", 肤: "fu", 改: "gai", 名: "ming", 氛: "fen",
+    围: "wei", 进: "jin", 度: "du", 菜: "cai", 单: "dan", 直: "zhi", 到: "dao", 出: "chu",
+    标: "biao", 签: "qian", 镜: "jing", 头: "tou",
 };
 
-/** Pull `id: { label: "汉字" }` pairs out of the catalog's `command:` block (not `actionCommand:`). */
+/**
+ * Pull `id: { label: "汉字" }` pairs out of the catalog's `command:` block.
+ *
+ * The block used to be bounded by `actionCommand:`, the 114-key sidebar table that A1 retired with
+ * the catalogue it labelled — so this generator has been throwing on every run since. It ends at
+ * `containerHeader:` now, the key that actually follows it.
+ */
 function readCommandLabels() {
     const text = readFileSync(ZH_CATALOG, "utf8");
     const start = text.indexOf("command: {");
-    const end = text.indexOf("actionCommand:", start);
+    const end = text.indexOf("containerHeader:", start);
     if (start === -1 || end === -1) {
         throw new Error("Could not locate the `command:` block in the zh catalog.");
     }
