@@ -688,7 +688,10 @@ export const story = {
         declareVar: { label: "存档变量", detail: "声明跟随存档的变量" },
         declarePersis: { label: "全局变量", detail: "声明应用级变量，界面蓝图可读取" },
         if: { label: "条件", detail: "按条件分支" },
-        menu: { label: "选项", detail: "让玩家做出选择" },
+        // 「菜单」而不是「选项」：选项是它的子行的名字（containerHeader.option），两者同名时
+        // 「@选项 要回头吗？」下面挂着一串「选项 …」，读起来像同一种东西套了两层。英文本来就是
+        // Menu/Option 两个词，这里只是把中文名对回去。
+        menu: { label: "菜单", detail: "让玩家做出选择" },
         repeat: { label: "重复", detail: "按设定次数重复执行所含动作——按条件循环请用 /until" },
         until: { label: "直到", detail: "重复执行所含动作，直到条件成立为止——每轮开始前检查" },
         break: { label: "跳出", detail: "跳出本行所在的重复组" },

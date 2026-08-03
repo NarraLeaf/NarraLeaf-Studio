@@ -34,7 +34,7 @@ import { localizeSpecCommand, specPaletteCommands } from "./commands/specPalette
 import { browseMenuStops, buildSpecSidebarGroups, dedupeToPrimarySubject, filterSidebarGroups, type StoryCommandMenuStop, type StoryCommandSidebarGroup } from "./commands/specSidebar";
 import { useStoryPluginActionCommands } from "./useStoryPluginActionCommands";
 import { paramTypes } from "./storyCommandGrammar";
-import { getCommandDef, localizedCommandToken } from "./commands/registry";
+import { getCommandDef, getDefById, localizedCommandToken } from "./commands/registry";
 import { localizeCommandVerb } from "./storyCommandSpelling";
 import { completionFor, defaultHighlights, getCommandCursor, type StoryCommandCursor } from "./storyCommandCursor";
 import { getCommandCandidates, hasCandidateSource, type StoryCommandCandidate } from "./storyCommandCandidates";
@@ -76,7 +76,7 @@ import { ConditionPopover } from "./ConditionPopover";
 import { EMPTY_EXPRESSION_CONDITION } from "./ConditionEditor";
 import { BlockOverview } from "./storyQuickParams";
 import { actionTrigger, ACTION_TRIGGER, insertChooserType, isActionCommandLine, toCanonicalCommandLine } from "./commandTrigger";
-import { StoryCommandLineText } from "./StoryCommandLineView";
+import { StoryCommandLineText, useStoryCommandLineContext } from "./StoryCommandLineView";
 import { useStoryRowActions } from "./storyRowActions";
 import { diagnoseRow, type StoryRowDiagnosticCode } from "./storyRowDiagnostics";
 import { useReduceMotion } from "@/lib/appearance/useReduceMotion";
@@ -398,28 +398,34 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                             {/* A container header is a directive like any other: mark, then words. The
                                 pill it used to wear was a fourth icon shape AND it started further left
                                 than its own children's text, so a block never lined up with itself. */}
-                            <span className="flex min-h-[var(--nl-story-row-box)] shrink-0 items-center truncate text-sm italic text-fg-muted" style={textStyle}>{containerInfo.pill}</span>
-                            {lensMode ? <ContainerModeBadge mode={lensMode} /> : null}
+                            <ContainerHeaderWord info={containerInfo} textStyle={textStyle} />
+                            {lensMode ? <span className={HEADER_SLOT_CLASS}><ContainerModeBadge mode={lensMode} /></span> : null}
                         </>
                     ) : null}
                     {containerInfo?.role === "branch" && containerInfo.hasCondition ? (
-                        <ConditionChip
-                            block={block}
-                            scene={scene}
-                            document={document}
-                            onUpdatePayload={on.onUpdatePayload}
-                        />
+                        <span className={HEADER_SLOT_CLASS}>
+                            <ConditionChip
+                                block={block}
+                                scene={scene}
+                                document={document}
+                                onUpdatePayload={on.onUpdatePayload}
+                            />
+                        </span>
                     ) : null}
                     {containerInfo?.repeatTimes !== undefined ? (
-                        <RepeatTimesField block={block} onUpdatePayload={on.onUpdatePayload} />
+                        <span className={HEADER_SLOT_CLASS}>
+                            <RepeatTimesField block={block} onUpdatePayload={on.onUpdatePayload} />
+                        </span>
                     ) : null}
                     {containerInfo?.repeatUntil !== undefined ? (
-                        <RepeatUntilChip
-                            block={block}
-                            scene={scene}
-                            document={document}
-                            onUpdatePayload={on.onUpdatePayload}
-                        />
+                        <span className={HEADER_SLOT_CLASS}>
+                            <RepeatUntilChip
+                                block={block}
+                                scene={scene}
+                                document={document}
+                                onUpdatePayload={on.onUpdatePayload}
+                            />
+                        </span>
                     ) : null}
                     {namesSpeaker ? (
                         /*
@@ -1515,6 +1521,75 @@ function ContainerFooter(props: {
 // container's whole subtree with one row per direct child, silently hiding grandchildren. Their
 // children are ordinary rows now, and the container's own footer carries the inside-add.
 // ---------------------------------------------------------------------------
+
+/**
+ * A container header's leading word.
+ *
+ * Two shapes, and which one a header gets is not a style choice — it is whether a line wrote the row.
+ *
+ *  - A container an author can type (`/if` `/repeat` `/until` `/parallel` `/race` `/sequence` `/nvl`
+ *    `/menu`) prints as that line: the trigger, then the command's own name, through the same
+ *    renderer and the same four-role palette every other directive row uses. It was the last thing in
+ *    the list still printing a bare word while the rows around it printed `@赋值` / `@镜头`, and the
+ *    missing head made a block header read as a caption rather than as the instruction it is.
+ *  - A header no line produces — the condition BRANCHES and a choice OPTION — keeps the prose style,
+ *    the same italic muted reading `BlockOverview` gives every command-less row. `@否则` would be a
+ *    word the parser cannot take back, and the editor prints no line an author could not type.
+ *
+ * The word is the COMMAND's, not the header pill's: `story.command.<id>.label` is the vocabulary the
+ * parser accepts and the menu teaches, so a header that says 直到 says the word `/until` answers to.
+ * The pill stays what the property panel's breadcrumb reads — there it names the structure you are
+ * standing in, which is a different question from what to type.
+ */
+/**
+ * The header word's box: `shrink-0`, and deliberately NOT `truncate`.
+ *
+ * `shrink-0` because a header's word is followed by its own editors — the condition chip, the repeat
+ * count — and must not give up room to them, so the box is exactly as wide as the word.
+ *
+ * Which is precisely why it cannot clip. `truncate` brings `overflow: hidden` along, and a max-content
+ * box has nothing to truncate — the only thing that ever reached the clip was the ITALIC OVERHANG:
+ * a slanted glyph's ink leans past the advance width the box is measured from, so 否则 lost the top of
+ * 则's 刂 to a diagonal shave, and only on the last character, which reads as a font bug rather than
+ * as a clip. `whitespace-nowrap` keeps the one part of `truncate` this box actually wants.
+ */
+const HEADER_WORD_CLASS = "flex min-h-[var(--nl-story-row-box)] shrink-0 items-center whitespace-nowrap text-sm";
+
+/**
+ * The slot a container header's inline editors sit in: the condition chip, the repeat count, the stop
+ * condition, the engine-mode badge.
+ *
+ * It exists to put them on the same optical line as the word in front of them. The row is
+ * `items-start` for a reason that has nothing to do with these — a wrapped paragraph must keep its
+ * gutter mark level with the FIRST line rather than drifting to the middle of three — but the side
+ * effect is that every short control in the row hangs from the row's top edge. A 22px chip beside a
+ * 32px header word therefore sat 5px high, which on `@如果 [认识Hya]` reads as the chip floating off
+ * the text. Giving each control the row-box height and centring inside it is the same fix (and the
+ * same three classes) the nametag already uses, and it stays true when the row wraps: the box is one
+ * line tall, so "centred" still means centred on the first line.
+ */
+const HEADER_SLOT_CLASS = "flex min-h-[var(--nl-story-row-box)] shrink-0 items-center";
+
+function ContainerHeaderWord({ info, textStyle }: { info: StoryContainerHeaderInfo; textStyle?: CSSProperties }) {
+    const { trigger } = useStoryCommandLineContext();
+    // Subscribed to, not called: `localizedCommandToken` reads the command locale imperatively, so
+    // without this a language switch leaves headers in the old vocabulary (the note on BlockOverview).
+    useCommandTranslation();
+    const def = info.commandId ? getDefById(info.commandId) : null;
+    if (!def) {
+        return (
+            <span className={HEADER_WORD_CLASS + " italic text-fg-muted"} style={textStyle}>
+                {info.pill}
+            </span>
+        );
+    }
+    return (
+        // `opacity-80` is the committed-row dimming — same skeleton as the live field, one step back.
+        <span className={HEADER_WORD_CLASS + " opacity-80"} style={textStyle}>
+            <StoryCommandLineText source={`${ACTION_TRIGGER}${localizedCommandToken(def)}`} trigger={trigger} />
+        </span>
+    );
+}
 
 /** The engine-mode badge on a parallel/race header (WI-3): `all` / `allAsync` / `any`, in control colour. */
 function ContainerModeBadge({ mode }: { mode: "all" | "allAsync" | "any" }) {
