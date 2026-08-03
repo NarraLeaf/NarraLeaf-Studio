@@ -112,6 +112,10 @@ export const settings = {
             description:
                 "Turn this off to keep the action creator's command names, parameter names and values in English. Their English spellings work either way.",
         },
+        hideParamNames: {
+            label: "Commands show only parameter values",
+            description: "A more compact reading of the commands in a row.",
+        },
         electronMirror: {
             label: "Electron download mirror",
             description: "Mirror for downloading Electron. Leave empty to use the official source.",

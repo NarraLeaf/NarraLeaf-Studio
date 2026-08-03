@@ -96,6 +96,16 @@ export interface GlobalStateType extends Record<string, any> {
      * distinction. Resolved through `resolveCommandLocale` in lib/settings/commandLanguageOptions.
      */
     "editor.localizedCommands": boolean;
+    /**
+     * Whether a committed story row prints only the VALUES of its modifiers — `@hide Anyo fade` in
+     * place of `@hide Anyo t=fade`.
+     *
+     * A display setting for the committed row alone: the line being typed still shows what is being
+     * typed, and the projection underneath is unchanged, so nothing about what the row means or how it
+     * is edited moves. Off by default, because the keys are what disambiguate a row that carries more
+     * than one modifier. See lib/settings/commandParamNameOptions.
+     */
+    "editor.hideParamNames": boolean;
     "workspace.restoreLastWorkspace": boolean;
     /**
      * Ask for confirmation before a workspace window closes.
@@ -215,6 +225,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "editor.softWrap": false,
     "editor.maxActiveEditors": 8,
     "editor.localizedCommands": true,
+    "editor.hideParamNames": false,
     "workspace.restoreLastWorkspace": true,
     "workspace.confirmBeforeClose": false,
     "workspace.returnToLauncherOnClose": true,
