@@ -138,12 +138,13 @@ function StoryCommandLineRow(props: {
     scenes?: Record<StorySceneId, StoryScene>;
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
 }) {
-    const { trigger } = useStoryCommandLineContext();
+    const { trigger, hideParamNames } = useStoryCommandLineContext();
     return (
         <StoryCommandLineBox className="opacity-80" style={props.textStyle}>
             <StoryCommandLineText
                 source={props.line.source}
                 trigger={trigger}
+                hideParamNames={hideParamNames}
                 edits={props.line.edits}
                 renderEdit={(edit, content) => (
                     <StoryLineValueToken edit={edit} onApply={props.onUpdatePayload}>{content}</StoryLineValueToken>

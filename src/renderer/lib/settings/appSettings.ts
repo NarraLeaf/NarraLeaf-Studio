@@ -20,6 +20,7 @@ import {
 } from "@/lib/settings/editorLayoutOptions";
 import { SLASH_AT_ALIAS_KEY, slashAtAliasDefault } from "@/lib/settings/slashAliasOptions";
 import { LOCALIZED_COMMANDS_DEFAULT, LOCALIZED_COMMANDS_KEY } from "@/lib/settings/commandLanguageOptions";
+import { HIDE_PARAM_NAMES_DEFAULT, HIDE_PARAM_NAMES_KEY } from "@/lib/settings/commandParamNameOptions";
 import {
     ACCENT_COLOR_DEFAULT,
     ACCENT_PRESETS,
@@ -347,6 +348,24 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "Turn this off to keep the action creator's command names, parameter names and values in English. Their English spellings work either way.",
         descriptionKey: "settings.items.localizedCommands.description",
         defaultValue: LOCALIZED_COMMANDS_DEFAULT,
+    },
+    {
+        // Applied by the Story scene editor's committed rows (`StoryCommandLineProvider` ->
+        // `StoryCommandLineText`): the param key and its `=` are dropped at RENDER time, from the spans
+        // `storyCommandHighlight` marks as keys. The projection underneath is untouched, so every value
+        // stays click-to-edit and the row still knows which slot it is writing to - and the live field,
+        // which is a mirror over a textarea and has to match it character for character, is never
+        // affected. Off by default because of the trade it makes: a row carrying two modifiers loses
+        // the words that told them apart.
+        key: HIDE_PARAM_NAMES_KEY,
+        category: "editor",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Commands show only parameter values",
+        labelKey: "settings.items.hideParamNames.label",
+        description: "A more compact reading of the commands in a row.",
+        descriptionKey: "settings.items.hideParamNames.description",
+        defaultValue: HIDE_PARAM_NAMES_DEFAULT,
     },
     {
         // Applied by the main process in `App.handleWorkspaceCloseRequest`: the workspace
