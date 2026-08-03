@@ -37,7 +37,11 @@ export function useFileMenu(): void {
             : recentProjects.map<ActionDefinition>(project => ({
                 id: `${OPEN_RECENT_SUBMENU_ID}:${project.path}`,
                 label: formatRecentProjectLabel(project),
-                onClick: () => { void openRecentProject(project.path); },
+                // A switch, exactly as in the title-bar switcher: this window goes once the chosen
+                // project is up. Picking the project this window already holds only focuses it -
+                // the list does not hide the current project, and main refuses to retire a window
+                // into itself.
+                onClick: () => { void openRecentProject(project.path, { replaceCurrentWindow: true }); },
             }));
 
         const openRecentSubmenu: ActionSubmenu = {
