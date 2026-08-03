@@ -1,3 +1,4 @@
+import { Eye, EyeOff, MessageSquare, MoveHorizontal, PersonStanding, Shirt, SlidersHorizontal, Smile, Tag } from "lucide-react";
 import type { StoryBlock } from "@shared/types/story";
 import { createBlockForCommand, type ActionCommandId } from "../../storyActionCommands";
 import type { StoryCommandResolutionIssue, StoryCommandTargetValue, StoryCommandValue } from "../../storyCommandValues";
@@ -229,6 +230,7 @@ export const show = defineStoryCommand({
     token: "show",
     aliases: ["enter"],
     category: "character",
+    icon: Eye,
     examples: ["/show Alice", "/show Alice smile at=left", "/show hero t=fade d=0.3"],
     // Inline quick-edit (WI-2): how long the entrance takes - the duration this line writes onto the
     // show transform, which is what drives a character's entrance (the placement `at=` stays a word).
@@ -252,6 +254,7 @@ export const hide = defineStoryCommand({
     token: "hide",
     aliases: ["exit"],
     category: "character",
+    icon: EyeOff,
     examples: ["/hide Alice", "/hide hero t=fade d=0.3"],
     // Inline quick-edit (WI-2): how long the exit takes - the same transform duration `hide()` reads.
     quickParams: ["d"],
@@ -268,6 +271,7 @@ export const move = defineStoryCommand({
     id: "move",
     token: "move",
     category: "character",
+    icon: MoveHorizontal,
     examples: ["/move Alice at=center", "/move Alice at=left d=0.4"],
     params: {
         character: { hint: "character", type: { kind: "character" }, positional: true, core: true },
@@ -293,6 +297,7 @@ export const face = defineStoryCommand({
     token: "face",
     aliases: ["expr", "expression"],
     category: "character",
+    icon: Smile,
     examples: ["/face Alice smile"],
     params: {
         character: { hint: "character", type: { kind: "character" }, positional: true, core: true },
@@ -381,6 +386,7 @@ export const motion = defineStoryCommand({
     token: "motion",
     aliases: ["anim"],
     category: "character",
+    icon: PersonStanding,
     examples: ["/motion Doll run", "/motion Doll"],
     params: {
         character: { hint: "character", type: { kind: "character" }, positional: true, core: true },
@@ -395,6 +401,7 @@ export const skin = defineStoryCommand({
     token: "skin",
     aliases: ["costume"],
     category: "character",
+    icon: Shirt,
     examples: ["/skin Doll winter", "/skin Doll"],
     params: {
         character: { hint: "character", type: { kind: "character" }, positional: true, core: true },
@@ -424,6 +431,7 @@ export const param = defineStoryCommand({
     id: "param",
     token: "param",
     category: "character",
+    icon: SlidersHorizontal,
     examples: ["/param Doll ParamAngleX 12"],
     params: {
         character: { hint: "character", type: { kind: "character" }, positional: true, core: true },
@@ -461,6 +469,7 @@ export const rename = defineStoryCommand({
     token: "rename",
     aliases: ["setname"],
     category: "character",
+    icon: Tag,
     examples: ["/rename Alice The Stranger"],
     params: {
         character: { hint: "character", type: { kind: "character" }, positional: true, core: true },
@@ -490,6 +499,7 @@ export const say = defineStoryCommand({
     id: "say",
     token: "say",
     category: "character",
+    icon: MessageSquare,
     examples: ["/say Alice Hello there.", "/say Zoe Who are you?"],
     params: {
         character: { hint: "speaker", type: { kind: "character", allowTemp: true }, positional: true, core: true },

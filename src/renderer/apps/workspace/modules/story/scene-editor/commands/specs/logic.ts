@@ -1,3 +1,4 @@
+import { Bookmark, CornerUpLeft, Flag, GitBranch, ListChecks, ListOrdered, LogOut, Repeat, Repeat2, Rows3, Workflow } from "lucide-react";
 import type { StoryBlock, StoryConditionRef } from "@shared/types/story";
 import { createBlockForCommand } from "../../storyActionCommands";
 import { asNumber, asText, defineStoryCommand } from "../spec";
@@ -8,6 +9,7 @@ export const ifCommand = defineStoryCommand({
     id: "if",
     token: "if",
     category: "flow",
+    icon: GitBranch,
     examples: ["/if gold > 10", "/if met"],
     params: {
         test: { hint: "condition", type: { kind: "expression", expects: "boolean" }, positional: true, greedy: true, core: true },
@@ -24,6 +26,7 @@ export const menu = defineStoryCommand({
     token: "menu",
     aliases: ["choice"],
     category: "flow",
+    icon: ListChecks,
     examples: ["/menu Which way?"],
     params: {
         text: { hint: "content", type: { kind: "text" }, positional: true, greedy: true },
@@ -62,6 +65,7 @@ export const repeat = defineStoryCommand({
     token: "repeat",
     aliases: ["loop"],
     category: "flow",
+    icon: Repeat,
     examples: ["/repeat 3"],
     params: {
         // `times` is deliberately NOT `core` any more. Core is a per-param flag and cannot say "one
@@ -115,6 +119,7 @@ export const until = defineStoryCommand({
     id: "until",
     token: "until",
     category: "flow",
+    icon: Repeat2,
     examples: ["/until gold >= 10", "/until met"],
     params: {
         // Core: a loop with no stop condition is the one shape this command must never commit - it
@@ -157,6 +162,7 @@ export const breakLoop = defineStoryCommand({
     id: "break",
     token: "break",
     category: "flow",
+    icon: LogOut,
     examples: ["/break"],
     params: {},
     build(_args, ctx): StoryBlock {
@@ -174,6 +180,7 @@ export const parallel = defineStoryCommand({
     id: "parallel",
     token: "parallel",
     category: "flow",
+    icon: Rows3,
     examples: ["/parallel"],
     params: {},
     build: (_args, ctx) => createBlockForCommand("parallel", ctx.generateId),
@@ -183,6 +190,7 @@ export const race = defineStoryCommand({
     id: "race",
     token: "race",
     category: "flow",
+    icon: Flag,
     examples: ["/race"],
     params: {},
     build: (_args, ctx) => createBlockForCommand("race", ctx.generateId),
@@ -193,6 +201,7 @@ export const sequence = defineStoryCommand({
     token: "sequence",
     aliases: ["seq"],
     category: "flow",
+    icon: ListOrdered,
     examples: ["/sequence"],
     params: {},
     build: (_args, ctx) => createBlockForCommand("sequence", ctx.generateId),
@@ -213,6 +222,7 @@ export const label = defineStoryCommand({
     token: "label",
     aliases: ["mark"],
     category: "flow",
+    icon: Bookmark,
     examples: ["/label after refusal"],
     params: {
         // Greedy: a label is a note to the author ("after the first refusal"), not an identifier.
@@ -234,6 +244,7 @@ export const goto = defineStoryCommand({
     token: "goto",
     aliases: ["jumpto"],
     category: "flow",
+    icon: CornerUpLeft,
     examples: ["/goto intro"],
     params: {
         target: { hint: "labelName", type: { kind: "label" }, positional: true, core: true },
@@ -255,6 +266,7 @@ export const blueprint = defineStoryCommand({
     token: "blueprint",
     aliases: ["executescript", "bp"],
     category: "utils",
+    icon: Workflow,
     examples: ["/blueprint"],
     params: {},
     build: (_args, ctx) => createBlockForCommand("executeScript", ctx.generateId),

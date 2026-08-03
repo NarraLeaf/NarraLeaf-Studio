@@ -1,3 +1,4 @@
+import { DoorOpen, Hourglass, ScrollText, Wallpaper } from "lucide-react";
 import { createBlockForCommand } from "../../storyActionCommands";
 import { asNumber, defineStoryCommand, SECONDS_TYPE, secondsParam } from "../spec";
 import { withRevealTransform, withTransitionRef } from "../payloadHelpers";
@@ -11,6 +12,7 @@ export const bg = defineStoryCommand({
     token: "bg",
     aliases: ["background"],
     category: "scene",
+    icon: Wallpaper,
     examples: ["/bg forest_day", "/bg forest_day t=fade d=0.5", "/bg #101018"],
     // Inline quick-edit (WI-2): the transition duration. The transition kind (`t`, an enum) stays an
     // inspector choice — a qualitative pick, not a high-frequency micro-adjust.
@@ -48,6 +50,7 @@ export const jump = defineStoryCommand({
     id: "jump",
     token: "jump",
     category: "scene",
+    icon: DoorOpen,
     examples: ["/jump 'Chapter 2'", "/jump 'Chapter 2' t=fade d=0.6"],
     quickParams: ["scene"],
     params: {
@@ -73,6 +76,7 @@ export const wait = defineStoryCommand({
     id: "wait",
     token: "wait",
     category: "flow",
+    icon: Hourglass,
     examples: ["/wait 1.5", "/wait click"],
     quickParams: ["seconds"],
     params: {
@@ -97,6 +101,7 @@ export const nvl = defineStoryCommand({
     id: "nvl",
     token: "nvl",
     category: "scene",
+    icon: ScrollText,
     examples: ["/nvl", "/nvl t=fade d=0.4"],
     params: {
         t: { aliases: ["transition"], hint: "transition", type: { kind: "enum", options: transitionOptions("nvl") } },

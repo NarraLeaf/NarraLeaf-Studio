@@ -13,7 +13,9 @@ import {
     type StoryBlockBadgeId,
     type StoryRowLookups,
 } from "@/lib/story/storyRowProjection";
+import { storyVerbCommandId } from "@/lib/story/storyVerbVocabulary";
 import { translate } from "@/lib/i18n";
+import { getCommandSpec } from "./commands/registry";
 
 /**
  * The row projection moved to `@/lib/story/storyRowProjection` (U4 WI-1) so the Dev Mode timeline can
@@ -332,6 +334,13 @@ export function isContainerBlock(block: StoryBlock | undefined): boolean {
  * a row wears - its id, its label key and its colour group - is `storyBlockBadge` in the shared row
  * projection, so the editor's left-edge bar and the Dev Mode timeline's hue can never come from two
  * different chains of ifs (U4 WI-1).
+ *
+ * These are now the FALLBACK: a row that maps to a command wears that command's own glyph
+ * ({@link rowCommandId}), so the plate matches the entry in the `/` menu that could have written the
+ * line. A badge id is coarser than a command by design - one `audio` badge covers ten verbs - so
+ * reading the icon from it alone gave every sound row the same note. What is left here is the rows no
+ * command owns (narration, a choice option, an invalid line) and the safety net for any that stop
+ * resolving.
  */
 const BADGE_ICONS: Record<StoryBlockBadgeId, typeof FileText> = {
     narration: FileText,
@@ -365,15 +374,95 @@ const BADGE_ICONS: Record<StoryBlockBadgeId, typeof FileText> = {
 };
 
 /**
- * The row's badge and its left-edge colour bar. `iconColor` comes from the command GROUP (see
- * `storyCommandCategories.ts`), which is why the 13→8 rearrangement changed almost nothing here: the
- * four stage subjects stayed separate colour units precisely so this surface would not lose the
- * distinctions it earns. The two rows that did change category changed on purpose - a screen effect
- * belongs to the scene, a blueprint call is a tool.
+ * The command whose glyph this row wears, or `null` for the rows no command writes.
+ *
+ * `storyVerbCommandId` already states the block→command relation for action payloads - it is what
+ * makes a committed row say "Hide" where the author typed `/hide` - so the plate reads the very same
+ * table rather than a second one that could disagree with the words beside it. The rest of this
+ * function is the kinds that table does not cover, because they are not `StoryActionPayload`s: a
+ * container, a jump, a declaration, a note.
+ *
+ * Two action payloads get an answer the verb table declines to give, and for the same reason in both
+ * cases - the table names the word a ROW SAYS, and stays silent where naming one would be wrong,
+ * while a plate only has to point at the command that could have written the line:
+ *
+ *  - `blueprint` has no verb of its own to print, but `/blueprint` is unambiguously its command;
+ *  - a `displayable` operation outside show/hide/transform (mask, clip, blend …) is inspector-reached
+ *    and has no typed word, yet every one of them arrives through `/fx`.
+ */
+function rowCommandId(block: StoryBlock): string | null {
+    switch (block.kind) {
+        case "action":
+            if (block.payload.action === "blueprint") {
+                return "blueprint";
+            }
+            if (block.payload.action === "displayable") {
+                return storyVerbCommandId(block.payload) ?? "fx";
+            }
+            return storyVerbCommandId(block.payload);
+        case "nodeAction":
+            // Narration and a choice option are text rows, not commands - `/say` writes a dialogue and
+            // `/menu` writes the choice, but nothing writes the option except Enter inside one.
+            if (block.payload.action === "dialogue") return "say";
+            if (block.payload.action === "choice") return "menu";
+            return null;
+        case "control":
+            switch (block.payload.control) {
+                // A branch belongs to its container's command: `/if` is what puts both rows there.
+                case "condition":
+                case "conditionBranch": return "if";
+                // One payload, two commands: `until` present IS the conditional form (see the payload's
+                // note), which is `/until` - the same flag the container header reads.
+                case "repeat": return block.payload.until ? "until" : "repeat";
+                case "parallel": return "parallel";
+                case "race": return "race";
+                case "sequence": return "sequence";
+                case "break": return "break";
+                case "label": return "label";
+                case "goto": return "goto";
+                default: return null;
+            }
+        case "jump":
+            return "jump";
+        case "declaration":
+            return DECLARATION_COMMANDS[block.payload.scope] ?? null;
+        case "note":
+            return "note";
+        default:
+            return null;
+    }
+}
+
+/** The three declaration commands, by the scope their row declares. */
+const DECLARATION_COMMANDS: Record<string, string> = {
+    scene: "declareLocal",
+    saved: "declareVar",
+    persistent: "declarePersis",
+};
+
+/**
+ * The row's badge and its left-edge colour bar.
+ *
+ * `iconColor` comes from the command GROUP (see `storyCommandCategories.ts`), which is why the 13→8
+ * rearrangement changed almost nothing here: the four stage subjects stayed separate colour units
+ * precisely so this surface would not lose the distinctions it earns. The two rows that did change
+ * category changed on purpose - a screen effect belongs to the scene, a blueprint call is a tool.
+ *
+ * The icon comes from the COMMAND (see {@link rowCommandId}), so the two say different things: the
+ * hue files the row by subject, the glyph names the verb. It used to come from the badge id, which is
+ * one step coarser than a command in exactly the places an author looks hardest - ten sound verbs
+ * under one `audio` badge, eight character verbs under one `character` - so a scene of `/bgm`, `/vol`
+ * and `/stop` rows wore three identical notes.
  */
 export function getBlockBadgeInfo(block: StoryBlock): { label: string; icon: typeof FileText; iconColor: string } {
     const badge = storyBlockBadge(block);
-    return { label: translate(badge.labelKey), icon: BADGE_ICONS[badge.id], iconColor: storyRowAccentColor(block) };
+    const commandId = rowCommandId(block);
+    const commandIcon = commandId ? getCommandSpec(commandId)?.icon : null;
+    return {
+        label: translate(badge.labelKey),
+        icon: commandIcon ?? BADGE_ICONS[badge.id],
+        iconColor: storyRowAccentColor(block),
+    };
 }
 
 /**
