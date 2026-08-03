@@ -892,3 +892,47 @@ input[type="radio"]:focus {
     background-color: var(--narraleaf-accent-weak);
     box-shadow: inset 0 0 0 1px var(--narraleaf-accent-strong);
 }
+
+/*
+ * Speaker colours for the story editor's gutter (gutter 规范 §4).
+ *
+ * One hue per character, carried in from JS as `--nl-speaker-h` (see storySpeakerIdentity.ts) and
+ * turned into four colours here — disc fill, the ink knocked out of it, the nametag, and the
+ * continuation rule. Saturation and lightness are fixed per theme, so a cast reads as one family
+ * however its hues fall.
+ *
+ * The split has to happen in CSS and cannot happen in JS: Electron updates the value of
+ * `prefers-color-scheme` when `nativeTheme.themeSource` changes but never dispatches the media
+ * query's `change` event, so a JS mirror of the theme goes stale the first time the author switches
+ * it — silently, and only for the colours it owns.
+ *
+ * The disc's ink is a deep tone of the SAME hue rather than white (§4). White is legible on a
+ * mid-tone disc and wrong on a pale one, and the light theme's discs are pale by design.
+ */
+.nl-speaker {
+    --nl-speaker-disc: hsl(var(--nl-speaker-h) 42% 52%);
+    --nl-speaker-ink: hsl(var(--nl-speaker-h) 62% 14%);
+    --nl-speaker-name: hsl(var(--nl-speaker-h) 55% 66%);
+}
+
+@media (prefers-color-scheme: light) {
+    :root.nl-studio .nl-speaker {
+        --nl-speaker-disc: hsl(var(--nl-speaker-h) 46% 62%);
+        --nl-speaker-ink: hsl(var(--nl-speaker-h) 58% 17%);
+        --nl-speaker-name: hsl(var(--nl-speaker-h) 52% 40%);
+    }
+}
+
+/*
+ * The narrator, and any speaker whose hue is unknown: neutral, by rule (§4). It is a voice rather
+ * than a member of the cast, and a narrator holding a hue of its own would read as one of them.
+ *
+ * Written as a fallback on the same three properties rather than as a separate class, so every
+ * surface below reads one variable and never has to ask which kind of speaker it is drawing.
+ */
+.nl-speaker-neutral {
+    --nl-speaker-disc: rgb(var(--nl-fg-subtle));
+    --nl-speaker-ink: rgb(var(--nl-surface));
+    --nl-speaker-name: rgb(var(--nl-fg-muted));
+}
+
