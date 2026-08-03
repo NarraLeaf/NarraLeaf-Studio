@@ -16,7 +16,7 @@ import {
     type StoryCommandGroupId,
 } from "./storyCommandCategories";
 import { localizeSpecCommand } from "./commands/specPalette";
-import { listCommandSpecs } from "./commands/registry";
+import { getCommandSpec, listCommandSpecs } from "./commands/registry";
 import { specGroupIds } from "./commands/specSidebar";
 import { buildSpecSidebarGroups, dedupeToPrimarySubject, filterSidebarGroups, type StoryCommandSidebarGroup } from "./commands/specSidebar";
 import { searchActionCommands } from "./storyCommandSearch";
@@ -364,9 +364,11 @@ function ActionCreatorRow(props: {
     onCreate: (commandId: string) => void;
 }) {
     const { t } = useTranslation();
-    // The icon follows the SECTION, not the command's own filing: `/show` listed under 图片 must not
-    // wear a person glyph just because its `category` says 角色.
-    const Icon = props.group.icon;
+    // The glyph is the COMMAND's, the colour is the SECTION's. `/show` listed under 图片 wears an eye
+    // in the sage of that section - it says what the line does, tinted by what it does it to. (It used
+    // to wear the section's own icon, which made every row of a section identical: eleven Music notes
+    // down 声音, nine people down 角色.)
+    const Icon = props.command.icon;
     return (
         <div className="group flex items-center rounded-md transition-colors hover:bg-fill">
             <button
@@ -411,7 +413,8 @@ function CommandDetail(props: {
     const { t: ct } = useCommandTranslation();
     const { entry } = props;
     const group = getCommandGroup(entry.group);
-    const Icon = group.icon;
+    // The command's own glyph, like the row that opened this page; the group only tints it.
+    const Icon = getCommandSpec(entry.id)?.icon ?? group.icon;
     // Only the subjects this command's own section does not already say.
     const alsoFiledUnder = props.filedUnder.filter(id => id !== entry.group);
 
@@ -513,7 +516,7 @@ function ParamRow({ param }: { param: StoryCommandManualParam }) {
 function PluginDetail({ command, onInsert }: { command: PaletteActionCommand; onInsert: () => void }) {
     const { t } = useTranslation();
     const group = getCommandGroup(command.group);
-    const Icon = group.icon;
+    const Icon = command.icon;
     return (
         <div className="flex flex-col gap-3 px-3 py-3">
             <div className="flex items-center gap-2">

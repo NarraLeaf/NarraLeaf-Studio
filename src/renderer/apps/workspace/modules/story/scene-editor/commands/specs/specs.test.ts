@@ -840,3 +840,27 @@ describe("manual examples", () => {
         }
     });
 });
+
+/**
+ * A glyph per command, and no glyph twice.
+ *
+ * The icon is not decoration: it is what the `/` menu, the action creator and a committed row's plate
+ * draw beside the name, and it used to come from the command's GROUP - so a section of the menu was a
+ * column of one repeated symbol, saying only what the section header already said. Per-command icons
+ * are worth nothing if two commands share one, and a shared icon is exactly the mistake that is
+ * invisible while authoring (two files, two imports, one symbol) and obvious to an author reading the
+ * list, so it is pinned here rather than left to review.
+ */
+describe("command icons", () => {
+    const specs = listCommandSpecs();
+
+    it("gives every command a glyph of its own", () => {
+        const byIcon = new Map<unknown, string[]>();
+        for (const spec of specs) {
+            expect(spec.icon, spec.token).toBeTruthy();
+            byIcon.set(spec.icon, [...(byIcon.get(spec.icon) ?? []), spec.token]);
+        }
+        const shared = [...byIcon.values()].filter(tokens => tokens.length > 1);
+        expect(shared).toEqual([]);
+    });
+});

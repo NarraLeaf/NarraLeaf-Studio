@@ -1,3 +1,4 @@
+import { Wind } from "lucide-react";
 import type { StoryActionPayload, StoryBlock } from "@shared/types/story";
 import { asDurationMs, asNumber, asText, defineStoryCommand, secondsParam } from "../spec";
 import { deriveObjectName } from "../payloadHelpers";
@@ -26,6 +27,7 @@ export const vfx = defineStoryCommand({
     token: "vfx",
     aliases: ["ambience"],
     category: "vfx",
+    icon: Wind,
     examples: ["/vfx intro", "/vfx intro name=petals opacity=0.5 d=0.8"],
     quickParams: ["d"],
     params: {
