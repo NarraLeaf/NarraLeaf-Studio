@@ -110,7 +110,11 @@ export function BlockOverview(props: {
         <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center gap-1 truncate text-sm italic text-fg-muted" style={props.textStyle}>
             {fragments.map((fragment, index) =>
                 fragment.kind === "text"
-                    ? <span key={`t${index}`} className="truncate">{fragment.text}</span>
+                    // `whitespace-nowrap`, not `truncate`: as a flex item this span is already sized to
+                    // its content and never ellipsized (the row's bound is the parent's overflow), so
+                    // the clip `truncate` adds only ever reached the italic overhang of the last glyph
+                    // — a diagonal shave off one character, which reads as a broken font.
+                    ? <span key={`t${index}`} className="whitespace-nowrap">{fragment.text}</span>
                     : <QuickParamToken key={fragment.param.id} param={fragment.param} scenes={props.scenes} onApply={props.onUpdatePayload} />,
             )}
         </span>
