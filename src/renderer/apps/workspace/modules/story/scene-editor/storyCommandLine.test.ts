@@ -218,6 +218,36 @@ describe("projectStoryCommandLine", () => {
         expect(parts.flatMap(part => part.pieces).map(piece => piece.text).join("")).toBe(line.source);
     });
 
+    it("prints the values alone when the author asked for it, and only the keys go", () => {
+        // `editor.hideParamNames`. The row is the only surface that may do this — the live field is a
+        // mirror over a textarea — and it is a DISPLAY cut: `line.source` is untouched, which is why
+        // the assertions below can compare the two renderings of one projection.
+        const line = projectStoryCommandLine(build("/hide Alice d=1"), LOOKUPS)!;
+        const text = (hide: boolean) =>
+            storyCommandLineParts(line.source, line.edits, hide).flatMap(part => part.pieces).map(piece => piece.text).join("");
+        expect(text(false)).toBe("/hide Alice t=fade d=1s");
+        // The keys go; the spaces between the tokens, the unit and every value stay.
+        expect(text(true)).toBe("/hide Alice fade 1s");
+        expect(line.source).toBe("/hide Alice t=fade d=1s");
+    });
+
+    it("keeps every value clickable with the keys hidden", () => {
+        // The failure this guards is silent: the edit spans are offsets into the FULL source, so a cut
+        // that shifted them would leave the row looking right and quietly stop opening its editors.
+        const line = projectStoryCommandLine(build("/hide Alice d=1"), LOOKUPS)!;
+        const editable = storyCommandLineParts(line.source, line.edits, true).filter(part => part.edit);
+        expect(editable.map(part => part.pieces.map(piece => piece.text).join(""))).toEqual(["Alice", "fade", "1s"]);
+    });
+
+    it("keeps a bare flag when the keys are hidden — there is no value behind it", () => {
+        // A boolean written as `loop=true` loses its key like any other modifier; what must not happen
+        // is an arg vanishing outright, which is what dropping a flag's own word would do.
+        const line = projectStoryCommandLine(build("/bgm theme loop=true"), LOOKUPS)!;
+        const text = storyCommandLineParts(line.source, line.edits, true).flatMap(part => part.pieces).map(piece => piece.text).join("");
+        expect(line.source).toContain("loop=true");
+        expect(text).toBe("/bgm theme true");
+    });
+
     it("says nothing for a row no command owns", () => {
         // Prose is prose, and a declaration reads as `gold: number = 100` — a shape no line has.
         const narration: StoryBlock = {
