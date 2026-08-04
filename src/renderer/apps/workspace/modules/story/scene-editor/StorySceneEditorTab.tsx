@@ -2087,11 +2087,14 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 visible={rowMenu.menuState.visible}
                 onClose={rowMenu.hideMenu}
             />
+            {/* `iconsEnabled` so every row reserves the tick column: without it only the current density is
+                indented by its tick and the other two sit further left, which reads as a stray outdent. */}
             <ContextMenu
                 items={densityMenuItems}
                 position={densityMenu.menuState.position}
                 visible={densityMenu.menuState.visible}
                 onClose={densityMenu.hideMenu}
+                iconsEnabled
             />
             </div>
             {previewOpen && previewMode === "dock" ? (
