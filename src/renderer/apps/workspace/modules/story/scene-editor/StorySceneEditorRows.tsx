@@ -56,7 +56,7 @@ import { segmentToRuns } from "./richText";
 import { STORY_DENSITY_METRICS, useStoryEditorTextStyle } from "./storyEditorTextStyle";
 import { STORY_MARK_PX, STORY_ROW_CONTENT_PAD_PX } from "./StoryRowGutterMark";
 import { characterIdentity, StoryRowGutter } from "./StoryRowGutter";
-import { characterSpeakerIdentity, STORY_SPEAKER_CLASS, storySpeakerHueStyle, type StorySpeakerIdentity } from "./storySpeakerIdentity";
+import { characterSpeakerIdentity, storySpeakerPaint, type StorySpeakerIdentity } from "./storySpeakerIdentity";
 import type { StoryEditorDensity } from "./storyEditorSessionStore";
 import type { StoryRowHighlight } from "@/lib/settings/storyRowHighlightOptions";
 import type { CharacterAppearanceRef, EditorMode, StoryCaretTarget, StoryStagePlacement, VisibleStoryRow } from "./storySceneEditorTypes";
@@ -2847,6 +2847,7 @@ function CharacterSelectTrigger(props: {
     const speakerIdentity = props.suppressColor
         ? null
         : rowSpeakerIdentityFor(props.characters, props.characterId, props.speakerName);
+    const speakerPaint = speakerIdentity ? storySpeakerPaint(speakerIdentity.paint) : null;
     const candidates = useMemo(
         () => getSpeakerCandidates(props.characters, props.tempSpeakers, draft),
         [draft, props.characters, props.tempSpeakers],
@@ -2920,18 +2921,14 @@ function CharacterSelectTrigger(props: {
                         // eats 8px out of it, so the name the column was measured from is the first one
                         // to truncate. Sizing the content box instead puts the padding outside it.
                         props.column ? "box-content -ml-1 w-fit font-medium" : "h-full min-h-[28px] text-sm",
-                        // A hue of its own, or the neutral ink — never a colour of the chrome's choosing.
-                        speakerIdentity ? STORY_SPEAKER_CLASS : "",
-                        speakerIdentity?.hue === null ? "nl-speaker-neutral" : "",
-                        unassigned ? "italic text-fg-subtle hover:text-primary" : speakerIdentity ? "" : "text-fg-muted",
+                        // The speaker's own colour, through the one seam the gutter's marks use — so
+                        // the name and the face beside it cannot disagree about whose line this is.
+                        speakerPaint ? speakerPaint.className : "",
+                        unassigned ? "italic text-fg-subtle hover:text-primary" : speakerPaint ? "" : "text-fg-muted",
                         props.className ?? "",
                     ].join(" ")}
-                    style={speakerIdentity && !unassigned
-                        ? {
-                            ...props.style,
-                            ...(speakerIdentity.hue === null ? {} : storySpeakerHueStyle(speakerIdentity.hue)),
-                            color: "var(--nl-speaker-name)",
-                        }
+                    style={speakerPaint && !unassigned
+                        ? { ...props.style, ...speakerPaint.style, color: "var(--nl-speaker-name)" }
                         : props.style}
                     onMouseDown={event => {
                         event.preventDefault();

@@ -2,9 +2,8 @@ import { Quote, type LucideIcon } from "lucide-react";
 import { HeadThumbnail } from "@/apps/workspace/modules/characters/editors/components/HeadThumbnail";
 import type { NormalizedCrop } from "@/lib/utils/headCrop";
 import {
-    STORY_SPEAKER_CLASS,
-    storySpeakerHueStyle,
     storySpeakerInitial,
+    storySpeakerPaint,
     type StorySpeakerIdentity,
 } from "./storySpeakerIdentity";
 
@@ -167,14 +166,26 @@ export function StoryGutterCell(props: {
  * shape, and all three marks close on the same 26px silhouette rather than two hard edges and one
  * soft one.
  *
- * Its weight is {@link PORTRAIT_STROKE_PX}.
+ * Its weight is {@link PORTRAIT_STROKE_PX}, and its colour is the SPEAKER'S — the same one their
+ * disc would have been filled with, their name is printed in, and their paragraph's rule carries
+ * (§3.3). A neutral hairline said only "this is a mark"; the row already knew that. Saying whose it
+ * is instead means a portrait too small to recognise still identifies its speaker, and it puts the
+ * one row type that had no colour anywhere on it back into the scheme.
  */
-export function StorySpeakerPortraitMark(props: { url: string; frame?: NormalizedCrop; showingSprite: boolean; name: string }) {
+export function StorySpeakerPortraitMark(props: { identity: StorySpeakerIdentity; url: string; frame?: NormalizedCrop; showingSprite: boolean }) {
+    const paint = storySpeakerPaint(props.identity.paint);
     return (
         <span
-            className="block shrink-0 overflow-hidden rounded-full border-edge-strong bg-fill-subtle"
-            style={{ width: STORY_MARK_PX, height: STORY_MARK_PX, borderWidth: PORTRAIT_STROKE_PX }}
-            title={props.name}
+            className={`${paint.className} block shrink-0 overflow-hidden rounded-full bg-fill-subtle`}
+            style={{
+                ...paint.style,
+                width: STORY_MARK_PX,
+                height: STORY_MARK_PX,
+                borderWidth: PORTRAIT_STROKE_PX,
+                borderStyle: "solid",
+                borderColor: "var(--nl-speaker-disc)",
+            }}
+            title={props.identity.name}
         >
             {props.showingSprite ? (
                 <HeadThumbnail url={props.url} alt="" frame={props.frame} className="h-full w-full" iconClassName="h-3 w-3" />
@@ -198,11 +209,12 @@ export function StorySpeakerPortraitMark(props: { url: string; frame?: Normalize
  */
 export function StorySpeakerDiscMark(props: { identity: StorySpeakerIdentity }) {
     const { identity } = props;
+    const paint = storySpeakerPaint(identity.paint);
     return (
         <span
-            className={`${STORY_SPEAKER_CLASS} ${identity.hue === null ? "nl-speaker-neutral" : ""} flex shrink-0 select-none items-center justify-center rounded-full font-medium leading-none`}
+            className={`${paint.className} flex shrink-0 select-none items-center justify-center rounded-full font-medium leading-none`}
             style={{
-                ...(identity.hue === null ? {} : storySpeakerHueStyle(identity.hue)),
+                ...paint.style,
                 width: STORY_MARK_PX,
                 height: STORY_MARK_PX,
                 // A hair under half the disc, which is where one CJK glyph and two Latin letters both
@@ -330,13 +342,13 @@ export function StoryCommandGlyphMark(props: { icon: LucideIcon; label: string; 
  * it is cancelling — no absolute positioning, and no number that has to be kept in step by hand.
  */
 export function StoryContinuationRule(props: { identity: StorySpeakerIdentity }) {
-    const { identity } = props;
+    const paint = storySpeakerPaint(props.identity.paint);
     return (
         <span
             aria-hidden
-            className={`${STORY_SPEAKER_CLASS} ${identity.hue === null ? "nl-speaker-neutral" : ""} flex-1`}
+            className={`${paint.className} flex-1`}
             style={{
-                ...(identity.hue === null ? {} : storySpeakerHueStyle(identity.hue)),
+                ...paint.style,
                 width: CONTINUATION_RULE_PX,
                 marginTop: -STORY_ROW_CONTENT_PAD_PX,
                 marginBottom: -STORY_ROW_CONTENT_PAD_PX,
@@ -358,17 +370,13 @@ export function StoryContinuationRule(props: { identity: StorySpeakerIdentity })
  * quotation.
  */
 export function StorySpeakerName(props: { identity: StorySpeakerIdentity; children?: React.ReactNode; className?: string; style?: React.CSSProperties }) {
-    const { identity } = props;
+    const paint = storySpeakerPaint(props.identity.paint);
     return (
         <span
-            className={`${STORY_SPEAKER_CLASS} ${identity.hue === null ? "nl-speaker-neutral" : ""} ${props.className ?? ""}`}
-            style={{
-                ...(identity.hue === null ? {} : storySpeakerHueStyle(identity.hue)),
-                color: "var(--nl-speaker-name)",
-                ...props.style,
-            }}
+            className={`${paint.className} ${props.className ?? ""}`}
+            style={{ ...paint.style, color: "var(--nl-speaker-name)", ...props.style }}
         >
-            {props.children ?? identity.name}
+            {props.children ?? props.identity.name}
         </span>
     );
 }
