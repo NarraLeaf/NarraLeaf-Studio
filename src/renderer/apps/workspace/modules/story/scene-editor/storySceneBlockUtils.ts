@@ -1,6 +1,7 @@
 import { Aperture, Bookmark, Clock, CornerUpLeft, Eye, FileText, GitBranch, Image, Layers, LogOut, MessageSquare, Move, Music, Puzzle, Route, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video, Wind } from "lucide-react";
 import type { StoryBlock, StoryBlockId, StoryRichRun, StoryScene, StorySceneId, StoryTextSegment } from "@shared/types/story";
 import { richIfMeaningful } from "./richText";
+import { paragraphActionCharacterId } from "./storyCharacterActions";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import type { CharacterAppearanceRef, StoryBlockTarget, StoryStagePlacement, VisibleStoryRow } from "./storySceneEditorTypes";
 import {
@@ -179,19 +180,23 @@ function rowGroupSpeaker(block: StoryBlock): GroupSpeaker | null {
  * Annotate rows with their paragraph role, a pure render projection over the visible sequence.
  *
  * A run is consecutive rows in the same voice — narration, or one character's dialogue — *under the
- * same container*; a same-character `expression` row rides along without breaking a dialogue run (it
- * renders as an in-group differential note). Any other kind, a change of voice, or a change of
- * `parentId` ends the run, so an option body's last line never groups with a same-speaker line that
- * lives outside the container (adjacency in the flattened list is not adjacency in the tree). Only
- * rows inside a run are cloned; every other row is returned untouched, so referential identity is
- * preserved where it can be.
+ * same container*; a row acting on that same character rides along without breaking it (see
+ * `paragraphActionCharacterId`, which is also where "acting on" stops and "staging" begins). Any
+ * other kind, a change of voice, or a change of `parentId` ends the run, so an option body's last
+ * line never groups with a same-speaker line that lives outside the container (adjacency in the
+ * flattened list is not adjacency in the tree). Only rows inside a run are cloned; every other row is
+ * returned untouched, so referential identity is preserved where it can be.
+ *
+ * `characters` is only ever consulted to resolve a displayable target's NAME back to a character, so
+ * a caller with no cast to hand (a test, a projection that has none) can pass an empty list and lose
+ * exactly that one case.
  *
  * `groupContinues` is set on any row of a run whose very next row is still one of its members — heads
  * and members alike. It is not a grouping rule (the runs are exactly the ones the loop below already
  * found), only the one fact a row cannot see about itself: whether its paragraph carries on past its
  * own bottom edge, which is what tells the gutter's continuation rule how far to run.
  */
-export function annotateDialogueGroups(rows: VisibleStoryRow[]): VisibleStoryRow[] {
+export function annotateDialogueGroups(rows: VisibleStoryRow[], characters: readonly Character[] = []): VisibleStoryRow[] {
     let groupSpeaker: GroupSpeaker | null = null;
     let groupParentId: StoryBlockId | null = null;
     const annotated = rows.map(row => {
@@ -208,14 +213,12 @@ export function annotateDialogueGroups(rows: VisibleStoryRow[]): VisibleStoryRow
             return { ...row, groupRole: "head" as const };
         }
         if (
-            block.kind === "action"
-            && block.payload.action === "character"
-            && block.payload.operation === "expression"
-            && sameContainer
+            sameContainer
             && groupSpeaker!.characterId
-            && block.payload.characterId === groupSpeaker!.characterId
+            && paragraphActionCharacterId(block, characters) === groupSpeaker!.characterId
         ) {
-            // An expression change for the group's speaker: an in-group note; the run continues.
+            // Something done to the group's own speaker: still their paragraph, so the run continues
+            // and the row wears its rule rather than a directive's glyph.
             return { ...row, groupRole: "member" as const };
         }
         groupSpeaker = null;
