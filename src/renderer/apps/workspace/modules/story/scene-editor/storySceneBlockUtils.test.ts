@@ -170,6 +170,22 @@ describe("annotateDialogueGroups", () => {
         ])).toEqual(["head", "member", "member"]);
     });
 
+    /**
+     * The `/face`-only rule was the accident of which verb happened to be written first: a line the
+     * author added from inside one character's run is that character's line whichever verb it uses,
+     * and one of them wearing a directive's glyph while the next wore the run's rule read as a
+     * subject change that had not happened.
+     */
+    it("folds every verb done to the run's own speaker, not only the expression", () => {
+        for (const operation of ["move", "setMotion", "setSkin", "setParams", "setName"] as const) {
+            expect(rolesOf([
+                dialogue("a", { characterId: "c1" }),
+                characterAction("x", { action: "character", operation, characterId: "c1" }),
+                dialogue("b", { characterId: "c1" }),
+            ])).toEqual(["head", "member", "member"]);
+        }
+    });
+
     it("breaks the run on any other kind — a different-character expression, or an enter", () => {
         expect(rolesOf([
             dialogue("a", { characterId: "c1" }),

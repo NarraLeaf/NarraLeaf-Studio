@@ -327,6 +327,7 @@ export const story = {
         starred: "Starred",
         searchPlaceholder: "Search actions",
         noActions: "No action found.",
+        scopedTo: "Actions for {name}",
         addStarred: "Add to starred",
         removeStarred: "Remove from starred",
     },
@@ -556,6 +557,11 @@ export const story = {
     },
     rows: {
         placeholderDialogue: "Dialogue…",
+        // A row waiting for a speaker's words can go two ways — more words, or something done to
+        // them — so both halves belong in the prompt. The verb tracks which end of the paragraph the
+        // row is at: the one that opens a run starts it, the ones after it carry on.
+        placeholderDialogueStart: "Start writing as {name}, or {trigger} to insert a character action",
+        placeholderDialogueContinue: "Keep writing as {name}, or {trigger} to insert a character action",
         placeholderNarration: "Narration…",
         placeholderChoicePrompt: "Choice prompt…",
         placeholderChoiceText: "Option text…",
@@ -576,6 +582,7 @@ export const story = {
         playFromRow: "Play from this row",
         playBranch: "Play this branch",
         insertPlaceholder: "Type narration, {trigger} for actions, # for characters…",
+        insertPlaceholderCharacter: "Pick an action for {name}…",
         noCategoryActionFound: "No {category} action found.",
         actionTypes: "Action types",
         noCharacterFound: "No character found.",

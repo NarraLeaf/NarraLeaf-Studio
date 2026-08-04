@@ -1605,6 +1605,12 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             },
             editRichChange: (blockId, value, rich) => {
                 const { editor: current } = latest();
+                // The trigger typed into an empty dialogue row is not text the row keeps: it is the
+                // author asking for this speaker's own actions, and the scoped insert slot takes over
+                // the line in place. Every other keystroke falls straight through.
+                if (current.startCharacterActionSlot(blockId, value)) {
+                    return;
+                }
                 current.resetGoalColumn();
                 current.setEditorMode(mode => mode.kind === "text" && mode.blockId === blockId
                     ? { ...mode, value, rich }
