@@ -1,3 +1,4 @@
+import { Equal, Globe, Minus, Plus, RotateCcw, Save, ToggleRight, Variable } from "lucide-react";
 import type { StoryActionPayload, StoryBlock, StoryExpr, StoryExpression, StoryLiteralValue, StoryVariableValueType } from "@shared/types/story";
 import { inferStoryExpressionType, storyExprTypeFits } from "@shared/utils/storyExpressionEval";
 import { formatStoryExpressionName } from "@shared/utils/storyExpressionParser";
@@ -100,6 +101,7 @@ export const set = defineStoryCommand({
     id: "set",
     token: "set",
     category: "data",
+    icon: Equal,
     examples: ["/set gold 100", "/set gold gold + 1", "/set met true"],
     params: {
         variable: VARIABLE,
@@ -145,6 +147,7 @@ export const inc = defineStoryCommand({
     token: "inc",
     aliases: ["add"],
     category: "data",
+    icon: Plus,
     examples: ["/inc gold", "/inc gold 5"],
     params: {
         variable: VARIABLE,
@@ -158,6 +161,7 @@ export const dec = defineStoryCommand({
     token: "dec",
     aliases: ["sub"],
     category: "data",
+    icon: Minus,
     examples: ["/dec gold 5"],
     params: {
         variable: VARIABLE,
@@ -171,6 +175,7 @@ export const toggle = defineStoryCommand({
     token: "toggle",
     aliases: ["flip"],
     category: "data",
+    icon: ToggleRight,
     examples: ["/toggle met"],
     params: { variable: VARIABLE },
     build(args, ctx) {
@@ -189,6 +194,7 @@ export const reset = defineStoryCommand({
     id: "reset",
     token: "reset",
     category: "data",
+    icon: RotateCcw,
     examples: ["/reset gold"],
     params: { variable: VARIABLE },
     build(args, ctx) {
@@ -355,6 +361,7 @@ export const declareLocal = defineStoryCommand({
     token: "local",
     aliases: ["scenevar"],
     category: "data",
+    icon: Variable,
     // The json line is quoted because a space still splits a token - quoting is the grouping syntax the
     // command line already has, and the one an author needs for any default with a space in it.
     examples: ["/local hp 100", "/local hp 100 type=number desc='Player health'", "/local inv \"[1, 2]\" type=json"],
@@ -378,6 +385,7 @@ export const declareVar = defineStoryCommand({
     token: "save",
     aliases: ["var", "savedvar"],
     category: "data",
+    icon: Save,
     examples: ["/save chapter 1 type=number"],
     params: declarationParams(),
     build: buildDeclaration("saved"),
@@ -390,6 +398,7 @@ export const declarePersis = defineStoryCommand({
     token: "global",
     aliases: ["persis", "persistent"],
     category: "data",
+    icon: Globe,
     examples: ["/global seenIntro false type=boolean"],
     params: declarationParams(),
     build: buildDeclaration("persistent"),

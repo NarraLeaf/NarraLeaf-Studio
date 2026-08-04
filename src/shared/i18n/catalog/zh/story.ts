@@ -290,6 +290,7 @@ export const story = {
         starred: "已收藏",
         searchPlaceholder: "搜索动作",
         noActions: "未找到动作",
+        scopedTo: "{name} 可用的动作",
         addStarred: "添加到收藏",
         removeStarred: "从收藏中移除",
     },
@@ -507,6 +508,8 @@ export const story = {
     },
     rows: {
         placeholderDialogue: "对话…",
+        placeholderDialogueStart: "使用 {name} 开始对话，或使用 {trigger} 插入角色动作",
+        placeholderDialogueContinue: "使用 {name} 继续对话，或使用 {trigger} 插入角色动作",
         placeholderNarration: "旁白…",
         placeholderChoicePrompt: "选项提示…",
         placeholderChoiceText: "选项文本…",
@@ -520,6 +523,7 @@ export const story = {
         playFromRow: "从这一行开始播放",
         playBranch: "试玩这个分支",
         insertPlaceholder: "输入旁白，{trigger} 插入动作，# 选择角色…",
+        insertPlaceholderCharacter: "为 {name} 选择一个动作…",
         noCategoryActionFound: "未找到{category}动作",
         actionTypes: "动作类型",
         noCharacterFound: "未找到角色",
@@ -688,7 +692,10 @@ export const story = {
         declareVar: { label: "存档变量", detail: "声明跟随存档的变量" },
         declarePersis: { label: "全局变量", detail: "声明应用级变量，界面蓝图可读取" },
         if: { label: "条件", detail: "按条件分支" },
-        menu: { label: "选项", detail: "让玩家做出选择" },
+        // 「菜单」而不是「选项」：选项是它的子行的名字（containerHeader.option），两者同名时
+        // 「@选项 要回头吗？」下面挂着一串「选项 …」，读起来像同一种东西套了两层。英文本来就是
+        // Menu/Option 两个词，这里只是把中文名对回去。
+        menu: { label: "菜单", detail: "让玩家做出选择" },
         repeat: { label: "重复", detail: "按设定次数重复执行所含动作——按条件循环请用 /until" },
         until: { label: "直到", detail: "重复执行所含动作，直到条件成立为止——每轮开始前检查" },
         break: { label: "跳出", detail: "跳出本行所在的重复组" },

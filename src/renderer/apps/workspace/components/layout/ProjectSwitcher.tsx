@@ -14,14 +14,19 @@ import { openVersionRail } from "./versionRailController";
 
 /**
  * PyCharm-style project switcher for the title bar: the current project's name with a dropdown of
- * recent workspaces to jump between. Selecting one focuses its window if already open, otherwise
- * opens it in a new window — the current project is never closed out from under the user.
+ * recent workspaces to jump between.
  *
- * That last part is the whole contract, and it is why none of these actions asks to reuse this
- * window. One project, one window (the JetBrains model the rest of the shell follows): going to
- * another project is not a request to close the one you are in, and a switcher that retires the
- * window behind it destroys unsaved context for a gesture the user reads as navigation. Closing a
- * project is its own explicit action, with its own confirmation.
+ * **It switches; it does not accumulate.** Picking another project retires this window once that
+ * project is on screen, so the author ends up in the project they chose rather than with a second
+ * window and the one they just left still sitting behind it. This control is read as "which project
+ * am I in", and a control that answers that question by opening another window answers a different
+ * one. One project, one window still holds - the target's existing window is focused rather than
+ * duplicated (see the main-process `App.openProject`) - and the window this leaves is flushed and
+ * check-pointed on the way out, so nothing goes with it.
+ *
+ * Nothing is lost by not asking first: the retirement waits for the new project to report that it
+ * actually loaded, so a folder that turns out not to be a project leaves this window exactly where
+ * it was.
  *
  * Lives at the left of the title bar (before the action bar), so it reads as the window's identity
  * the way an IDE's project name does — and version control lives INSIDE its menu (see
@@ -72,8 +77,9 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
 
     const handleSwitch = useCallback((projectPath: string) => {
         setOpen(false);
-        // Focuses the project's window when it already has one; opens one alongside otherwise.
-        void openRecentProject(projectPath);
+        // A switch: this window steps aside once the chosen project is up, whether that meant
+        // launching it or focusing the window that already had it.
+        void openRecentProject(projectPath, { replaceCurrentWindow: true });
     }, [openRecentProject]);
 
     const handleOpenFolder = useCallback(() => {
@@ -81,7 +87,9 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
         void (async () => {
             const result = await getInterface().selectFolder();
             if (result.success && result.data?.path) {
-                await getInterface().workspace.launch({ projectPath: result.data.path });
+                // Same gesture as the rows above it - a project the author already has, reached by
+                // path instead of by history - so it leaves this window the same way.
+                await getInterface().workspace.launch({ projectPath: result.data.path }, true);
             }
         })();
     }, []);
@@ -91,6 +99,9 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
         void (async () => {
             const result = await getInterface().app.launchProjectWizard({});
             if (result.success && result.data?.created) {
+                // Opens alongside, unlike everything above: creating a project is not leaving this
+                // one, and the author usually wants the project they just built *and* the one they
+                // were working in (File ▸ New behaves the same way).
                 await getInterface().workspace.launch({ projectPath: result.data.projectPath });
             }
         })();

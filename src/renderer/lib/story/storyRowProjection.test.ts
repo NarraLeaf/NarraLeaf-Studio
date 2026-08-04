@@ -152,6 +152,22 @@ describe("storyRowSentence — the sentence the editor shows", () => {
         expect(storyTextSegmentPlain(segment, bare)).toBe("a1.5sb");
     });
 
+    it("names the appearance an inline event switches to, and never falls back to its id", () => {
+        const segment = {
+            textId: "t", role: "dialogue" as const, value: "ab",
+            rich: [
+                { text: "a" },
+                { event: { expression: { characterId: "alice", pose: "pro5swd" } } },
+                { text: "b" },
+            ],
+        };
+        const named: StoryRowLookups = { ...bare, appearanceName: (_id, refId) => (refId === "pro5swd" ? "平常" : null) };
+        expect(storyTextSegmentPlain(segment, named)).toBe("a平常b");
+        // A surface with no lookup — the Dev Mode timeline — says nothing rather than `apro5swdb`.
+        expect(storyTextSegmentPlain(segment, bare)).toBe("ab");
+        expect(storyTextSegmentPlain(segment, { ...bare, appearanceName: () => null })).toBe("ab");
+    });
+
     it("leads a container with its plain-language pill, not the raw control enum", () => {
         expect(storyRowSentence(control({ control: "repeat", times: 3 }), bare)).toBe("Repeat 3 times");
         expect(storyRowSentence(control({ control: "parallel", mode: "all" }), bare)).toBe("Run at the same time");

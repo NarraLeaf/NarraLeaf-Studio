@@ -15,8 +15,11 @@ type OpenRecentOptions = {
  * reached. Rejections are swallowed after logging - a failed open should never take down the
  * surface that triggered it.
  *
- * `replaceCurrentWindow` is opt-in and deliberately unused by the switcher: opening another
- * project is not a request to close the one you are in.
+ * `replaceCurrentWindow` makes it a switch: the calling window is retired once the target project
+ * is on screen (flushed and check-pointed first, and never if the project failed to load). Every
+ * recent-list surface inside a workspace passes it - the title-bar switcher and the File menu -
+ * because picking another project there means going to it, not opening a second window beside it.
+ * Left off, the window stays and the target opens alongside, which is what the launcher wants.
  */
 export function useOpenRecentProject(): (projectPath: string, options?: OpenRecentOptions) => Promise<void> {
     return useCallback(async (projectPath: string, options?: OpenRecentOptions) => {

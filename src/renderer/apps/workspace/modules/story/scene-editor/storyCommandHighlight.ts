@@ -38,6 +38,8 @@ export type StoryCommandRole =
 export type StoryCommandHighlight = {
     span: StoryCommandSpan;
     role: StoryCommandRole;
+    /** This stretch is a param key and its binder — see {@link StoryCommandSegment.paramKey}. */
+    paramKey?: true;
 };
 
 /**
@@ -85,9 +87,21 @@ export function getCommandHighlights(source: string): readonly StoryCommandHighl
         highlights.push({ span: line.tokenSpan, role: "verb" });
     }
     for (const arg of line.args) {
-        // The key and its binder stay scaffold — omitted, so they inherit the muted default.
         if (arg.valueSpan.end <= arg.valueSpan.start) {
             continue;
+        }
+        // The key and its binder are scaffold either way. They are recorded as a span of their own —
+        // rather than left to fall through together with the space in front of them — so that a
+        // surface can DROP them: that is the whole of "show only the values" (`t=fade` printed as
+        // `fade`), and the separating space, which is not part of the key, has to stay behind or the
+        // tokens run together.
+        //
+        // Only when the key really introduces a value that follows it. A bare flag (`/bgm battle
+        // loop`) parses with its key and value on the SAME span, so this comes out empty and the flag
+        // survives — dropping it would erase the arg rather than shorten it. An unrecognized key is
+        // kept too: it is the evidence for the `unknownParam` issue sitting under it.
+        if (arg.param && arg.keySpan && arg.keySpan.start < arg.valueSpan.start) {
+            highlights.push({ span: { start: arg.keySpan.start, end: arg.valueSpan.start }, role: "scaffold", paramKey: true });
         }
         const isPositional = arg.key === null;
         const role: StoryCommandRole = isPositional && isTargetParam(arg.param) ? "target" : "value";
@@ -109,6 +123,15 @@ export function getCommandHighlights(source: string): readonly StoryCommandHighl
 export type StoryCommandSegment = {
     text: string;
     role: StoryCommandRole;
+    /**
+     * This segment is a param key with its `=` (`t=`, `转场=`) and nothing else — the one stretch of a
+     * line a surface may leave out and still show every word the author gave.
+     *
+     * A flag beside `role` rather than a fifth role, because it is not a fifth *colour*: a key is
+     * scaffold, and painting it any other way is exactly what the role vocabulary above rules out. What
+     * this adds is an identity, which colour cannot carry.
+     */
+    paramKey?: true;
 };
 
 /**
@@ -121,9 +144,9 @@ export type StoryCommandSegment = {
 export function getCommandSegments(source: string): readonly StoryCommandSegment[] {
     const segments: StoryCommandSegment[] = [];
     let at = 0;
-    const push = (text: string, role: StoryCommandRole) => {
+    const push = (text: string, role: StoryCommandRole, paramKey?: true) => {
         if (text !== "") {
-            segments.push({ text, role });
+            segments.push(paramKey ? { text, role, paramKey } : { text, role });
         }
     };
     for (const highlight of getCommandHighlights(source)) {
@@ -131,7 +154,7 @@ export function getCommandSegments(source: string): readonly StoryCommandSegment
             continue;
         }
         push(source.slice(at, highlight.span.start), "scaffold");
-        push(source.slice(highlight.span.start, highlight.span.end), highlight.role);
+        push(source.slice(highlight.span.start, highlight.span.end), highlight.role, highlight.paramKey);
         at = highlight.span.end;
     }
     push(source.slice(at), "scaffold");

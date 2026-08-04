@@ -33,11 +33,12 @@
     --nl-story-row-box: 28px;
 
     /*
-     * Story editor speaker-name column. The scene editor root overrides it with a width measured from
-     * that scene's own cast; this baseline is the floor, so a row rendered outside that root still has
-     * a column to hang its nametag in instead of collapsing onto the words.
+     * Story editor gutter mark column — the "who is speaking" column (docs: gutter 规范 §6). Fixed,
+     * not density-scaled: its whole value is that every mark in a scene lands on one vertical line.
+     * The scene editor root republishes it from STORY_MARK_PX; this baseline keeps a row rendered
+     * outside that root (tests, isolated previews) on the same grid.
      */
-    --nl-story-name: 56px;
+    --nl-story-mark: 26px;
 
     /*
      * Alpha of the editor's reading surfaces (`.nl-editor-surface` below). Studio windows override
@@ -892,3 +893,54 @@ input[type="radio"]:focus {
     background-color: var(--narraleaf-accent-weak);
     box-shadow: inset 0 0 0 1px var(--narraleaf-accent-strong);
 }
+
+/*
+ * Speaker colours for the story editor's gutter (gutter 规范 §4).
+ *
+ * One hue per character, carried in from JS as `--nl-speaker-h` (see storySpeakerIdentity.ts) and
+ * turned into four colours here — disc fill, the ink knocked out of it, the nametag, and the
+ * continuation rule. Saturation and lightness are fixed per theme, so a cast reads as one family
+ * however its hues fall.
+ *
+ * The split has to happen in CSS and cannot happen in JS: Electron updates the value of
+ * `prefers-color-scheme` when `nativeTheme.themeSource` changes but never dispatches the media
+ * query's `change` event, so a JS mirror of the theme goes stale the first time the author switches
+ * it — silently, and only for the colours it owns.
+ *
+ * The disc's ink is a deep tone of the SAME hue rather than white (§4). White is legible on a
+ * mid-tone disc and wrong on a pale one, and the light theme's discs are pale by design.
+ *
+ * These are the DERIVED colours — for the characters nobody has picked a colour for. A character
+ * that has one overrides all three of these inline, from `storySpeakerPaint`, and inline wins over
+ * both rules here without needing `!important`. That is deliberate: a chosen colour does not vary by
+ * theme (it is one colour, chosen once) so it has no business being computed from a media query, and
+ * routing it through the same three variable names means every surface below reads one set of names
+ * and never has to ask where the colour came from.
+ */
+.nl-speaker {
+    --nl-speaker-disc: hsl(var(--nl-speaker-h) 42% 52%);
+    --nl-speaker-ink: hsl(var(--nl-speaker-h) 62% 14%);
+    --nl-speaker-name: hsl(var(--nl-speaker-h) 55% 66%);
+}
+
+@media (prefers-color-scheme: light) {
+    :root.nl-studio .nl-speaker {
+        --nl-speaker-disc: hsl(var(--nl-speaker-h) 46% 62%);
+        --nl-speaker-ink: hsl(var(--nl-speaker-h) 58% 17%);
+        --nl-speaker-name: hsl(var(--nl-speaker-h) 52% 40%);
+    }
+}
+
+/*
+ * The narrator, and any speaker whose hue is unknown: neutral, by rule (§4). It is a voice rather
+ * than a member of the cast, and a narrator holding a hue of its own would read as one of them.
+ *
+ * Written as a fallback on the same three properties rather than as a separate class, so every
+ * surface below reads one variable and never has to ask which kind of speaker it is drawing.
+ */
+.nl-speaker-neutral {
+    --nl-speaker-disc: rgb(var(--nl-fg-subtle));
+    --nl-speaker-ink: rgb(var(--nl-surface));
+    --nl-speaker-name: rgb(var(--nl-fg-muted));
+}
+

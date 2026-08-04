@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, type CSSProperties, type ReactNode } from "react";
 import type { StoryBlock, StoryScene, StorySceneId } from "@shared/types/story";
 import { useWorkspace } from "@/apps/workspace/context";
+import { useHideParamNames } from "@/apps/workspace/hooks/useHideParamNames";
 import { useCommandTranslation } from "@/lib/i18n";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
@@ -31,6 +32,12 @@ import { useStoryMotionNames } from "./useStoryMotionNames";
  *
  * The committed row uses the same colours at a lower opacity rather than a second palette — same
  * skeleton, only dimmed, which is what makes a row read as the line that produced it.
+ *
+ * The one place the two halves are allowed to differ is `editor.hideParamNames`, which prints a
+ * committed row's modifiers as bare values (`@hide Anyo fade`). A row can afford that and the live
+ * field cannot: the field's copy is a mirror sitting on a textarea, so every glyph it declines to draw
+ * is a glyph the caret still walks through. It is a cut in the RENDER — the projection underneath
+ * keeps the whole line, which is what lets the row go on being the line it came from.
  */
 
 /** Tailwind classes per role. `text-primary` is the user's accent, which is where the verb belongs. */
@@ -41,6 +48,7 @@ const ROLE_CLASS: Record<StoryCommandRole, string> = {
     scaffold: "text-fg-subtle",
 };
 
+
 /**
  * The trigger character to DISPLAY, and the lookups a row needs to read itself back as a line.
  *
@@ -50,6 +58,14 @@ const ROLE_CLASS: Record<StoryCommandRole, string> = {
  */
 export type StoryCommandLineContextValue = {
     trigger: "/" | "@";
+    /**
+     * Print committed rows with the values alone — `@hide Anyo fade` for `@hide Anyo t=fade`.
+     *
+     * Rides in the context for the same reason the trigger does (one read per editor tab, not one per
+     * row), and belongs to the ROW: the live field is a mirror sitting over a textarea, and a mirror
+     * that drops glyphs the textarea still holds walks the colours off the caret.
+     */
+    hideParamNames?: boolean;
     audioTrackName?: (trackId: string) => string | null;
     assetName?: (assetId: string) => string | null;
     appearanceName?: (characterId: string, refId: string) => string | null;
@@ -72,6 +88,9 @@ export function StoryCommandLineProvider({ slashAtAlias, commandContext, childre
     children: ReactNode;
 }) {
     const tracks = useProjectAudioTracks();
+    // Read here rather than threaded from the controller: nothing but the rows below this provider
+    // wants it, and this is the one place that already resolves per-tab preferences for all of them.
+    const hideParamNames = useHideParamNames();
     const { context, isInitialized } = useWorkspace();
     const assets = useMemo(
         () => (context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null),
@@ -79,6 +98,7 @@ export function StoryCommandLineProvider({ slashAtAlias, commandContext, childre
     );
     const value = useMemo<StoryCommandLineContextValue>(() => ({
         trigger: slashAtAlias ? ALT_ACTION_TRIGGER : ACTION_TRIGGER,
+        hideParamNames,
         audioTrackName: trackId => tracks.find(track => track.id === trackId)?.name ?? null,
         // Read through the service on every call rather than off a snapshot: an asset rename does not
         // touch the story document, so nothing here would be told to rebuild a captured table.
@@ -99,7 +119,7 @@ export function StoryCommandLineProvider({ slashAtAlias, commandContext, childre
             commandContext?.appearanceByCharacterId[characterId]?.find(ref => ref.id === refId)?.name ?? null,
         appearanceOptions: characterId => commandContext?.appearanceByCharacterId[characterId] ?? [],
         commandContext,
-    }), [assets, commandContext, slashAtAlias, tracks]);
+    }), [assets, commandContext, hideParamNames, slashAtAlias, tracks]);
     return <StoryCommandLineContext.Provider value={value}>{children}</StoryCommandLineContext.Provider>;
 }
 
@@ -119,7 +139,14 @@ function displayed(source: string, trigger: "/" | "@"): string {
 }
 
 /** One coloured stretch of the line, with the offsets it occupies so a caller can find a span in it. */
-export type StoryCommandLinePiece = { text: string; role: StoryCommandRole; start: number; end: number };
+export type StoryCommandLinePiece = {
+    text: string;
+    role: StoryCommandRole;
+    start: number;
+    end: number;
+    /** A param key and its `=`, the one piece a surface is allowed to leave out. */
+    paramKey?: true;
+};
 
 /** A run of pieces the line draws together: plain, or the whole of one click-to-edit value. */
 export type StoryCommandLinePart = {
@@ -131,7 +158,13 @@ export type StoryCommandLinePart = {
 function pieces(source: string): StoryCommandLinePiece[] {
     let at = 0;
     return getCommandSegments(source).map(segment => {
-        const piece = { text: segment.text, role: segment.role, start: at, end: at + segment.text.length };
+        const piece: StoryCommandLinePiece = {
+            text: segment.text,
+            role: segment.role,
+            start: at,
+            end: at + segment.text.length,
+            ...(segment.paramKey ? { paramKey: segment.paramKey } : {}),
+        };
         at = piece.end;
         return piece;
     });
@@ -144,13 +177,23 @@ function pieces(source: string): StoryCommandLinePiece[] {
  * quick value that stops matching renders as ordinary text — correct-looking, and no longer
  * clickable. That is exactly what happened when units arrived and split `1秒` into two pieces while
  * the match still demanded one. Containment, not equality, is the rule.
+ *
+ * `hideParamKeys` drops the `t=` pieces and keeps everything else, including the space that stood in
+ * front of them. Dropped HERE, after the offsets are taken, rather than by writing a shorter line:
+ * every offset the projection recorded — each quick-edit span, each face — is an offset into the full
+ * source, and the value pieces they point at do not move just because a key stopped being painted.
+ * The line the author would type is also, deliberately, not the line being shown any more, which is
+ * exactly why this cannot happen upstream where the round-trip is guaranteed.
  */
 export function storyCommandLineParts(
     source: string,
     edits: readonly StoryCommandLineEdit[] = [],
+    hideParamKeys = false,
 ): StoryCommandLinePart[] {
     const parts: StoryCommandLinePart[] = [];
-    const segments = pieces(source);
+    // Safe to drop before grouping: a key span ends where its value span begins, so a key piece is
+    // never one of the pieces an edit is built from.
+    const segments = hideParamKeys ? pieces(source).filter(piece => !piece.paramKey) : pieces(source);
     for (let index = 0; index < segments.length; index += 1) {
         const piece = segments[index];
         const editable = edits.find(entry => entry.span.start <= piece.start && piece.end <= entry.span.end);
@@ -182,6 +225,14 @@ export function StoryCommandLineText(props: {
     source: string;
     trigger: "/" | "@";
     edits?: readonly StoryCommandLineEdit[];
+    /**
+     * Print the values without the keys that introduce them (`editor.hideParamNames`).
+     *
+     * Never set on the live field: that copy has to occupy the same width as the textarea under it,
+     * character for character, and a key it refuses to draw is a run of glyphs the caret still walks
+     * through.
+     */
+    hideParamNames?: boolean;
     /** Wraps one editable value in its affordance. Absent on the live field, which is already text. */
     renderEdit?: (edit: StoryCommandLineEdit, content: ReactNode) => ReactNode;
     ornaments?: readonly StoryCommandLineOrnament[];
@@ -199,8 +250,8 @@ export function StoryCommandLineText(props: {
     // parse, and a scene is hundreds of rows. `ct` is a dependency because the command locale decides
     // whether `转场=` names a slot — the same hidden input the ghost hint declares.
     const parts = useMemo(
-        () => storyCommandLineParts(props.source, props.renderEdit ? props.edits : []),
-        [ct, props.edits, props.renderEdit, props.source],
+        () => storyCommandLineParts(props.source, props.renderEdit ? props.edits : [], props.hideParamNames),
+        [ct, props.edits, props.hideParamNames, props.renderEdit, props.source],
     );
     // The trigger is swapped at the last moment, on the one piece that can hold it.
     const paint = (piece: StoryCommandLinePiece) => (
