@@ -59,6 +59,7 @@ import { RichTextView } from "./RichTextView";
 import { StoryVoiceIndicator } from "./StoryVoiceIndicator";
 import { PausePopover } from "./PausePopover";
 import { segmentToRuns } from "./richText";
+import { storyAppearanceLabel, type StoryAppearanceSelection } from "./storyAppearanceLabel";
 import { STORY_DENSITY_METRICS, useStoryEditorTextStyle } from "./storyEditorTextStyle";
 import { STORY_MARK_PX, STORY_ROW_CONTENT_PAD_PX } from "./StoryRowGutterMark";
 import { characterIdentity, StoryRowGutter } from "./StoryRowGutter";
@@ -667,6 +668,13 @@ function TextEditBox(props: {
             resolveInterpolationName(props.document, props.scene.id, persistentVars, interp),
         [props.document, props.scene.id, persistentVars],
     );
+    // The inline expression chip names the look the author picked, through the same lookup the command
+    // line reads — so the chip and a typed `/face` say the same word. See `storyAppearanceLabel`.
+    const appearanceName = commandLine.appearanceName;
+    const resolveAppearanceLabel = useMemo(
+        () => (appearance: StoryAppearanceSelection) => storyAppearanceLabel(appearance, appearanceName),
+        [appearanceName],
+    );
     const [interpEdit, setInterpEdit] = useState<InterpolationClickInfo | null>(null);
     const [eventEdit, setEventEdit] = useState<EventClickInfo | null>(null);
     // The row's speaking character, resolved for the inline-expression picker (dialogue rows only).
@@ -811,6 +819,7 @@ function TextEditBox(props: {
                 onInterpolationClick={openInterp}
                 onEventClick={openEvent}
                 resolveInterpolationLabel={resolveInterpolationLabel}
+                resolveAppearanceLabel={resolveAppearanceLabel}
                 onActiveMarksChange={setActiveMarks}
             />
             {pauseEdit ? (

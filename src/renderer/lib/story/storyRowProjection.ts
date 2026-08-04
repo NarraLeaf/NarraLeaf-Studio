@@ -28,6 +28,7 @@ import { storyVerbLabelKey } from "./storyVerbVocabulary";
 // pure functions — nothing in this module renders, mounts or touches a workspace service.
 import { getCommandGroup, type StoryCommandGroupId } from "@/apps/workspace/modules/story/scene-editor/storyCommandCategories";
 import { isEventRun, isInterpolationRun, isTextRun, segmentToRuns } from "@/apps/workspace/modules/story/scene-editor/richText";
+import { storyAppearanceLabel } from "@/apps/workspace/modules/story/scene-editor/storyAppearanceLabel";
 import { resolveInterpolationName } from "@/apps/workspace/modules/story/scene-editor/storyInterpolation";
 
 /**
@@ -79,6 +80,12 @@ export type StoryRowLookups = {
      * motion index.
      */
     motionName?: (animationId: string) => string | null;
+    /**
+     * The author-facing name of a pose or tag id on a character, or `null` when it resolves to
+     * nothing. Same rule as the two above: without it the appearance is simply not named, because the
+     * only other thing the payload holds is an id.
+     */
+    appearanceName?: (characterId: string, refId: string) => string | null;
     /** The scene the block belongs to — variable, layer and displayable refs resolve against it. */
     scene?: StoryScene;
     /** Every scene in the document: jump targets and cross-scene variable names. */
@@ -134,8 +141,9 @@ export function getStoryEmptyTextPlaceholder(block: StoryBlock): string {
 /**
  * A text segment as the *reader* sees it: the words, with every inline chip replaced by the label it
  * prints. Deliberately mirrors `renderRunsToElement` run for run — a pause chip shows its seconds
- * (nothing for a click pause), a value chip shows the variable's name, an event chip shows the pose
- * it switches to — because "what the row says" has to be the same question in both surfaces.
+ * (nothing for a click pause), a value chip shows the variable's name, an event chip shows the
+ * appearance it switches to *by name* — because "what the row says" has to be the same question in
+ * both surfaces.
  *
  * `segment.value` is NOT enough: it is the plain text only, so a line reading `OK {a}` in the editor
  * came out of the old debug projection as `OK`, silently dropping the thing the author put there.
@@ -152,7 +160,8 @@ export function storyTextSegmentPlain(segment: StoryTextSegment, lookups: StoryR
                 ? resolveInterpolationName(document, sceneId, [], run.interpolation)
                 : translate("story.richText.valueFallback");
         } else if (isEventRun(run)) {
-            out += run.event.expression?.pose?.trim() ?? "";
+            const expression = run.event.expression;
+            out += (expression ? storyAppearanceLabel(expression, lookups.appearanceName) : null) ?? "";
         } else {
             out += run.pause === true ? "" : formatStorySecondsLabel(run.pause);
         }

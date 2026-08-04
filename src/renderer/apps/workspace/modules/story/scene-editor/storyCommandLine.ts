@@ -150,12 +150,6 @@ export type StoryCommandLineLookups = StoryRowLookups & {
      */
     audioTrackName?: (trackId: string) => string | null;
     /**
-     * The author-facing name of a pose or tag id on a character, or `null` when it resolves to
-     * nothing. Same rule as the two above: without it the appearance is simply not named, because the
-     * only other thing the payload holds is an id.
-     */
-    appearanceName?: (characterId: string, refId: string) => string | null;
-    /**
      * Every look this character can be asked for — the same list the command line's own candidate
      * menu offers. `axisId` rides along because a layered character stores its choice per axis while
      * a preset one stores a pose, and the writer has to know which.
