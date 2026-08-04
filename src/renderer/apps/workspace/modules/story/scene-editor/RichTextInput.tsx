@@ -19,6 +19,7 @@ import {
     totalUnits,
     unitOffsetFromPoint,
     unitOffsetOfElement,
+    type ResolveAppearanceLabel,
     type ResolveInterpolationLabel,
     type RichRenderOptions,
 } from "./richText";
@@ -134,6 +135,11 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
     onInterpolationClick?: (info: InterpolationClickInfo) => void;
     onEventClick?: (info: EventClickInfo) => void;
     resolveInterpolationLabel?: ResolveInterpolationLabel;
+    /**
+     * Names the look an inline expression chip switches to. Omitted, the chip is icon-only — never an
+     * id, which is the one thing a row must not show.
+     */
+    resolveAppearanceLabel?: ResolveAppearanceLabel;
     onActiveMarksChange?: (marks: ActiveMarks) => void;
     /**
      * Render the runs without making the element editable.
@@ -163,6 +169,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
     // Kept in a ref so the DOM-render callbacks stay stable while labels refresh on rename.
     const renderOptions: RichRenderOptions = {
         resolveLabel: props.resolveInterpolationLabel,
+        resolveAppearance: props.resolveAppearanceLabel,
         // Editor chips open the pause / value popovers, so they read as clickable.
         interactive: true,
         titles: {
