@@ -21,12 +21,30 @@ export const characters = {
         rowActions: "Actions",
         groupActions: "Group actions",
         namePlaceholder: "Enter character name",
-        newCharacterDescription: "Create a new character profile",
         groupNamePlaceholder: "Enter group name",
         deleteCharacterConfirm: "Delete character \"{name}\"?",
         deleteCharacterDetail: "This action cannot be undone.",
         deleteGroupConfirm: "Delete group \"{name}\"?",
         deleteGroupDetail: "Characters in this group will be unassigned.",
+    },
+    // The one dialog "New character" opens. Everything a character is created with is asked here,
+    // including the accent — it is what every surface identifies them by from their first line.
+    create: {
+        nameRequired: "Give the character a name.",
+        unnamed: "Unnamed",
+        appearanceLabel: "Appearance",
+        kindDescription: {
+            preset: "One finished sprite per pose.",
+            layered: "Layers composited and switched by tag.",
+        },
+        runtimeGroup: "Drawn by a runtime",
+        runtimeHint: "Needs that runtime installed in this project. The character's editor installs one.",
+        colorLabel: "Colour",
+        // Not a "default colour": nothing is written, and the name keeps deciding for as long as it
+        // stays that way — including if the character is renamed. Said once, in the hint: the label
+        // that used to sit beside the swatch was the same sentence with the reasons taken out.
+        colorAutoHint: "Left alone, a character's name decides their colour — the same name is the same colour in every project.",
+        colorReset: "Compute from the name",
     },
     editor: {
         // No `live2d` / `spine` entries: those read as the product's own name, which is a trademark

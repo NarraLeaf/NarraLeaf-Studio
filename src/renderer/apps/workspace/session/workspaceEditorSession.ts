@@ -5,6 +5,7 @@ import { createWelcomeTab } from "@/apps/workspace/modules/welcome/openWelcomeTa
 import { createNewTabTab } from "@/apps/workspace/modules/new-tab/openNewTab";
 import { NEW_TAB_ID_PREFIX } from "@/apps/workspace/modules/new-tab/newTabId";
 import { BlueprintEntryTab } from "@/apps/workspace/modules/blueprint-lite/editors/BlueprintEntryTab";
+import { blueprintEntryTabIcon } from "@/apps/workspace/modules/blueprint-lite/openBlueprintEditorTab";
 import {
     getBlueprintEntryTabId,
     type BlueprintEntryOwnerKind,
@@ -589,6 +590,7 @@ export function buildTabDefinition(ctx: WorkspaceContext, entry: SerializedTab):
         return {
             id: tabId,
             title: entry.title,
+            icon: blueprintEntryTabIcon(),
             component: BlueprintEntryTab,
             payload: p,
             closable: true,

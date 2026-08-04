@@ -6,15 +6,20 @@ afterEach(() => {
     i18nStore.setLocale("en");
 });
 
-/** `[role]text` per segment — compact enough to read a whole line's colouring at a glance. */
+/**
+ * `[role]text` per segment — compact enough to read a whole line's colouring at a glance. A param key
+ * reads as `[key]`: it is scaffold like everything else muted, but it is the one stretch a surface is
+ * allowed to leave out, so a test that could not see it apart from the space beside it would not be
+ * able to say where the "show only the values" cut falls.
+ */
 function shape(source: string): string {
-    return getCommandSegments(source).map(segment => `[${segment.role}]${segment.text}`).join("");
+    return getCommandSegments(source).map(segment => `[${segment.paramKey ? "key" : segment.role}]${segment.text}`).join("");
 }
 
 describe("getCommandSegments", () => {
     it("colours by role, not by position", () => {
         expect(shape("/hide Narra t=fade d=1s")).toBe(
-            "[scaffold]/[verb]hide[scaffold] [target]Narra[scaffold] t=[value]fade[scaffold] d=[value]1[scaffold]s",
+            "[scaffold]/[verb]hide[scaffold] [target]Narra[scaffold] [key]t=[value]fade[scaffold] [key]d=[value]1[scaffold]s",
         );
     });
 
@@ -42,7 +47,24 @@ describe("getCommandSegments", () => {
             .map(segment => segment.text);
         // The `s` is in here on purpose: `1s` is one second, and the unit says which KIND of one it
         // is — the same job the key does — so it recedes with the key rather than lighting up as a value.
-        expect(scaffold).toEqual(["/", " ", " t=", " d=", "s"]);
+        // The keys are their own segments (see `shape`), and the space in front of each is not: it
+        // separates two tokens and has to survive a surface that drops the key.
+        expect(scaffold).toEqual(["/", " ", " ", "t=", " ", "d=", "s"]);
+    });
+
+    it("marks the key and its binder, and nothing else, as the part a surface may drop", () => {
+        // The cut "show only the values" makes. It has to land on `t=` exactly: one character short and
+        // the row shows a stray `=`, one too many and two tokens run together as `Narrafade`.
+        const keys = (source: string) =>
+            getCommandSegments(source).filter(segment => segment.paramKey).map(segment => segment.text);
+        expect(keys("/hide Narra t=fade d=1s")).toEqual(["t=", "d="]);
+        // A bare flag parses with its key and value on the same span — there is no `=` to cut at, and
+        // dropping the word would erase the arg rather than shorten it.
+        expect(keys("/bgm battle loop")).toEqual([]);
+        // An unrecognized key stays: it is the evidence for the diagnostic sitting underneath it.
+        expect(keys("/hide Narra nope=1")).toEqual([]);
+        // Nothing to drop on a line written entirely in positionals.
+        expect(keys("/bg forest_day")).toEqual([]);
     });
 
     it("gives a half-typed verb its colour rather than letting the line flicker", () => {
@@ -58,10 +80,10 @@ describe("getCommandSegments", () => {
         // to be set for the same reason the parser needs it: `背景` is only a command word in Chinese.
         i18nStore.setLocale("zh");
         expect(shape("/背景 forest 转场=淡变")).toBe(
-            "[scaffold]/[verb]背景[scaffold] [target]forest[scaffold] 转场=[value]淡变",
+            "[scaffold]/[verb]背景[scaffold] [target]forest[scaffold] [key]转场=[value]淡变",
         );
         expect(shape("/bg forest t=fade")).toBe(
-            "[scaffold]/[verb]bg[scaffold] [target]forest[scaffold] t=[value]fade",
+            "[scaffold]/[verb]bg[scaffold] [target]forest[scaffold] [key]t=[value]fade",
         );
     });
 

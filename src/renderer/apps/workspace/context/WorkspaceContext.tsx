@@ -10,6 +10,7 @@ import { translate } from "@/lib/i18n";
 import { Service } from "@/lib/workspace/services/Service";
 import { ensureWorkspaceProjectCanStart } from "@/lib/workspace/startup/workspaceProjectPreflight";
 import { flushPendingSaves } from "@/lib/workspace/services/autosave/flushPendingSaves";
+import type { WorkspaceStartupStage } from "../components/WorkspaceOpeningOverlay";
 
 interface WorkspaceProviderProps {
     children: React.ReactNode;
@@ -20,6 +21,13 @@ interface WorkspaceContextValue {
     context: WorkspaceCtx | null;
     isInitialized: boolean;
     error: Error | null;
+    /**
+     * Which part of the startup is running, for as long as one is.
+     *
+     * Only the overlay reads it, but it belongs to the provider: the provider is what performs the
+     * steps, and a window that stays blank through all of them is the thing being fixed.
+     */
+    startupStage: WorkspaceStartupStage;
     /**
      * Start the whole initialization over.
      *
@@ -44,6 +52,34 @@ function enqueueWorkspaceInit<T>(task: () => Promise<T>): Promise<T> {
 }
 
 /**
+ * Wait until the browser has painted whatever was just put on screen.
+ *
+ * Used for exactly one thing: the last startup stage. Mounting the editor is synchronous work, so
+ * announcing it and rendering it in the same task would show the author the *previous* stage's
+ * message for the whole of it - the one moment where the window is least responsive would be
+ * narrated wrong. A frame in hand costs the open ~16ms and buys an honest message.
+ *
+ * Two frames rather than one because a rAF callback runs *before* its own paint: the second one
+ * only fires once the first has been committed. The timeout is not a nicety - a window that is
+ * hidden or fully occluded gets no frames at all, and the open must not hang on one.
+ */
+function yieldToPaint(): Promise<void> {
+    return new Promise<void>(resolve => {
+        let settled = false;
+        const finish = () => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            window.clearTimeout(fallback);
+            resolve();
+        };
+        const fallback = window.setTimeout(finish, 120);
+        requestAnimationFrame(() => requestAnimationFrame(finish));
+    });
+}
+
+/**
  * Provider for workspace context
  * Initializes workspace and all services
  */
@@ -52,6 +88,7 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
     const [context, setContext] = useState<WorkspaceCtx | null>(null);
     const [isInitialized, setIsInitialized] = useState(false);
     const [error, setError] = useState<Error | null>(null);
+    const [startupStage, setStartupStage] = useState<WorkspaceStartupStage>("preparing");
     const [attempt, setAttempt] = useState(0);
     const contextRef = useRef<WorkspaceCtx | null>(null);
     contextRef.current = context;
@@ -61,6 +98,7 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
         setIsInitialized(false);
         setWorkspace(null);
         setContext(null);
+        setStartupStage("preparing");
         setAttempt(previous => previous + 1);
     }, []);
 
@@ -82,6 +120,7 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
             try {
                 await enqueueWorkspaceInit(async () => {
                     // Create workspace context
+                    setStartupStage("preparing");
                     const ctx = await Workspace.createContext();
                     cleanupContext = ctx;
 
@@ -89,6 +128,7 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
                     await ensureWorkspaceProjectCanStart(ctx.project.getConfig().projectPath);
 
                     // Initialize all services
+                    setStartupStage("services");
                     await Service.initializeAll(ctx);
 
                     // Activate all services
@@ -104,6 +144,16 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
 
                     // Create workspace instance
                     const ws = Workspace.create(ctx);
+
+                    // Say what the next stage is and let it reach the screen *before* handing over:
+                    // everything after this line renders the editor synchronously, so this is the
+                    // last chance to describe the wait the author is about to sit through.
+                    setStartupStage("interface");
+                    await yieldToPaint();
+                    if (!mounted) {
+                        await disposeWorkspace();
+                        return;
+                    }
 
                     setContext(ctx);
                     setWorkspace(ws);
@@ -210,7 +260,7 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
     }, []);
 
     return (
-        <WorkspaceContext.Provider value={{ workspace, context, isInitialized, error, retry }}>
+        <WorkspaceContext.Provider value={{ workspace, context, isInitialized, error, startupStage, retry }}>
             {children}
         </WorkspaceContext.Provider>
     );

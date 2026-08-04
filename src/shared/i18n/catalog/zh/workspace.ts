@@ -143,7 +143,6 @@ export const workspace = {
         errorExported: "日志已保存到 {path}",
         errorExportFailed: "导出日志失败：{error}",
         errorOpenFailed: "无法打开该文件夹：{error}",
-        initializing: "正在初始化工作区…",
         notAProjectTitle: "此文件夹不是 NarraLeaf 项目",
         notAProjectDetail: "未找到 .nlproj 文件",
         openLauncher: "打开启动器",
@@ -659,6 +658,14 @@ export const workspace = {
             saving: "正在保存更改…",
             checkpoint: "正在记录项目的检查点…",
             launcher: "正在返回启动器…",
+        },
+        // 打开过程中的同一件事，一个阶段一句（见 `WorkspaceStartupStage`）。
+        // 说的是作者在等什么，而不是内部在构造什么。
+        opening: {
+            title: "正在打开工作区",
+            preparing: "正在打开项目…",
+            services: "正在载入项目内容…",
+            interface: "正在准备编辑器…",
         },
     },
 } satisfies LocaleNamespace<"workspace">;

@@ -70,6 +70,7 @@ import { forgetStoryPasteSeparator, getStoryPasteMemory, rememberStoryPasteSpeak
 import { useSlashAtAlias } from "@/apps/workspace/hooks/useSlashAtAlias";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
 import { isActionCommandLine, toCanonicalCommandLine } from "./commandTrigger";
+import { dialogueActionCharacter } from "./storyCharacterActions";
 
 const STORY_EDITOR_HISTORY_LIMIT = 100;
 /** Rows the selection jumps by on PageUp / PageDown. */
@@ -426,8 +427,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         // Grouping runs last, over the exact rows that will render (WI-5); the branch lookahead runs
         // after it, over the same final list, so "the next row" means the next row on screen.
-        return annotateNestingBranches(annotateDialogueGroups(rows));
-    }, [collapsedBlockIds, dialogueAppearances, narrativeOnly, scene]);
+        return annotateNestingBranches(annotateDialogueGroups(rows, characters));
+    }, [characters, collapsedBlockIds, dialogueAppearances, narrativeOnly, scene]);
     const rowIndexById = useMemo(() => {
         const result = new Map<StoryBlockId, number>();
         visibleRows.forEach((row, index) => result.set(row.block.id, index));
@@ -969,6 +970,94 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         window.requestAnimationFrame(() => insertInputRef.current?.focus());
     }, [scene]);
 
+    /**
+     * The action trigger typed into an empty dialogue row - the author asking for this speaker's own
+     * actions instead of more of their words.
+     *
+     * Modelled on `startLineEdit` rather than on the Backspace demote, and the difference is Escape:
+     * a replace slot renders *in place of* the row and leaves it untouched until something commits,
+     * so backing out gives the author their line back (see `returnFromCharacterActionSlot`) instead
+     * of the deleted row the demote ladder would have left. The slot carries the speaker as its
+     * `characterScope`, which is what narrows the creator to their verbs and fills in their name.
+     *
+     * Returns whether it took the keystroke, so the row's ordinary text path runs when it did not.
+     */
+    const startCharacterActionSlot = useCallback((blockId: StoryBlockId, value: string): boolean => {
+        // The row has to have been EMPTY: `@` is only a trigger where there is nothing else on the
+        // line, so "@everyone, run!" stays the line of dialogue the author is typing.
+        if (editorMode.kind !== "text" || editorMode.blockId !== blockId || editorMode.value !== "" || !scene) {
+            return false;
+        }
+        if (value.length !== 1 || !isActionCommandLine(value, slashAtAlias)) {
+            return false;
+        }
+        const block = scene.blocks[blockId];
+        if (!block) {
+            return false;
+        }
+        const character = dialogueActionCharacter(block, characters);
+        if (!character) {
+            return false;
+        }
+        const siblings = block.parentId ? scene.blocks[block.parentId]?.childrenIds ?? [] : scene.rootBlockIds;
+        const index = siblings.indexOf(blockId);
+        slotDiscardedRef.current = false;
+        // The trigger the author actually pressed, kept as typed - the slot shows their "@" and only
+        // the parse and the commit fold it onto "/", exactly as a slot opened any other way does.
+        insertDraftRef.current = value;
+        setEditorMode({
+            kind: "insert",
+            slot: {
+                afterBlockId: index > 0 ? siblings[index - 1] : null,
+                focusToken: Date.now(),
+                target: { parentId: block.parentId, beforeBlockId: blockId },
+                replaceBlockId: blockId,
+                characterScope: { characterId: character.profile.getId(), name: character.profile.getName() },
+            },
+            initialValue: value,
+        });
+        setActiveBlockId(blockId);
+        window.requestAnimationFrame(() => {
+            const input = insertInputRef.current;
+            if (!input) {
+                return;
+            }
+            input.focus();
+            // Past the trigger, not in front of it. Every other slot opens empty, so `focus()` alone
+            // has always been enough; this one opens with the character the author just pressed
+            // already in it, and Chromium drops the caret at offset 0 of a field it is focusing for
+            // the first time — which puts the next keystroke BEFORE the "@" and stops the line
+            // being a command at all.
+            input.setSelectionRange(value.length, value.length);
+        });
+        return true;
+    }, [characters, editorMode, scene, slashAtAlias]);
+
+    /**
+     * Give the line back to the dialogue row a character-scoped slot is standing in for.
+     *
+     * That row still exists (nothing has committed, so `replaceBlockId` has deleted nothing), and it
+     * is where the author's caret was one keystroke ago - so backing out of the slot has to land
+     * there rather than at the generic "slot closed, nothing focused" ending. Returns false for every
+     * other kind of slot, whose callers keep their own behaviour.
+     */
+    const returnFromCharacterActionSlot = useCallback((): boolean => {
+        if (editorMode.kind !== "insert" || !editorMode.slot.characterScope) {
+            return false;
+        }
+        const blockId = editorMode.slot.replaceBlockId;
+        const block = blockId ? scene?.blocks[blockId] : null;
+        if (!blockId || !block) {
+            return false;
+        }
+        const segment = getTextSegment(block);
+        setActiveBlockId(blockId);
+        setSelectedBlockIds(new Set([blockId]));
+        selectionAnchorRef.current = blockId;
+        setEditorMode({ kind: "text", blockId, value: segment?.value ?? "", rich: segment?.rich, caret: "end" });
+        return true;
+    }, [editorMode, scene]);
+
     /** Expand a collapsed container so a just-added child / insert slot is actually visible. */
     const ensureExpanded = useCallback((blockId: StoryBlockId) => {
         setCollapsedBlockIds(prev => {
@@ -1392,9 +1481,14 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // still see the slot and land the very line this is discarding. A ref is what the blur can read
         // in the same tick; state cannot.
         slotDiscardedRef.current = true;
+        // A character-scoped slot opened on top of a line the author was already writing, so its
+        // Escape hands that line back rather than closing on an empty dialogue row nobody asked for.
+        if (returnFromCharacterActionSlot()) {
+            return;
+        }
         setEditorMode({ kind: "idle" });
         focusRoot();
-    }, [focusRoot]);
+    }, [focusRoot, returnFromCharacterActionSlot]);
 
     // An open insert slot is anchored to a row (insert after it, above it, or in place of it). If that
     // row leaves the visible set while the slot is open — the author toggled the "narrative only" filter
@@ -1448,6 +1542,12 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (editorMode.kind !== "insert") {
             return;
         }
+        // Backspacing the trigger away is "never mind" said one key at a time, so the ladder's next
+        // rung is the dialogue row the slot covers — not the row above it, which is where the generic
+        // step-back would land while that dialogue row still sits between the two.
+        if (returnFromCharacterActionSlot()) {
+            return;
+        }
         const afterId = editorMode.slot.afterBlockId;
         const afterBlock = afterId ? scene?.blocks[afterId] : null;
         if (afterId && afterBlock && isTextEditableBlock(afterBlock)) {
@@ -1465,7 +1565,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         setEditorMode({ kind: "idle" });
         focusRoot();
-    }, [editorMode, focusRoot, scene]);
+    }, [editorMode, focusRoot, returnFromCharacterActionSlot, scene]);
 
     /**
      * Build a block from a plugin-registered story action. The registration's
@@ -1543,6 +1643,19 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!spec.build || !uuidService) {
             return false;
         }
+        // Where a follow-up row would go, measured BEFORE the commit: once the action block has taken
+        // the replaced row's place, `scene` here is still the old one, so `insertBlock`'s own
+        // after-a-row lookup would not find it and would fall back to the end of the scene. The
+        // position is the replaced row's own — same parent, in front of whatever followed it.
+        const scope = editorMode.slot.characterScope;
+        const replacing = editorMode.slot.replaceBlockId ? scene?.blocks[editorMode.slot.replaceBlockId] : null;
+        const followTarget = replacing
+            ? (() => {
+                const siblings = (replacing.parentId ? scene?.blocks[replacing.parentId]?.childrenIds : scene?.rootBlockIds) ?? [];
+                const index = siblings.indexOf(replacing.id);
+                return { parentId: replacing.parentId, beforeBlockId: index === -1 ? null : siblings[index + 1] ?? null };
+            })()
+            : null;
         const block = spec.build(args, { generateId: () => uuidService.generate(), context: commandContext });
         const openInspector = opensInspectorAfterCommit(spec, block);
         insertBlock(block, editorMode.slot.afterBlockId, openInspector, { target: editorMode.slot.target, replaceBlockId: editorMode.slot.replaceBlockId });
@@ -1557,6 +1670,27 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "" });
             return true;
         }
+        /**
+         * Back into the paragraph the action was written from.
+         *
+         * A scoped slot opened on a line the author was writing AS this character, so the action is
+         * an aside inside their run — and what follows an aside is the rest of what they were saying,
+         * not the blank "narration / `@` / `#`" slot every other command commits into. Landing there
+         * cost the author the speaker they already had and made the common shape (say something, do
+         * something, say something) a three-step gesture instead of one continuous line.
+         *
+         * A command that builds a line of speech itself (`/say`) is excluded: it has already put the
+         * author in a row of dialogue, and a second empty one under it continues nothing.
+         */
+        if (scope && followTarget && !isTextEditableBlock(block)) {
+            const next = createBlock("dialogue", "", scope.characterId);
+            if (next) {
+                // One undo step for the whole gesture: the command's own commit already recorded it.
+                insertBlock(next, null, false, { target: followTarget, recordHistory: false });
+                setEditorMode({ kind: "text", blockId: next.id, value: "", caret: "end" });
+                return true;
+            }
+        }
         // A declaration's row IS its result, but the caret has already moved on to the fresh slot below,
         // so the receipt travels with that slot: `✓ Var gold: number = 0`, scope word off the same badge
         // label the row shows, fading on the next keystroke (bible §3.5). No toast — the ghost zone is the
@@ -1566,7 +1700,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             : undefined;
         startInsertAfter(block.id, true, confirmation);
         return true;
-    }, [commandContext, editorMode, insertBlock, scaffoldContainer, sceneId, startInsertAfter, storyId, storyService, uuidService]);
+    }, [commandContext, createBlock, editorMode, insertBlock, scaffoldContainer, scene, sceneId, startInsertAfter, storyId, storyService, uuidService]);
 
     /**
      * A pick from the slash menu. A spec command routes through the same commit path a typed line
@@ -2383,7 +2517,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         insertContinuationAfterCurrentTextEdit, commitNarrationFromInsert, handleInsertBackspaceEmpty, chooseCommand, chooseCharacterForInsert,
         dismissInsertChooser, discardInsertSlot, resolveInsertLine, commitInvalidFromInsert, chooseTempSpeakerForInsert, tempSpeakers,
         createActionFromSidebar, addInsideContainer, addConditionBranch,
-        navigateFromTextEdit, resetGoalColumn, handleBackspaceAtEmptyStart, enterEditOrInspectorForActive,
+        navigateFromTextEdit, resetGoalColumn, handleBackspaceAtEmptyStart, startCharacterActionSlot, enterEditOrInspectorForActive,
         activateBlockForInspectorOrOp, closeInspector, revealInspectorPanel,
         extendRowSelection, moveSelectedRows, duplicateSelection, jumpRowSelection, pageRowSelection,
         moveDraggedBlockAfter, moveDraggedBlockToSortablePosition, startDraggingBlock, endDraggingBlock,

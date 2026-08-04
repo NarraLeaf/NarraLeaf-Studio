@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef } from "react";
 import type { StoryDocument, StoryInterpolationRef, StorySceneId, StoryTextSegment } from "@shared/types/story";
 import { useTranslation } from "@/lib/i18n";
 import { renderRunsToElement, segmentToRuns } from "./richText";
+import { storyAppearanceLabel, type StoryAppearanceSelection } from "./storyAppearanceLabel";
+import { useStoryCommandLineContext } from "./StoryCommandLineView";
 import { resolveInterpolationName } from "./storyInterpolation";
 
 /**
@@ -24,6 +26,9 @@ export function RichTextView(props: {
     const { t } = useTranslation();
     const rootRef = useRef<HTMLSpanElement | null>(null);
     const { segment, document: storyDocument, sceneId } = props;
+    // Off the row context rather than a prop: the appearance table is per-tab, and a scene is hundreds
+    // of rows. Outside the provider it is simply absent, and an expression chip stays icon-only.
+    const { appearanceName } = useStoryCommandLineContext();
 
     const resolveLabel = useCallback(
         (interp: StoryInterpolationRef) => (
@@ -34,6 +39,11 @@ export function RichTextView(props: {
         [storyDocument, sceneId, t],
     );
 
+    const resolveAppearance = useCallback(
+        (appearance: StoryAppearanceSelection) => storyAppearanceLabel(appearance, appearanceName),
+        [appearanceName],
+    );
+
     useEffect(() => {
         const root = rootRef.current;
         if (!root) {
@@ -41,6 +51,7 @@ export function RichTextView(props: {
         }
         renderRunsToElement(root, segmentToRuns(segment), {
             resolveLabel,
+            resolveAppearance,
             titles: {
                 pauseClick: t("story.richText.pauseClick"),
                 pauseSeconds: seconds => t("story.richText.pauseSeconds", { seconds }),
@@ -50,7 +61,7 @@ export function RichTextView(props: {
                 soundEvent: t("story.richText.soundEvent"),
             },
         });
-    }, [segment, resolveLabel, t]);
+    }, [segment, resolveLabel, resolveAppearance, t]);
 
     return <span ref={rootRef} className={props.className} />;
 }
