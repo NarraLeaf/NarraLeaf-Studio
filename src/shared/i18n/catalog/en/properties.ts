@@ -5,6 +5,7 @@ export const properties = {
     select: "Select",
     panel: {
         title: "Properties",
+        empty: "Select an element to adjust its properties",
         motionKeyframe: "Motion Keyframe",
         storyMotion: "Story Motion",
         scene: "Scene",
