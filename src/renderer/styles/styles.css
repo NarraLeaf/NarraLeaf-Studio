@@ -909,6 +909,13 @@ input[type="radio"]:focus {
  *
  * The disc's ink is a deep tone of the SAME hue rather than white (§4). White is legible on a
  * mid-tone disc and wrong on a pale one, and the light theme's discs are pale by design.
+ *
+ * These are the DERIVED colours — for the characters nobody has picked a colour for. A character
+ * that has one overrides all three of these inline, from `storySpeakerPaint`, and inline wins over
+ * both rules here without needing `!important`. That is deliberate: a chosen colour does not vary by
+ * theme (it is one colour, chosen once) so it has no business being computed from a media query, and
+ * routing it through the same three variable names means every surface below reads one set of names
+ * and never has to ask where the colour came from.
  */
 .nl-speaker {
     --nl-speaker-disc: hsl(var(--nl-speaker-h) 42% 52%);

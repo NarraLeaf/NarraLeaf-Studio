@@ -15,6 +15,7 @@ import {
 import {
     characterSpeakerIdentity,
     narratorSpeakerIdentity,
+    unknownSpeakerIdentity,
     type StorySpeakerIdentity,
 } from "./storySpeakerIdentity";
 
@@ -33,9 +34,6 @@ import {
  * They are asked in that order and the first hit wins, which is what stops a row from ever drawing
  * two marks or arguing with the paragraph it belongs to.
  */
-
-/** A speaker with a `characterId` we cannot resolve, or none at all: still a person, just not a known one. */
-const UNKNOWN_SPEAKER_HUE = null;
 
 /**
  * Who speaks a row, or `null` when nobody does (it is machinery).
@@ -69,7 +67,7 @@ export function rowSpeakerIdentity(
         // else. Two projects that both write `Guard` get the same Guard.
         return characterSpeakerIdentity(block.payload.speakerName, { hasPortrait: false });
     }
-    return { kind: "disc", name: unassignedLabel, hue: UNKNOWN_SPEAKER_HUE };
+    return unknownSpeakerIdentity(unassignedLabel);
 }
 
 /**
@@ -80,7 +78,7 @@ export function rowSpeakerIdentity(
 export function characterIdentity(characterId: string, characters: Character[]): StorySpeakerIdentity {
     const character = characters.find(candidate => candidate.profile.getId() === characterId);
     if (!character) {
-        return { kind: "disc", name: "?", hue: UNKNOWN_SPEAKER_HUE };
+        return unknownSpeakerIdentity("?");
     }
     const color = character.profile.getColor();
     return characterSpeakerIdentity(character.profile.getName(), {
@@ -89,8 +87,13 @@ export function characterIdentity(characterId: string, characters: Character[]):
         // actually loads. The two shapes are the same size and the same colour family, so the
         // correction is invisible even on a cold asset cache.
         hasPortrait: true,
-        // Only a colour that survives on both themes is worth taking a hue from; an author who picked
-        // near-black gets the name hash instead of a hue read off a colour they cannot see anyway.
+        // The project's own colour for this character, used exactly as chosen — the editor follows
+        // the author here rather than deriving its own idea of the hue.
+        //
+        // The one filter is `isReadableAccentColor`, and it is a both-themes guard rather than a
+        // matter of taste: this colour is painted on the dark surface and the light one, so a
+        // near-black or near-white pick is invisible on whichever it matches. Those fall back to the
+        // name hash, which is at least legible on both. Everything else is honoured verbatim.
         color: color && isReadableAccentColor(color) ? color : undefined,
     });
 }
@@ -141,7 +144,7 @@ export function StoryRowGutter(props: {
                 {identity.kind === "ring" ? (
                     <StoryNarratorRingMark label={identity.name} />
                 ) : identity.kind === "portrait" && url ? (
-                    <StorySpeakerPortraitMark url={url} frame={frame} showingSprite={showingSprite} name={identity.name} />
+                    <StorySpeakerPortraitMark identity={identity} url={url} frame={frame} showingSprite={showingSprite} />
                 ) : (
                     <StorySpeakerDiscMark identity={identity} />
                 )}
