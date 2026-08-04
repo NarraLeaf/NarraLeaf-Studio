@@ -1,5 +1,6 @@
 import type { StoryInlineEvent, StoryInterpolationRef, StoryRichRun, StoryTextMarks, StoryTextSegment } from "@shared/types/story";
 import { formatStorySecondsLabel, storyMsToSeconds } from "@shared/utils/storyTime";
+import type { StoryAppearanceSelection } from "./storyAppearanceLabel";
 
 /** Pause chip class (a literal so Tailwind's content scan can see it). */
 const PAUSE_CHIP_CLASS = "story-rt-pause mx-0.5 inline-flex select-none items-center rounded-md bg-primary/20 px-1 py-0.5 align-middle text-2xs font-medium text-primary";
@@ -20,6 +21,14 @@ const EVENT_FACE_ICON_SVG = '<svg width="9" height="9" viewBox="0 0 24 24" fill=
 const EVENT_SOUND_ICON_SVG = '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>';
 
 export type ResolveInterpolationLabel = (interp: StoryInterpolationRef) => string;
+
+/**
+ * Names the appearance an inline expression event switches to, or `null` when it resolves to nothing.
+ *
+ * A callback for the same reason `resolveLabel` is one: the stored `pose` / `tags` are ids, and the
+ * table they resolve against is the project's, which this renderer deliberately cannot reach.
+ */
+export type ResolveAppearanceLabel = (appearance: StoryAppearanceSelection) => string | null;
 
 /** Chip copy. Callers pass translated strings so this layer never hardcodes user-facing text. */
 export type RichChipTitles = {
@@ -45,6 +54,7 @@ export type RichChipTitles = {
  */
 export type RichRenderOptions = {
     resolveLabel?: ResolveInterpolationLabel;
+    resolveAppearance?: ResolveAppearanceLabel;
     titles: RichChipTitles;
     interactive?: boolean;
 };
@@ -307,10 +317,10 @@ function createEventChip(event: StoryInlineEvent, options: RichRenderOptions): H
     // An expression switch reads as a face; a sound-only token as a note. Kept icon-compact and
     // zero-width like the pause/value chips - the picker reopens on click.
     if (event.expression) {
-        // The token shows the pose id for a preset character and nothing for a layered one:
-        // its tags are ids too, and resolving them to names needs the character record,
-        // which this renderer deliberately does not take.
-        const form = event.expression.pose?.trim();
+        // The token names the look the author picked, resolved through the caller's lookup — the
+        // stored `pose` / `tags` are ids, and an id dropped into a paragraph reads as `pro5swd`.
+        // With no lookup, or nothing that resolves, the icon alone says the face changes here.
+        const form = options.resolveAppearance?.(event.expression) ?? null;
         span.title = form ? `${options.titles.expressionEvent}: ${form}` : options.titles.expressionEvent;
         span.innerHTML = EVENT_FACE_ICON_SVG;
         if (form) {

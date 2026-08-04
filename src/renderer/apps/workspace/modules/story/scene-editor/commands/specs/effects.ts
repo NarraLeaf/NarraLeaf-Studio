@@ -1,3 +1,4 @@
+import { Focus, Move3d, Sparkles, Zap } from "lucide-react";
 import type { StoryDisplayableTargetRef } from "@shared/types/story";
 import { createBlockForCommand } from "../../storyActionCommands";
 import type { StoryCommandValue } from "../../storyCommandValues";
@@ -51,6 +52,7 @@ export const blink = defineStoryCommand({
     id: "blink",
     token: "blink",
     category: "scene",
+    icon: Zap,
     examples: ["/blink", "/blink d=0.2 hold=0.1"],
     params: {
         d: secondsParam(),
@@ -65,6 +67,7 @@ export const vignette = defineStoryCommand({
     token: "vignette",
     aliases: ["vig"],
     category: "scene",
+    icon: Focus,
     examples: ["/vignette", "/vignette d=0.5 opacity=0.6"],
     params: {
         d: secondsParam(),
@@ -98,6 +101,7 @@ export const fx = defineStoryCommand({
     aliases: ["effect"],
     // Only the flat surfaces read this; the sidebar files `/fx` under all four subjects it accepts.
     category: "image",
+    icon: Sparkles,
     examples: ["/fx hero"],
     params: {
         target: targetParam(["image", "text", "layer", "character"], { core: true }),
@@ -119,6 +123,7 @@ export const transform = defineStoryCommand({
     token: "transform",
     aliases: ["displayabletransform"],
     category: "image",
+    icon: Move3d,
     examples: ["/transform hero", "/transform hero d=0.5"],
     params: {
         target: targetParam(["image", "text", "layer", "character"], { core: true }),

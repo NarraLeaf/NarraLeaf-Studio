@@ -96,6 +96,26 @@ export interface GlobalStateType extends Record<string, any> {
      * distinction. Resolved through `resolveCommandLocale` in lib/settings/commandLanguageOptions.
      */
     "editor.localizedCommands": boolean;
+    /**
+     * Whether a committed story row prints only the VALUES of its modifiers — `@hide Anyo fade` in
+     * place of `@hide Anyo t=fade`.
+     *
+     * A display setting for the committed row alone: the line being typed still shows what is being
+     * typed, and the projection underneath is unchanged, so nothing about what the row means or how it
+     * is edited moves. Off by default, because the keys are what disambiguate a row that carries more
+     * than one modifier. See lib/settings/commandParamNameOptions.
+     */
+    "editor.hideParamNames": boolean;
+    /**
+     * Which of the story editor's two layers (gutter 规范 §1) wears a background tint: the script, the
+     * directives, or neither.
+     *
+     * Purely a reading aid — the layers exist whether or not they are painted, and the gutter's mark
+     * says which one a row is in on every row regardless. `"none"` by default, because on a
+     * script-heavy scene the tint repeats what the mark already said. See
+     * lib/settings/storyRowHighlightOptions.
+     */
+    "editor.storyRowHighlight": "none" | "script" | "command";
     "workspace.restoreLastWorkspace": boolean;
     /**
      * Ask for confirmation before a workspace window closes.
@@ -215,6 +235,8 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "editor.softWrap": false,
     "editor.maxActiveEditors": 8,
     "editor.localizedCommands": true,
+    "editor.hideParamNames": false,
+    "editor.storyRowHighlight": "none",
     "workspace.restoreLastWorkspace": true,
     "workspace.confirmBeforeClose": false,
     "workspace.returnToLauncherOnClose": true,

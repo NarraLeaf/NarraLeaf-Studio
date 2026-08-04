@@ -136,6 +136,8 @@ describe("annotateNestingBranches", () => {
 describe("annotateDialogueGroups", () => {
     const rolesOf = (blocks: StoryBlock[]) =>
         annotateDialogueGroups(buildVisibleRows(scene(blocks, blocks.map(b => b.id)), new Set())).map(row => row.groupRole);
+    const continuesOf = (blocks: StoryBlock[]) =>
+        annotateDialogueGroups(buildVisibleRows(scene(blocks, blocks.map(b => b.id)), new Set())).map(row => row.groupContinues ?? false);
 
     it("marks the first same-speaker dialogue a head and the rest members", () => {
         expect(rolesOf([dialogue("a", { characterId: "c1" }), dialogue("b", { characterId: "c1" }), dialogue("c", { characterId: "c1" })]))
@@ -147,14 +149,10 @@ describe("annotateDialogueGroups", () => {
     });
 
     /**
-     * The connector is drawn per row but must read as one line, so every row of a run needs to know
-     * whether another member follows it: the last one is the only segment that ends, and therefore the
-     * only one that rounds and turns. Marking heads alone (the original rule) left the last member
-     * indistinguishable from the middle ones, so the line ran off the bottom of the run.
+     * The continuation rule is drawn per row but must read as one line, so every row of a run needs to
+     * know whether another member follows it. Marking heads alone (the original rule) left the last
+     * member indistinguishable from the middle ones, so the line ran off the bottom of the run.
      */
-    const continuesOf = (blocks: StoryBlock[]) =>
-        annotateDialogueGroups(buildVisibleRows(scene(blocks, blocks.map(b => b.id)), new Set())).map(row => row.groupContinues ?? false);
-
     it("marks every row of a run except its last as continuing", () => {
         expect(continuesOf([dialogue("a", { characterId: "c1" }), dialogue("b", { characterId: "c1" }), dialogue("c", { characterId: "c1" })]))
             .toEqual([true, true, false]);
@@ -172,7 +170,23 @@ describe("annotateDialogueGroups", () => {
         ])).toEqual(["head", "member", "member"]);
     });
 
-    it("breaks the run on any other kind — a different-character expression, an enter, or narration", () => {
+    /**
+     * The `/face`-only rule was the accident of which verb happened to be written first: a line the
+     * author added from inside one character's run is that character's line whichever verb it uses,
+     * and one of them wearing a directive's glyph while the next wore the run's rule read as a
+     * subject change that had not happened.
+     */
+    it("folds every verb done to the run's own speaker, not only the expression", () => {
+        for (const operation of ["move", "setMotion", "setSkin", "setParams", "setName"] as const) {
+            expect(rolesOf([
+                dialogue("a", { characterId: "c1" }),
+                characterAction("x", { action: "character", operation, characterId: "c1" }),
+                dialogue("b", { characterId: "c1" }),
+            ])).toEqual(["head", "member", "member"]);
+        }
+    });
+
+    it("breaks the run on any other kind — a different-character expression, or an enter", () => {
         expect(rolesOf([
             dialogue("a", { characterId: "c1" }),
             characterAction("x", { action: "character", operation: "expression", characterId: "c2" }),
@@ -183,8 +197,32 @@ describe("annotateDialogueGroups", () => {
             characterAction("x", { action: "character", operation: "enter", characterId: "c1" }),
             dialogue("b", { characterId: "c1" }),
         ])).toEqual(["head", undefined, "head"]);
+    });
+
+    /**
+     * gutter 规范 §2: the paragraph rule is one rule for every voice, 不做特例. Narration used to be
+     * the exception — it never grouped, so a page of it re-announced the narrator on every line while
+     * a page of dialogue named its speaker once.
+     */
+    it("groups a run of narration the same way it groups one speaker", () => {
+        expect(rolesOf([narration("a"), narration("b"), narration("c")])).toEqual(["head", "member", "member"]);
+        expect(continuesOf([narration("a"), narration("b"), narration("c")])).toEqual([true, true, false]);
+    });
+
+    it("still breaks a dialogue run at narration, and a narration run at dialogue", () => {
         expect(rolesOf([dialogue("a", { characterId: "c1" }), narration("n"), dialogue("b", { characterId: "c1" })]))
-            .toEqual(["head", undefined, "head"]);
+            .toEqual(["head", "head", "head"]);
+        expect(rolesOf([narration("a"), dialogue("d", { characterId: "c1" }), narration("b")]))
+            .toEqual(["head", "head", "head"]);
+    });
+
+    /** A directive between two narration lines ends the paragraph, exactly as it does for dialogue. */
+    it("does not fold a directive into a narration run", () => {
+        expect(rolesOf([
+            narration("a"),
+            characterAction("x", { action: "character", operation: "enter", characterId: "c1" }),
+            narration("b"),
+        ])).toEqual(["head", undefined, "head"]);
     });
 
     it("groups bare speakers by exact name, but never two unnamed rows", () => {

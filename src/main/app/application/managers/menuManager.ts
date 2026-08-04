@@ -475,7 +475,11 @@ export class MenuManager {
             return;
         }
 
-        void target.getApp().openProject(target, projectPath).catch((error) => {
+        // A switch when the menu belongs to a workspace: that window is retired once the chosen
+        // project is up, matching the title-bar switcher and the in-app File menu (one gesture must
+        // not depend on which copy of the menu the author reached it through). openProject ignores
+        // the flag for every other window type, so the launcher still opens alongside as before.
+        void target.getApp().openProject(target, projectPath, { replaceOpener: true }).catch((error) => {
             this.app.logger.error("Failed to open recent project from menu:", error);
         });
     }

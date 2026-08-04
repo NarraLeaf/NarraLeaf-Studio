@@ -1,3 +1,4 @@
+import { AudioLines, CirclePlay, CircleStop, FastForward, Gauge, Music, Pause, Volume1, Volume2, VolumeX } from "lucide-react";
 import type { StoryActionPayload, StoryBlock } from "@shared/types/story";
 import { createBlockForCommand, type ActionCommandId } from "../../storyActionCommands";
 import { BGM_OBJECT_NAME, type StoryCommandValue } from "../../storyCommandValues";
@@ -82,6 +83,7 @@ export const bgm = defineStoryCommand({
     id: "bgm",
     token: "bgm",
     category: "sound",
+    icon: Music,
     examples: ["/bgm theme", "/bgm theme vol=0.6 fade=1 loop", "/bgm theme track=Music"],
     quickParams: ["vol", "loop"],
     params: {
@@ -128,6 +130,7 @@ export const sound = defineStoryCommand({
     token: "sound",
     aliases: ["se"],
     category: "sound",
+    icon: AudioLines,
     examples: ["/sound hit", "/sound hit name=impact vol=0.8", "/sound hit track=SFX fade=0.2"],
     quickParams: ["vol", "loop"],
     params: {
@@ -180,6 +183,7 @@ export const vol = defineStoryCommand({
     token: "vol",
     aliases: ["volume"],
     category: "sound",
+    icon: Volume2,
     examples: ["/vol 0.5", "/vol music 0.5 fade=1"],
     params: {
         target: targetParam(["audio"], { skippable: true }),
@@ -196,6 +200,7 @@ export const rate = defineStoryCommand({
     id: "rate",
     token: "rate",
     category: "sound",
+    icon: Gauge,
     examples: ["/rate music 1.25"],
     params: {
         // An overlay's rate is how fast the petals fall, which is the same knob under a different
@@ -215,6 +220,7 @@ export const stop = defineStoryCommand({
     id: "stop",
     token: "stop",
     category: "sound",
+    icon: CircleStop,
     examples: ["/stop music", "/stop music fade=1"],
     params: {
         // `video` widens both the legal lines and the sidebar: the verb now files under 视频 as well
@@ -230,6 +236,7 @@ export const pause = defineStoryCommand({
     token: "pause",
     aliases: ["pausesound"],
     category: "sound",
+    icon: Pause,
     examples: ["/pause clip", "/pause music fade=0.5"],
     params: {
         target: targetParam(["audio", "video", "vfx"], { fallbackKind: "audio" }),
@@ -245,6 +252,7 @@ export const resume = defineStoryCommand({
     id: "resume",
     token: "resume",
     category: "sound",
+    icon: CirclePlay,
     examples: ["/resume clip", "/resume music fade=0.5"],
     params: {
         target: targetParam(["audio", "video", "vfx"], { fallbackKind: "audio" }),
@@ -273,6 +281,7 @@ export const seek = defineStoryCommand({
     // `accepts` files it under both 视频 and 声音 in the sidebar; this only picks the single section
     // the flat `/` menu prints it under, and the omitted target falls back to audio.
     category: "sound",
+    icon: FastForward,
     examples: ["/seek clip 12", "/seek bgm 30"],
     params: {
         target: targetParam(["video", "audio"], { core: true, fallbackKind: "audio" }),
@@ -305,6 +314,7 @@ export const mute = defineStoryCommand({
     id: "mute",
     token: "mute",
     category: "sound",
+    icon: VolumeX,
     examples: ["/mute music"],
     params: {
         target: targetParam(["audio"]),
@@ -318,6 +328,7 @@ export const unmute = defineStoryCommand({
     id: "unmute",
     token: "unmute",
     category: "sound",
+    icon: Volume1,
     examples: ["/unmute music"],
     params: {
         target: targetParam(["audio"]),

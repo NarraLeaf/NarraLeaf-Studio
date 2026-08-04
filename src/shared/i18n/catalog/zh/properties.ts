@@ -6,6 +6,7 @@ export const properties = {
     select: "选择",
     panel: {
         title: "属性",
+        empty: "选择一个元素以调整其属性",
         motionKeyframe: "动效关键帧",
         storyMotion: "故事动效",
         scene: "场景",
