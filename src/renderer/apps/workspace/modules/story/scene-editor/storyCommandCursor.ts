@@ -398,7 +398,7 @@ export function getCommandCursor(source: string, caret: number): StoryCommandCur
  * entity-reference spelling. A name that itself contains a `'` falls back to double quotes (there is
  * no escape syntax); resolution reads entity slots leniently under either kind.
  */
-function quoteEntityValue(value: string): string {
+export function quoteEntityValue(value: string): string {
     if (!value.includes(" ")) {
         return value;
     }

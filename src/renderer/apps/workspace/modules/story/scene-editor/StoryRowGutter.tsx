@@ -4,6 +4,7 @@ import type { Character } from "@/lib/workspace/services/character/Character";
 import { useCharacterFace } from "./storyCharacterFace";
 import type { CharacterAppearanceRef, VisibleStoryRow } from "./storySceneEditorTypes";
 import { getBlockBadgeInfo, isReadableAccentColor } from "./storySceneBlockUtils";
+import { paragraphActionCharacterId } from "./storyCharacterActions";
 import {
     StoryCommandGlyphMark,
     StoryContinuationRule,
@@ -119,17 +120,16 @@ export function StoryRowGutter(props: {
 
     if (props.row.groupRole === "member") {
         /*
-         * A continuation draws the paragraph's rule and nothing else — including the one row that is
-         * not speech at all: a `/face` between two of a character's lines is folded into the run
-         * (`annotateDialogueGroups`), so it takes the run's colour rather than the bare glyph it would
-         * wear standing alone. That is the ONE place a directive borrows a voice, and it is why the
-         * lookup is here rather than in `rowSpeakerIdentity` — asked of every row, it painted a disc
-         * on every `/show` and `/face` in the scene, which is exactly the "有图标的是机器" line the
-         * gutter exists to hold.
+         * A continuation draws the paragraph's rule and nothing else — including the rows that are
+         * not speech at all: a line done to the run's own speaker (`/face`, `/motion`, `/move`, …) is
+         * folded into it by `annotateDialogueGroups`, so it takes the run's colour rather than the
+         * bare glyph it would wear standing alone. That is the ONE place a directive borrows a voice,
+         * and it is why the lookup is here rather than in `rowSpeakerIdentity` — asked of every row,
+         * it painted a disc on every `/show` and `/face` in the scene, which is exactly the
+         * "有图标的是机器" line the gutter exists to hold.
          */
-        const voice = identity ?? (block.kind === "action" && block.payload.action === "character" && block.payload.characterId
-            ? characterIdentity(block.payload.characterId, props.characters)
-            : null);
+        const actingOn = paragraphActionCharacterId(block, props.characters);
+        const voice = identity ?? (actingOn ? characterIdentity(actingOn, props.characters) : null);
         if (voice) {
             return (
                 <StoryGutterCell active={props.active} decorative stretch>

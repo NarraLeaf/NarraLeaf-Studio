@@ -30,6 +30,12 @@ import {
     type StoryCommandCategoryId,
 } from "./storyCommandCategories";
 import { searchActionCommands } from "./storyCommandSearch";
+import {
+    characterScopedActions,
+    characterScopedSidebarGroups,
+    characterScopeLead,
+    dialogueActionCharacter,
+} from "./storyCharacterActions";
 import { localizeSpecCommand, specPaletteCommands } from "./commands/specPalette";
 import { browseMenuStops, buildSpecSidebarGroups, dedupeToPrimarySubject, filterSidebarGroups, type StoryCommandMenuStop, type StoryCommandSidebarGroup } from "./commands/specSidebar";
 import { useStoryPluginActionCommands } from "./useStoryPluginActionCommands";
@@ -204,8 +210,6 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
     // to place, so it gets none.
     const dialogueHead = isDialogue && !continuationRow
         && block.kind === "nodeAction" && block.payload.action === "dialogue" && Boolean(block.payload.characterId);
-    const expressionMember = continuationRow
-        && block.kind === "action" && block.payload.action === "character" && block.payload.operation === "expression";
     /**
      * A paragraph is named once, at its head, and the name is printed in front of the words rather
      * than filed in a column beside them: 「Anyo 大家好啊」 is one utterance read left to right.
@@ -452,9 +456,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                             />
                         </span>
                     ) : null}
-                    {expressionMember ? (
-                        <GroupExpressionMember block={block} characters={characters} />
-                    ) : editing && textSegment ? (
+                    {editing && textSegment ? (
                         <TextEditBox
                             editorRef={textInputRef}
                             initialCaret={props.editInitialCaret}
@@ -473,6 +475,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                             scene={scene}
                             document={document}
                             characters={characters}
+                            continuing={continuationRow}
                         />
                     ) : textSegment || !containerInfo ? (
                         <BlockPreview
@@ -563,9 +566,39 @@ function RowDiagnosticMark({ code }: { code: StoryRowDiagnosticCode }) {
     );
 }
 
-function editorPlaceholder(block: StoryBlock, t: ReturnType<typeof useTranslation>["t"]): string {
+/**
+ * What an empty row being edited says it is for.
+ *
+ * A dialogue row with a real speaker says more than its kind: it names them, and it names the other
+ * thing this line can become. Enter under a line of dialogue opens a row that is still that
+ * character's — either more of their words, or something done to them — and "对话…" advertised only
+ * the first half, leaving the second undiscoverable. See `startCharacterActionSlot`.
+ *
+ * `continuing` is the row's own place in the paragraph (`groupRole === "member"`), and it changes one
+ * word: the row that OPENS a run starts the speaker talking, the ones under it carry on. Telling an
+ * author to "continue" a conversation that has not begun is a small lie, and it is on the first row
+ * of every character in the scene.
+ */
+function editorPlaceholder(
+    block: StoryBlock,
+    characters: Character[],
+    trigger: string,
+    continuing: boolean,
+    t: ReturnType<typeof useTranslation>["t"],
+): string {
     switch (getTextSegment(block)?.role) {
-        case "dialogue": return t("story.rows.placeholderDialogue");
+        case "dialogue": {
+            // Only a real character: a bare speaker name has no record for those verbs to act on, so
+            // offering them would be advertising a line that cannot resolve.
+            const speaker = dialogueActionCharacter(block, characters);
+            if (!speaker) {
+                return t("story.rows.placeholderDialogue");
+            }
+            const params = { name: speaker.profile.getName(), trigger };
+            return continuing
+                ? t("story.rows.placeholderDialogueContinue", params)
+                : t("story.rows.placeholderDialogueStart", params);
+        }
         case "narration": return t("story.rows.placeholderNarration");
         case "choicePrompt": return t("story.rows.placeholderChoicePrompt");
         case "choiceText": return t("story.rows.placeholderChoiceText");
@@ -592,8 +625,13 @@ function TextEditBox(props: {
     scene: StoryScene;
     document: StoryDocument;
     characters: Character[];
+    /** The row is a later line of a paragraph, not the one that opens it — see {@link editorPlaceholder}. */
+    continuing: boolean;
 }) {
     const { t } = useTranslation();
+    // The placeholder advertises the action trigger, so it has to advertise the one THIS author
+    // presses — the same "@"-or-"/" every other surface reads off the command-line context.
+    const commandLine = useStoryCommandLineContext();
     // Second enforcement point for the row text (see isRowTextEditable): even with the state
     // transitions gated, a freeze can land while a row is already open, and the field would keep taking
     // keystrokes the browser applies on its own.
@@ -754,7 +792,7 @@ function TextEditBox(props: {
                 // for it, so read and edit start at the same x and entering edit never jumps.
                 className="min-h-[20px] flex-1 whitespace-pre-wrap break-words bg-transparent text-fg outline-none empty:before:italic empty:before:text-fg-subtle empty:before:content-[attr(data-placeholder)]"
                 style={textStyle}
-                placeholder={editorPlaceholder(props.block, t)}
+                placeholder={editorPlaceholder(props.block, props.characters, commandLine.trigger, props.continuing, t)}
                 onChange={props.onEditRichChange}
                 onMultiLinePaste={props.onMultiLinePaste}
                 onBlur={handleBlur}
@@ -1207,38 +1245,19 @@ function RowNesting({ depth, nextDepth, opensBlock, stopAt, markBottom, highligh
     );
 }
 
-/**
- * The muted body of an in-group expression row (WI-5): the differential's name, and nothing else. It
- * stays an ordinary row (selection / drag / Enter live on the row around it); only the read-only
- * content is compacted.
+/*
+ * An in-group `/face` used to render as a compacted "differential" — the appearance name alone, in
+ * muted 2xs type, with the verb and the character dropped. It is gone, and the row reads as the
+ * command it is: `@表情 Inko 微笑`, the same line the author typed and the same line every other
+ * character verb in the paragraph shows.
  *
- * It carries no thumbnail of its own: the row is a continuation of the paragraph around it, so its
- * gutter draws that paragraph's rule like every other continuation (gutter 规范 §2). The label starts
- * on the block's one text baseline, so a look change reads as a note inside the block rather than a
- * line that breaks it, and it adds no left edge of its own.
+ * What made it wrong was never the compaction alone but the two things it cost. It printed the
+ * STORED value, which for both appearance kinds is an id, so a paragraph carried `p8edj8l` in the
+ * middle of it. And it made `/face` the one verb in the vocabulary that a reader could not read back:
+ * the rows above and below it said `@移动 Inko 左` and `@皮肤 Inko 冬装` while it said a bare noun.
+ * The paragraph rail already says "this row is still Inko's" — that was the whole job the compaction
+ * was hired for, and the rail does it without hiding what the row does.
  */
-function GroupExpressionMember({ block, characters }: { block: StoryBlock; characters: Character[] }) {
-    const { t } = useTranslation();
-    const label = useMemo(() => {
-        if (block.kind !== "action" || block.payload.action !== "character") {
-            return "";
-        }
-        // Ids, not names: resolving them to labels needs the character record, which this row
-        // summary does not take. The inspector and the picker show the names.
-        const parts: string[] = [];
-        if (block.payload.pose) {
-            parts.push(block.payload.pose);
-        }
-        parts.push(...Object.values(block.payload.tags ?? {}));
-        return parts.join(" · ") || t("story.describe.charOp.expression");
-    }, [block, t]);
-
-    return (
-        <span className="flex min-w-0 flex-1 items-center self-stretch text-2xs text-fg-subtle">
-            <span className="min-w-0 truncate">{label}</span>
-        </span>
-    );
-}
 
 /**
  * The container header's label pill is gone: it was a bordered, tinted, small-caps chip — a fourth
@@ -1826,18 +1845,24 @@ export function InsertRow(props: {
     const menuAnchorRef = useRef<HTMLDivElement | null>(null);
     const menuFrame = useAnchoredMenuFrame(menuAnchorRef, chooser !== "none", 312);
     const pluginCommands = useStoryPluginActionCommands();
+    /**
+     * The speaker this slot belongs to, when it opened on top of their line (see
+     * `startCharacterActionSlot`). Read as a plain name rather than as the scope object, so a fresh
+     * slot object on every keystroke cannot invalidate the lists memoized against it.
+     */
+    const scopeName = props.mode.slot.characterScope?.name ?? null;
     const actionOptions = useMemo<PaletteActionCommand[]>(
-        () => searchActionCommands(
-            [
+        () => {
+            const all = [
                 // The typing/filter tier lists one entry per spec — the ranked flat list is the right
                 // shape while filtering, so a verb appears once even though it files under many subjects.
                 ...specPaletteCommands().map(command => localizeSpecCommand(command, ct)),
                 // A plugin action carries the label its own language pack already resolved.
                 ...pluginCommands,
-            ],
-            chooserQuery,
-        ),
-        [chooserQuery, ct, pluginCommands],
+            ];
+            return searchActionCommands(scopeName === null ? all : characterScopedActions(all), chooserQuery);
+        },
+        [chooserQuery, ct, pluginCommands, scopeName],
     );
     // The browse is the sidebar's projection, not a second catalogue: same `accepts` classification
     // (WI-1). Handed over undeduped, because the menu's category column needs both readings of it —
@@ -1845,8 +1870,11 @@ export function InsertRow(props: {
     // each time reads as six commands, not as one that reaches six places), while a chosen category
     // wants the full filing, where `/show` under 图片 is the answer rather than a repeat.
     const sidebarGroups = useMemo(
-        () => buildSpecSidebarGroups(pluginCommands, command => localizeSpecCommand(command, ct)),
-        [ct, pluginCommands],
+        () => {
+            const groups = buildSpecSidebarGroups(pluginCommands, command => localizeSpecCommand(command, ct));
+            return scopeName === null ? groups : characterScopedSidebarGroups(groups);
+        },
+        [ct, pluginCommands, scopeName],
     );
     const characterOptions = useMemo(
         () => getSpeakerCandidates(props.characters, props.tempSpeakers, chooserQuery),
@@ -1945,7 +1973,12 @@ export function InsertRow(props: {
             // The word the menu is SHOWING, not the canonical token: a pick that displayed 显示 and
             // wrote `@show` taught the author nothing they could type. `localizedCommandToken` comes
             // out of the same pass that built the parser's accept table, so it always reads back.
-            applyCompletion(`${trigger}${localizedCommandToken(def)} `, { start: 0, end: value.length });
+            //
+            // A scoped slot fills the subject in too: the menu only offered this character's verbs, so
+            // the name is not a question left to ask - and writing it (rather than an id) leaves a line
+            // the author could have typed themselves, caret already on the next slot.
+            const lead = scopeName === null ? "" : characterScopeLead(def, scopeName);
+            applyCompletion(`${trigger}${localizedCommandToken(def)} ${lead}`, { start: 0, end: value.length });
             return;
         }
         props.onChooseCommand(commandId);
@@ -2004,7 +2037,13 @@ export function InsertRow(props: {
                     // The hint advertises whichever trigger this author actually uses. Suppressed while a
                     // declaration receipt occupies the ghost zone, so the two do not overprint on the
                     // empty slot; the next keystroke clears the receipt and the placeholder is moot anyway.
-                    placeholder={props.mode.confirmation ? "" : t("story.rows.insertPlaceholder", { trigger: props.slashAtAlias ? "@" : "/" })}
+                    // A scoped slot names what it is for instead: narration and "#" are still typeable
+                    // there, but neither is why the author pressed the trigger on a speaker's line.
+                    placeholder={props.mode.confirmation
+                        ? ""
+                        : scopeName !== null
+                            ? t("story.rows.insertPlaceholderCharacter", { name: scopeName })
+                            : t("story.rows.insertPlaceholder", { trigger: props.slashAtAlias ? "@" : "/" })}
                     onChange={event => {
                         const typed = event.target.value;
                         const typedCaret = event.target.selectionStart ?? typed.length;
@@ -2143,6 +2182,7 @@ export function InsertRow(props: {
                         onChoose={chooseCommandCandidate}
                         onCancel={props.onDismissChooser}
                         frame={menuFrame}
+                        scopeLabel={scopeName === null ? undefined : t("story.actionCreator.scopedTo", { name: scopeName })}
                     />
                 ) : null}
                 {argMenuOpen ? (
@@ -2516,12 +2556,24 @@ function ActionCommandMenu(props: {
     onChoose: (commandId: string) => void;
     onCancel: () => void;
     frame: AnchoredMenuFrame;
+    /**
+     * The menu is narrowed to one subject and this line says which — set only for a character-scoped
+     * slot. It replaces the category column outright: eight chips with seven of them dimmed reads as
+     * "most of this is broken", where one line reads as "this list is about Alice", which is the true
+     * statement. Nothing is lost with it — the column is a pointer-only filter, and there is nothing
+     * left to filter.
+     */
+    scopeLabel?: string;
 }) {
     const { t } = useTranslation();
     // Category names are the subject vocabulary the whole command surface is filed under, so they
     // follow the command language; the menu's own chrome ("no actions", the key strip) does not.
     const { t: ct } = useCommandTranslation();
     const listRef = useRef<HTMLDivElement | null>(null);
+    // The scope header wears 角色's own glyph and hue — the same pair its category chip and every
+    // committed character row wear, so a narrowed menu still says which subject it is narrowed to.
+    const scopeCategory = getCommandCategory("character");
+    const ScopeIcon = scopeCategory.icon;
 
     useEffect(() => {
         if (!props.activeKey) {
@@ -2574,10 +2626,14 @@ function ActionCommandMenu(props: {
                         // one must not have it: it would sit the right column 8px lower than the left,
                         // and it is the one offset the two columns are lined up on.
                         <div key={entry.group.id} className="pt-2 first:pt-0">
+                            {/* A scoped menu has one section, and the panel's own header already
+                                named it — a second "角色" under it would only say it twice. */}
+                            {props.scopeLabel ? null : (
                             <div className="flex items-center gap-1.5 px-2 pb-1 text-2xs font-medium tracking-wide text-fg-subtle">
                                 <Icon className="h-3 w-3 shrink-0" style={{ color: entry.group.iconColor }} />
                                 <span>{ct(commandCategoryLabelKey(entry.group.id))}</span>
                             </div>
+                            )}
                             {entry.commands.map(command => {
                                 const key = `${entry.group.id}:${command.id}`;
                                 return (
@@ -2606,12 +2662,26 @@ function ActionCommandMenu(props: {
                 event.stopPropagation();
             }}
         >
-            {/* A fixed height, not a cap. Under `max-h`, the box took the taller column's height, and
+            {props.scopeLabel ? (
+                // Scoped: one column under one line. Same 288px box, so a menu that opens here and a
+                // menu that opens on a blank slot are the same object in two states rather than two
+                // panels of different sizes appearing at the same anchor.
+                <div className="flex h-72 flex-col">
+                    <div className="flex items-center gap-1.5 border-b border-edge px-3 py-2 text-2xs font-medium tracking-wide text-fg-subtle">
+                        <ScopeIcon className="h-3 w-3 shrink-0" style={{ color: scopeCategory.iconColor }} />
+                        <span className="truncate">{props.scopeLabel}</span>
+                    </div>
+                    <div ref={listRef} className="nl-no-scrollbar min-w-0 flex-1 overflow-auto p-1 pt-2">
+                        {rows}
+                    </div>
+                </div>
+            ) : (
+            /* A fixed height, not a cap. Under `max-h`, the box took the taller column's height, and
                 the category column is 284px against the cap's 288 — so a category whose commands did
                 not fill the panel (镜头 has one, 工具 three) shrank the whole menu by those 4px and
                 grew it back on the way out. Switching category is the one thing this column exists
                 for, and it flinched every time. Same size whatever is open; only the right column
-                scrolls. */}
+                scrolls. */
             <div className="flex h-72">
                 {/* Pointer-only, by design: the arrows belong to the caret in the line being typed.
                     So the chosen category wears a plain fill and the accent stays on the command row —
@@ -2644,6 +2714,7 @@ function ActionCommandMenu(props: {
                     {rows}
                 </div>
             </div>
+            )}
         </div>,
         globalThis.document.body,
     );
