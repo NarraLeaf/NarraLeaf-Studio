@@ -36,6 +36,18 @@ export const help = {
         // Shown in the reader before a topic is picked.
         pickTopic: "Pick a topic",
     },
+    /**
+     * Names for the pages under "On the web". They are catalog entries and not strings in
+     * `helpResources.ts` because they are shown to the reader like everything else here: hard-coded
+     * Chinese titles sat untranslated under English section headings for anyone reading in English.
+     * Proper nouns stay as they are - "NarraLeaf" and "GitHub" are not words to translate.
+     */
+    resourceTitles: {
+        docs: "Studio documentation",
+        site: "NarraLeaf website",
+        github: "GitHub organization",
+        engine: "narraleaf-react, the engine",
+    },
     topics: {
         workspaceLayout: {
             title: "Workspace layout",
