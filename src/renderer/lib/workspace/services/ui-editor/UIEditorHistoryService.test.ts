@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement } from "@shared/types/ui-editor/document";
 import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
+import { HistoryService } from "../history/HistoryService";
 import { Services } from "../services";
 import {
     applyUIDocumentSurfaceSnapshot,
@@ -133,8 +134,10 @@ function createHarness(initialDocument = documentWithPositions(0, 0), initialBlu
             this.syncCount += 1;
         },
     };
+    // The stacks live in HistoryService now; this service only knows what a surface snapshot is.
+    const historyService = new HistoryService();
     const history = new UIEditorHistoryService();
-    history.setContext({
+    const context = {
         project: {} as any,
         services: {
             get(service: Services) {
@@ -147,11 +150,16 @@ function createHarness(initialDocument = documentWithPositions(0, 0), initialBlu
                 if (service === Services.UIBlueprintLifecycle) {
                     return lifecycle;
                 }
+                if (service === Services.History) {
+                    return historyService;
+                }
                 throw new Error(`Unexpected service ${service}`);
             },
         } as any,
-    });
-    return { history, uidoc, graphDocument, lifecycle };
+    };
+    historyService.setContext(context);
+    history.setContext(context);
+    return { history, historyService, uidoc, graphDocument, lifecycle };
 }
 
 describe("UIEditorHistoryService", () => {

@@ -13,7 +13,9 @@ import type {
 import { describeDeclaration, listSceneIdsInDocumentOrder } from "@shared/types/story";
 import { translate } from "@/lib/i18n";
 import { useWorkspace } from "../../../context";
+import { useHistoryScope } from "@/apps/workspace/hooks/useHistoryScope";
 import { useWorkspaceFrozen } from "@/apps/workspace/hooks/useWorkspaceFrozen";
+import { storySceneHistoryScope } from "@/lib/workspace/services/history/historyScopes";
 import { isRowTextEditable } from "./storySceneReadOnly";
 import { Services } from "@/lib/workspace/services/services";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
@@ -143,8 +145,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * "leaving an uncommitted slot creates nothing" would be false for every line that reached it.
      */
     const slotDiscardedRef = useRef(false);
-    const undoStackRef = useRef<StorySceneHistoryState[]>([]);
-    const redoStackRef = useRef<StorySceneHistoryState[]>([]);
     const [document, setDocument] = useState<StoryDocument | null>(null);
     const [loading, setLoading] = useState(false);
     // Seed the focused row + selection from the persisted view state so switching tabs/pages (which
@@ -708,19 +708,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         };
     }, [activeBlockId, collapsedBlockIds, scene, selectedBlockIds]);
 
-    const recordHistory = useCallback(() => {
-        const state = captureHistoryState();
-        if (!state) {
-            return false;
-        }
-        undoStackRef.current.push(state);
-        if (undoStackRef.current.length > STORY_EDITOR_HISTORY_LIMIT) {
-            undoStackRef.current.shift();
-        }
-        redoStackRef.current = [];
-        return true;
-    }, [captureHistoryState]);
-
     const restoreHistoryState = useCallback((state: StorySceneHistoryState) => {
         if (!storyService || !storyId || !sceneId) {
             return;
@@ -733,29 +720,33 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setEditorMode({ kind: "idle" });
     }, [sceneId, storyId, storyService, tabId, uiService]);
 
-    const undoEdit = useCallback(() => {
-        const previous = undoStackRef.current.pop();
-        if (!previous) {
-            return;
-        }
-        const current = captureHistoryState();
-        if (current) {
-            redoStackRef.current.push(current);
-        }
-        restoreHistoryState(previous);
-    }, [captureHistoryState, restoreHistoryState]);
+    /**
+     * This scene's undo stack, held by `HistoryService` rather than by this hook.
+     *
+     * Two things follow from that and both are visible to the author. The stack outlives the tab, so
+     * closing a scene and reopening it does not silently empty Ctrl+Z. And anything that rewrites the
+     * whole scene from outside the editor - a script import, a palette command - can leave a
+     * checkpoint in front of its write by naming the same scope, which is what
+     * `storySceneUndoBridge` used to reach into these refs to do.
+     */
+    const sceneHistory = useHistoryScope<StorySceneHistoryState>({
+        scopeId: storyId && sceneId ? storySceneHistoryScope(storyId, sceneId) : null,
+        label: { key: "workspace.history.scope.storyScene" },
+        capture: captureHistoryState,
+        apply: restoreHistoryState,
+        limit: STORY_EDITOR_HISTORY_LIMIT,
+    });
 
+    const recordHistory = useCallback(
+        () => sceneHistory.checkpoint({ key: "workspace.history.entry.storyEdit" }),
+        [sceneHistory],
+    );
+    const undoEdit = useCallback(() => {
+        sceneHistory.undo();
+    }, [sceneHistory]);
     const redoEdit = useCallback(() => {
-        const next = redoStackRef.current.pop();
-        if (!next) {
-            return;
-        }
-        const current = captureHistoryState();
-        if (current) {
-            undoStackRef.current.push(current);
-        }
-        restoreHistoryState(next);
-    }, [captureHistoryState, restoreHistoryState]);
+        sceneHistory.redo();
+    }, [sceneHistory]);
 
     const updateBlockPayloadFor = useCallback((blockId: StoryBlockId, payload: StoryBlock["payload"]) => {
         if (storyService && storyId && sceneId) {
