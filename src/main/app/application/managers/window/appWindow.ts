@@ -204,6 +204,19 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         return this.props;
     }
 
+    /**
+     * Change what this window was opened with, for the next load of it.
+     *
+     * Only meaningful immediately before {@link reload}: props are read once, by the renderer that
+     * is starting up, so writing them without reloading changes nothing anybody will look at. The
+     * one caller is the recovery-mode switch, which is a reload by definition - it exists to throw
+     * away a renderer whose in-memory state cannot be trusted and come back with a different
+     * startup path.
+     */
+    public setProps(props: WindowProps[T]): void {
+        this.props = props;
+    }
+
     public minimize(): void {
         this.getBrowserWindow().minimize();
     }

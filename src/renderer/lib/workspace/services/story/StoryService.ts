@@ -38,6 +38,7 @@ import { UuidService } from "../core/UuidService";
 import { AssetsService } from "../core/AssetsService";
 import { AssetLockReason } from "../assets/AssetLockManager";
 import { EventEmitter } from "../ui/EventEmitter";
+import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
 import { findDeclarationBlock } from "@shared/types/story/declarations";
 import { listSceneIdsInDocumentOrder } from "@shared/types/story/order";
 import { assertValidStoryId } from "@shared/utils/storyId";
@@ -237,6 +238,17 @@ export class StoryService extends Service<StoryService> implements IStoryService
         const path = this.getStoryDocumentPath(storyId);
         const result = await fs.readJSON<StoryDocument>(path);
         if (!result.ok) {
+            // Both throws below are re-wrapped as `RendererError`, which keeps the message and drops
+            // the fs error code and the parse position with it. Recorded here while the original is
+            // still in hand - "unexpected token } at 41273" is what says a write was truncated, and
+            // the caller only ever sees "Failed to read story document: Chapter 1".
+            reportWorkspaceAnomaly({
+                source: "story",
+                operationKey: "workspace.recovery.operations.storyDocumentRead",
+                path,
+                error: result.error,
+                severity: "degraded",
+            });
             throw new RendererError(result.error.message || `Failed to read story document: ${entry.name}`);
         }
         try {
@@ -249,6 +261,13 @@ export class StoryService extends Service<StoryService> implements IStoryService
             this.events.emit("documentChanged", { storyId, document });
             return document;
         } catch (error) {
+            reportWorkspaceAnomaly({
+                source: "story",
+                operationKey: "workspace.recovery.operations.storyDocumentParse",
+                path,
+                error,
+                severity: "degraded",
+            });
             throw new RendererError(error instanceof Error ? error.message : String(error));
         }
     }
@@ -360,6 +379,15 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 await this.writeLibraryIndex();
                 return created;
             }
+            // Fatal: this runs in `init`, so the throw takes the whole workspace down to the error
+            // screen. That screen shows a message and no path, and the path is most of the answer.
+            reportWorkspaceAnomaly({
+                source: "story",
+                operationKey: "workspace.recovery.operations.storyIndexRead",
+                path: indexPath,
+                error: result.error,
+                severity: "fatal",
+            });
             throw new RendererError(result.error.message);
         }
 
@@ -371,6 +399,13 @@ export class StoryService extends Service<StoryService> implements IStoryService
             this.events.emit("libraryChanged", this.index);
             return this.index;
         } catch (error) {
+            reportWorkspaceAnomaly({
+                source: "story",
+                operationKey: "workspace.recovery.operations.storyIndexParse",
+                path: indexPath,
+                error,
+                severity: "fatal",
+            });
             throw new RendererError(error instanceof Error ? error.message : String(error));
         }
     }

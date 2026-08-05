@@ -205,6 +205,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.workspaceImportProjectPackage, {}),
         exportConsoleLogs: (defaultFileName: string, content: string) =>
             ipcClient.invoke(IPCEventType.workspaceExportConsoleLogs, { defaultFileName, content }),
+        setRecoveryMode: (enabled: boolean, reason?: string) =>
+            ipcClient.invoke(IPCEventType.workspaceSetRecoveryMode, { enabled, reason }),
+        openProjectFolder: () =>
+            ipcClient.invoke(IPCEventType.workspaceOpenProjectFolder, {}),
         onConfirmClose: (handler: () => Promise<RequestStatus<{ confirmed: boolean }>>) =>
             ipcClient.onRequest(IPCEventType.workspaceConfirmClose, handler),
         onFlushPendingSaves: (handler: () => Promise<RequestStatus<{ flushed: boolean }>>) =>

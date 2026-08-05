@@ -20,6 +20,25 @@ export type WindowProps = {
     },
     [WindowAppType.Workspace]: {
         projectPath: string;
+        /**
+         * Open this project as a recovery shell instead of as a workspace.
+         *
+         * A window prop rather than renderer state because the mode is decided by a *reload*: the
+         * whole point is to throw away whatever the failed boot left in memory and come back with a
+         * different startup. `workspace.setRecoveryMode` writes it here and reloads the window, so
+         * the flag is the first thing the new renderer reads and nothing has to be told twice.
+         */
+        recovery?: boolean;
+        /**
+         * What sent the author here, verbatim.
+         *
+         * The failure that made recovery mode worth entering usually happened in the renderer that
+         * is about to be discarded - most often the workspace init error behind the error screen -
+         * and re-deriving it after the reload is not always possible (a service that threw on the
+         * first read may quietly succeed on the second). Carried across so the recovery panel can
+         * list it as the first anomaly.
+         */
+        recoveryReason?: string;
     },
     [WindowAppType.ProjectWizard]: {
     },

@@ -197,6 +197,16 @@ export interface RendererPreloadedInterface {
             filePath?: string;
             byteLength?: number;
         }>>;
+        /**
+         * Reopen this window as a recovery shell (`true`) or as an ordinary workspace (`false`).
+         *
+         * Reloads the window, so the caller does not outlive the call. Nothing is flushed on the way
+         * in - see the handler - which is why the surface offering this has to ask the author first
+         * when the workspace actually came up.
+         */
+        setRecoveryMode(enabled: boolean, reason?: string): Promise<RequestStatus<void>>;
+        /** Reveal this window's project folder in the OS file manager. */
+        openProjectFolder(): Promise<RequestStatus<void>>;
         onConfirmClose(handler: () => Promise<RequestStatus<{ confirmed: boolean }>>): AppEventToken;
         /**
          * Write out every pending auto-save and report whether it all landed. Main blocks the close
