@@ -10,6 +10,7 @@ import {
 } from "@shared/types/blueprint/graph";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement } from "@shared/types/ui-editor/document";
 import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
+import { HistoryService } from "../history/HistoryService";
 import { Services } from "../services";
 import { LocalBlueprintService } from "./LocalBlueprintService";
 
@@ -190,11 +191,16 @@ function createHarness() {
             }
         },
     };
+    // Blueprint undo stacks live in HistoryService now; this service supplies the snapshots.
+    const historyService = new HistoryService();
     const service = new LocalBlueprintService();
-    service.setContext({
+    const context = {
         project: {} as any,
         services: {
             get(serviceId: Services) {
+                if (serviceId === Services.History) {
+                    return historyService;
+                }
                 if (serviceId === Services.UIGraph) {
                     return {
                         getDocument() {
@@ -217,8 +223,10 @@ function createHarness() {
                 throw new Error(`Unexpected service ${serviceId}`);
             },
         } as any,
-    });
-    return { service, graphDocument, uidoc, registryService };
+    };
+    historyService.setContext(context);
+    service.setContext(context);
+    return { service, historyService, graphDocument, uidoc, registryService };
 }
 
 describe("LocalBlueprintService persistent variables (M-VAR registry)", () => {

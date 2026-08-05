@@ -2,18 +2,16 @@ import { normalizeAudioClipRegion } from "@shared/types/audio";
 import type { AssetAudioLoop, AssetExtras } from "@/lib/workspace/services/assets/types";
 
 /**
- * Undo/redo for the audio preview's in, loop and out points.
+ * The audio preview's in, loop and out points: what they mean, and the moves over them.
  *
- * The preview is read-only over the samples, so the loop region is the *only* authored state it
- * has - which makes this the whole of its history, not a subset of a larger editing history.
+ * The preview is read-only over the samples, so this region is the *only* authored state it has -
+ * which is why it once carried its own `{past, present, future}` reducer. Undo now lives where every
+ * other editor's does (`HistoryService`, scope `audio-loop:<assetId>`); what is left here is the
+ * region itself and the rules about what a legal region is.
  *
- * One reducer over `{past, present, future}` rather than three `useState`s: the stacks have to
- * move together, and updating one from inside another's updater lets React's repeated updater
- * invocations push the same snapshot twice.
+ * Pure by construction - no React, no services, no time source. That is what makes the marker
+ * ordering rules below testable on their own.
  */
-
-/** Undo depth. A snapshot is three numbers, so this is a sanity bound, not a memory one. */
-const MAX_HISTORY_STEPS = 100;
 
 /** Which marker a gesture or command is about. */
 export type LoopMarker = "in" | "loop" | "out";
@@ -26,22 +24,7 @@ export interface LoopPoints {
     outMs: number | null;
 }
 
-export interface LoopHistoryState {
-    past: LoopPoints[];
-    present: LoopPoints;
-    future: LoopPoints[];
-}
-
-export type LoopHistoryAction =
-    /** Adopt the asset's stored region as a fresh baseline - clears both stacks. */
-    | { type: "load"; loop: LoopPoints }
-    | { type: "set"; loop: LoopPoints }
-    | { type: "undo" }
-    | { type: "redo" };
-
 export const EMPTY_LOOP: LoopPoints = { inMs: null, loopStartMs: null, outMs: null };
-
-export const initialLoopHistory: LoopHistoryState = { past: [], present: EMPTY_LOOP, future: [] };
 
 export function sameLoop(a: LoopPoints, b: LoopPoints): boolean {
     return a.inMs === b.inMs && a.loopStartMs === b.loopStartMs && a.outMs === b.outMs;
@@ -120,54 +103,4 @@ export function clearPoint(loop: LoopPoints, marker: LoopMarker): LoopPoints {
         return { ...loop, inMs: null };
     }
     return marker === "loop" ? { ...loop, loopStartMs: null } : { ...loop, outMs: null };
-}
-
-export function loopHistoryReducer(state: LoopHistoryState, action: LoopHistoryAction): LoopHistoryState {
-    switch (action.type) {
-        case "load":
-            return { past: [], present: action.loop, future: [] };
-        case "set": {
-            // A set that changes nothing must not push a step, or undo starts needing repeated
-            // presses to get anywhere.
-            if (sameLoop(state.present, action.loop)) {
-                return state;
-            }
-            const past = [...state.past, state.present];
-            return {
-                past: past.length > MAX_HISTORY_STEPS ? past.slice(past.length - MAX_HISTORY_STEPS) : past,
-                present: action.loop,
-                future: [],
-            };
-        }
-        case "undo": {
-            const previous = state.past[state.past.length - 1];
-            if (!previous) {
-                return state;
-            }
-            return {
-                past: state.past.slice(0, -1),
-                present: previous,
-                future: [state.present, ...state.future],
-            };
-        }
-        case "redo": {
-            const next = state.future[0];
-            if (!next) {
-                return state;
-            }
-            return {
-                past: [...state.past, state.present],
-                present: next,
-                future: state.future.slice(1),
-            };
-        }
-    }
-}
-
-export function canUndoLoop(state: LoopHistoryState): boolean {
-    return state.past.length > 0;
-}
-
-export function canRedoLoop(state: LoopHistoryState): boolean {
-    return state.future.length > 0;
 }

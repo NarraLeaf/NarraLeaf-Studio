@@ -61,8 +61,7 @@ type Harness = {
         audioTracksLoad: ReturnType<typeof vi.fn>;
         localizationReload: ReturnType<typeof vi.fn>;
         voiceReload: ReturnType<typeof vi.fn>;
-        surfaceHistoryClear: ReturnType<typeof vi.fn>;
-        blueprintHistoryClear: ReturnType<typeof vi.fn>;
+        historyClearAll: ReturnType<typeof vi.fn>;
         showSticky: ReturnType<typeof vi.fn>;
     };
 };
@@ -90,8 +89,7 @@ async function createHarness(seed?: string): Promise<Harness> {
         audioTracksLoad: vi.fn(async () => undefined),
         localizationReload: vi.fn(async () => undefined),
         voiceReload: vi.fn(async () => undefined),
-        surfaceHistoryClear: vi.fn(),
-        blueprintHistoryClear: vi.fn(),
+        historyClearAll: vi.fn(),
         showSticky: vi.fn(() => "toast-1"),
     };
 
@@ -133,8 +131,7 @@ async function createHarness(seed?: string): Promise<Harness> {
         [Services.AudioTracks]: { load: stubs.audioTracksLoad },
         [Services.Localization]: { reloadFromDisk: stubs.localizationReload },
         [Services.Voice]: { reloadFromDisk: stubs.voiceReload },
-        [Services.UIEditorHistory]: { clear: stubs.surfaceHistoryClear },
-        [Services.LocalBlueprint]: { clearBlueprintHistory: stubs.blueprintHistoryClear },
+        [Services.History]: { clearAll: stubs.historyClearAll },
         [Services.VariableRegistry]: variables,
         [Services.SaveStatus]: saveStatus,
         [Services.UI]: { notifications: { showSticky: stubs.showSticky, close: vi.fn() } },
@@ -336,8 +333,7 @@ describe("WorkspaceReloadService", () => {
 
         await harness.reload.reload("restore");
 
-        expect(harness.stubs.surfaceHistoryClear).toHaveBeenCalledTimes(1);
-        expect(harness.stubs.blueprintHistoryClear).toHaveBeenCalledTimes(1);
+        expect(harness.stubs.historyClearAll).toHaveBeenCalledTimes(1);
     });
 
     /**
