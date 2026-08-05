@@ -12,11 +12,9 @@ import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { Services } from "@/lib/workspace/services/services";
 import type { TranslationKey } from "@shared/i18n";
+import type { HistoryService } from "@/lib/workspace/services/history/HistoryService";
+import { storySceneHistoryScope } from "@/lib/workspace/services/history/historyScopes";
 import { useWorkspace } from "../../../context";
-import {
-    hasStorySceneUndoRecorder,
-    recordStorySceneUndoCheckpoints,
-} from "../scene-editor/storySceneUndoBridge";
 import { StoryScriptExportModal } from "./StoryScriptExportModal";
 import { StoryScriptImportModal } from "./StoryScriptImportModal";
 import {
@@ -206,7 +204,12 @@ export function useStoryScriptIo(): StoryScriptIo {
             const scenes = applicableScenePlans(importRequest.plan);
             // The checkpoint has to precede the first write, and cover the whole batch: an import that
             // rewrote three scenes and then asked for undo would find the first two already replaced.
-            recordStorySceneUndoCheckpoints(importRequest.storyId, scenes.map(scene => scene.sceneId));
+            const history = context.services.get<HistoryService>(Services.History);
+            for (const scene of scenes) {
+                history.checkpoint(storySceneHistoryScope(importRequest.storyId, scene.sceneId), {
+                    label: { key: "workspace.history.entry.storyEdit" as TranslationKey },
+                });
+            }
             const outcome = applyStoryScriptScenes(scenes, scene => {
                 storyService.replaceScene(importRequest.storyId, scene.sceneId, scene.scene);
             });
@@ -231,9 +234,16 @@ export function useStoryScriptIo(): StoryScriptIo {
         }
     }, [context, importRequest, report, t, tn]);
 
+    // A scene is undoable exactly when something is live to apply the snapshot back through - which
+    // for a scene means an editor tab is holding it. The dialog says so before it writes rather than
+    // letting the author discover it by pressing Ctrl+Z afterwards.
     const undo: StoryScriptUndoState = storyScriptUndoCoverage(
         importRequest === null ? [] : applicableScenePlans(importRequest.plan),
-        sceneId => importRequest !== null && hasStorySceneUndoRecorder(importRequest.storyId, sceneId),
+        sceneId =>
+            importRequest !== null &&
+            !!context?.services
+                .get<HistoryService>(Services.History)
+                .hasScope(storySceneHistoryScope(importRequest.storyId, sceneId)),
     );
 
     const beginExport = useCallback((target: StoryScriptExportTarget) => {

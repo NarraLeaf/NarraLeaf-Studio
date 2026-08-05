@@ -33,7 +33,6 @@ import { StorySnapshotPanel, STORY_SNAPSHOT_PANEL_ID, getSelectedSnapshotId, set
 import { InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { publishStoryInspectorState } from "./storyInspectorBridge";
-import { registerStorySceneUndoRecorder } from "./storySceneUndoBridge";
 import {
     isSameStoryBlockSelection,
     isStoryBlockSelectionData,
@@ -768,19 +767,9 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const editorRef = useRef(editor);
     editorRef.current = editor;
 
-    // Offer this tab's undo stack to whole-scene writes that arrive from elsewhere (a script import,
-    // run from the story panel or the palette). Deliberately NOT gated on `active`: a kept-alive
-    // background tab still holds the history the author would press Ctrl+Z in.
-    useEffect(() => {
-        if (!payload?.storyId || !payload.sceneId) {
-            return;
-        }
-        return registerStorySceneUndoRecorder(tabId, {
-            storyId: payload.storyId,
-            sceneId: payload.sceneId,
-            record: () => editorRef.current.recordHistory(),
-        });
-    }, [payload?.sceneId, payload?.storyId, tabId]);
+    // Whole-scene writes that arrive from elsewhere (a script import, run from the story panel or the
+    // palette) leave their checkpoint by naming this scene's history scope - see
+    // `useStorySceneEditorController`. Nothing to register here any more.
 
     const sortableRowIds = useMemo(() => editor.visibleRows.map(row => row.block.id), [editor.visibleRows]);
 
