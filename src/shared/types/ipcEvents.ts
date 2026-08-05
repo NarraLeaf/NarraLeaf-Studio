@@ -144,6 +144,8 @@ export enum IPCEventType {
     workspaceExportProjectPackage = "workspace.projectPackage.export",
     workspaceImportProjectPackage = "workspace.projectPackage.import",
     workspaceExportConsoleLogs = "workspace.console.exportLogs",
+    workspaceSetRecoveryMode = "workspace.setRecoveryMode",
+    workspaceOpenProjectFolder = "workspace.openProjectFolder",
     workspaceConfirmClose = "workspace.confirmClose",
     workspaceCloseProgress = "workspace.closeProgress",
     workspaceFlushPendingSaves = "workspace.flushPendingSaves",
@@ -293,7 +295,7 @@ export type BlueprintPersistenceProjectRef = {
  * A third kind added to the reason will fail to compile at the reporting call site, which is the
  * right place to be asked what to say about it.
  */
-export type WorkspaceFreezeKind = "revision" | "manual" | "merge";
+export type WorkspaceFreezeKind = "revision" | "manual" | "merge" | "recovery";
 
 /**
  * Which part of the close a workspace is currently waiting on.
@@ -1236,6 +1238,40 @@ export type IPCWorkspaceEvents = {
             filePath?: string;
             byteLength?: number;
         };
+    };
+    /**
+     * Reopen this window as a recovery shell, or as an ordinary workspace again.
+     *
+     * A reload rather than a state change, and that is the feature rather than an implementation
+     * detail: recovery mode is entered because what the renderer holds cannot be trusted, so the
+     * renderer is what gets discarded. Resolves after the reload has been asked for, not after the
+     * new one has booted - the caller is about to stop existing.
+     *
+     * `reason` is carried into the new window's props so the recovery panel can lead with whatever
+     * sent the author here (usually the workspace init error, which the reload would otherwise
+     * destroy).
+     */
+    [IPCEventType.workspaceSetRecoveryMode]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            enabled: boolean;
+            reason?: string;
+        },
+        response: void;
+    };
+    /**
+     * Show this window's project folder in the OS file manager.
+     *
+     * Only ever the window's own project - the path is not a parameter - because "open a folder for
+     * me" taking a renderer-supplied path is a way out of the sandbox, and every caller wants this
+     * one folder anyway.
+     */
+    [IPCEventType.workspaceOpenProjectFolder]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: void;
     };
     /**
      * Asks the workspace to confirm closing, using its own in-app dialog rather than a native

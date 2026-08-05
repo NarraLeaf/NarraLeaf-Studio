@@ -305,6 +305,15 @@ export class SaveStatusService extends Service<SaveStatusService> {
             reason: refusal.reason.kind,
         }));
 
+        // Recovery mode is read-only by construction and says so on its own banner, so a refusal
+        // there is the design working rather than news. It still gets the console line above - the
+        // per-path record is exactly what a recovery session is for - but a sticky toast repeating
+        // "not saved" over a shell whose whole purpose is not saving would be noise the author
+        // cannot act on.
+        if (refusal.reason.kind === "recovery") {
+            return;
+        }
+
         if (this.frozenToast) {
             return;
         }

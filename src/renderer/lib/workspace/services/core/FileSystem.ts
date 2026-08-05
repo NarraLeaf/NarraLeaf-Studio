@@ -175,7 +175,20 @@ export class BaseFileSystemService {
         return reportWriteOutcome(path, this.wrapIPCError(await appPrivilegedFacade.fs.writeFileNoFollow(path, data, encoding)));
     }
 
+    /**
+     * Set a damaged JSON file aside and put a usable one in its place.
+     *
+     * Gated like every other writer, which it was not before. It moves the author's file and writes
+     * a replacement over the path, so a frozen workspace that let it through would rewrite the
+     * working tree from a *load* path - and a load runs on every project open, including the ones
+     * where the freeze exists precisely because the tree must not be touched (a revision view, an
+     * open merge, a recovery shell). Recovery mode is the case that makes it plain: without this the
+     * act of opening a project to diagnose a corrupt asset shard is the act that resets it.
+     */
     public static async recoverCorruptedJsonFile(path: string, replacement: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
+        if (refuseFrozenWrite(path) || refuseReloadingWrite(path)) {
+            return FROZEN_NO_OP;
+        }
         return this.wrapIPCError(await appPrivilegedFacade.fs.recoverCorruptedJsonFile(path, replacement, encoding));
     }
 

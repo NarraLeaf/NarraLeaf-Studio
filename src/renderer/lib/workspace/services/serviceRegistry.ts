@@ -40,6 +40,7 @@ import { VersionControlService } from "./core/VersionControlService";
 import { WorkspaceFreezeService } from "./core/WorkspaceFreezeService";
 import { WorkspaceReloadService } from "./core/WorkspaceReloadService";
 import { PuppetDescriptionService } from "./puppet/PuppetDescriptionService";
+import { RecoveryService } from "./core/RecoveryService";
 
 export class ServiceRegistry {
     private services: Record<Services, Service> = {
@@ -83,6 +84,7 @@ export class ServiceRegistry {
         [Services.VersionControl]: VersionControlService.getInstance(),
         [Services.WorkspaceFreeze]: WorkspaceFreezeService.getInstance(),
         [Services.WorkspaceReload]: WorkspaceReloadService.getInstance(),
+        [Services.Recovery]: RecoveryService.getInstance(),
     };
 
     public get<T extends Service>(service: Services): T {

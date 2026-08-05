@@ -15,6 +15,7 @@ import { FileSystemService } from "./FileSystem";
 import { ServiceAssetsService } from "./ServiceAssetsService";
 import { UIService } from "./UIService";
 import { AssetLockReason } from "../assets/AssetLockManager";
+import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
 
 /**
  * The project's cast, at `editor/services/character.json`.
@@ -369,6 +370,16 @@ export class CharacterService extends Service<CharacterService> implements IChar
 
     private reportUnreadable(error: DocumentCorruptError): void {
         this.unreadable = error;
+        // The dialog below says the cast could not be read and stops there, which is the right
+        // amount for a modal. `reason` plus the original bytes' parse failure is the amount a
+        // recovery session needs, so the same event goes to the log in full.
+        reportWorkspaceAnomaly({
+            source: "characters",
+            operationKey: "workspace.recovery.operations.charactersRead",
+            path: charactersSpec.pathFor(),
+            error,
+            severity: "degraded",
+        });
         this.getContext().services.get<UIService>(Services.UI).showError(
             `This project's characters could not be read (${error.reason}). `
             + `A copy of the file has been set aside and nothing will be saved over it.`,

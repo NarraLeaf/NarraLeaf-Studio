@@ -45,7 +45,21 @@ export type WorkspaceFreezeReason =
      * The way out is finishing or abandoning the merge, not `thaw`, and the rail's strip offers
      * that instead of its usual escape.
      */
-    | { kind: "merge" };
+    | { kind: "merge" }
+    /**
+     * The window is a recovery shell.
+     *
+     * Armed before the first service initializes and never lifted - `thaw` is not offered, because
+     * leaving recovery mode means reloading the window, not unlatching. Recovery mode exists to look
+     * at a project that is already damaged, and the one thing it must never do is make the damage
+     * worse or destroy the evidence: without this latch, merely *opening* the project resets a
+     * corrupt asset shard to `{}` (see `AssetsMetadataManager`), and the file the author came to
+     * diagnose is gone before they have read the error about it.
+     *
+     * The lore actions the recovery panel offers are unaffected: those run in the main process,
+     * which is not behind this gate.
+     */
+    | { kind: "recovery" };
 
 export type WorkspaceFreeze = {
     /** The project whose data is frozen. Writes anywhere else are none of this module's business. */
