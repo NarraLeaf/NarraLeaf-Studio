@@ -40,7 +40,11 @@ function ResourceCard({ resource, icon }: { resource: LearningResource; icon: Re
                 </div>
                 <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium text-fg">{resource.title}</div>
-                    <div className="mt-0.5 line-clamp-2 text-xs leading-5 text-fg-subtle">
+                    {/* No line clamp. These descriptions are one authored sentence each, and at the
+                        launcher's default width the two-column grid made every one of them wrap to
+                        three lines - so the clamp was cutting a sentence mid-word in a card that had
+                        the room for it. Grid rows stretch, so letting them run keeps the row even. */}
+                    <div className="mt-0.5 text-xs leading-5 text-fg-subtle">
                         {resource.description}
                     </div>
                 </div>

@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ClipboardEvent, CSSProperties, ReactNode, RefObject, MouseEvent } from "react";
-import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Hash, Image, LayoutGrid, List, Music, Play, Plus, Route, Trash2, TriangleAlert, UserRoundPlus, Variable, Video } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Image, LayoutGrid, List, Play, Plus, Trash2, TriangleAlert, UserRoundPlus } from "lucide-react";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
 import { useSortable } from "@dnd-kit/sortable";
 import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryDocument, StoryRichRun, StoryScene, StorySceneId } from "@shared/types/story";
@@ -39,7 +39,6 @@ import {
 import { localizeSpecCommand, specPaletteCommands } from "./commands/specPalette";
 import { browseMenuStops, buildSpecSidebarGroups, dedupeToPrimarySubject, filterSidebarGroups, type StoryCommandMenuStop, type StoryCommandSidebarGroup } from "./commands/specSidebar";
 import { useStoryPluginActionCommands } from "./useStoryPluginActionCommands";
-import { paramTypes } from "./storyCommandGrammar";
 import { getCommandDef, getDefById, localizedCommandToken } from "./commands/registry";
 import { localizeCommandVerb } from "./storyCommandSpelling";
 import { completionFor, defaultHighlights, getCommandCursor, type StoryCommandCursor } from "./storyCommandCursor";
@@ -48,6 +47,7 @@ import { parseCommandLine } from "./storyCommandParser";
 import { resolveCommandLine, type StoryCommandContext } from "./storyCommandResolution";
 import type { StoryCommandValue } from "./storyCommandValues";
 import { StoryCommandCandidateMenu, useStoryCandidateMenuState, type StoryCandidateItem } from "./StoryCommandCandidateMenu";
+import { StoryCandidateSpeakerMark } from "./storyCandidateMark";
 import { RichTextInput, type ActiveMarks, type EventClickInfo, type InterpolationClickInfo, type PauseClickInfo, type RichTextInputHandle } from "./RichTextInput";
 import { RichTextToolbar } from "./RichTextToolbar";
 import type { RichTextToolbarHandle } from "./RichTextToolbar";
@@ -1632,25 +1632,6 @@ function ContainerModeBadge({ mode }: { mode: "all" | "allAsync" | "any" }) {
     );
 }
 
-function candidateIcon(cursor: StoryCommandCursor, candidate: StoryCommandCandidate): { icon: typeof Hash; className?: string } | null {
-    if (cursor.kind !== "positional" && cursor.kind !== "paramValue") {
-        return null;
-    }
-    const [type] = paramTypes(cursor.param);
-    switch (type?.kind) {
-        case "asset":
-            return { icon: type.assetType === "audio" ? Music : type.assetType === "video" ? Video : Image };
-        case "character":
-            return candidate.free ? { icon: UserRoundPlus } : { icon: Hash, className: "text-primary/80" };
-        case "scene":
-            return { icon: Route };
-        case "variable":
-            return { icon: Variable };
-        default:
-            return null;
-    }
-}
-
 /**
  * What the argument menu offers at this caret: the candidates, whether the panel opens at all, and
  * whether anything starts out highlighted.
@@ -1914,7 +1895,6 @@ export function InsertRow(props: {
     );
     const argItems = useMemo<StoryCandidateItem[]>(() => {
         return argOffer.candidates.map((candidate, index) => {
-            const icon = candidateIcon(cursor, candidate);
             return {
                 // Values are not unique on their own — two assets may share a name.
                 key: `${index}:${candidate.value}`,
@@ -1933,13 +1913,16 @@ export function InsertRow(props: {
                     : candidate.detailKind
                         ? t(commandCategoryLabelKey(subjectGroupId(candidate.detailKind)))
                         : candidate.detail,
-                icon: icon?.icon,
-                iconClassName: icon?.className,
+                // What the candidate IS, decided where it was produced — the arm of the grammar that
+                // listed it knows, and the caret alone does not: a `/show |` slot lists characters and
+                // stage objects together, and reading the mark off the param made every row in it wear
+                // the first branch's glyph.
+                mark: candidate.mark,
                 tag: candidate.free ? t("story.rows.tempSpeaker") : undefined,
                 ...(candidate.free ? { free: true as const } : {}),
             };
         });
-    }, [argOffer, ct, cursor, t]);
+    }, [argOffer, ct, t]);
     // The candidates decide the highlight along with the cursor: an untyped slot, a slot whose best
     // offer is the author's own text, and every expression slot all have to leave Enter meaning
     // "submit". See `defaultHighlights`, and `argMenuOffer` for why the expression case is deliberate.
@@ -2202,6 +2185,7 @@ export function InsertRow(props: {
                         onChoose={takeArgCandidate}
                         onCancel={props.onDismissChooser}
                         frame={menuFrame}
+                        characters={props.characters}
                     />
                 ) : null}
                 {chooser === "character" ? (
@@ -2829,11 +2813,12 @@ function CharacterPicker(props: {
                             onMouseEnter={() => props.onHighlight(candidate.key)}
                             onMouseDown={() => props.onChoose(candidate)}
                         >
-                            {/* A temp speaker is a name with nobody behind it — it gets the outline icon
-                                and a tag, so picking one is never mistaken for picking a real character. */}
-                            {temp
-                                ? <UserRoundPlus className={["h-4 w-4 shrink-0", active ? "text-fg-muted" : "text-fg-subtle"].join(" ")} />
-                                : <Hash className={["h-4 w-4 shrink-0", active ? "text-primary" : "text-primary/80"].join(" ")} />}
+                            {/* A real character shows their face, exactly as the argument menu does in
+                                this same slot — the two are meant to read as one menu following the
+                                caret. A temp speaker is a name with nobody behind it: it keeps the
+                                outline glyph and a tag, so picking one is never mistaken for picking a
+                                character. */}
+                            <StoryCandidateSpeakerMark character={candidate.kind === "temp" ? null : candidate.character} />
                             <span className="truncate text-sm text-fg">{candidate.name}</span>
                             {temp ? <span className="ml-auto shrink-0 text-2xs text-fg-subtle">{t("story.rows.tempSpeaker")}</span> : null}
                         </button>

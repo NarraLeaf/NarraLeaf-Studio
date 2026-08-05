@@ -651,6 +651,34 @@ export const story = {
         playing: "Playing",
         ended: "Reached the end of the scene",
         endedAtJump: "Stopped at a scene jump",
+        /**
+         * Warnings the stage-snapshot walk raises when it has to approximate. They surface verbatim
+         * under the preview pane, so they are author-facing prose, not log lines.
+         */
+        diagnostics: {
+            targetNotFound: "Preview target block not found; previewing the scene start instead.",
+            targetUnreachable: "Preview target is not reachable from the scene root; previewing the scene end instead.",
+            repeatedGroupOnce: "Preview applies repeated groups once.",
+            sceneJumpIgnored: "Preview ignores scene jumps.",
+            choiceNotTaken: "Preview assumes no branch of this earlier choice was taken.",
+            conditionUnresolved: "Condition `{expression}` did not resolve; it evaluates false in the preview.",
+            blueprintConditionFalse: "Blueprint condition evaluates false in the preview.",
+            persistentConditionDefaults: "Persistent-variable condition evaluates against defaults in the preview.",
+            videoSkipped: "Videos are not previewed.",
+            ambienceSkipped: "Ambience effects are not previewed.",
+            storyActionSkipped: "Story Action Blueprint effects are not simulated in the preview.",
+            displayableNotFound: "Displayable target not found: {target}",
+            displayableUnnamed: "(empty)",
+            persistentAssignmentSkipped: "Persistent-variable assignments are not applied in the preview.",
+            assignmentUnresolved: "Expression `{expression}` did not resolve; the assignment was skipped in the preview.",
+            blueprintCallEmpty: "Blueprint `{name}()` does not run in the preview; it reads as empty.",
+            persistentReadEmpty: "Persistent variables read as empty in the preview.",
+            sceneVisitUntracked: "Scene visits are not tracked in the preview; `visited({name})` reads as false.",
+            choicePickUntracked: "Choice picks are not tracked in the preview; `picked({name})` reads as false.",
+            presetNotFoldable: "{preset} transforms cannot be folded into character show yet.",
+            animationNotFound: "Story animation not found: {animationId}",
+            animationIdMissing: "Animation transform is missing animationId.",
+        },
     },
     blueprintCard: {
         openAria: "Open story action blueprint",

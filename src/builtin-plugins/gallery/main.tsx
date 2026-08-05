@@ -34,14 +34,33 @@ import {
 const PANEL_ID = `${PLUGIN_ID}.panel`;
 const EDITOR_TAB_ID = `${PLUGIN_ID}.editor`;
 
+/**
+ * The panel and tab name. "Gallery" here is the VN feature (the unlockable CG wall), not a brand,
+ * so it reads as an untranslated stray in a non-English editor - which is exactly how it looked
+ * sitting between 本地化 and 配音 in the rail's overflow menu.
+ */
+const MESSAGES = {
+    messages: {
+        en: { title: "Gallery" },
+        zh: { title: "画廊" },
+    },
+    fallbackLocale: "en",
+};
+
 export default definePlugin({
     async setup(app) {
         const store = createGalleryStore(app);
         await store.load();
+        // One translator, read at render: `.t()` resolves against the LIVE editor locale, and both
+        // registrations below expose the title as a getter, so a language switch re-titles them on
+        // the next render with no re-registration (the same shape the core panel modules use).
+        const tr = app.services.i18n.createTranslator(MESSAGES);
 
         const openEditor = () => app.services.ui.editors.open({
             id: EDITOR_TAB_ID,
-            title: "Gallery",
+            get title() {
+                return tr.t("title");
+            },
             icon: <Images size={14} />,
             closable: true,
             component: () => <GalleryEditorTab app={app} store={store} />,
@@ -67,7 +86,9 @@ export default definePlugin({
 
         const unregisterPanel = app.services.ui.panels.register({
             id: PANEL_ID,
-            title: "Gallery",
+            get title() {
+                return tr.t("title");
+            },
             icon: <Images size={16} />,
             position: PanelPosition.Left,
             component: () => <GalleryPanel app={app} store={store} onOpenEditor={openEditor} />,
