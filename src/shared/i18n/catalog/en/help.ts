@@ -157,9 +157,9 @@ export const help = {
                 + "untranslated, translated, out of date, or not needed.\n"
                 + "\n"
                 + "- A line goes out of date when the original text changes after it was translated.\n"
-                + "- Export a language to CSV, translate it anywhere, import it back. The import says how many "
-                + "lines it applied and how many it could not match.\n"
-                + "- Export and import are on the language row, under the right-click menu.",
+                + "- Export a language as CSV, XLIFF, PO or JSON, translate it anywhere, and import it back. "
+                + "The import says how many lines it applied and how many it could not match.\n"
+                + "- Export and import are on the language row, under its menu.",
         },
         uiSurfaces: {
             title: "Game screens",
