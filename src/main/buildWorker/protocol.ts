@@ -240,6 +240,13 @@ export type GameBuildWorkerWebJob = {
     dirName: string;
     /** File name (under outputDir) the "zip" format is written to. */
     zipName: string;
+    /**
+     * Write `.br`/`.gz` siblings for the site's text files, for a host that
+     * serves precompressed variants. Only the web output gets them - the mobile
+     * packages share `sourceDir` and serve their files directly, so a variant
+     * there is dead weight (see precompressWebSite.ts).
+     */
+    precompress: boolean;
 };
 
 /**
