@@ -1,4 +1,4 @@
-import { execFile } from "child_process";
+﻿import { execFile } from "child_process";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
@@ -30,7 +30,7 @@ afterEach(async () => {
 describe("packageWebSite", () => {
     it("copies the site for the dir format", async () => {
         const artifacts = await packageWebSite(
-            { sourceDir, formats: ["dir"], dirName: "Game-1.0.0-web", zipName: "Game-1.0.0-web.zip" },
+            { sourceDir, precompress: false, formats: ["dir"], dirName: "Game-1.0.0-web", zipName: "Game-1.0.0-web.zip" },
             outputDir,
             noopLog,
         );
@@ -42,7 +42,7 @@ describe("packageWebSite", () => {
 
     it("zips the site with files at the archive root", async () => {
         const artifacts = await packageWebSite(
-            { sourceDir, formats: ["zip"], dirName: "Game-1.0.0-web", zipName: "Game-1.0.0-web.zip" },
+            { sourceDir, precompress: false, formats: ["zip"], dirName: "Game-1.0.0-web", zipName: "Game-1.0.0-web.zip" },
             outputDir,
             noopLog,
         );
@@ -57,7 +57,7 @@ describe("packageWebSite", () => {
 
     it("produces both formats in one run", async () => {
         const artifacts = await packageWebSite(
-            { sourceDir, formats: ["zip", "dir"], dirName: "G-web", zipName: "G-web.zip" },
+            { sourceDir, precompress: false, formats: ["zip", "dir"], dirName: "G-web", zipName: "G-web.zip" },
             outputDir,
             noopLog,
         );
@@ -65,5 +65,57 @@ describe("packageWebSite", () => {
         for (const artifact of artifacts) {
             await expect(fs.stat(artifact)).resolves.toBeTruthy();
         }
+    });
+
+    describe("precompression", () => {
+        beforeEach(async () => {
+            const compressible = "the quick brown fox jumps over the lazy dog ".repeat(500);
+            await fs.writeFile(path.join(sourceDir, "renderer.js"), compressible, "utf-8");
+        });
+
+        it("puts variants beside the site files in the copied directory", async () => {
+            await packageWebSite(
+                { sourceDir, precompress: true, formats: ["dir"], dirName: "G-web", zipName: "G-web.zip" },
+                outputDir,
+                noopLog,
+            );
+            const dir = path.join(outputDir, "G-web");
+            await expect(fs.stat(path.join(dir, "renderer.js"))).resolves.toBeTruthy();
+            await expect(fs.stat(path.join(dir, "renderer.js.br"))).resolves.toBeTruthy();
+            await expect(fs.stat(path.join(dir, "renderer.js.gz"))).resolves.toBeTruthy();
+        });
+
+        it("merges variants into the zip rather than replacing its contents", async () => {
+            const artifacts = await packageWebSite(
+                { sourceDir, precompress: true, formats: ["zip"], dirName: "G-web", zipName: "G-web.zip" },
+                outputDir,
+                noopLog,
+            );
+            const { stdout } = await promisify(execFile)(path7za, ["l", "-slt", artifacts[0]]);
+            // The uncompressed original must still be there; anchored so
+            // "renderer.js.br" cannot satisfy the assertion for "renderer.js".
+            expect(stdout).toMatch(/Path = renderer\.js\r?\n/);
+            expect(stdout).toContain("Path = renderer.js.br");
+            expect(stdout).toContain("Path = index.html");
+        });
+
+        it("never writes into the compiled site, which the mobile packages share", async () => {
+            await packageWebSite(
+                { sourceDir, precompress: true, formats: ["dir"], dirName: "G-web", zipName: "G-web.zip" },
+                outputDir,
+                noopLog,
+            );
+            expect((await fs.readdir(sourceDir)).sort())
+                .toEqual(["assets", "index.html", "pack.json", "renderer.js"]);
+        });
+
+        it("writes nothing extra when the setting is off", async () => {
+            await packageWebSite(
+                { sourceDir, precompress: false, formats: ["dir"], dirName: "G-web", zipName: "G-web.zip" },
+                outputDir,
+                noopLog,
+            );
+            await expect(fs.stat(path.join(outputDir, "G-web", "renderer.js.br"))).rejects.toThrow();
+        });
     });
 });
