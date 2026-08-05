@@ -205,6 +205,8 @@ enum Services {
     WorkspaceFreeze = "workspaceFreeze",
     /** "The working tree changed under the editors": drops in-memory documents and re-reads them */
     WorkspaceReload = "workspaceReload",
+    /** Recovery mode's own state: which subsystems have been tried, and what they said */
+    Recovery = "recovery",
     // Plugin = "plugin",
 }
 
@@ -1132,6 +1134,21 @@ interface IWorkspaceReloadService extends IService {
     registerReloader(participant: ExternalReloadParticipant): () => void;
 }
 
+/**
+ * Recovery mode's own state: which subsystems have been tried, and what they said.
+ *
+ * Present in every workspace so `Services.Recovery` resolves the same way everywhere, and empty in
+ * all but a recovery shell - see RecoveryService for why the loading is staged rather than automatic.
+ */
+interface IRecoveryService extends IService {
+    getProbes(): readonly import("./core/RecoveryService").RecoveryProbeState[];
+    isRunning(): boolean;
+    /** Never rejects: a probe's failure is its result, not an exception. */
+    runProbe(id: import("./core/RecoveryService").RecoveryProbeId): Promise<void>;
+    runAllProbes(): Promise<void>;
+    onChanged(listener: () => void): () => void;
+}
+
 // Plugin Services
 interface IPluginService extends IService { }
 
@@ -1155,7 +1172,7 @@ export {
     ICharacterService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, IConsoleService, UIEditorStateEvents,
     IProjectDependencyService, IVoiceService, IVariableRegistryService, IAudioTrackService, IPuppetDescriptionService,
-    ITestRunService,
+    ITestRunService, IRecoveryService,
     Services, WorkspaceContext
 };
 

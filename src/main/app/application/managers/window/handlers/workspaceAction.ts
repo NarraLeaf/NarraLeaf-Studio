@@ -2,7 +2,8 @@ import fs from "fs/promises";
 import path from "path";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
-import { dialog } from "electron";
+import { dialog, shell } from "electron";
+import { WindowAppType } from "@shared/types/window";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -113,6 +114,75 @@ export class WorkspaceSelectFolderHandler extends IPCHandler<IPCEventType.worksp
         window.app.storageManager.grantFileSystemAccess(window, selectedPath, "readwrite", true, result.bookmarks?.[0], "session");
 
         return this.success({ path: selectedPath });
+    }
+}
+
+/**
+ * Reopen this window as a recovery shell, or back as an ordinary workspace.
+ *
+ * Deliberately nothing but "rewrite the props and reload". In particular it does **not** flush
+ * pending saves on the way in, and that is the whole point rather than an omission: recovery mode is
+ * entered because the workspace's in-memory state is suspect - a document service that parsed a
+ * damaged file, an asset map that came back empty - and flushing would write exactly that suspect
+ * state over the author's files as the last act before the diagnosis begins. The renderer confirms
+ * with the author first, since it is the side that knows whether anything is unsaved.
+ *
+ * Leaving recovery mode is the same call with `enabled: false`, and needs no such care: a recovery
+ * shell holds no unsaved work by construction (project writes are frozen for its whole life).
+ */
+export class WorkspaceSetRecoveryModeHandler extends IPCHandler<IPCEventType.workspaceSetRecoveryMode> {
+    readonly name = IPCEventType.workspaceSetRecoveryMode;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { enabled, reason }: IPCEvents[IPCEventType.workspaceSetRecoveryMode]["data"],
+    ): Promise<RequestStatus<void>> {
+        if (window.getWindowType() !== WindowAppType.Workspace) {
+            return this.failed("Only a workspace window can enter recovery mode.");
+        }
+
+        const workspace = window as AppWindow<WindowAppType.Workspace>;
+        workspace.setProps({
+            ...workspace.getProps(),
+            recovery: enabled,
+            // Cleared on the way out rather than carried: the reason describes the trip *into*
+            // recovery mode, and a stale one would head the next session's anomaly list with a
+            // failure the author has already dealt with.
+            recoveryReason: enabled ? reason : undefined,
+        });
+        workspace.reload();
+
+        return this.success(void 0);
+    }
+}
+
+/**
+ * Show this window's project folder in the OS file manager.
+ *
+ * The path comes from the window's own props and never from the message, so this cannot be pointed
+ * at somebody's home directory by a renderer that has been talked into asking.
+ */
+export class WorkspaceOpenProjectFolderHandler extends IPCHandler<IPCEventType.workspaceOpenProjectFolder> {
+    readonly name = IPCEventType.workspaceOpenProjectFolder;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<void>> {
+        if (window.getWindowType() !== WindowAppType.Workspace) {
+            return this.failed("Only a workspace window has a project folder to open.");
+        }
+
+        const projectPath = (window as AppWindow<WindowAppType.Workspace>).getProps().projectPath;
+        if (!projectPath) {
+            return this.failed("This window has no project folder.");
+        }
+
+        // openPath answers with a message rather than throwing, and an empty string means it worked.
+        const failure = await shell.openPath(path.resolve(projectPath));
+        if (failure) {
+            return this.failed(failure);
+        }
+        return this.success(void 0);
     }
 }
 

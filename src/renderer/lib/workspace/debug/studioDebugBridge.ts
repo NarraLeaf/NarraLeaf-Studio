@@ -14,8 +14,11 @@ import {
     type ConsoleEntry,
     type ConsoleLogLevel,
 } from "../services/core/ConsoleService";
+import { getWorkspaceAnomalies, type WorkspaceAnomaly } from "../recovery/anomalyLog";
 
-const BRIDGE_VERSION = 1;
+// Bumped with `anomalies`: a caller that asks an older bridge for it gets `undefined` back rather
+// than an error, so the version is the only way to tell "not supported" from "nothing to report".
+const BRIDGE_VERSION = 2;
 
 /** Severity order used for the `level` (minimum-severity) filter. */
 const LEVEL_RANK: Record<ConsoleLogLevel, number> = {
@@ -64,6 +67,14 @@ interface StudioDebugBridge {
         snapshot(options?: ConsoleSnapshotOptions): ConsoleSnapshot;
         channels(): { id: string; label: string; description: string }[];
     };
+    /**
+     * Everything the workspace survived rather than reported - what recovery mode is built on.
+     *
+     * Exposed here because it is otherwise unreachable from outside: the log is module state with no
+     * service in front of it (deliberately - see `anomalyLog`), so a session driving Studio to check
+     * whether a damaged project was actually noticed has no other way to ask.
+     */
+    anomalies(): readonly WorkspaceAnomaly[];
 }
 
 declare global {
@@ -128,5 +139,6 @@ export function installStudioDebugBridge(): void {
             snapshot,
             channels: () => ConsoleService.getInstance().getChannels().map(channel => ({ ...channel })),
         },
+        anomalies: () => getWorkspaceAnomalies(),
     };
 }

@@ -1,5 +1,5 @@
 import React from "react";
-import { AlertCircle, ClipboardCheck, ClipboardCopy, LogOut, RefreshCw } from "lucide-react";
+import { AlertCircle, ClipboardCheck, ClipboardCopy, LifeBuoy, LogOut, RefreshCw } from "lucide-react";
 import { getInterface } from "@/lib/app/bridge";
 import { Button, TitleBar } from "@/lib/components";
 import { useTranslation } from "@/lib/i18n";
@@ -155,6 +155,34 @@ export function ErrorScreen({ error, onRetry }: ErrorScreenProps) {
         void getInterface().workspace.close();
     };
 
+    /**
+     * Reopen this window as a recovery shell.
+     *
+     * The error travels with it. This screen is the only place that still holds it - the reload
+     * discards this renderer, and the failure that produced it is not guaranteed to happen again
+     * (half of what lands here is a read that failed once). Losing it would mean arriving in
+     * recovery mode with no record of what sent you.
+     */
+    const handleRecovery = async () => {
+        setBusy(true);
+        setFeedback(null);
+        try {
+            const result = await getInterface().workspace.setRecoveryMode(true, buildReport());
+            if (!result.success) {
+                setFeedback({ kind: "bad", text: t("workspace.recovery.enterFailed", { error: result.error ?? "" }) });
+            }
+        } catch (recoveryError) {
+            setFeedback({
+                kind: "bad",
+                text: t("workspace.recovery.enterFailed", {
+                    error: recoveryError instanceof Error ? recoveryError.message : String(recoveryError),
+                }),
+            });
+        } finally {
+            setBusy(false);
+        }
+    };
+
     return (
         <div className="h-screen w-screen flex flex-col bg-surface text-fg">
             <TitleBar title="NarraLeaf Studio" iconSrc="/favicon.ico" />
@@ -210,6 +238,15 @@ export function ErrorScreen({ error, onRetry }: ErrorScreenProps) {
                                 <span>{t("workspace.shell.retry")}</span>
                             </Button>
                         )}
+                        {/* Second, not first: retrying is free and sometimes enough (a file another
+                            tool was still writing, a volume that had not woken up). Recovery mode is
+                            the answer when it is not - and it belongs here rather than below with
+                            the small links, because on this screen it is the only thing that leads
+                            anywhere the author's own project still exists. */}
+                        <Button variant="secondary" size="md" onClick={() => void handleRecovery()} disabled={busy}>
+                            <LifeBuoy className="w-4 h-4" />
+                            <span>{t("workspace.recovery.enter")}</span>
+                        </Button>
                         <Button variant="secondary" size="md" onClick={handleOpenLauncher} disabled={busy}>
                             <LogOut className="w-4 h-4" />
                             <span>{t("workspace.shell.openLauncher")}</span>

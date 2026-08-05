@@ -3,12 +3,20 @@ import { useWorkspace } from "../context";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { loadWorkspacePlugins, type WorkspacePluginLoadResult } from "@/lib/plugins/pluginRuntime";
+import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
 
 export function useWorkspacePlugins() {
-    const { context } = useWorkspace();
+    const { context, recovery } = useWorkspace();
 
     useEffect(() => {
         if (!context) {
+            return;
+        }
+        // The reason recovery mode exists to begin with: a plugin runs arbitrary code against every
+        // workspace service, so "the workspace is behaving strangely" and "a plugin is misbehaving"
+        // are indistinguishable from the inside. A shell that loads none of them is the only way to
+        // tell those apart, so this is not a courtesy toggle - it is the experiment.
+        if (recovery) {
             return;
         }
 
@@ -24,6 +32,15 @@ export function useWorkspacePlugins() {
                     }
                     continue;
                 }
+                // Logged as well as toasted: the toast is gone in five seconds, and a plugin that
+                // failed to load is a leading candidate for whatever the author noticed afterwards.
+                reportWorkspaceAnomaly({
+                    source: "plugins",
+                    operationKey: "workspace.recovery.operations.pluginLoad",
+                    path: result.pluginId,
+                    error: result.error,
+                    severity: "degraded",
+                });
                 ui.notifications.error(`Plugin ${result.pluginId} failed to load: ${result.error}`);
             }
         };
@@ -38,6 +55,12 @@ export function useWorkspacePlugins() {
             })
             .catch(error => {
                 const message = error instanceof Error ? error.message : String(error);
+                reportWorkspaceAnomaly({
+                    source: "plugins",
+                    operationKey: "workspace.recovery.operations.pluginHostLoad",
+                    error,
+                    severity: "degraded",
+                });
                 ui.notifications.error(`Failed to load workspace plugins: ${message}`);
             });
 
@@ -47,5 +70,5 @@ export function useWorkspacePlugins() {
                 void cleanup();
             }
         };
-    }, [context]);
+    }, [context, recovery]);
 }
