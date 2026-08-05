@@ -876,6 +876,12 @@ export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY = "blueprint.game.getSkipDe
 export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_DELAY = "blueprint.game.setSkipDelay" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_INTERVAL = "blueprint.game.getSkipInterval" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_INTERVAL = "blueprint.game.setSkipInterval" as const;
+/**
+ * "Skip only text the player has read." A preference like the ones above, and reached the same way,
+ * but the behaviour behind it is Studio's rather than the engine's - see `skipRunController`.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_READ_TEXT = "blueprint.game.getSkipReadText" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_READ_TEXT = "blueprint.game.setSkipReadText" as const;
 
 /**
  * Per-track (per-bus) volume: the general form of the four fixed volume preferences above.
