@@ -4,10 +4,12 @@ import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
 import { encodeProjectConfig } from "@shared/utils/nlproj";
 import { DEFAULT_AUTO_SAVE_CONFIGURATION } from "@shared/types/saves";
+import { DEFAULT_PLAYER_PREFERENCES } from "@shared/types/preference";
 import {
     loadAutoSaveConfiguration,
     loadGameAudio,
     loadGameLocalization,
+    loadPlayerPreferences,
     resolveStoryDocumentPathForIndexEntry,
 } from "./bundleAssembler";
 
@@ -140,6 +142,61 @@ describe("bundleAssembler auto save", () => {
     it("falls back to the defaults when the project cannot be read", async () => {
         expect(await loadAutoSaveConfiguration(path.join(os.tmpdir(), "nls-missing-project")))
             .toEqual(DEFAULT_AUTO_SAVE_CONFIGURATION);
+    });
+});
+
+/**
+ * The player-preference defaults. Dense for the same reason autosave is: the running game holds a
+ * value for every preference from the moment it is constructed, so a project that never opened the
+ * page has to arrive configured with the engine's own rather than with a gap the game app would
+ * have to invent an answer for.
+ */
+describe("bundleAssembler player preferences", () => {
+    const tempDirs: string[] = [];
+
+    afterEach(async () => {
+        await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })));
+    });
+
+    async function createProject(preferences: unknown): Promise<string> {
+        const projectPath = await mkdtemp(path.join(os.tmpdir(), "nls-preferences-test-"));
+        tempDirs.push(projectPath);
+        const encoded = encodeProjectConfig({
+            name: "Test",
+            identifier: "test.project",
+            metadata: {},
+            ...(preferences ? { app: { preferences } } : {}),
+        } as never);
+        await writeFile(path.join(projectPath, "project.nlproj"), encoded);
+        return projectPath;
+    }
+
+    it("gives a project with no preferences config the engine defaults", async () => {
+        const projectPath = await createProject(undefined);
+        expect(await loadPlayerPreferences(projectPath)).toEqual(DEFAULT_PLAYER_PREFERENCES);
+    });
+
+    it("bakes the authored values into the bundle", async () => {
+        const projectPath = await createProject({ cps: 45, skipReadText: true, bgmVolume: 0.4 });
+        expect(await loadPlayerPreferences(projectPath)).toEqual({
+            ...DEFAULT_PLAYER_PREFERENCES,
+            cps: 45,
+            skipReadText: true,
+            bgmVolume: 0.4,
+        });
+    });
+
+    it("clamps a hand-edited value rather than shipping it", async () => {
+        // A zero here is not a slow game, it is a hung one: the engine divides by `gameSpeed`.
+        const projectPath = await createProject({ gameSpeed: 0, cps: 1e9 });
+        const loaded = await loadPlayerPreferences(projectPath);
+        expect(loaded.gameSpeed).toBe(0.1);
+        expect(loaded.cps).toBe(200);
+    });
+
+    it("falls back to the defaults when the project cannot be read", async () => {
+        expect(await loadPlayerPreferences(path.join(os.tmpdir(), "nls-missing-project")))
+            .toEqual(DEFAULT_PLAYER_PREFERENCES);
     });
 });
 
