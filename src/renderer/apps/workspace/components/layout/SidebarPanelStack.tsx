@@ -1,6 +1,7 @@
 import React from "react";
 import type { PanelDefinition } from "../../registry/types";
 import { WorkspacePanelErrorBoundary } from "../WorkspacePanelErrorBoundary";
+import { panelHelpTopic } from "../../modules/help/panelHelpTopics";
 import { useKeepAlivePanelIds } from "./useKeepAlivePanelIds";
 
 interface SidebarPanelStackProps {
@@ -39,6 +40,10 @@ export function SidebarPanelStack({ positionPanels, activePanelId }: SidebarPane
                         className="h-full w-full overflow-auto"
                         style={{ display: isActive ? undefined : "none" }}
                         aria-hidden={isActive ? undefined : true}
+                        // What F1 answers with while the pointer or the caret is anywhere in this
+                        // panel. Applied here so a panel opts in through the map rather than by
+                        // knowing the help system exists (see panelHelpTopics.ts).
+                        data-help-topic={panelHelpTopic(panel.id)}
                     >
                         <WorkspacePanelErrorBoundary regionLabel={panel.title} isolationKey={panel.id}>
                             <PanelComponent panelId={panel.id} payload={panel.payload} />
