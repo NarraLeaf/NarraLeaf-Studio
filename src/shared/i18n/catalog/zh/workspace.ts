@@ -619,6 +619,7 @@ export const workspace = {
             // 顶栏搜索 pill 上的文案（点击后打开搜索模式的命令面板）。`{name}` 为当前项目名。
             titleBarPlaceholder: "在 {name} 里搜索",
             building: "正在建立搜索索引…",
+            idle: "可以搜场景、角色、剧情文本、资源与蓝图。",
             empty: "没有匹配结果",
             more: "还有 {count} 条",
             // 实体分组排在前面：这个框先回答「打开叫 X 的东西」，再回答「找到写着 X 的那句」。
