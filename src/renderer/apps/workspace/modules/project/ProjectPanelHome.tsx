@@ -1,10 +1,10 @@
 import { useMemo } from "react";
-import { AudioLines, Boxes, ChevronRight, Gamepad2, Image as ImageIcon, Info, ListChecks, Puzzle, SlidersHorizontal, type LucideIcon } from "lucide-react";
+import { AudioLines, Boxes, ChevronRight, Gamepad2, Image as ImageIcon, Info, ListChecks, Puzzle, SlidersHorizontal, UserCog, type LucideIcon } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { InteractiveCard } from "@/lib/components/elements";
 import type { ProjectConfig } from "@/lib/workspace/project/project";
 
-export type ProjectSectionId = "details" | "game" | "audio" | "assets" | "settings" | "dependencies" | "runtimes" | "linting";
+export type ProjectSectionId = "details" | "game" | "preferences" | "audio" | "assets" | "settings" | "dependencies" | "runtimes" | "linting";
 
 export type ProjectNavItem = {
     id: ProjectSectionId;
@@ -16,6 +16,7 @@ export type ProjectNavItem = {
 const PROJECT_NAV_ICONS: Record<ProjectSectionId, LucideIcon> = {
     details: Info,
     game: Gamepad2,
+    preferences: UserCog,
     audio: AudioLines,
     assets: ImageIcon,
     dependencies: Puzzle,
@@ -26,14 +27,16 @@ const PROJECT_NAV_ICONS: Record<ProjectSectionId, LucideIcon> = {
 
 // Game sits next to Details on purpose: both describe the game itself, while
 // Assets / Dependencies / Runtimes / Linting / Settings describe how it is built
-// and shipped. Audio follows Game for the same reason Game follows Details - an
-// audio track is a decision about what the player hears, not about packaging.
+// and shipped. Preferences follows Game because it is the same class of thing one
+// step closer to the player: Game is what the game does, Preferences is where the
+// player's own controls start. Audio follows for the same reason Game follows
+// Details - an audio track is a decision about what the player hears, not about packaging.
 // Runtimes follows Dependencies because it answers the same shape of question -
 // what does this project need that is not in it yet - for the author-supplied 2D
 // model runtimes rather than for plugins. Linting sits last before Settings
 // because it is the only one that describes what the project is checked against
 // rather than what it is made of.
-const PROJECT_NAV_ORDER: ProjectSectionId[] = ["details", "game", "audio", "assets", "dependencies", "runtimes", "linting", "settings"];
+const PROJECT_NAV_ORDER: ProjectSectionId[] = ["details", "game", "preferences", "audio", "assets", "dependencies", "runtimes", "linting", "settings"];
 
 /**
  * The project navigation rows, with localized title/description. Shared by the

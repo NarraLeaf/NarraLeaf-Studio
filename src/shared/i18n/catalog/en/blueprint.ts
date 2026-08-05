@@ -521,6 +521,7 @@ export const blueprint = {
         skip: "Skip",
         skipDelay: "Skip Delay",
         skipInterval: "Skip Interval",
+        skipReadText: "Skip Read Text",
         slider: "Slider",
         sound: "Sound",
         soundVolume: "Sound Volume",

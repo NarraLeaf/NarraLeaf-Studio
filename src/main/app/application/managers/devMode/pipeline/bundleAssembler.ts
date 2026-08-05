@@ -15,6 +15,8 @@ import {
     normalizeLocalizationDocument,
     normalizeLocalizationKeysDocument,
 } from "@shared/types/localization";
+import type { PlayerPreferences } from "@shared/types/preference";
+import { normalizePlayerPreferences } from "@shared/types/preference";
 import type { AutoSaveConfiguration } from "@shared/types/saves";
 import { normalizeAutoSaveConfiguration } from "@shared/types/saves";
 import type { GameVoiceBundle } from "@shared/types/voice";
@@ -54,6 +56,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     const voice = await loadGameVoice(context.projectPath);
     const audio = await loadGameAudio(context.projectPath);
     const autoSave = await loadAutoSaveConfiguration(context.projectPath);
+    const preferences = await loadPlayerPreferences(context.projectPath);
     return {
         bundleId: context.bundleId,
         revision: context.revision,
@@ -70,6 +73,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         voice,
         audio,
         autoSave,
+        preferences,
         compiled: context.compiled,
         blueprintCompiledScripts: context.blueprintCompiledScripts,
         blueprintScriptsCompileOk: context.blueprintScriptsCompileOk ?? true,
@@ -507,6 +511,19 @@ export async function loadAutoSaveConfiguration(projectPath: string): Promise<Au
     const config = await readProjectConfigRecord(projectPath);
     const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
     return normalizeAutoSaveConfiguration(app?.autoSave);
+}
+
+/**
+ * Load the player-preference defaults from `.nlproj` `app.preferences`. Dense
+ * like the autosave config and for the same reason: the running game holds a
+ * value for every preference from the moment it is constructed, so "the author
+ * did not choose" has to arrive as the engine's default rather than as a gap.
+ * Exported for tests.
+ */
+export async function loadPlayerPreferences(projectPath: string): Promise<PlayerPreferences> {
+    const config = await readProjectConfigRecord(projectPath);
+    const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
+    return normalizePlayerPreferences(app?.preferences);
 }
 
 function resolveAssetContentPath(projectPath: string, assetId: string): string | null {
