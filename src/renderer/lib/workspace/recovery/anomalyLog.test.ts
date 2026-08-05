@@ -3,6 +3,7 @@ import {
     clearWorkspaceAnomalies,
     describeRawError,
     getWorkspaceAnomalies,
+    getWorkspaceAnomalyReportCount,
     observeWorkspaceAnomalies,
     reportWorkspaceAnomaly,
 } from "./anomalyLog";
@@ -103,6 +104,43 @@ describe("reportWorkspaceAnomaly", () => {
             severity: "degraded",
         })).not.toThrow();
         expect(getWorkspaceAnomalies()).toHaveLength(1);
+    });
+});
+
+describe("getWorkspaceAnomalyReportCount", () => {
+    it("counts a deduped repeat that the log itself collapses", () => {
+        // The reason it exists. A recovery probe asks "did anything go wrong while I ran?", and the
+        // set of anomalies cannot answer that on a second run - the record is identical and is
+        // deduped away, so the probe would report a green tick over an unreadable file.
+        const input = {
+            source: "assets",
+            operationKey: OPERATION,
+            path: "assets/assets.metadata.image.json",
+            error: "same failure both times",
+            severity: "degraded",
+        } as const;
+
+        expect(getWorkspaceAnomalyReportCount("assets")).toBe(0);
+        reportWorkspaceAnomaly({ ...input });
+        reportWorkspaceAnomaly({ ...input });
+
+        expect(getWorkspaceAnomalies()).toHaveLength(1);
+        expect(getWorkspaceAnomalyReportCount("assets")).toBe(2);
+    });
+
+    it("counts each source separately", () => {
+        reportWorkspaceAnomaly({ source: "assets", operationKey: OPERATION, error: "a", severity: "degraded" });
+        reportWorkspaceAnomaly({ source: "story", operationKey: OPERATION, error: "b", severity: "degraded" });
+
+        expect(getWorkspaceAnomalyReportCount("assets")).toBe(1);
+        expect(getWorkspaceAnomalyReportCount("story")).toBe(1);
+        expect(getWorkspaceAnomalyReportCount("interface")).toBe(0);
+    });
+
+    it("resets with the log", () => {
+        reportWorkspaceAnomaly({ source: "assets", operationKey: OPERATION, error: "a", severity: "degraded" });
+        clearWorkspaceAnomalies();
+        expect(getWorkspaceAnomalyReportCount("assets")).toBe(0);
     });
 });
 
