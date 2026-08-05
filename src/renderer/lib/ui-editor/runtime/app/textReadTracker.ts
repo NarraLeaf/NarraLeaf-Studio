@@ -46,6 +46,15 @@ export type TextReadTracker = {
     /** Current node value: dialog line on screen && its message is read. */
     isCurrentTextRead: () => boolean;
     /**
+     * A dialog line is on screen AND the player has not read it.
+     *
+     * Not `!isCurrentTextRead()`. The negation is also true when there is no line on screen at all -
+     * a transition, a sound, an image action - and "skip until you reach unread text" must cross
+     * those rather than stop dead on the first one. This is what {@link skipRunController} blocks
+     * on, so the distinction is the whole behaviour.
+     */
+    isCurrentTextUnread: () => boolean;
+    /**
      * Whether a specific line has ever been read, by its text id.
      *
      * The read set is keyed by the story line's `textId`, which is also the
@@ -86,6 +95,7 @@ export function createTextReadTracker(options: TextReadTrackerOptions): TextRead
 
     const readIds = new Set<string>();
     let currentTextRead = false;
+    let currentTextUnread = false;
     let detached = false;
     let dirty = false;
     let persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -120,6 +130,10 @@ export function createTextReadTracker(options: TextReadTrackerOptions): TextRead
             schedulePersist();
         }
         const next = Boolean(dialog && readKey && readIds.has(readKey));
+        // Tracked here rather than derived on read: a line whose `resolveReadKey` comes back null
+        // is a line with no identity to remember, and calling it "unread" would stop skipping on
+        // every one of them forever.
+        currentTextUnread = Boolean(dialog && readKey && !readIds.has(readKey));
         if (next !== currentTextRead) {
             currentTextRead = next;
             setMirror(next);
@@ -144,6 +158,7 @@ export function createTextReadTracker(options: TextReadTrackerOptions): TextRead
 
     return {
         isCurrentTextRead: () => currentTextRead,
+        isCurrentTextUnread: () => currentTextUnread,
         hasRead: (textId: string) => {
             const id = textId.trim();
             return id ? readIds.has(id) : false;
@@ -179,6 +194,9 @@ export function createTextReadTracker(options: TextReadTrackerOptions): TextRead
             }
             persistNow();
             currentTextRead = false;
+            // A detached tracker answers "no line on screen" to both questions, so a skip run that
+            // outlives the session it belongs to is not blocked by a stale reading.
+            currentTextUnread = false;
             setMirror(false);
         },
     };

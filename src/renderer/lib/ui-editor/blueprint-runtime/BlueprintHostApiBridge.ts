@@ -207,6 +207,14 @@ export type BlueprintFrameProperties = {
 export type BlueprintGamePreferenceKey =
     | "autoForward"
     | "skip"
+    /**
+     * Studio's own, not the engine's: skipping stops at a line the player has not read.
+     *
+     * It lives in the engine's preference store all the same (see `preferenceRuntime`), which is
+     * what lets it reach this API, the `gamePreferenceChanged` event and the project's preference
+     * defaults through exactly the same plumbing as the twelve the engine defines.
+     */
+    | "skipReadText"
     | "showDialog"
     | "gameSpeed"
     | "cps"
@@ -1515,6 +1523,7 @@ function normalizeSentenceCps(cps: unknown): number {
 const GAME_PREFERENCE_KEYS = new Set<BlueprintGamePreferenceKey>([
     "autoForward",
     "skip",
+    "skipReadText",
     "showDialog",
     "gameSpeed",
     "cps",
@@ -1573,6 +1582,7 @@ function normalizeGamePreferenceValue(
     switch (key) {
         case "autoForward":
         case "skip":
+        case "skipReadText":
         case "showDialog":
             if (typeof value !== "boolean") {
                 throw new Error(`${operation}: ${key} must be a boolean`);
