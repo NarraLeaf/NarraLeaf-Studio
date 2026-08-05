@@ -86,9 +86,9 @@ export const project = {
     // explanation they used to each carry is stated once, in `intro`. A paragraph repeated on every
     // track is noise; the same paragraph once is documentation.
     audio: {
-        // What a bus is and how the mix multiplies, said once at the top of the section. This
-        // absorbed the former per-field `nameDescription` / `parentDescription` / `volumeDescription`.
-        intro: "A track is a bus: it feeds another bus, or the master output. A clip plays at its own level times every bus above it, and a bus can only quieten. Renaming is safe.",
+        // What a bus is and how the mix multiplies now lives in the `audio` help topic, reached by
+        // the `?` in this section's header. It was a paragraph here, and before that the same
+        // paragraph on every field of every track.
         add: "Add track",
         newTrackName: "New Track",
         nameTitle: "Name",
