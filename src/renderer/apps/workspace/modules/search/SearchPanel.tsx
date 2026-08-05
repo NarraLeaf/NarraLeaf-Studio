@@ -197,6 +197,11 @@ export function SearchPanel() {
                     <div className="px-3 py-4 text-sm text-fg-subtle">{t("workspace.shell.search.building")}</div>
                 ) : trimmed && results.length === 0 ? (
                     <div className="px-3 py-4 text-sm text-fg-subtle">{t("workspace.shell.search.empty")}</div>
+                ) : !trimmed ? (
+                    // Nothing typed yet. Without this the panel fell through to an empty result list
+                    // and painted nothing at all, so the one state the author sees FIRST was the only
+                    // one with no words in it.
+                    <div className="px-3 py-4 text-sm text-fg-subtle">{t("workspace.shell.search.idle")}</div>
                 ) : (
                     visibleResults.map(group => (
                         <div key={group.group}>
