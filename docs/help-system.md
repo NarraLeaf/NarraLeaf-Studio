@@ -67,7 +67,10 @@ permanently.
 
 1. **Help popover (`F1`)** — anchored, transient, closes on Escape or a click outside. It resolves
    the topic from the nearest `data-help-topic` ancestor of whatever has focus (or of the pointer's
-   position), so it answers "what is *this*" without the author naming anything.
+   position), so it answers "what is *this*" without the author naming anything. Following a
+   `See also` link keeps a trail: a back arrow appears in the header, named after where it lands,
+   and `Alt+Left` does the same. Asking for help again from outside starts a fresh trail, because
+   that is a new question. The browser needs none of this, since its list is the way back.
 2. **`?` trigger** — a hover-revealed glyph in a panel header, opening the same popover. It exists
    so the popover is discoverable by mouse; it is not a second surface.
 3. **Command palette** — every topic is a palette entry under Help, so a topic is reachable by name
