@@ -1,6 +1,7 @@
 import { BookOpen, FolderOpen, Puzzle, Settings } from "lucide-react";
 import { Item } from "./Item";
 import { getInterface } from "@/lib/app/bridge";
+import { getAppInfo } from "@/lib/renderApp";
 import { useTranslation } from "@/lib/i18n";
 
 export type LauncherTabKey = "projects" | "plugins" | "learning";
@@ -64,7 +65,7 @@ export function Sidebar({ active, onChange }: SidebarProps) {
                 <img src="/favicon.ico" className="w-6 h-6" alt="app" />
                 <div className="flex flex-col leading-tight">
                     <span className="text-sm text-fg">NarraLeaf Studio</span>
-                    <span className="text-2xs text-fg-muted">v0.0.1</span>
+                    <span className="text-2xs text-fg-muted">v{getAppInfo().version}</span>
                 </div>
             </div>
             <div className="border-t border-edge" />

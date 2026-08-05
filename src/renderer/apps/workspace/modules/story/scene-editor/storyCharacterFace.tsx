@@ -102,6 +102,33 @@ export function useCharacterFace(
 ): { url: string | null; frame?: NormalizedCrop; showingSprite: boolean } {
     const spec = getFaceSpec(block, appearance, surface);
     const character = spec ? characters.find(next => next.profile.getId() === spec.characterId) : undefined;
+    return useCharacterAvatar(character, {
+        pose: spec?.pose,
+        tags: spec?.tags,
+        resolveVariant: spec?.resolveVariant === true,
+    });
+}
+
+/**
+ * The same picture, addressed by character + look rather than by row — what a *list* of characters or
+ * of appearances needs, since a menu has no block to read a spec off.
+ *
+ * `preferThumbnail` is the one difference a list wants: a row pictures the look its payload names, but
+ * a candidate list is asking "who is this", and the author-chosen avatar answers that better than a
+ * head cropped out of a full-body sprite. It stays opt-in, because on a row it would be wrong twice
+ * over — a `/show Alice angry` must picture *angry*, and a speaker who has never been shown must not
+ * be given a look they do not have (WI-3, M3.1).
+ */
+export function useCharacterAvatar(
+    character: Character | null | undefined,
+    spec: {
+        pose?: string;
+        tags?: StoryCharacterTagSelection;
+        /** Resolve the sprite for that look at all. False leaves the profile thumbnail as the only source. */
+        resolveVariant: boolean;
+        preferThumbnail?: boolean;
+    },
+): { url: string | null; frame?: NormalizedCrop; showingSprite: boolean } {
     // The appearance stores asset ids; the image cache needs the `Asset` record to fetch bytes, so
     // the id is resolved against the live library here rather than embedded in the character store
     // (which is what the old variant slots did, and what made a renamed or replaced asset go stale).
@@ -113,10 +140,14 @@ export function useCharacterFace(
         const assets = context.services.get<AssetsService>(Services.Assets).getAssets();
         return assets?.[AssetType.Image]?.[assetId] ?? null;
     }, [context, isInitialized]);
-    const resolved = character && spec?.resolveVariant
+    const thumbnailId = character?.profile.getThumbnail() ?? null;
+    // The avatar the author chose wins outright when the caller asked for it, and asking the library
+    // for a sprite nobody will look at is work: skip the resolve and the composite both.
+    const thumbnailWins = spec.preferThumbnail === true && thumbnailId !== null;
+    const pictureLook = character !== null && character !== undefined && spec.resolveVariant && !thumbnailWins;
+    const resolved = character && pictureLook
         ? resolveCharacterFaceImage(character, spec.pose, spec.tags, lookupAsset)
         : { asset: null as Asset<AssetType.Image> | null, frame: undefined };
-    const thumbnailId = character?.profile.getThumbnail() ?? null;
     const source: BadgeImageSource | null = resolved.asset
         ? { kind: "project", asset: resolved.asset }
         : thumbnailId
@@ -126,10 +157,10 @@ export function useCharacterFace(
     // A layered character is a stack, so the face shows the whole thing composited. The single-asset
     // path above still runs: it is what the face shows while the composite is being drawn, which
     // keeps a scrolling list from flashing empty plates.
-    const layered = character && spec?.resolveVariant && character.profile.appearance.getKind() === "layered"
+    const layered = character && pictureLook && character.profile.appearance.getKind() === "layered"
         ? character
         : null;
-    const composite = useCompositedSprite(layered, { tags: spec?.tags }, FACE_COMPOSITE_PX);
+    const composite = useCompositedSprite(layered, { tags: spec.tags }, FACE_COMPOSITE_PX);
     const url = composite.url ?? fallbackUrl;
     return { url, frame: resolved.frame, showingSprite: Boolean(composite.url) || resolved.asset !== null };
 }

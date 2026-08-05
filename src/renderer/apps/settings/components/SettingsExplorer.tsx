@@ -392,7 +392,10 @@ export function SettingsExplorer<T>({
                 const effectiveHex = (isCustom ? normalizeHexColor(displayValue) : descriptor.optionColors?.[displayValue])
                     ?? ACCENT_SWATCHES[ACCENT_COLOR_DEFAULT];
                 return (
-                    <div className="flex items-center gap-1.5" role="radiogroup" aria-label={descriptor.label}>
+                    // Wraps: this strip is the widest control in the pane, and at a high UI zoom the
+                    // row it sits in is narrower than the swatches are long. Unwrapped it just ran
+                    // off the right edge, taking the picker chip (the way to any OTHER colour) with it.
+                    <div className="flex flex-wrap items-center justify-end gap-1.5" role="radiogroup" aria-label={descriptor.label}>
                         {options.map(option => {
                             const selected = option === displayValue;
                             const name = descriptor.optionLabels?.[option] ?? option;
@@ -513,12 +516,22 @@ export function SettingsExplorer<T>({
                 ref={(node) => setSettingRef(descriptor.id, node)}
                 className={`rounded-md px-2 py-2 transition duration-200 hover:bg-fill-subtle ${flashedSettingId === descriptor.id ? "bg-fill" : ""}`}
             >
-                <div className="flex items-start justify-between gap-4">
-                    <div className="flex flex-col gap-1 flex-1 min-w-0">
+                {/* Wraps rather than clips. The label used to be `flex-1 min-w-0` (basis 0), so it
+                    shrank away to nothing and the row never wrapped — past a point the control simply
+                    ran off the right edge, and this pane has no horizontal scroll to go after it. At
+                    200% UI zoom that put the theme dropdown, the reduced-motion switch and the accent
+                    swatches out of reach, including the zoom field needed to undo it. A real basis
+                    makes the control drop onto its own line instead; `ml-auto` keeps it right-aligned
+                    there, where `justify-between` alone would push a lone item back to the left. */}
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="flex flex-col gap-1 min-w-0 grow basis-64">
                         <span className="text-sm font-medium text-fg">{descriptor.label}</span>
                         <span className="text-xs text-fg-subtle">{descriptor.description}</span>
                     </div>
-                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                    {/* `max-w-full`, not `shrink-0`: once this column has wrapped onto its own line it
+                        must be allowed to stay inside the pane, or a wide control (the accent strip)
+                        overflows to the right exactly as it did before the wrap. */}
+                    <div className="flex flex-col items-end gap-1 ml-auto min-w-0 max-w-full">
                         {renderControl(entry)}
                         {isSaving && <Loader2 className="w-3 h-3 text-primary animate-spin" />}
                     </div>

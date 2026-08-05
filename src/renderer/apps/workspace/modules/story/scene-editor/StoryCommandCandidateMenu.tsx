@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { Hash } from "lucide-react";
+import type { Character } from "@/lib/workspace/services/character/Character";
 import { useTranslation } from "@/lib/i18n";
+import { StoryCandidateMarkView } from "./storyCandidateMark";
+import type { StoryCandidateMark } from "./storyCommandCandidates";
 
 /**
  * The candidate list for a command-line *argument* — an asset, a scene, a transition, a param name.
@@ -30,8 +32,12 @@ export type StoryCandidateItem = {
     label: string;
     /** Trailing note: a variable's type, the canonical value behind an alias. */
     detail?: string;
-    icon?: typeof Hash;
-    iconClassName?: string;
+    /**
+     * What this candidate is — drawn as a picture where the thing has one (an image's own thumbnail,
+     * a character's face, an appearance's sprite) and as a glyph otherwise. Carried as the structural
+     * mark rather than as a chosen icon so the picking stays in one place; see `storyCandidateMark`.
+     */
+    mark?: StoryCandidateMark;
     /** Right-aligned tag, e.g. a temp speaker's "name only". */
     tag?: string;
     /**
@@ -86,6 +92,8 @@ export function StoryCommandCandidateMenu(props: {
     onChoose: (item: StoryCandidateItem) => void;
     onCancel: () => void;
     frame: AnchoredMenuFrame;
+    /** The project's characters — what a character or appearance mark resolves its picture against. */
+    characters: readonly Character[];
 }) {
     const { t } = useTranslation();
     const listRef = useRef<HTMLDivElement | null>(null);
@@ -119,7 +127,6 @@ export function StoryCommandCandidateMenu(props: {
             ) : (
                 props.items.map(item => {
                     const active = item.key === props.activeKey;
-                    const Icon = item.icon;
                     return (
                         <button
                             key={item.key}
@@ -134,7 +141,7 @@ export function StoryCommandCandidateMenu(props: {
                             onMouseEnter={() => props.onHighlight(item.key)}
                             onMouseDown={() => props.onChoose(item)}
                         >
-                            {Icon ? <Icon className={["h-4 w-4 shrink-0", item.iconClassName ?? (active ? "text-fg-muted" : "text-fg-subtle")].join(" ")} /> : null}
+                            {item.mark ? <StoryCandidateMarkView mark={item.mark} characters={props.characters} /> : null}
                             <span className="truncate text-sm text-fg">{item.label}</span>
                             {item.detail ? <span className="shrink-0 text-2xs text-fg-subtle">{item.detail}</span> : null}
                             {item.tag ? <span className="ml-auto shrink-0 text-2xs text-fg-subtle">{item.tag}</span> : null}
