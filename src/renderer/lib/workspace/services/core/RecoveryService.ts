@@ -1,5 +1,10 @@
 import type { TranslationKey } from "@shared/i18n";
-import { describeRawError } from "@/lib/workspace/recovery/anomalyLog";
+import {
+    describeRawError,
+    getWorkspaceAnomalies,
+    getWorkspaceAnomalyReportCount,
+    type WorkspaceAnomalySource,
+} from "@/lib/workspace/recovery/anomalyLog";
 import { Service, type ServiceInitFailure } from "../Service";
 import { Services, type IRecoveryService, type WorkspaceContext } from "../services";
 import { EventEmitter } from "../ui/EventEmitter";
@@ -74,6 +79,16 @@ interface RecoveryEvents {
 interface RecoveryProbe {
     id: RecoveryProbeId;
     labelKey: TranslationKey;
+    /**
+     * Which part of the anomaly log speaks for this probe.
+     *
+     * Load it and see whether the service threw is not enough on its own: the services that matter
+     * most here are the ones that *do not* throw. A damaged asset index is reported, set aside, and
+     * replaced with an empty map, and the service comes up perfectly - so a probe judging only its
+     * own `init` would print a green tick immediately above this panel's own report that the file
+     * cannot be read. Watching this source across the run is what closes that gap.
+     */
+    source: WorkspaceAnomalySource;
     /** Resolves with an optional detail line, or throws whatever went wrong. */
     run: (ctx: WorkspaceContext) => Promise<RecoveryProbeState["detail"]>;
 }
@@ -81,21 +96,25 @@ interface RecoveryProbe {
 const PROBES: readonly RecoveryProbe[] = [
     {
         id: "project",
+        source: "project",
         labelKey: "workspace.recovery.probes.project",
         run: ctx => bringUp(ctx, Services.Project),
     },
     {
         id: "assets",
+        source: "assets",
         labelKey: "workspace.recovery.probes.assets",
         run: ctx => bringUp(ctx, Services.Assets),
     },
     {
         id: "story",
+        source: "story",
         labelKey: "workspace.recovery.probes.story",
         run: ctx => bringUp(ctx, Services.Story),
     },
     {
         id: "storyDocuments",
+        source: "story",
         labelKey: "workspace.recovery.probes.storyDocuments",
         // Separate from the library on purpose: the index and the scripts fail independently, and
         // conflating them is how "my stories are gone" and "one chapter will not open" end up
@@ -128,31 +147,37 @@ const PROBES: readonly RecoveryProbe[] = [
     },
     {
         id: "interface",
+        source: "interface",
         labelKey: "workspace.recovery.probes.interface",
         run: ctx => bringUp(ctx, Services.UIDocument),
     },
     {
         id: "characters",
+        source: "characters",
         labelKey: "workspace.recovery.probes.characters",
         run: ctx => bringUp(ctx, Services.Character),
     },
     {
         id: "localization",
+        source: "localization",
         labelKey: "workspace.recovery.probes.localization",
         run: ctx => bringUp(ctx, Services.Localization),
     },
     {
         id: "voice",
+        source: "voice",
         labelKey: "workspace.recovery.probes.voice",
         run: ctx => bringUp(ctx, Services.Voice),
     },
     {
         id: "variables",
+        source: "variables",
         labelKey: "workspace.recovery.probes.variables",
         run: ctx => bringUp(ctx, Services.VariableRegistry),
     },
     {
         id: "audioTracks",
+        source: "audio",
         labelKey: "workspace.recovery.probes.audioTracks",
         run: ctx => bringUp(ctx, Services.AudioTracks),
     },
@@ -249,9 +274,16 @@ export class RecoveryService extends Service<RecoveryService> implements IRecove
         this.running = true;
         this.setProbe(id, { status: "running", raw: null, detail: null });
         this.emit();
+        const reportsBefore = getWorkspaceAnomalyReportCount(probe.source);
         try {
             const detail = await probe.run(this.getContext());
-            this.setProbe(id, { status: "ok", raw: null, detail });
+            // Resolving is not the same as succeeding. A service that swallowed an unreadable file
+            // and carried on with nothing loaded gets here exactly like one that read everything,
+            // and calling both of them green is the failure mode this whole panel exists to end.
+            const reported = getWorkspaceAnomalyReportCount(probe.source) > reportsBefore;
+            this.setProbe(id, reported
+                ? { status: "failed", raw: this.latestRawFor(probe.source), detail: null }
+                : { status: "ok", raw: null, detail });
         } catch (error) {
             this.setProbe(id, { status: "failed", raw: describeRawError(error), detail: null });
         } finally {
@@ -282,6 +314,15 @@ export class RecoveryService extends Service<RecoveryService> implements IRecove
             detail: null,
         }));
         this.running = false;
+    }
+
+    /**
+     * The newest raw error this source reported, for a probe that "succeeded" while its subsystem
+     * was quietly failing. Newest because the log is newest-first and the run that just happened is
+     * the one being described.
+     */
+    private latestRawFor(source: WorkspaceAnomalySource): string | null {
+        return getWorkspaceAnomalies().find(anomaly => anomaly.source === source)?.raw ?? null;
     }
 
     private setProbe(id: RecoveryProbeId, patch: Partial<RecoveryProbeState>): void {
