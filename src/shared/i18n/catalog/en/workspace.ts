@@ -134,38 +134,29 @@ export const workspace = {
             dropHint: "Drop audio to assign",
         },
     },
-    // Recovery mode: the read-only, plugin-free shell a workspace can be reopened as when the
-    // project underneath it will not load, or loads wrong.
+    // Recovery mode: the read-only, plugin-free way to reopen a workspace whose project will not
+    // load, or loads wrong.
     recovery: {
-        enter: "Enter recovery mode",
-        enterFailed: "Could not enter recovery mode: {error}",
-        windowTitle: "NarraLeaf Studio — Recovery Mode",
-        title: "Recovery mode",
-        subtitle: "This project is open read-only, with no plugins loaded.",
-        copied: "Diagnostics copied to the clipboard.",
-        openFolderFailed: "Could not open the project folder: {error}",
+        enter: "Open in recovery mode",
+        enterFailed: "Could not open recovery mode: {error}",
+        panelTitle: "Recovery",
+        // The banner across the top of the window. Two facts and the way out; everything else about
+        // the mode is in the panel, where there is room for it.
         banner: {
-            title: "Recovery mode",
-            detail: "Nothing here writes to your project. Plugins are not loaded.",
-            exit: "Exit recovery mode",
+            state: "Recovery mode: read-only, no plugins loaded.",
+            exit: "Leave recovery mode",
         },
-        guide: {
-            title: "Getting this project back",
-            step1: "Read the failures on the left. Each one shows the original error and the file it came from.",
-            step2: "Run the load checks to find out which parts of the project still read correctly.",
-            step3: "Export the logs if you want to report this, or open the project folder to look at the file yourself.",
-            step4: "If a version of this project was recorded before the damage, restore it — that is usually the fastest fix.",
-            readOnly: "Leaving recovery mode reopens this window as a normal workspace.",
-        },
-        // The failure list. `showRaw` deliberately reveals the untouched error text.
-        anomalies: {
-            title: "Problems found ({count})",
-            empty: "Nothing was reported during startup. Run the load checks below to look further.",
-            showRaw: "Show the original error",
+        intro: "Run a check to load that part of the project and see what it says. Anything that loads can be browsed as usual.",
+        problems: {
+            title: "Problems found",
+            count: "{count}",
+            empty: "Nothing was reported while this window opened.",
+            showRaw: "Original error",
+            copy: "Copy this error",
+            copied: "Copied.",
         },
         probes: {
             title: "Load checks",
-            hint: "Nothing below has been loaded yet. Run a check to try it and see what it says.",
             run: "Run",
             rerun: "Run again",
             runAll: "Run all",
@@ -181,43 +172,50 @@ export const workspace = {
             audioTracks: "Audio tracks",
         },
         details: {
-            noStories: "This project has no stories.",
-            storiesRead: "{count} story document(s) read.",
+            noStories: "No stories in this project.",
+            storiesRead: "{count} story documents read.",
         },
         tools: {
             title: "Tools",
             openFolder: "Open project folder",
             copyAll: "Copy everything",
+            copiedAll: "Diagnostics copied.",
+            openFolderFailed: "Could not open the project folder: {error}",
         },
         lore: {
             title: "Version history",
-            loading: "Checking version control…",
-            unavailable: "Version control is not available here: {reason}",
+            loading: "Checking version control",
+            unavailable: "Version control is unavailable: {reason}",
             notARepository: "this project has never been put under version control",
             noService: "version control did not start in this window",
             disabledHint: "This project has no version history to restore from.",
-            head: "Current version #{version} on {branch}",
-            emptyHistory: "No versions have been recorded yet.",
+            head: "Now on version {version}, branch {branch}",
+            emptyHistory: "No versions recorded yet.",
             noMessage: "(no message)",
             checkpoint: "Record a recovery point",
             checkpointDone: "Recorded as {revision}.",
-            checkpointNothing: "Nothing to record — the current version already matches these files.",
+            checkpointNothing: "Nothing to record: the current version already matches these files.",
             checkpointFailed: "Could not record a version: {error}",
             restore: "Restore this version",
             restoreConfirm: "Restore {version}?",
-            restoreExplain: "Every file in the project is replaced with that version. Nothing is deleted from the history — the current state is recorded first, and the restore is added as a new version.",
+            restoreExplain: "Every file in the project is replaced with that version. Nothing is lost from the history: the current state is recorded first, and the restore is added as a new version.",
             cancel: "Cancel",
-            restoreDone: "Restored {version}. Reopening as a normal workspace…",
+            restoreDone: "Restored {version}. Reopening as a normal workspace.",
             restoreUnrecorded: "The files were restored, but the new version could not be recorded: {error}",
             restoreFailed: "Could not restore: {error}",
         },
-        // Shown in a normal workspace when something failed but the workspace carried on anyway.
+        // Shown in a normal workspace when a read failed and the workspace carried on without it.
+        // Says what tends to cause this and why editing now is risky; what recovery mode *is* can
+        // wait until the author is in it.
         offer: {
             message: "This project did not load correctly",
-            detail: "{count} problem(s) were survived rather than fixed, so what you see may be incomplete. Recovery mode reopens this window read-only, without plugins, and shows the original errors. Changes not yet auto-saved are not written.",
-            enter: "Enter recovery mode",
+            // Two wordings rather than "file(s)". The count is the first thing read and a bracketed
+            // plural in a data-loss warning reads as a placeholder nobody finished.
+            detailOne: "A file could not be read, so part of your project is missing from this window. Usually an interrupted save, a sync or backup tool writing at the same time, or a plugin. Editing now can save this incomplete state over the files that are still intact.",
+            detailMany: "{count} files could not be read, so part of your project is missing from this window. Usually an interrupted save, a sync or backup tool writing at the same time, or a plugin. Editing now can save this incomplete state over the files that are still intact.",
+            enter: "Open in recovery mode",
         },
-        // Each key names what the workspace was doing, not what went wrong - the error itself is
+        // Each key names what the workspace was doing, not what went wrong: the error itself is
         // shown verbatim underneath.
         operations: {
             enteredBecause: "The failure that led here",

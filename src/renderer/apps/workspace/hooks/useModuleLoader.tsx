@@ -1,12 +1,72 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useWorkspace } from "../context";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
+import type { RecoveryService } from "@/lib/workspace/services/core/RecoveryService";
 import {
     builtInPanels,
     builtInActions,
     builtInActionGroups,
 } from "../modules";
+import { PANELS_UNLOCKED_BY_PROBE, recoveryPanelModule } from "../modules/recovery";
+import type { PanelModule } from "../modules/types";
+
+/** Panels that read nothing from the project, so a recovery window can always offer them. */
+const RECOVERY_ALWAYS_ON = new Set(["narraleaf-studio:console", "narraleaf-studio:notifications"]);
+
+/**
+ * Which panels this window may register.
+ *
+ * An ordinary workspace registers all of them, as it always has. A recovery window registers the
+ * recovery panel plus those whose subsystem has actually loaded, and that gate is not cosmetic: a
+ * panel reads its service on first render, so registering one whose service never initialized puts
+ * a crash behind a rail icon.
+ *
+ * The set grows rather than being fixed. Every load check that passes brings its panels in (see
+ * `PANELS_UNLOCKED_BY_PROBE`), which is what makes "browse the parts that are still fine" real
+ * rather than a promise: the author gets the actual assets browser, story outline and cast.
+ */
+function useRegisterablePanels(recovery: boolean): PanelModule[] {
+    const { context } = useWorkspace();
+    const [unlocked, setUnlocked] = useState<ReadonlySet<string>>(() => new Set<string>());
+
+    useEffect(() => {
+        if (!context || !recovery) {
+            return;
+        }
+        const service = context.services.get<RecoveryService>(Services.Recovery);
+        const read = () => {
+            const ids = new Set<string>();
+            for (const probe of service.getProbes()) {
+                if (probe.status !== "ok") {
+                    continue;
+                }
+                for (const panelId of PANELS_UNLOCKED_BY_PROBE[probe.id] ?? []) {
+                    ids.add(panelId);
+                }
+            }
+            // Replaced only when the set really changed. This fires on every probe transition,
+            // including the `running` flicker, and handing back a new Set each time would
+            // re-register every panel and reset the sidebar's selection under the author's cursor.
+            setUnlocked(previous => (
+                previous.size === ids.size && [...ids].every(id => previous.has(id)) ? previous : ids
+            ));
+        };
+        read();
+        return service.onChanged(read);
+    }, [context, recovery]);
+
+    return useMemo(() => {
+        if (!recovery) {
+            return builtInPanels;
+        }
+        return [
+            recoveryPanelModule,
+            ...builtInPanels.filter(panel =>
+                RECOVERY_ALWAYS_ON.has(panel.metadata.id) || unlocked.has(panel.metadata.id)),
+        ];
+    }, [recovery, unlocked]);
+}
 
 /**
  * Hook to load all built-in modules
@@ -15,7 +75,8 @@ import {
  * Registry context provides convenient React-based access to the same state
  */
 export function useModuleLoader() {
-    const { context } = useWorkspace();
+    const { context, recovery } = useWorkspace();
+    const panels = useRegisterablePanels(recovery);
 
     // Register all panel modules
     useEffect(() => {
@@ -26,7 +87,7 @@ export function useModuleLoader() {
         const cleanup: (() => void)[] = [];
 
         // Register panels through UIStore (single source of truth)
-        builtInPanels.forEach((panelModule) => {
+        panels.forEach((panelModule) => {
             // Call onLoad if provided
             if (panelModule.onLoad) {
                 panelModule.onLoad();
@@ -123,12 +184,12 @@ export function useModuleLoader() {
         return () => {
             cleanup.forEach((fn) => fn());
             // Call onUnload for panels
-            builtInPanels.forEach((panelModule) => {
+            panels.forEach((panelModule) => {
                 if (panelModule.onUnload) {
                     panelModule.onUnload();
                 }
             });
         };
-    }, [context]);
+    }, [context, panels]);
 }
 

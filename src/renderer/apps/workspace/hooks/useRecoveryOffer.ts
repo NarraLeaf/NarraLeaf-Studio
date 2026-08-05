@@ -54,7 +54,9 @@ export function useRecoveryOffer() {
             ui.notifications.showSticky({
                 type: NotificationType.Error,
                 message: translate("workspace.recovery.offer.message"),
-                detail: translate("workspace.recovery.offer.detail", { count: degraded.length }),
+                detail: degraded.length === 1
+                    ? translate("workspace.recovery.offer.detailOne")
+                    : translate("workspace.recovery.offer.detailMany", { count: degraded.length }),
                 actions: [
                     {
                         label: translate("workspace.recovery.offer.enter"),

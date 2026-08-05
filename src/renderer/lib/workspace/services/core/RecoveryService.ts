@@ -259,7 +259,13 @@ export class RecoveryService extends Service<RecoveryService> implements IRecove
             if (failure) {
                 this.setProbe(probe.id, { status: "failed", raw: describeRawError(failure.error), detail: null });
             } else if (instance.isInitialized(ctx)) {
-                this.setProbe(probe.id, { status: "ok", raw: null, detail: null });
+                // Same rule the manual run applies: coming up is not the same as having read
+                // everything. Any report from this subsystem during the boot means the check has an
+                // answer already, and it is not a green one.
+                const raw = getWorkspaceAnomalyReportCount(probe.source) > 0 ? this.latestRawFor(probe.source) : null;
+                this.setProbe(probe.id, raw
+                    ? { status: "failed", raw, detail: null }
+                    : { status: "ok", raw: null, detail: null });
             }
         }
         this.emit();
