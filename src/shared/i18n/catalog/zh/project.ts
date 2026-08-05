@@ -10,6 +10,10 @@ export const project = {
             title: "游戏",
             description: "成品游戏对玩家的表现",
         },
+        preferences: {
+            title: "偏好设置",
+            description: "新玩家的各项设置从什么值开始",
+        },
         audio: {
             title: "音频",
             description: "混音台：总线之间如何汇入，各自多大声",
@@ -81,6 +85,80 @@ export const project = {
         autoSaveIntervalUnit: "秒",
         autoSaveSlotsTitle: "保留数量",
         autoSaveSlotsDescription: "自动存档在这么多个槽位间轮转，最旧的先被覆盖，不会混进玩家自己的存档槽",
+    },
+    preferences: {
+        intro: "玩家没有改动过时，各项设置从这里的值开始。游戏运行时它们仍然可以被玩家改，改完的值会随应用保存下来。",
+        group: {
+            dialogue: "对话",
+            skipping: "跳过",
+            audio: "音频",
+        },
+        unit: {
+            percent: "%",
+            ms: "毫秒",
+            cps: "字/秒",
+        },
+        cps: {
+            title: "文字速度",
+            description: "每秒打出的字数",
+        },
+        gameSpeed: {
+            title: "游戏速度",
+            description: "同时作用于打字速度和自动前进的等待时间",
+        },
+        autoForward: {
+            title: "自动前进",
+            description: "一句显示完之后自动进入下一句",
+        },
+        showDialog: {
+            title: "显示对话框",
+            description: "关闭后游戏以隐藏对话框的状态开始，与玩家自己按下隐藏界面时一样",
+        },
+        skip: {
+            title: "允许跳过",
+            description: "关闭后跳过键完全不起作用",
+        },
+        skipReadText: {
+            title: "跳过已读文本",
+            description: "开启后，跳过遇到玩家还没读过的文本就会停下",
+        },
+        skipDelay: {
+            title: "跳过延迟",
+            description: "跳过键按住多久之后开始连续跳过",
+        },
+        skipInterval: {
+            title: "跳过间隔",
+            description: "连续跳过时每句之间的间隔，越大越慢",
+        },
+        globalVolume: {
+            title: "总音量",
+            description: "游戏播放的一切声音",
+        },
+        bgmVolume: {
+            title: "音乐音量",
+            description: "音乐音轨",
+        },
+        soundVolume: {
+            title: "音效音量",
+            description: "音效音轨",
+        },
+        voiceVolume: {
+            title: "语音音量",
+            description: "语音音轨",
+        },
+        voiceEndMode: {
+            title: "语音随句子结束时",
+            description: "一句话说完之后，这条语音怎么处理",
+            option: {
+                stop: "立即停止",
+                fade: "淡出",
+                none: "继续播放",
+            },
+        },
+        voiceFadeDuration: {
+            title: "语音淡出时长",
+            description: "淡出持续多久，只在语音以淡出方式结束时生效",
+        },
     },
     // 音频子页：一条总线一行，字段收在折叠里。下面这些是「标签」不是「标题」——
     // 原先每个字段各带一段说明，三条轨道就是三遍同样的话，现在只在 intro 里说一次。

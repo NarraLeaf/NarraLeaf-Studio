@@ -11,6 +11,7 @@ import {
     LocalizationConfiguration,
     MobileConfiguration,
     NetworkConfiguration,
+    PlayerPreferences,
     ProjectAppConfiguration,
     SecurityConfiguration,
     SigningConfiguration,
@@ -22,6 +23,7 @@ import {
     normalizeLocalizationConfiguration,
     normalizeMobileConfiguration,
     normalizeNetworkConfiguration,
+    normalizePlayerPreferences,
     normalizeSecurityConfiguration,
     normalizeSigningConfiguration,
     normalizeVoiceConfiguration,
@@ -364,6 +366,37 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
                 ...config.app,
                 network: normalizeNetworkConfiguration(config.app?.network),
                 autoSave,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /**
+     * Read the player-preference defaults, falling back to the engine's own for
+     * projects that predate `app.preferences`.
+     */
+    public getPlayerPreferences(): PlayerPreferences {
+        return normalizePlayerPreferences(this.getProjectConfig().app?.preferences);
+    }
+
+    /**
+     * Merge a partial patch into the player-preference defaults. Written by the
+     * project Preferences page and baked into the bundle the game app seeds
+     * `game.preference` from at boot.
+     */
+    public async updatePlayerPreferences(patch: Partial<PlayerPreferences>): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const preferences = normalizePlayerPreferences({
+                ...normalizePlayerPreferences(config.app?.preferences),
+                ...patch,
+            });
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                preferences,
             };
             return {
                 ...config,
