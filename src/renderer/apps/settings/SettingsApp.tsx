@@ -321,7 +321,13 @@ export function SettingsApp() {
                         </p>
                     )}
                 </aside>
-                <section className="flex-1 p-4">
+                {/* `min-w-0` is load-bearing. A flex item's default `min-width: auto` floors it at its
+                    content's min-content width, so this column refused to shrink past ~435px however
+                    narrow the window got — and the parent is `overflow-hidden`, so the surplus was
+                    simply cut off with no horizontal scroll to go after it. At 200% UI zoom (600 CSS
+                    px of window, 256 of it the nav) that put every control's right-hand column past
+                    the edge, the zoom field that undoes it included. */}
+                <section className="min-w-0 flex-1 p-4">
                     <SettingsExplorer
                         categories={localizedCategories}
                         getSettingsForCategory={(category) => getSettingsByCategory(category as AppSettingCategoryKey)}
