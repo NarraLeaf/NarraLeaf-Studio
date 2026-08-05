@@ -178,6 +178,7 @@ export const build = {
             + "请在 {targetPlatform} 机器上构建该目标",
         "encryption-key-unavailable": "资源保护已开启，但无法取得密钥",
         "web-unprotected": "资源保护对 Web 导出不生效，其文件以明文发布",
+        "web-lossy-images": "有损图像重压缩已开启，导出的图像将以质量 {quality} 重新编码，细节不可恢复",
         "mobile-template-missing": "移动端外壳模板不可用：{reason}",
         "mobile-payload-too-large": "项目素材体积（{size}）超出移动端安装包能容纳的上限",
         "version-uncodable": "版本号 {version} 无法编码为 Android 版本号（主版本最大 2099，次版本与修订号最大 999）",

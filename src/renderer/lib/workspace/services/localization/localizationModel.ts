@@ -15,6 +15,7 @@ import type {
 import { listScenesInDocumentOrder } from "@shared/types/story";
 import type { LocalizationDocument, LocalizationKeysDocument, LocalizationUnit } from "@shared/types/localization";
 import { characterTranslationUnitId, localizationKeyUnitId } from "@shared/types/localization";
+import type { TranslationExchangeRow } from "@shared/utils/localizationExchange";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { findUIElementSurfaceId } from "@shared/types/ui-editor/frame";
 import {
@@ -255,6 +256,53 @@ export type TranslatableUnitRef = {
     unitId: string;
     sourceText: string;
 };
+
+/** A unit plus the one line of context an exported file shows the translator. */
+export type TranslatableUnitContext = TranslatableUnitRef & {
+    /** Scene name, widget path or key name - whatever tells a stranger where this line lives. */
+    context: string;
+};
+
+/**
+ * How much of the project one export carries.
+ *
+ * `pending` is the working shape once a game has shipped once: everything
+ * untranslated, plus everything whose source line moved since it was
+ * translated. Sending the whole table for a two-line change is how translation
+ * budgets get spent twice.
+ */
+export type TranslationExportScope = "all" | "pending";
+
+/**
+ * Assemble the rows of an exchange file for one locale.
+ *
+ * The state is derived here, not read off the stored unit: `stale` exists only
+ * as a comparison against the current source text, and it is the single most
+ * useful thing the file can tell a translator.
+ */
+export function buildTranslationExchangeRows(
+    units: readonly TranslatableUnitContext[],
+    document: LocalizationDocument | undefined,
+    scope: TranslationExportScope = "all",
+): TranslationExchangeRow[] {
+    const rows: TranslationExchangeRow[] = [];
+    for (const unit of units) {
+        const stored = document?.units[unit.unitId];
+        const state = deriveUnitState(stored, unit.sourceText);
+        if (scope === "pending" && state !== "untranslated" && state !== "stale") {
+            continue;
+        }
+        rows.push({
+            unitId: unit.unitId,
+            context: unit.context,
+            source: unit.sourceText,
+            target: stored?.target ?? "",
+            status: state === "untranslated" ? "" : state,
+            note: stored?.note ?? "",
+        });
+    }
+    return rows;
+}
 
 export type LocalizationProgress = {
     total: number;

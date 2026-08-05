@@ -23,7 +23,7 @@ import {
     isValidLocalizationKeyName,
 } from "@shared/types/localization";
 import { hashSourceText } from "@shared/utils/localizationText";
-import type { TranslationCsvRow } from "@shared/utils/localizationCsv";
+import { normalizeExchangeStatus, type TranslationExchangeRow } from "@shared/utils/localizationExchange";
 import type { StoryDocument } from "@shared/types/story";
 import { Service } from "../Service";
 import { ILocalizationService, Services, WorkspaceContext } from "../services";
@@ -401,17 +401,20 @@ export class LocalizationService extends Service<LocalizationService> implements
         return next;
     }
 
-    // --- CSV import (export assembly lives with the caller, which owns row context) ---
+    // --- Exchange import (export assembly lives with the caller, which owns row context) ---
 
     /**
-     * Apply parsed CSV rows to a locale document. `currentSourceByUnit` maps every
-     * known unit id to its current source text. Rows are anchored to the CSV's own
-     * `source` column when present (so a line whose source changed after export
-     * derives "stale" naturally); otherwise to the current source text.
+     * Apply parsed exchange rows to a locale document, whichever format they
+     * were read from - CSV, XLIFF, PO and JSON all arrive here as the same rows.
+     *
+     * `currentSourceByUnit` maps every known unit id to its current source text.
+     * Rows are anchored to the file's own source text when it carries one (so a
+     * line whose source changed after the export derives "stale" naturally);
+     * otherwise to the current source text.
      */
     public applyImportedRows(
         locale: string,
-        rows: readonly TranslationCsvRow[],
+        rows: readonly TranslationExchangeRow[],
         currentSourceByUnit: ReadonlyMap<string, string>,
     ): TranslationImportSummary {
         const document = this.requireLoadedDocument(locale);
@@ -427,10 +430,14 @@ export class LocalizationService extends Service<LocalizationService> implements
                 summary.skippedEmpty += 1;
                 continue;
             }
+            // A row that says "stale" is one this project exported and nobody
+            // re-anchored: it is stored as translated against the source text
+            // the file carries, which derives stale again if that text has since
+            // moved on. Anything the file could not say becomes translated,
+            // because a target arrived.
+            const declared = normalizeExchangeStatus(row.status);
             const status: LocalizationUnitStatus =
-                row.status === "machine" || row.status === "reviewed" || row.status === "translated"
-                    ? row.status
-                    : "translated";
+                declared === "machine" || declared === "reviewed" ? declared : "translated";
             const unit: LocalizationUnit = {
                 target: row.target,
                 sourceHash: hashSourceText(row.source || currentSource),

@@ -15,43 +15,51 @@ import { useWorkspace } from "../../context";
 import { freezeContextMenuRows, useFreezeGuard } from "../../components/ui/freezeGuard";
 
 /**
- * The localization locale menu row that keeps working while frozen: the CSV export.
+ * The localization locale menu row that keeps working while frozen: the export.
  *
- * It writes to a path the author picks, outside the project. Set-as-source, Import CSV and Remove
+ * It writes to a path the author picks, outside the project. Set-as-source, Import and Remove
  * Language all write the project and are off.
  */
-const FREEZE_READ_ONLY_LOCALIZATION_MENU_IDS: ReadonlySet<string> = new Set(["export-csv"]);
+const FREEZE_READ_ONLY_LOCALIZATION_MENU_IDS: ReadonlySet<string> = new Set(["export-translations"]);
 import { useRegistry } from "../../registry";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import {
-    deriveUnitState,
+    buildTranslationExchangeRows,
     extractCharacterTranslationRows,
     extractKeyTranslationRows,
     extractUiTranslationRows,
     type LocalizationProgress,
+    type TranslatableUnitContext,
+    type TranslationExportScope,
 } from "@/lib/workspace/services/localization/localizationModel";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
+import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
 import {
     isValidLocaleCode,
     type LocalizationConfiguration,
+    type LocalizationDocument,
 } from "@shared/types/localization";
-import { parseTranslationCsv, serializeTranslationCsv, type TranslationCsvRow } from "@shared/utils/localizationCsv";
+import {
+    TRANSLATION_EXCHANGE_FORMAT_INFO,
+    detectTranslationExchangeFormat,
+    parseTranslationExchange,
+    serializeTranslationExchange,
+    translationExchangeExtensions,
+    type TranslationExchangeFormat,
+} from "@shared/utils/localizationExchange";
 import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { createLocalizationEditorTab } from "./openLocalizationEditorTab";
+import { TranslationExportForm } from "./TranslationExportForm";
 
-/** One translatable unit with translator-facing context (for progress + CSV export). */
-type PanelRow = {
-    unitId: string;
-    sourceText: string;
-    context: string;
-};
+/** One translatable unit with translator-facing context (for progress and export). */
+type PanelRow = TranslatableUnitContext;
 
 /** Which language row's "more" menu is open, and where to place it. */
 type LocaleMenuState = {
@@ -107,6 +115,14 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
     );
     const uiDocumentRevision = useUIDocumentRevision(uiDocumentService);
 
+    /** Written into the exported file so a translator can tell two projects apart. */
+    const projectName = useMemo(() => {
+        if (!context || !isInitialized) {
+            return "";
+        }
+        return context.services.get<ProjectService>(Services.Project).getProjectConfig().name?.trim() ?? "";
+    }, [context, isInitialized]);
+
     const [config, setConfig] = useState<LocalizationConfiguration | null>(null);
     const [rows, setRows] = useState<PanelRow[]>([]);
     const [progressByLocale, setProgressByLocale] = useState<Record<string, LocalizationProgress>>({});
@@ -114,6 +130,11 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
 
     // Per-row "more" menu (one at a time, anchored under its trigger).
     const [localeMenu, setLocaleMenu] = useState<LocaleMenuState | null>(null);
+
+    // Last format chosen for an export: a team that translates in Poedit does so
+    // every time, and re-picking it per language is the kind of friction that
+    // makes people export once and edit JSON by hand instead.
+    const [exportFormat, setExportFormat] = useState<TranslationExchangeFormat>("csv");
 
     // Add-language inline form (collapsed by default; the panel shows no idle inputs).
     const [addingLocale, setAddingLocale] = useState(false);
@@ -288,27 +309,28 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
         openEditorTab(createLocalizationEditorTab(code, displayName));
     }, [openEditorTab]);
 
-    const handleExportCsv = useCallback(async (code: string) => {
+    /** Write one exchange file, after the dialog below has settled format and scope. */
+    const writeExport = useCallback(async (code: string, format: TranslationExchangeFormat, scope: TranslationExportScope) => {
         if (!localizationService || !context) {
             return;
         }
         try {
             const document = await localizationService.loadDocument(code);
-            const csvRows: TranslationCsvRow[] = rows.map(row => {
-                const unit = document.units[row.unitId];
-                const state = deriveUnitState(unit, row.sourceText);
-                return {
-                    unitId: row.unitId,
-                    context: row.context,
-                    source: row.sourceText,
-                    target: unit?.target ?? "",
-                    status: state === "untranslated" ? "" : state,
-                    note: unit?.note ?? "",
-                };
+            const exportRows = buildTranslationExchangeRows(rows, document, scope);
+            if (exportRows.length === 0) {
+                uiService?.showNotification(t("workspace.localization.exchange.exportEmpty"), "info");
+                return;
+            }
+            const config = localizationService.getConfiguration();
+            const text = serializeTranslationExchange(format, {
+                sourceLocale: config.sourceLocale,
+                targetLocale: code,
+                projectName: projectName || undefined,
+                rows: exportRows,
             });
-            const csv = "﻿" + serializeTranslationCsv(csvRows);
             // Native save dialog: the user picks the destination (null = cancelled).
-            const selection = await appPrivilegedFacade.fs.selectSaveFile(`${code}.csv`, ["csv"]);
+            const extension = TRANSLATION_EXCHANGE_FORMAT_INFO[format].extension;
+            const selection = await appPrivilegedFacade.fs.selectSaveFile(`${code}.${extension}`, [extension]);
             if (!selection.success || !selection.data.ok) {
                 const message = selection.success && !selection.data.ok ? selection.data.error.message : undefined;
                 throw new Error(message || "Save dialog failed");
@@ -318,22 +340,79 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                 return;
             }
             const filesystem = context.services.get<FileSystemService>(Services.FileSystem);
-            const result = await filesystem.write(targetPath, csv, "utf-8");
+            const result = await filesystem.write(targetPath, text, "utf-8");
             if (!result.ok) {
                 throw new Error(result.error.message);
             }
-            uiService?.showNotification(t("workspace.localization.panel.exportDone", { path: targetPath }), "success");
+            uiService?.showNotification(
+                t("workspace.localization.exchange.exportDone", { count: exportRows.length, path: targetPath }),
+                "success",
+            );
         } catch (error) {
             uiService?.showError(error instanceof Error ? error : String(error));
         }
-    }, [localizationService, context, rows, uiService, t]);
+    }, [localizationService, context, rows, uiService, projectName, t]);
 
-    const handleImportCsv = useCallback(async (code: string) => {
-        if (!localizationService || !context) {
+    const handleExport = useCallback(async (code: string, displayName: string) => {
+        if (!localizationService || !uiService) {
+            return;
+        }
+        let document: LocalizationDocument;
+        try {
+            document = await localizationService.loadDocument(code);
+        } catch (error) {
+            uiService.showError(error instanceof Error ? error : String(error));
+            return;
+        }
+        const pendingCount = buildTranslationExchangeRows(rows, document, "pending").length;
+
+        // The footer buttons are snapshotted when the dialog opens, so the
+        // selection lives here and the form reports into it.
+        let format = exportFormat;
+        let scope: TranslationExportScope = pendingCount > 0 && pendingCount < rows.length ? "pending" : "all";
+        const dialogId = uiService.dialogs.show({
+            title: t("workspace.localization.exchange.exportTitle", { name: displayName }),
+            width: 420,
+            closable: true,
+            content: (
+                <TranslationExportForm
+                    totalCount={rows.length}
+                    pendingCount={pendingCount}
+                    initialFormat={format}
+                    initialScope={scope}
+                    onChange={(nextFormat, nextScope) => {
+                        format = nextFormat;
+                        scope = nextScope;
+                    }}
+                />
+            ),
+            buttons: [
+                { label: t("common.cancel"), onClick: () => uiService.dialogs.close(dialogId) },
+                {
+                    label: t("workspace.localization.exchange.exportAction"),
+                    primary: true,
+                    onClick: () => {
+                        uiService.dialogs.close(dialogId);
+                        setExportFormat(format);
+                        void writeExport(code, format, scope);
+                    },
+                },
+            ],
+        });
+    }, [localizationService, uiService, rows, exportFormat, writeExport, t]);
+
+    const handleImport = useCallback(async (code: string, displayName: string) => {
+        if (!localizationService || !context || !uiService) {
             return;
         }
         try {
-            const selection = await appPrivilegedFacade.fs.selectFile(["csv"], false);
+            // The title is passed because the generic picker's default says "Select Icon File",
+            // which is what a translator would otherwise be asked for.
+            const selection = await appPrivilegedFacade.fs.selectFile(
+                translationExchangeExtensions(),
+                false,
+                t("workspace.localization.exchange.importDialogTitle"),
+            );
             if (!selection.success || !selection.data.ok || selection.data.data.length === 0) {
                 return;
             }
@@ -341,19 +420,44 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
             const filesystem = context.services.get<FileSystemService>(Services.FileSystem);
             const content = await filesystem.read(filePath, "utf-8");
             if (!content.ok) {
-                throw new Error(content.error.message || t("workspace.localization.panel.importFailed"));
+                throw new Error(content.error.message || t("workspace.localization.exchange.importFailed"));
             }
-            const parsed = parseTranslationCsv(content.data);
-            if (parsed.errors.length > 0 && parsed.rows.length === 0) {
-                throw new Error(parsed.errors[0]);
+            const format = detectTranslationExchangeFormat(filePath, content.data);
+            if (!format) {
+                throw new Error(t("workspace.localization.exchange.importUnsupported"));
             }
+            const parsed = parseTranslationExchange(format, content.data);
+            if (parsed.rows.length === 0) {
+                throw new Error(parsed.errors[0] || t("workspace.localization.exchange.importNoRows"));
+            }
+
+            // A file that names a different language than the one it is being
+            // imported into is the expensive mistake: unit ids match across
+            // languages, so nothing downstream would ever notice.
+            const declared = parsed.targetLocale?.trim();
+            if (declared && declared.toLowerCase() !== code.toLowerCase()) {
+                const proceed = await uiService.showConfirm(
+                    t("workspace.localization.exchange.localeMismatch", { declared, name: displayName }),
+                    t("workspace.localization.exchange.localeMismatchDetail"),
+                );
+                if (!proceed) {
+                    return;
+                }
+            }
+
             await localizationService.loadDocument(code);
             const currentSourceByUnit = new Map(rows.map(row => [row.unitId, row.sourceText]));
             const summary = localizationService.applyImportedRows(code, parsed.rows, currentSourceByUnit);
-            uiService?.showNotification(t("workspace.localization.panel.importSummary", { ...summary }), "success");
+            uiService.showNotification(t("workspace.localization.panel.importSummary", { ...summary }), "success");
+            if (parsed.errors.length > 0) {
+                uiService.showNotification(
+                    t("workspace.localization.exchange.importWarnings", { count: parsed.errors.length, first: parsed.errors[0] }),
+                    "warning",
+                );
+            }
             setRefreshTick(tick => tick + 1);
         } catch (error) {
-            uiService?.showError(error instanceof Error ? error : String(error));
+            uiService.showError(error instanceof Error ? error : String(error));
         }
     }, [localizationService, context, rows, uiService, t]);
 
@@ -372,14 +476,14 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
         }
         items.push(
             {
-                id: "export-csv",
-                label: t("workspace.localization.panel.exportCsv"),
-                onClick: () => void handleExportCsv(code),
+                id: "export-translations",
+                label: t("workspace.localization.exchange.exportMenu"),
+                onClick: () => void handleExport(code, displayName),
             },
             {
-                id: "import-csv",
-                label: t("workspace.localization.panel.importCsv"),
-                onClick: () => void handleImportCsv(code),
+                id: "import-translations",
+                label: t("workspace.localization.exchange.importMenu"),
+                onClick: () => void handleImport(code, displayName),
             },
             { id: "separator", separator: true },
             {
@@ -389,7 +493,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
             },
         );
         return items;
-    }, [localeMenu, handleSetSource, handleExportCsv, handleImportCsv, handleRemoveLocale, t]);
+    }, [localeMenu, handleSetSource, handleExport, handleImport, handleRemoveLocale, t]);
     const frozenLocaleMenuItems = useMemo(
         () => freezeContextMenuRows(localeMenuItems, freeze.frozen, FREEZE_READ_ONLY_LOCALIZATION_MENU_IDS, freeze.reason),
         [freeze, localeMenuItems],
