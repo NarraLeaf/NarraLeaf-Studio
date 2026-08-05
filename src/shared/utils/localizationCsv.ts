@@ -1,23 +1,19 @@
 /**
  * CSV round-trip for translation tables. Columns are stable and keyed by header
  * name on import, so translators may reorder or append columns freely. The RFC
- * 4180 primitives live in `./csv`. Callers prepend a UTF-8 BOM when writing so
- * Excel opens the file correctly.
+ * 4180 primitives live in `./csv`; the row model and the other three exchange
+ * formats live in `./localizationExchange`. `serializeTranslationExchange`
+ * prepends the UTF-8 BOM that makes Excel read the file as UTF-8.
  * Comments in English per project convention.
  */
 
 import { readCsvTable, serializeCsv } from "./csv";
+import type { ParsedTranslationExchange, TranslationExchangeRow } from "./localizationExchange";
 
 export const TRANSLATION_CSV_COLUMNS = ["unit_id", "context", "source", "target", "status", "note"] as const;
 
-export type TranslationCsvRow = {
-    unitId: string;
-    context: string;
-    source: string;
-    target: string;
-    status: string;
-    note: string;
-};
+/** The shared exchange row; CSV was the first format to carry it. */
+export type TranslationCsvRow = TranslationExchangeRow;
 
 export function serializeTranslationCsv(rows: readonly TranslationCsvRow[]): string {
     return serializeCsv(
@@ -26,11 +22,8 @@ export function serializeTranslationCsv(rows: readonly TranslationCsvRow[]): str
     );
 }
 
-export type ParsedTranslationCsv = {
-    rows: TranslationCsvRow[];
-    /** Human-readable problems (bad header, rows without a unit id). */
-    errors: string[];
-};
+/** Problems are reported the same way for every exchange format; CSV carries no language tags. */
+export type ParsedTranslationCsv = ParsedTranslationExchange;
 
 /**
  * Parse a translation CSV by header names (column order and extra columns are

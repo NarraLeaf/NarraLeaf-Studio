@@ -97,6 +97,7 @@ export type BuildPreflightCode =
     | "sidecar-crossbuild-exec-bit"
     | "encryption-key-unavailable"
     | "web-unprotected"
+    | "web-lossy-images"
     | "mobile-template-missing"
     | "mobile-payload-too-large"
     | "version-uncodable"
