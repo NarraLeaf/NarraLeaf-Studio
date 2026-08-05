@@ -75,6 +75,17 @@ const LIMIT = 200;
 
 let anomalies: WorkspaceAnomaly[] = [];
 let counter = 0;
+/**
+ * How many times each subsystem has reported, counting repeats the log itself collapses.
+ *
+ * The set of anomalies cannot answer "did anything go wrong just now?", because the second run of a
+ * damaged load path produces the same record and is deduped away. A recovery probe needs exactly
+ * that question answered: several services *survive* a file they cannot read (the asset index comes
+ * back empty rather than throwing), so "the service initialized" and "the read worked" are different
+ * facts, and without this the panel would show a green tick directly above its own report that the
+ * file is unreadable.
+ */
+const reportCounts = new Map<WorkspaceAnomalySource, number>();
 const observers = new Set<(anomalies: readonly WorkspaceAnomaly[]) => void>();
 
 /**
@@ -87,6 +98,10 @@ const observers = new Set<(anomalies: readonly WorkspaceAnomaly[]) => void>();
  * different fact and gets its own row.
  */
 export function reportWorkspaceAnomaly(input: WorkspaceAnomalyInput): WorkspaceAnomaly {
+    // Counted before the dedupe returns, deliberately: a repeat is not a new *record* but it is a
+    // new *event*, and that is what a probe watching this subsystem needs to know.
+    reportCounts.set(input.source, (reportCounts.get(input.source) ?? 0) + 1);
+
     const raw = describeRawError(input.error);
     const existing = anomalies.find(anomaly =>
         anomaly.source === input.source
@@ -124,6 +139,16 @@ export function getWorkspaceAnomalies(): readonly WorkspaceAnomaly[] {
 }
 
 /**
+ * How many times `source` has reported, repeats included. See {@link reportCounts}.
+ *
+ * Meaningful only as a before/after comparison across a piece of work - the absolute number says
+ * nothing, and a caller reading it as "how broken is this" would be wrong.
+ */
+export function getWorkspaceAnomalyReportCount(source: WorkspaceAnomalySource): number {
+    return reportCounts.get(source) ?? 0;
+}
+
+/**
  * Empty the log.
  *
  * **Not called on a retry, and that is deliberate.** The obvious-looking rule - "a fresh attempt
@@ -137,6 +162,7 @@ export function getWorkspaceAnomalies(): readonly WorkspaceAnomaly[] {
  * one-window model does not currently allow.
  */
 export function clearWorkspaceAnomalies(): void {
+    reportCounts.clear();
     if (anomalies.length === 0) {
         return;
     }
