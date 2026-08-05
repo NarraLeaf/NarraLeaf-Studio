@@ -519,6 +519,7 @@ const PORT_LABEL_KEYS: Record<string, TranslationKey> = {
     "Skip": "blueprint.port.skip",
     "Skip Delay": "blueprint.port.skipDelay",
     "Skip Interval": "blueprint.port.skipInterval",
+    "Skip Read Text": "blueprint.port.skipReadText",
     "Slider": "blueprint.port.slider",
     "Sound": "blueprint.port.sound",
     "Sound Volume": "blueprint.port.soundVolume",
