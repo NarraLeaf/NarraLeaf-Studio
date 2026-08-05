@@ -3,6 +3,7 @@ import type { PlayerPreferences } from "@shared/types/preference";
 import type { AutoSaveConfiguration } from "@shared/types/saves";
 import type { SigningPlatform } from "@shared/types/signing";
 import type { VoiceConfiguration } from "@shared/types/voice";
+import type { WebOptimizationConfiguration } from "@shared/types/webOptimization";
 import type { LintRuleSeverity } from "@/lib/lint/types";
 import {
     GAME_BUILD_FORMATS_BY_PLATFORM,
@@ -25,6 +26,13 @@ export {
     normalizeVoiceConfiguration,
 } from "@shared/types/voice";
 export type { VoiceConfiguration, VoiceLocaleEntry } from "@shared/types/voice";
+export {
+    DEFAULT_WEB_OPTIMIZATION_CONFIGURATION,
+    normalizeWebOptimizationConfiguration,
+    WEB_LOSSY_QUALITY_MAX,
+    WEB_LOSSY_QUALITY_MIN,
+} from "@shared/types/webOptimization";
+export type { WebOptimizationConfiguration } from "@shared/types/webOptimization";
 export {
     AUTO_SAVE_INTERVAL_SECONDS_MAX,
     AUTO_SAVE_INTERVAL_SECONDS_MIN,
@@ -211,6 +219,8 @@ export type ProjectAppConfiguration = {
     voice?: VoiceConfiguration;
     /** Asset-protection policy applied at pack time; absent until configured. */
     security?: SecurityConfiguration;
+    /** What the exported static site may do to the author's bytes; absent until configured. */
+    webOptimization?: WebOptimizationConfiguration;
     /** Mobile shell behaviour; absent until configured (see the defaults). */
     mobile?: MobileConfiguration;
     /** Automatic saving in the shipped game; absent until configured (see the defaults). */
