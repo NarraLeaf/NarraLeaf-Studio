@@ -69,6 +69,10 @@ export type { BadgeProps, BadgeTone } from "./Badge";
 export { EmptyState } from "./EmptyState";
 export type { EmptyStateProps } from "./EmptyState";
 
+// FieldLabel component (the eyebrow label; see docs/design-system.md §6)
+export { FieldLabel } from "./FieldLabel";
+export type { FieldLabelProps } from "./FieldLabel";
+
 // Inspection-only control (survives a read-only `<fieldset disabled>` clamp)
 export { InspectOnlyButton } from "./InspectOnlyButton";
 export type { InspectOnlyButtonProps } from "./InspectOnlyButton";
