@@ -242,6 +242,26 @@ export const workspace = {
             pluginHostLoad: "加载插件系统",
         },
     },
+    // 撤销 / 重做。`scope` 是某一条撤销栈的名字（"在<这里>撤销"），`entry` 是栈上的一步，
+    // 也就是菜单项或提示要说"将要撤销什么"时用的那句。
+    history: {
+        scope: {
+            storyScene: "场景",
+            storyMotion: "运动",
+            audioLoop: "音频标记",
+            uiSurface: "界面",
+            blueprint: "蓝图",
+            project: "工程",
+        },
+        entry: {
+            edit: "编辑",
+            storyEdit: "故事编辑",
+            storyMotionEdit: "运动编辑",
+            audioMarkers: "标记变更",
+            surfaceEdit: "界面编辑",
+            blueprintEdit: "蓝图编辑",
+        },
+    },
     shell: {
         errorTitle: "工作区初始化失败",
         showStackTrace: "显示堆栈跟踪",

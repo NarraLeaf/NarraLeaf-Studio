@@ -35,8 +35,11 @@ import {
 import type { UIDocument, UIElement, UIElementValueBindingValueType } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import type { VariableRegistry, VariableRegistryEntry } from "@shared/types/variables/registry";
+import type { TranslationKey } from "@shared/i18n";
 import { RendererError } from "@shared/utils/error";
 import { EventEmitter } from "../ui/EventEmitter";
+import { HistoryService } from "../history/HistoryService";
+import { blueprintHistoryScope, HistoryScopeKind, historyScopeParts, isHistoryScopeOf } from "../history/historyScopes";
 import { Service } from "../Service";
 import { Services, ILocalBlueprintService, WorkspaceContext } from "../services";
 import { FileSystemService } from "../core/FileSystem";
@@ -109,21 +112,6 @@ export type BlueprintEditorHistorySnapshot = {
      * own service/file since M-VAR) undoes with the same Ctrl+Z as the blueprint edit that made it.
      */
     registry: VariableRegistry;
-};
-
-type BlueprintHistoryEntry = {
-    blueprintId: string;
-    ownerKey: string | null;
-    before: BlueprintEditorHistorySnapshot;
-    after: BlueprintEditorHistorySnapshot;
-    mergeKey?: string;
-    createdAt: number;
-    updatedAt: number;
-};
-
-type BlueprintHistoryStack = {
-    undo: BlueprintHistoryEntry[];
-    redo: BlueprintHistoryEntry[];
 };
 
 type LocalBlueprintHistoryEvents = {
@@ -249,11 +237,11 @@ function normalizeBlueprintValueLiteral(value: unknown, valueType: UIElementValu
  * Blueprint M2: mutations to local instance BlueprintDocument inside uigraphs.json.
  */
 export class LocalBlueprintService extends Service<LocalBlueprintService> implements ILocalBlueprintService {
-    private readonly histories = new Map<string, BlueprintHistoryStack>();
     private readonly events = new EventEmitter<LocalBlueprintHistoryEvents>();
-    private historySuppressionDepth = 0;
-    private isRestoringHistory = false;
+    /** Blueprints this service has published a history scope for; the value unregisters it. */
+    private readonly registeredHistoryScopes = new Map<string, () => void>();
     private historyLimit = DEFAULT_BLUEPRINT_HISTORY_LIMIT;
+    private unsubscribeHistory: (() => void) | null = null;
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const fs = ctx.services.get<FileSystemService>(Services.FileSystem);
@@ -262,6 +250,47 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         const graph = ctx.services.get<UIGraphService>(Services.UIGraph);
         const registry = ctx.services.get<VariableRegistryService>(Services.VariableRegistry);
         await depend([fs, project, uuid, graph, registry]);
+
+        // The stacks live in HistoryService; re-shape its "some stack changed" event into the
+        // blueprint-shaped one this service's subscribers already listen for.
+        this.unsubscribeHistory?.();
+        this.unsubscribeHistory = this.history().on("changed", ({ scopeId }) => {
+            if (!isHistoryScopeOf(scopeId, HistoryScopeKind.Blueprint)) {
+                return;
+            }
+            const [blueprintId] = historyScopeParts(scopeId);
+            if (blueprintId) {
+                this.events.emit("blueprintHistoryChanged", {
+                    blueprintId,
+                    ownerKey: this.resolveBlueprintOwnerKey({ blueprintId }),
+                });
+            }
+        });
+    }
+
+    private history(): HistoryService {
+        return this.getContext().services.get<HistoryService>(Services.History);
+    }
+
+    /**
+     * Publish this blueprint's readers once.
+     *
+     * A blueprint's snapshot slices three service-owned stores (the graph document, element
+     * behaviours, the variable registry), none of which need an editor to be mounted - so the scope
+     * stays registered for the life of the workspace and an entry is always applicable.
+     */
+    private ensureBlueprintHistoryScope(blueprintId: string): void {
+        if (this.registeredHistoryScopes.has(blueprintId)) {
+            return;
+        }
+        const dispose = this.history().registerScope<BlueprintEditorHistorySnapshot>({
+            id: blueprintHistoryScope(blueprintId),
+            label: { key: "workspace.history.scope.blueprint" as TranslationKey },
+            capture: () => this.captureBlueprintHistorySnapshot(blueprintId),
+            apply: snapshot => this.restoreBlueprintHistorySnapshot(snapshot),
+            limit: this.historyLimit,
+        });
+        this.registeredHistoryScopes.set(blueprintId, dispose);
     }
 
     private getVariableRegistryService(): VariableRegistryService {
@@ -290,10 +319,8 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             return;
         }
         this.historyLimit = next;
-        for (const [blueprintId, history] of this.histories) {
-            this.trimBlueprintHistory(history);
-            const ownerKey = this.resolveBlueprintOwnerKey({ blueprintId });
-            this.events.emit("blueprintHistoryChanged", { blueprintId, ownerKey });
+        for (const blueprintId of this.registeredHistoryScopes.keys()) {
+            this.history().setScopeLimit(blueprintHistoryScope(blueprintId), next);
         }
     }
 
@@ -322,13 +349,8 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         options: BlueprintHistoryRecordOptions & { ownerKey?: string } = {},
     ): T {
         const before = this.captureBlueprintHistorySnapshot(blueprintId, options.ownerKey);
-        this.historySuppressionDepth += 1;
-        let result: T;
-        try {
-            result = action();
-        } finally {
-            this.historySuppressionDepth -= 1;
-        }
+        // The action's own edits must not each become a step - the transaction is the step.
+        const result = this.history().withoutRecording(action);
         this.recordBlueprintHistory({
             blueprintId,
             ownerKey: options.ownerKey ?? before.ownerKey ?? undefined,
@@ -341,50 +363,33 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     }
 
     public canUndoBlueprint(blueprintId: string): boolean {
-        return (this.histories.get(blueprintId)?.undo.length ?? 0) > 0;
+        return this.history().canUndo(blueprintHistoryScope(blueprintId));
     }
 
     public canRedoBlueprint(blueprintId: string): boolean {
-        return (this.histories.get(blueprintId)?.redo.length ?? 0) > 0;
+        return this.history().canRedo(blueprintHistoryScope(blueprintId));
     }
 
     public undoBlueprint(blueprintId: string): boolean {
-        const history = this.histories.get(blueprintId);
-        const entry = history?.undo.pop();
-        if (!entry || !history) {
-            return false;
-        }
-        this.restoreBlueprintHistorySnapshot(entry.before);
-        history.redo.push(entry);
-        this.events.emit("blueprintHistoryChanged", { blueprintId, ownerKey: entry.ownerKey });
-        return true;
+        this.ensureBlueprintHistoryScope(blueprintId);
+        return this.history().undo(blueprintHistoryScope(blueprintId));
     }
 
     public redoBlueprint(blueprintId: string): boolean {
-        const history = this.histories.get(blueprintId);
-        const entry = history?.redo.pop();
-        if (!entry || !history) {
-            return false;
-        }
-        this.restoreBlueprintHistorySnapshot(entry.after);
-        history.undo.push(entry);
-        this.events.emit("blueprintHistoryChanged", { blueprintId, ownerKey: entry.ownerKey });
-        return true;
+        this.ensureBlueprintHistoryScope(blueprintId);
+        return this.history().redo(blueprintHistoryScope(blueprintId));
     }
 
     public clearBlueprintHistory(blueprintId?: string): void {
         if (blueprintId) {
-            const ownerKey = this.resolveBlueprintOwnerKey({ blueprintId });
-            this.histories.delete(blueprintId);
-            this.events.emit("blueprintHistoryChanged", { blueprintId, ownerKey });
+            this.history().clearScope(blueprintHistoryScope(blueprintId));
             return;
         }
-        const ids = [...this.histories.keys()];
-        this.histories.clear();
-        ids.forEach(id => {
-            const ownerKey = this.resolveBlueprintOwnerKey({ blueprintId: id });
-            this.events.emit("blueprintHistoryChanged", { blueprintId: id, ownerKey });
-        });
+        this.history().clearMatching(scopeId => isHistoryScopeOf(scopeId, HistoryScopeKind.Blueprint));
+        for (const dispose of this.registeredHistoryScopes.values()) {
+            dispose();
+        }
+        this.registeredHistoryScopes.clear();
     }
 
     public onBlueprintHistoryChanged(
@@ -905,7 +910,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         mutator: (bp: BlueprintDocument, doc: UIGraphDocument) => void,
         options: BlueprintHistoryRecordOptions = {},
     ): void {
-        if (this.isRestoringHistory || this.historySuppressionDepth > 0) {
+        if (this.history().isRestoring()) {
             this.applyBlueprintMutation(mutator);
             return;
         }
@@ -929,94 +934,48 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         mergeKey?: string;
         mergeWindowMs?: number;
     }): void {
-        if (this.isRestoringHistory || areBlueprintHistorySnapshotsEqual(options.before, options.after)) {
-            return;
-        }
-
-        const history = this.ensureBlueprintHistory(options.blueprintId);
-        const now = Date.now();
-        const mergeWindowMs = options.mergeWindowMs ?? DEFAULT_BLUEPRINT_MERGE_WINDOW_MS;
-        const previous = history.undo[history.undo.length - 1];
-        const ownerKey = options.ownerKey ?? options.before.ownerKey ?? options.after.ownerKey ?? null;
-        if (
-            options.mergeKey &&
-            previous?.mergeKey === options.mergeKey &&
-            previous.blueprintId === options.blueprintId &&
-            now - previous.updatedAt <= mergeWindowMs
-        ) {
-            previous.after = options.after;
-            previous.updatedAt = now;
-            history.redo = [];
-            this.events.emit("blueprintHistoryChanged", { blueprintId: options.blueprintId, ownerKey });
-            return;
-        }
-
-        history.undo.push({
-            blueprintId: options.blueprintId,
-            ownerKey,
+        this.ensureBlueprintHistoryScope(options.blueprintId);
+        this.history().pushSnapshot<BlueprintEditorHistorySnapshot>(blueprintHistoryScope(options.blueprintId), {
+            label: { key: "workspace.history.entry.blueprintEdit" as TranslationKey },
             before: options.before,
             after: options.after,
             mergeKey: options.mergeKey,
-            createdAt: now,
-            updatedAt: now,
+            mergeWindowMs: options.mergeWindowMs ?? DEFAULT_BLUEPRINT_MERGE_WINDOW_MS,
+            equals: areBlueprintHistorySnapshotsEqual,
         });
-        this.trimBlueprintHistory(history);
-        history.redo = [];
-        this.events.emit("blueprintHistoryChanged", { blueprintId: options.blueprintId, ownerKey });
     }
 
     private restoreBlueprintHistorySnapshot(snapshot: BlueprintEditorHistorySnapshot): void {
         const graph = this.getContext().services.get<UIGraphService>(Services.UIGraph);
         const uidoc = this.getContext().services.get<UIDocumentService>(Services.UIDocument);
 
-        this.isRestoringHistory = true;
-        try {
-            graph.applyGraphMutation(document => {
-                const bpDoc = document.blueprintDocument;
-                if (snapshot.ownerKey) {
-                    if (snapshot.ownerRecord) {
-                        bpDoc.ownerRecords[snapshot.ownerKey] = cloneBlueprintHistoryValue(snapshot.ownerRecord)!;
-                    } else {
-                        delete bpDoc.ownerRecords[snapshot.ownerKey];
-                    }
-                }
-                if (snapshot.blueprint) {
-                    bpDoc.blueprints[snapshot.blueprint.id] = cloneBlueprintHistoryValue(snapshot.blueprint)!;
+        graph.applyGraphMutation(document => {
+            const bpDoc = document.blueprintDocument;
+            if (snapshot.ownerKey) {
+                if (snapshot.ownerRecord) {
+                    bpDoc.ownerRecords[snapshot.ownerKey] = cloneBlueprintHistoryValue(snapshot.ownerRecord)!;
                 } else {
-                    delete bpDoc.blueprints[snapshot.blueprintId];
+                    delete bpDoc.ownerRecords[snapshot.ownerKey];
                 }
-                assertValidBlueprintDocument(bpDoc);
-            });
-            const currentUIDocument = uidoc.getDocument();
-            if (!areUIBehaviorSnapshotsEqual(captureUIBehaviorSnapshot(currentUIDocument), snapshot.uiBehavior)) {
-                uidoc.restoreDocumentFromHistory(
-                    applyUIBehaviorSnapshot(currentUIDocument, snapshot.uiBehavior),
-                    { skipAfterMutateHook: true },
-                );
             }
-            const registryService = this.getVariableRegistryService();
-            if (JSON.stringify(registryService.getRegistry()) !== JSON.stringify(snapshot.registry)) {
-                registryService.replaceRegistry(cloneBlueprintHistoryValue(snapshot.registry));
+            if (snapshot.blueprint) {
+                bpDoc.blueprints[snapshot.blueprint.id] = cloneBlueprintHistoryValue(snapshot.blueprint)!;
+            } else {
+                delete bpDoc.blueprints[snapshot.blueprintId];
             }
-        } finally {
-            this.isRestoringHistory = false;
+            assertValidBlueprintDocument(bpDoc);
+        });
+        const currentUIDocument = uidoc.getDocument();
+        if (!areUIBehaviorSnapshotsEqual(captureUIBehaviorSnapshot(currentUIDocument), snapshot.uiBehavior)) {
+            uidoc.restoreDocumentFromHistory(
+                applyUIBehaviorSnapshot(currentUIDocument, snapshot.uiBehavior),
+                { skipAfterMutateHook: true },
+            );
         }
-    }
-
-    private ensureBlueprintHistory(blueprintId: string): BlueprintHistoryStack {
-        let history = this.histories.get(blueprintId);
-        if (!history) {
-            history = { undo: [], redo: [] };
-            this.histories.set(blueprintId, history);
+        const registryService = this.getVariableRegistryService();
+        if (JSON.stringify(registryService.getRegistry()) !== JSON.stringify(snapshot.registry)) {
+            registryService.replaceRegistry(cloneBlueprintHistoryValue(snapshot.registry));
         }
-        return history;
-    }
-
-    private trimBlueprintHistory(history: BlueprintHistoryStack): void {
-        if (history.undo.length <= this.historyLimit) {
-            return;
-        }
-        history.undo.splice(0, history.undo.length - this.historyLimit);
     }
 
     private resolveBlueprintOwnerKey(scope: BlueprintHistoryScope): string | null {

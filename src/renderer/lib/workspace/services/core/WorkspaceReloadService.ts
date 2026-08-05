@@ -21,8 +21,7 @@ import type { LocalizationService } from "../localization/LocalizationService";
 import type { VoiceService } from "../voice/VoiceService";
 import type { UIDocumentService } from "../ui-editor/UIDocumentService";
 import type { UIGraphService } from "../ui-editor/UIGraphService";
-import type { UIEditorHistoryService } from "../ui-editor/UIEditorHistoryService";
-import type { LocalBlueprintService } from "../ui-editor/LocalBlueprintService";
+import type { HistoryService } from "../history/HistoryService";
 import type { VariableRegistryService } from "../variables/VariableRegistryService";
 import type { AudioTrackService } from "../audio/AudioTrackService";
 import { EventEmitter } from "../ui/EventEmitter";
@@ -395,17 +394,16 @@ export class WorkspaceReloadService extends Service<WorkspaceReloadService> impl
      * one Ctrl+Z would write it back - the same loss as a stale auto-save, through a different door.
      * Losing the ability to undo across a reload is the correct trade: there is nothing coherent to
      * undo *to*.
+     *
+     * One call, because there is one owner. This used to name the two services that happened to
+     * keep stacks, which meant every editor that grew its own undo afterwards (story scenes, story
+     * motion, audio markers) kept a pre-reload snapshot this method did not know about.
      */
     private dropUndoHistories(ctx: WorkspaceContext): void {
         try {
-            ctx.services.get<UIEditorHistoryService>(Services.UIEditorHistory).clear();
+            ctx.services.get<HistoryService>(Services.History).clearAll();
         } catch (error) {
-            console.warn("[WorkspaceReload] could not clear the surface undo history", error);
-        }
-        try {
-            ctx.services.get<LocalBlueprintService>(Services.LocalBlueprint).clearBlueprintHistory();
-        } catch (error) {
-            console.warn("[WorkspaceReload] could not clear the blueprint undo history", error);
+            console.warn("[WorkspaceReload] could not clear the undo history", error);
         }
     }
 
