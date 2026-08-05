@@ -31,6 +31,9 @@ export const help = {
         shortcuts: "Shortcuts",
         learnMore: "Open the full page",
         close: "Close",
+        // The popover's back arrow. Names its destination rather than saying "Back", because the
+        // one thing worth knowing before pressing it is which topic you land on.
+        backTo: "Back to {title}",
         // The browser's second list, below the topics: pages that are deliberately not bundled.
         resources: "On the web",
         // Shown in the reader before a topic is picked.

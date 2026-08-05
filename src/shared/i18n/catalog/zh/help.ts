@@ -27,6 +27,8 @@ export const help = {
         shortcuts: "快捷键",
         learnMore: "打开完整页面",
         close: "关闭",
+        // 浮窗的返回箭头。写清楚回到哪一条，而不是只写「返回」：按之前值得知道的就是落在哪个主题。
+        backTo: "返回{title}",
         resources: "网上资源",
         pickTopic: "选择一个主题",
     },
