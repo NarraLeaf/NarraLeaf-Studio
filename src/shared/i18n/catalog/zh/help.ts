@@ -30,6 +30,13 @@ export const help = {
         resources: "网上资源",
         pickTopic: "选择一个主题",
     },
+    // 「网上资源」里各条的名字。原先写死在 `helpResources.ts` 里，界面切到英文时这一段仍是中文。
+    resourceTitles: {
+        docs: "Studio 文档",
+        site: "NarraLeaf 官网",
+        github: "GitHub 组织",
+        engine: "引擎仓库 narraleaf-react",
+    },
     topics: {
         workspaceLayout: {
             title: "工作区布局",

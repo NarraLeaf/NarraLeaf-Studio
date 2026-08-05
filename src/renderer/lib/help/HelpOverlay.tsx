@@ -167,7 +167,10 @@ export function HelpOverlay({ onOpenBrowser, resolveShortcut }: HelpOverlayProps
                             close();
                             onOpenBrowser();
                         }}
-                        className="cursor-default text-2xs text-fg-muted transition-colors hover:text-fg"
+                        // Same hover behaviour as the links inside the body: it navigates, so it
+                        // takes the pointer and the underline. It keeps the muted colour because it
+                        // is the footer's secondary way out, not a peer of the "See also" links.
+                        className="cursor-pointer text-2xs text-fg-muted underline-offset-2 transition-colors hover:text-fg hover:underline"
                     >
                         {t("help.ui.allTopics")}
                     </button>
