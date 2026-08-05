@@ -256,6 +256,26 @@ export const workspace = {
             pluginHostLoad: "Loading plugins",
         },
     },
+    // Undo/redo. `scope` names a stack ("undo in <this>"); `entry` names one step on it, which is
+    // what a menu item or a toast says it is about to reverse.
+    history: {
+        scope: {
+            storyScene: "scene",
+            storyMotion: "motion",
+            audioLoop: "audio markers",
+            uiSurface: "interface",
+            blueprint: "blueprint",
+            project: "project",
+        },
+        entry: {
+            edit: "edit",
+            storyEdit: "story edit",
+            storyMotionEdit: "motion edit",
+            audioMarkers: "marker change",
+            surfaceEdit: "interface edit",
+            blueprintEdit: "blueprint edit",
+        },
+    },
     shell: {
         errorTitle: "Failed to initialize workspace",
         showStackTrace: "Show stack trace",
