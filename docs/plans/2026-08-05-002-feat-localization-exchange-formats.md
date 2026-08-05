@@ -7,7 +7,7 @@ date: 2026-08-05
 
 # feat: 翻译交换格式（CSV / XLIFF / PO / JSON）
 
-Card: 2026-08-05-001 · Branch `feat/localization-exchange-formats` · Worktree `.claude/worktrees/loc-exchange`
+Card: 2026-08-05-002 · Branch `feat/localization-exchange-formats` · Worktree `.claude/worktrees/loc-exchange`
 
 承接 [2026-07-09-001 游戏多语言系统](2026-07-09-001-feat-game-localization.md) 的 Phase 3 首项
 （原文只写了「XLIFF 1.2/2.0」）。
