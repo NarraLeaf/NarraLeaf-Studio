@@ -3,15 +3,20 @@ import { Select, type SelectOption } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { SettingRow, SettingShell } from "./settingRows";
+import { NumberField } from "./NumberField";
 import {
     MOBILE_ORIENTATIONS,
     normalizeMobileConfiguration,
     normalizeNetworkConfiguration,
     normalizeSecurityConfiguration,
+    normalizeWebOptimizationConfiguration,
+    WEB_LOSSY_QUALITY_MAX,
+    WEB_LOSSY_QUALITY_MIN,
     type MobileConfiguration,
     type MobileOrientation,
     type NetworkConfiguration,
     type SecurityConfiguration,
+    type WebOptimizationConfiguration,
 } from "@/lib/workspace/project/configuration";
 import type { ProjectSectionProps } from "./types";
 
@@ -23,9 +28,13 @@ export function ProjectSettingsSection({ projectService, uiService, config, onCo
     const [network, setNetwork] = useState<NetworkConfiguration>(() => normalizeNetworkConfiguration(config.app?.network));
     const [security, setSecurity] = useState<SecurityConfiguration>(() => normalizeSecurityConfiguration(config.app?.security));
     const [mobile, setMobile] = useState<MobileConfiguration>(() => normalizeMobileConfiguration(config.app?.mobile));
+    const [webOptimization, setWebOptimization] = useState<WebOptimizationConfiguration>(
+        () => normalizeWebOptimizationConfiguration(config.app?.webOptimization),
+    );
     const [savingHttp, setSavingHttp] = useState(false);
     const [savingEncrypt, setSavingEncrypt] = useState(false);
     const [savingOrientation, setSavingOrientation] = useState(false);
+    const [savingWeb, setSavingWeb] = useState<keyof WebOptimizationConfiguration | null>(null);
 
     const setAllowHttp = useCallback(async (next: boolean) => {
         if (savingHttp) {
@@ -84,6 +93,28 @@ export function ProjectSettingsSection({ projectService, uiService, config, onCo
         }
     }, [mobile, onConfigChange, projectService, savingOrientation, uiService]);
 
+    const commitWebOptimization = useCallback(async (
+        field: keyof WebOptimizationConfiguration,
+        patch: Partial<WebOptimizationConfiguration>,
+    ) => {
+        if (savingWeb) {
+            return;
+        }
+        const previous = webOptimization;
+        setSavingWeb(field);
+        setWebOptimization(current => ({ ...current, ...patch }));
+        try {
+            const updated = await projectService.updateWebOptimizationConfiguration(patch);
+            setWebOptimization(normalizeWebOptimizationConfiguration(updated.app?.webOptimization));
+            onConfigChange(updated);
+        } catch (error) {
+            setWebOptimization(previous);
+            uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
+        } finally {
+            setSavingWeb(null);
+        }
+    }, [onConfigChange, projectService, savingWeb, uiService, webOptimization]);
+
     const orientationOptions: SelectOption[] = useMemo(
         () => MOBILE_ORIENTATIONS.map(orientation => ({
             value: orientation,
@@ -110,6 +141,44 @@ export function ProjectSettingsSection({ projectService, uiService, config, onCo
                 loading={savingEncrypt}
                 onChange={value => void setEncryptAssets(value)}
             />
+            <SettingRow
+                title={t("project.settings.webLosslessImagesTitle")}
+                description={t("project.settings.webLosslessImagesDescription")}
+                hint={t("project.settings.webLosslessImagesHint")}
+                checked={webOptimization.losslessImages}
+                loading={savingWeb === "losslessImages"}
+                onChange={value => void commitWebOptimization("losslessImages", { losslessImages: value })}
+            />
+            <SettingRow
+                title={t("project.settings.webPrecompressTitle")}
+                description={t("project.settings.webPrecompressDescription")}
+                hint={t("project.settings.webPrecompressHint")}
+                checked={webOptimization.precompress}
+                loading={savingWeb === "precompress"}
+                onChange={value => void commitWebOptimization("precompress", { precompress: value })}
+            />
+            <SettingRow
+                title={t("project.settings.webLossyImagesTitle")}
+                description={t("project.settings.webLossyImagesDescription")}
+                hint={t("project.settings.webSharedWithMobileHint")}
+                checked={webOptimization.lossyImages}
+                loading={savingWeb === "lossyImages"}
+                onChange={value => void commitWebOptimization("lossyImages", { lossyImages: value })}
+            />
+            <SettingShell
+                title={t("project.settings.webLossyQualityTitle")}
+                description={t("project.settings.webLossyQualityDescription")}
+                titleAttr={freeze.writes().title}
+            >
+                <NumberField
+                    value={webOptimization.lossyQuality}
+                    min={WEB_LOSSY_QUALITY_MIN}
+                    max={WEB_LOSSY_QUALITY_MAX}
+                    disabled={freeze.writes(!webOptimization.lossyImages || savingWeb === "lossyQuality").disabled}
+                    ariaLabel={t("project.settings.webLossyQualityTitle")}
+                    onCommit={value => void commitWebOptimization("lossyQuality", { lossyQuality: value })}
+                />
+            </SettingShell>
             <SettingShell
                 title={t("project.settings.orientationTitle")}
                 description={t("project.settings.orientationDescription")}
