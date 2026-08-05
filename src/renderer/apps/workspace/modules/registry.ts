@@ -8,6 +8,7 @@ import { assetsModule, assetsBottomModule } from "./assets";
 import { propertiesModule } from "./properties";
 import { consoleModule } from "./console";
 import { welcomeModule } from "./welcome";
+import { helpModule } from "./help";
 import { aboutModule } from "./about";
 import { globalActions, globalActionGroups } from "./actions";
 import { imagePreviewModule } from "./assets/editors/imagePreviewModule";
@@ -55,6 +56,7 @@ export const builtInPanels: PanelModule[] = [
  */
 export const builtInEditors: EditorModule[] = [
     welcomeModule,
+    helpModule,
     aboutModule,
     imagePreviewModule,
     audioPreviewModule,
@@ -84,6 +86,8 @@ export { charactersModule } from "./characters";
 export { propertiesModule } from "./properties";
 export { consoleModule } from "./console";
 export { welcomeModule } from "./welcome";
+export { helpModule } from "./help";
+export { openHelpTab } from "./help/openHelpTab";
 export { globalActions, globalActionGroups } from "./actions";
 export { uiEditorSurfacesModule } from "./ui-editor";
 export { projectPanelModule } from "./project";

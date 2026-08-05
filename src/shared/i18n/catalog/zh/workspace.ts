@@ -408,7 +408,7 @@ export const workspace = {
             // 因工作区冻结而被拒绝的写入。这不是失败：没有出错，也不会重试。文案必须说清原因，
             // 否则读起来就是个 bug。
             frozenTitle: "当前不会保存任何改动",
-            frozenDetailRevision: "你正在查看版本 {version}。在回到当前版本之前，项目文件不会被改动。",
+            frozenDetailRevision: "你正在查看版本 {version}，查看期间的改动不会保存。",
             frozenDetailManual: "工作区已冻结，解除冻结后才会重新保存。",
             // 合并没有「解除冻结」这一步：工作树里同时放着两边，只有把合并做完才行。
             frozenDetailMerge: "有一次合并还没做完，到版本面板把合并完成后才会重新保存。",
@@ -453,7 +453,8 @@ export const workspace = {
         // 选版本需要一份列表，那份列表就是轨道本身；而一个人手上够不着的里程碑没法验收。
         revisionView: {
             showPrevious: "查看上一个版本（只读）",
-            leave: "回到当前版本",
+            // 按它「离开的模式」命名，而不是按它「去到的地方」命名，见 docs/help-system.md §4。
+            leave: "退出历史查看",
             loadingTitle: "正在读取上一个版本…",
             loadingDetail: "首次读取某个版本可能需要从远端取回。",
             shownTitle: "正在查看版本 {revision}",
@@ -478,8 +479,12 @@ export const workspace = {
             currentVersion: "当前版本",
             // 逃生口，也是它为什么在轨道的两种状态下都在：让作者卡在一个出不去的冻结工作区里，
             // 是这个功能能造成的最坏结果。
-            returnToCurrent: "回到当前版本",
-            returning: "正在回到当前版本…",
+            //
+            // 按它「离开的模式」命名（docs/help-system.md §4）。原文案「回到当前版本」说的是仓库那边
+            // 发生了什么，而它就摆在一个真的会覆盖工程的按钮旁边、顶着一个逆时针箭头，读起来像
+            // 「把我的工程退回去」。现在这个说法读不出那层意思：它停掉的只有「查看」。
+            returnToCurrent: "退出历史查看",
+            returning: "正在退出历史查看…",
             // 整个界面里唯一会改动作者磁盘文件的动作，下面三句话是它与「工作没了」之间唯一的东西。
             //
             // 动作自己说出自己是什么，而不是写「恢复」：确认框会把这句话放在按钮上，而一句
@@ -665,6 +670,7 @@ export const workspace = {
                 commandPalette: "显示并运行命令",
                 quickOpen: "快速打开",
                 cheatSheet: "显示快捷键速查",
+                contextHelp: "当前位置的帮助",
                 reopenClosedTab: "重新打开关闭的标签",
                 quickSwitchNext: "切换到下一个编辑器标签",
                 quickSwitchPrevious: "切换到上一个编辑器标签",

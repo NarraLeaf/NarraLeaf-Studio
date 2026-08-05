@@ -44,6 +44,7 @@ import { dashboard } from "./dashboard";
 import { lint } from "./lint";
 import { documentDiff } from "./documentDiff";
 import { test } from "./test";
+import { help } from "./help";
 
 export const en = {
     common,
@@ -81,4 +82,5 @@ export const en = {
     lint,
     documentDiff,
     test,
+    help,
 } as const;

@@ -1767,6 +1767,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         <div
             ref={editor.rootRef}
             tabIndex={0}
+            // F1 anywhere in the scene editor, including with the caret in a row.
+            data-help-topic="storyScene"
             data-story-density={editor.density}
             style={storyEditorRootStyle(editor.density, editor.visibleRows.length)}
             className="flex h-full min-h-0 flex-col bg-surface text-fg outline-none"

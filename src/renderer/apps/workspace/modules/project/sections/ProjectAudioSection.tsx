@@ -16,8 +16,9 @@
  *
  * What survives from that round is the requirement that produced it: **every control keeps a visible
  * label as well as an accessible name**. The labels are now inside the disclosure, one compact
- * group per bus, and the explanations that used to be per-field are stated once at the top of the
- * section - a paragraph that appears N times is noise, the same paragraph once is documentation.
+ * group per bus. The explanations that used to be per-field, and then a paragraph at the top of the
+ * section, are the `audio` help topic: the same words, behind `F1` and the `?`, out of the way of an
+ * author who already knows them.
  *
  * Deleting a bus with children promotes them to its own parent rather than taking them with it -
  * see `AudioTrackService.deleteTrack` for why - and does not rewrite the things that pointed at it,
@@ -27,6 +28,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import { HelpTrigger } from "@/lib/help";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
 import { Button, HintPopover, Input, Select, Slider, Switch, type SelectOption } from "@/lib/components/elements";
@@ -175,15 +177,14 @@ export function ProjectAudioSection({ uiService }: ProjectSectionProps) {
 
     return (
         // `[&>*]:min-w-0` on every grid in this subtree; see HEADER_WIDTH_CLAMP.
-        <div className="grid gap-3 [&>*]:min-w-0">
+        <div className="grid gap-3 [&>*]:min-w-0" data-help-topic="audio">
             {/*
-              * The explanation, once. It used to be three paragraphs repeated per track, which is
-              * how a three-bus project came to be a wall of prose. Here it reads as what it is:
-              * what a bus is, and how the mix multiplies.
+              * The explanation used to be a paragraph here (and, before that, three paragraphs per
+              * track). It is the `audio` help topic now: what a bus is and how the mix multiplies is
+              * a topic, not something a settings pane repeats at every author who opens it.
               */}
-            <p className="text-2xs leading-relaxed text-fg-subtle">{t("project.audio.intro")}</p>
-
-            <div className="flex justify-end">
+            <div className="group/help flex items-center justify-end gap-1">
+                <HelpTrigger topic="audio" />
                 <Button
                     size="sm"
                     onClick={addTrack}

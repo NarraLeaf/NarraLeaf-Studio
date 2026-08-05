@@ -111,13 +111,6 @@ export const launcher = {
             download: "Failed to download plugin",
         },
     },
-    learning: {
-        hint: "Tutorials, examples and documentation. Links open in your browser.",
-        openInBrowser: "Open {name} in your browser",
-        categories: {
-            tutorials: "Tutorials",
-            examples: "Examples",
-            docs: "Documentation",
-        },
-    },
+    // The Learning tab's own words all live in the `help` namespace now: it renders the topic
+    // registry rather than a card wall, so it has no copy of its own beyond the sidebar entry above.
 } as const;

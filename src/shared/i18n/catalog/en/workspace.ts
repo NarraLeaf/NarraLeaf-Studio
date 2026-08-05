@@ -432,7 +432,7 @@ export const workspace = {
             // A write refused because the workspace is frozen. Not a failure: nothing is wrong, and
             // nothing will be retried. The wording has to say why, or it reads as a bug.
             frozenTitle: "Nothing is being saved right now",
-            frozenDetailRevision: "You are looking at version {version}. Your project files stay untouched until you go back to the current version.",
+            frozenDetailRevision: "You are looking at version {version}. Nothing is saved while you look.",
             frozenDetailManual: "The workspace is frozen. Unfreeze it to start saving again.",
             // A merge has no "unfreeze": the working tree holds two sides at once until the
             // merge is finished, so naming that is the only useful thing this can say.
@@ -482,7 +482,8 @@ export const workspace = {
         // whose behaviour cannot be reached by a person cannot be accepted.
         revisionView: {
             showPrevious: "Show the Previous Revision (Read-Only)",
-            leave: "Return to the Current Version",
+            // Named for the mode it leaves, not the place it lands: see docs/help-system.md §4.
+            leave: "Stop Viewing History",
             loadingTitle: "Reading the previous revision…",
             loadingDetail: "The first read of a revision may fetch it from the remote.",
             shownTitle: "Showing revision {revision}",
@@ -509,8 +510,13 @@ export const workspace = {
             currentVersion: "Current version",
             // The escape hatch, and the reason it appears in both rail states: a frozen workspace the
             // author cannot get out of is the worst thing this feature can do to them.
-            returnToCurrent: "Return to the current version",
-            returning: "Returning to the current version…",
+            //
+            // It is named for the mode it LEAVES (docs/help-system.md §4). "Return to the current
+            // version" described what happens to the repository, and read - beside a button that
+            // really does overwrite the project, under a counter-clockwise arrow - as "put my
+            // project back". This one cannot: viewing is the only thing it stops.
+            returnToCurrent: "Stop viewing history",
+            returning: "Leaving the history view…",
             // The one action in this whole surface that changes the author's files, and the three
             // lines below are the only thing standing between them and that happening.
             //
@@ -732,6 +738,7 @@ export const workspace = {
                 commandPalette: "Show and Run Commands",
                 quickOpen: "Quick Open",
                 cheatSheet: "Show Keyboard Shortcuts",
+                contextHelp: "Help for What Is Focused",
                 reopenClosedTab: "Reopen Closed Tab",
                 quickSwitchNext: "Switch to Next Editor Tab",
                 quickSwitchPrevious: "Switch to Previous Editor Tab",
