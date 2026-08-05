@@ -11,6 +11,7 @@ import type {
     StoryTransformRef,
 } from "@shared/types/story";
 import { parseStoryEasing } from "@shared/utils/storyEasing";
+import { translate } from "@/lib/i18n";
 
 /**
  * Pure transform-ref → props math shared by the NLR story compiler (building live Transforms)
@@ -101,7 +102,7 @@ export function getInlineTransformProps(
         return inlineProps;
     }
     if (preset === "circleReveal" || preset === "circleClose" || preset === "wipe") {
-        onDiagnostic?.(`${preset} transforms cannot be folded into character show yet.`);
+        onDiagnostic?.(translate("story.preview.diagnostics.presetNotFoldable", { preset }));
     }
     return inlineProps;
 }
@@ -250,7 +251,9 @@ export function storyTransformRefFinalProps(
         const animationId = transform.animationId?.trim();
         const asset = animationId ? animations.get(animationId) : undefined;
         if (!asset) {
-            onDiagnostic?.(animationId ? `Story animation not found: ${animationId}` : "Animation transform is missing animationId.");
+            onDiagnostic?.(animationId
+                ? translate("story.preview.diagnostics.animationNotFound", { animationId })
+                : translate("story.preview.diagnostics.animationIdMissing"));
             return visibility === "none" ? {} : { opacity: visibility === "show" ? 1 : 0 };
         }
         const sequences = asset.timeline?.tracks.length
