@@ -416,6 +416,82 @@ describe("getCommandCandidates", () => {
     });
 });
 
+/**
+ * What each candidate says it IS — the menu draws a picture from it where one exists and a glyph
+ * otherwise, so a wrong mark is a wrong picture.
+ *
+ * Pinned here rather than in the view because the fact being asserted is the model's: the arm that
+ * produced a candidate is the only thing that knows what it is, and the last version read the mark off
+ * the param instead — which gave every row of a mixed `/show` list the same glyph.
+ */
+describe("candidate marks", () => {
+    const marks = (marked: string, resolved = {}) =>
+        getCommandCandidates(at(marked), CONTEXT, resolved).map(candidate => candidate.mark);
+
+    it("carries the id an asset can be pictured by", () => {
+        expect(marks("/bg fo|")).toEqual([
+            { kind: "asset", assetType: "image", assetId: "i1" },
+            { kind: "asset", assetType: "image", assetId: "i2" },
+        ]);
+        expect(marks("/bgm |")).toEqual([{ kind: "asset", assetType: "audio", assetId: "a1" }]);
+    });
+
+    it("marks each row of a mixed list by what that row is", () => {
+        // `/show` reaches characters and every stage kind at once, which is exactly the list a
+        // param-level reading got wrong: four faces followed by six object glyphs, not ten of either.
+        expect(marks("/show |")).toEqual([
+            { kind: "character", characterId: "c1" },
+            { kind: "character", characterId: "c2" },
+            { kind: "character", characterId: "c3" },
+            { kind: "character", characterId: "c4" },
+            { kind: "stageObject", objectKind: "image" },
+            { kind: "stageObject", objectKind: "image" },
+            { kind: "stageObject", objectKind: "text" },
+            { kind: "stageObject", objectKind: "video" },
+            { kind: "stageObject", objectKind: "layer" },
+            { kind: "stageObject", objectKind: "vfx" },
+        ]);
+    });
+
+    it("carries both ids a look needs: whose it is, and which look", () => {
+        // A preset character's ref is a pose (no axis); a layered one's is a tag on `axisId`, and the
+        // menu composites the stack from it. Either way the picture is of THIS look, not of the default.
+        expect(marks("/face Alice |", { character: { kind: "character", characterId: "c1" } })).toEqual([
+            { kind: "appearance", characterId: "c1", refId: "t1", axisId: undefined },
+            { kind: "appearance", characterId: "c1", refId: "t2", axisId: undefined },
+        ]);
+    });
+
+    it("names a free name as one, so it is never pictured as somebody", () => {
+        // A temp speaker backs no character record - there is nothing to draw, and drawing the last
+        // character's face beside it would be a lie about what Enter is going to insert.
+        expect(marks("#Qq|")).toEqual([{ kind: "freeName" }]);
+    });
+
+    it("keys a word on the canonical value, whatever the row is showing", () => {
+        // The glyph table is keyed on the grammar's own spelling, so 向左滑动 and `slide-left` draw the
+        // same arrow - the locale changes the word, never what the word means.
+        expect(marks("/bg forest_day t=fad|")).toEqual([{ kind: "word", value: "fade" }]);
+        expect(marks("/wait cl|")).toEqual([{ kind: "word", value: "click" }]);
+    });
+
+    it("gives a param NAME the mark of what its slot holds", () => {
+        // `t` `d` is two letters to decode; a word list and a stopwatch is a glance. The unit is what
+        // separates "how long" from "how many", which is the same thing the ghost hint prints, and the
+        // leading option is what stops every word list from wearing one interchangeable glyph.
+        expect(marks("/bg forest_day |")).toEqual([{ kind: "options", lead: "fade" }, { kind: "number", duration: true }]);
+        expect(marks("/show Alice smile |")).toEqual([
+            { kind: "options", lead: "left" },
+            { kind: "options", lead: "fade" },
+            { kind: "number", duration: true },
+        ]);
+    });
+
+    it("marks a variable by the type it holds", () => {
+        expect(marks("/set |")).toEqual([{ kind: "variable", valueType: "number" }]);
+    });
+});
+
 describe("hasCandidateSource", () => {
     /** `/<token>`'s param by name. */
     function param(token: string, name: string) {

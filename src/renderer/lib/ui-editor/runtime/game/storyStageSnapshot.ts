@@ -16,6 +16,7 @@ import type {
 import { isStoryExpressionEvaluable, resolveDisplayableTargetRef, savedVariableDefs, sceneVariableDefs } from "@shared/types/story";
 import type { StoryExpressionEnv } from "@shared/utils/storyExpressionEval";
 import { evaluateStoryExpression, isTruthy } from "@shared/utils/storyExpressionEval";
+import { translate } from "@/lib/i18n";
 import {
     getCharacterStageObjectName,
     getPresetPosition,
@@ -197,11 +198,11 @@ class SnapshotWalker {
         if (this.targetBlockId === null) {
             // Scene start: nothing has executed yet.
         } else if (!this.pathBlockIds.has(this.targetBlockId)) {
-            this.diagnostic(this.targetBlockId, "Preview target block not found; previewing the scene start instead.");
+            this.diagnostic(this.targetBlockId, translate("story.preview.diagnostics.targetNotFound"));
         } else {
             this.visitList(this.scene.rootBlockIds, false);
             if (!this.reachedTarget) {
-                this.diagnostic(this.targetBlockId, "Preview target is not reachable from the scene root; previewing the scene end instead.");
+                this.diagnostic(this.targetBlockId, translate("story.preview.diagnostics.targetUnreachable"));
             }
         }
         return {
@@ -274,14 +275,14 @@ class SnapshotWalker {
             if (block.payload.control === "repeat" && (block.payload.until !== undefined || (block.payload.times ?? 1) !== 1)) {
                 // A conditional loop says the same thing more strongly: how many times it would have
                 // run is not knowable without running it, so the snapshot walks the body exactly once.
-                this.diagnostic(block.id, "Preview applies repeated groups once.");
+                this.diagnostic(block.id, translate("story.preview.diagnostics.repeatedGroupOnce"));
             }
             this.visitList(block.childrenIds, insideNvl);
             return;
         }
 
         if (block.kind === "jump") {
-            this.diagnostic(block.id, "Preview ignores scene jumps.");
+            this.diagnostic(block.id, translate("story.preview.diagnostics.sceneJumpIgnored"));
             return;
         }
 
@@ -301,7 +302,7 @@ class SnapshotWalker {
         }
         // A choice before the target: playback would take exactly one branch, but which one is
         // unknowable statically - assume none and continue after the menu.
-        this.diagnostic(block.id, "Preview assumes no branch of this earlier choice was taken.");
+        this.diagnostic(block.id, translate("story.preview.diagnostics.choiceNotTaken"));
     }
 
     private visitCondition(block: Extract<StoryBlock, { kind: "control" }>, insideNvl: boolean): void {
@@ -334,7 +335,7 @@ class SnapshotWalker {
         }
         if (condition.kind === "expression") {
             if (!isStoryExpressionEvaluable(condition.expression.ast)) {
-                this.diagnostic(blockId, `Condition \`${condition.expression.source}\` did not resolve; it evaluates false in the preview.`);
+                this.diagnostic(blockId, translate("story.preview.diagnostics.conditionUnresolved", { expression: condition.expression.source }));
                 return false;
             }
             // Unlike the blueprint branch below, this one really evaluates: the preview owns a variable
@@ -345,13 +346,13 @@ class SnapshotWalker {
         if (condition.kind === "blueprint") {
             // The preview follows the Studio-computed path when available; a blueprint condition that
             // is not on that path falls back to false rather than running the graph synchronously here.
-            this.diagnostic(blockId, "Blueprint condition evaluates false in the preview.");
+            this.diagnostic(blockId, translate("story.preview.diagnostics.blueprintConditionFalse"));
             return false;
         }
         const target = condition.target;
         let current: StoryLiteralValue | null | undefined;
         if (target.scope === "persistent") {
-            this.diagnostic(blockId, "Persistent-variable condition evaluates against defaults in the preview.");
+            this.diagnostic(blockId, translate("story.preview.diagnostics.persistentConditionDefaults"));
             current = undefined;
         } else if (target.scope === "scene") {
             const def = this.sceneDefs[target.variableId];
@@ -414,13 +415,13 @@ class SnapshotWalker {
                 this.applySetVariable(block, payload);
                 return;
             case "video":
-                this.diagnostic(block.id, "Videos are not previewed.");
+                this.diagnostic(block.id, translate("story.preview.diagnostics.videoSkipped"));
                 return;
             case "vfx":
-                this.diagnostic(block.id, "Ambience effects are not previewed.");
+                this.diagnostic(block.id, translate("story.preview.diagnostics.ambienceSkipped"));
                 return;
             case "blueprint":
-                this.diagnostic(block.id, "Story Action Blueprint effects are not simulated in the preview.");
+                this.diagnostic(block.id, translate("story.preview.diagnostics.storyActionSkipped"));
                 return;
             // audio / wait / screenEffect / nvl: no settled visual state.
             default:
@@ -706,7 +707,9 @@ class SnapshotWalker {
         const kind = resolved.kind === "character" || !resolved.kind ? "image" : resolved.kind;
         const record = this.displayables.get(this.key(kind === "text" ? "text" : kind === "layer" ? "layer" : "image", resolved.name));
         if (!record) {
-            this.diagnostic(blockId, `Displayable target not found: ${resolved.label || resolved.name || "(empty)"}`);
+            this.diagnostic(blockId, translate("story.preview.diagnostics.displayableNotFound", {
+                target: resolved.label || resolved.name || translate("story.preview.diagnostics.displayableUnnamed"),
+            }));
             return null;
         }
         return { record };
@@ -736,7 +739,7 @@ class SnapshotWalker {
             this.assignedSaved[def.storageKey] = value;
             return;
         }
-        this.diagnostic(block.id, "Persistent-variable assignments are not applied in the preview.");
+        this.diagnostic(block.id, translate("story.preview.diagnostics.persistentAssignmentSkipped"));
     }
 
     /**
@@ -756,7 +759,7 @@ class SnapshotWalker {
             return payload.value;
         }
         if (!isStoryExpressionEvaluable(payload.expression.ast)) {
-            this.diagnostic(block.id, `Expression \`${payload.expression.source}\` did not resolve; the assignment was skipped in the preview.`);
+            this.diagnostic(block.id, translate("story.preview.diagnostics.assignmentUnresolved", { expression: payload.expression.source }));
             return undefined;
         }
         return evaluateStoryExpression(payload.expression.ast, this.expressionEnv(block.id));
@@ -788,13 +791,13 @@ class SnapshotWalker {
                 this.diagnostic(
                     blockId,
                     ref.kind === "scene"
-                        ? `Scene visits are not tracked in the preview; \`visited(${name})\` reads as false.`
-                        : `Choice picks are not tracked in the preview; \`picked(${name})\` reads as false.`,
+                        ? translate("story.preview.diagnostics.sceneVisitUntracked", { name })
+                        : translate("story.preview.diagnostics.choicePickUntracked", { name }),
                 );
                 return false;
             },
             invoke: (_blueprintId, name) => {
-                this.diagnostic(blockId, `Blueprint \`${name}()\` does not run in the preview; it reads as empty.`);
+                this.diagnostic(blockId, translate("story.preview.diagnostics.blueprintCallEmpty", { name }));
                 return undefined;
             },
         };
@@ -803,7 +806,7 @@ class SnapshotWalker {
     /** Read a variable out of the preview's own store. Persistent variables have no preview backing. */
     private readVariable(ref: StoryVariableRef, blockId: string): StoryLiteralValue | undefined {
         if (ref.scope === "persistent") {
-            this.diagnostic(blockId, "Persistent variables read as empty in the preview.");
+            this.diagnostic(blockId, translate("story.preview.diagnostics.persistentReadEmpty"));
             return undefined;
         }
         if (ref.scope === "scene") {

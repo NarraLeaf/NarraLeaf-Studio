@@ -775,6 +775,9 @@ export const workspace = {
             // current project's name.
             titleBarPlaceholder: "Search in {name}",
             building: "Building search index…",
+            // Shown before anything is typed. "Building" and "no results" both had a line; this
+            // state fell through to an empty list and rendered a blank panel.
+            idle: "Search scenes, characters, story text, assets and blueprints.",
             empty: "No results",
             more: "{count} more",
             // Entity groups come first: the box answers "open the thing called X" before
