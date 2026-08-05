@@ -32,8 +32,13 @@ let restoreInProgressGlobal = false;
 /**
  * Persist and restore main editor tab strip via global Studio settings.
  * Tabs without a registered serialization strategy are omitted on save; restore skips entries that fail to resolve.
+ *
+ * `enabled: false` opts a window out of both halves at once, which is the only useful shape: a
+ * window that restored but did not save would drop the session the moment a tab was closed, and one
+ * that saved but did not restore would overwrite the author's real session with an empty one. The
+ * caller is the recovery window - see the note there.
  */
-export function useWorkspaceEditorSession() {
+export function useWorkspaceEditorSession({ enabled = true }: { enabled?: boolean } = {}) {
     const { context } = useWorkspace();
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -51,7 +56,7 @@ export function useWorkspaceEditorSession() {
     const dashboardOpenProjectKey = projectRef ? getDashboardOpenProjectKey(projectRef) : null;
 
     useEffect(() => {
-        if (!context || !uiService || !settingsService || !sessionSettingsKey) {
+        if (!enabled || !context || !uiService || !settingsService || !sessionSettingsKey) {
             return;
         }
 
@@ -114,10 +119,10 @@ export function useWorkspaceEditorSession() {
         }
 
         return () => {};
-    }, [context, uiService, settingsService, sessionSettingsKey, dashboardOpenProjectKey]);
+    }, [enabled, context, uiService, settingsService, sessionSettingsKey, dashboardOpenProjectKey]);
 
     useEffect(() => {
-        if (!context || !uiService || !settingsService || !sessionSettingsKey) {
+        if (!enabled || !context || !uiService || !settingsService || !sessionSettingsKey) {
             return;
         }
 
@@ -174,5 +179,5 @@ export function useWorkspaceEditorSession() {
                 saveTimerRef.current = null;
             }
         };
-    }, [context, uiService, settingsService, sessionSettingsKey]);
+    }, [enabled, context, uiService, settingsService, sessionSettingsKey]);
 }

@@ -31,6 +31,8 @@ import { backgroundLayerStyle } from "@/lib/workspace/services/ui/backgroundSett
 import { useRegistry } from "../../registry";
 import { PanelPosition, type PanelDefinition } from "../../registry/types";
 import { useWorkspace } from "../../context";
+import { RecoveryBanner } from "../../recovery/RecoveryBanner";
+import { RECOVERY_PANEL_ID } from "../../modules/recovery";
 import { Services } from "@/lib/workspace/services/services";
 import { CommandService } from "@/lib/workspace/services/ui/CommandService";
 import { getInterface } from "@/lib/app/bridge";
@@ -114,7 +116,7 @@ function normalizeStoredPanelId(panelId: string | null | undefined): string | nu
  */
 export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     const { getPanelsByPosition, registerActionGroup, unregisterActionGroup } = useRegistry();
-    const { context } = useWorkspace();
+    const { context, recovery } = useWorkspace();
     const { t } = useTranslation();
 
     // Sidebar visibility states
@@ -210,6 +212,11 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         // Set new timeout with 500ms delay
         saveTimeoutRef.current = setTimeout(async () => {
             if (!settingsService) return;
+            // A recovery window never writes the dock layout back. It opens with a layout it chose
+            // for itself (see the effect below) over a panel set that is deliberately almost empty,
+            // and persisting that would hand the author's next ordinary session a workspace with one
+            // panel in it - a second problem to solve, caused by looking at the first.
+            if (recovery) return;
 
             try {
                 const settings = {
@@ -248,7 +255,24 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         panelOrders,
         collapsedLeftPanels,
         versionRailExpanded,
+        recovery,
     ]);
+
+    /**
+     * A recovery window opens on the recovery panel.
+     *
+     * The restored layout is about a project this window is not showing: it names the panel the
+     * author last had open, and in this mode that panel is usually not registered at all, so the
+     * sidebar restores to nothing and the one thing worth reading is behind an icon nobody has a
+     * reason to click. Runs once settings have loaded so it wins over them, and writes nothing back.
+     */
+    useEffect(() => {
+        if (!recovery || !settingsLoaded) {
+            return;
+        }
+        setLeftSidebarVisible(true);
+        setActiveLeftPanelId(RECOVERY_PANEL_ID);
+    }, [recovery, settingsLoaded]);
 
     useEffect(() => {
         activeLeftPanelIdRef.current = activeLeftPanelId;
@@ -746,6 +770,8 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 }
             />
 
+            <RecoveryBanner />
+
             {/* Main Content */}
             <div className="flex-1 flex overflow-hidden">
                 {/* Version rail — the far left of the window, LEFT of the sidebar selector, because in
@@ -850,10 +876,19 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             {/* UI Overlays */}
             <BackgroundImageDialog />
             <WorkspaceEditorQuickSwitch />
-            <CommandPalette />
-            <QuickOpenPicker />
+            {/* The palette and quick-open are absent in a recovery window, and not merely as
+                tidiness: both walk the story library, the cast and the interface documents to build
+                their entries, and in this mode those are exactly the services that may never have
+                started. `WorkspaceCommands` goes with them because half of what it registers writes
+                to a project this window is holding read-only. */}
+            {!recovery && (
+                <>
+                    <CommandPalette />
+                    <QuickOpenPicker />
+                    <WorkspaceCommands />
+                </>
+            )}
             <EditorCommands />
-            <WorkspaceCommands />
             <WorkspaceFreezeCommands />
             <LintCommands />
             <StoryScriptCommands />

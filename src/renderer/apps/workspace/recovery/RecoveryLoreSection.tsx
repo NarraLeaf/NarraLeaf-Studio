@@ -1,6 +1,7 @@
 import React from "react";
-import { History, RotateCcw, Save } from "lucide-react";
-import { Button } from "@/lib/components";
+import { RotateCcw, Save } from "lucide-react";
+import { Button, FieldLabel } from "@/lib/components";
+import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
@@ -34,7 +35,7 @@ type Feedback = { kind: "ok" | "bad"; text: string } | null;
 const HISTORY_LIMIT = 20;
 
 export function RecoveryLoreSection({ context }: { context: WorkspaceContext | null }) {
-    const { t } = useTranslation();
+    const { t, locale } = useTranslation();
     const [state, setState] = React.useState<LoreState>({ kind: "loading" });
     const [selected, setSelected] = React.useState<string | null>(null);
     const [busy, setBusy] = React.useState(false);
@@ -193,11 +194,8 @@ export function RecoveryLoreSection({ context }: { context: WorkspaceContext | n
     }, [state, selected]);
 
     return (
-        <section className="border-t border-edge px-3 py-3">
-            <h2 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-fg-subtle">
-                <History className="h-3.5 w-3.5" aria-hidden />
-                {t("workspace.recovery.lore.title")}
-            </h2>
+        <section className="px-3 py-3">
+            <FieldLabel as="div">{t("workspace.recovery.lore.title")}</FieldLabel>
 
             {state.kind === "loading" && (
                 <p className="text-xs text-fg-subtle">{t("workspace.recovery.lore.loading")}</p>
@@ -228,9 +226,10 @@ export function RecoveryLoreSection({ context }: { context: WorkspaceContext | n
                                 key={entry.revision}
                                 type="button"
                                 onClick={() => setSelected(entry.revision)}
-                                className={`flex w-full cursor-default flex-col items-start gap-0.5 border-b border-edge px-2 py-1.5 text-left last:border-b-0 hover:bg-surface-hover ${
-                                    selected === entry.revision ? "bg-primary/10" : ""
-                                }`}
+                                className={cn(
+                                    "flex w-full flex-col items-start gap-0.5 border-b border-edge-subtle px-2 py-1.5 text-left transition-colors duration-150 last:border-b-0 hover:bg-fill focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50",
+                                    selected === entry.revision && "bg-primary/15",
+                                )}
                             >
                                 <span className="flex w-full items-baseline gap-2">
                                     <span className="font-mono text-xs text-fg">#{entry.number}</span>
@@ -239,8 +238,8 @@ export function RecoveryLoreSection({ context }: { context: WorkspaceContext | n
                                     </span>
                                 </span>
                                 {entry.timestamp !== undefined && (
-                                    <span className="text-[11px] text-fg-subtle">
-                                        {new Date(entry.timestamp).toLocaleString()}
+                                    <span className="text-2xs text-fg-subtle">
+                                        {new Date(entry.timestamp).toLocaleString(locale)}
                                     </span>
                                 )}
                             </button>
@@ -271,8 +270,12 @@ export function RecoveryLoreSection({ context }: { context: WorkspaceContext | n
                         </Button>
                     </>
                 ) : (
+                    // Secondary until it is armed. `danger` is for the click that actually rewrites
+                    // the project, and a permanently red button in a sidebar - louder still when
+                    // greyed out, which is how most authors will first meet it - spends that signal
+                    // on a control that so far does nothing.
                     <Button
-                        variant="danger"
+                        variant="secondary"
                         size="sm"
                         onClick={() => setConfirming(true)}
                         disabled={disabled || !selected}

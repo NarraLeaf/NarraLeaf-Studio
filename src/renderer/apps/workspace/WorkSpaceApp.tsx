@@ -15,7 +15,6 @@ import { RegistryProvider } from "./registry";
 import { WorkspaceAssetDragProvider } from "./dnd/WorkspaceAssetDragProvider";
 import { PreviewBlueprintNavigateBridge } from "./modules/blueprint-lite/PreviewBlueprintNavigateBridge";
 import { StoryRowHighlightBridge } from "./modules/story/scene-editor/StoryRowHighlightBridge";
-import { RecoveryShell } from "./recovery/RecoveryShell";
 import { isWorkspaceStartupError, WorkspaceStartupErrorKind } from "@/lib/workspace/startup/workspaceProjectPreflight";
 
 /**
@@ -23,11 +22,17 @@ import { isWorkspaceStartupError, WorkspaceStartupErrorKind } from "@/lib/worksp
  * Provides context and renders the workspace layout
  */
 function WorkspaceContent() {
+    const { recovery } = useWorkspace();
+
     // Load all built-in modules (panels, editors, actions)
     useModuleLoader();
     useWorkspacePlugins();
     useRecoveryOffer();
-    useWorkspaceEditorSession();
+    // Tabs are not restored into a recovery window. The session on disk names scenes, surfaces and
+    // characters, and in this mode most of those services have not started - so restoring would
+    // reopen a screenful of tabs that can only report that their subject is missing, over the one
+    // panel that can say why.
+    useWorkspaceEditorSession({ enabled: !recovery });
     useFileMenu();
     useMenuActionHandler();
     useNativeMenuSync();
@@ -42,7 +47,7 @@ function WorkspaceContent() {
 }
 
 function InitializedWorkspace({ children }: { children: React.ReactNode }) {
-    const { isInitialized, error, startupStage, retry, recovery, context } = useWorkspace();
+    const { isInitialized, error, startupStage, retry } = useWorkspace();
 
     // Say what is taking the time while the workspace boots. The overlay keeps the window blank for
     // a beat first, so a project that opens instantly still opens straight into the editor.
@@ -56,18 +61,6 @@ function InitializedWorkspace({ children }: { children: React.ReactNode }) {
             return <MissingProjectConfigScreen projectPath={error.projectPath} />;
         }
         return <ErrorScreen error={error} onRetry={retry} />;
-    }
-
-    // Ahead of the editor and after the error screen, which is the whole ordering: a recovery shell
-    // is what a window becomes when the workspace below it is not to be trusted, so it must not
-    // mount the editor - but it is also a window that came up, so it is not an error screen either.
-    if (recovery) {
-        return (
-            <RecoveryShell
-                context={context}
-                projectPath={context?.project.getConfig().projectPath ?? ""}
-            />
-        );
     }
 
     return (<>{children}</>);

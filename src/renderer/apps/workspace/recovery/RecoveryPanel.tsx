@@ -1,23 +1,14 @@
 import React from "react";
-import {
-    AlertTriangle,
-    CheckCircle2,
-    ClipboardCheck,
-    ClipboardCopy,
-    FolderOpen,
-    LifeBuoy,
-    Loader2,
-    Play,
-    XCircle,
-} from "lucide-react";
-import { Button } from "@/lib/components";
+import { Check, CircleAlert, CircleCheck, CircleX, Copy, FolderOpen, Loader2 } from "lucide-react";
+import { Badge, Button, FieldLabel } from "@/lib/components";
 import { useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
 import { copyTextToClipboard } from "@/lib/app/diagnostics/copyText";
 import { buildDiagnosticsFileName, buildDiagnosticsReport } from "@/lib/app/diagnostics/diagnosticsReport";
-import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
+import { Services } from "@/lib/workspace/services/services";
 import type { RecoveryService, RecoveryProbeState } from "@/lib/workspace/services/core/RecoveryService";
 import type { WorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
+import { useWorkspace } from "../context";
 import { useRecoveryProbes, useWorkspaceAnomalyList } from "./useRecoveryState";
 import { RecoveryLoreSection } from "./RecoveryLoreSection";
 
@@ -26,26 +17,19 @@ const REPORT_SCOPE = "workspace-recovery";
 type Feedback = { kind: "ok" | "bad"; text: string } | null;
 
 /**
- * The recovery sidebar.
+ * The recovery panel: what went wrong, what still loads, and how to put it back.
  *
- * Four things, in the order somebody standing in a broken project actually wants them: what went
- * wrong (verbatim), what still works (the probes), how to get the evidence out of Studio, and how to
- * put the project back from history.
+ * An ordinary left-dock panel rather than a screen of its own, which is the point: the rest of the
+ * sidebar keeps working, so a subsystem that loads can be browsed with the panels the author already
+ * knows. This one is simply the first among them.
  *
- * The raw text is the deliberate part. Everywhere else Studio turns an error into a sentence an
- * author can act on, which is right - but that translation is lossy, and the loss is precisely the
- * information a *diagnosis* runs on. "This project's characters could not be read" is a good
- * notification and a useless clue; the parse position, the fs error code and the file path are the
- * clue. So this panel does the opposite of the rest of the application on purpose.
+ * The raw error text is the deliberate exception to how the rest of Studio talks. Everywhere else an
+ * error becomes a sentence the author can act on, and that translation drops precisely what a
+ * diagnosis runs on: the parse position, the fs code, the path. Those are shown untouched.
  */
-export function RecoveryPanel({
-    context,
-    projectPath,
-}: {
-    context: WorkspaceContext | null;
-    projectPath: string;
-}) {
+export function RecoveryPanel() {
     const { t } = useTranslation();
+    const { context } = useWorkspace();
     const anomalies = useWorkspaceAnomalyList();
     const { probes, running } = useRecoveryProbes(context);
     const [feedback, setFeedback] = React.useState<Feedback>(null);
@@ -55,31 +39,28 @@ export function RecoveryPanel({
         () => (context ? context.services.get<RecoveryService>(Services.Recovery) : null),
         [context],
     );
+    const projectPath = context?.project.getConfig().projectPath ?? "";
 
     /**
-     * The whole session as one block of text: every anomaly and every probe result.
+     * The whole session as one block of text: every anomaly and every check.
      *
      * Built once and used by both the clipboard button and the log export, so what the author pastes
-     * into an issue and what they attach to it are the same thing. `buildDiagnosticsReport` adds the
-     * environment header and the export adds the main-process log on top.
+     * into an issue and what they attach to it are the same thing.
      */
     const buildReport = React.useCallback(() => {
-        const lines: string[] = [];
-        lines.push(`Anomalies: ${anomalies.length}`);
+        const lines: string[] = [`Anomalies: ${anomalies.length}`];
         for (const anomaly of anomalies) {
-            lines.push("");
-            lines.push(`--- [${anomaly.severity}] ${anomaly.source} / ${anomaly.operationKey}`);
+            lines.push("", `[${anomaly.severity}] ${anomaly.source} / ${anomaly.operationKey}`);
             if (anomaly.path) {
                 lines.push(`Path: ${anomaly.path}`);
             }
             lines.push(anomaly.raw);
         }
-        lines.push("");
-        lines.push("Load checks:");
+        lines.push("", "Load checks:");
         for (const probe of probes) {
             lines.push(`  ${probe.id}: ${probe.status}`);
             if (probe.raw) {
-                lines.push(indent(probe.raw));
+                lines.push(probe.raw.split("\n").map(line => `    ${line}`).join("\n"));
             }
         }
         return buildDiagnosticsReport({
@@ -92,14 +73,9 @@ export function RecoveryPanel({
     const handleCopyAll = async () => {
         try {
             await copyTextToClipboard(buildReport());
-            setFeedback({ kind: "ok", text: t("workspace.recovery.copied") });
+            setFeedback({ kind: "ok", text: t("workspace.recovery.tools.copiedAll") });
         } catch (error) {
-            setFeedback({
-                kind: "bad",
-                text: t("workspace.shell.errorCopyFailed", {
-                    error: error instanceof Error ? error.message : String(error),
-                }),
-            });
+            setFeedback({ kind: "bad", text: t("workspace.shell.errorCopyFailed", { error: message(error) }) });
         }
     };
 
@@ -115,17 +91,11 @@ export function RecoveryPanel({
                 setFeedback({ kind: "bad", text: t("workspace.shell.errorExportFailed", { error: result.error ?? "" }) });
                 return;
             }
-            if (result.data.canceled) {
-                return;
+            if (!result.data.canceled) {
+                setFeedback({ kind: "ok", text: t("workspace.shell.errorExported", { path: result.data.filePath ?? "" }) });
             }
-            setFeedback({ kind: "ok", text: t("workspace.shell.errorExported", { path: result.data.filePath ?? "" }) });
         } catch (error) {
-            setFeedback({
-                kind: "bad",
-                text: t("workspace.shell.errorExportFailed", {
-                    error: error instanceof Error ? error.message : String(error),
-                }),
-            });
+            setFeedback({ kind: "bad", text: t("workspace.shell.errorExportFailed", { error: message(error) }) });
         } finally {
             setBusy(false);
         }
@@ -136,69 +106,42 @@ export function RecoveryPanel({
         try {
             const result = await getInterface().workspace.openProjectFolder();
             if (!result.success) {
-                setFeedback({ kind: "bad", text: t("workspace.recovery.openFolderFailed", { error: result.error ?? "" }) });
+                setFeedback({ kind: "bad", text: t("workspace.recovery.tools.openFolderFailed", { error: result.error ?? "" }) });
             }
         } catch (error) {
-            setFeedback({
-                kind: "bad",
-                text: t("workspace.recovery.openFolderFailed", {
-                    error: error instanceof Error ? error.message : String(error),
-                }),
-            });
+            setFeedback({ kind: "bad", text: t("workspace.recovery.tools.openFolderFailed", { error: message(error) }) });
         }
     };
 
     return (
-        <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-surface">
-            <header className="border-b border-edge px-3 py-3">
-                <h1 className="flex items-center gap-1.5 text-sm font-semibold text-fg">
-                    <LifeBuoy className="h-4 w-4 text-warning" aria-hidden />
-                    {t("workspace.recovery.title")}
-                </h1>
-                <p className="mt-1 text-xs text-fg-subtle">{t("workspace.recovery.subtitle")}</p>
-                <p className="nl-selectable-text mt-2 break-all font-mono text-[11px] text-fg-subtle">
-                    {projectPath}
-                </p>
-            </header>
-
-            <section className="border-b border-edge px-3 py-3">
-                <h2 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-fg-subtle">
-                    <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
-                    {t("workspace.recovery.anomalies.title", { count: anomalies.length })}
-                </h2>
+        <div className="flex h-full min-h-0 flex-col overflow-y-auto">
+            <section className="border-b border-edge-subtle px-3 py-3">
+                <div className="mb-2 flex items-center gap-2">
+                    <FieldLabel as="div" className="mb-0">{t("workspace.recovery.problems.title")}</FieldLabel>
+                    <Badge tone={anomalies.length > 0 ? "danger" : "neutral"}>{anomalies.length}</Badge>
+                </div>
                 {anomalies.length === 0 ? (
-                    <p className="text-xs text-fg-subtle">{t("workspace.recovery.anomalies.empty")}</p>
+                    <p className="text-xs text-fg-subtle">{t("workspace.recovery.problems.empty")}</p>
                 ) : (
                     <ul className="flex flex-col gap-2">
-                        {anomalies.map(anomaly => (
-                            <AnomalyRow key={anomaly.id} anomaly={anomaly} />
-                        ))}
+                        {anomalies.map(anomaly => <AnomalyRow key={anomaly.id} anomaly={anomaly} />)}
                     </ul>
                 )}
             </section>
 
-            <section className="border-b border-edge px-3 py-3">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                    <h2 className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">
-                        {t("workspace.recovery.probes.title")}
-                    </h2>
+            <section className="border-b border-edge-subtle px-3 py-3">
+                <div className="mb-1 flex items-center justify-between gap-2">
+                    <FieldLabel as="div" className="mb-0">{t("workspace.recovery.probes.title")}</FieldLabel>
                     <Button
-                        variant="secondary"
+                        variant="ghost"
                         size="sm"
                         onClick={() => void recoveryService?.runAllProbes()}
                         disabled={running || !recoveryService}
                     >
-                        <Play className="h-3.5 w-3.5" aria-hidden />
-                        <span>{t("workspace.recovery.probes.runAll")}</span>
+                        {t("workspace.recovery.probes.runAll")}
                     </Button>
                 </div>
-                {/* Said once, above the list, rather than as a tooltip on ten buttons: it is the one
-                    thing about this section that is not obvious from looking at it - and it retires
-                    as soon as a row has an answer, because a line insisting nothing has been loaded
-                    over a list of ticks and crosses reads as the panel not knowing its own state. */}
-                {probes.some(probe => probe.status === "untried") && (
-                    <p className="mb-2 text-xs text-fg-subtle">{t("workspace.recovery.probes.hint")}</p>
-                )}
+                <p className="mb-2 text-xs text-fg-subtle">{t("workspace.recovery.intro")}</p>
                 <ul className="flex flex-col">
                     {probes.map(probe => (
                         <ProbeRow
@@ -211,20 +154,18 @@ export function RecoveryPanel({
                 </ul>
             </section>
 
-            <section className="border-b border-edge px-3 py-3">
-                <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-fg-subtle">
-                    {t("workspace.recovery.tools.title")}
-                </h2>
-                <div className="flex flex-wrap gap-2">
+            <section className="border-b border-edge-subtle px-3 py-3">
+                <FieldLabel as="div">{t("workspace.recovery.tools.title")}</FieldLabel>
+                <div className="flex flex-wrap gap-1.5">
                     <Button variant="secondary" size="sm" onClick={() => void handleExport()} disabled={busy}>
-                        <span>{t("workspace.shell.errorExportLogs")}</span>
+                        {t("workspace.shell.errorExportLogs")}
                     </Button>
                     <Button variant="secondary" size="sm" onClick={() => void handleOpenFolder()}>
                         <FolderOpen className="h-3.5 w-3.5" aria-hidden />
                         <span>{t("workspace.recovery.tools.openFolder")}</span>
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => void handleCopyAll()}>
-                        <ClipboardCopy className="h-3.5 w-3.5" aria-hidden />
+                        <Copy className="h-3.5 w-3.5" aria-hidden />
                         <span>{t("workspace.recovery.tools.copyAll")}</span>
                     </Button>
                 </div>
@@ -243,7 +184,7 @@ export function RecoveryPanel({
     );
 }
 
-/** One raw failure. Collapsed to its heading until asked, because the raw text is long by design. */
+/** One raw failure. Collapsed to its heading until asked: the raw text is long by design. */
 function AnomalyRow({ anomaly }: { anomaly: WorkspaceAnomaly }) {
     const { t } = useTranslation();
     const [copied, setCopied] = React.useState(false);
@@ -266,34 +207,37 @@ function AnomalyRow({ anomaly }: { anomaly: WorkspaceAnomaly }) {
             if (timer.current !== null) {
                 window.clearTimeout(timer.current);
             }
-            timer.current = window.setTimeout(() => setCopied(false), 2500);
+            timer.current = window.setTimeout(() => setCopied(false), 2000);
         } catch {
             // The text is on screen and selectable; a failed clipboard is not worth a second error.
         }
     };
 
     return (
-        <li className="group relative rounded-md border border-danger/30 bg-danger/5 px-2 py-1.5">
+        <li className="group relative rounded-md border border-edge bg-fill-subtle px-2 py-1.5">
             <button
                 type="button"
                 onClick={() => void copy()}
-                className="absolute right-1 top-1 cursor-default rounded p-1 text-danger/70 opacity-0 transition-opacity hover:bg-danger/10 hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
-                aria-label={t("workspace.shell.errorCopyDetails")}
-                title={t("workspace.shell.errorCopyDetails")}
+                className="absolute right-1 top-1 rounded-md p-1 text-fg-subtle opacity-0 transition-colors duration-150 hover:bg-fill hover:text-fg focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 group-hover:opacity-100"
+                aria-label={t("workspace.recovery.problems.copy")}
+                title={copied ? t("workspace.recovery.problems.copied") : t("workspace.recovery.problems.copy")}
             >
-                {copied ? <ClipboardCheck className="h-3.5 w-3.5" /> : <ClipboardCopy className="h-3.5 w-3.5" />}
+                {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
             </button>
-            <p className="pr-7 text-xs font-medium text-fg">{t(anomaly.operationKey)}</p>
+            <p className="flex items-start gap-1.5 pr-7 text-xs text-fg">
+                <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-danger" aria-hidden />
+                <span>{t(anomaly.operationKey)}</span>
+            </p>
             {anomaly.path && (
-                <p className="nl-selectable-text mt-0.5 break-all font-mono text-[11px] text-fg-subtle">
+                <p className="nl-selectable-text mt-0.5 break-all pl-5 font-mono text-2xs text-fg-subtle">
                     {anomaly.path}
                 </p>
             )}
-            <details className="mt-1">
-                <summary className="cursor-default text-[11px] text-danger hover:text-danger/80">
-                    {t("workspace.recovery.anomalies.showRaw")}
+            <details className="mt-1 pl-5">
+                <summary className="text-2xs text-fg-muted transition-colors duration-150 hover:text-fg">
+                    {t("workspace.recovery.problems.showRaw")}
                 </summary>
-                <pre className="nl-selectable-text mt-1 max-h-56 overflow-auto whitespace-pre-wrap break-all text-[11px] text-danger">
+                <pre className="nl-selectable-text mt-1 max-h-56 overflow-auto whitespace-pre-wrap break-all font-mono text-2xs text-fg-muted">
                     {anomaly.raw}
                 </pre>
             </details>
@@ -312,7 +256,7 @@ function ProbeRow({
 }) {
     const { t } = useTranslation();
     return (
-        <li className="border-b border-edge/60 py-1.5 last:border-b-0">
+        <li className="border-b border-edge-subtle py-1 last:border-b-0">
             <div className="flex items-center gap-2">
                 <ProbeStatusIcon status={probe.status} />
                 <span className="min-w-0 flex-1 truncate text-xs text-fg">{t(probe.labelKey)}</span>
@@ -320,7 +264,7 @@ function ProbeRow({
                     type="button"
                     onClick={onRun}
                     disabled={busy}
-                    className="cursor-default rounded px-1.5 py-0.5 text-[11px] text-fg-subtle hover:bg-fill hover:text-fg disabled:opacity-40"
+                    className="rounded-md px-1.5 py-0.5 text-2xs text-fg-muted transition-colors duration-150 hover:bg-fill hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                     {probe.status === "untried"
                         ? t("workspace.recovery.probes.run")
@@ -328,10 +272,10 @@ function ProbeRow({
                 </button>
             </div>
             {probe.detail && (
-                <p className="ml-6 mt-0.5 text-[11px] text-fg-subtle">{t(probe.detail.key, probe.detail.params)}</p>
+                <p className="pl-5 text-2xs text-fg-subtle">{t(probe.detail.key, probe.detail.params)}</p>
             )}
             {probe.raw && (
-                <pre className="nl-selectable-text ml-6 mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded border border-danger/30 bg-danger/5 p-1.5 text-[11px] text-danger">
+                <pre className="nl-selectable-text mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-md border border-danger/40 bg-danger/10 p-1.5 font-mono text-2xs text-danger">
                     {probe.raw}
                 </pre>
             )}
@@ -344,14 +288,14 @@ function ProbeStatusIcon({ status }: { status: RecoveryProbeState["status"] }) {
         case "running":
             return <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-fg-subtle" aria-hidden />;
         case "ok":
-            return <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-success" aria-hidden />;
+            return <CircleCheck className="h-3.5 w-3.5 shrink-0 text-success" aria-hidden />;
         case "failed":
-            return <XCircle className="h-3.5 w-3.5 shrink-0 text-danger" aria-hidden />;
+            return <CircleX className="h-3.5 w-3.5 shrink-0 text-danger" aria-hidden />;
         default:
             return <span className="h-3.5 w-3.5 shrink-0 rounded-full border border-edge-strong" aria-hidden />;
     }
 }
 
-function indent(text: string): string {
-    return text.split("\n").map(line => `    ${line}`).join("\n");
+function message(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
 }
