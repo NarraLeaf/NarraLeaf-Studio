@@ -1,17 +1,18 @@
 import type { Blueprint, BlueprintDocument, BlueprintPrivateOwnerRecord } from "@shared/types/blueprint/document";
+import type { TranslationKey } from "@shared/i18n";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { collectSubtreeElementIds } from "./uiDocumentTreeMove";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import { EventEmitter } from "../ui/EventEmitter";
+import { HistoryService } from "../history/HistoryService";
+import { DEFAULT_HISTORY_LIMIT, DEFAULT_MERGE_WINDOW_MS } from "../history/historyModel";
+import { HistoryScopeKind, historyScopeParts, isHistoryScopeOf, uiSurfaceHistoryScope } from "../history/historyScopes";
 import { Service } from "../Service";
 import { IUIEditorHistoryService, Services, WorkspaceContext } from "../services";
 import { UIDocumentService } from "./UIDocumentService";
 import { UIGraphService } from "./UIGraphService";
 import { UIBlueprintLifecycleCoordinator } from "./UIBlueprintLifecycleCoordinator";
 import { assertValidBlueprintDocument } from "./blueprint/documentValidation";
-
-const DEFAULT_HISTORY_LIMIT = 100;
-const DEFAULT_MERGE_WINDOW_MS = 800;
 
 export type UIEditorBlueprintSurfaceSnapshot = {
     ownerRecords: Record<string, BlueprintPrivateOwnerRecord>;
@@ -38,20 +39,6 @@ export type UIEditorHistoryRecordOptions = {
 
 export type UIEditorHistoryEvents = {
     historyChanged: { surfaceId: string };
-};
-
-type UIEditorHistoryEntry = {
-    surfaceId: string;
-    before: UIEditorHistorySnapshot;
-    after: UIEditorHistorySnapshot;
-    mergeKey?: string;
-    createdAt: number;
-    updatedAt: number;
-};
-
-type UIEditorSurfaceHistory = {
-    undo: UIEditorHistoryEntry[];
-    redo: UIEditorHistoryEntry[];
 };
 
 export function cloneUIHistoryDocument(document: UIDocument): UIDocument {
@@ -202,16 +189,42 @@ export function applyUIDocumentSurfaceSnapshot(
     return next;
 }
 
+/**
+ * Surface-level undo for the UI editor.
+ *
+ * What is left here after the stacks moved to {@link HistoryService} is the part that is actually
+ * about UI surfaces: which slice of the two documents belongs to a surface, and how to put that
+ * slice back without disturbing the others. The stack itself - depth, merging, redo invalidation,
+ * "is a restore in progress" - is shared with every other editor now, so a change to how undo
+ * behaves is one change rather than five.
+ *
+ * The public shape is unchanged on purpose; callers speak in surface ids and should not have to
+ * learn scope ids to ask whether Ctrl+Z will do something.
+ */
 export class UIEditorHistoryService
     extends Service<UIEditorHistoryService>
     implements IUIEditorHistoryService
 {
-    private readonly histories = new Map<string, UIEditorSurfaceHistory>();
+    /** Surfaces this service has registered a scope for, so it can re-limit and clear them. */
+    private readonly registered = new Map<string, () => void>();
     private readonly events = new EventEmitter<UIEditorHistoryEvents>();
     private limit = DEFAULT_HISTORY_LIMIT;
-    private isRestoring = false;
+    private unsubscribe: (() => void) | null = null;
 
-    protected init(_ctx: WorkspaceContext): void {}
+    protected init(_ctx: WorkspaceContext): void {
+        this.unsubscribe?.();
+        // One bridge from the shared "some stack changed" event to this service's surface-shaped
+        // one, so the editor's existing subscribers keep working.
+        this.unsubscribe = this.history().on("changed", ({ scopeId }) => {
+            if (!isHistoryScopeOf(scopeId, HistoryScopeKind.UISurface)) {
+                return;
+            }
+            const [surfaceId] = historyScopeParts(scopeId);
+            if (surfaceId) {
+                this.events.emit("historyChanged", { surfaceId });
+            }
+        });
+    }
 
     public getLimit(): number {
         return this.limit;
@@ -223,9 +236,8 @@ export class UIEditorHistoryService
             return;
         }
         this.limit = next;
-        for (const [surfaceId, history] of this.histories) {
-            this.trim(history);
-            this.events.emit("historyChanged", { surfaceId });
+        for (const surfaceId of this.registered.keys()) {
+            this.history().setScopeLimit(uiSurfaceHistoryScope(surfaceId), next);
         }
     }
 
@@ -239,81 +251,45 @@ export class UIEditorHistoryService
     }
 
     public record(options: UIEditorHistoryRecordOptions): void {
-        if (this.isRestoring || areSnapshotsEqual(options.before, options.after)) {
-            return;
-        }
-
-        const history = this.ensureHistory(options.surfaceId);
-        const now = Date.now();
-        const mergeWindowMs = options.mergeWindowMs ?? DEFAULT_MERGE_WINDOW_MS;
-        const previous = history.undo[history.undo.length - 1];
-        if (
-            options.mergeKey &&
-            previous?.mergeKey === options.mergeKey &&
-            previous.surfaceId === options.surfaceId &&
-            now - previous.updatedAt <= mergeWindowMs
-        ) {
-            previous.after = options.after;
-            previous.updatedAt = now;
-            history.redo = [];
-            this.events.emit("historyChanged", { surfaceId: options.surfaceId });
-            return;
-        }
-
-        history.undo.push({
-            surfaceId: options.surfaceId,
+        this.ensureScope(options.surfaceId);
+        this.history().pushSnapshot<UIEditorHistorySnapshot>(uiSurfaceHistoryScope(options.surfaceId), {
+            label: { key: "workspace.history.entry.surfaceEdit" as TranslationKey },
             before: options.before,
             after: options.after,
             mergeKey: options.mergeKey,
-            createdAt: now,
-            updatedAt: now,
+            mergeWindowMs: options.mergeWindowMs ?? DEFAULT_MERGE_WINDOW_MS,
+            equals: areSnapshotsEqual,
         });
-        this.trim(history);
-        history.redo = [];
-        this.events.emit("historyChanged", { surfaceId: options.surfaceId });
     }
 
     public canUndo(surfaceId: string): boolean {
-        return (this.histories.get(surfaceId)?.undo.length ?? 0) > 0;
+        return this.history().canUndo(uiSurfaceHistoryScope(surfaceId));
     }
 
     public canRedo(surfaceId: string): boolean {
-        return (this.histories.get(surfaceId)?.redo.length ?? 0) > 0;
+        return this.history().canRedo(uiSurfaceHistoryScope(surfaceId));
     }
 
     public undo(surfaceId: string): boolean {
-        const history = this.histories.get(surfaceId);
-        const entry = history?.undo.pop();
-        if (!entry || !history) {
-            return false;
-        }
-        this.restore(entry.surfaceId, entry.before);
-        history.redo.push(entry);
-        this.events.emit("historyChanged", { surfaceId });
-        return true;
+        this.ensureScope(surfaceId);
+        return this.history().undo(uiSurfaceHistoryScope(surfaceId));
     }
 
     public redo(surfaceId: string): boolean {
-        const history = this.histories.get(surfaceId);
-        const entry = history?.redo.pop();
-        if (!entry || !history) {
-            return false;
-        }
-        this.restore(entry.surfaceId, entry.after);
-        history.undo.push(entry);
-        this.events.emit("historyChanged", { surfaceId });
-        return true;
+        this.ensureScope(surfaceId);
+        return this.history().redo(uiSurfaceHistoryScope(surfaceId));
     }
 
     public clear(surfaceId?: string): void {
         if (surfaceId) {
-            this.histories.delete(surfaceId);
-            this.events.emit("historyChanged", { surfaceId });
+            this.history().clearScope(uiSurfaceHistoryScope(surfaceId));
             return;
         }
-        const ids = [...this.histories.keys()];
-        this.histories.clear();
-        ids.forEach(id => this.events.emit("historyChanged", { surfaceId: id }));
+        this.history().clearMatching(scopeId => isHistoryScopeOf(scopeId, HistoryScopeKind.UISurface));
+        for (const dispose of this.registered.values()) {
+            dispose();
+        }
+        this.registered.clear();
     }
 
     public on<K extends keyof UIEditorHistoryEvents>(
@@ -324,8 +300,38 @@ export class UIEditorHistoryService
     }
 
     public override dispose(_ctx: WorkspaceContext): void {
-        this.histories.clear();
+        this.unsubscribe?.();
+        this.unsubscribe = null;
+        for (const dispose of this.registered.values()) {
+            dispose();
+        }
+        this.registered.clear();
         this.events.clear();
+    }
+
+    private history(): HistoryService {
+        return this.getContext().services.get<HistoryService>(Services.History);
+    }
+
+    /**
+     * Publish this surface's readers once.
+     *
+     * Registered for the life of the workspace rather than the life of the editor tab: the two
+     * documents a surface snapshot slices are service-owned and readable whether or not anything is
+     * showing them, so there is no window in which an entry recorded here cannot be applied.
+     */
+    private ensureScope(surfaceId: string): void {
+        if (this.registered.has(surfaceId)) {
+            return;
+        }
+        const dispose = this.history().registerScope<UIEditorHistorySnapshot>({
+            id: uiSurfaceHistoryScope(surfaceId),
+            label: { key: "workspace.history.scope.uiSurface" as TranslationKey },
+            capture: () => this.captureSnapshot(surfaceId),
+            apply: snapshot => this.restore(surfaceId, snapshot),
+            limit: this.limit,
+        });
+        this.registered.set(surfaceId, dispose);
     }
 
     private restore(surfaceId: string, snapshot: UIEditorHistorySnapshot): void {
@@ -333,35 +339,14 @@ export class UIEditorHistoryService
         const graph = this.getContext().services.get<UIGraphService>(Services.UIGraph);
         const lifecycle = this.getContext().services.get<UIBlueprintLifecycleCoordinator>(Services.UIBlueprintLifecycle);
 
-        this.isRestoring = true;
-        try {
-            uidoc.restoreDocumentFromHistory(
-                applyUIDocumentSurfaceSnapshot(uidoc.getDocument(), snapshot.document, surfaceId),
-                { skipAfterMutateHook: true },
-            );
-            graph.applyGraphMutation(document => {
-                applyBlueprintSurfaceSnapshot(document.blueprintDocument, surfaceId, snapshot.blueprint);
-                assertValidBlueprintDocument(document.blueprintDocument);
-            });
-            lifecycle.syncFromUidoc();
-        } finally {
-            this.isRestoring = false;
-        }
-    }
-
-    private ensureHistory(surfaceId: string): UIEditorSurfaceHistory {
-        let history = this.histories.get(surfaceId);
-        if (!history) {
-            history = { undo: [], redo: [] };
-            this.histories.set(surfaceId, history);
-        }
-        return history;
-    }
-
-    private trim(history: UIEditorSurfaceHistory): void {
-        if (history.undo.length <= this.limit) {
-            return;
-        }
-        history.undo.splice(0, history.undo.length - this.limit);
+        uidoc.restoreDocumentFromHistory(
+            applyUIDocumentSurfaceSnapshot(uidoc.getDocument(), snapshot.document, surfaceId),
+            { skipAfterMutateHook: true },
+        );
+        graph.applyGraphMutation(document => {
+            applyBlueprintSurfaceSnapshot(document.blueprintDocument, surfaceId, snapshot.blueprint);
+            assertValidBlueprintDocument(document.blueprintDocument);
+        });
+        lifecycle.syncFromUidoc();
     }
 }
