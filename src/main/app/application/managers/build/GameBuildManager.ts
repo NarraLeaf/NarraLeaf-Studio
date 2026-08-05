@@ -30,6 +30,11 @@ import {
     type GameBuildTarget,
 } from "@shared/types/gameBuild";
 import {
+    normalizeWebOptimizationConfiguration,
+    webOptimizationTouchesImages,
+    type WebOptimizationConfiguration,
+} from "@shared/types/webOptimization";
+import {
     SIGNING_CREDENTIAL_MATERIAL_FIELDS,
     SIGNING_CREDENTIAL_PLATFORM,
     SIGNING_CREDENTIAL_SECRET_FIELDS,
@@ -65,6 +70,8 @@ import {
     signingPlatformForTarget,
     signingReachesNetwork,
 } from "./preflight";
+import { optimizeWebExportImages } from "./optimizeWebExport";
+import { openWebImageCodec, type WebImageCodec } from "./webImageCodec";
 import { findMacSigningIdentities, macIdentityPresent } from "./macSigningIdentity";
 import { findSigntool } from "./signtoolDiscovery";
 import { readIconSlotSizes, writeScaledIcons } from "./mobileIcons";
@@ -616,6 +623,20 @@ export class GameBuildManager {
         if (targets.some(target => target.platform === "web") && this.encryptAssetsEnabled(projectConfig)) {
             findings.push({ code: "web-unprotected", severity: "warning", section: "content" });
         }
+        // The one step in the optimization pipeline that changes what the player
+        // sees. It is opt-in, but a setting turned on months ago is a setting
+        // nobody remembers, and this is the last moment before it is applied.
+        // The lossless half is deliberately silent: it cannot alter the game.
+        const webOptimization = this.webOptimizationConfig(projectConfig);
+        if (webOptimization.lossyImages
+            && targets.some(target => target.platform === "web" || isMobileBuildPlatform(target.platform))) {
+            findings.push({
+                code: "web-lossy-images",
+                severity: "warning",
+                section: "content",
+                detail: { quality: String(webOptimization.lossyQuality) },
+            });
+        }
         if (mobileTargets.length > 0) {
             findings.push(...await this.mobilePreflight(normalizedProjectPath));
         }
@@ -904,6 +925,8 @@ export class GameBuildManager {
                 message: `${webTarget ? "web export" : "game site"} compiled (${webArtifact.copiedAssetCount} asset(s))`,
             });
             this.ensureNotCancelled(session);
+            await this.optimizeCompiledSite(session, webArtifact.appDir, projectConfig);
+            this.ensureNotCancelled(session);
         }
         this.emit(session, { level: "info", source: "Build", message: "packaging..." });
 
@@ -956,6 +979,7 @@ export class GameBuildManager {
                     formats: webFormats,
                     dirName: webExportDirName(identity.artifactBaseName, identity.version),
                     zipName: webExportZipName(identity.artifactBaseName, identity.version),
+                    precompress: this.webOptimizationConfig(projectConfig).precompress,
                 },
             } : {}),
             ...(mobileTargets.length > 0 && webArtifact ? {
@@ -1786,6 +1810,67 @@ export class GameBuildManager {
         return (projectConfig?.app as { security?: { encryptAssets?: unknown } } | undefined)?.security?.encryptAssets === true;
     }
 
+    private webOptimizationConfig(projectConfig: ProjectConfigData | null): WebOptimizationConfiguration {
+        return normalizeWebOptimizationConfiguration(
+            (projectConfig?.app as { webOptimization?: unknown } | undefined)?.webOptimization,
+        );
+    }
+
+    /**
+     * Shrink the compiled static site before anything packages it.
+     *
+     * Runs on the shared web compile, so the Android and iOS packages built from
+     * the same site get the smaller images too. That is the only coherent
+     * arrangement: there is one compiled site, and keeping an unoptimized second
+     * copy for the mobile shells would cost a whole extra compile in order to
+     * ship bigger packages.
+     *
+     * Never fatal. Every step here is an improvement on an export that already
+     * works, so a codec window that will not open - a headless host, a broken
+     * GPU sandbox - costs the author some bytes and a warning, not their build.
+     */
+    private async optimizeCompiledSite(
+        session: BuildSession,
+        appDir: string,
+        projectConfig: ProjectConfigData | null,
+    ): Promise<void> {
+        const config = this.webOptimizationConfig(projectConfig);
+        if (!webOptimizationTouchesImages(config)) {
+            return;
+        }
+        let codec: WebImageCodec | null = null;
+        try {
+            codec = await openWebImageCodec(path.join(this.app.getUserDataDir(), "build-codec"));
+            const result = await optimizeWebExportImages({
+                appDir,
+                config,
+                codec,
+                log: (level, message) => this.emit(session, { level, source: "Build", message }),
+                cancelled: () => session.cancelled,
+            });
+            if (result.converted === 0) {
+                return;
+            }
+            const saved = result.beforeBytes - result.afterBytes;
+            const percent = Math.round((saved / result.beforeBytes) * 100);
+            this.emit(session, {
+                level: "info",
+                source: "Build",
+                message: `${config.lossyImages ? "recompressed" : "converted"} ${result.converted} image(s) to WebP, `
+                    + `saving ${formatByteSize(saved)} (${percent}%)`,
+            });
+        } catch (error) {
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: "could not optimize the exported images, so they ship as they are: "
+                    + (error instanceof Error ? error.message : String(error)),
+            });
+        } finally {
+            await codec?.close().catch(() => undefined);
+        }
+    }
+
     /** Same key resolution Preview uses: production ships the identical protection path. */
     private async resolveEncryptionKey(
         projectPath: string,
@@ -1875,6 +1960,14 @@ async function fileExists(filePath: string): Promise<boolean> {
 
 function isActiveStatus(status: GameBuildStateSnapshot["status"]): boolean {
     return status === "preparing" || status === "compiling" || status === "packaging";
+}
+
+/** A saving, at the precision an author reading a build log cares about. */
+function formatByteSize(bytes: number): string {
+    if (bytes >= 1024 * 1024) {
+        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    }
+    return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
 type GameBuildDesktopTarget = GameBuildTarget & { platform: GameBuildDesktopPlatform };

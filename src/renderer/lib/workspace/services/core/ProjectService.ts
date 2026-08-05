@@ -15,6 +15,7 @@ import {
     SecurityConfiguration,
     SigningConfiguration,
     VoiceConfiguration,
+    WebOptimizationConfiguration,
     normalizeAutoSaveConfiguration,
     normalizeBuildConfiguration,
     normalizeLintingConfiguration,
@@ -24,6 +25,7 @@ import {
     normalizeSecurityConfiguration,
     normalizeSigningConfiguration,
     normalizeVoiceConfiguration,
+    normalizeWebOptimizationConfiguration,
 } from "../../project/configuration";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
@@ -211,6 +213,40 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
                 ...config.app,
                 network: normalizeNetworkConfiguration(config.app?.network),
                 security,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /**
+     * Read the effective web export optimization policy, falling back to the
+     * defaults (lossless steps on, lossy off) for projects that predate
+     * `app.webOptimization`.
+     */
+    public getWebOptimizationConfiguration(): WebOptimizationConfiguration {
+        return normalizeWebOptimizationConfiguration(this.getProjectConfig().app?.webOptimization);
+    }
+
+    /**
+     * Merge a partial patch into the web export optimization policy. Written by
+     * the project settings UI and read by the build, which applies it to the
+     * compiled static site.
+     */
+    public async updateWebOptimizationConfiguration(
+        patch: Partial<WebOptimizationConfiguration>,
+    ): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const webOptimization: WebOptimizationConfiguration = {
+                ...normalizeWebOptimizationConfiguration(config.app?.webOptimization),
+                ...patch,
+            };
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                webOptimization,
             };
             return {
                 ...config,
