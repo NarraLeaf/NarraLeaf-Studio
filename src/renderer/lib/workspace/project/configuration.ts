@@ -1,4 +1,5 @@
 import type { LocalizationConfiguration } from "@shared/types/localization";
+import type { PlayerPreferences } from "@shared/types/preference";
 import type { AutoSaveConfiguration } from "@shared/types/saves";
 import type { SigningPlatform } from "@shared/types/signing";
 import type { VoiceConfiguration } from "@shared/types/voice";
@@ -33,6 +34,20 @@ export {
     normalizeAutoSaveConfiguration,
 } from "@shared/types/saves";
 export type { AutoSaveConfiguration } from "@shared/types/saves";
+export {
+    DEFAULT_PLAYER_PREFERENCES,
+    PLAYER_PREFERENCE_GROUPS,
+    PLAYER_PREFERENCE_KEYS,
+    PLAYER_PREFERENCE_SPECS,
+    normalizePlayerPreference,
+    normalizePlayerPreferences,
+} from "@shared/types/preference";
+export type {
+    PlayerPreferenceKey,
+    PlayerPreferenceSpec,
+    PlayerPreferenceValue,
+    PlayerPreferences,
+} from "@shared/types/preference";
 
 // Declared as object-literal `type` aliases (not interfaces) so they carry an
 // implicit string index signature and remain assignable to the loose
@@ -200,6 +215,14 @@ export type ProjectAppConfiguration = {
     mobile?: MobileConfiguration;
     /** Automatic saving in the shipped game; absent until configured (see the defaults). */
     autoSave?: AutoSaveConfiguration;
+    /**
+     * What the player's settings start at (see @shared/types/preference); absent until configured.
+     *
+     * The starting point only. Everything here is writable at runtime by the player and by the
+     * `Set ...` preference nodes, and what they choose is kept in the app's own storage - so this
+     * is what a *new* player gets, not a cap on what the game may do.
+     */
+    preferences?: PlayerPreferences;
     /** Which signing credential each platform uses - ids only; absent until configured. */
     signing?: SigningConfiguration;
     /** Last production-build dialog selection; absent until the first build. */
