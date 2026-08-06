@@ -19,6 +19,7 @@ export const story = {
             other: "{count} lines",
         },
         sceneActions: "Scene actions",
+        chapterActions: "Chapter actions",
         setEntryScene: "Set as Entry Scene",
         documentUnavailable: "Story document unavailable.",
         newStoryPlaceholder: "Enter story name",
@@ -27,6 +28,13 @@ export const story = {
         newScenePlaceholder: "Enter scene name",
         deleteStoryConfirm: "Delete story \"{name}\"?",
         deleteStoryDetail: "This removes the story document from the project.",
+        deleteChapterConfirm: "Delete chapter \"{name}\"?",
+        // Counted, because the row does not say what is inside it until it is expanded — and the
+        // scenes go with the chapter.
+        deleteChapterDetail: {
+            one: "Its {count} scene is deleted with it.",
+            other: "Its {count} scenes are deleted with it.",
+        },
         deleteSceneConfirm: "Delete scene \"{name}\"?",
         deleteSceneDetail: "This removes the scene and its blocks. Jumps to it will stop resolving.",
     },
