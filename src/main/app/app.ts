@@ -11,6 +11,7 @@ import { PreviewManager } from "./application/managers/preview/PreviewManager";
 import { VcsManager } from "./application/managers/vcs/VcsManager";
 // Shared with the recently-opened history, which must agree with the "already open?" lookup here.
 import { normalizeProjectPath } from "@shared/utils/recentProject";
+import { ONBOARDING_STATE_KEY, needsOnboarding } from "@shared/constants/onboarding";
 
 export interface AppConfig extends BaseAppConfig {
 }
@@ -85,6 +86,24 @@ export class App extends BaseApp {
         window.setIcon(iconPath);
     }
 
+    /**
+     * Whether the launcher about to be built should open in first-run setup.
+     *
+     * Answered here, in the main process, because the answer is available synchronously - one
+     * `globalState.get` - and can therefore travel with the window instead of being fetched by a
+     * renderer that has already painted something else.
+     *
+     * The marker is written when the flow is deliberately finished or skipped, never on the way
+     * in. So quitting mid-setup replays it next time, and a workspace closing back to the launcher
+     * (`ensureLauncher`) does not re-offer setup to someone who already answered.
+     */
+    private shouldRunOnboarding(): boolean {
+        if (this.wantsOnboardingRerun()) {
+            return true;
+        }
+        return needsOnboarding(this.globalState.get(ONBOARDING_STATE_KEY));
+    }
+
     async launchLauncher(options: Partial<Electron.BrowserWindowConstructorOptions>): Promise<AppWindow<WindowAppType.Launcher>> {
         const config: WindowConfig<WindowAppType.Launcher> = {
             windowType: WindowAppType.Launcher,
@@ -107,7 +126,9 @@ export class App extends BaseApp {
                 ...options,
             },
         };
-        const window = new AppWindow<WindowAppType.Launcher>(this, config, {});
+        const window = new AppWindow<WindowAppType.Launcher>(this, config, {
+            onboarding: this.shouldRunOnboarding(),
+        });
         window.setTitle("Launcher - NarraLeaf Studio");
         this.applyWindowIcon(window);
         window.showWhenReady();

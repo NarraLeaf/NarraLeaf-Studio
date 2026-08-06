@@ -31,6 +31,7 @@ import { widgetChrome } from "./widgetChrome";
 import { console } from "./console";
 import { project } from "./project";
 import { welcome } from "./welcome";
+import { onboarding } from "./onboarding";
 import { about } from "./about";
 import { actions } from "./actions";
 import { placeholders } from "./placeholders";
@@ -69,6 +70,7 @@ export const en = {
     console,
     project,
     welcome,
+    onboarding,
     about,
     actions,
     placeholders,
