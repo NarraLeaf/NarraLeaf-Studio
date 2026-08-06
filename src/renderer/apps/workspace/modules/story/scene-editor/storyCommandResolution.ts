@@ -7,12 +7,13 @@ import {
     allowsFreeValue,
     freeTargetKind,
     paramTypes,
-    matchEnumOption,
     type StoryCommandParam,
     type StoryCommandParamType,
 } from "./storyCommandGrammar";
 import type { StoryCommandLine, StoryCommandSpan } from "./storyCommandParser";
 import { getCommandSpec } from "./commands/registry";
+import { matchEnumOptionLocalized } from "./commands/localizedEnums";
+import { numberValueOfLocalized } from "./commands/localizedUnits";
 import type {
     StoryCommandContext,
     StoryCommandAppearanceRef,
@@ -316,9 +317,11 @@ function resolveAgainstType(
         case "content":
             return resolveContent(type, value, span, context, resolved);
         case "enum": {
-            const option = matchEnumOption(type, value);
+            const option = matchEnumOptionLocalized(type, value);
             // Normalizing the alias to its canonical value happens here, not in the parser: the parser
-            // stays faithful to what was typed, the payload gets what it can store.
+            // stays faithful to what was typed, the payload gets what it can store. A translated
+            // spelling normalizes on exactly the same step, so `t=淡变` banks `fade` (bible B6) and the
+            // project file never carries a locale.
             return option ? { value: { kind: "enum", value: option.value } } : null;
         }
         case "keyword":
@@ -326,8 +329,10 @@ function resolveAgainstType(
                 ? { value: { kind: "keyword", value: type.value } }
                 : null;
         case "number": {
-            const parsed = Number(value);
-            return value.trim() !== "" && Number.isFinite(parsed) ? { value: { kind: "number", value: parsed } } : null;
+            // Through the grammar's own reader, so a unit the parser accepted (`d=1s`) is a unit the
+            // payload gets the number out of, rather than a NaN nobody reported.
+            const parsed = numberValueOfLocalized(type, value);
+            return parsed === null ? null : { value: { kind: "number", value: parsed } };
         }
         case "boolean": {
             // The human spellings collapse to the canonical pair here (bible B5).

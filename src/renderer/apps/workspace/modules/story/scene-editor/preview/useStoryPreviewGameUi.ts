@@ -296,6 +296,15 @@ export function useStoryPreviewGameUi(input: {
                 : undefined,
         });
 
+        // The author's preference defaults, so the preview types at the speed the shipped game will.
+        // Defaults only, and no persistence: the preview is a look at a *fresh* game, and writing
+        // the preview's own volume changes into the player's store would be the editor answering a
+        // question only a player gets to answer.
+        if (context) {
+            const defaults = context.services.get<ProjectService>(Services.Project).getPlayerPreferences();
+            game.preference.importPreferences(defaults);
+        }
+
         const wireLiveGame = (liveGame: LiveGame): (() => void) => {
             const token = liveGame.onCharacterPrompt(({ character }) => {
                 const nametag = readNlrCharacterName(character);

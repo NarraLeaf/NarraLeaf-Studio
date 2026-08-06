@@ -321,8 +321,14 @@ export type PluginStorageService = {
     writeJson<T extends Record<string, any>>(namespace: string, data: T): Promise<void>;
 };
 
-/** Why project data is currently read-only: an older version is on screen, or the author froze it. */
-export type PluginFreezeReason = "revision" | "manual" | "merge";
+/**
+ * Why project data is currently read-only: an older version is on screen, or the author froze it.
+ *
+ * `recovery` is listed for completeness and is one no plugin observes in practice - a recovery shell
+ * loads no plugins at all - but it is a state the workspace can be in, and leaving it out of the
+ * union would make an exhaustive switch here wrong rather than complete.
+ */
+export type PluginFreezeReason = "revision" | "manual" | "merge" | "recovery";
 
 /**
  * The state of the project a plugin's data lives in.

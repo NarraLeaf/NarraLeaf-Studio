@@ -1,10 +1,10 @@
 import { useMemo } from "react";
-import { AudioLines, Boxes, ChevronRight, Gamepad2, Image as ImageIcon, Info, ListChecks, Puzzle, SlidersHorizontal, type LucideIcon } from "lucide-react";
+import { AppWindow, Boxes, ChevronRight, Gamepad2, ListChecks, SlidersHorizontal, type LucideIcon } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { InteractiveCard } from "@/lib/components/elements";
 import type { ProjectConfig } from "@/lib/workspace/project/project";
 
-export type ProjectSectionId = "details" | "game" | "audio" | "assets" | "settings" | "dependencies" | "runtimes" | "linting";
+export type ProjectSectionId = "app" | "game" | "project" | "runtimes" | "settings";
 
 export type ProjectNavItem = {
     id: ProjectSectionId;
@@ -14,26 +14,23 @@ export type ProjectNavItem = {
 };
 
 const PROJECT_NAV_ICONS: Record<ProjectSectionId, LucideIcon> = {
-    details: Info,
+    app: AppWindow,
     game: Gamepad2,
-    audio: AudioLines,
-    assets: ImageIcon,
-    dependencies: Puzzle,
+    project: ListChecks,
     runtimes: Boxes,
-    linting: ListChecks,
     settings: SlidersHorizontal,
 };
 
-// Game sits next to Details on purpose: both describe the game itself, while
-// Assets / Dependencies / Runtimes / Linting / Settings describe how it is built
-// and shipped. Audio follows Game for the same reason Game follows Details - an
-// audio track is a decision about what the player hears, not about packaging.
-// Runtimes follows Dependencies because it answers the same shape of question -
-// what does this project need that is not in it yet - for the author-supplied 2D
-// model runtimes rather than for plugins. Linting sits last before Settings
-// because it is the only one that describes what the project is checked against
-// rather than what it is made of.
-const PROJECT_NAV_ORDER: ProjectSectionId[] = ["details", "game", "audio", "assets", "dependencies", "runtimes", "linting", "settings"];
+// Five rows, where there were nine. The nine were one row per surface, and the surfaces had grown
+// out of each other: Details and Assets both answered "what is this application called and what
+// does it look like in a launcher", Game and Preferences both answered "what does the player get",
+// and a reader had to open three of them to find out where a volume is set. Each row here is a
+// question an author actually arrives with, and the parts inside it are told apart by headings.
+//
+// The order is how far the answer is from the player. App is the application's own identity, Game
+// is what the player meets, Project is what the project is checked against, Runtimes and Settings
+// are what it is built with and how it ships.
+const PROJECT_NAV_ORDER: ProjectSectionId[] = ["app", "game", "project", "runtimes", "settings"];
 
 /**
  * The project navigation rows, with localized title/description. Shared by the

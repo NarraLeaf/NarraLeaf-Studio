@@ -75,7 +75,14 @@ export function ContextMenu({
 }: ContextMenuProps) {
     const menuRef = useRef<HTMLDivElement>(null);
     const [adjustedPosition, setAdjustedPosition] = useState(position);
-    const [focusedIndex, setFocusedIndex] = useState(0);
+    /**
+     * The highlighted row, as an index into the *enabled* items. `-1` is "nothing highlighted", which is
+     * how a menu opens: it used to open on 0, so the first row wore the highlight until the arrow keys
+     * moved it — in a menu that marks its current value with a tick, that reads as a second, contradictory
+     * selection. The pointer drives this too (see `onFocus` below), so hovering and arrowing are one state
+     * rather than two highlights racing each other.
+     */
+    const [focusedIndex, setFocusedIndex] = useState(-1);
     const [openSubmenuIndex, setOpenSubmenuIndex] = useState<number | null>(null);
 
     useLayoutEffect(() => {
@@ -84,7 +91,7 @@ export function ContextMenu({
             return;
         }
 
-        setFocusedIndex(0);
+        setFocusedIndex(-1);
         setOpenSubmenuIndex(null);
         setAdjustedPosition(position);
     }, [visible, position.x, position.y]);
@@ -217,6 +224,10 @@ export function ContextMenu({
 
     if (!visible) return null;
 
+    const enabledItems = items.filter(
+        item => !('separator' in item && item.separator) && !item.disabled
+    );
+
     const menuContent = (
         <div
             ref={menuRef}
@@ -229,6 +240,12 @@ export function ContextMenu({
                 overflowY: "auto",
             }}
             onMouseDown={(e) => e.stopPropagation()}
+            /* Leaving the menu drops the highlight, so it never lingers on a row the pointer has left. A
+               row whose submenu is open is the exception: the pointer is on its way into that submenu, and
+               the parent row has to stay lit to say where the submenu came from. */
+            onMouseLeave={() => {
+                if (openSubmenuIndex === null) setFocusedIndex(-1);
+            }}
         >
             {items.map((item, index) => {
                 if ('separator' in item && item.separator) {
@@ -236,7 +253,8 @@ export function ContextMenu({
                 }
 
                 const menuItem = item as ContextMenuItemDef;
-                const isFocused = focusedIndex === items.filter(i => !('separator' in i && i.separator) && !i.disabled).indexOf(menuItem);
+                const enabledIndex = enabledItems.indexOf(menuItem);
+                const isFocused = enabledIndex !== -1 && focusedIndex === enabledIndex;
                 const isOpen = openSubmenuIndex === index;
 
                 return (
@@ -244,6 +262,7 @@ export function ContextMenu({
                         key={menuItem.id}
                         item={menuItem}
                         isFocused={isFocused}
+                        onFocus={() => setFocusedIndex(enabledIndex)}
                         onClose={onClose}
                         isSubmenuOpen={isOpen}
                         onSubmenuOpen={() => setOpenSubmenuIndex(index)}
@@ -266,6 +285,8 @@ export function ContextMenu({
 interface ContextMenuItemProps {
     item: ContextMenuItemDef;
     isFocused: boolean;
+    /** Hovering a row moves the menu's highlight onto it, so pointer and keyboard share one focus. */
+    onFocus: () => void;
     onClose: () => void;
     isSubmenuOpen: boolean;
     onSubmenuOpen: () => void;
@@ -276,6 +297,7 @@ interface ContextMenuItemProps {
 function ContextMenuItem({
     item,
     isFocused,
+    onFocus,
     onClose,
     isSubmenuOpen,
     onSubmenuOpen,
@@ -325,6 +347,7 @@ function ContextMenuItem({
     };
 
     const handleMouseEnter = () => {
+        onFocus();
         if (hasSubmenu && !item.disabled) {
             onSubmenuOpen();
         }
@@ -340,7 +363,10 @@ function ContextMenuItem({
                     item.disabled
                         ? "opacity-50 cursor-not-allowed text-fg-muted"
                         : isFocused
-                        ? "bg-primary/20 text-fg"
+                        // Highlight and hover are now one state, so they get one look — the neutral fill the
+                        // rest of the app's menus use. The old accent-tinted highlight said "chosen", which a
+                        // value menu already says with its tick, and the two claims contradicted each other.
+                        ? "bg-fill text-fg"
                         : "text-fg-muted hover:bg-fill hover:text-fg",
                 )}
                 title={item.tooltip}

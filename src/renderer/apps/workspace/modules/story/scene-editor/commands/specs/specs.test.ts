@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { StoryBlock } from "@shared/types/story";
 import { BUILTIN_AUDIO_TRACKS, resolveAudioTrack } from "@shared/types/audioTrack";
+import { getQuickParams } from "@/lib/story/storyQuickParamsModel";
 import { canCommit, parseCommandLine } from "../../storyCommandParser";
 import { resolveCommandLine, type StoryCommandContext } from "../../storyCommandResolution";
 import { getCommandSpec, listCommandSpecs } from "../registry";
@@ -114,6 +115,8 @@ describe("scene commands", () => {
 
 describe("generic verbs (bible B3)", () => {
     it("/show dispatches on the target: a character enters", () => {
+        // `at=` wins the preset when both are given — a transform holds one, and a placement is the
+        // more specific instruction. The rule `/image` already followed.
         expect(build("/show Alice smile at=left t=fade d=0.3")).toMatchObject({
             kind: "action",
             payload: {
@@ -122,9 +125,21 @@ describe("generic verbs (bible B3)", () => {
                 characterId: "c1",
                 pose: "t1",
                 transform: { preset: "left", durationMs: 300 },
-                transition: { kind: "fadeIn" },
             },
         });
+    });
+
+    it("a character enters and leaves through its TRANSFORM, which is the field the engine plays", () => {
+        // Not `transition`: `enter` compiles to `char(src).show(transform)` and `exit` to
+        // `hide(transform)`, so a transition ref written here would be a setting nothing reads — and
+        // the inspector, which edits the transform, would show a different answer than the row.
+        expect(build("/show Alice t=fade")).toMatchObject({
+            payload: { action: "character", operation: "enter", transform: { preset: "fadeIn" } },
+        });
+        expect(build("/hide Alice t=fade")).toMatchObject({
+            payload: { action: "character", operation: "exit", transform: { preset: "fadeOut" } },
+        });
+        expect(build("/hide Alice t=fade").payload).not.toHaveProperty("transition.kind", "fadeIn");
     });
 
     it("/show dispatches on the target: an image reveals through its transform preset", () => {
@@ -140,6 +155,19 @@ describe("generic verbs (bible B3)", () => {
         expect(build("/hide Alice")).toMatchObject({ payload: { action: "character", operation: "exit" } });
     });
 
+    it("the row token reads back the `d=` the author typed, for a character and an image alike", () => {
+        // The seam that drifted: the spec wrote `d=` to the transform while the row token read it off
+        // the transition, so every character row printed "0s". Asserted end to end — parse, resolve,
+        // build, then project — because neither half is wrong on its own, only the pair.
+        const ms = (source: string) => getQuickParams(build(source)).find(param => param.id === "d")?.value;
+        expect(ms("/hide Alice t=fade d=2")).toMatchObject({ kind: "duration", ms: 2000 });
+        expect(ms("/show Alice at=left d=0.3")).toMatchObject({ kind: "duration", ms: 300 });
+        // Known boundary, asserted so it is a decision and not a surprise: a stage object resolves to
+        // an image/text/displayable payload, and `getQuickParams` has no branch for those, so `d=` is
+        // stored on the transform (see the `/hide hero` case above) but earns no inline token yet.
+        expect(ms("/hide hero t=fade d=1.5")).toBeUndefined();
+    });
+
     it("/show reaches text, video and layer targets too", () => {
         expect(build("/show title")).toMatchObject({ payload: { action: "text", operation: "show", objectName: "title" } });
         expect(build("/show clip")).toMatchObject({ payload: { action: "video", operation: "show", objectName: "clip" } });
@@ -148,7 +176,12 @@ describe("generic verbs (bible B3)", () => {
 
     it("rejects a target nothing answers to, and an unsupported word for the resolved context", () => {
         expect(issuesOf("/show nobody")).toEqual(["unknownTarget"]);
-        expect(issuesOf("/show Alice t=zoom")).toEqual(["unsupportedOption"]);
+        // Every subject `/show` reaches now animates through the SAME reveal table, so a word outside
+        // it is refused by the grammar itself rather than surviving to resolution: `zoom` reaches a
+        // character exactly as it reaches an image, and `blinds` (a whole-screen transition) reaches
+        // neither.
+        expect(issuesOf("/show Alice t=zoom")).toEqual([]);
+        expect(parseCommandLine("/show Alice t=blinds")).toMatchObject({ issues: [{ code: "badValue" }] });
         expect(issuesOf("/show hero smile")).toEqual(["unknownForm"]);
     });
 
@@ -805,5 +838,29 @@ describe("manual examples", () => {
                 expect(build(example), example).toBeTruthy();
             }
         }
+    });
+});
+
+/**
+ * A glyph per command, and no glyph twice.
+ *
+ * The icon is not decoration: it is what the `/` menu, the action creator and a committed row's plate
+ * draw beside the name, and it used to come from the command's GROUP - so a section of the menu was a
+ * column of one repeated symbol, saying only what the section header already said. Per-command icons
+ * are worth nothing if two commands share one, and a shared icon is exactly the mistake that is
+ * invisible while authoring (two files, two imports, one symbol) and obvious to an author reading the
+ * list, so it is pinned here rather than left to review.
+ */
+describe("command icons", () => {
+    const specs = listCommandSpecs();
+
+    it("gives every command a glyph of its own", () => {
+        const byIcon = new Map<unknown, string[]>();
+        for (const spec of specs) {
+            expect(spec.icon, spec.token).toBeTruthy();
+            byIcon.set(spec.icon, [...(byIcon.get(spec.icon) ?? []), spec.token]);
+        }
+        const shared = [...byIcon.values()].filter(tokens => tokens.length > 1);
+        expect(shared).toEqual([]);
     });
 });

@@ -5,6 +5,7 @@ import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
 import { Button } from "./Button";
 import { InspectOnlyButton } from "./InspectOnlyButton";
+import { CONTROL_SIZE_CLASS, type ControlSize } from "./controlSize";
 import { cn } from "../../utils/cn";
 
 export interface SelectOption {
@@ -26,7 +27,7 @@ export interface SelectProps {
     onChange?: (value: string | number) => void;
     placeholder?: string;
     disabled?: boolean;
-    size?: "sm" | "md" | "lg";
+    size?: ControlSize;
     variant?: "default" | "error" | "success";
     fullWidth?: boolean;
     className?: string;
@@ -74,11 +75,7 @@ export interface SelectProps {
     readOnly?: boolean;
 }
 
-const sizeStyles = {
-    sm: "px-2 py-1 text-xs",
-    md: "px-3 py-2 text-sm",
-    lg: "px-4 py-2 text-base",
-};
+const sizeStyles = CONTROL_SIZE_CLASS;
 
 const variantStyles = {
     default: "border-edge-strong hover:border-edge-strong focus:border-primary",
@@ -89,6 +86,49 @@ const variantStyles = {
 const SELECT_MENU_GAP_PX = 4;
 /** Tailwind max-h-60 */
 const SELECT_MENU_MAX_HEIGHT_PX = 240;
+
+/**
+ * Horizontal bounds an open menu has to stay inside: the viewport, tightened by every ancestor
+ * that would clip it.
+ *
+ * The viewport alone is not the answer for a menu that is not portaled. A settings row puts its
+ * control hard against the right edge of a panel that scrolls (`overflow-y-auto`, which makes the
+ * other axis `auto` too) inside a window shell that hides its overflow - so a menu growing
+ * rightwards is cut off, or grows a horizontal scrollbar, long before it reaches the window edge.
+ */
+function clippingBounds(node: HTMLElement): { left: number; right: number } {
+    let left = 0;
+    let right = window.innerWidth;
+    let parent = node.parentElement;
+    while (parent) {
+        const style = window.getComputedStyle(parent);
+        if (style.overflowX !== "visible" || style.overflowY !== "visible") {
+            const rect = parent.getBoundingClientRect();
+            left = Math.max(left, rect.left);
+            right = Math.min(right, rect.right);
+        }
+        parent = parent.parentElement;
+    }
+    return { left, right };
+}
+
+/**
+ * How wide the menu wants to be, measured with any clamp lifted.
+ *
+ * Reading the clamped box back would be self-referential: the width we already imposed would look
+ * like the width the content asked for, and the side the menu is pinned to would flip back and
+ * forth on every scroll event.
+ */
+function measureNaturalWidth(node: HTMLElement): number {
+    const previous = node.style.maxWidth;
+    const previousWidth = node.style.width;
+    node.style.maxWidth = "none";
+    node.style.width = "max-content";
+    const width = node.getBoundingClientRect().width;
+    node.style.maxWidth = previous;
+    node.style.width = previousWidth;
+    return width;
+}
 
 /**
  * Select dropdown component with VS Code-like styling
@@ -124,6 +164,14 @@ export function Select({
     const dropdownRef = useRef<HTMLDivElement | null>(null);
     const [dropdownDirection, setDropdownDirection] = useState<"down" | "up">("down");
     const [portalMenuStyle, setPortalMenuStyle] = useState<React.CSSProperties>({});
+    /**
+     * Which trigger edge the menu hangs from. The menu is allowed to be wider than the trigger, so
+     * it pins to the right edge and grows leftwards where growing rightwards would be clipped.
+     */
+    const [menuAlign, setMenuAlign] = useState<"left" | "right">("left");
+    /** Room the chosen side actually has; a list too wide even for that still truncates. */
+    const [menuMaxWidth, setMenuMaxWidth] = useState<number | undefined>(undefined);
+    const naturalMenuWidthRef = useRef<number | null>(null);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -146,31 +194,54 @@ export function Select({
         if (!isOpen) {
             setDropdownDirection("down");
             setPortalMenuStyle({});
+            setMenuAlign("left");
+            setMenuMaxWidth(undefined);
+            naturalMenuWidthRef.current = null;
         }
     }, [isOpen]);
 
     useLayoutEffect(() => {
-        if (!isOpen || portalMenu || menuPlacement !== "auto") {
+        if (!isOpen || portalMenu) {
             return;
         }
+        naturalMenuWidthRef.current = null;
 
-        const updateDirection = () => {
+        const updatePlacement = () => {
             if (!selectRef.current || !dropdownRef.current) return;
             const triggerRect = selectRef.current.getBoundingClientRect();
             const dropdownRect = dropdownRef.current.getBoundingClientRect();
-            const spaceBelow = window.innerHeight - triggerRect.bottom;
-            const spaceAbove = triggerRect.top;
-            const shouldOpenUp =
-                dropdownRect.height > spaceBelow && spaceAbove >= dropdownRect.height;
-            setDropdownDirection(shouldOpenUp ? "up" : "down");
+
+            if (menuPlacement === "auto") {
+                const spaceBelow = window.innerHeight - triggerRect.bottom;
+                const spaceAbove = triggerRect.top;
+                const shouldOpenUp =
+                    dropdownRect.height > spaceBelow && spaceAbove >= dropdownRect.height;
+                setDropdownDirection(shouldOpenUp ? "up" : "down");
+            }
+
+            // The trigger is only as wide as the option that happens to be selected, so a menu
+            // locked to that width cuts every longer option down to an ellipsis - which is the one
+            // thing an option list may not do, since reading the options is why it is open.
+            if (naturalMenuWidthRef.current === null) {
+                naturalMenuWidthRef.current = measureNaturalWidth(dropdownRef.current);
+            }
+            const clip = clippingBounds(dropdownRef.current);
+            const roomRight = clip.right - triggerRect.left - SELECT_MENU_GAP_PX;
+            const roomLeft = triggerRect.right - clip.left - SELECT_MENU_GAP_PX;
+            const alignLeft = naturalMenuWidthRef.current <= roomRight || roomRight >= roomLeft;
+            const room = alignLeft ? roomRight : roomLeft;
+            setMenuAlign(alignLeft ? "left" : "right");
+            // A non-positive room means nothing has been laid out (jsdom, a hidden ancestor);
+            // clamping to that would collapse the menu instead of leaving it alone.
+            setMenuMaxWidth(room > 0 ? Math.max(triggerRect.width, room) : undefined);
         };
 
-        updateDirection();
-        window.addEventListener("resize", updateDirection);
-        window.addEventListener("scroll", updateDirection, true);
+        updatePlacement();
+        window.addEventListener("resize", updatePlacement);
+        window.addEventListener("scroll", updatePlacement, true);
         return () => {
-            window.removeEventListener("resize", updateDirection);
-            window.removeEventListener("scroll", updateDirection, true);
+            window.removeEventListener("resize", updatePlacement);
+            window.removeEventListener("scroll", updatePlacement, true);
         };
     }, [isOpen, portalMenu, menuPlacement, options.length, value]);
 
@@ -178,6 +249,7 @@ export function Select({
         if (!isOpen || !portalMenu) {
             return;
         }
+        naturalMenuWidthRef.current = null;
 
         const positionPortalMenu = () => {
             const trigger = selectRef.current?.getBoundingClientRect();
@@ -222,10 +294,27 @@ export function Select({
                 }
             }
 
+            // Same rule as the non-portal menu: at least the trigger's width, wider when an option
+            // needs it. A portaled menu is clipped by nothing but the viewport, so that is the only
+            // bound here, and it slides along the edge rather than shrinking when it runs out.
+            if (naturalMenuWidthRef.current === null) {
+                naturalMenuWidthRef.current = measureNaturalWidth(menuEl);
+            }
+            const roomRight = window.innerWidth - trigger.left - SELECT_MENU_GAP_PX;
+            const roomLeft = trigger.right - SELECT_MENU_GAP_PX;
+            const alignLeft = naturalMenuWidthRef.current <= roomRight || roomRight >= roomLeft;
+            const width = Math.max(
+                trigger.width,
+                Math.min(naturalMenuWidthRef.current, alignLeft ? roomRight : roomLeft),
+            );
+            const left = alignLeft
+                ? trigger.left
+                : Math.max(SELECT_MENU_GAP_PX, trigger.right - width);
+
             setPortalMenuStyle({
                 position: "fixed",
-                left: trigger.left,
-                width: trigger.width,
+                left,
+                width,
                 top,
                 maxHeight,
                 zIndex: menuZIndex ?? 100,
@@ -273,18 +362,23 @@ export function Select({
             : menuPlacement === "above"
               ? false
               : dropdownDirection === "down";
-    const dropdownPanelStyle = portalMenu
+    const dropdownPanelStyle: React.CSSProperties | undefined = portalMenu
         ? portalMenuStyle
-        : menuZIndex !== undefined
-          ? { zIndex: menuZIndex }
-          : undefined;
+        : {
+            maxWidth: menuMaxWidth,
+            ...(menuZIndex !== undefined ? { zIndex: menuZIndex } : {}),
+        };
 
     const dropdownPanel = isOpen ? (
         <div
             ref={dropdownRef}
             className={cn(
                 "bg-surface-raised border border-edge-strong rounded-md shadow-lg overflow-y-auto",
-                !portalMenu && "absolute z-50 w-full left-0 max-h-60",
+                // `w-max` rather than `w-full`: an absolutely positioned box with `width: auto`
+                // shrinks to fit its containing block - the trigger - which is the width the list
+                // must be free to exceed. `min-w-full` keeps it from ever being narrower.
+                !portalMenu && "absolute z-50 w-max min-w-full max-h-60",
+                !portalMenu && (menuAlign === "right" ? "right-0" : "left-0"),
                 !portalMenu && (openMenuDown ? "top-full mt-1" : "bottom-full mb-1"),
                 menuClassName,
             )}
@@ -367,7 +461,11 @@ export function Select({
     ) : null;
 
     const triggerClass = cn(
-        "min-w-0 justify-between bg-fill-subtle hover:bg-fill",
+        // `border` is load-bearing and was missing: `variantStyles` only ever set a border
+        // *colour*, and preflight zeroes every border width, so the trigger drew no border at
+        // all - leaving it a flat fill 2px shorter than the `Input` it sits beside, with no
+        // outline to read as a field. Every `border-*` line below has been dead until now.
+        "min-w-0 justify-between border bg-fill-subtle hover:bg-fill",
         variantStyles[variant],
         sizeStyles[size],
         isOpen && "border-primary ring-2 ring-primary/20",
@@ -549,9 +647,14 @@ export function Combobox({
     return (
         <div ref={selectRef} className={cn("relative", fullWidth && "w-full min-w-0", className)}>
             <div className={cn(
-                "relative bg-fill-subtle border rounded-md",
+                // The box owns the size; the input inside owns none of it. Applying the size
+                // classes to both stacked their paddings, so a `md` combobox stood 54px tall
+                // against a 36px select - the widest miss of the whole scale.
+                "relative flex items-center bg-fill-subtle border rounded-md",
                 variantStyles[variant],
                 sizeStyles[size],
+                // Room for the chevron parked in the right inset.
+                "pr-8",
                 isOpen && "border-primary ring-1 ring-primary/30 shadow-lg shadow-primary/10",
             )}>
                 <input
@@ -563,13 +666,12 @@ export function Combobox({
                     placeholder={resolvedPlaceholder}
                     disabled={disabled}
                     className={cn(
-                        "w-full bg-transparent text-fg placeholder-fg-subtle",
+                        "w-full min-w-0 bg-transparent p-0 text-inherit placeholder-fg-subtle",
                         "focus:outline-none",
-                        sizeStyles[size],
                         displayValue ? "text-fg" : "text-fg-muted",
                     )}
                 />
-                <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                <div className="pointer-events-none absolute inset-y-0 right-0 pr-3 flex items-center">
                     <ChevronDown
                         className={cn(
                             "w-4 h-4 text-fg-muted transition-transform duration-150",

@@ -38,6 +38,7 @@ import {
     ensurePluginBuildDependency,
     resolveBuildDependencyFile,
 } from "../../../../../buildWorker/pluginBuildDependencies";
+import type { DownloadRewriteRule } from "@shared/types/downloadSource";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 import { getMimeType } from "@shared/utils/fs";
 import { detectModelBundleEntry, normalizeBundlePath, sortBundlePaths } from "@shared/utils/modelBundle";
@@ -131,6 +132,8 @@ export type GameRuntimeArtifactCompileInput = {
      * unavailable.
      */
     hostUserDataDir?: string;
+    /** The author's download rewrites, for the same reason `hostUserDataDir` travels. */
+    downloadRewrites?: readonly DownloadRewriteRule[];
     /**
      * Studio's own icon, shipped when the project configures none. Passed in
      * rather than resolved here because this module also runs off the main
@@ -300,6 +303,7 @@ export async function compileGameRuntimeArtifact(
             target,
             ...(input.sidecarPlatformKey ? { sidecarPlatformKey: input.sidecarPlatformKey } : {}),
             ...(input.hostUserDataDir ? { hostUserDataDir: input.hostUserDataDir } : {}),
+            ...(input.downloadRewrites ? { downloadRewrites: input.downloadRewrites } : {}),
         });
         const packPuppetRuntimes = await copyPuppetRuntimes({
             appDir,
@@ -509,7 +513,7 @@ async function copyProjectAssets(input: {
                 }));
                 continue;
             }
-            const sourceLabel = normalized.source === "remote" ? "remote cache" : "local asset";
+            const sourceLabel = normalized.source === "remote" ? "remote asset" : "local asset";
             // The MIME type is derived from the extension, not from where the
             // bytes land, so it is available even when the store keeps the item
             // under an extension-free name.
@@ -535,7 +539,7 @@ async function copyProjectAssets(input: {
                 id: normalized.id,
                 type,
                 name: normalized.name,
-                source: normalized.source === "remote" ? "remote-cache" : "local",
+                source: normalized.source === "remote" ? "remote" : "local",
                 relativePath,
                 originalRelativePath: path.relative(input.projectPath, sourcePath).replace(/\\/g, "/"),
                 hash: normalized.hash,
@@ -803,6 +807,8 @@ async function copyRuntimePlugins(input: {
      */
     sidecarPlatformKey?: string;
     hostUserDataDir?: string;
+    /** The author's download rewrites, for the same reason `hostUserDataDir` travels. */
+    downloadRewrites?: readonly DownloadRewriteRule[];
 }): Promise<GameRuntimePackPluginEntry[]> {
     const entries: GameRuntimePackPluginEntry[] = [];
     for (const plugin of input.runtimePlugins) {
@@ -832,6 +838,7 @@ async function copyRuntimePlugins(input: {
                 plugin,
                 platformKey: input.sidecarPlatformKey,
                 ...(input.hostUserDataDir ? { hostUserDataDir: input.hostUserDataDir } : {}),
+                ...(input.downloadRewrites ? { downloadRewrites: input.downloadRewrites } : {}),
             })
             : [];
         entries.push({
@@ -864,6 +871,8 @@ async function copyPluginSidecars(input: {
     plugin: GameRuntimePluginSource;
     platformKey: string;
     hostUserDataDir?: string;
+    /** The author's download rewrites, for the same reason `hostUserDataDir` travels. */
+    downloadRewrites?: readonly DownloadRewriteRule[];
 }): Promise<GameRuntimePackSidecarEntry[]> {
     const { plugin, platformKey } = input;
     const entries: GameRuntimePackSidecarEntry[] = [];
@@ -888,6 +897,7 @@ async function copyPluginSidecars(input: {
                 target,
                 where,
                 ...(input.hostUserDataDir ? { hostUserDataDir: input.hostUserDataDir } : {}),
+                ...(input.downloadRewrites ? { downloadRewrites: input.downloadRewrites } : {}),
             });
             // The include path is also the path inside the sidecar directory
             // (minus any `dep:<id>/` prefix), so an author who needs a shared
@@ -936,6 +946,8 @@ async function resolveSidecarInclude(input: {
     target: { sha256: Record<string, string> };
     where: string;
     hostUserDataDir?: string;
+    /** The author's download rewrites, for the same reason `hostUserDataDir` travels. */
+    downloadRewrites?: readonly DownloadRewriteRule[];
 }): Promise<{ sourcePath: string; relativePath: string }> {
     const { include, plugin, platformKey, where } = input;
     if (include.startsWith(SIDECAR_DEP_INCLUDE_PREFIX)) {
@@ -969,6 +981,7 @@ async function resolveSidecarInclude(input: {
             dependencyId,
             platformKey,
             target: dependencyTarget,
+            ...(input.downloadRewrites ? { rewrites: input.downloadRewrites } : {}),
             log: (level, message) => console.info(`[gameRuntimeArtifactCompiler] ${level}:`, message),
         });
         return { sourcePath: resolveBuildDependencyFile(dependencyDir, relativePath), relativePath };
@@ -1153,14 +1166,21 @@ function resolveProjectRelativePath(projectPath: string, relativePath: string): 
     return resolved;
 }
 
+/**
+ * Where an asset's bytes are, regardless of where they came from.
+ *
+ * One path for both sources. A remote asset used to be read out of `editor/assets/remote`, the
+ * editor's download cache - which `shared/vcs/workingSet.ts` deliberately excludes from version
+ * control, and which is only ever filled by previewing that asset in the editor. So a build from a
+ * fresh clone, or of an asset the author had never opened, failed on a file that had never existed
+ * on that machine. Remote assets now keep a versioned snapshot at the ordinary content shard, and
+ * this function has nothing left to decide.
+ */
 function resolveAssetSourcePath(
     projectPath: string,
     asset: ReturnType<typeof normalizeAssetRecord>,
 ): string {
     const [a, b, rest] = splitAssetStorageId(asset.id);
-    if (asset.source === "remote") {
-        return path.join(projectPath, "editor", "assets", "remote", a, b, rest);
-    }
     return path.join(projectPath, "assets", "content", a, b, rest);
 }
 

@@ -1,6 +1,7 @@
 import { Aperture, Bookmark, Clock, CornerUpLeft, Eye, FileText, GitBranch, Image, Layers, LogOut, MessageSquare, Move, Music, Puzzle, Route, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video, Wind } from "lucide-react";
 import type { StoryBlock, StoryBlockId, StoryRichRun, StoryScene, StorySceneId, StoryTextSegment } from "@shared/types/story";
 import { richIfMeaningful } from "./richText";
+import { paragraphActionCharacterId } from "./storyCharacterActions";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import type { CharacterAppearanceRef, StoryBlockTarget, StoryStagePlacement, VisibleStoryRow } from "./storySceneEditorTypes";
 import {
@@ -13,7 +14,9 @@ import {
     type StoryBlockBadgeId,
     type StoryRowLookups,
 } from "@/lib/story/storyRowProjection";
+import { storyVerbCommandId } from "@/lib/story/storyVerbVocabulary";
 import { translate } from "@/lib/i18n";
+import { getCommandSpec } from "./commands/registry";
 
 /**
  * The row projection moved to `@/lib/story/storyRowProjection` (U4 WI-1) so the Dev Mode timeline can
@@ -102,10 +105,49 @@ export function isNarrativeRow(block: StoryBlock): boolean {
     return false;
 }
 
-type GroupSpeaker = { characterId?: string; speakerName?: string };
+/**
+ * The two layers a row can belong to (gutter 规范 §1) — the first and coarsest thing the eye is asked
+ * to decide, and the one the row's BACKGROUND carries.
+ *
+ * The original arrangement laid narration, dialogue and directives out as three peers, which is why
+ * narration had nowhere to live: it is not a kind of dialogue and it is certainly not a directive. It
+ * is two questions, not one.
+ *
+ *  - `"script"` — words that get performed. Whether a specific person says them (dialogue) or nobody
+ *    does (narration) is the SECOND question, and the gutter mark answers it.
+ *  - `"machine"` — everything that never reaches the player as speech: directives, control flow,
+ *    variable declarations, studio notes, and unresolved drafts. It takes a tint so it steps out of
+ *    the narrative flow, which is how the default view reads as very nearly a plain script.
+ *
+ * A choice and its options file under `"machine"` despite showing the player words, and that is a
+ * judgement rather than an oversight: in this editor those rows ARE the branching structure — they
+ * hold children, fold, and carry conditions — so they read as the machinery that presents a choice
+ * rather than as a line somebody speaks. Their words are still in the row, in full.
+ */
+export type StoryRowLayer = "script" | "machine";
 
-/** Whether two dialogue speakers are the same run: character id wins; a bare, non-empty name ties otherwise. */
+/** Which of the two layers a row belongs to. A whitelist: a new kind is machinery until argued otherwise. */
+export function storyRowLayer(block: StoryBlock): StoryRowLayer {
+    if (block.kind === "nodeAction") {
+        const action = block.payload.action;
+        return action === "narration" || action === "dialogue" ? "script" : "machine";
+    }
+    return "machine";
+}
+
+/**
+ * A voice, for the purpose of deciding where a paragraph starts.
+ *
+ * `narrator: true` is its own case rather than a reserved name, so no character an author could
+ * actually create can collide with it.
+ */
+type GroupSpeaker = { narrator?: true; characterId?: string; speakerName?: string };
+
+/** Whether two speakers are the same run: the narrator ties with itself; a character id wins; a bare, non-empty name ties otherwise. */
 function sameGroupSpeaker(a: GroupSpeaker, b: GroupSpeaker): boolean {
+    if (a.narrator || b.narrator) {
+        return Boolean(a.narrator && b.narrator);
+    }
     if (a.characterId || b.characterId) {
         return Boolean(a.characterId) && a.characterId === b.characterId;
     }
@@ -113,30 +155,56 @@ function sameGroupSpeaker(a: GroupSpeaker, b: GroupSpeaker): boolean {
 }
 
 /**
- * Annotate rows with their dialogue-group role (WI-5), a pure render projection over the visible
- * sequence. A run is consecutive dialogue rows with the same speaker *under the same container*; a
- * same-character `expression` row rides along without breaking it (it renders as an in-group
- * differential note). Any other kind — or a change of `parentId` — ends the run, so an option body's
- * last line never groups with a same-speaker line that lives outside the container (adjacency in the
- * flattened list is not adjacency in the tree). Only dialogue and in-group expression rows are cloned;
- * every other row is returned untouched, so referential identity is preserved where it can be.
+ * The speaker a row belongs to a paragraph as, or `null` when it can neither open nor continue one.
+ *
+ * Narration is here alongside dialogue, and that is the whole change (gutter 规范 §2): a run of
+ * consecutive lines in one voice is one paragraph, 不做特例. The narrator is a voice like any other,
+ * so its lines group too — named once at the head, joined by the gutter's rule after that. Leaving it
+ * out was the old model's tell that narration had never been given a place: it was the one kind of
+ * speech that re-announced itself on every single line.
+ */
+function rowGroupSpeaker(block: StoryBlock): GroupSpeaker | null {
+    if (block.kind !== "nodeAction") {
+        return null;
+    }
+    if (block.payload.action === "narration") {
+        return { narrator: true };
+    }
+    if (block.payload.action === "dialogue") {
+        return { characterId: block.payload.characterId, speakerName: block.payload.speakerName };
+    }
+    return null;
+}
+
+/**
+ * Annotate rows with their paragraph role, a pure render projection over the visible sequence.
+ *
+ * A run is consecutive rows in the same voice — narration, or one character's dialogue — *under the
+ * same container*; a row acting on that same character rides along without breaking it (see
+ * `paragraphActionCharacterId`, which is also where "acting on" stops and "staging" begins). Any
+ * other kind, a change of voice, or a change of `parentId` ends the run, so an option body's last
+ * line never groups with a same-speaker line that lives outside the container (adjacency in the
+ * flattened list is not adjacency in the tree). Only rows inside a run are cloned; every other row is
+ * returned untouched, so referential identity is preserved where it can be.
+ *
+ * `characters` is only ever consulted to resolve a displayable target's NAME back to a character, so
+ * a caller with no cast to hand (a test, a projection that has none) can pass an empty list and lose
+ * exactly that one case.
  *
  * `groupContinues` is set on any row of a run whose very next row is still one of its members — heads
  * and members alike. It is not a grouping rule (the runs are exactly the ones the loop below already
- * found), only the one fact a row cannot see about itself: whether the attribution rail has to leave
- * its bottom edge. A head without it never reaches the lines it attributes; a MEMBER without it is
- * the last line of the run, which is what lets the rail finish with an end instead of running off the
- * bottom of the last row into whatever follows.
+ * found), only the one fact a row cannot see about itself: whether its paragraph carries on past its
+ * own bottom edge, which is what tells the gutter's continuation rule how far to run.
  */
-export function annotateDialogueGroups(rows: VisibleStoryRow[]): VisibleStoryRow[] {
+export function annotateDialogueGroups(rows: VisibleStoryRow[], characters: readonly Character[] = []): VisibleStoryRow[] {
     let groupSpeaker: GroupSpeaker | null = null;
     let groupParentId: StoryBlockId | null = null;
     const annotated = rows.map(row => {
         const block = row.block;
         const parentId = block.parentId ?? null;
         const sameContainer = groupSpeaker !== null && groupParentId === parentId;
-        if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
-            const speaker: GroupSpeaker = { characterId: block.payload.characterId, speakerName: block.payload.speakerName };
+        const speaker = rowGroupSpeaker(block);
+        if (speaker) {
             if (sameContainer && sameGroupSpeaker(groupSpeaker!, speaker)) {
                 return { ...row, groupRole: "member" as const };
             }
@@ -145,14 +213,12 @@ export function annotateDialogueGroups(rows: VisibleStoryRow[]): VisibleStoryRow
             return { ...row, groupRole: "head" as const };
         }
         if (
-            block.kind === "action"
-            && block.payload.action === "character"
-            && block.payload.operation === "expression"
-            && sameContainer
+            sameContainer
             && groupSpeaker!.characterId
-            && block.payload.characterId === groupSpeaker!.characterId
+            && paragraphActionCharacterId(block, characters) === groupSpeaker!.characterId
         ) {
-            // An expression change for the group's speaker: an in-group note; the run continues.
+            // Something done to the group's own speaker: still their paragraph, so the run continues
+            // and the row wears its rule rather than a directive's glyph.
             return { ...row, groupRole: "member" as const };
         }
         groupSpeaker = null;
@@ -176,9 +242,24 @@ export function annotateNestingBranches(rows: VisibleStoryRow[]): VisibleStoryRo
     return rows.map((row, index) => ({ ...row, nextRowDepth: rows[index + 1]?.depth ?? 0 }));
 }
 
+/**
+ * The rows to draw, each carrying the number the gutter prints beside it.
+ *
+ * **The number counts the scene, not the screen.** Every block in the scene consumes one, including
+ * the ones folded away inside a collapsed container - so a collapsed container leaves a gap in the
+ * sequence, exactly as folding a region in a code editor does, and a row keeps its number whatever
+ * the reader has open. Two things depend on that:
+ *
+ *  - The narrative filter already promised it (`filter then group` in the tests): hiding staging rows
+ *    leaves the survivors on 1 and 3, not renumbered to 1 and 2.
+ *  - The lint report names rows by that number (`lib/lint/storyLocator.ts`), and a report that said
+ *    "line 12" about a row this gutter called 9 because something above it was folded would be
+ *    worse than a report that said nothing at all.
+ */
 export function buildVisibleRows(scene: StoryScene, collapsedIds: Set<StoryBlockId>): VisibleStoryRow[] {
     const rows: VisibleStoryRow[] = [];
-    const visit = (blockId: StoryBlockId, depth: number, disabledAncestor: boolean) => {
+    let lineNumber = 0;
+    const visit = (blockId: StoryBlockId, depth: number, disabledAncestor: boolean, visible: boolean) => {
         const block = scene.blocks[blockId];
         if (!block) {
             return;
@@ -186,12 +267,15 @@ export function buildVisibleRows(scene: StoryScene, collapsedIds: Set<StoryBlock
         // Disabled propagates down: a disabled container's whole subtree renders muted (and compiles
         // out), so a row is effectively disabled when it or any ancestor is (WI-3 / schema v7).
         const disabled = disabledAncestor || Boolean(block.disabled);
-        rows.push(disabled ? { block, depth, lineNumber: rows.length + 1, disabled } : { block, depth, lineNumber: rows.length + 1 });
-        if (!collapsedIds.has(blockId)) {
-            block.childrenIds.forEach(childId => visit(childId, depth + 1, disabled));
+        lineNumber += 1;
+        if (visible) {
+            rows.push(disabled ? { block, depth, lineNumber, disabled } : { block, depth, lineNumber });
         }
+        // Descend even when nothing below will be drawn: those rows still take their numbers.
+        const childrenVisible = visible && !collapsedIds.has(blockId);
+        block.childrenIds.forEach(childId => visit(childId, depth + 1, disabled, childrenVisible));
     };
-    scene.rootBlockIds.forEach(blockId => visit(blockId, 0, false));
+    scene.rootBlockIds.forEach(blockId => visit(blockId, 0, false, true));
     return rows;
 }
 
@@ -332,6 +416,13 @@ export function isContainerBlock(block: StoryBlock | undefined): boolean {
  * a row wears - its id, its label key and its colour group - is `storyBlockBadge` in the shared row
  * projection, so the editor's left-edge bar and the Dev Mode timeline's hue can never come from two
  * different chains of ifs (U4 WI-1).
+ *
+ * These are now the FALLBACK: a row that maps to a command wears that command's own glyph
+ * ({@link rowCommandId}), so the plate matches the entry in the `/` menu that could have written the
+ * line. A badge id is coarser than a command by design - one `audio` badge covers ten verbs - so
+ * reading the icon from it alone gave every sound row the same note. What is left here is the rows no
+ * command owns (narration, a choice option, an invalid line) and the safety net for any that stop
+ * resolving.
  */
 const BADGE_ICONS: Record<StoryBlockBadgeId, typeof FileText> = {
     narration: FileText,
@@ -365,15 +456,95 @@ const BADGE_ICONS: Record<StoryBlockBadgeId, typeof FileText> = {
 };
 
 /**
- * The row's badge and its left-edge colour bar. `iconColor` comes from the command GROUP (see
- * `storyCommandCategories.ts`), which is why the 13→8 rearrangement changed almost nothing here: the
- * four stage subjects stayed separate colour units precisely so this surface would not lose the
- * distinctions it earns. The two rows that did change category changed on purpose - a screen effect
- * belongs to the scene, a blueprint call is a tool.
+ * The command whose glyph this row wears, or `null` for the rows no command writes.
+ *
+ * `storyVerbCommandId` already states the block→command relation for action payloads - it is what
+ * makes a committed row say "Hide" where the author typed `/hide` - so the plate reads the very same
+ * table rather than a second one that could disagree with the words beside it. The rest of this
+ * function is the kinds that table does not cover, because they are not `StoryActionPayload`s: a
+ * container, a jump, a declaration, a note.
+ *
+ * Two action payloads get an answer the verb table declines to give, and for the same reason in both
+ * cases - the table names the word a ROW SAYS, and stays silent where naming one would be wrong,
+ * while a plate only has to point at the command that could have written the line:
+ *
+ *  - `blueprint` has no verb of its own to print, but `/blueprint` is unambiguously its command;
+ *  - a `displayable` operation outside show/hide/transform (mask, clip, blend …) is inspector-reached
+ *    and has no typed word, yet every one of them arrives through `/fx`.
+ */
+function rowCommandId(block: StoryBlock): string | null {
+    switch (block.kind) {
+        case "action":
+            if (block.payload.action === "blueprint") {
+                return "blueprint";
+            }
+            if (block.payload.action === "displayable") {
+                return storyVerbCommandId(block.payload) ?? "fx";
+            }
+            return storyVerbCommandId(block.payload);
+        case "nodeAction":
+            // Narration and a choice option are text rows, not commands - `/say` writes a dialogue and
+            // `/menu` writes the choice, but nothing writes the option except Enter inside one.
+            if (block.payload.action === "dialogue") return "say";
+            if (block.payload.action === "choice") return "menu";
+            return null;
+        case "control":
+            switch (block.payload.control) {
+                // A branch belongs to its container's command: `/if` is what puts both rows there.
+                case "condition":
+                case "conditionBranch": return "if";
+                // One payload, two commands: `until` present IS the conditional form (see the payload's
+                // note), which is `/until` - the same flag the container header reads.
+                case "repeat": return block.payload.until ? "until" : "repeat";
+                case "parallel": return "parallel";
+                case "race": return "race";
+                case "sequence": return "sequence";
+                case "break": return "break";
+                case "label": return "label";
+                case "goto": return "goto";
+                default: return null;
+            }
+        case "jump":
+            return "jump";
+        case "declaration":
+            return DECLARATION_COMMANDS[block.payload.scope] ?? null;
+        case "note":
+            return "note";
+        default:
+            return null;
+    }
+}
+
+/** The three declaration commands, by the scope their row declares. */
+const DECLARATION_COMMANDS: Record<string, string> = {
+    scene: "declareLocal",
+    saved: "declareVar",
+    persistent: "declarePersis",
+};
+
+/**
+ * The row's badge and its left-edge colour bar.
+ *
+ * `iconColor` comes from the command GROUP (see `storyCommandCategories.ts`), which is why the 13→8
+ * rearrangement changed almost nothing here: the four stage subjects stayed separate colour units
+ * precisely so this surface would not lose the distinctions it earns. The two rows that did change
+ * category changed on purpose - a screen effect belongs to the scene, a blueprint call is a tool.
+ *
+ * The icon comes from the COMMAND (see {@link rowCommandId}), so the two say different things: the
+ * hue files the row by subject, the glyph names the verb. It used to come from the badge id, which is
+ * one step coarser than a command in exactly the places an author looks hardest - ten sound verbs
+ * under one `audio` badge, eight character verbs under one `character` - so a scene of `/bgm`, `/vol`
+ * and `/stop` rows wore three identical notes.
  */
 export function getBlockBadgeInfo(block: StoryBlock): { label: string; icon: typeof FileText; iconColor: string } {
     const badge = storyBlockBadge(block);
-    return { label: translate(badge.labelKey), icon: BADGE_ICONS[badge.id], iconColor: storyRowAccentColor(block) };
+    const commandId = rowCommandId(block);
+    const commandIcon = commandId ? getCommandSpec(commandId)?.icon : null;
+    return {
+        label: translate(badge.labelKey),
+        icon: commandIcon ?? BADGE_ICONS[badge.id],
+        iconColor: storyRowAccentColor(block),
+    };
 }
 
 /**

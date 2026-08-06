@@ -16,8 +16,13 @@ import type { StoryCommandStageObjectKind, StoryCommandTargetKind, StoryPuppetCh
  *  - parser (`storyCommandParser.ts`): source text → args + syntax/grammar issues. Pure.
  *  - resolution (`storyCommandResolution.ts`): name → id, and every check needing project state.
  *
- * Labels are deliberately absent. Command display text resolves through `story.command.<id>.label`;
- * the token itself is a keyword and stays English (`/bg` in every locale).
+ * Labels are deliberately absent — but *keys* are not. Display text resolves through
+ * `story.command.<id>.label` for a command and `story.paramHint.<key>` for a param slot (see
+ * {@link paramHintKey}); this file names the key and never the string, so the grammar itself carries
+ * no locale data. The canonical spellings — a command's token, a param's `name` and `aliases` — stay
+ * English in every locale and are always accepted on input. What a locale adds is an extra spelling,
+ * never a replacement: see `commands/registry.ts` for commands and `commands/localizedParams.ts` for
+ * params.
  */
 
 /** An enum value the author may type. `aliases` are accepted on input; completion and storage use the canonical `value` (bible B6). */
@@ -25,6 +30,20 @@ export type StoryCommandEnumOption = {
     /** The canonical value - what completion inserts and the payload mapping receives. */
     value: string;
     aliases?: readonly string[];
+    /**
+     * Where this option's author-facing word comes from, when `story.enumValue.<value>` is not it.
+     *
+     * Exists for one reason: a value that ALSO appears in the property inspector must read the same
+     * on both surfaces, and the inspector names the thing the value produces rather than the word
+     * that produces it. `t=fade` is one word to the parser but two looks to a reader — 淡入 going in,
+     * 淡出 going out — so the option set for each direction points at the label the inspector already
+     * uses for the preset it will write.
+     *
+     * Display only: the canonical value and every alias keep parsing, and the localized word this
+     * names is added to the accept table beside them (see `commands/localizedEnums.ts`), so the menu
+     * still only ever shows a word it would take back.
+     */
+    labelKey?: string;
 };
 
 export type StoryCommandParamType =
@@ -121,7 +140,22 @@ export type StoryCommandParamType =
     | { kind: "enum"; options: readonly StoryCommandEnumOption[] }
     /** A bare word that means itself, e.g. the `click` in `/wait click`. Used inside unions. */
     | { kind: "keyword"; value: string }
-    | { kind: "number"; min?: number; max?: number; integer?: boolean }
+    | {
+          kind: "number";
+          min?: number;
+          max?: number;
+          integer?: boolean;
+          /**
+           * A unit this slot's value may be written with — `s` on every seconds param, so `d=1s`
+           * parses exactly like `d=1`.
+           *
+           * A **suffix, never a scale**: `1s` and `1` are the same number, and nothing converts. It
+           * exists because the committed row prints the unit (it is what makes `持续时间=1` read as a
+           * time rather than a count), and an author must be able to type back what a row shows them.
+           * Optional on input in every locale — the bare number is still the canonical spelling.
+           */
+          unit?: string;
+      }
     | { kind: "boolean" }
     | { kind: "color" }
     /**
@@ -210,6 +244,18 @@ export function findParam(def: StoryCommandDef, key: string): StoryCommandParam 
         ?? null;
 }
 
+/**
+ * The `story.paramHint.*` key a param answers to: its explicit `hint`, else its payload `name`.
+ *
+ * Lives here rather than beside the ghost hint that first needed it, because it is now the one name
+ * the whole author-facing surface reads a slot by — the ghost, the candidate menu, the manual, the
+ * "why won't this commit" reason, and the localized param alias table. Shared across commands on
+ * purpose: a slot is named once and every command carrying it says the same word.
+ */
+export function paramHintKey(param: StoryCommandParam): string {
+    return param.hint ?? param.name;
+}
+
 export function positionalParams(def: StoryCommandDef): readonly StoryCommandParam[] {
     return def.params.filter(param => param.positional);
 }
@@ -221,6 +267,29 @@ export function namedParams(def: StoryCommandDef): readonly StoryCommandParam[] 
 /** Normalize `type` to a list, so callers never branch on the union-vs-single shape. */
 export function paramTypes(param: StoryCommandParam): readonly StoryCommandParamType[] {
     return Array.isArray(param.type) ? param.type : [param.type as StoryCommandParamType];
+}
+
+/**
+ * The number a value spells, or `null` when it spells none — the one place a numeric slot's text
+ * becomes a number, so the parser's verdict and the resolver's value can never disagree about
+ * whether `1s` is a number.
+ *
+ * Range and integer-ness are NOT checked here: the parser reports those as `badValue` against the
+ * declared type, and the resolver has already been told the value is well-formed.
+ */
+export function numberValueOf(type: Extract<StoryCommandParamType, { kind: "number" }>, raw: string): number | null {
+    const trimmed = raw.trim();
+    if (trimmed === "") {
+        return null;
+    }
+    const unit = type.unit;
+    // `trimmed.length > unit.length` so a bare `s` stays what it is — nothing — rather than becoming
+    // an empty string that `Number` would happily read as 0.
+    const body = unit && trimmed.length > unit.length && trimmed.toLowerCase().endsWith(unit.toLowerCase())
+        ? trimmed.slice(0, -unit.length)
+        : trimmed;
+    const parsed = Number(body);
+    return Number.isFinite(parsed) ? parsed : null;
 }
 
 /** Resolve an author-typed enum value (canonical or alias) to its option. Case-insensitive. */

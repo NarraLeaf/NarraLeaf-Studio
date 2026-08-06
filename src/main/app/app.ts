@@ -514,12 +514,19 @@ export class App extends BaseApp {
      * picker, the project wizard, the native "Open Recent" menu, and the title-bar switcher - so
      * "one project, one window" holds however the user got there.
      *
-     * A project that is already open is *focused*, never opened a second time, and focusing it
-     * never retires the window the user came from: asking to go to another project is not asking
-     * to close the one you are in. Only a genuine "open in this window" that actually launches
-     * something new takes the opener's place, and only once the new window reports a working
-     * project - an error screen is "ready" too, and trading a working workspace for a dead end is
-     * exactly the thing to avoid.
+     * A project that is already open is *focused*, never opened a second time, so one project
+     * stays one window whether the switch found it or launched it.
+     *
+     * `replaceOpener` is a switch rather than an "open alongside": the window the user came from is
+     * retired once the project they asked for is on screen - whether that meant launching it or
+     * focusing the window that already had it. Leaving the opener up in the second case is the same
+     * bug as leaving it up in the first, seen from the other side: the author asked to go to another
+     * project and got two windows either way.
+     *
+     * Retirement waits for the new window to report a *working* project - an error screen is "ready"
+     * too, and trading a working workspace for a dead end is exactly the thing to avoid - and never
+     * retires a window into itself (re-opening the project you are already in is a no-op, not a
+     * close).
      *
      * The launcher is the exception to all of it: it is a home screen rather than somewhere work
      * happens, so it always steps aside once the project it was asked for is on screen.
@@ -542,16 +549,26 @@ export class App extends BaseApp {
         // and return-to-launcher, which would otherwise interrupt the open or flash the home
         // window.
         //
-        // Skipping the close guard also skips the flush it performs, so this does it itself. The
-        // comment that used to sit here said "changes auto-save, so nothing is lost"; the auto-save
-        // is debounced, and forceClosing a workspace 300ms after the last keystroke lost exactly
-        // that keystroke.
+        // Skipping the close guard also skips the work it does on the way out, so this repeats it:
+        //   - the flush, because the auto-save is debounced, and forceClosing a workspace 300ms
+        //     after the last keystroke lost exactly that keystroke (the comment that used to sit
+        //     here said "changes auto-save, so nothing is lost");
+        //   - the checkpoint, because after this the project has no window and nothing is watching
+        //     its working tree. Switching is the ordinary way to leave a project, so a switch that
+        //     skipped it would drop the session record every time - the one thing checkpointing on
+        //     close exists to prevent.
+        // Both are bounded and neither throws, and the window says which one it is waiting on
+        // exactly as it would during a close.
         const retireOpener = async () => {
             if (opener.isClosed()) {
                 return;
             }
             if (opener.getWindowType() === WindowAppType.Workspace) {
-                await this.flushWorkspacePendingSaves(opener as AppWindow<WindowAppType.Workspace>);
+                const workspace = opener as AppWindow<WindowAppType.Workspace>;
+                this.reportWorkspaceCloseStage(workspace, "saving");
+                await this.flushWorkspacePendingSaves(workspace);
+                this.reportWorkspaceCloseStage(workspace, "checkpoint");
+                await this.checkpointBeforeClose(workspace);
             }
             if (!opener.isClosed()) {
                 opener.forceClose();
@@ -565,7 +582,10 @@ export class App extends BaseApp {
                 existing.win.restore();
             }
             existing.focus();
-            if (openerIsLauncher) {
+            // `existing !== opener` guards the one case that is not a switch at all: asking for the
+            // project this window already holds (the File menu's recent list does not hide it), which
+            // must focus the window rather than close it.
+            if ((openerIsLauncher || replaceOpener) && existing !== opener) {
                 await retireOpener();
             }
             return existing;

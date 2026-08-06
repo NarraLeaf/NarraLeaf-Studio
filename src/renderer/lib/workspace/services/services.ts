@@ -3,7 +3,13 @@ import type { FsTextEncoding } from "@shared/types/textEncoding";
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { Porject, ProjectConfig, ProjectMetadata } from "../project/project";
 import type { ProjectIconSet, ProjectIconSource } from "@shared/types/projectIcons";
-import type { LintingConfiguration, MobileConfiguration, NetworkConfiguration, SecurityConfiguration } from "../project/configuration";
+import type {
+    LintingConfiguration,
+    MobileConfiguration,
+    NetworkConfiguration,
+    SecurityConfiguration,
+    WebOptimizationConfiguration,
+} from "../project/configuration";
 import type { LintContext } from "@/lib/lint/context";
 import type { LintReport } from "@/lib/lint/types";
 import type { LintRunOptions } from "@/lib/lint/engine";
@@ -42,7 +48,7 @@ import type {
 import type { DocumentSource } from "@shared/documents/documentSource";
 import { Asset, AssetsMap, AssetSource } from "./assets/types";
 import { ServiceRegistry } from "./serviceRegistry";
-import { AssetData, AssetType } from "./assets/assetTypes";
+import { AssetCategory, AssetData, AssetType } from "./assets/assetTypes";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { Character } from "./character/Character";
 import { CharacterAppearanceKind, CharacterGroup } from "./character/types";
@@ -150,6 +156,8 @@ enum Services {
     UIDocument = "uiDocument",
     RuntimeBridge = "runtimeBridge",
     UIEditorState = "uiEditorState",
+    /** Every undo stack in the workspace, scoped by document; see `history/HistoryService` */
+    History = "history",
     UIEditorHistory = "uiEditorHistory",
     UIGraph = "uiGraph",
     LocalBlueprint = "localBlueprint",
@@ -205,6 +213,8 @@ enum Services {
     WorkspaceFreeze = "workspaceFreeze",
     /** "The working tree changed under the editors": drops in-memory documents and re-reads them */
     WorkspaceReload = "workspaceReload",
+    /** Recovery mode's own state: which subsystems have been tried, and what they said */
+    Recovery = "recovery",
     // Plugin = "plugin",
 }
 
@@ -219,6 +229,8 @@ interface IProjectService extends IService {
     updateNetworkConfiguration(patch: Partial<NetworkConfiguration>): Promise<ProjectConfig>;
     getSecurityConfiguration(): SecurityConfiguration;
     updateSecurityConfiguration(patch: Partial<SecurityConfiguration>): Promise<ProjectConfig>;
+    getWebOptimizationConfiguration(): WebOptimizationConfiguration;
+    updateWebOptimizationConfiguration(patch: Partial<WebOptimizationConfiguration>): Promise<ProjectConfig>;
     getLintingConfiguration(): LintingConfiguration;
     updateLintingConfiguration(patch: Partial<LintingConfiguration>): Promise<ProjectConfig>;
     updateMobileConfiguration(patch: Partial<MobileConfiguration>): Promise<ProjectConfig>;
@@ -802,7 +814,8 @@ interface IStoryService extends IService {
     setDefaultStory(storyId: StoryId | undefined): void;
     createStory(name: string): StoryLibraryEntry;
     renameStory(storyId: StoryId, name: string): boolean;
-    deleteStory(storyId: StoryId): boolean;
+    /** Asynchronous: undo needs the document, which may only be on disk. */
+    deleteStory(storyId: StoryId): Promise<boolean>;
     loadLibrary(): Promise<StoryLibraryIndex>;
     getLibraryIndex(): StoryLibraryIndex;
     onLibraryChanged(handler: (index: StoryLibraryIndex) => void): () => void;
@@ -818,7 +831,7 @@ interface IStoryService extends IService {
         sequences?: StoryAnimationSequence[];
     }): Promise<StoryAnimationAsset>;
     updateAnimationAsset(animationId: StoryAnimationAssetId, updater: (asset: StoryAnimationAsset) => StoryAnimationAsset): StoryAnimationAsset;
-    deleteAnimationAsset(animationId: StoryAnimationAssetId): boolean;
+    deleteAnimationAsset(animationId: StoryAnimationAssetId): Promise<boolean>;
     onAnimationsChanged(handler: (index: StoryAnimationIndex) => void): () => void;
     registerPluginAction(registration: StoryPluginActionRegistration): () => void;
     unregisterPluginAction(actionId: string): boolean;
@@ -863,6 +876,22 @@ interface IStoryService extends IService {
     canExportStoryPackage(): false;
 }
 
+/**
+ * The workspace's undo stacks. Structural only - the concrete types live with the implementation
+ * (`history/HistoryService`), because a scope's snapshot type is whatever its owner says it is.
+ */
+interface IHistoryService extends IService {
+    canUndo(scopeId?: string): boolean;
+    canRedo(scopeId?: string): boolean;
+    undo(scopeId?: string): boolean;
+    redo(scopeId?: string): boolean;
+    clearScope(scopeId: string): void;
+    clearAll(): void;
+    setActiveScope(scopeId: string | null): void;
+    getActiveScopeId(): string | null;
+    isRestoring(): boolean;
+}
+
 interface IUIEditorHistoryService extends IService {
     getLimit(): number;
     setLimit(limit: number): void;
@@ -890,12 +919,13 @@ interface ICharacterService extends IService {
     listCharacter(): Character[];
     createCharacter(name: string, kind?: CharacterAppearanceKind): Character;
     renameCharacter(id: string, name: string): boolean;
-    deleteCharacter(id: string): boolean;
+    /** Asynchronous because the baked avatar has to be read before it is deleted, for undo. */
+    deleteCharacter(id: string): Promise<boolean>;
     listGroups(): CharacterGroup[];
     getGroup(id: string): CharacterGroup | undefined;
     createGroup(name: string): CharacterGroup;
     renameGroup(id: string, name: string): boolean;
-    deleteGroup(id: string): boolean;
+    deleteGroup(id: string): Promise<boolean>;
     assignCharacterToGroup(characterId: string, groupId?: string): boolean;
     listCharactersByGroup(groupId?: string): Character[];
     isDirty(): boolean;
@@ -930,8 +960,9 @@ interface IAssetService extends IService {
     fetch<T extends AssetType>(asset: Asset<T, AssetSource>): Promise<RequestStatus<AssetData<T>>>;
     exists<T extends AssetType>(asset: Asset<T, AssetSource>): boolean;
     importLocalAssets<T extends AssetType>(type: T): Promise<RequestStatus<RequestStatus<Asset<T, AssetSource.Local>>[]>>;
-    importRemoteAsset<T extends AssetType>(type: T, url: string): Promise<RequestStatus<Asset<T, AssetSource.Remote>>>;
-    clearRemoteCache(assetId?: string): Promise<void>;
+    importRemoteAsset(category: AssetCategory, url: string, groupId?: string): Promise<RequestStatus<Asset<AssetType, AssetSource.Remote>>>;
+    refreshRemoteAsset<T extends AssetType>(asset: Asset<T, AssetSource.Remote>): Promise<RequestStatus<{ asset: Asset<T, AssetSource>; changed: boolean }>>;
+    hasRemoteSnapshot(assetId: string): Promise<boolean>;
 }
 
 interface IServiceAssetsService extends IService {
@@ -1040,6 +1071,10 @@ interface IVoiceService extends IService {
     loadDocument(locale: string): Promise<VoiceDocument>;
     getDocumentIfLoaded(locale: string): VoiceDocument | undefined;
     onDocumentChanged(handler: (event: { locale: string; document: VoiceDocument }) => void): () => void;
+    /** Pull in whatever `getLineText` needs for this voice language before reading it. */
+    loadLineTexts(locale: string): Promise<void>;
+    /** The line as the actor for this voice language reads it - the translation when there is one. */
+    getLineText(locale: string, unitId: string, sourceText: string): string;
     flushPendingChanges(): Promise<void>;
 }
 
@@ -1132,6 +1167,21 @@ interface IWorkspaceReloadService extends IService {
     registerReloader(participant: ExternalReloadParticipant): () => void;
 }
 
+/**
+ * Recovery mode's own state: which subsystems have been tried, and what they said.
+ *
+ * Present in every workspace so `Services.Recovery` resolves the same way everywhere, and empty in
+ * all but a recovery shell - see RecoveryService for why the loading is staged rather than automatic.
+ */
+interface IRecoveryService extends IService {
+    getProbes(): readonly import("./core/RecoveryService").RecoveryProbeState[];
+    isRunning(): boolean;
+    /** Never rejects: a probe's failure is its result, not an exception. */
+    runProbe(id: import("./core/RecoveryService").RecoveryProbeId): Promise<void>;
+    runAllProbes(): Promise<void>;
+    onChanged(listener: () => void): () => void;
+}
+
 // Plugin Services
 interface IPluginService extends IService { }
 
@@ -1152,10 +1202,10 @@ export {
     IService, IServiceAssetsService, IPanelStateService, IStorageService, IStoryService,
     ITextureService, IUIService, IUuidService, IVersionControlService, IWorkspaceFreezeService,
     IWorkspaceReloadService, IVideoService,
-    ICharacterService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
+    ICharacterService, IHistoryService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, IConsoleService, UIEditorStateEvents,
     IProjectDependencyService, IVoiceService, IVariableRegistryService, IAudioTrackService, IPuppetDescriptionService,
-    ITestRunService,
+    ITestRunService, IRecoveryService,
     Services, WorkspaceContext
 };
 

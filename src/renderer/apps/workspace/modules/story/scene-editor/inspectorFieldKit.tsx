@@ -14,7 +14,6 @@ import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftE
  */
 
 export const FIELD_LABEL_CLASS = "block text-xs font-medium text-fg-muted mb-1";
-export const SELECT_CLASS = "[&>button]:h-9 [&>button]:min-h-[34px] [&>button]:py-0";
 
 export type TFunc = Translator["t"];
 
@@ -106,7 +105,6 @@ export function SelectField(props: { label: string; options: SelectOption[]; val
             <Select
                 fullWidth
                 portalMenu
-                className={SELECT_CLASS}
                 options={props.options}
                 value={props.value}
                 onChange={props.onChange}

@@ -119,6 +119,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_INTERVAL,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_READ_TEXT,
     BLUEPRINT_NODE_TYPE_GAME_GET_SOUND_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_END_MODE,
     BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_FADE_DURATION,
@@ -162,6 +163,9 @@ import {
     BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_CURRENT_LANGUAGE,
     BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT,
     BLUEPRINT_NODE_TYPE_LOCALIZATION_HAS_TEXT,
+    BLUEPRINT_NODE_TYPE_VOICE_GET_AVAILABLE_LANGUAGES,
+    BLUEPRINT_NODE_TYPE_VOICE_GET_LANGUAGE,
+    BLUEPRINT_NODE_TYPE_VOICE_PLAY,
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
     BLUEPRINT_NODE_TYPE_MATH_ABS,
@@ -1374,6 +1378,7 @@ function resolvePageNodeOutput(portId: string, runtime?: DataPinResolveRuntime):
 const GAME_PREFERENCE_OUTPUT_KEYS: Record<string, { portId: string; key: string }> = {
     [BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD]: { portId: "autoForward", key: "autoForward" },
     [BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED]: { portId: "skip", key: "skip" },
+    [BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_READ_TEXT]: { portId: "skipReadText", key: "skipReadText" },
     [BLUEPRINT_NODE_TYPE_GAME_GET_GAME_SPEED]: { portId: "gameSpeed", key: "gameSpeed" },
     [BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED]: { portId: "cps", key: "cps" },
     [BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_VOLUME]: { portId: "voiceVolume", key: "voiceVolume" },
@@ -2527,7 +2532,11 @@ function resolveSelfOutput(
             selfNode.type === BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT ||
             selfNode.type === BLUEPRINT_NODE_TYPE_LOCALIZATION_HAS_TEXT ||
             selfNode.type === BLUEPRINT_NODE_TYPE_LOCALIZATION_FORMAT_TEXT ||
-            selfNode.type === BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_AVAILABLE_LANGUAGES) &&
+            selfNode.type === BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_AVAILABLE_LANGUAGES ||
+            // Voice getters and Play Voice, all latent, all publishing onto `value`.
+            selfNode.type === BLUEPRINT_NODE_TYPE_VOICE_GET_LANGUAGE ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_VOICE_GET_AVAILABLE_LANGUAGES ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_VOICE_PLAY) &&
         (portId === "index" ||
             portId === "item" ||
             portId === "value" ||

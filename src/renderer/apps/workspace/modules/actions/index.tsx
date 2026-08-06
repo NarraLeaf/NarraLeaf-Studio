@@ -100,8 +100,11 @@ export const fileActionGroup: ModuleActionGroup = {
                 void (async () => {
                     const result = await getInterface().selectFolder();
                     if (!result.success || !result.data?.path) return;
-                    // Focuses the project's window if it already has one, else opens alongside.
-                    await getInterface().workspace.launch({ projectPath: result.data.path });
+                    // A switch: this window is retired once the chosen project loads (it is focused
+                    // instead if some other window already has it). Same rule as the title-bar
+                    // switcher - going to another project is going there, not opening a second
+                    // window - while File ▸ New above still opens alongside.
+                    await getInterface().workspace.launch({ projectPath: result.data.path }, true);
                 })();
             },
             order: 1,

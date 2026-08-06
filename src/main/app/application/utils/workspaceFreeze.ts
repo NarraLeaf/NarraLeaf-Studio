@@ -127,7 +127,12 @@ export function workspaceFrozenMessage(reason: WorkspaceFreezeKind, operation: W
         // naming it is the difference between a refusal and a dead end.
         : reason === "merge"
             ? "Finish the merge in the version panel - choose which side to keep for each file - and try again."
-            : "Unfreeze the workspace and try again.";
+            // Recovery mode has no "unfreeze" either, and refusing here is not merely consistency:
+            // the shell starts almost none of the services a build reads from, so what it produced
+            // would be a game missing most of the project rather than a build of it.
+            : reason === "recovery"
+                ? "Leave recovery mode - this window reopens as a normal workspace - and try again."
+                : "Unfreeze the workspace and try again.";
     return `The ${operation} is unavailable while this workspace is frozen: what it produced would `
         + `not be what you are looking at. ${remedy}`;
 }

@@ -36,9 +36,11 @@ import type {
     RuntimePluginDescriptor,
     WorkspacePluginDescriptor,
 } from "./plugins";
+import type { CacheClearResult, CacheInventoryReport } from "./cacheInventory";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
 import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult } from "./uiTemplateRegistry";
+import type { RemoteAssetFetchResult, RemoteAssetValidators } from "./remoteAsset";
 import type {
     PrivilegedActor,
     PrivilegedBashExecuteResult,
@@ -197,6 +199,16 @@ export interface RendererPreloadedInterface {
             filePath?: string;
             byteLength?: number;
         }>>;
+        /**
+         * Reopen this window as a recovery shell (`true`) or as an ordinary workspace (`false`).
+         *
+         * Reloads the window, so the caller does not outlive the call. Nothing is flushed on the way
+         * in - see the handler - which is why the surface offering this has to ask the author first
+         * when the workspace actually came up.
+         */
+        setRecoveryMode(enabled: boolean, reason?: string): Promise<RequestStatus<void>>;
+        /** Reveal this window's project folder in the OS file manager. */
+        openProjectFolder(): Promise<RequestStatus<void>>;
         onConfirmClose(handler: () => Promise<RequestStatus<{ confirmed: boolean }>>): AppEventToken;
         /**
          * Write out every pending auto-save and report whether it all landed. Main blocks the close
@@ -266,7 +278,18 @@ export interface RendererPreloadedInterface {
             getGlobalState<K extends GlobalStateKeys>(key: K): Promise<RequestStatus<{ value: GlobalStateValue<K> }>>;
             setGlobalState<K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>): Promise<RequestStatus<void>>;
             getAllGlobalState(): Promise<RequestStatus<{ settings: Record<string, any> }>>;
-            /** Subscribe to global-state changes broadcast by the main process. */
+            /**
+             * Remove stored values so the next read resolves the default. Not the same as writing
+             * the default: several keys resolve a fallback only when nothing is stored at all.
+             * Keys that are not preferences (the project history, per-project statistics) are
+             * refused by the host and come back under `refused`.
+             */
+            deleteGlobalState(keys: string[]): Promise<RequestStatus<{ deleted: string[]; refused: string[] }>>;
+            /**
+             * Subscribe to global-state changes broadcast by the main process. A delete arrives
+             * as a change whose `value` is undefined - resolve it through the setting's default
+             * rather than storing it.
+             */
             onGlobalStateChanged(handler: (change: { key: GlobalStateKeys; value: any }) => void): AppEventToken;
         };
         addRecentProject(name: string, path: string): Promise<RequestStatus<void>>;
@@ -284,6 +307,30 @@ export interface RendererPreloadedInterface {
             canceled: boolean;
             filePath?: string;
             byteLength?: number;
+        }>>;
+        /**
+         * Whether a download mirror answers. In the host because the renderer never opens a
+         * network connection of its own, a URL the user just typed included.
+         */
+        probeDownloadSource(url: string): Promise<RequestStatus<{
+            reachable: boolean;
+            status?: number;
+            error?: string;
+        }>>;
+        /** Sizes of the caches Studio can throw away. Measured on demand, so this is not instant. */
+        getCacheInventory(): Promise<RequestStatus<CacheInventoryReport>>;
+        /** Empty the named buckets; ids this build does not know come back under `failed`. */
+        clearCaches(ids: string[]): Promise<RequestStatus<CacheClearResult>>;
+        /** Write a settings document to a file the user picks. */
+        exportSettings(defaultFileName: string, content: string): Promise<RequestStatus<{
+            canceled: boolean;
+            filePath?: string;
+        }>>;
+        /** Read a settings document the user picks; parsing happens in the renderer. */
+        importSettings(): Promise<RequestStatus<{
+            canceled: boolean;
+            filePath?: string;
+            content?: string;
         }>>;
     };
 
@@ -660,6 +707,18 @@ export interface RendererPreloadedInterface {
     uiTemplates: {
         registryFetch(): Promise<RequestStatus<UITemplateFetchResult>>;
         fetchBundle(templateId: string): Promise<RequestStatus<UITemplateBundle>>;
+    };
+
+    assets: {
+        /**
+         * The bytes behind a remote asset's URL, fetched by main.
+         *
+         * The only way a renderer may obtain them: renderers do not talk to the network, so neither
+         * `fetch()` nor an `<img src>` pointed at a project's remote URL is allowed. Pass
+         * `validators` from the asset's record to make the request conditional — an unchanged asset
+         * then answers `not-modified` and transfers nothing.
+         */
+        fetchRemote(url: string, validators?: RemoteAssetValidators): Promise<RequestStatus<RemoteAssetFetchResult>>;
     };
 
     /**

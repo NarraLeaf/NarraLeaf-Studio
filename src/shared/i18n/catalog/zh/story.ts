@@ -18,6 +18,7 @@ export const story = {
             other: "{count} 行",
         },
         sceneActions: "场景操作",
+        chapterActions: "章节操作",
         setEntryScene: "设为入口场景",
         documentUnavailable: "故事文档不可用",
         newStoryPlaceholder: "输入故事名称",
@@ -25,9 +26,14 @@ export const story = {
         newSceneTitle: "新建场景",
         newScenePlaceholder: "输入场景名称",
         deleteStoryConfirm: "删除故事“{name}”？",
-        deleteStoryDetail: "此操作将从项目中移除该故事文档，且无法撤销",
+        deleteStoryDetail: "此操作将从工程中移除该故事文档",
+        deleteChapterConfirm: "删除章节“{name}”？",
+        deleteChapterDetail: {
+            one: "章节里的 {count} 个场景会一并删除",
+            other: "章节里的 {count} 个场景会一并删除",
+        },
         deleteSceneConfirm: "删除场景“{name}”？",
-        deleteSceneDetail: "此操作将从故事文档中移除该场景及其所有区块，且无法撤销",
+        deleteSceneDetail: "此操作将移除该场景及其所有区块，跳转到它的行会失去指向",
     },
     script: {
         exportScene: "导出为脚本…",
@@ -290,6 +296,7 @@ export const story = {
         starred: "已收藏",
         searchPlaceholder: "搜索动作",
         noActions: "未找到动作",
+        scopedTo: "{name} 可用的动作",
         addStarred: "添加到收藏",
         removeStarred: "从收藏中移除",
     },
@@ -332,9 +339,11 @@ export const story = {
         track: "音轨",
         displayName: "显示名",
         seekTime: "秒数",
-        cameraOperation: "平移 / 推拉 / 旋转 / 压暗 / 运镜 / 复位",
+        cameraOperation: "平移 / 缩放 / 旋转 / 压暗 / 运镜 / 复位",
         cameraAmount: "数值或位置",
-        duration: "秒数",
+        // 这个词会同时出现在三处：候选菜单的左栏、行内提示 `<持续时间>`、以及作者可以直接敲的键
+        // （`持续时间=1` 与 `d=1` 等价）。所以它必须是一个不含空格、在同一条指令里不重名的词。
+        duration: "持续时间",
         transition: "转场",
         reveal: "显隐动画",
         placement: "位置",
@@ -350,6 +359,68 @@ export const story = {
         opacity: "不透明度",
         size: "字号",
         z: "层级",
+    },
+
+    /**
+     * 指令行里"值"的中文写法——三张词表的最后一张（指令名 / 参数名 / 值）。
+     *
+     * 每个词必须是**单个词**（不含空格），并且在同一个可选值集合内互不重复：重名的那个会被
+     * `localizedEnums.ts` 丢掉，作者就再也打不出它。`zoom` 在转场里是"放大显现"、在镜头里是
+     * "推拉"，共用一个键，所以取两边都说得通的"缩放"，并让镜头行的措辞跟着它走。
+     * 未翻译的词（代码语言这类专有名词）直接留空，回落到英文原词——那一定是解析器认得的写法。
+     */
+    enumValue: {
+        // 转场词表（`t=`）
+        fade: "淡变",
+        slide: "推移",
+        "slide-left": "左滑",
+        "slide-right": "右滑",
+        "slide-up": "上滑",
+        "slide-down": "下滑",
+        circle: "圆形",
+        wipe: "擦除",
+        iris: "光圈",
+        blur: "模糊",
+        blinds: "百叶",
+        "barn-door": "对开门",
+        clock: "时钟",
+        fan: "风扇",
+        dots: "圆点",
+        black: "黑场",
+        darkness: "压暗",
+        none: "无",
+        // `t=` 在显隐动画里能落到的另外几个变换预设——和右侧检查器"预设"下拉是同一个字段，
+        // 用同一批词，作者在哪边选都读作同一件事。
+        scale: "比例",
+        opacity: "不透明度",
+        // 位置（`at=`）与镜头的位置型数值
+        left: "左",
+        center: "居中",
+        right: "右",
+        // 镜头操作
+        pan: "平移",
+        zoom: "缩放",
+        rotate: "旋转",
+        darken: "压暗",
+        motion: "运镜",
+        reset: "复位",
+        // 变量类型
+        boolean: "布尔",
+        number: "数字",
+        string: "文本",
+        // 专有名词，中文里也照写——大小写折叠后与原词相同，词表会把它丢掉并回落到原词。
+        json: "JSON",
+    },
+
+    /**
+     * 数值的单位——第三张词表之后的第四张（指令名 / 参数名 / 枚举值 / 单位）。
+     *
+     * 和前三张一样，写在这里的词既是**显示**的写法，也是作者**能敲进去**的写法：`持续时间=1秒` 与
+     * `d=1s` 完全等价。所以它必须是单个词、不含空格、不以数字开头，否则 `localizedUnits.ts` 会丢掉它，
+     * 界面就会显示一个解析不了的后缀。
+     */
+    unit: {
+        s: "秒",
     },
 
     view: {
@@ -443,6 +514,8 @@ export const story = {
     },
     rows: {
         placeholderDialogue: "对话…",
+        placeholderDialogueStart: "使用 {name} 开始对话，或使用 {trigger} 插入角色动作",
+        placeholderDialogueContinue: "使用 {name} 继续对话，或使用 {trigger} 插入角色动作",
         placeholderNarration: "旁白…",
         placeholderChoicePrompt: "选项提示…",
         placeholderChoiceText: "选项文本…",
@@ -456,6 +529,7 @@ export const story = {
         playFromRow: "从这一行开始播放",
         playBranch: "试玩这个分支",
         insertPlaceholder: "输入旁白，{trigger} 插入动作，# 选择角色…",
+        insertPlaceholderCharacter: "为 {name} 选择一个动作…",
         noCategoryActionFound: "未找到{category}动作",
         actionTypes: "动作类型",
         noCharacterFound: "未找到角色",
@@ -522,6 +596,30 @@ export const story = {
         playing: "播放中",
         ended: "已播放到场景结尾",
         endedAtJump: "在场景跳转处停止",
+        diagnostics: {
+            targetNotFound: "找不到预览目标行，改为预览场景开头。",
+            targetUnreachable: "预览目标从场景开头走不到，改为预览场景结尾。",
+            repeatedGroupOnce: "预览把重复组只执行一次。",
+            sceneJumpIgnored: "预览会忽略场景跳转。",
+            choiceNotTaken: "预览假定前面这个选项的分支都没有被选中。",
+            conditionUnresolved: "条件 `{expression}` 无法求值，在预览里按 false 处理。",
+            blueprintConditionFalse: "蓝图条件在预览里按 false 处理。",
+            persistentConditionDefaults: "持久化变量的条件在预览里按默认值求值。",
+            videoSkipped: "预览不播放视频。",
+            ambienceSkipped: "预览不播放氛围效果。",
+            storyActionSkipped: "预览不模拟故事动作蓝图的效果。",
+            displayableNotFound: "找不到显示对象：{target}",
+            displayableUnnamed: "（未命名）",
+            persistentAssignmentSkipped: "预览不会写入持久化变量。",
+            assignmentUnresolved: "表达式 `{expression}` 无法求值，预览里跳过了这次赋值。",
+            blueprintCallEmpty: "蓝图 `{name}()` 不在预览里运行，读到的是空值。",
+            persistentReadEmpty: "持久化变量在预览里读到的是空值。",
+            sceneVisitUntracked: "预览不记录场景到访情况，`visited({name})` 按 false 处理。",
+            choicePickUntracked: "预览不记录选项选择情况，`picked({name})` 按 false 处理。",
+            presetNotFoldable: "{preset} 变换暂时无法折叠进角色出场。",
+            animationNotFound: "找不到故事动画：{animationId}",
+            animationIdMissing: "动画变换缺少 animationId。",
+        },
     },
     blueprintCard: {
         openAria: "打开故事动作蓝图",
@@ -624,7 +722,10 @@ export const story = {
         declareVar: { label: "存档变量", detail: "声明跟随存档的变量" },
         declarePersis: { label: "全局变量", detail: "声明应用级变量，界面蓝图可读取" },
         if: { label: "条件", detail: "按条件分支" },
-        menu: { label: "选项", detail: "让玩家做出选择" },
+        // 「菜单」而不是「选项」：选项是它的子行的名字（containerHeader.option），两者同名时
+        // 「@选项 要回头吗？」下面挂着一串「选项 …」，读起来像同一种东西套了两层。英文本来就是
+        // Menu/Option 两个词，这里只是把中文名对回去。
+        menu: { label: "菜单", detail: "让玩家做出选择" },
         repeat: { label: "重复", detail: "按设定次数重复执行所含动作——按条件循环请用 /until" },
         until: { label: "直到", detail: "重复执行所含动作，直到条件成立为止——每轮开始前检查" },
         break: { label: "跳出", detail: "跳出本行所在的重复组" },
@@ -728,13 +829,15 @@ export const story = {
         nvl: "NVL 块",
         blueprint: "蓝图",
         effect: "{effect} 屏幕特效",
+        // 镜头行的措辞就是作者敲进去的那个词（`story.enumValue.*`）——行里读到的和手册里教的
+        // 必须是同一个词，否则又回到"打的是缩放、显示的是推拉"那种割裂。
         cameraOp: {
             pan: "平移",
-            zoom: "推拉",
+            zoom: "缩放",
             rotate: "旋转",
-            darken: "压暗舞台",
+            darken: "压暗",
             motion: "运镜",
-            reset: "复位镜头",
+            reset: "复位",
         },
         condition: "条件",
         branch: "{branch} 分支",
@@ -767,6 +870,13 @@ export const story = {
         playFromHere: "从此行播放",
         openInspector: "打开检查器",
         delete: "删除",
+    },
+    // 这几个删除留下的撤销步骤叫什么（"撤销 删除场景 At the Station"）。
+    history: {
+        deleteScene: "删除场景 {name}",
+        deleteChapter: "删除章节 {name}",
+        deleteStory: "删除故事 {name}",
+        deleteAnimation: "删除运动 {name}",
     },
     keybindings: {
         find: "查找和替换",

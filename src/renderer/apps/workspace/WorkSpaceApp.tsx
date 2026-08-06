@@ -1,6 +1,7 @@
-import { LoadingScreen, MissingProjectConfigScreen } from "./components";
+import { MissingProjectConfigScreen } from "./components";
 import { ErrorScreen } from "./components/ErrorScreen";
 import { WorkspaceClosingOverlay } from "./components/WorkspaceClosingOverlay";
+import { WorkspaceOpeningOverlay } from "./components/WorkspaceOpeningOverlay";
 import { WorkspaceLayout } from "./components/layout";
 import { WorkspaceProvider, useWorkspace } from "./context";
 import { useModuleLoader } from "./hooks/useModuleLoader";
@@ -9,6 +10,7 @@ import { useFileMenu } from "./hooks/useFileMenu";
 import { useMenuActionHandler } from "./hooks/useMenuActionHandler";
 import { useNativeMenuSync } from "./hooks/useNativeMenuSync";
 import { useWorkspacePlugins } from "./hooks/useWorkspacePlugins";
+import { useRecoveryOffer } from "./hooks/useRecoveryOffer";
 import { RegistryProvider } from "./registry";
 import { WorkspaceAssetDragProvider } from "./dnd/WorkspaceAssetDragProvider";
 import { PreviewBlueprintNavigateBridge } from "./modules/blueprint-lite/PreviewBlueprintNavigateBridge";
@@ -20,10 +22,17 @@ import { isWorkspaceStartupError, WorkspaceStartupErrorKind } from "@/lib/worksp
  * Provides context and renders the workspace layout
  */
 function WorkspaceContent() {
+    const { recovery } = useWorkspace();
+
     // Load all built-in modules (panels, editors, actions)
     useModuleLoader();
     useWorkspacePlugins();
-    useWorkspaceEditorSession();
+    useRecoveryOffer();
+    // Tabs are not restored into a recovery window. The session on disk names scenes, surfaces and
+    // characters, and in this mode most of those services have not started - so restoring would
+    // reopen a screenful of tabs that can only report that their subject is missing, over the one
+    // panel that can say why.
+    useWorkspaceEditorSession({ enabled: !recovery });
     useFileMenu();
     useMenuActionHandler();
     useNativeMenuSync();
@@ -38,12 +47,12 @@ function WorkspaceContent() {
 }
 
 function InitializedWorkspace({ children }: { children: React.ReactNode }) {
-    const { isInitialized, error, retry } = useWorkspace();
+    const { isInitialized, error, startupStage, retry } = useWorkspace();
 
-    // Show loading screen while initializing
+    // Say what is taking the time while the workspace boots. The overlay keeps the window blank for
+    // a beat first, so a project that opens instantly still opens straight into the editor.
     if (!isInitialized && !error) {
-        // return <LoadingScreen message="Initializing workspace..." />;
-        return <></>;
+        return <WorkspaceOpeningOverlay stage={startupStage} />;
     }
 
     // Show error screen if initialization failed

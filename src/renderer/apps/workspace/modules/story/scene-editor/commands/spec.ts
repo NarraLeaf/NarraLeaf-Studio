@@ -1,3 +1,4 @@
+import type { LucideIcon } from "lucide-react";
 import type { StoryBlock } from "@shared/types/story";
 import { storySecondsToMs } from "@shared/utils/storyTime";
 import type { StoryCommandParam, StoryCommandParamType } from "../storyCommandGrammar";
@@ -57,7 +58,13 @@ export type StoryCommandValidateContext = {
 export type StoryCommandSpec<P extends StoryCommandParamsShape = StoryCommandParamsShape> = {
     /** Stable identity: keys `story.command.<id>.label` / `.detail` and telemetry. Never shown raw. */
     id: string;
-    /** The canonical keyword. English, never translated (bible B11). */
+    /**
+     * The canonical keyword. English, and always accepted (bible B11).
+     *
+     * Not the only accepted spelling: the active command locale's menu label is derived into an alias
+     * table (`registry.ts`), so `/背景` reaches `bg` too. This one never moves, which is what keeps a
+     * script written in one locale parsing in every other.
+     */
     token: string;
     aliases?: readonly string[];
     /**
@@ -69,6 +76,22 @@ export type StoryCommandSpec<P extends StoryCommandParamsShape = StoryCommandPar
      * the flat surfaces - the `/` browse menu and the command reference - print them under.
      */
     category: StoryCommandGroupId;
+    /**
+     * The command's own glyph - what every surface that NAMES this command draws beside it: the `/`
+     * menu, the action creator's list and command page, and a committed row's plate (through
+     * `storyVerbCommandId`, which is the same block→command relation the row's verb already reads).
+     *
+     * Required, and per-command rather than per-group, because the group icon was answering the wrong
+     * question. A group is the COLOUR unit (`storyCommandCategories.ts`) - eleven hues that say which
+     * subject a line acts on - and drawing its icon too meant all eleven sound commands wore one Music
+     * note and all nine character commands one person: the column of glyphs said "sound, sound, sound"
+     * where the words beside it already did, and never "this one stops it, this one seeks it". The
+     * colour still files the row by subject; the icon now says the verb, so the two carry different
+     * halves of the sentence instead of the same half twice.
+     *
+     * Distinctness is the point, so no two specs share one - `specs.test.ts` fails when they do.
+     */
+    icon: LucideIcon;
     params: P;
     /**
      * Build the finished block from the resolved args - declarations included, since v6 made a
@@ -110,8 +133,10 @@ export type StoryCommandSpec<P extends StoryCommandParamsShape = StoryCommandPar
     /**
      * Working lines for the manual, written exactly as an author would type them.
      *
-     * Not translated: a command line is keywords and names, English in every locale (bible B11), and a
-     * localized example would teach a language the parser does not speak.
+     * Written in the canonical English spellings, and left that way in every locale. A locale may add
+     * spellings for the command and its params (bible B11), but the canonical ones are the spellings
+     * that work everywhere — which is exactly what an example should teach — and enum values have no
+     * localized form at all, so a translated example would be part real and part invented.
      *
      * `specs.test.ts` runs every one of these through parse → resolve → build against the suite's
      * fixture project, so an example that stopped being legal fails the suite instead of teaching an
@@ -192,9 +217,18 @@ export function asTarget(value: StoryCommandValue | undefined): Extract<StoryCom
 // Shared param fragments - the vocabulary table of the bible (§1.2). One key, one meaning.
 // ---------------------------------------------------------------------------
 
+/**
+ * A time in seconds — the one numeric shape in the whole vocabulary that carries a unit.
+ *
+ * Every slot measured in seconds shares it, so `d=1s`, `fade=0.5s` and `/wait 2s` are one rule rather
+ * than four. The unit is optional on input and is what a committed row prints (`持续时间=1s`), which is
+ * the point of declaring it: a row may only show a line the author could have typed.
+ */
+export const SECONDS_TYPE: StoryCommandParamType = { kind: "number", min: 0, unit: "s" };
+
 /** `d=` - a duration in seconds. */
 export function secondsParam(hint = "duration"): StoryCommandParamSpec {
-    return { aliases: ["duration"], hint, type: { kind: "number", min: 0 } };
+    return { aliases: ["duration"], hint, type: SECONDS_TYPE };
 }
 
 /** The `at=` word list (bible §1.2). Exported so a positional placement slot spells the same three words. */

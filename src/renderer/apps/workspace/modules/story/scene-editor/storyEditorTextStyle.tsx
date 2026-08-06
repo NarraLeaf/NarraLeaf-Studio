@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
+import { STORY_MARK_PX } from "./StoryRowGutterMark";
 import { getInterface } from "@/lib/app/bridge";
 import type { StoryEditorDensity } from "./storyEditorSessionStore";
 import {
@@ -57,38 +58,44 @@ function resolveFontFamily(value: unknown): string {
  * `lineHeight` is deliberately absent for `compact`: that档 inherits the Tailwind `text-sm` leading it
  * has always had, and pinning a number here would silently change the status quo.
  *
- * `avatar` is the speaker portrait's box on a dialogue row (U1). It was a flat 24px — 1.7% of the
- * editor's width, at which nothing the differential/crop work produces is legible. It is the one
- * number that separates the three tiers structurally: `comfortable` gives the portrait a column of
- * its own (U1 WI-3), which only pays off at a size a face survives.
+ * There is no per-density mark size. The gutter's marks are fixed at {@link STORY_MARK_PX} (gutter
+ * 规范 §6): density decides how much room the WORDS get, and the identity column beside them is
+ * furniture that holds still. It used to scale 28/32/40 to give a portrait "a column of its own" at
+ * the loosest tier — which the mark vocabulary explicitly rejects. A face in the gutter is an
+ * identity token, not a picture to be looked at, and a 40px one only made the machine rows beside it
+ * look like they were missing something.
  */
-export const STORY_DENSITY_METRICS: Record<StoryEditorDensity, { rowBox: number; fontScale: number; lineHeight?: number; avatar: number }> = {
+export const STORY_DENSITY_METRICS: Record<StoryEditorDensity, { rowBox: number; fontScale: number; lineHeight?: number }> = {
     // 28, not the historical 27: a dialogue row's speaker nametag is `min-h-[28px]` and was already
     // driving those rows one pixel taller than narration rows. Matching it here makes every compact row
     // the same height (the rhythm the 27 was meant to give) and lands the three columns on the same
     // centre line, instead of half a pixel apart.
-    compact: { rowBox: 28, fontScale: 1, avatar: 28 },
-    standard: { rowBox: 32, fontScale: 1.08, lineHeight: 1.55, avatar: 32 },
-    comfortable: { rowBox: 38, fontScale: 1.15, lineHeight: 1.7, avatar: 40 },
+    compact: { rowBox: 28, fontScale: 1 },
+    standard: { rowBox: 32, fontScale: 1.08, lineHeight: 1.55 },
+    comfortable: { rowBox: 38, fontScale: 1.15, lineHeight: 1.7 },
 };
-
-/**
- * The box a NON-dialogue row's category badge occupies — constant across the tiers.
- *
- * It rides with `compact`'s avatar rather than with the density, because a `/bg` row's category glyph
- * is a 14px icon: growing its plate to the comfortable portrait size would put a 40px tile of empty
- * chrome on every stage/sound/flow row and buy nothing. Only faces gain from the extra pixels.
- */
-export const STORY_BADGE_PX = 28;
 
 /** The CSS variable the row chrome sizes its single-line boxes from. */
 export const STORY_ROW_BOX_VAR = "--nl-story-row-box";
 /** The CSS variable the row grid sizes its line-number gutter from. */
 export const STORY_GUTTER_VAR = "--nl-story-gutter";
-/** The CSS variable a dialogue row sizes its speaker portrait (and a group member's rail slot) from. */
-export const STORY_AVATAR_VAR = "--nl-story-avatar";
-/** The CSS variable the row grid sizes its speaker-name column from. */
-export const STORY_NAME_VAR = "--nl-story-name";
+/** The CSS variable the row grid sizes its speaker-mark column from. */
+export const STORY_MARK_VAR = "--nl-story-mark";
+
+/**
+ * The speaker-name column is gone (gutter 规范 §2).
+ *
+ * It was a fixed-width column that held every row's words to one x, and the reasoning for it was
+ * sound as far as it went: a nametag printed inline in front of the first line gives a screen as many
+ * left edges as it has speakers. What that reasoning did not have was the paragraph rule — a run of
+ * lines by one voice is named ONCE, at its head, and joined to the rest by the gutter's continuation
+ * rule. A scene is then mostly continuations, all of which start on the one edge, and the name that
+ * opens a paragraph reads as the first words of it rather than as a label filed beside it.
+ *
+ * What the column cost was the gutter: two identity columns side by side, one of which could never be
+ * filled by narration or by any directive, so both the widest kinds of row in a scene carried a
+ * permanent void where a name would go.
+ */
 
 /**
  * The drag-handle column is gone: the grip now rides in the line-number box and swaps with the number
@@ -99,46 +106,13 @@ export const STORY_NAME_VAR = "--nl-story-name";
  */
 
 /**
- * The speaker-name column: names hang right-aligned against the body edge, so `[icon][gap][name][text]`
- * puts every row's words — dialogue, narration and action alike — on ONE x.
+ * The line-number column at two digits — chevron (14) + gap (2) + two tabular digits at 11px + the
+ * 12px boundary that separates it from the mark column (规范 §6).
  *
- * This is not a walk-back of U1's "one baseline" ruling, it is that ruling applied correctly. What U1
- * banned was an edge that floats with *content*: the nametag used to sit inline in front of the first
- * line, so the words started after the name and therefore at a different x for every speaker — five
- * left edges on one screen, four of them accidental. A column whose width is a property of the SCENE
- * rather than of the row is deterministic: two fixed edges, both of which mean something.
- *
- * The width is measured from the scene's own cast (see `StoryNameColumnProbe`) rather than pinned at a
- * constant, because a constant is wrong in both directions at once — 100px truncates "Mysterious
- * Voice" and wastes 60px on a cast of Nattou / YouKi / 澪. It is clamped at both ends so a single
- * absurd name cannot eat the line, and it never changes while scrolling: collapsing a container hides
- * rows, but the cast is read from `scene.blocks`, not from what is on screen.
- */
-export const STORY_NAME_MIN_PX = 56;
-/** Ceiling for the name column. Past this a name truncates rather than taking the line with it. */
-export const STORY_NAME_MAX_PX = 176;
-/**
- * Breathing room between a name's last glyph and the speech bar it hangs against.
- *
- * The probe measures bare glyphs, but the tag renders inside a hover chip whose `px-1` is pulled back
- * out by a negative margin — the padding contributes nothing to layout, yet it still counts against
- * the chip's `max-w-full`, so a column sized to the glyphs alone truncates the very name it was
- * measured from. 14 = the chip's 8px of padding plus 6px that reads as a gap.
- */
-const STORY_NAME_PAD_PX = 14;
-
-/** The name column's width for a cast whose widest name measures `measuredPx`. */
-export function storyNameWidth(measuredPx: number): number {
-    return Math.round(Math.min(STORY_NAME_MAX_PX, Math.max(STORY_NAME_MIN_PX, measuredPx + STORY_NAME_PAD_PX)));
-}
-
-/**
- * Gutter at two digits — chevron (14) + gap (2) + two tabular digits at 11px + 8px of trailing gap.
- *
- * That last 8 is not slack. Without it the last digit sat flush against the next column, so the
- * number read as a prefix of the row rather than as an index beside it — the same 8px every other
- * boundary in the row gets. The 20px the drag-handle column gave up when the grip moved into the
- * number's box more than pays for it.
+ * 规范 §6 pins this column at 22px, which is the width of the digits alone. Studio's number column
+ * also holds the fold chevron and hands its box over to the drag grip on hover — two controls the
+ * static specimen has no equivalent of — so it is the digits' 22 plus what those cost. The rule the
+ * spec is actually making (one fixed edge, 12px of air before the marks) is kept exactly.
  */
 const GUTTER_BASE_PX = 38;
 /** One tabular digit at the gutter's 11px type. */
@@ -154,16 +128,15 @@ export function storyGutterWidth(rowCount: number): number {
 }
 
 /**
- * Root style for the scene editor: publishes the density's box height and the line-number gutter width
- * to the rows below. Applied alongside `data-story-density`, which stays as the attribute selectors
- * and the tests read.
+ * Root style for the scene editor: publishes the density's box height, the line-number gutter width
+ * and the fixed mark column to the rows below. Applied alongside `data-story-density`, which stays as
+ * the attribute selectors and the tests read.
  */
-export function storyEditorRootStyle(density: StoryEditorDensity, rowCount: number, nameWidth = STORY_NAME_MIN_PX): CSSProperties {
+export function storyEditorRootStyle(density: StoryEditorDensity, rowCount: number): CSSProperties {
     return {
         [STORY_ROW_BOX_VAR]: `${STORY_DENSITY_METRICS[density].rowBox}px`,
         [STORY_GUTTER_VAR]: `${storyGutterWidth(rowCount)}px`,
-        [STORY_AVATAR_VAR]: `${STORY_DENSITY_METRICS[density].avatar}px`,
-        [STORY_NAME_VAR]: `${nameWidth}px`,
+        [STORY_MARK_VAR]: `${STORY_MARK_PX}px`,
     } as CSSProperties;
 }
 
@@ -227,61 +200,5 @@ export function StoryEditorTextStyleProvider({ children, density }: { children: 
         <StoryEditorTextStyleContext.Provider value={style}>
             {children}
         </StoryEditorTextStyleContext.Provider>
-    );
-}
-
-/**
- * Measures the widest name in a scene's cast and reports the column width that fits it.
- *
- * Rendered rather than computed: the nametag's font is a *preference* — family "Default" resolves to
- * whatever the surrounding Studio UI inherits, and the size is scaled by the density — so any attempt
- * to rebuild the font string for `canvas.measureText` is a second copy of the cascade that will drift
- * from the first one. Laying the names out in the same tree, under the same style the tag itself uses,
- * cannot drift: it IS the cascade.
- *
- * Off-screen at a negative x rather than `visibility: hidden` inside the flow — a hidden element still
- * takes part in layout, and this one must not widen the row list. Negative x creates no scroll in LTR.
- */
-export function StoryNameColumnProbe({ labels, onMeasure }: { labels: string[]; onMeasure: (width: number) => void }) {
-    const ref = useRef<HTMLDivElement | null>(null);
-    const style = useStoryEditorTextStyle();
-    // The cast as a dependency. A fresh array identity every render would re-run the effect on every
-    // render; the joined text changes exactly when the names do.
-    const key = labels.join(" ");
-    useLayoutEffect(() => {
-        const element = ref.current;
-        if (!element) {
-            return;
-        }
-        const measure = () => {
-            let widest = 0;
-            for (const child of Array.from(element.children)) {
-                widest = Math.max(widest, child.getBoundingClientRect().width);
-            }
-            // A hidden tree measures zero on every child. Publishing that would pin the column at its
-            // floor and — because nothing about the cast has changed — never correct itself, which is
-            // exactly the bug this guard exists for: the tab mounts while its editor group still has it
-            // hidden, the layout effect runs there, and every name in the scene truncates for the rest
-            // of the session. The observer below is what re-measures once the tree is real.
-            if (widest > 0) {
-                onMeasure(storyNameWidth(widest));
-            }
-        };
-        measure();
-        // Fires when the probe first gets a box (hidden becomes shown), and again whenever the resolved
-        // font changes the glyphs' width — including a typeface change made in another window.
-        const observer = new ResizeObserver(measure);
-        observer.observe(element);
-        return () => observer.disconnect();
-    }, [key, style.fontSize, style.fontFamily, onMeasure]);
-    return (
-        <div
-            ref={ref}
-            aria-hidden
-            className="pointer-events-none absolute top-0 h-0 overflow-hidden whitespace-nowrap font-medium"
-            style={{ ...style, left: -9999 }}
-        >
-            {labels.map(label => <span key={label} className="inline-block">{label}</span>)}
-        </div>
     );
 }

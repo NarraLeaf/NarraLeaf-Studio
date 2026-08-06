@@ -1,5 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
-import { Asset, AssetGroup } from '@/lib/workspace/services/assets/types';
+import { Asset, AssetGroup, AssetSource } from '@/lib/workspace/services/assets/types';
+import { REMOTE_ASSET_ALLOWED_PROTOCOLS } from '@shared/constants/remoteAsset';
+import type { RequestStatus } from '@shared/types/ipcEvents';
 import {
     ASSET_CATEGORY_EXTENSIONS,
     ASSET_CATEGORY_TYPES,
@@ -103,26 +105,6 @@ function collectAffectedAssets(
     }
 
     return [...collected.values()];
-}
-
-/**
- * Which member type a remote URL is imported as.
- *
- * Decided from the URL's own extension; a URL that names none (or names one no member accepts)
- * lands on the section's first member type. There are no bytes to look at yet — the fetch happens
- * inside the importer — so this is the last point where a guess is even possible, and a wrong guess
- * is recoverable (the record can be deleted) where a refusal would just be a dead end.
- */
-function resolveRemoteAssetType(category: AssetCategory, url: string): AssetType {
-    const memberTypes = ASSET_CATEGORY_TYPES[category];
-    let pathname = url;
-    try {
-        pathname = new URL(url).pathname;
-    } catch {
-        // Validated as a URL by the dialog; if it somehow is not, the whole string is a fine name
-        // to look for an extension in.
-    }
-    return memberTypes.find(type => assetTypeMatchesExtension(type, pathname)) ?? memberTypes[0];
 }
 
 function parseFileUriList(dataTransfer?: DataTransfer): string[] {
@@ -499,9 +481,16 @@ export function useAssetActions({
 
     const cancelModelImport = useCallback(() => setModelImportRequest(null), []);
 
-    const handleImportRemote = useCallback(async (category: AssetCategory) => {
-        if (!context || !inputDialog) return;
-        notifyLoading(true);
+    /**
+     * Import a URL as a pinned asset: Studio fetches it now and keeps the bytes with the project.
+     *
+     * Reported through the import strip rather than a bare spinner, because this really is a
+     * download - it can take a while, and it can fail for reasons the author has to see (the host is
+     * unreachable, the URL serves a login page, the file is too big). A one-item run reuses the
+     * strip's retry, so a failure keeps the URL instead of asking for it again.
+     */
+    const handleImportRemote = useCallback(async (category: AssetCategory, groupId?: string) => {
+        if (!context || !inputDialog || freeze.frozen) return;
 
         const url = await inputDialog.show({
             title: t("assets.import.remoteTitle"),
@@ -509,29 +498,44 @@ export function useAssetActions({
             description: t("assets.import.remoteDescription"),
             required: true,
             validation: (value) => {
+                let parsed: URL;
                 try {
-                    new URL(value.trim());
-                    return null;
+                    parsed = new URL(value.trim());
                 } catch {
                     return t("assets.import.remoteInvalidUrl");
                 }
+                // Checked here as well as in main, so a `file:` or `data:` address is refused while
+                // the author is still looking at the field they typed it into.
+                return REMOTE_ASSET_ALLOWED_PROTOCOLS.includes(parsed.protocol)
+                    ? null
+                    : t("assets.import.remoteUnsupportedScheme");
             },
-            // The section's first member type: enough for the dialog's own accent, and the type the
-            // fetch actually uses is decided from the URL below.
+            // The section's first member type: enough for the dialog's own accent. Which member the
+            // asset really is gets decided from the bytes, once they are here.
             assetType: ASSET_CATEGORY_TYPES[category][0],
         });
 
         if (!url) {
-            notifyLoading(false);
             return;
         }
 
         const trimmed = url.trim();
-        const type = resolveRemoteAssetType(category, trimmed);
+        notifyLoading(true);
+        importQueue?.start({ category, groupId, total: 1 });
+        importQueue?.progress({ completed: 0, total: 1, current: trimmed });
 
         await withAssetsService(async (assetsService) => {
-            const result = await assetsService.importRemoteAsset(type, trimmed);
-            if (!result.success) {
+            let result: RequestStatus<Asset<AssetType, AssetSource.Remote>> = {
+                success: false,
+                error: t("assets.unknownError"),
+            };
+            await assetsService.transaction(async (svc) => {
+                result = await svc.importRemoteAsset(category, trimmed, groupId);
+            });
+            importQueue?.progress({ completed: 1, total: 1 });
+            importQueue?.finish(result.success ? [] : [{ path: trimmed, error: result.error }]);
+
+            if (!result.success && !importQueue) {
                 context.services.get<UIService>(Services.UI).showAlert(
                     t("assets.import.remoteFailedTitle"),
                     result.error || t("assets.unknownError")
@@ -541,7 +545,7 @@ export function useAssetActions({
 
         onActionComplete();
         notifyLoading(false);
-    }, [context, inputDialog, withAssetsService, onActionComplete, notifyLoading]);
+    }, [context, freeze.frozen, importQueue, inputDialog, withAssetsService, onActionComplete, notifyLoading, t]);
 
     // Support drag-in files directly to a group
     const handleImportToGroup = useCallback(async (category: AssetCategory, groupId?: string, files?: FileList, dataTransfer?: DataTransfer) => {

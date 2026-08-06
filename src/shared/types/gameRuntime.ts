@@ -47,7 +47,11 @@ export type PreviewStatus =
     | "stopping"
     | "error";
 
-export type GameRuntimeAssetSource = "local" | "remote-cache";
+/**
+ * Where the packaged bytes came from originally. Provenance only: both kinds ship as ordinary files
+ * inside the pack, and the runtime never goes to the network for an asset.
+ */
+export type GameRuntimeAssetSource = "local" | "remote";
 
 export type GameRuntimeAssetManifestEntry = {
     id: string;

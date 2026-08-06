@@ -2,6 +2,12 @@
 export { Button, IconButton } from "./Button";
 export type { ButtonProps, ButtonVariant, ButtonSize } from "./Button";
 
+// The one control size scale (see docs/design-system.md §3). Exported so a
+// hand-rolled control can sit at the same height as the shared components
+// instead of guessing a number.
+export { CONTROL_SIZE_CLASS, CONTROL_SQUARE_CLASS, CONTROL_HEIGHT_CLASS } from "./controlSize";
+export type { ControlSize } from "./controlSize";
+
 // Accordion components
 export { Accordion, AccordionItem, NestedAccordion } from "./Accordion";
 export type { AccordionProps, AccordionItemProps, NestedAccordionProps } from "./Accordion";
@@ -68,6 +74,10 @@ export type { BadgeProps, BadgeTone } from "./Badge";
 // EmptyState component
 export { EmptyState } from "./EmptyState";
 export type { EmptyStateProps } from "./EmptyState";
+
+// FieldLabel component (the eyebrow label; see docs/design-system.md §7)
+export { FieldLabel } from "./FieldLabel";
+export type { FieldLabelProps } from "./FieldLabel";
 
 // Inspection-only control (survives a read-only `<fieldset disabled>` clamp)
 export { InspectOnlyButton } from "./InspectOnlyButton";

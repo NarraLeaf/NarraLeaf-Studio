@@ -88,22 +88,42 @@ token 定义在 [tailwind.config.js](../tailwind.config.js),值在 [src/renderer
 
 `rounded-sm`（2px）不在上表里，但**允许**用于尺寸小到 `rounded-md` 会失真的地方：**checkbox 一律 `rounded-sm`**（12–16px 的方框配 6px 圆角就变成圆点，读起来像 radio），缩略图内框、8px 的 resize 角标同理。
 
-## 3. 字号
+## 3. 控件尺寸
+
+**同一 `size` 的按钮、输入框、下拉框,高度必须相同。** 刻度只有一处来源——[`lib/components/elements/controlSize.ts`](../src/renderer/lib/components/elements/controlSize.ts),组件不再各自从 padding 里推。
+
+| size | 高度 | 用在哪 |
+|---|---|---|
+| `sm` | 28px（`min-h-7`） | 面板、工具条、检查器行——Studio 的常用档 |
+| `md` | 36px（`min-h-9`） | 对话框与表单（也是组件默认值） |
+| `lg` | 40px（`min-h-10`） | 少数占满一行的主操作 |
+
+`ToolbarButton` / `IconButton` 的 `sm`/`md`/`lg` 是同一刻度的**正方形**;`ToolbarButton` 另有一个更密的 `xs`（24px），是刻度之外的一档。
+
+**为什么是 `min-h-*` 而不是 `h-*`**：单行控件的内容永远矮于这条地板,于是地板就是高度——带边框的输入框和不带边框的按钮因此像素级相等,不会再出现"同 `size` 差 2px"。文案换行时（窄的整行按钮遇上长译文）控件会长高,而不是把字挤出去。
+
+一排控件传同一个 `size` 就够了,**不要再自己钉 `h-9` / `min-h-[34px]`**——那些数字散在各处正是高度长歪的原因。确实要偏离刻度的地方（蓝图节点里被缩放的密集输入）显式写 `min-h-0` 再给自己的高度,让偏离是看得见的。
+
+手写控件（不走共享组件）从 barrel 取 `CONTROL_SIZE_CLASS` / `CONTROL_SQUARE_CLASS` / `CONTROL_HEIGHT_CLASS`,不要重抄数字;属性面板的字段另有 `modules/properties/fieldControlClass.ts`,图标按钮另有 `controlButtonClass()`。
+
+## 4. 字号
 
 小字**只用单档** `text-2xs`（11px）——收敛原先的 `text-[9px]/[10px]/[11px]`。常规层级用 `text-xs`(12px)、`text-sm`(14px)、`text-base`(16px)。**禁用 `text-[Npx]` 任意值。**
 
-## 4. 交互态（统一写法）
+## 5. 交互态（统一写法）
 
 - **hover**：行 / 图标按钮用两档——弱 `hover:bg-edge-subtle`、强 `hover:bg-edge`。
 - **focus**：统一 `focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50`;容器型输入用 `focus-within:` 变体。禁止 `focus:border-*` 与裸 hex ring。
 - **selected / active**：填充式 `bg-primary/15 text-fg`;导航类列表可加左竖条 `border-l-2 border-primary`;tab 用底部下划线 `bg-primary`。
 - **disabled**：统一 `disabled:opacity-50 disabled:cursor-not-allowed`。
 
-## 5. 间距与动效
+> ⚠️ **focus 那条在原生控件上是够不着的。** `styles.css` 里 `input:focus, textarea:focus, button:focus, select:focus { outline: none !important; box-shadow: none !important }` 会把 Tailwind 的 `focus:ring-*` / `focus-visible:ring-*` 整个吃掉（ring 就是 box-shadow）。所以 `<button>` / `<input>` / `<select>` 上写 ring 是**静默无效**的死代码,共享组件里改用 `focus:border-primary`（border-color 不受那条规则管）。真要给某个控件一个可见焦点圈,用 `.nl-focus-ring`（同样 `!important` 的 outline）。非原生控件（`<div>` / `<span role="button">`）不受影响,ring 照常生效。
+
+## 6. 间距与动效
 
 间距沿用 Tailwind 标准刻度(`gap-1/2/3`、`p-2/3/4`),已较收敛,无需自定义。动效时长统一 `duration-150`(小交互)/ `duration-200`(浮层)。
 
-## 6. 组件与 `cn()`
+## 7. 组件与 `cn()`
 
 - 合并 className **一律用** [`cn()`](../src/renderer/lib/utils/cn.ts)(`clsx` + `tailwind-merge`),不要字符串拼接——这样调用方传入的 `className` 才能可靠覆盖组件基础样式。
 - 优先复用 `src/renderer/lib/components/elements` 下的共享组件,不要重新手写 `<button>` / tab / badge / 空状态。
@@ -125,7 +145,7 @@ Phase 2 新增(用来替换各处手写模式):
 | `PanelHeader` | 面板 / 编辑器头部行(size sm/md/lg) |
 | `Tooltip` | 替换原生 `title=`(轻量 CSS 版,overflow-hidden 容器内慎用) |
 
-## 7. 防回归
+## 8. 防回归
 
 [scripts/style-ratchet.mjs](../scripts/style-ratchet.mjs) 统计任意 hex、裸调色板、任意 px 字号、裸圆角等"债务"计数,基线存在 `scripts/style-ratchet.baseline.json`。**CI 的 `verify` job 会跑 `yarn style:ratchet`**（[.github/workflows/ci.yml](../.github/workflows/ci.yml)),本地同样命令——计数只准降不准升。修完一批后跑 `yarn style:ratchet --save` 收紧基线。
 

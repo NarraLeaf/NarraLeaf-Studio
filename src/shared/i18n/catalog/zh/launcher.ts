@@ -108,13 +108,4 @@ export const launcher = {
             download: "下载插件失败",
         },
     },
-    learning: {
-        hint: "教程、示例与文档，链接会在浏览器中打开",
-        openInBrowser: "在浏览器中打开 {name}",
-        categories: {
-            tutorials: "教程",
-            examples: "示例",
-            docs: "文档",
-        },
-    },
 } satisfies LocaleNamespace<"launcher">;

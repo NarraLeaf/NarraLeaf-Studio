@@ -4,6 +4,7 @@ import {
     isVoiceEnabled,
     normalizeVoiceConfiguration,
     normalizeVoiceDocument,
+    voiceLineText,
 } from "./voice";
 
 describe("normalizeVoiceConfiguration", () => {
@@ -65,5 +66,27 @@ describe("normalizeVoiceDocument", () => {
         expect(Object.keys(document.units).sort()).toEqual(["t-1", "t-2"]);
         expect(document.units["t-1"].status).toBe("approved");
         expect(document.units["t-2"].status).toBe("linked");
+    });
+});
+
+describe("voiceLineText", () => {
+    const doc = (units: Record<string, { target: string }>) => ({
+        schemaVersion: 1 as const,
+        locale: "ja",
+        units: Object.fromEntries(Object.entries(units).map(([id, u]) => [
+            id,
+            { target: u.target, sourceHash: "", status: "translated" as const },
+        ])),
+    });
+
+    it("reads the dubbed language's line when the project translates into it", () => {
+        expect(voiceLineText(doc({ "t-1": { target: "家に帰ろう。" } }), "t-1", "Let's go home.")).toBe("家に帰ろう。");
+    });
+
+    /** A dub into a language the project never translated: the source text IS what the actor reads. */
+    it("falls back to the source line when there is no translation", () => {
+        expect(voiceLineText(undefined, "t-1", "Let's go home.")).toBe("Let's go home.");
+        expect(voiceLineText(doc({}), "t-1", "Let's go home.")).toBe("Let's go home.");
+        expect(voiceLineText(doc({ "t-1": { target: "   " } }), "t-1", "Let's go home.")).toBe("Let's go home.");
     });
 });

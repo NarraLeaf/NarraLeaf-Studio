@@ -249,14 +249,11 @@ describe("assets/unreadable", () => {
         expect(readBytes).not.toHaveBeenCalled();
     });
 
-    it("skips model bundles and remote assets, which have no shard to stat", async () => {
+    it("skips model bundles, which are a directory rather than a file to stat", async () => {
         const exists = vi.fn(async () => false);
         const readBytes = vi.fn(async () => null);
         const ctx = createTestLintContext({
-            assets: [
-                asset("hiyori", { type: AssetType.Model, name: "Hiyori", ext: undefined }),
-                asset("remote", { meta: { url: "https://example.com/bg.png", lifetime: 0 } }),
-            ],
+            assets: [asset("hiyori", { type: AssetType.Model, name: "Hiyori", ext: undefined })],
             io: {
                 exists,
                 readBytes,
@@ -267,5 +264,39 @@ describe("assets/unreadable", () => {
         expect(await runRule("assets/unreadable", ctx)).toEqual([]);
         expect(exists).not.toHaveBeenCalled();
         expect(readBytes).not.toHaveBeenCalled();
+    });
+
+    it("reports a remote asset that has never been fetched, which has no bytes at all", async () => {
+        // The carve-out this replaces existed because a remote asset used to be nothing but a URL.
+        // They are pinned now, so a missing snapshot is a genuinely broken asset - and this is how a
+        // record written before pinning announces that it needs a refresh.
+        const ctx = createTestLintContext({
+            assets: [asset("remote", {
+                hash: "",
+                meta: { url: "https://example.com/bg.png", fetchedAt: "2026-08-05T00:00:00.000Z" },
+            })],
+            io: {
+                exists: async () => false,
+                readBytes: async () => null,
+                probeImage: async (): Promise<LintImageProbe> => ({ ok: false, reason: "unreadable" }),
+            },
+        });
+
+        expect(await runRule("assets/unreadable", ctx)).toHaveLength(1);
+    });
+
+    it("checks a fetched remote asset like any other, because its snapshot is an ordinary file", async () => {
+        const ctx = createTestLintContext({
+            assets: [asset("remote", {
+                meta: { url: "https://example.com/bg.png", fetchedAt: "2026-08-05T00:00:00.000Z" },
+            })],
+            io: {
+                exists: async () => true,
+                readBytes: async () => null,
+                probeImage: async (): Promise<LintImageProbe> => ({ ok: true, width: 8, height: 8 }),
+            },
+        });
+
+        expect(await runRule("assets/unreadable", ctx)).toEqual([]);
     });
 });

@@ -1667,8 +1667,13 @@ function PuppetParamRows(props: {
                                 type="text"
                                 inputMode="decimal"
                                 popoverWhenNarrow={false}
-                                className={spec ? "w-14 shrink-0" : "min-w-0 flex-1"}
-                                inputClassName="h-7 w-full rounded-md border border-edge bg-surface-raised px-1.5 text-right text-xs text-fg outline-none focus:border-primary/50"
+                                // The box belongs to the field, not to the `<input>` inside it: the
+                                // field already draws a border, a radius and a background, so
+                                // repeating them on the input drew a second box inside the first.
+                                // Only the height (`sm`, this row is dense) and the text alignment
+                                // are this call site's to say.
+                                className={`h-7 min-h-7 text-xs ${spec ? "w-14 shrink-0" : "min-w-0 flex-1"}`}
+                                inputClassName="px-1.5 text-right"
                             />
                             {spec ? (
                                 // The range the model gave. Without it the slider is a knob with no
@@ -2571,7 +2576,7 @@ function BackgroundActionEditor(props: {
                     <button
                         ref={imageButtonRef}
                         type="button"
-                        className="group relative aspect-[16/9] min-h-32 overflow-hidden rounded-lg border border-edge bg-surface text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/70"
+                        className="group relative aspect-[16/9] min-h-32 overflow-hidden rounded-md border border-edge bg-surface text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/70"
                         onClick={() => setSelectorOpen(true)}
                     >
                         {url ? (

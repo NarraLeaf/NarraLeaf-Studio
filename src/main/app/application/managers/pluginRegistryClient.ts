@@ -12,6 +12,8 @@ import type {
     PluginRegistryIndex,
 } from "@shared/types/pluginRegistry";
 import { parseZipIndex, readEntryBytes } from "../../../buildWorker/mobile/zipModel";
+import { applyDownloadRewrite } from "./downloadRewrites";
+import { resolveDownloadSource } from "@shared/utils/downloadSource";
 
 /**
  * Read-only client for the plugin store.
@@ -26,15 +28,22 @@ import { parseZipIndex, readEntryBytes } from "../../../buildWorker/mobile/zipMo
 
 /** Resolve the effective registry URL: a configured value, else the official default. */
 export function resolveRegistryUrl(configured: string | undefined | null): string {
-    const trimmed = typeof configured === "string" ? configured.trim() : "";
-    return trimmed.length > 0 ? trimmed : DEFAULT_PLUGIN_REGISTRY_URL;
+    return resolveDownloadSource(configured, DEFAULT_PLUGIN_REGISTRY_URL);
 }
 
+/**
+ * The one place this module turns a URL into a request, and therefore the one place the
+ * author's rewrites apply.
+ *
+ * That matters most for the plugin package: its address comes out of the index as an absolute
+ * `github.com` release URL, so `plugins.registryUrl` can never reach it. Before this, an author
+ * behind a mirror could browse the entire store and have every Install time out.
+ */
 async function fetchWithTimeout(url: string): Promise<Response> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), PLUGIN_REGISTRY_FETCH_TIMEOUT_MS);
     try {
-        return await fetch(url, { redirect: "follow", signal: controller.signal });
+        return await fetch(applyDownloadRewrite(url), { redirect: "follow", signal: controller.signal });
     } finally {
         clearTimeout(timer);
     }

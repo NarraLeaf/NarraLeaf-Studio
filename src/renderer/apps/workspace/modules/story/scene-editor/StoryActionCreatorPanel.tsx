@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, CornerDownLeft, LayoutGrid, Plus, Star } from "lucide-react";
 import type { PanelComponentProps } from "../../types";
-import { useTranslation } from "@/lib/i18n";
+import { useCommandTranslation, useTranslation } from "@/lib/i18n";
 import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox";
 import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
@@ -16,7 +16,7 @@ import {
     type StoryCommandGroupId,
 } from "./storyCommandCategories";
 import { localizeSpecCommand } from "./commands/specPalette";
-import { listCommandSpecs } from "./commands/registry";
+import { getCommandSpec, listCommandSpecs } from "./commands/registry";
 import { specGroupIds } from "./commands/specSidebar";
 import { buildSpecSidebarGroups, dedupeToPrimarySubject, filterSidebarGroups, type StoryCommandSidebarGroup } from "./commands/specSidebar";
 import { searchActionCommands } from "./storyCommandSearch";
@@ -63,6 +63,9 @@ type SidebarTab = typeof STARRED_CATEGORY_ID | typeof ALL_CATEGORY_ID | StoryCom
 
 export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryActionCreatorPanelPayload>) {
     const { t } = useTranslation();
+    // The command reference is documentation of the command language, so its content follows
+    // `editor.localizedCommands`; the panel's chrome around it follows the interface language.
+    const { t: ct } = useCommandTranslation();
     const { context, isInitialized } = useWorkspace();
     const settingsService = useMemo(
         () => context && isInitialized ? context.services.get<GlobalSettingsService>(Services.GlobalSettings) : null,
@@ -107,21 +110,28 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
         });
     }, [persistStarredIds]);
 
-    const localize = useCallback((command: PaletteActionCommand) => localizeSpecCommand(command, t), [t]);
+    const localize = useCallback((command: PaletteActionCommand) => localizeSpecCommand(command, ct), [ct]);
 
     const sidebarGroups = useMemo(
         () => buildSpecSidebarGroups(pluginCommands, localize),
         [localize, pluginCommands],
     );
 
-    /** The documentation, by command id. Plugin actions have no spec and therefore no entry. */
+    /**
+     * The documentation, by command id. Plugin actions have no spec and therefore no entry.
+     *
+     * Built in the command language, body and all — it is the reference FOR that language, and a page
+     * whose signatures are English while the words describing them are Chinese reads as neither. The
+     * panel's own chrome around it (search box, buttons, section headings) stays in the interface
+     * language.
+     */
     const manualById = useMemo(() => {
         const map = new Map<string, StoryCommandManualEntry>();
-        for (const entry of buildStoryCommandManual(t)) {
+        for (const entry of buildStoryCommandManual(ct)) {
             map.set(entry.id, entry);
         }
         return map;
-    }, [t]);
+    }, [ct]);
 
     /** Every subject a spec reaches, so the detail can name the ones its own section does not. */
     const filedUnderById = useMemo(() => {
@@ -248,7 +258,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
                     <CategoryChip
                         icon={LayoutGrid}
                         iconColor="#a8adb5"
-                        label={t("story.actionCategory.all")}
+                        label={ct("story.actionCategory.all")}
                         active={activeTab === ALL_CATEGORY_ID}
                         onClick={() => setActiveTab(ALL_CATEGORY_ID)}
                     />
@@ -257,7 +267,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
                             key={category.id}
                             icon={category.icon}
                             iconColor={category.iconColor}
-                            label={t(commandCategoryLabelKey(category.id))}
+                            label={ct(commandCategoryLabelKey(category.id))}
                             active={activeTab === category.id}
                             onClick={() => setActiveTab(category.id)}
                         />
@@ -291,7 +301,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
                         <div key={entry.group.id}>
                             <div className="flex items-center gap-1.5 px-1.5 pb-1 pt-2 text-2xs font-medium tracking-wide text-fg-subtle">
                                 <Icon className="h-3 w-3 shrink-0" style={{ color: entry.group.iconColor }} />
-                                <span>{t(commandCategoryLabelKey(entry.group.id))}</span>
+                                <span>{ct(commandCategoryLabelKey(entry.group.id))}</span>
                             </div>
                             <div className="grid grid-cols-1 gap-1">
                                 {entry.commands.map(command => (
@@ -354,9 +364,11 @@ function ActionCreatorRow(props: {
     onCreate: (commandId: string) => void;
 }) {
     const { t } = useTranslation();
-    // The icon follows the SECTION, not the command's own filing: `/show` listed under 图片 must not
-    // wear a person glyph just because its `category` says 角色.
-    const Icon = props.group.icon;
+    // The glyph is the COMMAND's, the colour is the SECTION's. `/show` listed under 图片 wears an eye
+    // in the sage of that section - it says what the line does, tinted by what it does it to. (It used
+    // to wear the section's own icon, which made every row of a section identical: eleven Music notes
+    // down 声音, nine people down 角色.)
+    const Icon = props.command.icon;
     return (
         <div className="group flex items-center rounded-md transition-colors hover:bg-fill">
             <button
@@ -398,9 +410,11 @@ function CommandDetail(props: {
     onInsert: () => void;
 }) {
     const { t } = useTranslation();
+    const { t: ct } = useCommandTranslation();
     const { entry } = props;
     const group = getCommandGroup(entry.group);
-    const Icon = group.icon;
+    // The command's own glyph, like the row that opened this page; the group only tints it.
+    const Icon = getCommandSpec(entry.id)?.icon ?? group.icon;
     // Only the subjects this command's own section does not already say.
     const alsoFiledUnder = props.filedUnder.filter(id => id !== entry.group);
 
@@ -413,7 +427,7 @@ function CommandDetail(props: {
                     </span>
                     <div className="min-w-0">
                         <div className="truncate text-sm font-medium text-fg">{entry.label}</div>
-                        <div className="truncate text-2xs text-fg-subtle">{t(commandCategoryLabelKey(entry.group))}</div>
+                        <div className="truncate text-2xs text-fg-subtle">{ct(commandCategoryLabelKey(entry.group))}</div>
                     </div>
                 </div>
                 <code className="block break-words rounded-md border border-edge bg-surface-sunken px-2.5 py-2 font-mono text-sm text-fg">
@@ -431,7 +445,7 @@ function CommandDetail(props: {
                     <p className="text-2xs text-fg-subtle">
                         {t("story.manual.appliesTo")}
                         {": "}
-                        {alsoFiledUnder.map(id => t(commandCategoryLabelKey(id))).join(" · ")}
+                        {alsoFiledUnder.map(id => ct(commandCategoryLabelKey(id))).join(" · ")}
                     </p>
                 ) : null}
             </div>
@@ -502,7 +516,7 @@ function ParamRow({ param }: { param: StoryCommandManualParam }) {
 function PluginDetail({ command, onInsert }: { command: PaletteActionCommand; onInsert: () => void }) {
     const { t } = useTranslation();
     const group = getCommandGroup(command.group);
-    const Icon = group.icon;
+    const Icon = command.icon;
     return (
         <div className="flex flex-col gap-3 px-3 py-3">
             <div className="flex items-center gap-2">

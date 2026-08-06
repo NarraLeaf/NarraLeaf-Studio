@@ -2,7 +2,10 @@ import { loadDocument, saveDocument, type DocumentStorage } from "@shared/docume
 import { charactersSpec } from "@shared/documents/specs";
 import type { DocumentCorruptError } from "@shared/documents/types";
 import type { CharacterStoreDocument } from "@shared/characters/characterStoreModel";
+import type { TranslationKey } from "@shared/i18n";
 import { Service } from "../Service";
+import { HistoryService } from "../history/HistoryService";
+import { projectHistoryScope } from "../history/historyScopes";
 import { ICharacterService, Services, WorkspaceContext } from "../services";
 import { Character } from "../character/Character";
 import { CharacterProfile } from "../character/CharacterProfile";
@@ -15,6 +18,7 @@ import { FileSystemService } from "./FileSystem";
 import { ServiceAssetsService } from "./ServiceAssetsService";
 import { UIService } from "./UIService";
 import { AssetLockReason } from "../assets/AssetLockManager";
+import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
 
 /**
  * The project's cast, at `editor/services/character.json`.
@@ -95,16 +99,65 @@ export class CharacterService extends Service<CharacterService> implements IChar
         return true;
     }
 
-    public deleteCharacter(id: string): boolean {
+    /**
+     * Remove a character, and leave a way back.
+     *
+     * Asynchronous because of the one part that cannot be reconstructed: the baked avatar is a file,
+     * and it has to be read *before* it is deleted. Everything else about a character is in the store
+     * and is a plain object.
+     *
+     * The bytes ride in the undo entry rather than going to a trash folder. That is the right trade
+     * *here* and would not be for an asset: a baked avatar is a 256px PNG, and the depth bound on the
+     * stack already caps how many can be held. An asset can be a 200 MB video, which is why the
+     * asset case (still open) needs somewhere on disk to put it.
+     *
+     * What deliberately does NOT come back into scope: the story lines that referenced this
+     * character. They keep the id and dangle, exactly as they do today - deleting a referenced thing
+     * warns rather than rewrites, so undo only has to put the thing back for the references to
+     * resolve again. See `docs/plans/2026-08-05-001-plan-unified-undo.md`.
+     */
+    public async deleteCharacter(id: string): Promise<boolean> {
         const character = this.characters[id];
         if (!character) {
             return false;
         }
 
-        // Unlock all assets used by this character
-        this.unlockCharacterAssets(character);
+        const stored = character.toJSON();
+        const index = this.characterOrder.indexOf(id);
+        const thumbnailId = character.profile.getThumbnail() ?? undefined;
+        const thumbnailBytes = thumbnailId ? await this.readServiceFile(thumbnailId) : null;
 
-        const thumbnailId = character.profile.getThumbnail();
+        this.removeCharacter(id, character, thumbnailId);
+
+        this.getHistoryService().pushCommand(projectHistoryScope(), {
+            label: {
+                key: "characters.history.deleteCharacter" as TranslationKey,
+                params: { name: stored.profile.name },
+            },
+            undo: async () => {
+                if (thumbnailId && thumbnailBytes) {
+                    await this.getServiceAssetsService().restoreFile(thumbnailId, thumbnailBytes);
+                }
+                const restored = Character.fromJSON(stored);
+                this.registerCharacter(restored, index >= 0 ? index : undefined);
+                this.lockCharacterAssets(restored);
+                this.markDirty();
+                this.emitChange();
+            },
+            redo: () => {
+                const current = this.characters[id];
+                if (current) {
+                    this.removeCharacter(id, current, thumbnailId);
+                }
+            },
+        });
+
+        return true;
+    }
+
+    /** The deletion itself, so undo's `redo` and the original call cannot drift apart. */
+    private removeCharacter(id: string, character: Character, thumbnailId: string | undefined): void {
+        this.unlockCharacterAssets(character);
         if (thumbnailId) {
             void this.getServiceAssetsService().deleteFile(thumbnailId);
         }
@@ -117,7 +170,16 @@ export class CharacterService extends Service<CharacterService> implements IChar
 
         this.markDirty();
         this.emitChange();
-        return true;
+    }
+
+    /** The avatar's bytes, or null when there is nothing to read - a missing file is not fatal here. */
+    private async readServiceFile(fileId: string): Promise<Uint8Array | null> {
+        try {
+            const result = await this.getServiceAssetsService().readRaw(fileId);
+            return result.ok ? result.data : null;
+        } catch {
+            return null;
+        }
     }
 
     public listGroups(): CharacterGroup[] {
@@ -156,12 +218,49 @@ export class CharacterService extends Service<CharacterService> implements IChar
         return true;
     }
 
-    public deleteGroup(id: string): boolean {
-        if (!this.groups[id]) {
+    /**
+     * Remove a group, and leave a way back.
+     *
+     * The group record is not the whole of what is lost: every character in it is moved out, and
+     * which characters those were is not recoverable from the group afterwards. So the entry carries
+     * the membership as well - undoing has to put the cast back where it was, not just re-create an
+     * empty group with the same name.
+     */
+    public async deleteGroup(id: string): Promise<boolean> {
+        const group = this.groups[id];
+        if (!group) {
             return false;
         }
-        for (const character of this.listCharacter()) {
-            if (character.profile.getGroupId() === id) {
+        const memberIds = this.listCharactersByGroup(id).map(character => character.profile.getId());
+        const stored: CharacterGroup = { ...group };
+
+        this.removeGroup(id, memberIds);
+
+        this.getHistoryService().pushCommand(projectHistoryScope(), {
+            label: {
+                key: "characters.history.deleteGroup" as TranslationKey,
+                params: { name: stored.name },
+            },
+            undo: () => {
+                this.registerGroup({ ...stored });
+                for (const memberId of memberIds) {
+                    this.characters[memberId]?.profile.setGroupId(id);
+                }
+                this.markDirty();
+                this.emitChange();
+                void this.flush();
+            },
+            redo: () => {
+                this.removeGroup(id, memberIds);
+            },
+        });
+        return true;
+    }
+
+    private removeGroup(id: string, memberIds: readonly string[]): void {
+        for (const memberId of memberIds) {
+            const character = this.characters[memberId];
+            if (character?.profile.getGroupId() === id) {
                 character.profile.setGroupId(undefined);
             }
         }
@@ -169,7 +268,6 @@ export class CharacterService extends Service<CharacterService> implements IChar
         this.markDirty();
         this.emitChange();
         void this.flush();
-        return true;
     }
 
     public assignCharacterToGroup(characterId: string, groupId?: string): boolean {
@@ -369,17 +467,35 @@ export class CharacterService extends Service<CharacterService> implements IChar
 
     private reportUnreadable(error: DocumentCorruptError): void {
         this.unreadable = error;
+        // The dialog below says the cast could not be read and stops there, which is the right
+        // amount for a modal. `reason` plus the original bytes' parse failure is the amount a
+        // recovery session needs, so the same event goes to the log in full.
+        reportWorkspaceAnomaly({
+            source: "characters",
+            operationKey: "workspace.recovery.operations.charactersRead",
+            path: charactersSpec.pathFor(),
+            error,
+            severity: "degraded",
+        });
         this.getContext().services.get<UIService>(Services.UI).showError(
             `This project's characters could not be read (${error.reason}). `
             + `A copy of the file has been set aside and nothing will be saved over it.`,
         );
     }
 
-    private registerCharacter(character: Character): void {
+    /**
+     * `index` puts a character back where it was, for undo. Appending instead would restore the cast
+     * but silently reorder the panel, which is a second edit the author did not ask for.
+     */
+    private registerCharacter(character: Character, index?: number): void {
         const id = character.profile.getId();
         this.characters[id] = character;
         if (!this.characterOrder.includes(id)) {
-            this.characterOrder.push(id);
+            if (index === undefined || index > this.characterOrder.length) {
+                this.characterOrder.push(id);
+            } else {
+                this.characterOrder.splice(index, 0, id);
+            }
         }
         character.setOnChange(() => {
             this.markDirty();
@@ -456,6 +572,10 @@ export class CharacterService extends Service<CharacterService> implements IChar
 
     private getServiceAssetsService(): ServiceAssetsService {
         return this.getContext().services.get<ServiceAssetsService>(Services.ServiceAssets);
+    }
+
+    private getHistoryService(): HistoryService {
+        return this.getContext().services.get<HistoryService>(Services.History);
     }
 
     private getUuidService(): UuidService {

@@ -37,6 +37,13 @@ export type CharacterAppearanceRef = {
 export type VisibleStoryRow = {
     block: StoryBlock;
     depth: number;
+    /**
+     * The row's place in the whole scene, 1-based - not its place in this list.
+     *
+     * Folding a container or filtering to narrative rows removes lines from view without renumbering
+     * the ones left, so a row's number is a property of the scene and can be named from outside it
+     * (the lint report does exactly that). Sequences with gaps in them are the intended sight.
+     */
     lineNumber: number;
     /**
      * For a dialogue row, the speaker's accumulated appearance at this line (WI-3), so its avatar can
@@ -87,6 +94,16 @@ export type InsertSlot = {
      * front. Its text seeds the slot's `value`.
      */
     replaceBlockId?: StoryBlockId;
+    /**
+     * The slot only offers what can be done to ONE character — set when the action trigger was typed
+     * into the empty dialogue row a speaker's Enter had just opened (see `startCharacterActionSlot`).
+     *
+     * The line being written there is still that speaker's line, so the action creator narrows to
+     * their own verbs and fills their name in for the pick. Always paired with `replaceBlockId`
+     * pointing at that dialogue row: the slot stands *in place of* the line the author was writing,
+     * which is what lets Escape hand it back instead of leaving them a row they never finished.
+     */
+    characterScope?: { characterId: string; name: string };
 };
 
 /**

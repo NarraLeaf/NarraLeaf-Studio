@@ -169,6 +169,7 @@ export function PsdImportWizard(props: {
             isOpen={props.open}
             onClose={close}
             title={t("characters.editor.psd.title")}
+            helpTopic="appearances"
             size="lg"
             closeOnOverlayClick={busy === null}
             footer={

@@ -1,3 +1,4 @@
+import { StickyNote } from "lucide-react";
 import { createBlockForCommand } from "../../storyActionCommands";
 import { defineStoryCommand } from "../spec";
 
@@ -8,6 +9,7 @@ export const note = defineStoryCommand({
     token: "note",
     aliases: ["/"],
     category: "utils",
+    icon: StickyNote,
     examples: ["/note TODO: check the pacing here"],
     params: {
         text: { hint: "content", type: { kind: "text" }, positional: true, greedy: true },

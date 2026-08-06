@@ -75,6 +75,7 @@ export function StoryScriptImportModal(props: {
             isOpen={plan !== null}
             onClose={props.onClose}
             title={t("story.script.importTitle")}
+            helpTopic="storyScript"
             size="lg"
             closeOnOverlayClick={!props.busy}
             footer={

@@ -8,19 +8,28 @@ import type { ProjectConfig } from "@/lib/workspace/project/project";
 import type { PanelComponentProps } from "../types";
 import { useProjectNavItems, ProjectPanelHome, type ProjectSectionId } from "./ProjectPanelHome";
 import { ProjectSubPage } from "./components/ProjectSubPage";
-import { ProjectDetailsSection } from "./sections/ProjectDetailsSection";
-import { ProjectGameSection } from "./sections/ProjectGameSection";
-import { ProjectAudioSection } from "./sections/ProjectAudioSection";
-import { ProjectAssetsSection } from "./sections/ProjectAssetsSection";
+import { ProjectAppPage } from "./pages/ProjectAppPage";
+import { ProjectGamePage } from "./pages/ProjectGamePage";
 import { ProjectSettingsSection } from "./sections/ProjectSettingsSection";
-import { ProjectDependenciesSection } from "./sections/ProjectDependenciesSection";
 import { ProjectRuntimesSection } from "./sections/ProjectRuntimesSection";
 import { ProjectLintingSection } from "./sections/ProjectLintingSection";
+import type { HelpTopicId } from "@/lib/help";
 import type { ProjectSectionProps } from "./sections/types";
 
 /** Deep-link payload: open the panel already showing a sub-page. */
 export type ProjectPanelPayload = {
     section?: ProjectSectionId;
+};
+
+/**
+ * The sub-pages that hold one subject, and the topic that answers for the whole page.
+ *
+ * The other three are lists of unrelated parts, and a topic on the header would be a `?` that
+ * answers about whichever part the author was not looking at.
+ */
+const SUB_PAGE_HELP_TOPICS: Partial<Record<ProjectSectionId, HelpTopicId>> = {
+    project: "lint",
+    runtimes: "puppetRuntimes",
 };
 
 export function ProjectPanel({ panelId, payload }: PanelComponentProps<ProjectPanelPayload | undefined>) {
@@ -112,15 +121,17 @@ export function ProjectPanel({ panelId, payload }: PanelComponentProps<ProjectPa
                         <ProjectSubPage
                             title={activeItem.title}
                             description={activeItem.description}
+                            // Only the two pages that are one subject from top to bottom. App,
+                            // Game and Settings each hold several parts, and those tag themselves.
+                            helpTopic={SUB_PAGE_HELP_TOPICS[activeItem.id]}
                             onBack={closeSection}
                         >
-                            {activeItem.id === "details" ? <ProjectDetailsSection {...sectionProps} /> : null}
-                            {activeItem.id === "game" ? <ProjectGameSection {...sectionProps} /> : null}
-                            {activeItem.id === "audio" ? <ProjectAudioSection {...sectionProps} /> : null}
-                            {activeItem.id === "assets" ? <ProjectAssetsSection {...sectionProps} /> : null}
-                            {activeItem.id === "dependencies" ? <ProjectDependenciesSection {...sectionProps} /> : null}
+                            {activeItem.id === "app" ? <ProjectAppPage {...sectionProps} /> : null}
+                            {activeItem.id === "game" ? <ProjectGamePage {...sectionProps} /> : null}
+                            {/* Project and Runtimes hold a single part each, so they carry no
+                                headings of their own - the sub-page header already named it. */}
+                            {activeItem.id === "project" ? <ProjectLintingSection {...sectionProps} /> : null}
                             {activeItem.id === "runtimes" ? <ProjectRuntimesSection {...sectionProps} /> : null}
-                            {activeItem.id === "linting" ? <ProjectLintingSection {...sectionProps} /> : null}
                             {activeItem.id === "settings" ? <ProjectSettingsSection {...sectionProps} /> : null}
                         </ProjectSubPage>
                     </motion.div>

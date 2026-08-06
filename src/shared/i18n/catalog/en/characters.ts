@@ -21,12 +21,38 @@ export const characters = {
         rowActions: "Actions",
         groupActions: "Group actions",
         namePlaceholder: "Enter character name",
-        newCharacterDescription: "Create a new character profile",
         groupNamePlaceholder: "Enter group name",
         deleteCharacterConfirm: "Delete character \"{name}\"?",
-        deleteCharacterDetail: "This action cannot be undone.",
+        // Was "This action cannot be undone." until deletion became undoable. What is worth
+        // weighing now is the consequence, not the finality: lines naming this character keep the
+        // reference and stop resolving.
+        deleteCharacterDetail: "Lines that name this character will stop resolving until it is back.",
         deleteGroupConfirm: "Delete group \"{name}\"?",
         deleteGroupDetail: "Characters in this group will be unassigned.",
+    },
+    // Names for the undo steps these deletions leave behind ("Undo delete character Hiyori").
+    history: {
+        deleteCharacter: "delete character {name}",
+        deleteGroup: "delete group {name}",
+    },
+    // The one dialog "New character" opens. Everything a character is created with is asked here,
+    // including the accent — it is what every surface identifies them by from their first line.
+    create: {
+        nameRequired: "Give the character a name.",
+        unnamed: "Unnamed",
+        appearanceLabel: "Appearance",
+        kindDescription: {
+            preset: "One finished sprite per pose.",
+            layered: "Layers composited and switched by tag.",
+        },
+        runtimeGroup: "Drawn by a runtime",
+        runtimeHint: "Needs that runtime installed in this project. The character's editor installs one.",
+        colorLabel: "Colour",
+        // Not a "default colour": nothing is written, and the name keeps deciding for as long as it
+        // stays that way — including if the character is renamed. Said once, in the hint: the label
+        // that used to sit beside the swatch was the same sentence with the reasons taken out.
+        colorAutoHint: "Left alone, a character's name decides their colour — the same name is the same colour in every project.",
+        colorReset: "Compute from the name",
     },
     editor: {
         // No `live2d` / `spine` entries: those read as the product's own name, which is a trademark
@@ -135,6 +161,7 @@ export const characters = {
         layers: "Layers",
         removeLayer: "Remove layer",
         constantLayer: "Always drawn",
+        layerAxis: "Layer varies with this axis",
         hasImage: "image set",
         noImage: "no image",
         drawsNothing: "draws nothing",

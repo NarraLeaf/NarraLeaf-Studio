@@ -1,7 +1,8 @@
 import React from "react";
 import { cn } from "../../utils/cn";
+import { CONTROL_SQUARE_CLASS, type ControlSize } from "./controlSize";
 
-export type ToolbarButtonSize = "xs" | "sm" | "md" | "lg";
+export type ToolbarButtonSize = "xs" | ControlSize;
 
 export interface ToolbarButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "size"> {
     size?: ToolbarButtonSize;
@@ -12,11 +13,17 @@ export interface ToolbarButtonProps extends Omit<React.ButtonHTMLAttributes<HTML
     "aria-label": string;
 }
 
+/**
+ * `sm`/`md`/`lg` are the shared control scale (28/36/40px), so a toolbar button
+ * named `md` is exactly as tall as a `Button`, `Input` or `Select` named `md`.
+ * They used to be one step apart - `md` here meant 32px and `md` there meant
+ * 36px - which is how a toolbar ended up with two heights in it.
+ *
+ * `xs` is the one step below the shared scale, for strips too dense for `sm`.
+ */
 const sizeStyles: Record<ToolbarButtonSize, string> = {
     xs: "h-6 w-6",
-    sm: "h-7 w-7",
-    md: "h-8 w-8",
-    lg: "h-9 w-9",
+    ...CONTROL_SQUARE_CLASS,
 };
 
 /**

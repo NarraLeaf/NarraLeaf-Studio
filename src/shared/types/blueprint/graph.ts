@@ -876,6 +876,12 @@ export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY = "blueprint.game.getSkipDe
 export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_DELAY = "blueprint.game.setSkipDelay" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_INTERVAL = "blueprint.game.getSkipInterval" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_INTERVAL = "blueprint.game.setSkipInterval" as const;
+/**
+ * "Skip only text the player has read." A preference like the ones above, and reached the same way,
+ * but the behaviour behind it is Studio's rather than the engine's - see `skipRunController`.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_READ_TEXT = "blueprint.game.getSkipReadText" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_READ_TEXT = "blueprint.game.setSkipReadText" as const;
 
 /**
  * Per-track (per-bus) volume: the general form of the four fixed volume preferences above.
@@ -896,6 +902,14 @@ export const BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT = "blueprint.localization
 export const BLUEPRINT_NODE_TYPE_LOCALIZATION_HAS_TEXT = "blueprint.localization.hasText" as const;
 export const BLUEPRINT_NODE_TYPE_LOCALIZATION_FORMAT_TEXT = "blueprint.localization.formatText" as const;
 export const BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_AVAILABLE_LANGUAGES = "blueprint.localization.getAvailableLanguages" as const;
+
+// Voice nodes. Dub language is a separate player choice from subtitle language, hence a family of
+// its own rather than more localization nodes. Same rule as above: every getter is latent, so each
+// also has to be listed in `resolveSelfOutput` in `graphParamResolvers.ts`.
+export const BLUEPRINT_NODE_TYPE_VOICE_GET_LANGUAGE = "blueprint.voice.getLanguage" as const;
+export const BLUEPRINT_NODE_TYPE_VOICE_SET_LANGUAGE = "blueprint.voice.setLanguage" as const;
+export const BLUEPRINT_NODE_TYPE_VOICE_GET_AVAILABLE_LANGUAGES = "blueprint.voice.getAvailableLanguages" as const;
+export const BLUEPRINT_NODE_TYPE_VOICE_PLAY = "blueprint.voice.play" as const;
 
 export const BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM = "blueprint.frame.getParam" as const;
 export const BLUEPRINT_NODE_TYPE_FRAME_EMIT = "blueprint.frame.emit" as const;

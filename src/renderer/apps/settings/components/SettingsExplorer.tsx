@@ -5,7 +5,7 @@ import { Slider } from "@/lib/components/elements/Slider";
 import { Switch } from "@/lib/components/elements/Switch";
 import { Button } from "@/lib/components/elements/Button";
 import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox";
-import { Loader2 } from "lucide-react";
+import { Loader2, RotateCcw } from "lucide-react";
 import { SettingValueType } from "@/lib/settings/types";
 import { SettingCategory, SettingDescriptor } from "@/lib/settings/models";
 import { filterCategoryEntries } from "@/lib/settings/searchSettings";
@@ -30,6 +30,14 @@ interface SettingsExplorerProps<T> {
     onCommit: (setting: T, descriptor: SettingDescriptor, value: SettingValue) => Promise<void>;
     /** Runs an `Action` entry once the user has confirmed it. Required if any entry is an Action. */
     onInvokeAction?: (setting: T, descriptor: SettingDescriptor) => Promise<void>;
+    /**
+     * Whether this row holds something other than its default. Drives the per-row reset, which
+     * appears on hover and only where there is something to undo - a permanent reset control on
+     * every row would put thirty of them on screen to serve the two an author changed.
+     */
+    isModified?: (setting: T, descriptor: SettingDescriptor) => boolean;
+    /** Put this row back to its default. Absent means no per-row reset is offered at all. */
+    onReset?: (setting: T, descriptor: SettingDescriptor) => Promise<void>;
     selectedCategory?: SettingCategory["key"];
     /** A specific row to scroll to and flash; takes precedence over `selectedCategory`. */
     selectedSettingId?: string;
@@ -89,6 +97,8 @@ export function SettingsExplorer<T>({
     getValue,
     onCommit,
     onInvokeAction,
+    isModified,
+    onReset,
     selectedCategory,
     selectedSettingId,
     selectedCategoryScrollSignal,
@@ -392,7 +402,10 @@ export function SettingsExplorer<T>({
                 const effectiveHex = (isCustom ? normalizeHexColor(displayValue) : descriptor.optionColors?.[displayValue])
                     ?? ACCENT_SWATCHES[ACCENT_COLOR_DEFAULT];
                 return (
-                    <div className="flex items-center gap-1.5" role="radiogroup" aria-label={descriptor.label}>
+                    // Wraps: this strip is the widest control in the pane, and at a high UI zoom the
+                    // row it sits in is narrower than the swatches are long. Unwrapped it just ran
+                    // off the right edge, taking the picker chip (the way to any OTHER colour) with it.
+                    <div className="flex flex-wrap items-center justify-end gap-1.5" role="radiogroup" aria-label={descriptor.label}>
                         {options.map(option => {
                             const selected = option === displayValue;
                             const name = descriptor.optionLabels?.[option] ?? option;
@@ -506,19 +519,51 @@ export function SettingsExplorer<T>({
         if (descriptor.type === SettingValueType.Custom) {
             return renderPanel(entry);
         }
+        // Actions store nothing, so there is nothing of theirs to put back.
+        const canReset =
+            Boolean(onReset) &&
+            descriptor.type !== SettingValueType.Action &&
+            Boolean(isModified?.(entry.source, descriptor));
         // Boolean rows differ only in that their control renders its own loader.
         return (
             <div
                 key={descriptor.id}
                 ref={(node) => setSettingRef(descriptor.id, node)}
-                className={`rounded-md px-2 py-2 transition duration-200 hover:bg-fill-subtle ${flashedSettingId === descriptor.id ? "bg-fill" : ""}`}
+                className={`group/setting rounded-md px-2 py-2 transition duration-200 hover:bg-fill-subtle ${flashedSettingId === descriptor.id ? "bg-fill" : ""}`}
             >
-                <div className="flex items-start justify-between gap-4">
-                    <div className="flex flex-col gap-1 flex-1 min-w-0">
-                        <span className="text-sm font-medium text-fg">{descriptor.label}</span>
+                {/* Wraps rather than clips. The label used to be `flex-1 min-w-0` (basis 0), so it
+                    shrank away to nothing and the row never wrapped — past a point the control simply
+                    ran off the right edge, and this pane has no horizontal scroll to go after it. At
+                    200% UI zoom that put the theme dropdown, the reduced-motion switch and the accent
+                    swatches out of reach, including the zoom field needed to undo it. A real basis
+                    makes the control drop onto its own line instead; `ml-auto` keeps it right-aligned
+                    there, where `justify-between` alone would push a lone item back to the left. */}
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="flex flex-col gap-1 min-w-0 grow basis-64">
+                        <span className="flex items-center gap-1 text-sm font-medium text-fg">
+                            {descriptor.label}
+                            {/* Hover-revealed and only where there is something to undo; see
+                                `isModified`. `focus-within` on the row would be the keyboard
+                                equivalent, but the button itself carries focus-visible, so it
+                                becomes reachable by Tab without a second rule. */}
+                            {canReset && (
+                                <button
+                                    type="button"
+                                    title={t("settings.resetToDefault")}
+                                    aria-label={t("settings.resetToDefault")}
+                                    onClick={() => void onReset?.(entry.source, descriptor)}
+                                    className="rounded-md p-0.5 text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-fg focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 group-hover/setting:opacity-100"
+                                >
+                                    <RotateCcw className="h-3 w-3" />
+                                </button>
+                            )}
+                        </span>
                         <span className="text-xs text-fg-subtle">{descriptor.description}</span>
                     </div>
-                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                    {/* `max-w-full`, not `shrink-0`: once this column has wrapped onto its own line it
+                        must be allowed to stay inside the pane, or a wide control (the accent strip)
+                        overflows to the right exactly as it did before the wrap. */}
+                    <div className="flex flex-col items-end gap-1 ml-auto min-w-0 max-w-full">
                         {renderControl(entry)}
                         {isSaving && <Loader2 className="w-3 h-3 text-primary animate-spin" />}
                     </div>

@@ -107,17 +107,6 @@ function referenceLocation(ctx: LintContext, reference: AssetReference, assetId:
     return { kind: "project" };
 }
 
-/**
- * Remote assets have no local content shard - they are fetched from their URL and cached, and their
- * record carries `hash: ""` plus a `{url}` meta. Asking `readBytes` for one always answers `null`,
- * which would report every remote asset in the project as unreadable at *error* severity, and with
- * the build gate on that would refuse the build.
- */
-function isRemoteAsset(asset: LintAssetEntry): boolean {
-    const meta = asset.meta;
-    return !!meta && typeof meta === "object" && typeof (meta as { url?: unknown }).url === "string";
-}
-
 export const ASSETS_LINT_RULES: readonly LintRule[] = [
     {
         id: "assets/unused",
@@ -226,18 +215,21 @@ export const ASSETS_LINT_RULES: readonly LintRule[] = [
          * Awaited one asset at a time. Not a limiter - `LintIo` already bounds the decode side - but
          * a `Promise.all` over the library would hold every probed image's bytes in memory at once.
          *
-         * Two carve-outs, both of which would otherwise be guaranteed false errors on a healthy
-         * project (and this rule defaults to `error`, which stops a build):
+         * One carve-out, which would otherwise be a guaranteed false error on a healthy project (and
+         * this rule defaults to `error`, which stops a build): **model bundles** are stored as a
+         * *directory* at the shard path, so "is there a file here" is the wrong question about them.
+         * "Is this bundle intact" is a real question and a different one; it needs a listing, which
+         * `LintIo` does not offer.
          *
-         *  - **Model bundles** are stored as a *directory* at the shard path, so "is there a file
-         *    here" is the wrong question about them. "Is this bundle intact" is a real question and a
-         *    different one; it needs a listing, which `LintIo` does not offer.
-         *  - **Remote assets** have no local shard at all (see {@link isRemoteAsset}).
+         * Remote assets used to be carved out too, back when they were a URL with no local bytes.
+         * They are pinned now - a snapshot at the ordinary content shard - so this rule applies to
+         * them unchanged, and that is what reports a record written before pinning: it has never been
+         * fetched, so it genuinely has no bytes, and Refresh is what fixes it.
          */
         async run(ctx) {
             const findings: LintFinding[] = [];
             for (const asset of ctx.assets) {
-                if (isBundleAssetType(asset.type) || isRemoteAsset(asset)) {
+                if (isBundleAssetType(asset.type)) {
                     continue;
                 }
                 if (!(await ctx.io.exists(asset.id))) {

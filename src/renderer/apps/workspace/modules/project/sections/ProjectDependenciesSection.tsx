@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCw } from "lucide-react";
+import { Button } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useWorkspace } from "../../../context";
@@ -12,13 +13,22 @@ import type {
     DependencyStatus,
     ProjectDependencyResolution,
 } from "@shared/types/pluginDependencies";
+import { SettingsGroup } from "../components/SettingsGroup";
 import type { ProjectSectionProps } from "./types";
 
-const STATUS_STYLES: Record<DependencyStatus, { dot: string; text: string }> = {
-    satisfied: { dot: "bg-success", text: "text-success" },
-    outdated: { dot: "bg-warning", text: "text-warning" },
-    missing: { dot: "bg-danger", text: "text-danger" },
-    incompatible: { dot: "bg-danger", text: "text-danger" },
+/**
+ * Colour for the word, and only for the word.
+ *
+ * There used to be a coloured dot in front of every plugin's name as well. A green one on a plugin
+ * that is simply fine says nothing the row does not already say, and a column of them reads as a
+ * service dashboard rather than a list of plugins. The rows that need attention now say so in one
+ * place instead of two.
+ */
+const STATUS_TEXT_STYLES: Record<DependencyStatus, string> = {
+    satisfied: "text-success",
+    outdated: "text-warning",
+    missing: "text-danger",
+    incompatible: "text-danger",
 };
 
 const STATUS_LABEL_KEYS: Record<DependencyStatus, TranslationKey> = {
@@ -90,19 +100,25 @@ export function ProjectDependenciesSection(_props: ProjectSectionProps) {
     const entries = resolution?.entries ?? [];
 
     return (
-        <div className="grid gap-3">
-            <div className="flex justify-end">
-                <button
-                    type="button"
+        <SettingsGroup
+            // No `?` beside the Rescan button: the row already carries a control, and a second
+            // glyph next to it is the row of identical question marks the popover exists to avoid.
+            // `F1` over the part still answers.
+            helpTopic="plugins"
+            title={t("project.group.dependencies")}
+            trailing={(
+                <Button
+                    size="sm"
+                    variant="ghost"
                     onClick={() => void rescan()}
                     {...freeze.writes(busy)}
-                    className="flex shrink-0 items-center gap-1.5 rounded-md border border-edge bg-fill-subtle px-2 py-1 text-2xs font-medium text-fg-muted transition hover:bg-fill disabled:opacity-50"
+                    className="gap-1.5 px-1.5"
                 >
                     <RefreshCw className={`h-3.5 w-3.5 ${busy ? "animate-spin" : ""}`} />
                     {t("project.dependencies.rescan")}
-                </button>
-            </div>
-
+                </Button>
+            )}
+        >
             {resolution && resolution.overall !== "ok" ? (
                 <OverallBanner overall={resolution.overall} />
             ) : null}
@@ -118,7 +134,7 @@ export function ProjectDependenciesSection(_props: ProjectSectionProps) {
                     ))}
                 </div>
             )}
-        </div>
+        </SettingsGroup>
     );
 }
 
@@ -143,7 +159,6 @@ function OverallBanner({ overall }: { overall: "warnings" | "blocked" }) {
 function DependencyRow({ entry }: { entry: DependencyResolutionEntry }) {
     const { t, tn } = useTranslation();
     const { dependency, installedVersion, status, suppressed } = entry;
-    const style = STATUS_STYLES[status];
     const usage = summarizeUsage(dependency.usedBy, tn);
     const needsAttention = suppressed || status !== "satisfied";
 
@@ -158,23 +173,20 @@ function DependencyRow({ entry }: { entry: DependencyResolutionEntry }) {
     return (
         <section className="rounded-md border border-edge bg-fill-subtle p-3">
             <div className="flex items-center justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-2">
-                    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${style.dot}`} aria-hidden />
-                    <span className="truncate text-sm font-medium text-fg">
-                        {dependency.name?.trim() || dependency.id}
-                    </span>
-                </div>
+                <span className="min-w-0 truncate text-sm font-medium text-fg">
+                    {dependency.name?.trim() || dependency.id}
+                </span>
                 {needsAttention ? (
-                    <span className={`shrink-0 text-2xs font-medium ${style.text}`}>
+                    <span className={`shrink-0 text-2xs font-medium ${STATUS_TEXT_STYLES[status]}`}>
                         {suppressed ? t("project.dependencies.status.disabled") : t(STATUS_LABEL_KEYS[status])}
                     </span>
                 ) : null}
             </div>
 
             {dependency.publisher?.trim() ? (
-                <div className="mt-0.5 truncate pl-3.5 text-2xs text-fg-subtle">{dependency.publisher}</div>
+                <div className="mt-0.5 truncate text-2xs text-fg-subtle">{dependency.publisher}</div>
             ) : null}
-            <div className="mt-1 pl-3.5 text-2xs text-fg-subtle">{meta}</div>
+            <div className="mt-1 text-2xs text-fg-subtle">{meta}</div>
         </section>
     );
 }

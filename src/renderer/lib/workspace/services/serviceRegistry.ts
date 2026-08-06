@@ -13,6 +13,7 @@ import { RecentColorsService } from "./core/RecentColorsService";
 import { UIDocumentService } from "./ui-editor/UIDocumentService";
 import { UIRuntimeBridgeService } from "./ui-editor/UIRuntimeBridgeService";
 import { UIEditorStateService } from "./ui-editor/UIEditorStateService";
+import { HistoryService } from "./history/HistoryService";
 import { UIEditorHistoryService } from "./ui-editor/UIEditorHistoryService";
 import { UIGraphService } from "./ui-editor/UIGraphService";
 import { LocalBlueprintService } from "./ui-editor/LocalBlueprintService";
@@ -40,6 +41,7 @@ import { VersionControlService } from "./core/VersionControlService";
 import { WorkspaceFreezeService } from "./core/WorkspaceFreezeService";
 import { WorkspaceReloadService } from "./core/WorkspaceReloadService";
 import { PuppetDescriptionService } from "./puppet/PuppetDescriptionService";
+import { RecoveryService } from "./core/RecoveryService";
 
 export class ServiceRegistry {
     private services: Record<Services, Service> = {
@@ -58,6 +60,7 @@ export class ServiceRegistry {
         [Services.UIDocument]: UIDocumentService.getInstance(),
         [Services.RuntimeBridge]: UIRuntimeBridgeService.getInstance(),
         [Services.UIEditorState]: UIEditorStateService.getInstance(),
+        [Services.History]: HistoryService.getInstance(),
         [Services.UIEditorHistory]: UIEditorHistoryService.getInstance(),
         [Services.UIGraph]: UIGraphService.getInstance(),
         [Services.LocalBlueprint]: LocalBlueprintService.getInstance(),
@@ -83,6 +86,7 @@ export class ServiceRegistry {
         [Services.VersionControl]: VersionControlService.getInstance(),
         [Services.WorkspaceFreeze]: WorkspaceFreezeService.getInstance(),
         [Services.WorkspaceReload]: WorkspaceReloadService.getInstance(),
+        [Services.Recovery]: RecoveryService.getInstance(),
     };
 
     public get<T extends Service>(service: Services): T {

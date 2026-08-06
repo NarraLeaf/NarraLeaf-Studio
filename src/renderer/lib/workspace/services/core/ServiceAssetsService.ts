@@ -138,6 +138,30 @@ export class ServiceAssetsService extends Service<ServiceAssetsService> implemen
         return { ok: true, data: fileId };
     }
 
+    /**
+     * Write bytes back at a file id that already existed, rather than minting a new one.
+     *
+     * For undoing a deletion. {@link writeFile} generates the id, which is right for a new file and
+     * wrong here: the record that pointed at the deleted file still names the old id, so a restore
+     * that landed under a fresh one would either dangle or force the document to be rewritten - and
+     * an undo that leaves the document different from how it started is not an undo.
+     *
+     * Overwrites whatever is at that id. Callers hold the id precisely because they just deleted it.
+     */
+    public async restoreFile(fileId: string, bytes: Uint8Array): Promise<FsRequestResult<void>> {
+        this.ensureReady();
+        const targetPath = this.resolveAssetFile(fileId);
+        if (!targetPath.ok) {
+            return targetPath;
+        }
+        const ensureDir = await this.ensureAssetsDir();
+        if (!ensureDir.ok) {
+            return ensureDir;
+        }
+        const writeResult = await this.getFileSystem().writeRaw(targetPath.data, bytes);
+        return writeResult.ok ? { ok: true, data: undefined } : writeResult;
+    }
+
     public async readFile(fileId: string, encoding: BufferEncoding = "utf-8"): Promise<FsRequestResult<string>> {
         this.ensureReady();
         const targetPath = this.resolveAssetFile(fileId);
