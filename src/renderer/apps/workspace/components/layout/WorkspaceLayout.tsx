@@ -14,6 +14,8 @@ import { NotificationContainer } from "../ui/NotificationContainer";
 import { DialogContainer } from "../ui/DialogContainer";
 import { ResizableHandle } from "../ui/ResizableHandle";
 import { EditorClosedTabsKeybinding } from "./EditorClosedTabsKeybinding";
+import { WorkspaceUndoKeybindings } from "./WorkspaceUndoKeybindings";
+import { WorkspaceHistoryMenu } from "./WorkspaceHistoryMenu";
 import { WorkspaceEditorQuickSwitch } from "./WorkspaceEditorQuickSwitch";
 import { CommandPalette } from "./CommandPalette";
 import { EditorCommands } from "./EditorCommands";
@@ -898,6 +900,8 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 told what is going on, and help reads nothing from the project. */}
             <WorkspaceHelp />
             <EditorClosedTabsKeybinding />
+            <WorkspaceUndoKeybindings />
+            <WorkspaceHistoryMenu />
             <NotificationContainer />
             <DialogContainer />
         </div>

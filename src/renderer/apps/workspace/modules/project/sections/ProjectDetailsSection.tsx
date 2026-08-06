@@ -5,6 +5,7 @@ import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { TextArea } from "@/lib/components/elements";
 import type { ProjectMetadata } from "@/lib/workspace/project/project";
+import { SettingsGroup } from "../components/SettingsGroup";
 import type { ProjectSectionProps } from "./types";
 
 type MetadataTextKey = "version" | "author" | "website" | "description";
@@ -29,55 +30,60 @@ export function ProjectDetailsSection({ projectService, uiService, config, onCon
     }, [onConfigChange, projectService]);
 
     return (
-        <div className="grid gap-4">
-            <DetailField
-                label={t("project.details.nameLabel")}
-                initialValue={config.name ?? ""}
-                required
-                placeholder={t("project.details.namePlaceholder")}
-                onCommit={commitName}
-                onError={message => uiService?.showNotification(message, "error")}
-            />
+        <SettingsGroup title={t("project.group.details")}>
+            {/* Its own gap: these are labelled text fields, not the bordered rows the rest of the
+                page is made of, and they read as one form only when the label of each sits closer
+                to its own input than to the field above. */}
+            <div className="grid gap-3">
+                <DetailField
+                    label={t("project.details.nameLabel")}
+                    initialValue={config.name ?? ""}
+                    required
+                    placeholder={t("project.details.namePlaceholder")}
+                    onCommit={commitName}
+                    onError={message => uiService?.showNotification(message, "error")}
+                />
 
-            <ReadOnlyField
-                label={t("project.details.identifierLabel")}
-                value={config.identifier ?? ""}
-                helper={t("project.details.identifierHelper")}
-            />
+                <ReadOnlyField
+                    label={t("project.details.identifierLabel")}
+                    value={config.identifier ?? ""}
+                    helper={t("project.details.identifierHelper")}
+                />
 
-            <DetailField
-                label={t("project.details.versionLabel")}
-                initialValue={metadata.version ?? ""}
-                placeholder="1.0.0"
-                onCommit={value => commitMetadata("version", value)}
-                onError={message => uiService?.showNotification(message, "error")}
-            />
+                <DetailField
+                    label={t("project.details.versionLabel")}
+                    initialValue={metadata.version ?? ""}
+                    placeholder="1.0.0"
+                    onCommit={value => commitMetadata("version", value)}
+                    onError={message => uiService?.showNotification(message, "error")}
+                />
 
-            <DetailField
-                label={t("project.details.authorLabel")}
-                initialValue={metadata.author ?? ""}
-                placeholder={t("project.details.authorPlaceholder")}
-                onCommit={value => commitMetadata("author", value)}
-                onError={message => uiService?.showNotification(message, "error")}
-            />
+                <DetailField
+                    label={t("project.details.authorLabel")}
+                    initialValue={metadata.author ?? ""}
+                    placeholder={t("project.details.authorPlaceholder")}
+                    onCommit={value => commitMetadata("author", value)}
+                    onError={message => uiService?.showNotification(message, "error")}
+                />
 
-            <DetailField
-                label={t("project.details.websiteLabel")}
-                initialValue={metadata.website ?? ""}
-                placeholder="https://example.com"
-                onCommit={value => commitMetadata("website", value)}
-                onError={message => uiService?.showNotification(message, "error")}
-            />
+                <DetailField
+                    label={t("project.details.websiteLabel")}
+                    initialValue={metadata.website ?? ""}
+                    placeholder="https://example.com"
+                    onCommit={value => commitMetadata("website", value)}
+                    onError={message => uiService?.showNotification(message, "error")}
+                />
 
-            <DetailField
-                label={t("common.description")}
-                initialValue={metadata.description ?? ""}
-                placeholder={t("project.details.descriptionPlaceholder")}
-                multiline
-                onCommit={value => commitMetadata("description", value)}
-                onError={message => uiService?.showNotification(message, "error")}
-            />
-        </div>
+                <DetailField
+                    label={t("common.description")}
+                    initialValue={metadata.description ?? ""}
+                    placeholder={t("project.details.descriptionPlaceholder")}
+                    multiline
+                    onCommit={value => commitMetadata("description", value)}
+                    onError={message => uiService?.showNotification(message, "error")}
+                />
+            </div>
+        </SettingsGroup>
     );
 }
 

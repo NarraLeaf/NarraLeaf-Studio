@@ -1,9 +1,20 @@
+/**
+ * Project -> Settings: what the project is allowed to reach, what it costs to download, and how it
+ * sits on a phone.
+ *
+ * Three parts under three headings rather than one list of eight switches. The list was in no
+ * particular order and mixed the two questions an author actually asks here: "can this game talk to
+ * the network and is what it ships readable" and "how big is the download". Nothing here changes
+ * what the player sees, which is what keeps it off the Game page.
+ */
+
 import { useCallback, useMemo, useState } from "react";
 import { Select, type SelectOption } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { SettingRow, SettingShell } from "./settingRows";
 import { NumberField } from "./NumberField";
+import { SettingsGroup } from "../components/SettingsGroup";
 import {
     MOBILE_ORIENTATIONS,
     normalizeMobileConfiguration,
@@ -124,77 +135,87 @@ export function ProjectSettingsSection({ projectService, uiService, config, onCo
     );
 
     return (
-        <div className="grid gap-3">
-            <SettingRow
-                title={t("project.settings.allowHttpTitle")}
-                description={t("project.settings.allowHttpDescription")}
-                hint={t("project.settings.allowHttpWebHint")}
-                checked={network.allowHttp}
-                loading={savingHttp}
-                onChange={value => void setAllowHttp(value)}
-            />
-            <SettingRow
-                title={t("project.settings.encryptAssetsTitle")}
-                description={t("project.settings.encryptAssetsDescription")}
-                hint={t("project.settings.encryptAssetsWebHint")}
-                checked={security.encryptAssets}
-                loading={savingEncrypt}
-                onChange={value => void setEncryptAssets(value)}
-            />
-            <SettingRow
-                title={t("project.settings.webLosslessImagesTitle")}
-                description={t("project.settings.webLosslessImagesDescription")}
-                hint={t("project.settings.webLosslessImagesHint")}
-                checked={webOptimization.losslessImages}
-                loading={savingWeb === "losslessImages"}
-                onChange={value => void commitWebOptimization("losslessImages", { losslessImages: value })}
-            />
-            <SettingRow
-                title={t("project.settings.webPrecompressTitle")}
-                description={t("project.settings.webPrecompressDescription")}
-                hint={t("project.settings.webPrecompressHint")}
-                checked={webOptimization.precompress}
-                loading={savingWeb === "precompress"}
-                onChange={value => void commitWebOptimization("precompress", { precompress: value })}
-            />
-            <SettingRow
-                title={t("project.settings.webLossyImagesTitle")}
-                description={t("project.settings.webLossyImagesDescription")}
-                hint={t("project.settings.webSharedWithMobileHint")}
-                checked={webOptimization.lossyImages}
-                loading={savingWeb === "lossyImages"}
-                onChange={value => void commitWebOptimization("lossyImages", { lossyImages: value })}
-            />
-            <SettingShell
-                title={t("project.settings.webLossyQualityTitle")}
-                description={t("project.settings.webLossyQualityDescription")}
-                titleAttr={freeze.writes().title}
-            >
-                <NumberField
-                    value={webOptimization.lossyQuality}
-                    min={WEB_LOSSY_QUALITY_MIN}
-                    max={WEB_LOSSY_QUALITY_MAX}
-                    disabled={freeze.writes(!webOptimization.lossyImages || savingWeb === "lossyQuality").disabled}
-                    ariaLabel={t("project.settings.webLossyQualityTitle")}
-                    onCommit={value => void commitWebOptimization("lossyQuality", { lossyQuality: value })}
+        <div className="grid gap-3 [&>*]:min-w-0">
+            <SettingsGroup title={t("project.group.security")}>
+                <SettingRow
+                    title={t("project.settings.allowHttpTitle")}
+                    description={t("project.settings.allowHttpDescription")}
+                    hint={t("project.settings.allowHttpWebHint")}
+                    checked={network.allowHttp}
+                    loading={savingHttp}
+                    onChange={value => void setAllowHttp(value)}
                 />
-            </SettingShell>
-            <SettingShell
-                title={t("project.settings.orientationTitle")}
-                description={t("project.settings.orientationDescription")}
-                titleAttr={freeze.writes(savingOrientation).title}
-            >
-                <Select
-                    options={orientationOptions}
-                    value={mobile.orientation}
-                    disabled={freeze.writes(savingOrientation).disabled}
-                    onChange={value => void setOrientation(value as MobileOrientation)}
-                    size="sm"
-                    portalMenu
-                    className="w-32 shrink-0"
-                    aria-label={t("project.settings.orientationTitle")}
+                <SettingRow
+                    title={t("project.settings.encryptAssetsTitle")}
+                    description={t("project.settings.encryptAssetsDescription")}
+                    hint={t("project.settings.encryptAssetsWebHint")}
+                    checked={security.encryptAssets}
+                    loading={savingEncrypt}
+                    onChange={value => void setEncryptAssets(value)}
                 />
-            </SettingShell>
+            </SettingsGroup>
+
+            <SettingsGroup title={t("project.group.optimization")}>
+                <SettingRow
+                    title={t("project.settings.webLosslessImagesTitle")}
+                    description={t("project.settings.webLosslessImagesDescription")}
+                    hint={t("project.settings.webLosslessImagesHint")}
+                    checked={webOptimization.losslessImages}
+                    loading={savingWeb === "losslessImages"}
+                    onChange={value => void commitWebOptimization("losslessImages", { losslessImages: value })}
+                />
+                <SettingRow
+                    title={t("project.settings.webPrecompressTitle")}
+                    description={t("project.settings.webPrecompressDescription")}
+                    hint={t("project.settings.webPrecompressHint")}
+                    checked={webOptimization.precompress}
+                    loading={savingWeb === "precompress"}
+                    onChange={value => void commitWebOptimization("precompress", { precompress: value })}
+                />
+                <SettingRow
+                    title={t("project.settings.webLossyImagesTitle")}
+                    description={t("project.settings.webLossyImagesDescription")}
+                    hint={t("project.settings.webSharedWithMobileHint")}
+                    checked={webOptimization.lossyImages}
+                    loading={savingWeb === "lossyImages"}
+                    onChange={value => void commitWebOptimization("lossyImages", { lossyImages: value })}
+                />
+                <SettingShell
+                    title={t("project.settings.webLossyQualityTitle")}
+                    description={t("project.settings.webLossyQualityDescription")}
+                    titleAttr={freeze.writes().title}
+                >
+                    <NumberField
+                        value={webOptimization.lossyQuality}
+                        min={WEB_LOSSY_QUALITY_MIN}
+                        max={WEB_LOSSY_QUALITY_MAX}
+                        disabled={freeze.writes(!webOptimization.lossyImages || savingWeb === "lossyQuality").disabled}
+                        ariaLabel={t("project.settings.webLossyQualityTitle")}
+                        onCommit={value => void commitWebOptimization("lossyQuality", { lossyQuality: value })}
+                    />
+                </SettingShell>
+            </SettingsGroup>
+
+            {/* Neither security nor size, and a heading of its own rather than filed under whichever
+                of the two it is closer to. One row today; the phone-only questions land here. */}
+            <SettingsGroup title={t("project.group.mobile")}>
+                <SettingShell
+                    title={t("project.settings.orientationTitle")}
+                    description={t("project.settings.orientationDescription")}
+                    titleAttr={freeze.writes(savingOrientation).title}
+                >
+                    <Select
+                        options={orientationOptions}
+                        value={mobile.orientation}
+                        disabled={freeze.writes(savingOrientation).disabled}
+                        onChange={value => void setOrientation(value as MobileOrientation)}
+                        size="sm"
+                        portalMenu
+                        className="w-32 shrink-0"
+                        aria-label={t("project.settings.orientationTitle")}
+                    />
+                </SettingShell>
+            </SettingsGroup>
         </div>
     );
 }

@@ -26,6 +26,7 @@ import {
 } from "../preview/PreviewManager";
 import { selectRuntimePluginsForPack, type RuntimePluginPackSelection } from "../preview/selectRuntimePlugins";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
+import { currentDownloadRewrites } from "../downloadRewrites";
 
 /**
  * Game processes owned by a *test run*, not by the author's Run button.
@@ -362,6 +363,7 @@ export class GameTestManager {
                 encryptionKey,
                 sidecarPlatformKey: hostSidecarPlatformKey(),
                 hostUserDataDir: this.app.getUserDataDir(),
+                downloadRewrites: currentDownloadRewrites(),
             }, {
                 onStart: worker => { session.compileWorker = worker; },
                 cancelled: () => session.stopRequested,

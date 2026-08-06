@@ -24,9 +24,14 @@ export const characters = {
         namePlaceholder: "输入角色名称",
         groupNamePlaceholder: "输入分组名称",
         deleteCharacterConfirm: "删除角色“{name}”？",
-        deleteCharacterDetail: "此操作无法撤销",
+        deleteCharacterDetail: "提到这个角色的台词会失去指向，直到它被恢复",
         deleteGroupConfirm: "删除分组“{name}”？",
         deleteGroupDetail: "此分组下的角色将变为未分组状态",
+    },
+    // 这两个删除留下的撤销步骤叫什么（"撤销 删除角色 Hiyori"）。
+    history: {
+        deleteCharacter: "删除角色 {name}",
+        deleteGroup: "删除分组 {name}",
     },
     create: {
         nameRequired: "请先给角色起个名字",

@@ -7,6 +7,7 @@ import { isVersioned } from "@shared/vcs/workingSet";
 // Type-only, and it has to stay that way: `revisionReader` reaches the native library at module
 // scope, and this module is imported by Dev Mode on hosts that have no Lore build at all.
 import type { RevisionFileEntry } from "./revisionReader";
+import { formatBytes } from "@shared/utils/formatBytes";
 
 /**
  * One revision, written out as an ordinary project directory.
@@ -290,8 +291,3 @@ async function writeEntry(directory: string, entry: RevisionFileEntry, bytes: Bu
     return bytes;
 }
 
-function formatBytes(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
