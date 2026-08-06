@@ -3,6 +3,7 @@ import { Image as ImageIcon, Loader2, X } from "lucide-react";
 import { Slider } from "@/lib/components/elements";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
+import { HelpTrigger } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
 import { isDeferredWriteAllowed, useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import {
@@ -157,7 +158,11 @@ export function ProjectIconsSection({ projectService, uiService, onConfigChange 
     const spec = selected ? set.specs[selected] : null;
 
     return (
-        <SettingsGroup title={t("project.group.icons")}>
+        <SettingsGroup
+            title={t("project.group.icons")}
+            helpTopic="icons"
+            trailing={<HelpTrigger topic="icons" />}
+        >
             <button
                 type="button"
                 className="mx-auto grid h-24 w-24 place-items-center overflow-hidden rounded-md border border-dashed border-edge-strong bg-fill-subtle transition-colors hover:border-primary"

@@ -13,11 +13,23 @@ import { ProjectGamePage } from "./pages/ProjectGamePage";
 import { ProjectSettingsSection } from "./sections/ProjectSettingsSection";
 import { ProjectRuntimesSection } from "./sections/ProjectRuntimesSection";
 import { ProjectLintingSection } from "./sections/ProjectLintingSection";
+import type { HelpTopicId } from "@/lib/help";
 import type { ProjectSectionProps } from "./sections/types";
 
 /** Deep-link payload: open the panel already showing a sub-page. */
 export type ProjectPanelPayload = {
     section?: ProjectSectionId;
+};
+
+/**
+ * The sub-pages that hold one subject, and the topic that answers for the whole page.
+ *
+ * The other three are lists of unrelated parts, and a topic on the header would be a `?` that
+ * answers about whichever part the author was not looking at.
+ */
+const SUB_PAGE_HELP_TOPICS: Partial<Record<ProjectSectionId, HelpTopicId>> = {
+    project: "lint",
+    runtimes: "puppetRuntimes",
 };
 
 export function ProjectPanel({ panelId, payload }: PanelComponentProps<ProjectPanelPayload | undefined>) {
@@ -109,6 +121,9 @@ export function ProjectPanel({ panelId, payload }: PanelComponentProps<ProjectPa
                         <ProjectSubPage
                             title={activeItem.title}
                             description={activeItem.description}
+                            // Only the two pages that are one subject from top to bottom. App,
+                            // Game and Settings each hold several parts, and those tag themselves.
+                            helpTopic={SUB_PAGE_HELP_TOPICS[activeItem.id]}
                             onBack={closeSection}
                         >
                             {activeItem.id === "app" ? <ProjectAppPage {...sectionProps} /> : null}

@@ -290,6 +290,7 @@ export function PuppetRuntimeInstaller(props: {
             isOpen={props.visible}
             onClose={close}
             title={t("characters.editor.runtime.title", { product: productName })}
+            helpTopic="puppetRuntimes"
             size="sm"
             footer={
                 <div className="flex justify-end gap-2">
