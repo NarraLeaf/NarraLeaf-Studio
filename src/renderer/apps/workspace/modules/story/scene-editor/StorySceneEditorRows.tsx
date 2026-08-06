@@ -240,6 +240,13 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
     const [gripFocused, setGripFocused] = useState(false);
     const reduceMotion = useReduceMotion();
     const showRowActions = hovered || active;
+    // Whether this row's trailing controls land on the artwork strip rather than on the row's own
+    // surface (see `.nl-on-media` in styles.css). The same condition the strip itself is drawn on —
+    // a `/bg` row with something to show — because the strip is right-aligned and the controls are
+    // the only things over it.
+    const controlsOverArtwork = block.kind === "action"
+        && block.payload.action === "setBackground"
+        && Boolean(block.payload.assetId || block.payload.color);
     // The grip and the line number occupy one box, so exactly one of them is visible at a time.
     const showGrip = hovered || gripFocused;
     // Reordering a row writes the scene. Everything else this row does - selecting, folding, reading
@@ -520,6 +527,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                             "flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1 transition-opacity",
                             containerInfo ? "ml-auto" : "",
                             showRowActions ? "opacity-100" : "pointer-events-none opacity-0",
+                            controlsOverArtwork ? "nl-on-media" : "",
                         ].join(" ")}
                     >
                         {containerInfo ? (

@@ -141,6 +141,14 @@
     --nl-control-fill: rgb(255 255 255 / 0.05);
     --nl-control-fill-hover: rgb(255 255 255 / 0.1);
 
+    /*
+     * The halo a glyph wears when it sits on picture rather than on surface (see `.nl-on-media`).
+     * It is the ANTI-foreground: black behind a light glyph on the dark ladder, white behind a dark
+     * one on the light ladder. A photograph has no contrast to promise, so the glyph brings its own
+     * — and what makes it readable over a white wall is the halo, not the glyph's own colour.
+     */
+    --nl-on-media-halo: drop-shadow(0 0 2px rgb(0 0 0 / 0.95)) drop-shadow(0 1px 2px rgb(0 0 0 / 0.75));
+
     --nl-window-titlebar-height: 40px;
     --nl-window-content-height: calc(100vh - var(--nl-window-titlebar-height));
 }
@@ -203,6 +211,9 @@
         --nl-control-border-hover: rgb(15 23 42 / 0.55);
         --nl-control-fill: rgb(15 23 42 / 0.04);
         --nl-control-fill-hover: rgb(15 23 42 / 0.08);
+
+        /* Flipped with the ladder: an ink glyph needs a light halo to survive a dark photograph. */
+        --nl-on-media-halo: drop-shadow(0 0 2px rgb(255 255 255 / 0.95)) drop-shadow(0 1px 2px rgb(255 255 255 / 0.8));
     }
 }
 
@@ -405,6 +416,30 @@ select:focus {
  */
 .nl-editor-surface {
     background-color: rgb(var(--nl-surface-sunken) / var(--nl-editor-surface-opacity));
+}
+
+/*
+ * A cluster of icon buttons that sits ON a picture instead of on a surface — today the story
+ * editor's trailing row controls where a `/bg` row paints its artwork strip under them.
+ *
+ * `text-fg-muted` is a contrast promise against a KNOWN fill, and a photograph makes no such
+ * promise: a mid-grey glyph on a sunlit white wall is not a dimmer icon, it is no icon at all. So a
+ * glyph over media is the full foreground plus a halo of its opposite (`--nl-on-media-halo`) — the
+ * treatment media controls have always used, and the reason it survives any frame is the halo.
+ *
+ * The rule reaches the buttons rather than tinting the container: the utilities on each button are
+ * single classes, so an inherited `color` would lose to them and a descendant selector does not.
+ * Hover states are two classes and still win, which is the point — the icon keeps its hover meaning.
+ *
+ * A scrim over the artwork does the same job and was the first fix, but it costs the author the last
+ * ~105px of the picture whenever the pointer is on the row, and the picture is what the strip is for.
+ */
+.nl-on-media button {
+    color: rgb(var(--nl-fg));
+}
+
+.nl-on-media button svg {
+    filter: var(--nl-on-media-halo);
 }
 
 /*
