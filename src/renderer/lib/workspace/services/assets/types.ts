@@ -6,20 +6,37 @@ export enum AssetSource {
     Remote = "remote",
 }
 
+/**
+ * A remote asset's provenance: where its bytes came from, and what the server said about them.
+ *
+ * The bytes themselves are **not** here and are not remote at read time. A remote asset is a *pinned
+ * reference*: the snapshot lives at the same content shard as any local asset and travels with the
+ * project under version control, and this record is what makes a later "check for updates" possible.
+ * Everything downstream - the build, the lint rules, thumbnails, the overview - therefore treats a
+ * remote asset as an ordinary one. See docs/plans/2026-08-05-003-plan-remote-asset-pinning.md.
+ */
 export type AssetResolveMeta<Source extends AssetSource> = Source extends AssetSource.Local ? {} : Source extends AssetSource.Remote ? {
+    /** The address the author gave, verbatim. The only field a refresh sends a request to. */
     url: string;
+    /** When the stored snapshot was taken, ISO 8601. */
+    fetchedAt: string;
     /**
-     * The cache lifetime of the asset in milliseconds  
-     * This will only affect the asset fetching in production.
+     * The server's validators for the stored snapshot, when it offered any. Sent back as
+     * `If-None-Match` / `If-Modified-Since`, so refreshing an unchanged asset transfers no bytes.
      */
-    lifetime: number;
-    protocol: string;
-    hostname: string;
-    path: string;
-    query: string;
-    hash: string;
-    search: string;
-    searchParams: Record<string, string>;
+    etag?: string;
+    lastModified?: string;
+    /** The response's declared media type. Diagnostic only - the format gate reads the bytes. */
+    contentType?: string;
+    /**
+     * Was to be the runtime cache lifetime, back when a remote asset was going to be fetched by the
+     * shipped game. It never was: the runtime asset manifest carries no URL, so a packaged game has
+     * only the baked bytes, and nothing has ever read this. Kept so records that carry it still
+     * open; the next write drops it. Never write it.
+     *
+     * @deprecated
+     */
+    lifetime?: number;
 } : never;
 
 /**

@@ -180,6 +180,18 @@ export const properties = {
             extension: "Extension",
             frameRate: "Frame Rate",
         },
+        /**
+         * A remote asset's provenance. "Fetched" and "Refresh", not "cached" and "re-download": what
+         * the project holds is a snapshot under version control, not a cache, and the distinction is
+         * the whole reason this asset kind builds offline and survives a fresh clone.
+         */
+        remote: {
+            url: "Source",
+            fetched: "Fetched",
+            neverFetched: "Not downloaded yet",
+            refresh: "Check for Updates",
+            refreshFailedTitle: "Could not check the source",
+        },
         image: {
             title: "Image Properties",
             info: "Image Information",

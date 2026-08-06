@@ -181,6 +181,13 @@ export const properties = {
             extension: "扩展名",
             frameRate: "帧率",
         },
+        remote: {
+            url: "来源",
+            fetched: "取回时间",
+            neverFetched: "尚未下载",
+            refresh: "检查更新",
+            refreshFailedTitle: "无法检查来源",
+        },
         image: {
             title: "图片属性",
             info: "图片信息",

@@ -495,13 +495,10 @@ export function createPluginApp(
                     }
                     return result.data as any;
                 },
+                // Always a `blob:` URL over bytes read from the project, for remote assets too: a
+                // plugin handed a project's `https:` URL could put it in the DOM, which is the one
+                // thing renderers may not do with a remote address.
                 createObjectUrl: async asset => {
-                    if (asset.source === AssetSource.Remote) {
-                        const url = (asset.meta as { url?: unknown }).url;
-                        if (typeof url === "string" && url.trim()) {
-                            return url;
-                        }
-                    }
                     const result = await assets.fetch(asset as any);
                     if (!result.success || !result.data) {
                         throw new Error(result.error ?? `Failed to fetch asset: ${asset.id}`);

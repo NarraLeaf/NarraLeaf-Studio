@@ -6,8 +6,11 @@ import {
     filterLintEntries,
     flattenLintGroups,
     groupLintEntries,
+    lintEntryExcerpt,
+    lintEntryLocator,
     lintLocationKey,
     lintLocationLabel,
+    lintRuleDescriptionKey,
     lintRuleTitleKey,
     lintSeverityLabelKey,
     type LintGroupLabels,
@@ -82,10 +85,62 @@ describe("lintLocationKey", () => {
     });
 });
 
+describe("lintEntryLocator", () => {
+    const row = (line?: number, excerpt?: string): LintLocation => ({
+        kind: "story",
+        storyId: "s1",
+        storyName: "Chapter One",
+        sceneId: "sc1",
+        sceneName: "Opening",
+        blockId: "b1",
+        line,
+        excerpt,
+    });
+
+    it("grouped by rule, names the place and the row - the heading only named the rule", () => {
+        expect(lintEntryLocator(row(12), "rule", labels.locationLabel, "Jumps to ending")).toEqual({
+            label: "Chapter One / Opening",
+            line: 12,
+        });
+    });
+
+    it("grouped by location, names only the row - the heading already named the place", () => {
+        expect(lintEntryLocator(row(12), "location", labels.locationLabel, "Jumps to ending")).toEqual({ label: "", line: 12 });
+    });
+
+    it("has no row number for a finding that is about a whole scene, or about no scene at all", () => {
+        expect(lintEntryLocator(row(undefined), "rule", labels.locationLabel, "x").line).toBeNull();
+        expect(lintEntryLocator({ kind: "project" }, "location", labels.locationLabel, "x")).toEqual({
+            label: "",
+            line: null,
+        });
+    });
+
+    it("says nothing the message already said", () => {
+        // `assets/unused` names its subject inside the sentence, so a locator beside it stutters.
+        const asset: LintLocation = { kind: "asset", assetId: "a1", assetName: "dialog.png" };
+        expect(lintEntryLocator(asset, "rule", labels.locationLabel, "dialog.png is not used anywhere"))
+            .toEqual({ label: "", line: null });
+        // Only the repeated half goes: the story name is still the reader's only way to that story.
+        expect(lintEntryLocator(row(12), "rule", labels.locationLabel, "Opening references a missing asset"))
+            .toEqual({ label: "Chapter One", line: 12 });
+    });
+
+    it("hands out the row's own words, and nothing for a location that has none", () => {
+        expect(lintEntryExcerpt(row(12, "It rained all week."))).toBe("It rained all week.");
+        expect(lintEntryExcerpt(row(12))).toBe("");
+        expect(lintEntryExcerpt({ kind: "asset", assetId: "a1", assetName: "bg.png" })).toBe("");
+    });
+});
+
 describe("i18n keys", () => {
     it("derives the rule title key from the rule id", () => {
         expect(lintRuleTitleKey("assets/unused")).toBe("lint.rule.assetsUnused.title");
         expect(lintRuleTitleKey("story/goto-missing")).toBe("lint.rule.storyGotoMissing.title");
+    });
+
+    it("derives the rule description key from the rule id", () => {
+        expect(lintRuleDescriptionKey("story/dead-end")).toBe("lint.rule.storyDeadEnd.description");
     });
 
     it("names the three severities", () => {
@@ -137,6 +192,29 @@ describe("groupLintEntries", () => {
         expect(groups[0].title).toBe("Chapter One / Opening");
     });
 
+    it("puts a location's findings back into row order, scene-wide ones first", () => {
+        const at = (line?: number): LintLocation => ({
+            kind: "story",
+            storyId: "s1",
+            storyName: "Chapter One",
+            sceneId: "sc1",
+            sceneName: "Opening",
+            ...(line === undefined ? {} : { blockId: `b${line}`, line }),
+        });
+        const groups = groupLintEntries(
+            [
+                entry("story/goto-missing", "error", at(12)),
+                entry("text/empty", "info", at(4)),
+                entry("story/empty-scene", "info", at()),
+                entry("text/overlong", "warning", at(9)),
+            ],
+            "location",
+            labels,
+        );
+        expect(groups[0].entries.map(e => (e.location.kind === "story" ? e.location.line : null)))
+            .toEqual([undefined, 4, 9, 12]);
+    });
+
     it("keeps the report's own order inside a group", () => {
         const groups = groupLintEntries(entries, "rule", labels);
         const gotoGroup = groups.find(g => g.key === "story/goto-missing")!;
@@ -145,6 +223,24 @@ describe("groupLintEntries", () => {
 
     it("returns nothing for no entries", () => {
         expect(groupLintEntries([], "rule", labels)).toEqual([]);
+    });
+
+    it("flags a group whose entries do not all share one severity", () => {
+        // By rule this is the exception (severity is resolved per rule) and it is what lets the rows
+        // drop the severity word; by location it is the norm.
+        const byRule = groupLintEntries(entries, "rule", labels);
+        expect(byRule.every(group => !group.mixedSeverity)).toBe(true);
+
+        const mixed = groupLintEntries(
+            [
+                entry("story/goto-missing", "error", storyLocation("sc1")),
+                entry("story/goto-missing", "warning", storyLocation("sc1")),
+            ],
+            "rule",
+            labels,
+        );
+        expect(mixed[0].mixedSeverity).toBe(true);
+        expect(groupLintEntries(entries, "location", labels)[0].mixedSeverity).toBe(true);
     });
 });
 
@@ -163,6 +259,23 @@ describe("flattenLintGroups", () => {
 
         expect(rows.map(row => row.kind)).toEqual(["group", "entry", "entry", "group", "entry"]);
         expect(new Set(rows.map(row => row.key)).size).toBe(rows.length);
+    });
+
+    it("keeps a collapsed group's heading and drops its entries", () => {
+        const groups = groupLintEntries(
+            [
+                entry("story/goto-missing", "error", storyLocation("sc1")),
+                entry("story/goto-missing", "error", storyLocation("sc2")),
+                entry("assets/unused", "warning", { kind: "project" }),
+            ],
+            "rule",
+            labels,
+        );
+        const rows = flattenLintGroups(groups, new Set(["story/goto-missing"]));
+
+        expect(rows.map(row => row.kind)).toEqual(["group", "group", "entry"]);
+        // The heading still counts what it is hiding, so folding never loses the number.
+        expect(rows[0].group.entries).toHaveLength(2);
     });
 });
 

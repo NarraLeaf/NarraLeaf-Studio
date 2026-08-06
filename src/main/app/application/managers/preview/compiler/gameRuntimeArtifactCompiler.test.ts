@@ -394,7 +394,39 @@ describe("game runtime artifact compiler", () => {
         expect(result.pack.plugins).toEqual([]);
     });
 
-    it("fails with a clear diagnostic when a remote asset is missing from editor cache", async () => {
+    /**
+     * The regression this guards is a build that only worked on the machine that imported the asset.
+     * Remote assets used to be read out of `editor/assets/remote`, the editor's download cache, which
+     * version control deliberately excludes and which only gets filled by previewing that asset - so
+     * a fresh clone, or an asset the author had never opened, failed on a file that had never existed
+     * there. Their snapshot is an ordinary content shard now, and the fixture writes it as one.
+     */
+    it("packs a remote asset from its versioned snapshot, like any other asset", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath, {
+            assets: {
+                [REMOTE_ASSET_ID]: {
+                    id: REMOTE_ASSET_ID,
+                    name: "remote-hero.jpg",
+                    ext: "jpg",
+                    source: "remote",
+                },
+            },
+        });
+        await writeAsset(projectPath, REMOTE_ASSET_ID, "pinned remote bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47322));
+
+        const entry = result.pack.assets.items[REMOTE_ASSET_ID];
+        expect(entry.source).toBe("remote");
+        await expect(fs.readFile(path.join(result.appDir, "assets", `${REMOTE_ASSET_ID}.jpg`), "utf-8"))
+            .resolves.toBe("pinned remote bytes");
+    });
+
+    it("fails with a clear diagnostic when a remote asset has never been fetched", async () => {
         const projectPath = path.join(tempDir, "project");
         const runtimeDistDir = path.join(tempDir, "runtime-dist");
         await createRuntimeDist(runtimeDistDir);
@@ -409,8 +441,8 @@ describe("game runtime artifact compiler", () => {
             },
         });
 
-        await expect(compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47322)))
-            .rejects.toThrow(/remote cache "remote-hero\.jpg"/);
+        await expect(compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47323)))
+            .rejects.toThrow(/remote asset "remote-hero\.jpg"/);
     });
 
     it("preserves authored Animate opacity percent params in the preview pack", async () => {
