@@ -23,6 +23,7 @@ import type {
     PluginSidecarTargetContribution,
 } from "@shared/types/plugins";
 import type { ProjectConfigData } from "@shared/utils/nlproj";
+import type { DownloadRewriteRule } from "@shared/types/downloadSource";
 import type { MobileShellOrientation } from "@/buildWorker/mobile/mobileShellManifest";
 // Relative rather than "@/": preflight is unit-tested, and the test runner only
 // aliases "@" to the renderer tree - a value import through it would not resolve.
@@ -247,12 +248,18 @@ export function buildDependencyPlatformKey(platform: GameBuildDesktopPlatform, a
 export async function checkBuildDependencies(
     userDataDir: string,
     requirements: BuildDependencyRequirement[],
+    /**
+     * The author's download rewrites. Probing the declared host while the build would fetch a
+     * mirrored one is how a dialog ends up reporting a gap that does not exist (or, worse,
+     * clearing a build that then cannot download), so the probe uses the same rules.
+     */
+    rewrites: readonly DownloadRewriteRule[] = [],
 ): Promise<BuildDependencyGap[]> {
     // Probed together: each probe can sit out its own timeout, and a project
     // with several dependencies would otherwise stall the dialog by their sum.
     const probes = await Promise.all(requirements.map(async requirement => ({
         requirement,
-        availability: await probePluginBuildDependency({ userDataDir, target: requirement.target }),
+        availability: await probePluginBuildDependency({ userDataDir, target: requirement.target, rewrites }),
     })));
     return probes.flatMap(({ requirement, availability }) => availability.status === "unavailable"
         ? [{
