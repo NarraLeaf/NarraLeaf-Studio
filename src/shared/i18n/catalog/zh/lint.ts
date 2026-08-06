@@ -5,6 +5,10 @@ import type { LocaleNamespace } from "../types";
  *
  * 术语固定：一条检查结果叫「问题」，严重级别是错误／警告／提示；规则标题是短名词短语，
  * 说明是一句话且只出现在提示浮层里，界面上不写解释性句子。
+ *
+ * **消息里不写它是在哪儿找到的。** 每个显示消息的地方都会在旁边单独给出位置——报告页有自己的
+ * 一列，构建控制台走 `nonRedundantLintLocation`——所以「第一天 跳转到了未声明的标签 ending」
+ * 把「第一天」说了两遍，而真正区分两条问题的后半句反倒被省略号吃掉。消息是谓语，位置是主语。
  */
 export const lint = {
     rule: {
@@ -42,48 +46,48 @@ export const lint = {
         storyInvalidCommand: {
             title: "无效指令",
             description: "编译器不接受的行",
-            message: "{scene} 里有无效指令",
+            message: "这一行无法编译",
         },
         storyGotoMissing: {
             title: "标签缺失",
             description: "goto 指向场景里没有声明的标签",
-            message: "{scene} 跳转到了未声明的标签 {label}",
+            message: "跳转到 {label}，本场景没有声明过它",
         },
         storyLabelDuplicate: {
             title: "标签重复",
             description: "同一标签声明了两次，只有第一次生效",
-            message: "{scene} 里 {label} 被声明了多次",
+            message: "{label} 在上面已经声明过，这一处永远轮不到",
         },
         storyLabelUnused: {
             title: "未使用的标签",
             description: "没有任何跳转指向它",
-            message: "{scene} 里的 {label} 从未被用到",
+            message: "没有任何跳转指向 {label}",
         },
         storyJumpMissing: {
             title: "场景缺失",
             description: "跳转指向工程里没有的场景",
-            message: "{scene} 跳转到了不存在的场景",
+            message: "跳转到了故事里已经没有的场景",
         },
         storyEmptyChoice: {
             title: "空选择",
             description: "玩家没有任何可选项的选择",
-            message: "{scene} 里有一个没有选项的选择",
-            messageEmptyOption: "{scene} 里有一个没有文字的选项",
+            message: "这个选择没有任何选项",
+            messageEmptyOption: "这个选项没有文字",
         },
         storyDeadEnd: {
             title: "断头路",
             description: "有的路线跳转出去，有的走到底就没了",
-            message: "{scene} 走到底就没了",
+            message: "走到这里就掉出场景末尾",
         },
         storyUnreachableScene: {
             title: "到不了的场景",
             description: "从开头出发无法抵达",
-            message: "{scene} 无法抵达",
+            message: "没有任何路径能到达这个场景",
         },
         storyEmptyScene: {
             title: "空场景",
             description: "场景里没有内容",
-            message: "{scene} 是空的",
+            message: "这个场景里没有任何行",
         },
         variablesUndeclared: {
             title: "未声明的变量",
@@ -115,7 +119,7 @@ export const lint = {
         textEmpty: {
             title: "空行",
             description: "对话行里没有文字",
-            message: "{scene} 里有一行没有文字",
+            message: "这一行没有文字",
         },
         localizationMissing: {
             title: "缺少翻译",
@@ -172,10 +176,18 @@ export const lint = {
         empty: "没有发现问题",
         running: "检查中…",
         summary: "{errors} 个错误，{warnings} 个警告，{infos} 个提示",
+        filtered: "显示 {shown} / {total}",
         rerun: "重新检查",
         filterAll: "全部",
         groupByRule: "按规则",
         groupByLocation: "按位置",
+        collapse: "折叠",
+        expand: "展开",
+        collapseAll: "全部折叠",
+        expandAll: "全部展开",
+        // 行号那一列念出来的样子。列里只写数字——故事编辑器的行号槽就是这么写的，
+        // 读者是拿这一列去对那一列。
+        lineAria: "第 {line} 行",
     },
     command: {
         runProject: "检查工程",
@@ -184,7 +196,9 @@ export const lint = {
     console: {
         started: "开始检查",
         finished: "{errors} 个错误，{warnings} 个警告，用时 {duration}",
-        finding: "{severity} {rule} {location} {message}",
+        // 先位置、再哪里不对、最后是哪条规则说的——编译器那种一行，也是读的人扫视的顺序。
+        // 不再留严重级别的位：控制台每一行左边本来就有一列级别，写在句子里是重复。
+        finding: "{location} {message}（{rule}）",
     },
     build: {
         blocked: "{count} 个问题拦下了构建",

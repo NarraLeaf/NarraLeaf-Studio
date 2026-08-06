@@ -248,6 +248,24 @@ describe("annotateDialogueGroups", () => {
     });
 });
 
+describe("buildVisibleRows line numbers", () => {
+    // The scene: n1, a group holding two rows, n2. Numbers 1..5 in document order.
+    const blocks = [narration("n1"), group("g", ["c1", "c2"]), narration("c1", "g"), narration("c2", "g"), narration("n2")];
+    const built = () => scene(blocks, ["n1", "g", "n2"]);
+
+    it("numbers every row of the scene in document order", () => {
+        const rows = buildVisibleRows(built(), new Set());
+        expect(rows.map(row => `${row.block.id}:${row.lineNumber}`)).toEqual(["n1:1", "g:2", "c1:3", "c2:4", "n2:5"]);
+    });
+
+    it("leaves a gap where a container is collapsed, rather than renumbering what is left", () => {
+        // Folding is a view state; the row after the fold is still row 5 of the scene, and the lint
+        // report is entitled to call it that. Numbering it 3 would move rows under the reader.
+        const rows = buildVisibleRows(built(), new Set(["g"]));
+        expect(rows.map(row => `${row.block.id}:${row.lineNumber}`)).toEqual(["n1:1", "g:2", "n2:5"]);
+    });
+});
+
 describe("filter then group", () => {
     it("keeps original line numbers and groups the survivors that filtering made adjacent", () => {
         // Pipeline mirrors the controller: buildVisibleRows -> narrative filter -> annotateDialogueGroups.

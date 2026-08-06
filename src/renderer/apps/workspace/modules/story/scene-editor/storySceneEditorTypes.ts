@@ -37,6 +37,13 @@ export type CharacterAppearanceRef = {
 export type VisibleStoryRow = {
     block: StoryBlock;
     depth: number;
+    /**
+     * The row's place in the whole scene, 1-based - not its place in this list.
+     *
+     * Folding a container or filtering to narrative rows removes lines from view without renumbering
+     * the ones left, so a row's number is a property of the scene and can be named from outside it
+     * (the lint report does exactly that). Sequences with gaps in them are the intended sight.
+     */
     lineNumber: number;
     /**
      * For a dialogue row, the speaker's accumulated appearance at this line (WI-3), so its avatar can
