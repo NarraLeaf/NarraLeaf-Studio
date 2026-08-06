@@ -11,6 +11,7 @@ import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, De
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
 import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "@shared/types/gameTest";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "@shared/types/gameBuild";
+import type { MediaConvertRequest, MediaConvertStateSnapshot } from "@shared/types/mediaConvert";
 import type {
     MacSigningIdentity,
     SigningCredential,
@@ -194,6 +195,14 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     openPsd: () => ipcClient.invoke(IPCEventType.psdOpen, {}),
     bakePsd: (request) => ipcClient.invoke(IPCEventType.psdBake, { request }),
     probeMedia: (path: string) => ipcClient.invoke(IPCEventType.mediaProbe, { path }),
+    mediaConvert: {
+        start: (request: MediaConvertRequest) =>
+            ipcClient.invoke(IPCEventType.mediaConvertStart, { request }) as Promise<RequestStatus<{ state: MediaConvertStateSnapshot }>>,
+        cancel: (jobId: string) =>
+            ipcClient.invoke(IPCEventType.mediaConvertCancel, { jobId }) as Promise<RequestStatus<{ state: MediaConvertStateSnapshot }>>,
+        getStatus: (jobId: string) =>
+            ipcClient.invoke(IPCEventType.mediaConvertGetStatus, { jobId }) as Promise<RequestStatus<{ state: MediaConvertStateSnapshot }>>,
+    },
     workspace: {
         getDefaultProjectDirectory: () => ipcClient.invoke(IPCEventType.projectWizardGetDefaultDirectory, {}),
         launch: (props: WindowProps[WindowAppType.Workspace], closeCurrentWindow?: boolean) =>

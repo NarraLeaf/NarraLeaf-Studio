@@ -4,6 +4,7 @@ import {
     containerNames,
     isRefusedMediaFileName,
     parseProbeOutput,
+    probeDurationUs,
     remuxContainerFor,
     TRANSCODE_TARGET,
     type ProbeReport,
@@ -145,9 +146,30 @@ describe("classifyMediaSupport / reencode", () => {
         for (const codec of ["ac3", "alac", "wmav2"]) {
             const verdict = classifyMediaSupport(report(MATROSKA, [audio(codec)]));
             expect(verdict.tier, codec).toBe("reencode");
+            // AAC in MP4, not Vorbis in WebM: the iOS shell serves no `audio/webm`, so an
+            // audio-only WebM arrives as an octet stream and is silently mute there.
             expect(verdict.target, codec)
-                .toEqual({ kind: "reencode", container: "webm", video: null, audio: "vorbis" });
+                .toEqual({ kind: "reencode", container: "mp4", video: null, audio: "aac" });
         }
+    });
+
+    it("sends an audio-only file to AAC in MP4 and one with video to VP9 in WebM", () => {
+        // The single most likely thing for someone to "simplify" back into one target. Both halves
+        // are asserted together so the reason for the split is visible at the failure site.
+        expect(classifyMediaSupport(report(MATROSKA, [audio("ac3")])).target)
+            .toEqual({ kind: "reencode", container: "mp4", video: null, audio: "aac" });
+        expect(classifyMediaSupport(report(MATROSKA, [video("hevc"), audio("ac3", 1)])).target)
+            .toEqual({ kind: "reencode", container: "webm", video: "vp9", audio: "vorbis" });
+    });
+
+    it("uses the audio-only target when no container will carry a decodable audio pair", () => {
+        // Two decodable audio streams: the native-container shortcut applies only to a single
+        // stream, WebM will not take FLAC, and MP4 is not on the allowed remux list for it. That
+        // falls through to a re-encode with no video, which is the audio-only target.
+        const verdict = classifyMediaSupport(report("avi", [audio("flac"), audio("mp3", 1)]));
+        expect(verdict.tier).toBe("reencode");
+        expect(verdict.reason).toBe("no-remux-container");
+        expect(verdict.target).toEqual({ kind: "reencode", container: "mp4", video: null, audio: "aac" });
     });
 
     it("re-encodes an unknown codec rather than guessing it plays", () => {
@@ -170,7 +192,7 @@ describe("classifyMediaSupport / reencode", () => {
     });
 
     it("never proposes AV1, which decodes but is not a legal target", () => {
-        expect(TRANSCODE_TARGET.video).toBe("vp9");
+        expect(TRANSCODE_TARGET.withVideo.video).toBe("vp9");
         const verdict = classifyMediaSupport(report(ISOBMFF, [video("hevc")]));
         expect(JSON.stringify(verdict.target)).not.toContain("av1");
     });
@@ -271,6 +293,9 @@ describe("parseProbeOutput", () => {
         );
         expect(parsed?.format?.format_name).toBe(ISOBMFF);
         expect(parsed?.streams).toHaveLength(1);
+        // Kept rather than dropped: it is the only number that can turn a conversion's progress
+        // into a percentage, and re-probing for it would be a second process for the same answer.
+        expect(parsed?.format?.duration).toBe("1.0");
     });
 
     it("returns null for output that is not JSON", () => {
@@ -299,5 +324,28 @@ describe("parseProbeOutput", () => {
         expect(verdict.tier).toBe("remux");
         // Unrecognised, not measured-bad: a caller wording a message must be able to tell them apart.
         expect(verdict.container.knownUnsupported).toBe(false);
+    });
+});
+
+describe("probeDurationUs", () => {
+    it("converts ffprobe's decimal seconds to microseconds", () => {
+        expect(probeDurationUs({ format: { duration: "5.024000" } })).toBe(5_024_000);
+        expect(probeDurationUs({ format: { duration: "0.5" } })).toBe(500_000);
+    });
+
+    it("answers null for every way a duration can be absent", () => {
+        // Each of these is a real file: a raw elementary stream prints "N/A", a live-muxed Matroska
+        // omits the key, and some demuxers print a zero or a negative sentinel. A progress bar that
+        // guessed here would either freeze or race to the end, and both read as a hung conversion.
+        expect(probeDurationUs({ format: { duration: "N/A" } })).toBeNull();
+        expect(probeDurationUs({ format: {} })).toBeNull();
+        expect(probeDurationUs({})).toBeNull();
+        expect(probeDurationUs({ format: { duration: "0" } })).toBeNull();
+        expect(probeDurationUs({ format: { duration: "-1" } })).toBeNull();
+    });
+
+    it("reads the duration back out of a parsed report", () => {
+        const parsed = parseProbeOutput(JSON.stringify({ format: { format_name: "matroska,webm", duration: "2.5" } }));
+        expect(probeDurationUs(parsed!)).toBe(2_500_000);
     });
 });
