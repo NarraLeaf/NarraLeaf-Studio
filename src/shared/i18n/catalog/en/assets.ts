@@ -168,6 +168,53 @@ export const assets = {
         remoteFailedTitle: "Failed to import remote asset",
     },
     /**
+     * What an author is asked before files that will not play are copied into the project.
+     *
+     * The vocabulary rule here is stricter than usual, because everything this dialog knows is
+     * internal: containers, codecs, demuxers, stream tables. **None of it may appear.** An author
+     * did not choose the player's decoder set and cannot change it, so naming any part of it turns
+     * an actionable sentence into trivia. Every string below says what the author will get.
+     *
+     * Two words are load-bearing and must survive translation. "Converting" has to read as making a
+     * *new* file - `intro` is the one sentence that stops "convert" being read as "rewrite what is
+     * on my disk" - and the quality-loss line has to stay in the group heading, where it is read
+     * before the button, rather than in a footnote under it.
+     */
+    mediaConvert: {
+        title: "Some files need converting",
+        /** When nothing on the list can be converted, offering one would be a lie. */
+        titleRefusedOnly: "Some files cannot be imported",
+        intro: "Converting puts a new file in the project and leaves your original where it is.",
+        convertingTitle: "Converting",
+        convertingIntro: "Whatever finishes is imported.",
+        group: {
+            lossless: "Can be converted",
+            losslessHint: "The picture and sound stay exactly as they are.",
+            lossy: "Can be converted, with some quality loss",
+            lossyHint: "The picture and sound are rebuilt, which takes a while and softens them a little.",
+            refused: "Cannot be imported",
+        },
+        /** Row subtitle: what the author ends up with. */
+        becomes: "becomes .{ext}",
+        refusal: {
+            notMedia: "Not a sound or video file.",
+            noStreams: "Holds no sound and no picture.",
+        },
+        state: {
+            waiting: "Waiting",
+            done: "Done",
+            failed: "Could not convert",
+            stopped: "Stopped",
+            unavailable: "No converter on this computer",
+        },
+        convertAction: "Convert and Import",
+        skipAction: "Skip These Files",
+        importAnywayAction: "Import Without Converting",
+        stopAction: "Stop Converting",
+        /** Named in the panel's failure list afterwards, so the file is not lost silently. */
+        failedError: "This file could not be converted.",
+    },
+    /**
      * The guided import for model bundles — the one asset type an author has a *folder* of rather
      * than files, and the one whose contents Studio can check before it copies them.
      *

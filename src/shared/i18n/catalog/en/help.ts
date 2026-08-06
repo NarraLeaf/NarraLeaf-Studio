@@ -227,6 +227,17 @@ export const help = {
                 + "- Replacing an asset's file keeps every reference to it.\n"
                 + "- Deleting an asset that is still in use lists where it is used before anything is deleted.",
         },
+        mediaConversion: {
+            title: "Converting files on import",
+            body:
+                "Not every sound or video file plays in a game. When one is imported that does not, "
+                + "Studio offers to convert it and says what the conversion will cost.\n"
+                + "\n"
+                + "- Converting writes a new file into the project. The file you picked is never changed.\n"
+                + "- Some files come back with the picture and sound exactly as they were.\n"
+                + "- Others have to be rebuilt, which takes longer and loses a little quality.\n"
+                + "- A file with nothing playable in it is listed with the reason and left out.",
+        },
         characters: {
             title: "Characters",
             body:

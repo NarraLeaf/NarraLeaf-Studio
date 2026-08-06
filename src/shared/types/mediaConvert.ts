@@ -44,9 +44,14 @@ export type MediaConvertTarget = MediaSupportTarget | MediaImageTarget;
  * (`renderer/lib/workspace/services/assets/FileFormatValidator.ts`, `UNDECODABLE_EXTENSIONS`),
  * measured against Chromium 140: TIFF has no decoder at all, and XBM — an X11-era C source format —
  * was measured failing too. Duplicated rather than imported because `shared` must not depend on
- * `renderer`; if that list grows, this one has to be looked at with it.
+ * `renderer`.
+ *
+ * **Exported so the duplication can be tested rather than trusted.** Two tables that have to agree
+ * and cannot import each other drift, and the last time this exact pair drifted `.opus` and `.apng`
+ * became impossible to import at all. `mediaImportTriage.test.ts` asserts the two are equal, so the
+ * next person to add an extension to one is told about the other.
  */
-const CONVERTIBLE_IMAGE_EXTENSIONS: ReadonlySet<string> = new Set(["tif", "tiff", "xbm"]);
+export const CONVERTIBLE_IMAGE_EXTENSIONS: ReadonlySet<string> = new Set(["tif", "tiff", "xbm"]);
 
 /** Lowercased extension without the dot, from a full path or a bare name. Empty when there is none. */
 export function fileExtensionOf(fileName: string): string {
