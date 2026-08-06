@@ -1068,6 +1068,10 @@ interface IVoiceService extends IService {
     loadDocument(locale: string): Promise<VoiceDocument>;
     getDocumentIfLoaded(locale: string): VoiceDocument | undefined;
     onDocumentChanged(handler: (event: { locale: string; document: VoiceDocument }) => void): () => void;
+    /** Pull in whatever `getLineText` needs for this voice language before reading it. */
+    loadLineTexts(locale: string): Promise<void>;
+    /** The line as the actor for this voice language reads it - the translation when there is one. */
+    getLineText(locale: string, unitId: string, sourceText: string): string;
     flushPendingChanges(): Promise<void>;
 }
 

@@ -51,13 +51,23 @@ export type VoiceProgress = {
     missing: number;
 };
 
+/**
+ * The text a take is a recording of, per line. Supplied by the caller because only the service knows
+ * which language is being dubbed; defaults to the source text so a project with no translation for
+ * that language behaves exactly as it always did.
+ */
+export type VoiceLineTextFor = (unitId: string, sourceText: string) => string;
+
+export const SOURCE_LINE_TEXT: VoiceLineTextFor = (_unitId, sourceText) => sourceText;
+
 export function computeVoiceProgress(
     rows: readonly TranslatableUnitRef[],
     document: VoiceDocument | undefined,
+    lineTextFor: VoiceLineTextFor = SOURCE_LINE_TEXT,
 ): VoiceProgress {
     const progress: VoiceProgress = { total: rows.length, covered: 0, approved: 0, stale: 0, missing: 0 };
     for (const row of rows) {
-        const state = deriveVoiceUnitState(document?.units[row.unitId], row.sourceText);
+        const state = deriveVoiceUnitState(document?.units[row.unitId], lineTextFor(row.unitId, row.sourceText));
         if (state === "missing") {
             progress.missing += 1;
         } else if (state === "stale") {

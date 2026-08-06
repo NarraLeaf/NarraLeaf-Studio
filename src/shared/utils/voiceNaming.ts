@@ -9,7 +9,17 @@
  * renamed or lines reordered, and a booth may swap spaces for underscores. The
  * recording script always carries the line's authoritative unit id alongside,
  * and audio matching goes through {@link matchKeyForFilename}, which reduces a
- * name to alphanumerics so cosmetic punctuation differences never break a link.
+ * name to its letters and digits so cosmetic punctuation differences never
+ * break a link.
+ *
+ * "Letters and digits" is meant in the Unicode sense and that is not a detail.
+ * The key used to be `[^a-z0-9]`, which deletes every CJK character - so with
+ * the default `{scene}_{index}_{character}` pattern a Japanese project's
+ * `序章_001_優希` and `第一章_001_優希` both reduced to `001`, collided, and were
+ * dropped as ambiguous. Batch import matched *nothing* on any multi-scene
+ * Japanese or Chinese project, which is most voiced projects. Names are also
+ * NFKC-normalised, because a booth on macOS hands back decomposed filenames
+ * that look identical and would not otherwise match.
  * Comments in English per project convention.
  */
 
@@ -29,7 +39,10 @@ export type VoiceNameTokens = {
 const RESERVED_CHARS = /["|<>:?*]/g;
 const SEPARATORS = /[\\/]+/g;
 const WHITESPACE = /\s+/g;
-const NON_ALNUM = /[^a-z0-9]+/g;
+const NON_ALNUM = /[^\p{L}\p{N}]+/gu;
+
+/** Every pattern token, including the aliases the type's own field names imply. */
+export const VOICE_NAME_TOKENS = ["scene", "index", "character", "locale", "unit", "unitId"] as const;
 
 /** Reduce one token value to a safe, space-free path segment (no separators/reserved chars). */
 function sanitizeSegment(value: string): string {
@@ -57,12 +70,17 @@ function normalizeRelativePath(path: string): string {
  * tokens are left as literal text.
  */
 export function formatVoiceFilename(pattern: string, tokens: VoiceNameTokens): string {
+    const unit = sanitizeSegment(tokens.unitId);
     const values: Record<string, string> = {
         scene: sanitizeSegment(tokens.scene),
         index: String(Math.max(0, Math.trunc(tokens.index))).padStart(3, "0"),
         character: sanitizeSegment(tokens.character),
         locale: sanitizeSegment(tokens.locale),
-        unit: sanitizeSegment(tokens.unitId),
+        unit,
+        // The token's own type field is `unitId`, and the documentation said so, while the formatter
+        // only ever understood `{unit}` - so the spelling a reader would copy came out as the literal
+        // text "{unitId}" in every filename. Both spell the same thing now.
+        unitid: unit,
     };
     const replaced = pattern.replace(/\{(\w+)\}/g, (whole, token: string) => {
         const key = token.toLowerCase();
@@ -73,12 +91,13 @@ export function formatVoiceFilename(pattern: string, tokens: VoiceNameTokens): s
 
 /**
  * Reduce a filename to a stable match key: the basename, extension dropped,
- * lower-cased, and stripped to alphanumerics. Applied to both a line's expected
- * filename and an imported audio file's name so spaces/underscores/dashes and
+ * NFKC-normalised, lower-cased, and stripped to Unicode letters and digits.
+ * Applied to both a line's expected filename and an imported audio file's name
+ * so spaces/underscores/dashes, full-width punctuation, decomposed CJK, and
  * folder layout never affect matching.
  */
 export function matchKeyForFilename(filename: string): string {
     const base = filename.replace(/\\+/g, "/").split("/").pop() ?? filename;
     const withoutExt = base.replace(/\.[^.]+$/, "");
-    return withoutExt.toLowerCase().replace(NON_ALNUM, "");
+    return withoutExt.normalize("NFKC").toLowerCase().replace(NON_ALNUM, "");
 }
