@@ -2,7 +2,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { Services } from "@/lib/workspace/services/services";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
-import type { UISurface, UIStageSlotId } from "@shared/types/ui-editor/document";
+import type { UIComponentDefinition, UISurface, UIStageSlotId } from "@shared/types/ui-editor/document";
 import type { UITemplateFetchedAsset } from "@shared/types/uiTemplateRegistry";
 import { AssetExtensions, AssetType } from "@/lib/workspace/services/assets/assetTypes";
 
@@ -10,6 +10,8 @@ export type ApplyUITemplateResult =
     | {
         ok: true;
         surfaces: UISurface[];
+        /** Library components the template brought with it; empty for surface-only ones. */
+        components: UIComponentDefinition[];
         skippedSlots: UIStageSlotId[];
         /** Declared resources that could not be written into the project's assets. */
         assetsSkipped: number;
@@ -48,6 +50,7 @@ export async function applyUITemplate(
         return {
             ok: true,
             surfaces: imported.importedSurfaces,
+            components: imported.importedComponents,
             skippedSlots: imported.skippedSlots,
             assetsSkipped: bundle.assets.length - Object.keys(assetIdMap).length,
         };

@@ -75,6 +75,19 @@ export type UITemplateFetchedAsset = {
 };
 
 /**
+ * One template's `UIDocument` on its own, for drawing a store card.
+ *
+ * Separate from {@link UITemplateBundle} because a card only has to be *looked*
+ * at: pulling the full bundle for every card would download every template's
+ * logic graph and every byte of its resources just to render a thumbnail.
+ */
+export type UITemplatePreview = {
+    id: string;
+    /** Raw `UIDocument` JSON, pre-migration. */
+    document: unknown;
+};
+
+/**
  * The full payload the main process returns for one template: the two documents
  * as raw JSON (migrated in the renderer, never here) plus any fetched resources.
  */
