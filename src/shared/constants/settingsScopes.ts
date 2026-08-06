@@ -84,33 +84,25 @@ export const NON_REGISTRY_PREFERENCE_KEYS: readonly string[] = [
 ];
 
 /**
- * The workspace wallpaper: which picture, and how it is painted.
+ * Preferences an export leaves out. Two groups, two reasons, no option to include them.
  *
- * `ui.backgroundImage` is a file NAME inside this profile's background cache, never a path, so
- * these keys are only meaningful next to the picture itself. An export that carries them
- * therefore carries the bytes too (`SettingsDocument.wallpaper`) - without that, importing them
- * on another machine produces a wallpaper setting pointing at a file that does not exist, which
- * is worse than not carrying them at all.
+ * There is deliberately no toggle: an exported settings file is a plain JSON document, and a
+ * second little configuration surface governing what goes into it is more machinery than the
+ * question deserves. Both groups are things the receiving machine is better off without.
  *
- * They stay a named group, and a toggle, because a picture is the one thing in an export that can
- * be megabytes rather than bytes.
+ * - **The wallpaper.** `ui.backgroundImage` is a file NAME inside this profile's background cache,
+ *   never a path, so on another machine it names a file that does not exist; the other four keys
+ *   only describe how that missing picture would be painted. Carrying the picture itself would
+ *   mean putting megabytes of base64 in a settings file, which is not what a settings file is.
+ * - **The identity.** The name and address recorded on commits are the author's, not the
+ *   installation's, and an exported file is the kind of thing that gets attached to an issue.
  */
-export const WALLPAPER_PREFERENCE_KEYS: readonly string[] = [
+export const UNEXPORTED_PREFERENCE_KEYS: readonly string[] = [
     "ui.backgroundImage",
     "ui.backgroundOpacity",
     "ui.backgroundFill",
     "ui.backgroundAnchor",
     "ui.backgroundBlur",
-];
-
-/**
- * Preferences that identify a person rather than configure a program.
- *
- * Included by default, because the feature is "move my Studio to my other machine" and on that
- * machine you want your own name on your own commits. Still a toggle, for the other case: an
- * export handed to a colleague should not have to carry your address.
- */
-export const PERSONAL_PREFERENCE_KEYS: readonly string[] = [
     "versionControl.authorName",
     "versionControl.authorEmail",
 ];

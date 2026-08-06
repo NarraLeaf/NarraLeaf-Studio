@@ -34,12 +34,13 @@ const TOP_ASSET_COUNT = 12;
 /**
  * Where an asset's bytes live inside `assets/`, as the directory walk keys them.
  *
- * Remote assets have no content file at all (they are fetched by URL and cached under `editor/`),
- * and an id that is not a valid storage id would throw in the shard splitter - both mean "no local
- * bytes", which the model renders as unknown rather than zero.
+ * Source-blind: a remote asset's snapshot is a file at the same content shard, and it takes up the
+ * same room in the repository, so leaving it out of the overview would understate the project by
+ * however much artwork the author happened to pin. An id that is not a valid storage id would throw
+ * in the shard splitter, which means "no local bytes" and renders as unknown rather than zero.
  */
 export function assetContentRelativePath(asset: Asset): string | null {
-    if (asset.source === AssetSource.Remote || !isValidAssetStorageId(asset.id)) {
+    if (!isValidAssetStorageId(asset.id)) {
         return null;
     }
     const shard = ProjectNameConvention.AssetsDataShard(asset.id);

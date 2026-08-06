@@ -48,7 +48,7 @@ import type {
 import type { DocumentSource } from "@shared/documents/documentSource";
 import { Asset, AssetsMap, AssetSource } from "./assets/types";
 import { ServiceRegistry } from "./serviceRegistry";
-import { AssetData, AssetType } from "./assets/assetTypes";
+import { AssetCategory, AssetData, AssetType } from "./assets/assetTypes";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { Character } from "./character/Character";
 import { CharacterAppearanceKind, CharacterGroup } from "./character/types";
@@ -814,7 +814,8 @@ interface IStoryService extends IService {
     setDefaultStory(storyId: StoryId | undefined): void;
     createStory(name: string): StoryLibraryEntry;
     renameStory(storyId: StoryId, name: string): boolean;
-    deleteStory(storyId: StoryId): boolean;
+    /** Asynchronous: undo needs the document, which may only be on disk. */
+    deleteStory(storyId: StoryId): Promise<boolean>;
     loadLibrary(): Promise<StoryLibraryIndex>;
     getLibraryIndex(): StoryLibraryIndex;
     onLibraryChanged(handler: (index: StoryLibraryIndex) => void): () => void;
@@ -830,7 +831,7 @@ interface IStoryService extends IService {
         sequences?: StoryAnimationSequence[];
     }): Promise<StoryAnimationAsset>;
     updateAnimationAsset(animationId: StoryAnimationAssetId, updater: (asset: StoryAnimationAsset) => StoryAnimationAsset): StoryAnimationAsset;
-    deleteAnimationAsset(animationId: StoryAnimationAssetId): boolean;
+    deleteAnimationAsset(animationId: StoryAnimationAssetId): Promise<boolean>;
     onAnimationsChanged(handler: (index: StoryAnimationIndex) => void): () => void;
     registerPluginAction(registration: StoryPluginActionRegistration): () => void;
     unregisterPluginAction(actionId: string): boolean;
@@ -959,8 +960,9 @@ interface IAssetService extends IService {
     fetch<T extends AssetType>(asset: Asset<T, AssetSource>): Promise<RequestStatus<AssetData<T>>>;
     exists<T extends AssetType>(asset: Asset<T, AssetSource>): boolean;
     importLocalAssets<T extends AssetType>(type: T): Promise<RequestStatus<RequestStatus<Asset<T, AssetSource.Local>>[]>>;
-    importRemoteAsset<T extends AssetType>(type: T, url: string): Promise<RequestStatus<Asset<T, AssetSource.Remote>>>;
-    clearRemoteCache(assetId?: string): Promise<void>;
+    importRemoteAsset(category: AssetCategory, url: string, groupId?: string): Promise<RequestStatus<Asset<AssetType, AssetSource.Remote>>>;
+    refreshRemoteAsset<T extends AssetType>(asset: Asset<T, AssetSource.Remote>): Promise<RequestStatus<{ asset: Asset<T, AssetSource>; changed: boolean }>>;
+    hasRemoteSnapshot(assetId: string): Promise<boolean>;
 }
 
 interface IServiceAssetsService extends IService {
