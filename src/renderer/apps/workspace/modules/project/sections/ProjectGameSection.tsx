@@ -1,11 +1,9 @@
 /**
- * Project → Game: how the shipped game behaves for the player, as opposed to
- * how it is packaged (Settings) or what it is made of (Assets, Dependencies).
+ * Project → Game → Saving: when the game writes a playthrough down by itself.
  *
- * Automatic saving is the first tenant. It lives here rather than behind a
- * plugin or a sidebar panel of its own because it is the same class of thing as
- * "encrypt assets" or "mobile orientation": authored once, travels with the
- * project, and changes what the player experiences.
+ * It lives on the Game page rather than behind a plugin or a page of its own because it is the same
+ * class of thing as a player's starting volume: authored once, travels with the project, and
+ * changes what the player experiences rather than how the project is built.
  */
 
 import { useCallback, useState } from "react";
@@ -21,6 +19,7 @@ import {
 } from "@/lib/workspace/project/configuration";
 import { SettingRow, SettingShell } from "./settingRows";
 import { NumberField } from "./NumberField";
+import { SettingsGroup } from "../components/SettingsGroup";
 import type { ProjectSectionProps } from "./types";
 
 export function ProjectGameSection({ projectService, uiService, config, onConfigChange }: ProjectSectionProps) {
@@ -55,7 +54,7 @@ export function ProjectGameSection({ projectService, uiService, config, onConfig
     }, [autoSave, onConfigChange, projectService, saving, uiService]);
 
     return (
-        <div className="grid gap-3">
+        <SettingsGroup title={t("project.group.saving")}>
             <SettingRow
                 title={t("project.game.autoSaveTitle")}
                 description={t("project.game.autoSaveDescription")}
@@ -92,6 +91,6 @@ export function ProjectGameSection({ projectService, uiService, config, onConfig
                     onCommit={value => void commit("slots", { slots: value })}
                 />
             </SettingShell>
-        </div>
+        </SettingsGroup>
     );
 }
