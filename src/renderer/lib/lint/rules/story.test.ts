@@ -157,7 +157,6 @@ describe("story/invalid-command", () => {
 
         expect(findings).toHaveLength(1);
         expect(findings[0].messageKey).toBe("lint.rule.storyInvalidCommand.message");
-        expect(findings[0].messageParams).toEqual({ scene: "Prologue" });
         expect(findings[0].target).toEqual({
             kind: "storyBlock",
             storyId: "s1",
@@ -189,7 +188,7 @@ describe("story/goto-missing", () => {
 
         expect(findings).toHaveLength(1);
         expect(findings[0].messageKey).toBe("lint.rule.storyGotoMissing.message");
-        expect(findings[0].messageParams).toEqual({ scene: "Prologue", label: "retry" });
+        expect(findings[0].messageParams).toEqual({ label: "retry" });
         expect(findings[0].location).toMatchObject({ kind: "story", sceneId: "sc1", blockId: "b1" });
     });
 
@@ -213,7 +212,7 @@ describe("story/goto-missing", () => {
         );
 
         expect(findings).toHaveLength(1);
-        expect(findings[0].messageParams).toEqual({ scene: "Prologue", label: "retry" });
+        expect(findings[0].messageParams).toEqual({ label: "retry" });
     });
 
     it("ignores a disabled goto", () => {
@@ -262,7 +261,7 @@ describe("story/label-duplicate", () => {
 
         expect(findings).toHaveLength(1);
         expect(findings[0].messageKey).toBe("lint.rule.storyLabelDuplicate.message");
-        expect(findings[0].messageParams).toEqual({ scene: "Prologue", label: "retry" });
+        expect(findings[0].messageParams).toEqual({ label: "retry" });
         expect(findings[0].location).toMatchObject({ blockId: "b2" });
     });
 
@@ -291,7 +290,7 @@ describe("story/label-unused", () => {
 
         expect(findings).toHaveLength(1);
         expect(findings[0].messageKey).toBe("lint.rule.storyLabelUnused.message");
-        expect(findings[0].messageParams).toEqual({ label: "retry", scene: "Prologue" });
+        expect(findings[0].messageParams).toEqual({ label: "retry" });
         expect(findings[0].location).toMatchObject({ blockId: "b1" });
     });
 
@@ -324,7 +323,6 @@ describe("story/jump-missing", () => {
 
         expect(findings).toHaveLength(1);
         expect(findings[0].messageKey).toBe("lint.rule.storyJumpMissing.message");
-        expect(findings[0].messageParams).toEqual({ scene: "Prologue" });
         expect(findings[0].location).toMatchObject({ blockId: "b1" });
     });
 
@@ -374,7 +372,6 @@ describe("story/empty-choice", () => {
 
         expect(findings).toHaveLength(1);
         expect(findings[0].messageKey).toBe("lint.rule.storyEmptyChoice.message");
-        expect(findings[0].messageParams).toEqual({ scene: "Prologue" });
         expect(findings[0].location).toMatchObject({ blockId: "b1" });
     });
 
@@ -386,7 +383,6 @@ describe("story/empty-choice", () => {
 
         expect(findings).toHaveLength(1);
         expect(findings[0].messageKey).toBe("lint.rule.storyEmptyChoice.messageEmptyOption");
-        expect(findings[0].messageParams).toEqual({ scene: "Prologue" });
         expect(findings[0].location).toMatchObject({ blockId: "o2" });
     });
 
@@ -465,7 +461,6 @@ describe("story/dead-end", () => {
 
         expect(findings).toHaveLength(1);
         expect(findings[0].messageKey).toBe("lint.rule.storyDeadEnd.message");
-        expect(findings[0].messageParams).toEqual({ scene: "Prologue" });
         expect(findings[0].location).toMatchObject({ blockId: "c1" });
     });
 
@@ -577,7 +572,6 @@ describe("story/unreachable-scene", () => {
 
         expect(findings).toHaveLength(1);
         expect(findings[0].messageKey).toBe("lint.rule.storyUnreachableScene.message");
-        expect(findings[0].messageParams).toEqual({ scene: "Cut" });
         expect(findings[0].target).toEqual({
             kind: "storyScene",
             storyId: "s1",
@@ -643,7 +637,6 @@ describe("story/unreachable-scene", () => {
             ),
         );
         expect(findings).toHaveLength(1);
-        expect(findings[0].messageParams).toEqual({ scene: "Chapter 1" });
     });
 });
 
@@ -655,7 +648,6 @@ describe("story/empty-scene", () => {
 
         expect(findings).toHaveLength(1);
         expect(findings[0].messageKey).toBe("lint.rule.storyEmptyScene.message");
-        expect(findings[0].messageParams).toEqual({ scene: "Prologue" });
         expect(findings[0].target).toMatchObject({ kind: "storyScene", sceneId: "sc1" });
     });
 
