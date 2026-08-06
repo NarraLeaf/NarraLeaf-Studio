@@ -1,6 +1,7 @@
 import React from "react";
 import { Check, CircleAlert, CircleCheck, CircleX, Copy, FolderOpen, Loader2 } from "lucide-react";
 import { Badge, Button, FieldLabel } from "@/lib/components";
+import { HelpTrigger } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
 import { copyTextToClipboard } from "@/lib/app/diagnostics/copyText";
@@ -116,9 +117,12 @@ export function RecoveryPanel() {
     return (
         <div className="flex h-full min-h-0 flex-col overflow-y-auto">
             <section className="border-b border-edge-subtle px-3 py-3">
-                <div className="mb-2 flex items-center gap-2">
+                <div className="group/help mb-2 flex items-center gap-2">
                     <FieldLabel as="div" className="mb-0">{t("workspace.recovery.problems.title")}</FieldLabel>
                     <Badge tone={anomalies.length > 0 ? "danger" : "neutral"}>{anomalies.length}</Badge>
+                    {/* An author reaches this window from a failure, not from a menu, so the one
+                        question that needs answering here is what this mode is. */}
+                    <HelpTrigger topic="recovery" className="ml-auto" />
                 </div>
                 {anomalies.length === 0 ? (
                     <p className="text-xs text-fg-subtle">{t("workspace.recovery.problems.empty")}</p>

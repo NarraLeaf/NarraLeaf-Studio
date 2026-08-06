@@ -618,7 +618,12 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
     };
 
     return (
-        <div className="h-full flex overflow-hidden border border-edge">
+        // A component being edited is the same canvas answering a different question, so the two
+        // read as different topics even though the editor is one component.
+        <div
+            className="h-full flex overflow-hidden border border-edge"
+            data-help-topic={isComponentEdit ? "uiComponents" : "uiSurfaces"}
+        >
             <WidgetRuntimeStateProvider key={surface.id}>
                 <div
                     ref={editorRootRef}

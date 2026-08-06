@@ -9,6 +9,7 @@ import type {
     VcsMergeState,
 } from "@shared/types/vcs";
 import { cn } from "@/lib/utils/cn";
+import { HelpTrigger } from "@/lib/help";
 import { translate, useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -349,8 +350,10 @@ export function VcsResolvePanel() {
     };
 
     return (
-        <div className="flex h-full min-h-0 flex-col bg-surface">
-            <div className="flex shrink-0 items-center gap-2 border-b border-edge px-3 py-2">
+        // One of the two places an author meets a state they did not ask for and cannot leave by
+        // undoing, so the `?` is drawn here rather than left to `F1` alone. The other is the rail.
+        <div className="flex h-full min-h-0 flex-col bg-surface" data-help-topic="versionConflicts">
+            <div className="group/help flex shrink-0 items-center gap-2 border-b border-edge px-3 py-2">
                 <GitMerge className="h-3.5 w-3.5 shrink-0 text-fg-subtle" aria-hidden />
                 <span className="min-w-0 flex-1 truncate text-xs text-fg-subtle">
                     {/* **No revision is named here, and that is a measured decision.**
@@ -373,6 +376,7 @@ export function VcsResolvePanel() {
                         ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         : <RotateCcw className="h-3.5 w-3.5" />}
                 </button>
+                <HelpTrigger topic="versionConflicts" />
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">

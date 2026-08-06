@@ -3,6 +3,7 @@ import { Loader2, RotateCcw } from "lucide-react";
 import type { DocumentDiffEntry } from "@shared/documents/diff";
 import type { Translator } from "@shared/i18n";
 import { cn } from "@/lib/utils/cn";
+import { HelpTrigger } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
 import { DocumentChangeList } from "@/lib/vcs/DocumentChangeList";
 import { buildDocumentChangeRows, CHANGE_KIND_GLYPH, CHANGE_KIND_TINT } from "@/lib/vcs/documentChangeView";
@@ -94,8 +95,8 @@ function DocumentComparison({ mode }: { mode: Exclude<VcsChangesPayload, { mode:
     const heading = comparisonHeading(mode, result?.head, t);
 
     return (
-        <div className="flex h-full min-h-0 flex-col bg-surface">
-            <div className="flex shrink-0 items-center gap-2 border-b border-edge px-3 py-2">
+        <div className="flex h-full min-h-0 flex-col bg-surface" data-help-topic="versionChanges">
+            <div className="group/help flex shrink-0 items-center gap-2 border-b border-edge px-3 py-2">
                 <span className="min-w-0 flex-1 truncate text-xs text-fg-subtle">{heading}</span>
                 {/* Only the working tree can have moved. A revision pair is immutable and answered
                     from the main process's cache, so a button here would be a control that cannot
@@ -114,6 +115,7 @@ function DocumentComparison({ mode }: { mode: Exclude<VcsChangesPayload, { mode:
                             : <RotateCcw className="h-3.5 w-3.5" />}
                     </button>
                 )}
+                <HelpTrigger topic="versionChanges" />
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">

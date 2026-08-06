@@ -605,7 +605,9 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
     );
 
     return (
-        <div className="h-full bg-surface text-fg flex flex-col">
+        // The editor is mostly about how this character is drawn, which is the question the panel
+        // beside it does not answer. The character topic is a `See also` away.
+        <div className="h-full bg-surface text-fg flex flex-col" data-help-topic="appearances">
             <div className="px-4 py-2 border-b border-edge flex items-center gap-2">
                 <span
                     className="text-sm font-semibold truncate"

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppLayout } from "@/lib/components/layout";
+import { HelpOverlay, HelpTrigger, requestContextHelp } from "@/lib/help";
 import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox";
 import { SettingsExplorer, SettingValue } from "./components/SettingsExplorer";
 import { SettingsNavTree, SettingsNavCategory } from "./components/SettingsNavTree";
@@ -310,6 +311,25 @@ export function SettingsApp() {
         }
     }, [categories]);
 
+    /**
+     * `F1`, the same key as in the workspace.
+     *
+     * A plain listener rather than a registration: this window has no keybinding service, and the
+     * one key it claims is the one key nothing else here uses. It falls back to the window's own
+     * topic so the key always answers, which is what the workspace does with its browser.
+     */
+    useEffect(() => {
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key !== "F1" || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+                return;
+            }
+            event.preventDefault();
+            requestContextHelp();
+        };
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, []);
+
     // On open, and again whenever an already-open Settings window is asked to show something else
     // (main focuses the existing window rather than stacking a second one).
     useEffect(() => {
@@ -331,9 +351,17 @@ export function SettingsApp() {
 
     return (
         <AppLayout title={t("settings.title")} iconSrc="/favicon.ico">
-            <div className="flex h-full overflow-hidden rounded-md border border-edge bg-surface shadow-xl">
+            <div
+                className="flex h-full overflow-hidden rounded-md border border-edge bg-surface shadow-xl"
+                data-help-topic="studioSettings"
+            >
                 <aside className="flex w-64 shrink-0 flex-col gap-3 border-r border-edge-subtle bg-surface-sunken p-4">
-                    <p className="text-lg font-semibold text-fg">{t("settings.title")}</p>
+                    <div className="group/help flex items-center gap-1">
+                        <p className="min-w-0 flex-1 text-lg font-semibold text-fg">{t("settings.title")}</p>
+                        {/* This window is where an author asks whether a setting belongs to Studio
+                            or to their project, which nothing else here says. */}
+                        <HelpTrigger topic="studioSettings" />
+                    </div>
                     {localizedCategories.length > 0 ? (
                         <>
                             <SearchBox
@@ -385,6 +413,9 @@ export function SettingsApp() {
                     />
                 </section>
             </div>
+            {/* No browser link in the footer: this window has no editor tabs to open one in, and
+                the popover with its `See also` links is the whole of help here. */}
+            <HelpOverlay />
         </AppLayout>
     );
 }
