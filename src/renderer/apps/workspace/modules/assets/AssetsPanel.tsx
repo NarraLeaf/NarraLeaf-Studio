@@ -13,6 +13,7 @@ import { SearchBox } from "./components/SearchBox";
 import { FilterSystem, type ActiveFilter } from "./components/FilterSystem";
 import { ImportQueueStrip } from "./components/ImportQueueStrip";
 import { ModelImportWizard } from "./components/ModelImportWizard";
+import { MediaImportDialog } from "./components/MediaImportDialog";
 
 import { useAssetData } from "./state/useAssetData";
 import { useMultiSelection } from "./state/useMultiSelection";
@@ -303,7 +304,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     const {
         handleCreateGroup, handleCreateTextFile, handleCopy, handleCut, handlePaste, handleRename, handleReplaceContent, handleDelete, handleImport, handleRetryImport, handleImportToGroup, handleImportRemote,
         handleCreateMagicTags, handleApplyMagicTags,
-        modelImportRequest, completeModelImport, cancelModelImport
+        modelImportRequest, completeModelImport, cancelModelImport,
+        mediaImportRequest, completeMediaImport, cancelMediaImport
     } = useAssetActions({
         context, inputDialog, assets, groups, selectedItems, clipboard, contextMenuTarget,
         focusedItemId, onActionComplete, setClipboard, setActionLoading, expandGroup, importQueue
@@ -726,6 +728,15 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                     onClose={cancelModelImport}
                     onImport={(selection) => void completeModelImport(selection)}
                 />
+                {/* Mounted only while there is something to ask about, so a run's conversion state
+                    cannot survive into the next import. */}
+                {mediaImportRequest && (
+                    <MediaImportDialog
+                        plan={mediaImportRequest.plan}
+                        onCancel={cancelMediaImport}
+                        onResolve={(resolution) => void completeMediaImport(resolution)}
+                    />
+                )}
                 <MagicTagDialog
                     visible={magicTagDialogVisible}
                     assets={magicTagAssets}
