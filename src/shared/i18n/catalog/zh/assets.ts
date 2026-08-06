@@ -132,8 +132,9 @@ export const assets = {
         },
         retry: "重试",
         remoteTitle: "导入远程素材",
-        remoteDescription: "粘贴远程素材的直接链接",
+        remoteDescription: "粘贴直链。文件会立即下载并随工程保存",
         remoteInvalidUrl: "请输入有效的 URL",
+        remoteUnsupportedScheme: "只能导入 http 与 https 链接",
         remoteFailedTitle: "导入远程素材失败",
     },
     modelImport: {

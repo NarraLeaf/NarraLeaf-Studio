@@ -88,6 +88,7 @@ import {
     UITemplateFetchBundleHandler,
     UITemplateRegistryFetchHandler,
 } from "./handlers/uiTemplateAction";
+import { AssetFetchRemoteHandler } from "./handlers/assetAction";
 import { PuppetRuntimeInstallSdkHandler } from "./handlers/puppetRuntimeAction";
 import {
     BlueprintPersistenceGetAllHandler,
@@ -232,6 +233,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new PluginInstallFromRegistryHandler(),
         new UITemplateRegistryFetchHandler(),
         new UITemplateFetchBundleHandler(),
+        new AssetFetchRemoteHandler(),
         new PuppetRuntimeInstallSdkHandler(),
 
         // Actor-aware privileged facade handlers
