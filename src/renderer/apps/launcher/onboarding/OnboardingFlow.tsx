@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/lib/components/elements";
 import { AppLayout } from "@/lib/components/layout";
 import { useTranslation } from "@/lib/i18n";
+import { APP_DISPLAY_NAME } from "@shared/constants/app";
 import type { TranslationKey } from "@shared/i18n";
 import { WindowControlPolicy } from "@shared/types/window";
 import { AppearanceStep } from "./steps/AppearanceStep";
@@ -66,7 +67,7 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
 
     return (
         <AppLayout
-            title=""
+            title={t("onboarding.windowTitle", { name: APP_DISPLAY_NAME })}
             iconSrc=""
             windowControlPolicy={WindowControlPolicy.Standard}
         >
