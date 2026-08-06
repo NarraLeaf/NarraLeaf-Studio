@@ -274,7 +274,7 @@ export const settings = {
         import: "Import…",
         apply: "Apply",
         exportHint: "Writes your settings to a file. Recent projects, statistics and workspace layout are not included.",
-        includeWallpaper: "Include the workspace background",
+        includeWallpaper: "Include the workspace background, picture and all",
         includeIdentity: "Include the name and address recorded on commits",
         exported: "Saved to {path}",
         imported: "Applied {count} settings.",
