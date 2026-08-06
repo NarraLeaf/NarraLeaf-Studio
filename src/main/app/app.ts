@@ -7,6 +7,7 @@ import { DevModeManager } from "./application/managers/devMode/DevModeManager";
 import { devModeNetworkPolicy, readProjectAllowHttp } from "./application/managers/devMode/devModeNetworkPolicy";
 import { GameBuildManager } from "./application/managers/build/GameBuildManager";
 import { GameTestManager } from "./application/managers/gameTest/GameTestManager";
+import { MediaConvertManager } from "./application/managers/media/MediaConvertManager";
 import { PreviewManager } from "./application/managers/preview/PreviewManager";
 import { VcsManager } from "./application/managers/vcs/VcsManager";
 // Shared with the recently-opened history, which must agree with the "already open?" lookup here.
@@ -37,6 +38,7 @@ export class App extends BaseApp {
         this.previewManager = new PreviewManager(this);
         this.gameTestManager = new GameTestManager(this);
         this.gameBuildManager = new GameBuildManager(this);
+        this.mediaConvertManager = new MediaConvertManager(this);
         // The commit pipeline has to settle the renderer's auto-save debt before it
         // stages, and only the window layer can ask a window to do that. Handed in as a
         // function because VcsManager holds a BaseApp: without it a commit would still
@@ -53,6 +55,7 @@ export class App extends BaseApp {
     private readonly previewManager: PreviewManager;
     private readonly gameTestManager: GameTestManager;
     private readonly gameBuildManager: GameBuildManager;
+    private readonly mediaConvertManager: MediaConvertManager;
     private readonly vcsManager: VcsManager;
 
     public getDevModeManager(): DevModeManager {
@@ -70,6 +73,11 @@ export class App extends BaseApp {
 
     public getGameBuildManager(): GameBuildManager {
         return this.gameBuildManager;
+    }
+
+    /** ffmpeg conversions in flight. Polled by job id, in the same shape as a production build. */
+    public getMediaConvertManager(): MediaConvertManager {
+        return this.mediaConvertManager;
     }
 
     public getVcsManager(): VcsManager {

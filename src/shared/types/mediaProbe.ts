@@ -20,7 +20,19 @@ export type MediaProbeFailureReason =
     | "spawn-failed";
 
 export type MediaProbeOutcome =
-    | { status: "probed"; verdict: MediaSupportVerdict }
+    | {
+        status: "probed";
+        verdict: MediaSupportVerdict;
+        /**
+         * Source duration in microseconds, or `null` when the file does not say.
+         *
+         * Carried alongside the verdict rather than inside it because it says nothing about whether
+         * the file plays — it is here so a conversion started from this outcome can report a
+         * percentage without spawning a second ffprobe for a number the first one already printed.
+         * `null` must be passed on as `null`: see `probeDurationUs`.
+         */
+        durationUs: number | null;
+    }
     /**
      * No ffprobe on this host. Distinct from a failure on purpose: nothing is wrong with the
      * *file*, and the caller should say "conversion is unavailable here", not "this file is broken".

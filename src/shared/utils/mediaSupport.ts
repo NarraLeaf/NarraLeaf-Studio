@@ -246,9 +246,41 @@ export type ProbeReport = {
     format?: {
         /** Comma-separated **list** of demuxer aliases, e.g. `mov,mp4,m4a,3gp,3g2,mj2`. */
         format_name?: string;
+        /**
+         * Seconds, as ffprobe's decimal *string* — `"5.024000"`, or `"N/A"` when it cannot tell.
+         *
+         * Not part of the playability verdict; carried because it is the only number that turns a
+         * transcoder's "how far along am I" into a percentage, and re-probing for it later would be
+         * a second process for a value the first one already printed. Read it through
+         * {@link probeDurationUs}, which knows what the absent cases look like.
+         */
+        duration?: string;
     };
     streams?: ProbeStream[];
 };
+
+/**
+ * Source duration in **microseconds**, or `null` when the file does not say.
+ *
+ * Microseconds because that is the unit ffmpeg's own progress stream reports (`out_time_us`), so a
+ * consumer dividing one by the other needs no conversion and no rounding decision.
+ *
+ * `null` is a real answer and must be carried as one. Raw elementary streams, some Matroska files
+ * written by a live muxer, and every still image have no duration ffprobe will commit to, and a
+ * progress display that invents a percentage for them is worse than one that shows none.
+ */
+export function probeDurationUs(report: ProbeReport): number | null {
+    const raw = report.format?.duration;
+    if (typeof raw !== "string") {
+        return null;
+    }
+    const seconds = Number.parseFloat(raw);
+    // Covers "N/A" (NaN) and the negative sentinel some demuxers print.
+    if (!Number.isFinite(seconds) || seconds <= 0) {
+        return null;
+    }
+    return Math.round(seconds * 1_000_000);
+}
 
 /**
  * Split `format.format_name` into its alias tokens.
@@ -375,30 +407,65 @@ export function isKnownUndemuxableContainer(names: readonly string[]): boolean {
 export type TranscodeContainer = "webm" | "mp4" | "ogg" | "mp3" | "flac" | "wav" | "aac";
 
 export type TranscodeVideoCodec = "vp9";
-export type TranscodeAudioCodec = "vorbis";
+export type TranscodeAudioCodec = "vorbis" | "aac";
 
 /**
- * The re-encode target, decided once for the whole project.
+ * The re-encode targets, decided once for the whole project.
  *
- * **VP9 video + Vorbis audio in WebM, with an iOS 17.4 floor.** Two constraints pin it there:
+ * **There are two, and they are deliberately different formats.** A file with a video stream
+ * becomes VP9 + Vorbis in WebM; a file with only audio becomes AAC in MP4 (`.m4a`). Anyone tempted
+ * to "unify" these should read both halves below first — the split is the product of two separate
+ * measurements, not an oversight.
  *
- *  - *Licensing.* libvpx and libvorbis are BSD, so an LGPL FFmpeg build can produce this. H.264
- *    and HEVC would need libx264/libx265, which are GPL, and shipping those inside the installer
- *    is a distribution decision this pipeline is not allowed to make on its own.
- *  - *Reach.* WebM audio and video are supported by Safari from iOS 17.4, which is the floor this
- *    project already targets. AV1 decodes in Chromium and is tempting as a smaller-for-quality
+ * ## Why video is VP9 + Vorbis in WebM
+ *
+ *  - *Licensing.* libvpx and libvorbis are BSD, so an LGPL FFmpeg build produces this. H.264 and
+ *    HEVC would need libx264/libx265, which are GPL, and shipping those inside the installer is a
+ *    distribution decision this pipeline is not allowed to make on its own. The LGPL build does
+ *    carry `libopenh264`, and it is **not** an escape hatch: Cisco's patent grant covers the
+ *    binaries Cisco itself distributes, and does not travel into a third party's installer.
+ *  - *Reach.* WebM video is supported by Safari from iOS 17.4, which is the floor this project
+ *    already targets. AV1 decodes in Chromium and is tempting as a smaller-for-quality
  *    alternative, **and it is the wrong choice**: iOS supports AV1 only on devices with a hardware
  *    decoder, so an AV1 re-encode would play on a desktop test and fail on the author's phone.
+ *  - The audio track rides along in Vorbis because WebM cannot carry AAC. That is the only reason;
+ *    it is not a preference for Vorbis.
+ *
+ * ## Why audio-only is AAC in MP4
+ *
+ * Measured, not assumed — two facts found by inspecting the shipped artefacts:
+ *
+ *  1. **The staged LGPL FFmpeg has a native `aac` encoder.** It is libavcodec's own, needs no
+ *     external library, and is unaffected by the GPL constraint above (the GPL/nonfree one is
+ *     `libfdk_aac`, which that build disables). So this costs nothing licensing-wise.
+ *  2. **The iOS shell cannot serve `audio/webm`.** `@narraleaf/studio-shell`'s iOS template answers
+ *     asset requests from its own `WKURLSchemeHandler`, whose MIME table lists `video/webm`,
+ *     `audio/mp4`, `audio/ogg`, `audio/aac`, `audio/mpeg`, `audio/wav` and `audio/flac` — and no
+ *     `audio/webm`; its extension table knows `webm` and not `weba`. WebKit does not sniff the
+ *     container the way Chromium does, so an audio-only WebM would be served as
+ *     `application/octet-stream` and be **silently mute on iOS**.
+ *
+ * AAC-in-MP4 also drops the iOS 17.4 floor for audio-only assets entirely: AAC has played on every
+ * iOS there has ever been.
  */
 export const TRANSCODE_TARGET = {
-    container: "webm",
-    video: "vp9",
-    audio: "vorbis",
-} as const satisfies {
+    /** For anything carrying a video stream. */
+    withVideo: {
+        container: "webm",
+        video: "vp9",
+        audio: "vorbis",
+    },
+    /** For a file with audio and no video. Written with an `.m4a` extension — see {@link TranscodeContainer}. */
+    audioOnly: {
+        container: "mp4",
+        video: null,
+        audio: "aac",
+    },
+} as const satisfies Record<string, {
     container: TranscodeContainer;
-    video: TranscodeVideoCodec;
+    video: TranscodeVideoCodec | null;
     audio: TranscodeAudioCodec;
-};
+}>;
 
 /** What the caller should do about the file. `null` when there is nothing to do or nothing to be done. */
 export type MediaSupportTarget =
@@ -584,18 +651,31 @@ export function classifyMediaSupport(report: ProbeReport, fileName?: string): Me
 /**
  * The re-encode instruction for these streams.
  *
- * Both codecs are named unconditionally when the corresponding stream kind is present, including
- * for streams that decode perfectly well. That is not waste: the target container is WebM, and
- * WebM will not carry AAC next to a re-encoded VP9 track, so a partial `-c:a copy` is not
- * available. M3 gets one container and at most two encoders, which is all it needs to build the
- * command line.
+ * The presence of a video stream picks which of the two {@link TRANSCODE_TARGET} entries applies,
+ * and the two are different containers for the reasons written there. Do not collapse the branch.
+ *
+ * Within the video branch both codecs are named unconditionally when the corresponding stream kind
+ * is present, including for streams that decode perfectly well. That is not waste: the container is
+ * WebM, and WebM will not carry AAC next to a re-encoded VP9 track, so a partial `-c:a copy` is not
+ * available. The transcoder gets one container and at most two encoders, which is all it needs to
+ * build the command line.
  */
 function reencodeTarget(streams: readonly ClassifiedStream[]): MediaSupportTarget {
+    if (!streams.some(stream => stream.kind === "video")) {
+        // Audio only. AAC in MP4, because the iOS shell has no MIME type for audio-only WebM and
+        // would serve it as a byte stream that never plays.
+        return {
+            kind: "reencode",
+            container: TRANSCODE_TARGET.audioOnly.container,
+            video: null,
+            audio: TRANSCODE_TARGET.audioOnly.audio,
+        };
+    }
     return {
         kind: "reencode",
-        container: TRANSCODE_TARGET.container,
-        video: streams.some(stream => stream.kind === "video") ? TRANSCODE_TARGET.video : null,
-        audio: streams.some(stream => stream.kind === "audio") ? TRANSCODE_TARGET.audio : null,
+        container: TRANSCODE_TARGET.withVideo.container,
+        video: TRANSCODE_TARGET.withVideo.video,
+        audio: streams.some(stream => stream.kind === "audio") ? TRANSCODE_TARGET.withVideo.audio : null,
     };
 }
 
@@ -620,8 +700,16 @@ export function parseProbeOutput(stdout: string): ProbeReport | null {
     const record = parsed as { format?: unknown; streams?: unknown };
     const report: ProbeReport = {};
     if (typeof record.format === "object" && record.format !== null && !Array.isArray(record.format)) {
-        const formatName = (record.format as { format_name?: unknown }).format_name;
-        report.format = typeof formatName === "string" ? { format_name: formatName } : {};
+        const format = record.format as { format_name?: unknown; duration?: unknown };
+        report.format = {};
+        if (typeof format.format_name === "string") {
+            report.format.format_name = format.format_name;
+        }
+        // ffprobe prints this as a string, including the literal "N/A". Kept verbatim rather than
+        // parsed here so the one place that interprets it is `probeDurationUs`.
+        if (typeof format.duration === "string") {
+            report.format.duration = format.duration;
+        }
     }
     if (Array.isArray(record.streams)) {
         report.streams = record.streams.filter(
