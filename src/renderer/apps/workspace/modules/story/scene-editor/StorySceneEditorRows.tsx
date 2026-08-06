@@ -503,8 +503,13 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                         reading, so it keeps its own always-visible slot. The voice audition button
                         shares the slot but hover-reveals itself — it is an action, and voice *status*
                         is the voice table's job rather than a mark on every spoken row. */}
+                    {/* Both trailing clusters hold the single-line box open and centre in it, like every
+                        other cell in this flex. Without it they are 24px of buttons in an `items-start`
+                        row: their centre line sits at 12px while the words centre at half the row box,
+                        so the icons ride high by 2px in compact and 7px in comfortable — the looser the
+                        density an author picks, the more crooked the row's own controls look. */}
                     {containerInfo ? null : (
-                        <div className="ml-auto flex shrink-0 items-center gap-1">
+                        <div className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
                             {diagnostic ? <RowDiagnosticMark code={diagnostic.code} /> : null}
                             <StoryVoiceIndicator block={block} />
                         </div>
@@ -512,7 +517,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                     <div
                         aria-hidden={!showRowActions}
                         className={[
-                            "flex shrink-0 items-center gap-1 transition-opacity",
+                            "flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1 transition-opacity",
                             containerInfo ? "ml-auto" : "",
                             showRowActions ? "opacity-100" : "pointer-events-none opacity-0",
                         ].join(" ")}
