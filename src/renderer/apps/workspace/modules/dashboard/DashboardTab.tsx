@@ -23,6 +23,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "../../context";
 import { DashboardSection, StatList, StatRow } from "./DashboardPrimitives";
+import { CastSection } from "./CastSection";
 import { WritingActivityChart } from "./WritingActivityChart";
 import {
     buildActivityTimeline,
@@ -388,6 +389,8 @@ export function DashboardTab({ active }: EditorTabComponentProps) {
                         <p className="text-xs text-fg-subtle">{failed ? t("dashboard.failed") : t("dashboard.loading")}</p>
                     )}
                 </DashboardSection>
+
+                {snapshot && <CastSection cast={snapshot.cast} />}
 
                 <DashboardSection title={t("dashboard.activity.title")} description={t("dashboard.activity.description")}>
                     <StatList>

@@ -54,6 +54,19 @@ export type HistoryEntry = {
     createdAt: number;
     updatedAt: number;
     body: HistoryEntryBody;
+    /**
+     * Called once when this entry leaves the stack for good - trimmed past the depth limit,
+     * cleared, or dropped because a new edit invalidated the redo branch.
+     *
+     * For entries that own something outside memory. Deleting an asset moves its bytes to a trash
+     * directory instead of unlinking them, and this is what says "that copy is now unreachable, let
+     * it go" — without it the trash would grow for the life of the session and a discarded entry
+     * would leave a payload nothing can ever restore.
+     *
+     * Must not throw and must be safe to call after the state it refers to is gone; the stack calls
+     * it while unwinding and has nowhere to report a failure.
+     */
+    dispose?: () => void;
 };
 
 export type HistoryPushOptions = {
@@ -118,6 +131,7 @@ export function createCommandEntry(input: {
     redo: () => void | Promise<void>;
     mergeKey?: string;
     now: number;
+    dispose?: () => void;
 }): HistoryEntry {
     return {
         id: nextHistoryEntryId(),
@@ -127,7 +141,17 @@ export function createCommandEntry(input: {
         createdAt: input.now,
         updatedAt: input.now,
         body: { kind: "command", undo: input.undo, redo: input.redo },
+        dispose: input.dispose,
     };
+}
+
+/** Run an entry's disposer, swallowing anything it throws - see {@link HistoryEntry.dispose}. */
+function disposeEntry(entry: HistoryEntry): void {
+    try {
+        entry.dispose?.();
+    } catch (error) {
+        console.warn("[History] an entry's disposer threw", error);
+    }
 }
 
 /**
@@ -241,13 +265,13 @@ export class HistoryStack {
         this.mergeBarrier = false;
 
         if (mergeable && previous && mergeHistoryEntries(previous, entry)) {
-            this.redoEntries = [];
+            this.dropRedoBranch();
             return "merged";
         }
 
         this.undoEntries.push(entry);
         this.trim();
-        this.redoEntries = [];
+        this.dropRedoBranch();
         return "pushed";
     }
 
@@ -282,9 +306,20 @@ export class HistoryStack {
     }
 
     public clear(): void {
+        [...this.undoEntries, ...this.redoEntries].forEach(disposeEntry);
         this.undoEntries = [];
         this.redoEntries = [];
         this.mergeBarrier = false;
+    }
+
+    /**
+     * The author took a different branch, so the redo side describes a document that no longer
+     * exists. Those entries are unreachable from here on, which is exactly when their disposers run.
+     */
+    private dropRedoBranch(): void {
+        const dropped = this.redoEntries;
+        this.redoEntries = [];
+        dropped.forEach(disposeEntry);
     }
 
     /** Entries oldest-first. For tests and diagnostics; callers must not mutate them. */
@@ -300,6 +335,6 @@ export class HistoryStack {
         if (this.undoEntries.length <= this.limit) {
             return;
         }
-        this.undoEntries.splice(0, this.undoEntries.length - this.limit);
+        this.undoEntries.splice(0, this.undoEntries.length - this.limit).forEach(disposeEntry);
     }
 }
