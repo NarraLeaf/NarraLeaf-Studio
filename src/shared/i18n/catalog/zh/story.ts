@@ -427,11 +427,35 @@ export const story = {
     },
 
     view: {
-        narrativeOnly: "只看叙事",
         density: "阅读密度",
         "density.compact": "紧凑",
         "density.standard": "标准",
         "density.comfortable": "舒适",
+        filter: {
+            title: "筛选行",
+            /** 面板顶部两颗：一颗预设，一颗退路。 */
+            dialogueOnly: "仅对话",
+            clear: "清空筛选",
+            sectionScript: "剧本",
+            sectionStaging: "指令",
+            // 不叫「角色」：指令区里已经有一档叫角色（作用在角色身上的指令），同一张面板里同名两次读不出区别。
+            sectionCast: "出场角色",
+            facet: {
+                dialogue: "对话",
+                narration: "旁白",
+                choice: "选项",
+                note: "备注",
+                character: "角色",
+                stage: "舞台",
+                camera: "镜头",
+                scene: "场景",
+                sound: "声音",
+                flow: "流程",
+                data: "变量",
+                utils: "其他",
+                invalid: "无效行",
+            },
+        },
     },
     diagnostics: {
         missingAsset: "这一行指向的资源已经不在项目里了",
@@ -579,6 +603,9 @@ export const story = {
         emptyExampleShow: "让角色登场",
         emptyExampleSay: "给他一句台词",
         emptyOpenManual: "打开指令手册",
+        /** 场景里有行、但筛选把它们全挡住了——和「场景是空的」是两回事，不能共用一句提示。 */
+        filteredEmpty: "没有匹配的行，请调整筛选规则后再试",
+        filteredEmptyClear: "显示全部",
         variablesPanel: "故事变量",
         snapshotsPanel: "场景快照",
     },

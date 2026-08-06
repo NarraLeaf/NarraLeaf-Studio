@@ -1,6 +1,13 @@
 import { useSyncExternalStore } from "react";
 import type { StoryBlockId, StorySceneId } from "@shared/types/story";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
+import {
+    normalizeStoryRowFacets,
+    normalizeStoryRowSpeakers,
+    STORY_ROW_NARRATIVE_FACETS,
+    type StoryRowFacetId,
+    type StoryRowSpeakerKey,
+} from "./storyRowFilter";
 
 /**
  * Ephemeral, session-scoped UI state for the Story scene editor. Shared across every row and every
@@ -100,22 +107,45 @@ function normalizeDensity(value: unknown): StoryEditorDensity {
 }
 
 /**
- * Editor-wide view preferences (WI-6): density and the "narrative only" filter. Persisted per-project
- * via {@link PanelStateService} (the same store the row view-state uses), so they survive tab switches
+ * Editor-wide view preferences (WI-6): density and the row filter. Persisted per-project via
+ * {@link PanelStateService} (the same store the row view-state uses), so they survive tab switches
  * and restarts. Editor-wide, not per-scene, so they live under their own key rather than the scene map.
  */
 export type StoryEditorViewPrefs = {
     density: StoryEditorDensity;
-    /** When on, the projection hides staging rows and keeps only narration / dialogue / choice / note. */
-    narrativeOnly: boolean;
+    /**
+     * The row kinds the author picked out. Stored as the SELECTED set, matching the panel: `[]` is
+     * the unfiltered editor, and anything else is the whole of what the page shows.
+     *
+     * It supersedes the `narrativeOnly` boolean this key used to hold — that flag was exactly one
+     * point in this space (the four prose kinds), and is read back below so an author who left the
+     * filter on finds it still on after the upgrade.
+     */
+    selectedRowFacets: StoryRowFacetId[];
+    /** The cast the author picked out, as `storyRowFilter` keys. Same selected-set reading as above. */
+    selectedRowSpeakers: StoryRowSpeakerKey[];
 };
 
+/** The pre-filter shape of the key, still on disk for anyone who set it. Read once, on the way in. */
+type LegacyStoryEditorViewPrefs = { narrativeOnly?: boolean };
+
 const STORY_EDITOR_VIEW_PREFS_KEY = "story:editor:view-prefs";
-const DEFAULT_STORY_EDITOR_VIEW_PREFS: StoryEditorViewPrefs = { density: "compact", narrativeOnly: false };
+const DEFAULT_STORY_EDITOR_VIEW_PREFS: StoryEditorViewPrefs = { density: "compact", selectedRowFacets: [], selectedRowSpeakers: [] };
 
 export function getStoryEditorViewPrefs(panelState: PanelStateService): StoryEditorViewPrefs {
-    const stored = { ...DEFAULT_STORY_EDITOR_VIEW_PREFS, ...panelState.getPanelState<StoryEditorViewPrefs>(STORY_EDITOR_VIEW_PREFS_KEY) };
-    return { ...stored, density: normalizeDensity(stored.density) };
+    const raw = panelState.getPanelState<Partial<StoryEditorViewPrefs> & LegacyStoryEditorViewPrefs>(STORY_EDITOR_VIEW_PREFS_KEY);
+    // The old boolean only speaks when the new key has never been written: once the author touches the
+    // filter, `selectedRowFacets` is the whole truth — including the empty array that means "show all".
+    const selectedRowFacets = raw && "selectedRowFacets" in raw
+        ? normalizeStoryRowFacets(raw.selectedRowFacets)
+        : raw?.narrativeOnly
+            ? [...STORY_ROW_NARRATIVE_FACETS]
+            : [...DEFAULT_STORY_EDITOR_VIEW_PREFS.selectedRowFacets];
+    return {
+        density: normalizeDensity(raw?.density),
+        selectedRowFacets,
+        selectedRowSpeakers: normalizeStoryRowSpeakers(raw?.selectedRowSpeakers),
+    };
 }
 
 export function patchStoryEditorViewPrefs(panelState: PanelStateService, patch: Partial<StoryEditorViewPrefs>): void {

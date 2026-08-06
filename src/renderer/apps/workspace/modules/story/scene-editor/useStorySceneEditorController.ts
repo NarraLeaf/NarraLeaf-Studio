@@ -45,7 +45,6 @@ import {
     buildDialogueAppearances,
     buildVisibleRows,
     canAcceptChildren,
-    isNarrativeRow,
     filterOutSelectedDescendants,
     findPreviousSibling,
     nextSelectionAfterDelete,
@@ -61,6 +60,14 @@ import {
 } from "./storySceneBlockUtils";
 import { isInteractiveTarget, isTextInputActive } from "./storySceneDom";
 import { getStoryEditorViewPrefs, getStoryEditorViewState, patchStoryEditorViewPrefs, patchStoryEditorViewState, type StoryEditorDensity } from "./storyEditorSessionStore";
+import {
+    EMPTY_STORY_ROW_FILTER,
+    isStoryRowFilterActive,
+    revealRowInStoryRowFilter,
+    storyRowPassesFilter,
+    tallyStoryRows,
+    type StoryRowFilter,
+} from "./storyRowFilter";
 import { cloneSerializedBlock, insertSerializedClone, serializeBlockSubtree } from "./storySceneClipboard";
 import { getSelectionUnitRange, richRunsToPlain } from "./richText";
 import type { RichTextInputHandle } from "./RichTextInput";
@@ -170,12 +177,15 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const [selectionRevision, setSelectionRevision] = useState(0);
     // Editor-wide view preferences (WI-6). PanelStateService loads from disk before the editor renders,
     // so the synchronous read below sees the persisted value; the setters write it back.
-    const [narrativeOnly, setNarrativeOnlyState] = useState<boolean>(() => (panelStateService ? getStoryEditorViewPrefs(panelStateService).narrativeOnly : false));
+    const [rowFilter, setRowFilterState] = useState<StoryRowFilter>(() => {
+        const prefs = panelStateService ? getStoryEditorViewPrefs(panelStateService) : null;
+        return prefs ? { facets: new Set(prefs.selectedRowFacets), speakers: new Set(prefs.selectedRowSpeakers) } : EMPTY_STORY_ROW_FILTER;
+    });
     const [density, setDensityState] = useState<StoryEditorDensity>(() => (panelStateService ? getStoryEditorViewPrefs(panelStateService).density : "compact"));
-    const setNarrativeOnly = useCallback((value: boolean) => {
-        setNarrativeOnlyState(value);
+    const setRowFilter = useCallback((value: StoryRowFilter) => {
+        setRowFilterState(value);
         if (panelStateService) {
-            patchStoryEditorViewPrefs(panelStateService, { narrativeOnly: value });
+            patchStoryEditorViewPrefs(panelStateService, { selectedRowFacets: [...value.facets], selectedRowSpeakers: [...value.speakers] });
         }
     }, [panelStateService]);
     const setDensity = useCallback((value: StoryEditorDensity) => {
@@ -406,20 +416,51 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     // Each dialogue speaker's accumulated appearance (WI-3), so a dialogue row's avatar can follow the
     // most recent enter/expression. Keyed on the scene's content, not on collapse.
     const dialogueAppearances = useMemo(() => (scene ? buildDialogueAppearances(scene) : null), [document, scene]);
+    /**
+     * A displayable's name resolved to the character it addresses — the one lookup the speaker axis of
+     * the filter needs, and the same one the rows themselves resolve through.
+     */
+    const characterIdByName = useCallback(
+        (name: string) => characters.find(character => character.profile.getName() === name)?.profile.getId() ?? null,
+        [characters],
+    );
+    /**
+     * The page before the filter touches it: the scene minus whatever is folded away.
+     *
+     * Its own memo rather than a local inside `visibleRows`, because the filter menu counts THIS list
+     * — what a tick would take away, including for the ticks already off — and re-walking the scene a
+     * second time to answer that would put the two answers a frame apart on every keystroke.
+     *
+     * The staging lens (M7) used to sit here, doing two things that outlived it once its bar timeline
+     * was removed: it dropped the collapse flag for any container it was on — so the fold chevron on a
+     * parallel block was silently dead for the rest of that project's life — and it replaced the
+     * container's whole SUBTREE with one track per direct child, which quietly hid grandchildren.
+     * Neither had any remaining visual effect to justify it.
+     */
+    /**
+     * Switch back on whichever ticks are hiding this row — the filter's one concession to an act by
+     * the author. Shared by navigation and by writing; see `revealRowInStoryRowFilter` for why.
+     */
+    const revealRowInFilter = useCallback((block: StoryBlock) => {
+        const next = revealRowInStoryRowFilter(block, rowFilter, characterIdByName);
+        if (next !== rowFilter) {
+            setRowFilter(next);
+        }
+    }, [characterIdByName, rowFilter, setRowFilter]);
+    const unfilteredRows = useMemo(() => (scene ? buildVisibleRows(scene, collapsedBlockIds) : []), [collapsedBlockIds, scene]);
+    const rowFilterTallies = useMemo(
+        () => tallyStoryRows(unfilteredRows.map(row => row.block), characterIdByName, [...rowFilter.speakers]),
+        [characterIdByName, rowFilter.speakers, unfilteredRows],
+    );
     const visibleRows = useMemo(() => {
         if (!scene) {
             return [];
         }
-        // The staging lens (M7) used to sit here, doing two things that outlived it once its bar
-        // timeline was removed: it dropped the collapse flag for any container it was on — so the fold
-        // chevron on a parallel block was silently dead for the rest of that project's life — and it
-        // replaced the container's whole SUBTREE with one track per direct child, which quietly hid
-        // grandchildren. Neither had any remaining visual effect to justify it.
-        let rows = buildVisibleRows(scene, collapsedBlockIds);
-        // "Narrative only" (WI-6) drops staging rows but leaves each survivor's line number as-is —
+        // The row filter drops whole kinds of line but leaves each survivor's line number as-is —
         // filtering after buildVisibleRows (which assigns them) is what keeps the numbers un-renumbered.
-        if (narrativeOnly) {
-            rows = rows.filter(row => isNarrativeRow(row.block));
+        let rows = unfilteredRows;
+        if (isStoryRowFilterActive(rowFilter)) {
+            rows = rows.filter(row => storyRowPassesFilter(row.block, rowFilter, characterIdByName));
         }
         if (dialogueAppearances) {
             rows = rows.map(row => {
@@ -430,19 +471,19 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // Grouping runs last, over the exact rows that will render (WI-5); the branch lookahead runs
         // after it, over the same final list, so "the next row" means the next row on screen.
         return annotateNestingBranches(annotateDialogueGroups(rows, characters));
-    }, [characters, collapsedBlockIds, dialogueAppearances, narrativeOnly, scene]);
+    }, [characterIdByName, characters, dialogueAppearances, rowFilter, scene, unfilteredRows]);
     const rowIndexById = useMemo(() => {
         const result = new Map<StoryBlockId, number>();
         visibleRows.forEach((row, index) => result.set(row.block.id, index));
         return result;
     }, [visibleRows]);
-    // While the "narrative only" filter is on, keep the selection and active row inside the visible set.
-    // Enabling the filter (or editing under it) can leave selected staging rows hidden, and a Delete
-    // must never act on a row the author cannot see — so drop any selected id that is no longer visible.
-    // Off-filter editing is untouched; navigation that needs a hidden row turns the filter off first
+    // While the row filter is on, keep the selection and active row inside the visible set. Switching a
+    // facet off (or editing under the filter) can leave selected rows hidden, and a Delete must never
+    // act on a row the author cannot see — so drop any selected id that is no longer visible.
+    // Off-filter editing is untouched; navigation that needs a hidden row reveals its facet first
     // (see revealBlock).
     useEffect(() => {
-        if (!narrativeOnly) {
+        if (!isStoryRowFilterActive(rowFilter)) {
             return;
         }
         setSelectedBlockIds(prev => {
@@ -461,7 +502,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return changed ? next : prev;
         });
         setActiveBlockId(prev => (prev && !rowIndexById.has(prev) ? null : prev));
-    }, [narrativeOnly, rowIndexById]);
+    }, [rowFilter, rowIndexById]);
     const shouldRenderActiveInsertSlot = editorMode.kind === "insert" && editorMode.slot.afterBlockId !== null;
     const editorFocusKey = editorMode.kind === "insert"
         ? `insert:${editorMode.slot.focusToken}`
@@ -686,17 +727,15 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!block) {
             return false;
         }
-        // Jump wins over the filter: navigating (reveal / search) to a staging row that the "narrative
-        // only" filter would hide turns the filter off, so the target is actually visible and selected
-        // rather than an invisible selection on a hidden row.
-        if (narrativeOnly && !isNarrativeRow(block)) {
-            setNarrativeOnly(false);
-        }
+        // Jump wins over the filter: navigating (reveal / search) to a row the filter would hide
+        // switches the ticks holding it back on, so the target is actually visible and selected rather
+        // than an invisible selection on a hidden row.
+        revealRowInFilter(block);
         setActiveBlockId(blockId);
         setSelectedBlockIds(new Set([blockId]));
         selectionAnchorRef.current = blockId;
         return true;
-    }, [narrativeOnly, scene, setNarrativeOnly]);
+    }, [revealRowInFilter, scene]);
 
     const captureHistoryState = useCallback((): StorySceneHistoryState | null => {
         if (!scene) {
@@ -863,13 +902,16 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         storyService.insertBlock(storyId, sceneId, block, options?.target ?? getInsertionTargetAfter(scene, afterBlockId));
         // Rewriting a row rather than adding one: the replacement is in place, so the original goes.
         // Done here, after the insert, so a failed insert cannot leave the author with neither.
-        if (options?.replaceBlockId) {
-            storyService.deleteBlock(storyId, sceneId, options.replaceBlockId);
-        }
+        // Writing a line beats a filter set earlier: without this, a row whose kind is switched off
+        // lands in the document and is gone in the same frame — and the caller's follow-on slot
+        // (`startInsertAfter(block.id)`) anchors to a row that renders nowhere, so its input never
+        // mounts and the author is left with no caret at all. Both symptoms read as "the editor
+        // refused to write my line", which is the one thing it did not do.
+        revealRowInFilter(block);
         setActiveBlockId(block.id);
         setSelectedBlockIds(new Set([block.id]));
         setEditorMode(openInspector ? { kind: "inspector", blockId: block.id } : { kind: "idle" });
-    }, [recordHistory, scene, sceneId, storyId, storyService]);
+    }, [recordHistory, revealRowInFilter, scene, sceneId, storyId, storyService]);
 
     // Insert a `layer` create block immediately before `beforeBlockId` at the same nesting level and
     // return its id, without stealing focus from the currently-open inspector. Used by the Layer
@@ -2502,7 +2544,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         context, isInitialized, document, scene, loading,
         activeBlockId, selectedBlockIds, collapsedBlockIds, editorMode, addRowFocused, selectionRevision,
         characters, commandContext, visibleRows, shouldRenderActiveInsertSlot,
-        density, setDensity, narrativeOnly, setNarrativeOnly,
+        density, setDensity, rowFilter, setRowFilter, rowFilterTallies,
+        // How many rows the page would hold with the filter off. The one thing that tells an empty
+        // editor apart from an entirely filtered-out one, which read identically before.
+        unfilteredRowCount: unfilteredRows.length,
         rootRef, scrollContainerRef, insertInputRef, textInputRef, uuidService,
         focusRoot, focusWorkspace, revealBlock, handleKeyDown, copySelectionToClipboard: handleCopy, handlePaste: handlePasteInEditor,
         handleRowTextPaste,

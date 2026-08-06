@@ -475,11 +475,35 @@ export const story = {
     },
 
     view: {
-        narrativeOnly: "Narrative only",
         density: "Reading density",
         "density.compact": "Compact",
         "density.standard": "Standard",
         "density.comfortable": "Comfortable",
+        /** Which kinds of row the scene shows. The facet names are reading labels, not command categories. */
+        filter: {
+            title: "Filter rows",
+            /** The two at the top of the panel: one preset, one way out. */
+            dialogueOnly: "Dialogue only",
+            clear: "Clear filter",
+            sectionScript: "Script",
+            sectionStaging: "Directions",
+            sectionCast: "Cast",
+            facet: {
+                dialogue: "Dialogue",
+                narration: "Narration",
+                choice: "Choices",
+                note: "Notes",
+                character: "Character",
+                stage: "Stage",
+                camera: "Camera",
+                scene: "Scene",
+                sound: "Sound",
+                flow: "Flow",
+                data: "Variables",
+                utils: "Other",
+                invalid: "Invalid rows",
+            },
+        },
     },
     diagnostics: {
         missingAsset: "This row points at an asset the project no longer has.",
@@ -639,6 +663,9 @@ export const story = {
         emptyExampleShow: "bring someone on stage",
         emptyExampleSay: "give them a line",
         emptyOpenManual: "Open the command manual",
+        /** The scene has rows, but the filter is hiding all of them — a different thing from an empty scene. */
+        filteredEmpty: "No rows match the filter. Adjust it and try again.",
+        filteredEmptyClear: "Show all",
         variablesPanel: "Story Variables",
         snapshotsPanel: "Scene Snapshots",
     },
