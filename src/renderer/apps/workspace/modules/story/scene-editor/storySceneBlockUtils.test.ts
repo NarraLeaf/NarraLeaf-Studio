@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
 import { deleteBlockFromScene, insertBlockInScene } from "@/lib/workspace/services/story/storyModel";
-import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isNarrativeRow, isReadableAccentColor, nextSelectionAfterDelete, planRowBackspaceReplacement } from "./storySceneBlockUtils";
+import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isReadableAccentColor, nextSelectionAfterDelete, planRowBackspaceReplacement } from "./storySceneBlockUtils";
+import { dialogueOnlyStoryRowFilter, storyRowPassesFilter } from "./storyRowFilter";
 import type { VisibleStoryRow } from "./storySceneEditorTypes";
 
 function control(payload: Extract<StoryBlock, { kind: "control" }>["payload"]): StoryBlock {
@@ -268,32 +269,19 @@ describe("buildVisibleRows line numbers", () => {
 
 describe("filter then group", () => {
     it("keeps original line numbers and groups the survivors that filtering made adjacent", () => {
-        // Pipeline mirrors the controller: buildVisibleRows -> narrative filter -> annotateDialogueGroups.
+        // Pipeline mirrors the controller: buildVisibleRows -> row filter -> annotateDialogueGroups.
         const blocks = [
             dialogue("d1", { characterId: "c1" }),
             characterAction("x", { action: "character", operation: "enter", characterId: "c1" }),
             dialogue("d2", { characterId: "c1" }),
         ];
+        const dialogueOnly = dialogueOnlyStoryRowFilter();
         const visible = buildVisibleRows(scene(blocks, blocks.map(b => b.id)), new Set());
-        const filtered = annotateDialogueGroups(visible.filter(row => isNarrativeRow(row.block)));
+        const filtered = annotateDialogueGroups(visible.filter(row => storyRowPassesFilter(row.block, dialogueOnly, () => null)));
         // The hidden `enter` (line 2) is dropped, but d1/d2 keep their original numbers — not renumbered.
         expect(filtered.map(row => row.lineNumber)).toEqual([1, 3]);
         // With the staging row gone, d1/d2 are adjacent and group.
         expect(filtered.map(row => row.groupRole)).toEqual(["head", "member"]);
-    });
-});
-
-describe("isNarrativeRow", () => {
-    it("keeps narration, dialogue, choice, option and note; hides staging", () => {
-        expect(isNarrativeRow(narration("n"))).toBe(true);
-        expect(isNarrativeRow(dialogue("d", { characterId: "c1" }))).toBe(true);
-        expect(isNarrativeRow(nodeAction({ action: "choice" }))).toBe(true);
-        expect(isNarrativeRow(nodeAction({ action: "choiceOption", text: { textId: "t", role: "choiceText", value: "" } }))).toBe(true);
-        expect(isNarrativeRow({ id: "b", kind: "note", parentId: null, childrenIds: [], payload: { text: { textId: "t", role: "note", value: "" } } })).toBe(true);
-        // Staging kinds hide, including a character expression (an action).
-        expect(isNarrativeRow(characterAction("x", { action: "character", operation: "expression", characterId: "c1" }))).toBe(false);
-        expect(isNarrativeRow(control({ control: "condition" }))).toBe(false);
-        expect(isNarrativeRow({ id: "b", kind: "jump", parentId: null, childrenIds: [], payload: { targetSceneId: "s2" } })).toBe(false);
     });
 });
 

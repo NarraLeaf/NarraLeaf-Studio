@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from "react";
-import { AlignLeft, BookOpen, Camera, Check, ChevronDown, ChevronRight, FileText, Image as ImageIcon, ListPlus, MonitorPlay, Plus, Rows3, Trash2, Variable } from "lucide-react";
+import { BookOpen, Camera, Check, ChevronDown, ChevronRight, FileText, Filter, Image as ImageIcon, ListPlus, MonitorPlay, Plus, Rows3, Trash2, Variable } from "lucide-react";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
@@ -49,6 +49,8 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import type { TranslationKey } from "@shared/i18n";
 import { getCharacterName, getContainerHeaderInfo, getTextSegment } from "./storySceneBlockUtils";
 import { StoryFindBar } from "./StoryFindBar";
+import { StoryRowFilterMenu } from "./StoryRowFilterMenu";
+import { EMPTY_STORY_ROW_FILTER, storyRowFilterSize } from "./storyRowFilter";
 import { StoryCommandLineProvider } from "./StoryCommandLineView";
 import {
     findRangesInText,
@@ -907,6 +909,34 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     }, [editor.visibleRows, rowVirtualizer]);
 
     /**
+     * A filter change is a different page, so the scroll position from the old one does not survive it.
+     *
+     * Not a nicety: the list shrinks under a scroller whose tail spacer keeps the range long, so the
+     * retained `scrollTop` can sit entirely BELOW the surviving rows — measured at 266 with the whole
+     * 200px list ending above the viewport. The editor then shows an empty page with a working filter
+     * on it, which is the one thing a filter must never look like. (Ticking 仅对话 on a 24-row scene
+     * did exactly that.)
+     *
+     * The anchor is the active row when it survived the filter, and the top when it did not: there is
+     * nothing left holding the author's place, and the top of the new page is where reading it starts.
+     *
+     * Deliberately keyed on the filter alone. `scrollRowIntoView` and `visibleRows` change identity on
+     * every keystroke, and listing them would turn this into "yank the scroll on every edit"; the
+     * effect body reads them from the closure of the render the filter change produced, which is the
+     * one set of values it wants.
+     */
+    useEffect(() => {
+        if (!active) {
+            return;
+        }
+        if (editor.activeBlockId && scrollRowIntoView(editor.activeBlockId, "center")) {
+            return;
+        }
+        editor.scrollContainerRef.current?.scrollTo({ top: 0 });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [active, editor.rowFilter]);
+
+    /**
      * Keep the active row on screen. Arrow-navigating a long scene used to walk the selection off the
      * viewport and leave it there — survivable while every row was in the DOM, fatal once they are
      * not, because Enter would open an editor on a row that does not exist.
@@ -1444,6 +1474,23 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // selection, the whole selection is kept.
     const rowMenu = useContextMenu();
     const densityMenu = useContextMenu();
+    /**
+     * The row filter's panel, anchored to its toolbar button rather than to the pointer: it is a set of
+     * switches an author reopens to adjust, and a panel that lands wherever the click did would put the
+     * same tick under a different pixel each time.
+     */
+    const filterButtonRef = useRef<HTMLButtonElement | null>(null);
+    const [filterMenuAnchor, setFilterMenuAnchor] = useState<{ left: number; right: number; bottom: number } | null>(null);
+    const rowFilterSize = storyRowFilterSize(editor.rowFilter);
+    const toggleFilterMenu = useCallback(() => {
+        setFilterMenuAnchor(current => {
+            if (current) {
+                return null;
+            }
+            const rect = filterButtonRef.current?.getBoundingClientRect();
+            return rect ? { left: rect.left, right: rect.right, bottom: rect.bottom } : null;
+        });
+    }, []);
     const [menuTargetId, setMenuTargetId] = useState<StoryBlockId | null>(null);
     const openRowContextMenu = useCallback((event: ReactMouseEvent, blockId: StoryBlockId) => {
         if (!editor.selectedBlockIds.has(blockId)) {
@@ -1780,15 +1827,27 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     </div>
                 </div>
                 <div className="ml-auto flex shrink-0 items-center gap-1">
+                    {/* One control for the whole of "what is on this page".
+                        A separate "narrative only" toggle used to sit to its left, and it was a
+                        mistake twice over: it was one point inside this button's own space, and its
+                        `AlignLeft` glyph — three tapered rules — was near enough to `ListFilter` that
+                        the pair read as one control drawn twice. The preset it offered is the first
+                        thing in the panel; the funnel is the one glyph nothing else here can be.
+                        The count is there because a filter silently removes lines — a tinted glyph
+                        says "something is on", the number says how much. */}
                     <button
+                        ref={filterButtonRef}
                         type="button"
-                        onClick={() => editor.setNarrativeOnly(!editor.narrativeOnly)}
-                        title={t("story.view.narrativeOnly")}
-                        aria-label={t("story.view.narrativeOnly")}
-                        aria-pressed={editor.narrativeOnly}
-                        className={["rounded-md p-1.5 transition-colors", editor.narrativeOnly ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
+                        onClick={toggleFilterMenu}
+                        title={t("story.view.filter.title")}
+                        aria-label={t("story.view.filter.title")}
+                        aria-haspopup="menu"
+                        aria-expanded={filterMenuAnchor !== null}
+                        aria-pressed={rowFilterSize > 0}
+                        className={["flex items-center gap-1 rounded-md p-1.5 transition-colors", rowFilterSize > 0 ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
                     >
-                        <AlignLeft className="h-4 w-4" />
+                        <Filter className="h-4 w-4" />
+                        {rowFilterSize > 0 ? <span className="text-2xs tabular-nums">{rowFilterSize}</span> : null}
                     </button>
                     {/* Three densities, so a two-state toggle can no longer say which one is on. The
                         menu names them and ticks the current one; the button still reads as "not the
@@ -2037,11 +2096,29 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         {t("story.sceneEditor.addRow")}
                     </button>
                 )}
+                {/* A page with nothing on it, and the two very different reasons it can be that way.
+                    A filter that hides every row leaves the scene exactly as full as it was, so the
+                    "this scene is empty, here is how to start one" primer would be false — and it is
+                    aimed at a new author, which is the last person who should be told to write their
+                    first line when what they actually did was tick one box too many. The way out is
+                    right here rather than back up in the menu they would have to reopen to find it. */}
+                {editor.visibleRows.length === 0 && editor.editorMode.kind !== "insert" && editor.unfilteredRowCount > 0 ? (
+                    <div className="mx-auto mt-6 flex max-w-md flex-col items-start gap-2 px-6 text-xs text-fg-subtle">
+                        <p>{t("story.sceneEditor.filteredEmpty")}</p>
+                        <button
+                            type="button"
+                            className="rounded-md px-0 py-0.5 text-2xs text-primary underline-offset-2 hover:underline"
+                            onClick={() => editor.setRowFilter(EMPTY_STORY_ROW_FILTER)}
+                        >
+                            {t("story.sceneEditor.filteredEmptyClear")}
+                        </button>
+                    </div>
+                ) : null}
                 {/* A scene with nothing in it is the one place a new author is guaranteed to look, and
                     all it used to say was "click or type to add a row" — true, and no help at all with
                     the question actually being asked, which is "what can I write here". Three lines and
                     the way in. It disappears the moment there is anything to read. */}
-                {editor.visibleRows.length === 0 && editor.editorMode.kind !== "insert" ? (
+                {editor.visibleRows.length === 0 && editor.editorMode.kind !== "insert" && editor.unfilteredRowCount === 0 ? (
                     <div className="mx-auto mt-6 flex max-w-md flex-col gap-2 px-6 text-xs text-fg-subtle">
                         <p>{t("story.sceneEditor.emptyHint", { trigger: editor.slashAtAlias ? "@" : "/" })}</p>
                         <ul className="flex flex-col gap-1">
@@ -2093,6 +2170,17 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 onClose={densityMenu.hideMenu}
                 iconsEnabled
             />
+            {filterMenuAnchor ? (
+                <StoryRowFilterMenu
+                    anchor={filterMenuAnchor}
+                    anchorEl={filterButtonRef.current}
+                    filter={editor.rowFilter}
+                    tallies={editor.rowFilterTallies}
+                    characters={editor.characters}
+                    onChange={editor.setRowFilter}
+                    onClose={() => setFilterMenuAnchor(null)}
+                />
+            ) : null}
             </div>
             {previewOpen && previewMode === "dock" ? (
                 <>
