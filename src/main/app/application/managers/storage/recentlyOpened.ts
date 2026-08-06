@@ -1,9 +1,10 @@
 import { RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
 import { GlobalState, GlobalStateKeys } from "@shared/types/state/globalState";
 import { normalizeProjectPath, recentProjectDisplayName, withRecentProjectNames } from "@shared/utils/recentProject";
+import { RECENT_PROJECTS_LIMIT_DEFAULT } from "@shared/constants/recentProjects";
 
 /** Fallback when the setting holds something unusable (absent, zero, negative, not a number). */
-const DEFAULT_LIMIT = 10;
+const DEFAULT_LIMIT = RECENT_PROJECTS_LIMIT_DEFAULT;
 
 /**
  * The recently-opened history.
