@@ -40,6 +40,7 @@ import type { CacheClearResult, CacheInventoryReport } from "./cacheInventory";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
 import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult } from "./uiTemplateRegistry";
+import type { RemoteAssetFetchResult, RemoteAssetValidators } from "./remoteAsset";
 import type {
     PrivilegedActor,
     PrivilegedBashExecuteResult,
@@ -712,6 +713,18 @@ export interface RendererPreloadedInterface {
     uiTemplates: {
         registryFetch(): Promise<RequestStatus<UITemplateFetchResult>>;
         fetchBundle(templateId: string): Promise<RequestStatus<UITemplateBundle>>;
+    };
+
+    assets: {
+        /**
+         * The bytes behind a remote asset's URL, fetched by main.
+         *
+         * The only way a renderer may obtain them: renderers do not talk to the network, so neither
+         * `fetch()` nor an `<img src>` pointed at a project's remote URL is allowed. Pass
+         * `validators` from the asset's record to make the request conditional — an unchanged asset
+         * then answers `not-modified` and transfers nothing.
+         */
+        fetchRemote(url: string, validators?: RemoteAssetValidators): Promise<RequestStatus<RemoteAssetFetchResult>>;
     };
 
     /**

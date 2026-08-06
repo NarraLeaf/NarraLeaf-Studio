@@ -513,7 +513,7 @@ async function copyProjectAssets(input: {
                 }));
                 continue;
             }
-            const sourceLabel = normalized.source === "remote" ? "remote cache" : "local asset";
+            const sourceLabel = normalized.source === "remote" ? "remote asset" : "local asset";
             // The MIME type is derived from the extension, not from where the
             // bytes land, so it is available even when the store keeps the item
             // under an extension-free name.
@@ -539,7 +539,7 @@ async function copyProjectAssets(input: {
                 id: normalized.id,
                 type,
                 name: normalized.name,
-                source: normalized.source === "remote" ? "remote-cache" : "local",
+                source: normalized.source === "remote" ? "remote" : "local",
                 relativePath,
                 originalRelativePath: path.relative(input.projectPath, sourcePath).replace(/\\/g, "/"),
                 hash: normalized.hash,
@@ -1166,14 +1166,21 @@ function resolveProjectRelativePath(projectPath: string, relativePath: string): 
     return resolved;
 }
 
+/**
+ * Where an asset's bytes are, regardless of where they came from.
+ *
+ * One path for both sources. A remote asset used to be read out of `editor/assets/remote`, the
+ * editor's download cache - which `shared/vcs/workingSet.ts` deliberately excludes from version
+ * control, and which is only ever filled by previewing that asset in the editor. So a build from a
+ * fresh clone, or of an asset the author had never opened, failed on a file that had never existed
+ * on that machine. Remote assets now keep a versioned snapshot at the ordinary content shard, and
+ * this function has nothing left to decide.
+ */
 function resolveAssetSourcePath(
     projectPath: string,
     asset: ReturnType<typeof normalizeAssetRecord>,
 ): string {
     const [a, b, rest] = splitAssetStorageId(asset.id);
-    if (asset.source === "remote") {
-        return path.join(projectPath, "editor", "assets", "remote", a, b, rest);
-    }
     return path.join(projectPath, "assets", "content", a, b, rest);
 }
 

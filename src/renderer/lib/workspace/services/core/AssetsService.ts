@@ -13,7 +13,6 @@ import { ModelService } from "../assets/ModelService";
 import { BlueprintService } from "../assets/BlueprintService";
 import { AssetOrderManager } from "../assets/mgr/AssetOrderManager";
 import { AssetsMetadataManager } from "../assets/mgr/AssetsMetadataManager";
-import { EditorRemoteCacheManager } from "../assets/mgr/EditorRemoteCacheManager";
 import { GroupAssetsManager } from "../assets/mgr/GroupAssetsManager";
 import { LocalAssetsManager, type ImportFromPathsOptions } from "../assets/mgr/LocalAssetsManager";
 import { RemoteAssetsManager } from "../assets/mgr/RemoteAssetsManager";
@@ -57,7 +56,6 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     private localAssetsManager: LocalAssetsManager | null = null;
     private groupAssetsManager: GroupAssetsManager | null = null;
     private remoteAssetsManager: RemoteAssetsManager | null = null;
-    private editorRemoteCacheManager: EditorRemoteCacheManager | null = null;
     public imageService: ImageService | null = null;
     public audioService: AudioService | null = null;
     public videoService: VideoService | null = null;
@@ -256,9 +254,8 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         await this.flushPendingWrites();
 
         this.localAssetsManager = await new LocalAssetsManager(this, ctx).init();
-        this.editorRemoteCacheManager = await new EditorRemoteCacheManager(ctx).init();
         await this.ensureThumbnailRoot();
-        this.remoteAssetsManager = await new RemoteAssetsManager(this, ctx, this.editorRemoteCacheManager).init();
+        this.remoteAssetsManager = await new RemoteAssetsManager(this, ctx).init();
     }
 
     /**
@@ -339,13 +336,6 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         return this.remoteAssetsManager;
     }
 
-    public getEditorRemoteCacheManager(): EditorRemoteCacheManager {
-        if (!this.editorRemoteCacheManager) {
-            throw new RendererError("Editor remote cache manager not initialized");
-        }
-        return this.editorRemoteCacheManager;
-    }
-
     public getLocalAssetsManager(): LocalAssetsManager {
         if (!this.localAssetsManager) {
             throw new RendererError("Local assets manager not initialized");
@@ -373,10 +363,14 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         return this.getAssetsMetadataManager().exists(asset);
     }
 
+    /**
+     * Read an asset's bytes.
+     *
+     * No source branch, deliberately. A remote asset's snapshot lives at the same content shard as a
+     * local asset's file, so "where are the bytes" has one answer and reading them has one path.
+     * Everything that separates the two - the URL, the validators, refreshing - is metadata.
+     */
     public async fetch<T extends AssetType>(asset: Asset<T, AssetSource>): Promise<RequestStatus<AssetData<T>>> {
-        if (asset.source === AssetSource.Remote) {
-            return this.getRemoteAssetsManager().fetch(asset as Asset<T, AssetSource.Remote>);
-        }
         return this.getLocalAssetsManager().fetch(asset as Asset<T, AssetSource.Local>);
     }
 
@@ -384,12 +378,52 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         return this.getLocalAssetsManager().importLocalAssets(type);
     }
 
-    public async importRemoteAsset<T extends AssetType>(type: T, url: string): Promise<RequestStatus<Asset<T, AssetSource.Remote>>> {
-        return this.getRemoteAssetsManager().importRemoteAsset(type, url);
+    public async importRemoteAsset(
+        category: AssetCategory,
+        url: string,
+        groupId?: string,
+    ): Promise<RequestStatus<Asset<AssetType, AssetSource.Remote>>> {
+        return this.getRemoteAssetsManager().importRemoteAsset(category, url, groupId);
     }
 
-    public async clearRemoteCache(assetId?: string): Promise<void> {
-        await this.getEditorRemoteCacheManager().evict(assetId);
+    /**
+     * Ask a remote asset's server whether its stored snapshot is still current, and take the new
+     * bytes if not.
+     *
+     * Runs the *same four steps in the same order* as {@link replaceAssetContent} once bytes have
+     * moved - that ordering is the contract, not an implementation detail. It is skipped entirely
+     * when nothing moved, so a no-op refresh does not invalidate a thumbnail or announce an update
+     * the version history would then show as a change.
+     */
+    public async refreshRemoteAsset<T extends AssetType>(
+        asset: Asset<T, AssetSource.Remote>,
+    ): Promise<RequestStatus<{ asset: Asset<T, AssetSource>; changed: boolean }>> {
+        const refreshed = await this.getRemoteAssetsManager().refresh(asset);
+        if (!refreshed.success || !refreshed.data) {
+            return { success: false, error: refreshed.error };
+        }
+
+        const { changed, digest, meta } = refreshed.data;
+        if (changed && digest) {
+            try {
+                await this.clearThumbnailCache(asset.id);
+            } catch (error) {
+                console.warn(`Failed to clear thumbnail cache for asset: ${asset.id}`, error);
+            }
+        }
+
+        const applied = this.getAssetsMetadataManager().applyRemoteRefresh(asset, meta, changed ? digest : undefined);
+        if (!applied.success || !applied.data) {
+            return { success: false, error: applied.error };
+        }
+
+        this.getEvents().emit("updated", applied.data);
+        return { success: true, data: { asset: applied.data, changed } };
+    }
+
+    /** Whether a remote asset's snapshot is on disk. False for every record written before pinning. */
+    public async hasRemoteSnapshot(assetId: string): Promise<boolean> {
+        return this.getRemoteAssetsManager().snapshotExists(assetId);
     }
 
     public async getThumbnailPath(asset: Asset): Promise<RequestStatus<string>> {
@@ -703,12 +737,9 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
             return { success: false, error: blocked };
         }
 
-        let result: RequestStatus<void>;
-        if (asset.source === AssetSource.Remote) {
-            result = await this.getRemoteAssetsManager().deleteAsset(asset as Asset<T, AssetSource.Remote>);
-        } else {
-            result = await this.getLocalAssetsManager().deleteAsset(asset as Asset<T, AssetSource.Local>);
-        }
+        // One path for both sources: a remote asset's snapshot is a file at the same content shard,
+        // so deleting one is deleting the other.
+        const result = await this.getLocalAssetsManager().deleteAsset(asset as Asset<T, AssetSource.Local>);
 
         if (result.success) {
             try {

@@ -155,8 +155,11 @@ export const assets = {
         },
         retry: "Retry",
         remoteTitle: "Import Remote Asset",
-        remoteDescription: "Paste a direct link to the remote asset",
+        // "Downloaded now" rather than "linked": the asset the author gets keeps working offline and
+        // ships with the project, and the field would otherwise read as a reference to somewhere else.
+        remoteDescription: "Paste a direct link. The file is downloaded now and kept with the project",
         remoteInvalidUrl: "Please enter a valid URL",
+        remoteUnsupportedScheme: "Only http and https links can be imported",
         remoteFailedTitle: "Failed to import remote asset",
     },
     /**
