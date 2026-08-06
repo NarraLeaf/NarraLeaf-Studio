@@ -22,6 +22,7 @@ import {
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./handlers/projectWizardAction";
 import { WorkspaceExportProjectPackageHandler, WorkspaceImportProjectPackageHandler } from "./handlers/projectPackageAction";
 import { PsdBakeHandler, PsdOpenHandler } from "./handlers/psdImport";
+import { MediaProbeHandler } from "./handlers/mediaAction";
 import { WorkspaceLaunchHandler, WorkspaceOpenRecentHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler, WorkspaceExportConsoleLogsHandler, WorkspaceMenuSyncHandler, WorkspaceReportLoadResultHandler, WorkspaceSetRecoveryModeHandler, WorkspaceOpenProjectFolderHandler } from "./handlers/workspaceAction";
 import { WorkspaceReportWriteFreezeHandler } from "./handlers/workspaceFreezeAction";
 import {
@@ -156,6 +157,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new WorkspaceSelectFolderHandler(),
         new PsdOpenHandler(),
         new PsdBakeHandler(),
+        new MediaProbeHandler(),
         new WorkspaceCloseHandler(),
         new WorkspaceExportProjectPackageHandler(),
         new WorkspaceImportProjectPackageHandler(),

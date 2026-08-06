@@ -193,6 +193,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     selectFolder: () => ipcClient.invoke(IPCEventType.workspaceSelectFolder, {}),
     openPsd: () => ipcClient.invoke(IPCEventType.psdOpen, {}),
     bakePsd: (request) => ipcClient.invoke(IPCEventType.psdBake, { request }),
+    probeMedia: (path: string) => ipcClient.invoke(IPCEventType.mediaProbe, { path }),
     workspace: {
         getDefaultProjectDirectory: () => ipcClient.invoke(IPCEventType.projectWizardGetDefaultDirectory, {}),
         launch: (props: WindowProps[WindowAppType.Workspace], closeCurrentWindow?: boolean) =>
