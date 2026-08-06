@@ -40,6 +40,22 @@ export class FileFormatValidator {
             };
         }
 
+        // Some of those allowed extensions are only allowed as far as the *picker*: the engine cannot
+        // demux them at all, so importing one yields an asset that never plays. Refuse it here, while
+        // the author still has the source file in hand and can convert it.
+        //
+        // The message names NarraLeaf rather than Chromium on purpose. Which browser engine is inside
+        // the player is Studio's business, not the author's — they did not choose it and cannot swap
+        // it, so naming it turns an actionable sentence into trivia.
+        const undecodable = UNDECODABLE_EXTENSIONS[type]?.[fileExt];
+        if (undecodable) {
+            return {
+                success: false,
+                error: `NarraLeaf cannot ${UNDECODABLE_VERB[type] ?? "read"} .${fileExt} files.`
+                    + ` Convert to ${undecodable} before importing.`,
+            };
+        }
+
         let detectedFormat: string | null = null;
 
         // Detect format based on asset type
@@ -148,8 +164,14 @@ export class FileFormatValidator {
         if (buffer[0] === 0x49 && buffer[1] === 0x44 && buffer[2] === 0x33) {
             return 'mp3';
         }
+
+        // An 11-bit frame sync, which an MPEG audio frame header and an ADTS AAC header both open
+        // with. The two are told apart by the layer field in the second byte: MPEG numbers its layers
+        // I/II/III as 0b11/0b10/0b01, and ADTS is required to write 0b00 there. Reading it as MP3
+        // regardless is why every raw .aac file used to be rejected as misnamed.
         if (buffer[0] === 0xFF && (buffer[1] & 0xE0) === 0xE0) {
-            return 'mp3';
+            const layer = (buffer[1] >> 1) & 0x03;
+            return layer === 0b00 ? 'aac' : 'mp3';
         }
 
         // WAV
@@ -287,26 +309,41 @@ export class FileFormatValidator {
  *
  * Read two ways, and both matter: {@link FileFormatValidator.checkFormatMatch} asks whether a name
  * and its bytes agree, and {@link FileFormatValidator.sniffExtension} takes the first entry as the
- * conventional extension for bytes with no name to check.
+ * conventional extension for bytes with no name to check — so the first entry of each list is a
+ * decision, not an accident.
+ *
+ * Every extension named here must also be in {@link AssetExtensions} for the same type, or it is
+ * unreachable: the extension gate runs first and would have rejected the file already. A test in
+ * `FileFormatValidator.test.ts` enforces that, because the two tables drifting apart is what made
+ * `.apng`, `.opus`, `.pjp` and friends impossible to import.
  */
-const FORMAT_EXTENSIONS: Record<AssetType, Record<string, string[]>> = {
+export const FORMAT_EXTENSIONS: Record<AssetType, Record<string, string[]>> = {
     [AssetType.Image]: {
-        'jpeg': ['jpg', 'jpeg', 'jpe', 'jfif'],
-        'png': ['png'],
+        // APNG is a PNG: same signature, animation carried in ancillary chunks.
+        'jpeg': ['jpg', 'jpeg', 'jpe', 'jfif', 'pjpeg', 'pjp'],
+        'png': ['png', 'apng'],
         'gif': ['gif'],
         'webp': ['webp'],
         'bmp': ['bmp', 'dib'],
         'tiff': ['tiff', 'tif'],
     },
     [AssetType.Audio]: {
-        'mp3': ['mp3', 'mpeg'],
+        'mp3': ['mp3'],
         'wav': ['wav', 'wave'],
-        'ogg': ['ogg', 'oga'],
+        // Opus ships in an Ogg container, so its bytes are indistinguishable from any other .ogg.
+        'ogg': ['ogg', 'oga', 'opus'],
         'flac': ['flac'],
-        'm4a': ['m4a', 'aac', 'mp4'],
+        // Raw ADTS. `.aac` is also written by encoders that emit MPEG-4 audio, hence its second home
+        // under `m4a` below - either byte layout under that name is legitimate.
+        'aac': ['aac'],
+        'm4a': ['m4a', 'aac'],
     },
     [AssetType.Video]: {
-        'mp4': ['mp4', 'm4v'],
+        // The whole ISO-BMFF family shares the `ftyp` box; only a handful of brands are distinctive
+        // enough to name a format of their own, and the rest land here. `.f4v` is Adobe's name for
+        // the same layout and was rejected for years by omission alone — it is in `AssetExtensions`,
+        // so the file reached this check, and then matched no format.
+        'mp4': ['mp4', 'm4v', '3gp', '3g2', 'm4b', 'm4r', 'f4v'],
         'm4v': ['m4v', 'mp4'],
         'webm': ['webm', 'mkv'],
         'avi': ['avi'],
@@ -324,4 +361,45 @@ const FORMAT_EXTENSIONS: Record<AssetType, Record<string, string[]>> = {
     // A bundle is a directory; there is no single file whose magic bytes could be checked.
     [AssetType.Model]: {},
     [AssetType.Other]: {},
+};
+
+function convertTo(extensions: string[], suggestion: string): Record<string, string> {
+    return Object.fromEntries(extensions.map(extension => [extension, suggestion]));
+}
+
+/**
+ * Extensions that reach Chromium's demuxer and produce nothing, mapped to what to convert them to.
+ *
+ * Measured against Chromium 140 (Electron 38): each of these fails with
+ * `DEMUXER_ERROR_COULD_NOT_OPEN` - not a codec that plays badly, not one stream out of two, no
+ * playable content at all. Importing one used to succeed and the asset broke later, at preview or at
+ * runtime, far from the decision that caused it.
+ *
+ * They stay in {@link AssetExtensions} so the file dialog still lists them; the refusal lives here.
+ * That is also the seam where a future transcoder turns "cannot" into an offer to convert, so the
+ * message names a target format rather than just saying no.
+ *
+ * Nothing in the ISO-BMFF or Matroska families belongs here - `.mkv`, `.mka`, `.mov`, `.qt`, `.3gp`,
+ * `.m4v`, `.m4b` and `.m4r` were all measured playing.
+ */
+/**
+ * What the refusal says this type's assets are *for*, because "cannot play a .tiff" is nonsense and
+ * reads as a bug in the sentence rather than a fact about the file. Caught only by importing one
+ * into the running app — the tests asserted the format list, which was right, and the verb, which
+ * was not.
+ */
+const UNDECODABLE_VERB: Partial<Record<AssetType, string>> = {
+    [AssetType.Image]: "display",
+    [AssetType.Audio]: "play",
+    [AssetType.Video]: "play",
+};
+
+export const UNDECODABLE_EXTENSIONS: Partial<Record<AssetType, Record<string, string>>> = {
+    // Chromium has no TIFF decoder, and XBM (an X11-era C source format) was measured failing too.
+    [AssetType.Image]: convertTo(['tif', 'tiff', 'xbm'], '.png or .webp'),
+    [AssetType.Audio]: convertTo(['aiff', 'aif', 'aifc', 'mp2'], '.mp3 or .wav'),
+    [AssetType.Video]: convertTo(
+        ['avi', 'flv', 'wmv', 'asf', 'mpg', 'mpeg', 'mpe', 'mpv', 'm2v', 'ts', 'm2ts', 'mts', 'm2t', 'vob'],
+        '.mp4 or .webm',
+    ),
 };

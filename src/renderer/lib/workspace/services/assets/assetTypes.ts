@@ -197,27 +197,41 @@ export type AssetData<Type extends AssetType> = Type extends AssetType.Image ? {
     metadata: OtherAssetMetadata;
 } : never;
 
+/**
+ * What the file dialog offers for each type — deliberately wider than what actually plays.
+ *
+ * This list answers "may an author point at this file", not "will it decode". A handful of the
+ * containers below reach Chromium's demuxer and get nothing out of it; they stay listed so the file
+ * is *visible* in the picker, and are refused with a conversion hint by
+ * {@link import("./FileFormatValidator").UNDECODABLE_EXTENSIONS} instead. Removing them here would
+ * hide the very file an author is trying to convert.
+ *
+ * What does not belong here is anything that is not a decodable media file at all: playlists (a text
+ * file naming other files), MIDI (needs a synthesiser and a soundfont, not a decoder), DRM-wrapped
+ * `.m4p`, and codec names that were never container extensions.
+ *
+ * Kept in step with `FORMAT_EXTENSIONS` by a test: every extension that table names must appear here.
+ */
 export const AssetExtensions = {
-    // Comprehensive extension lists supported by Chromium (Chrome) for each media type
     [AssetType.Image]: [
         // Raster images
-        "png", "apng", "avif", "jpg", "jpeg", "jfif", "pjpeg", "pjp", "bmp", "dib", "gif", "webp", "tif", "tiff", "ico", "cur", "xbm",
+        "png", "apng", "avif", "jpg", "jpeg", "jpe", "jfif", "pjpeg", "pjp", "bmp", "dib", "gif", "webp", "tif", "tiff", "ico", "cur", "xbm",
         // Vector images
         "svg"
     ],
     [AssetType.Audio]: [
         // Common codecs/containers (Chromium native)
-        "mp3", "wav", "wave", "ogg", "oga", "opus", "aac", "m4a", "flac", "weba",
-        // Less-common / legacy (may require transcoding)
-        "aiff", "aif", "aifc", "mid", "midi", "mp2", "mka",
-        // Playlist / container formats
-        "m3u", "m3u8", "pls"
+        "mp3", "wav", "wave", "ogg", "oga", "opus", "aac", "m4a", "flac", "weba", "mka",
+        // Visible in the picker, refused on import: Chromium has no demuxer for these
+        "aiff", "aif", "aifc", "mp2"
     ],
     [AssetType.Video]: [
         // Modern web formats
-        "mp4", "m4v", "m4p", "m4b", "m4r", "mov", "qt", "webm", "mkv", "av1",
-        // Legacy / additional container formats Chromium can demux with the correct codecs installed
-        "3gp", "3g2", "avi", "flv", "f4v", "wmv", "asf", "mpg", "mpeg", "mpe", "mpv", "m2v", "ts", "m2ts", "mts", "m2t", "ogv", "ogm", "ogx", "vob"
+        "mp4", "m4v", "m4b", "m4r", "mov", "qt", "webm", "mkv",
+        // ISO-BMFF relatives and Ogg, which Chromium demuxes
+        "3gp", "3g2", "f4v", "ogv", "ogm", "ogx",
+        // Visible in the picker, refused on import: Chromium has no demuxer for these
+        "avi", "flv", "wmv", "asf", "mpg", "mpeg", "mpe", "mpv", "m2v", "ts", "m2ts", "mts", "m2t", "vob"
     ],
     [AssetType.JSON]: [
         // Standard JSON and JSON with comments (supported by many editors)
