@@ -13,7 +13,7 @@ import { useWorkspace } from "../../../context";
 import { useRegistry } from "../../../registry";
 import { useFreezeGuard } from "../../../components/ui/freezeGuard";
 import type { PanelComponentProps } from "../../types";
-import { closeStorySceneEditorTabs } from "../scene-editor/closeStorySceneEditorTabs";
+import { closeStoryEditorTabs, closeStorySceneEditorTabs } from "./closeStoryEditorTabs";
 import { createStorySceneEditorTab } from "../scene-editor/openStorySceneEditorTab";
 import { openSceneFlowTab } from "../../story-flow/openSceneFlowTab";
 import { buildStorySceneTextProjection } from "../projection/storySceneProjection";
@@ -280,7 +280,12 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         if (!confirmed) {
             return;
         }
-        await storyService.deleteStory(entry.id);
+        if (await storyService.deleteStory(entry.id)) {
+            // Everything of this story's, by id prefix: its scenes and its flow map. Reading the
+            // document first to find out what to close would be the wrong way round for the one
+            // call whose whole job is to get rid of it.
+            closeStoryEditorTabs(uiService, entry.id);
+        }
         refreshLibrary();
     }, [refreshLibrary, storyService, uiService, t]);
 
@@ -440,7 +445,9 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         if (!confirmed) {
             return;
         }
-        storyService.deleteScene(selectedStoryId, scene.id);
+        if (storyService.deleteScene(selectedStoryId, scene.id)) {
+            closeStorySceneEditorTabs(uiService, selectedStoryId, [scene.id]);
+        }
     }, [selectedStoryId, storyService, uiService, t]);
 
     const handleSetEntryScene = useCallback((scene: StoryScene) => {
