@@ -279,7 +279,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         if (!confirmed) {
             return;
         }
-        storyService.deleteStory(entry.id);
+        await storyService.deleteStory(entry.id);
         refreshLibrary();
     }, [refreshLibrary, storyService, uiService, t]);
 

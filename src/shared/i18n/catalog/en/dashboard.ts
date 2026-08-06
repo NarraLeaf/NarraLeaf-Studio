@@ -55,6 +55,19 @@ export const dashboard = {
         variables: "Variables",
     },
 
+    cast: {
+        title: "Dialogue by speaker",
+        speaker: "Speaker",
+        lines: "Lines",
+        words: "Words",
+        others: {
+            one: "1 other speaker",
+            other: "{count} other speakers",
+        },
+        showAll: "Show all",
+        showFewer: "Show fewer",
+    },
+
     activity: {
         title: "Writing activity",
         description: "Words added per day over the last 30 days.",
