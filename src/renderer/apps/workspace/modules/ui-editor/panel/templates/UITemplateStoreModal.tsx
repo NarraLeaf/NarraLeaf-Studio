@@ -197,9 +197,15 @@ export function UITemplateStoreModal({
     const tabs = useMemo(() => {
         const count = (target: UISurfaceKind) =>
             (entries ?? []).filter(entry => entry.surface.kind === target).length;
+        // An element, not a bare string: TabStrip lays its children out with `gap`,
+        // and two adjacent strings collapse into one anonymous flex item — which is
+        // how the count came to be printed hard against the label ("Page3").
+        const shelfCount = (target: UISurfaceKind) => entries
+            ? <span className="text-fg-subtle tabular-nums">{count(target)}</span>
+            : undefined;
         return [
-            { id: "appSurface", label: t("uiEditor.surfaceKind.page"), badge: entries ? String(count("appSurface")) : undefined },
-            { id: "stageSurface", label: t("uiEditor.surfaceKind.gameUi"), badge: entries ? String(count("stageSurface")) : undefined },
+            { id: "appSurface", label: t("uiEditor.surfaceKind.page"), badge: shelfCount("appSurface") },
+            { id: "stageSurface", label: t("uiEditor.surfaceKind.gameUi"), badge: shelfCount("stageSurface") },
         ];
     }, [entries, t]);
 
