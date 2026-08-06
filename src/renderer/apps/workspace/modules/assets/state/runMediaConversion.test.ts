@@ -5,7 +5,7 @@ import { runMediaConversion, type MediaConvertBridge } from "./runMediaConversio
 const REQUEST: MediaConvertRequest = {
     sourcePath: "C:/media/clip.avi",
     targetPath: "C:/project/.nlstudio/convert/run/0/clip.mp4",
-    target: { kind: "remux", container: "mp4" },
+    target: { kind: "remux", container: "mp4", audioOnly: false },
     durationUs: 5_000_000,
 };
 

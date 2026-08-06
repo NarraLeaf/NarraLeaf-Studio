@@ -31,7 +31,7 @@ function valueAfter(args: readonly string[], flag: string): string | undefined {
 }
 
 describe("transcodeArgs / remux", () => {
-    const target: MediaConvertTarget = { kind: "remux", container: "mp4" };
+    const target: MediaConvertTarget = { kind: "remux", container: "mp4", audioOnly: false };
     const args = transcodeArgs(target, "/in/clip.avi", "/out/tmp.part");
 
     it("copies the streams rather than encoding them", () => {
@@ -64,7 +64,7 @@ describe("transcodeArgs / remux", () => {
     it("spells the ADTS muxer correctly, which is not what the container is called", () => {
         // `-f aac` does not exist: `aac` is the demuxer's name, `adts` is the muxer's. Getting this
         // wrong fails at startup on a file the classifier said was a lossless container swap.
-        expect(valueAfter(transcodeArgs({ kind: "remux", container: "aac" }, "/in/a.mka", "/o"), "-f")).toBe("adts");
+        expect(valueAfter(transcodeArgs({ kind: "remux", container: "aac", audioOnly: false }, "/in/a.mka", "/o"), "-f")).toBe("adts");
     });
 
     it("passes the source and the output as plain argv elements", () => {
@@ -178,7 +178,7 @@ describe("mediaConvertTargetExtension", () => {
     it("leaves every other target on its container's own name", () => {
         expect(mediaConvertTargetExtension({ kind: "reencode", container: "webm", video: "vp9", audio: "vorbis" }))
             .toBe("webm");
-        expect(mediaConvertTargetExtension({ kind: "remux", container: "mp4" })).toBe("mp4");
+        expect(mediaConvertTargetExtension({ kind: "remux", container: "mp4", audioOnly: false })).toBe("mp4");
         expect(mediaConvertTargetExtension({ kind: "image", container: "png" })).toBe("png");
     });
 });

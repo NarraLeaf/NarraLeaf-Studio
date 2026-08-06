@@ -84,7 +84,7 @@ describe("planMediaImport", () => {
                 reason: "container-unsupported",
                 container: { names: ["avi"], demuxable: false, knownUnsupported: true },
                 streams: [{ index: 0, kind: "video", codec: "h264", decodable: true }],
-                target: { kind: "remux", container: "mp4" },
+                target: { kind: "remux", container: "mp4", audioOnly: false },
             }), 12_000_000),
         );
 

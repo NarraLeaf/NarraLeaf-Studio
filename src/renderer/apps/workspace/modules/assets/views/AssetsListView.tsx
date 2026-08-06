@@ -2,8 +2,9 @@ import { useMemo, useCallback, useState, Dispatch, SetStateAction, DragEvent } f
 import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
 import { Upload, Link, FolderPlus, RefreshCw } from "lucide-react";
 import { ASSET_CATEGORY_ORDER, AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
-import { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
+import { Asset, AssetGroup, AssetSource } from "@/lib/workspace/services/assets/types";
 import { useAssetsPanelContext } from "../AssetsPanelContext";
+import { AssetSupportBadge } from "../components/AssetSupportBadge";
 import { ASSET_CATEGORY_ICONS, ASSET_TYPE_ICONS } from "../constants";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
@@ -245,10 +246,11 @@ function GroupItem({ group, category, level }: { group: AssetGroup; category: As
 }
 
 function AssetItem({ asset, category, level }: { asset: Asset; category: AssetCategory; level: number }) {
-    const { selectedItems, clipboard, draggedItem, handleItemSelect, handleAssetClick, showContextMenu, handleDragStart, handleDragEnd, isFocused, isMultiSelectMode } = useAssetsPanelContext();
+    const { selectedItems, clipboard, draggedItem, handleItemSelect, handleAssetClick, showContextMenu, handleDragStart, handleDragEnd, isFocused, isMultiSelectMode, mediaSupport, handleConvertMedia } = useAssetsPanelContext();
     const Icon = ASSET_TYPE_ICONS[asset.type];
     const isSelected = selectedItems.has(`asset:${asset.id}`);
     const isDragging = !!draggedItem && !draggedItem.isGroup && draggedItem.item.id === asset.id;
+    const support = mediaSupport.get(asset.id);
 
     return (
         <div
@@ -265,6 +267,12 @@ function AssetItem({ asset, category, level }: { asset: Asset; category: AssetCa
         >
             <Icon className="w-4 h-4 text-fg-muted" />
             <span className="text-sm flex-1 truncate">{asset.name}</span>
+            {support && (
+                <AssetSupportBadge
+                    record={support}
+                    onConvert={asset.source === AssetSource.Local ? () => handleConvertMedia(asset) : undefined}
+                />
+            )}
             {asset.tags.length > 0 && <span className="text-xs text-fg-subtle">+{asset.tags.length}</span>}
         </div>
     );
