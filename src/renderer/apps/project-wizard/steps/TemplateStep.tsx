@@ -1,8 +1,9 @@
 import { useTranslation } from "@/lib/i18n";
 import { Card, CardDescription, CardTitle } from "@/lib/components/elements";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ProjectData } from "../types";
 import { projectTemplates } from "../constants";
+import { useBundledProjectTemplates } from "../bundledProjectTemplates";
 
 interface TemplateStepProps {
     projectData: ProjectData;
@@ -15,10 +16,26 @@ interface TemplateStepProps {
 export function TemplateStep({ projectData, updateProjectData }: TemplateStepProps) {
     const { t } = useTranslation();
     const [focusedTemplate, setFocusedTemplate] = useState<string | null>(null);
+    const bundled = useBundledProjectTemplates();
+
+    /**
+     * Blank first, then whatever this build ships, then the two bring-one-in cards.
+     *
+     * The page asks "where is this project coming from", and the templates are all
+     * answers of the same kind as "blank" - something made here, now - so they
+     * belong beside it rather than after the cards about projects that already exist.
+     */
+    const cards = useMemo(() => {
+        const [empty, ...rest] = projectTemplates;
+        return empty ? [empty, ...bundled, ...rest] : [...bundled, ...projectTemplates];
+    }, [bundled]);
 
     const handleTemplateSelect = (templateId: string) => {
         updateProjectData({
             template: templateId,
+            // Cleared, not left behind: picking "Empty" after a template must not
+            // still scaffold that template's content.
+            contentTemplateId: cards.find(card => card.id === templateId)?.contentTemplateId,
         });
     };
 
@@ -41,7 +58,7 @@ export function TemplateStep({ projectData, updateProjectData }: TemplateStepPro
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
-                    {projectTemplates.map((template) => (
+                    {cards.map((template) => (
                         <Card
                             key={template.id}
                             variant="default"

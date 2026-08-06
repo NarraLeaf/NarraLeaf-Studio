@@ -97,6 +97,15 @@ export class ProjectService {
                 throwException(await BaseFileSystemService.write(orderPath, EMPTY_ASSET_ORDER_TEXT, "utf-8"));
             }
 
+            // A template's content goes on top of the skeleton, replacing the empty
+            // defaults just written (the one-blank-page interface document, the empty
+            // asset shards) with the authored versions. Before version control, so the
+            // first revision is the project the author received rather than an empty
+            // one that grew its content in a second commit.
+            if (projectData.contentTemplateId) {
+                await this.applyProjectTemplate(basePath, projectData.contentTemplateId);
+            }
+
             // LAST, and only after every file above is on disk: the first revision is a snapshot of
             // the working tree, so a repository created earlier would record a project that is
             // half-written. Nothing is committed twice - `initRepository` stages the whole root.
@@ -111,6 +120,24 @@ export class ProjectService {
             const errorMessage = error instanceof Error ? error.message : String(error);
             console.error("Failed to create project:", errorMessage);
             return { success: false, error: errorMessage };
+        }
+    }
+
+    /**
+     * Copy the chosen bundled template's content over the project just written.
+     *
+     * **A failure here does fail the project**, unlike version control below. The
+     * difference is what the author is left holding: a project that could not be
+     * versioned is still the project they asked for, and the version rail offers
+     * Enable in one click. A project whose template did not land is an empty
+     * project wearing the name of a template — nothing on screen would say so, and
+     * the recovery is to delete the directory and start again. Better to say it now,
+     * while the wizard is still open and the message can name what went wrong.
+     */
+    private static async applyProjectTemplate(projectPath: string, templateId: string): Promise<void> {
+        const result = await getInterface().projectTemplates.scaffold(templateId, projectPath);
+        if (!result.success) {
+            throw new Error(result.error || translate("wizard.validation.templateFailed"));
         }
     }
 
