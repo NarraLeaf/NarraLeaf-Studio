@@ -22,6 +22,7 @@ import type {
     WorkspacePluginDescriptor,
 } from "./plugins";
 import type { CacheClearResult, CacheInventoryReport } from "./cacheInventory";
+import type { MediaProbeOutcome } from "./mediaProbe";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
 import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult } from "./uiTemplateRegistry";
@@ -149,6 +150,7 @@ export enum IPCEventType {
     workspaceClose = "workspace.close",
     psdOpen = "psd.open",
     psdBake = "psd.bake",
+    mediaProbe = "media.probe",
     workspaceExportProjectPackage = "workspace.projectPackage.export",
     workspaceImportProjectPackage = "workspace.projectPackage.import",
     workspaceExportConsoleLogs = "workspace.console.exportLogs",
@@ -1270,6 +1272,20 @@ export type IPCWorkspaceEvents = {
         };
         response: {
             layers: PsdBakedLayer[];
+        };
+    };
+    /**
+     * What is inside a media file, and whether the engine can play it. Read-only: it runs ffprobe
+     * and nothing else, converts nothing, and writes nothing.
+     */
+    [IPCEventType.mediaProbe]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {
+            path: string;
+        };
+        response: {
+            outcome: MediaProbeOutcome;
         };
     };
     [IPCEventType.workspaceSelectFolder]: {
