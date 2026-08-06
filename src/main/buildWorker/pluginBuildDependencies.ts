@@ -2,6 +2,8 @@ import { createHash } from "crypto";
 import fs from "fs/promises";
 import path from "path";
 import type { PluginBuildDependencyTargetContribution } from "@shared/types/plugins";
+import type { DownloadRewriteRule } from "@shared/types/downloadSource";
+import { describeRewrite, rewriteDownloadUrl } from "@shared/utils/downloadSource";
 import { parseZipIndex, readEntryBytes, type ZipIndex, type ZipIndexEntry } from "./mobile/zipModel";
 
 /**
@@ -42,6 +44,16 @@ export type PluginBuildDependencyRequest = {
     /** The platform key this target was declared under, likewise for messages. */
     platformKey: string;
     target: PluginBuildDependencyTargetContribution;
+    /**
+     * The author's download rewrites, handed over rather than read - this runs in the build
+     * worker, which has no Electron and no global state (same reason `userDataDir` is a
+     * parameter). Absent means no rewriting, which is what every existing caller gets.
+     *
+     * This is the safest place in Studio for a rewrite: the bytes are pinned to a declared
+     * sha256 and a mismatch caches nothing, so a mirror can only serve the declared archive or
+     * fail loudly.
+     */
+    rewrites?: readonly DownloadRewriteRule[];
     log?: BuildDependencyLog;
 };
 
@@ -152,6 +164,8 @@ export type BuildDependencyAvailability =
 export async function probePluginBuildDependency(input: {
     userDataDir: string;
     target: PluginBuildDependencyTargetContribution;
+    /** Same rules the download will use, so the dialog probes the host a build would reach. */
+    rewrites?: readonly DownloadRewriteRule[];
     timeoutMs?: number;
 }): Promise<BuildDependencyAvailability> {
     const { userDataDir, target } = input;
@@ -163,7 +177,7 @@ export async function probePluginBuildDependency(input: {
         return { status: "cached" };
     }
     try {
-        const response = await fetch(target.url, {
+        const response = await fetch(rewriteDownloadUrl(target.url, input.rewrites ?? []).url, {
             method: "HEAD",
             signal: AbortSignal.timeout(input.timeoutMs ?? PROBE_TIMEOUT_MS),
         });
@@ -237,8 +251,16 @@ async function downloadSource(
     where: string,
 ): Promise<Buffer> {
     const { target, log } = input;
+    // Errors keep naming the DECLARED url, not the rewritten one: that is the address the
+    // plugin author published and the one the reader can look up. The rewrite is stated on its
+    // own line instead, so a mirror serving the wrong thing is still traceable.
+    const outcome = rewriteDownloadUrl(target.url, input.rewrites ?? []);
+    const rewriteLine = describeRewrite(target.url, outcome);
     log?.("info", `${where}: downloading ${target.url}`);
-    const response = await fetch(target.url).catch((error: unknown) => {
+    if (rewriteLine) {
+        log?.("info", `${where}: ${rewriteLine}`);
+    }
+    const response = await fetch(outcome.url).catch((error: unknown) => {
         throw new Error(`${where}: could not download ${target.url} (${messageOf(error)})`);
     });
     if (!response.ok) {

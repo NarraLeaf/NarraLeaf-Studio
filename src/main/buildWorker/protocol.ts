@@ -343,6 +343,13 @@ export type GameBuildWorkerConfig = {
     compression?: GameBuildCompression;
     /** Download mirror for Electron dists (cross builds); empty = official. */
     electronMirror?: string;
+    /**
+     * Download mirror for electron-builder's toolchain binaries (winCodeSign, NSIS, AppImage,
+     * 7za); empty = official. A separate field from `electronMirror` because their URL layouts
+     * differ - which is exactly why this used to be reachable only through an environment
+     * variable a Studio user had no way to set.
+     */
+    electronBuilderBinariesMirror?: string;
     /** Glob patterns kept outside the asar as real files. */
     asarUnpack: string[];
     /** Desktop packaging jobs, one per platform (electron-builder). */
