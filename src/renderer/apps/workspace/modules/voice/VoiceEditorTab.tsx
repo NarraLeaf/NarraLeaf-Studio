@@ -35,6 +35,7 @@ import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import type { StoryLibraryEntry } from "@shared/types/story";
 import type { VoiceConfiguration, VoiceDocument } from "@shared/types/voice";
+import { buildAssetNameKeyMap, voiceMatchKeyForEntry, withSceneIndices } from "@/lib/workspace/services/voice/voiceScript";
 import type { VoiceEditorTabPayload } from "./voiceEditorTabId";
 import { VoiceRow, type VoiceTableRow } from "./VoiceRows";
 
@@ -49,7 +50,7 @@ const NARRATION_GROUP_KEY = "__narration__";
 const GROUP_ROW_HEIGHT_PX = 26;
 const VOICE_ROW_HEIGHT_PX = 37;
 
-type TableRow = VoiceTableRow & { speaker: string };
+type TableRow = VoiceTableRow & { speaker: string; indexInScene: number };
 
 export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEditorTabPayload | undefined>) {
     const { context, isInitialized } = useWorkspace();
@@ -190,7 +191,10 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
         const extract = () => {
             try {
                 const document = storyService.getStoryDocument(storyId);
-                setRows(voiceService.extractRows(document).map(row => {
+                // `withSceneIndices` because the naming pattern's `{index}` is a line's position
+                // within its own scene - the same number the exported recording script carries, so
+                // the assign picker and the booth's filenames agree.
+                setRows(withSceneIndices(voiceService.extractRows(document)).map(row => {
                     const scriptText = voiceService.getLineText(locale, row.unitId, row.sourceText);
                     return {
                         unitId: row.unitId,
@@ -198,6 +202,7 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
                         ...(scriptText !== row.sourceText ? { authoredText: row.sourceText } : {}),
                         sceneId: row.sceneId,
                         sceneName: row.sceneName,
+                        indexInScene: row.indexInScene,
                         role: row.role,
                         ...(row.characterId ? { characterId: row.characterId } : {}),
                         speaker: speakerNameFor(row),
@@ -338,6 +343,41 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
     const setNote = useCallback((unitId: string, sourceText: string, note: string) => {
         voiceService?.updateUnit(locale, unitId, sourceText, { note });
     }, [voiceService, locale]);
+
+    /**
+     * Library name -> asset id, for the audio the project already holds.
+     *
+     * Keyed off `assetsRev` so a rename or a fresh import is reflected without reopening the tab.
+     * Named assets only: the key is built from the name the asset carries **in the library**, which
+     * is what an author sees and can fix, rather than the filename it happened to arrive under.
+     */
+    const assetNameKeys = useMemo(() => {
+        void assetsRev;
+        const audio = assetsService?.getAssets()[AssetType.Audio] ?? {};
+        return buildAssetNameKeyMap(Object.values(audio).map(asset => ({ id: asset.id, name: asset.name })));
+    }, [assetsService, assetsRev]);
+
+    /**
+     * The clip this line would have been recorded as, if the project already holds it.
+     *
+     * The whole point of the naming pattern is that a line and its take share a name, so when a
+     * director opens the picker on an unassigned line the answer is usually already in the library -
+     * pre-selecting it turns "find the file among three hundred" into "press Enter". Nothing is
+     * written until they confirm.
+     */
+    const matchingAssetIdFor = useCallback((row: TableRow): string | undefined => {
+        if (!config) {
+            return undefined;
+        }
+        const key = voiceMatchKeyForEntry({
+            unitId: row.unitId,
+            sceneName: row.sceneName,
+            indexInScene: row.indexInScene,
+            speaker: row.speaker,
+            sourceText: row.sourceText,
+        }, config.namingPattern, locale);
+        return key ? assetNameKeys.get(key) : undefined;
+    }, [assetNameKeys, config, locale]);
 
     const rowStates = useMemo(() => {
         const states = new Map<string, VoiceUnitState>();
@@ -668,7 +708,9 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
                                         setSelector({
                                             unitId: row.unitId,
                                             sourceText: row.sourceText,
-                                            currentAssetId: unit?.assetId,
+                                            // Already bound wins; otherwise the clip whose library
+                                            // name matches this line's expected recording name.
+                                            currentAssetId: unit?.assetId ?? matchingAssetIdFor(row),
                                         });
                                     }}
                                     onRemove={() => voiceService?.updateUnit(locale, row.unitId, row.sourceText, { assetId: "" })}

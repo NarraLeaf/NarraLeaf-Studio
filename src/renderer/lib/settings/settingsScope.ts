@@ -5,8 +5,7 @@ import {
     isProtectedStateKey,
     isWorkspaceLayoutKey,
     NON_REGISTRY_PREFERENCE_KEYS,
-    PERSONAL_PREFERENCE_KEYS,
-    WALLPAPER_PREFERENCE_KEYS,
+    UNEXPORTED_PREFERENCE_KEYS,
 } from "@shared/constants/settingsScopes";
 import type { SettingsValueSpec } from "@shared/utils/settingsDocument";
 
@@ -45,6 +44,18 @@ export function preferenceKeys(): string[] {
     // Belt and braces with the host's own refusal: nothing here should be protected, and if a
     // future key is both, the host's list wins and this keeps the UI from offering it.
     return [...keys].filter(key => !isProtectedStateKey(key));
+}
+
+/**
+ * The preference keys an export writes: all of them, minus the two groups a settings file has no
+ * business carrying. See `UNEXPORTED_PREFERENCE_KEYS` for which and why.
+ *
+ * Not parameterised. An exported file is a plain JSON document; a little configuration surface
+ * governing what goes into it would be a second settings system serving one question.
+ */
+export function exportablePreferenceKeys(): string[] {
+    const excluded = new Set(UNEXPORTED_PREFERENCE_KEYS);
+    return preferenceKeys().filter(key => !excluded.has(key));
 }
 
 /** Preference keys in one settings category, for the per-category reset. */
@@ -114,4 +125,3 @@ export function settingsValueSpecs(): SettingsValueSpec[] {
     return specs;
 }
 
-export { PERSONAL_PREFERENCE_KEYS, WALLPAPER_PREFERENCE_KEYS };

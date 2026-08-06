@@ -150,7 +150,7 @@ export const project = {
         },
         voiceEndMode: {
             title: "语音随句子结束时",
-            description: "一句话说完之后，这条语音怎么处理",
+            description: "一句话说完之后，这条语音怎么处理。无论选哪个，都不会有两条语音同时响",
             option: {
                 stop: "立即停止",
                 fade: "淡出",
