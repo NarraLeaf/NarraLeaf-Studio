@@ -425,19 +425,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         [characters],
     );
     /**
-     * The page before the filter touches it: the scene minus whatever is folded away.
-     *
-     * Its own memo rather than a local inside `visibleRows`, because the filter menu counts THIS list
-     * — what a tick would take away, including for the ticks already off — and re-walking the scene a
-     * second time to answer that would put the two answers a frame apart on every keystroke.
-     *
-     * The staging lens (M7) used to sit here, doing two things that outlived it once its bar timeline
-     * was removed: it dropped the collapse flag for any container it was on — so the fold chevron on a
-     * parallel block was silently dead for the rest of that project's life — and it replaced the
-     * container's whole SUBTREE with one track per direct child, which quietly hid grandchildren.
-     * Neither had any remaining visual effect to justify it.
-     */
-    /**
      * Switch back on whichever ticks are hiding this row — the filter's one concession to an act by
      * the author. Shared by navigation and by writing; see `revealRowInStoryRowFilter` for why.
      */
@@ -447,7 +434,29 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             setRowFilter(next);
         }
     }, [characterIdByName, rowFilter, setRowFilter]);
-    const unfilteredRows = useMemo(() => (scene ? buildVisibleRows(scene, collapsedBlockIds) : []), [collapsedBlockIds, scene]);
+    /**
+     * The page before the filter touches it: the scene minus whatever is folded away.
+     *
+     * Its own memo rather than a local inside `visibleRows`, because the filter menu counts THIS list
+     * — what a tick would take away, including for the ticks already off — and re-walking the scene a
+     * second time to answer that would put the two answers a frame apart on every keystroke.
+     *
+     * **`document` is the dependency that makes this list live**, and `scene` on its own is not: the
+     * service edits blocks IN PLACE and re-emits the same `StoryScene` object, so `document.scenes[id]`
+     * keeps its identity for the whole life of the tab — only the document wrapper is re-created
+     * (`setDocument({ ...event.document })`). Keyed on `scene` alone this memo answers with the scene as
+     * it was when the tab opened: a row the author writes never reaches the page, and the follow-on
+     * insert slot anchors to a row that renders nowhere, so there is no caret to type the next line in.
+     * Which is the editor refusing to write anything at all. (`dialogueAppearances` above lists
+     * `document` for the same reason, and is where the rule was already written down.)
+     *
+     * The staging lens (M7) used to sit here, doing two things that outlived it once its bar timeline
+     * was removed: it dropped the collapse flag for any container it was on — so the fold chevron on a
+     * parallel block was silently dead for the rest of that project's life — and it replaced the
+     * container's whole SUBTREE with one track per direct child, which quietly hid grandchildren.
+     * Neither had any remaining visual effect to justify it.
+     */
+    const unfilteredRows = useMemo(() => (scene ? buildVisibleRows(scene, collapsedBlockIds) : []), [collapsedBlockIds, document, scene]);
     const rowFilterTallies = useMemo(
         () => tallyStoryRows(unfilteredRows.map(row => row.block), characterIdByName, [...rowFilter.speakers]),
         [characterIdByName, rowFilter.speakers, unfilteredRows],
@@ -902,6 +911,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         storyService.insertBlock(storyId, sceneId, block, options?.target ?? getInsertionTargetAfter(scene, afterBlockId));
         // Rewriting a row rather than adding one: the replacement is in place, so the original goes.
         // Done here, after the insert, so a failed insert cannot leave the author with neither.
+        if (options?.replaceBlockId) {
+            storyService.deleteBlock(storyId, sceneId, options.replaceBlockId);
+        }
         // Writing a line beats a filter set earlier: without this, a row whose kind is switched off
         // lands in the document and is gone in the same frame — and the caller's follow-on slot
         // (`startInsertAfter(block.id)`) anchors to a row that renders nowhere, so its input never
