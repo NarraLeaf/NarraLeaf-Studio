@@ -36,7 +36,8 @@ import {
     ZOOM_PERCENT_MAX,
     ZOOM_PERCENT_MIN,
 } from "@shared/constants/zoom";
-import { DEFAULT_LOCALE, LOCALE_META, SUPPORTED_LOCALES } from "@shared/i18n";
+import { LOCALE_META, SUPPORTED_LOCALES } from "@shared/i18n";
+import { deviceDefaultLocale } from "@/lib/i18n/deviceLocale";
 import { clearAllProjectStats } from "@/lib/stats/clearAllProjectStats";
 import { resetAllPreferences, resetWorkspaceLayout } from "@/lib/settings/resetSettings";
 import { DASHBOARD_OPEN_DEFAULT_KEY } from "@shared/constants/dashboard";
@@ -142,7 +143,10 @@ export const AppSettings: AppSettingDefinition[] = [
         labelKey: "settings.items.language.label",
         description: "Display language for the Studio interface.",
         descriptionKey: "settings.items.language.description",
-        defaultValue: DEFAULT_LOCALE,
+        // The device's language, not a fixed "en": this row has to show what an unset key
+        // actually resolves to, and both the i18n bootstrap and the main process resolve it
+        // through the same device-preference walk. See `lib/i18n/deviceLocale`.
+        defaultValue: deviceDefaultLocale(),
         options: [...SUPPORTED_LOCALES],
         optionLabels: Object.fromEntries(
             SUPPORTED_LOCALES.map((code) => [code, LOCALE_META[code].nativeName]),

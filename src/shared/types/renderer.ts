@@ -41,7 +41,8 @@ import type {
 import type { CacheClearResult, CacheInventoryReport } from "./cacheInventory";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
 import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
-import type { UITemplateBundle, UITemplateFetchResult } from "./uiTemplateRegistry";
+import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview } from "./uiTemplateRegistry";
+import type { ProjectTemplateDescriptor } from "./projectTemplate";
 import type { RemoteAssetFetchResult, RemoteAssetValidators } from "./remoteAsset";
 import type {
     PrivilegedActor,
@@ -729,6 +730,14 @@ export interface RendererPreloadedInterface {
     uiTemplates: {
         registryFetch(): Promise<RequestStatus<UITemplateFetchResult>>;
         fetchBundle(templateId: string): Promise<RequestStatus<UITemplateBundle>>;
+        /** Documents only, for the store's cards. See {@link UITemplatePreview}. */
+        fetchPreviews(templateIds: string[]): Promise<RequestStatus<UITemplatePreview[]>>;
+    };
+
+    /** Project templates bundled with this build (resources/templates). */
+    projectTemplates: {
+        list(): Promise<RequestStatus<ProjectTemplateDescriptor[]>>;
+        scaffold(templateId: string, projectPath: string): Promise<RequestStatus<{ filesCopied: number }>>;
     };
 
     assets: {

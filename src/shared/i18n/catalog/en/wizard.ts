@@ -236,6 +236,7 @@ export const wizard = {
     },
     // User-facing errors surfaced by the wizard validation/creation services.
     validation: {
+        templateFailed: "The template's content could not be copied into the project.",
         nameRequired: "Project name is required",
         locationRequired: "Project location is required",
         templateRequired: "Project template is required",

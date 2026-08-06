@@ -33,6 +33,15 @@ export interface ProjectTemplate {
     category: string;
     /** i18n key; when set, overrides `category` at render time (falls back to `category`). */
     categoryKey?: TranslationKey;
+    /**
+     * The bundled template whose content this card scaffolds from, when it has one.
+     *
+     * Absent on `empty` (which writes only the generated skeleton) and on the two
+     * bring-one-in cards (which write nothing of their own at all).
+     */
+    contentTemplateId?: string;
+    /** Stage size the bundled template was authored at, when it declares one. */
+    designSize?: { width: number; height: number };
 }
 
 /**
@@ -59,6 +68,15 @@ export interface ProjectData {
     resolution: string;
     appId: string;
     versionControl: VersionControlChoice;
+    /**
+     * The bundled template to copy content from after the skeleton is written.
+     *
+     * Kept separate from `template` — which is the *card* the author picked, and is
+     * also how the wizard decides which flow to run — because only some cards bring
+     * content. Deriving one from the other would mean `createProject` matching ids
+     * against the card list, and a card renamed later would silently stop scaffolding.
+     */
+    contentTemplateId?: string;
     /**
      * The server address a cloned project comes from, e.g. `lore://studio.example.lan:41337/my-game`.
      *

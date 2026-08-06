@@ -575,6 +575,15 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.uiTemplateRegistryFetch, {}),
         fetchBundle: (templateId: string) =>
             ipcClient.invoke(IPCEventType.uiTemplateFetchBundle, { templateId }),
+        fetchPreviews: (templateIds: string[]) =>
+            ipcClient.invoke(IPCEventType.uiTemplateFetchPreviews, { templateIds }),
+    },
+
+    projectTemplates: {
+        list: () =>
+            ipcClient.invoke(IPCEventType.projectTemplateList, {}),
+        scaffold: (templateId: string, projectPath: string) =>
+            ipcClient.invoke(IPCEventType.projectTemplateScaffold, { templateId, projectPath }),
     },
 
     assets: {
