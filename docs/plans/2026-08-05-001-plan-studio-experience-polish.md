@@ -283,22 +283,24 @@ allowlist and appended `.log` to anything outside it — correct for the diagnos
 written for, silently wrong for the second caller. The allowed set is now a parameter, stated at
 both call sites.
 
-Two defaults changed, and one of them needed the feature to grow first:
+**R12 — the export has no options, and the file is nothing but JSON.** I first answered the same
+report by defaulting both opt-ins on and teaching the document to carry the wallpaper picture
+inline. That was the wrong direction and was rejected: it grew a second little configuration
+surface (what goes into a settings file) and put megabytes of base64 in a document whose whole
+value is being a plain, readable, hand-editable JSON file.
 
-- **The identity now exports by default.** The feature is "move my Studio to my other machine",
-  and on that machine you want your own name on your own commits. Still a toggle, for the case
-  where the file goes to someone else.
-- **The wallpaper now exports by default *and carries the picture*.** Defaulting it on without
-  that would have been worse than leaving it off: `ui.backgroundImage` is a file NAME in this
-  profile's cache, so the other machine would get a wallpaper setting pointing at nothing. The
-  document gained a `wallpaper` sibling block (`fileName` / `extension` / base64, capped at 8 MB),
-  and import writes the bytes into the local cache **before** applying the keys, through a new
-  `app.writeBackgroundImage` — the write half of the existing read handler, with the directory
-  fixed and the name derived from the content, so it is not a general file-write channel.
+What stands instead: `exportSettings()` takes no arguments, and two groups of keys are simply never
+written (`UNEXPORTED_PREFERENCE_KEYS`).
 
-Verified on a simulated second machine: exported with both toggles on, deleted the setting and the
-cached picture, imported — the file came back into the cache byte for byte, the setting pointed at
-it, opacity and identity restored. The save dialog proposed `…-settings.json`.
+- **The five wallpaper keys.** `ui.backgroundImage` is a file NAME in this profile's cache, so on
+  another machine it points at nothing and the other four only describe how that missing picture
+  would be painted. Making them mean something requires shipping the picture, which is not what a
+  settings file is for.
+- **The two identity keys.** The name and address on commits belong to the author, not to the
+  installation, and an exported settings file is the kind of thing that gets attached to an issue.
+
+The `app.writeBackgroundImage` IPC added for the inline-picture version was removed with it; the
+background cache keeps only its read half, as before.
 
 Worth remembering for the next acceptance: the **save** dialog's file-name edit is a direct child
 at id **1001**, while the **open** dialog's is nested `ComboBoxEx32 → ComboBox → Edit`, all at 1148.
