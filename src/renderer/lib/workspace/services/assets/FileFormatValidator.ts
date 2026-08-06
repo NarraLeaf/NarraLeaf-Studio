@@ -240,43 +240,36 @@ export class FileFormatValidator {
         return 'unknown';
     }
 
+    /**
+     * The canonical extension for what these bytes actually are, or null when nothing is recognised.
+     *
+     * For callers that have bytes but no trustworthy filename — a remote asset whose URL ends in a
+     * slash or a query string is the case this exists for. Everywhere a real file was picked, its
+     * own extension is the better answer and this is not needed.
+     *
+     * Returns the *first* extension of the detected format's list, which is the conventional one
+     * (`jpeg` -> `jpg`). Deliberately not consulted for `Other`, whose whole point is that Studio has
+     * no opinion about the bytes.
+     */
+    public sniffExtension(type: AssetType, buffer: Uint8Array): string | null {
+        let detected: string | null = null;
+        switch (type) {
+            case AssetType.Image: detected = this.detectImageFormat(buffer); break;
+            case AssetType.Audio: detected = this.detectAudioFormat(buffer); break;
+            case AssetType.Video: detected = this.detectVideoFormat(buffer); break;
+            case AssetType.Font: detected = this.detectFontFormat(buffer); break;
+            case AssetType.JSON: return "json";
+            case AssetType.Blueprint: return "nlbp";
+            default: return null;
+        }
+        if (!detected || detected === "unknown") {
+            return null;
+        }
+        return FORMAT_EXTENSIONS[type][detected]?.[0] ?? null;
+    }
+
     private checkFormatMatch(type: AssetType, extension: string, detectedFormat: string): boolean {
-        const formatMaps: Record<AssetType, Record<string, string[]>> = {
-            [AssetType.Image]: {
-                'jpeg': ['jpg', 'jpeg', 'jpe', 'jfif'],
-                'png': ['png'],
-                'gif': ['gif'],
-                'webp': ['webp'],
-                'bmp': ['bmp', 'dib'],
-                'tiff': ['tiff', 'tif'],
-            },
-            [AssetType.Audio]: {
-                'mp3': ['mp3', 'mpeg'],
-                'wav': ['wav', 'wave'],
-                'ogg': ['ogg', 'oga'],
-                'flac': ['flac'],
-                'm4a': ['m4a', 'aac', 'mp4'],
-            },
-            [AssetType.Video]: {
-                'mp4': ['mp4', 'm4v'],
-                'm4v': ['m4v', 'mp4'],
-                'webm': ['webm', 'mkv'],
-                'avi': ['avi'],
-                'mov': ['mov', 'qt'],
-            },
-            [AssetType.Font]: {
-                'ttf': ['ttf'],
-                'otf': ['otf'],
-                'woff': ['woff'],
-                'woff2': ['woff2'],
-                'eot': ['eot'],
-            },
-            [AssetType.JSON]: {},
-            [AssetType.Blueprint]: {},
-            // A bundle is a directory; there is no single file whose magic bytes could be checked.
-            [AssetType.Model]: {},
-            [AssetType.Other]: {},
-        };
+        const formatMaps: Record<AssetType, Record<string, string[]>> = FORMAT_EXTENSIONS;
 
         const formatMap = formatMaps[type];
         for (const [format, extensions] of Object.entries(formatMap)) {
@@ -288,3 +281,47 @@ export class FileFormatValidator {
         return false;
     }
 }
+
+/**
+ * Which file extensions each detected format may legitimately wear, per asset type.
+ *
+ * Read two ways, and both matter: {@link FileFormatValidator.checkFormatMatch} asks whether a name
+ * and its bytes agree, and {@link FileFormatValidator.sniffExtension} takes the first entry as the
+ * conventional extension for bytes with no name to check.
+ */
+const FORMAT_EXTENSIONS: Record<AssetType, Record<string, string[]>> = {
+    [AssetType.Image]: {
+        'jpeg': ['jpg', 'jpeg', 'jpe', 'jfif'],
+        'png': ['png'],
+        'gif': ['gif'],
+        'webp': ['webp'],
+        'bmp': ['bmp', 'dib'],
+        'tiff': ['tiff', 'tif'],
+    },
+    [AssetType.Audio]: {
+        'mp3': ['mp3', 'mpeg'],
+        'wav': ['wav', 'wave'],
+        'ogg': ['ogg', 'oga'],
+        'flac': ['flac'],
+        'm4a': ['m4a', 'aac', 'mp4'],
+    },
+    [AssetType.Video]: {
+        'mp4': ['mp4', 'm4v'],
+        'm4v': ['m4v', 'mp4'],
+        'webm': ['webm', 'mkv'],
+        'avi': ['avi'],
+        'mov': ['mov', 'qt'],
+    },
+    [AssetType.Font]: {
+        'ttf': ['ttf'],
+        'otf': ['otf'],
+        'woff': ['woff'],
+        'woff2': ['woff2'],
+        'eot': ['eot'],
+    },
+    [AssetType.JSON]: {},
+    [AssetType.Blueprint]: {},
+    // A bundle is a directory; there is no single file whose magic bytes could be checked.
+    [AssetType.Model]: {},
+    [AssetType.Other]: {},
+};

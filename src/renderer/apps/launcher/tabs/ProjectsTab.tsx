@@ -298,8 +298,19 @@ export function ProjectsTab() {
                                     <span className={cn("block text-sm truncate", missingEntry ? "text-fg-muted" : "text-fg")}>
                                         {project.name}
                                     </span>
-                                    <span className="block text-xs text-fg-subtle truncate">
-                                        {collapseHomePath(project.path, homeDir)}
+                                    {/* Cut the path at its HEAD. Two recents can share a name (two
+                                        "Demo"s), and then the only thing telling them apart is the
+                                        tail - which is exactly what a trailing ellipsis eats. Same
+                                        rtl/ltr pair the version rail uses: the outer box overflows
+                                        to the left, the inner span puts the characters back in
+                                        reading order. */}
+                                    <span
+                                        className="block overflow-hidden whitespace-nowrap text-xs text-fg-subtle"
+                                        style={{ direction: "rtl", textOverflow: "ellipsis" }}
+                                    >
+                                        <span style={{ direction: "ltr", unicodeBidi: "embed" }}>
+                                            {collapseHomePath(project.path, homeDir)}
+                                        </span>
                                     </span>
                                     {missingEntry && (
                                         <span className="mt-0.5 flex items-center gap-1 text-xs text-fg-muted">

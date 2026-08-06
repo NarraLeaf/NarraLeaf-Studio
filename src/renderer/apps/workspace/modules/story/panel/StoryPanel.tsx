@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BookOpen, FileText, MoreVertical, Plus, RefreshCw, Star, Waypoints } from "lucide-react";
-import type { StoryDocument, StoryId, StoryLibraryEntry, StoryScene } from "@shared/types/story";
+import type { StoryChapter, StoryDocument, StoryId, StoryLibraryEntry, StoryScene } from "@shared/types/story";
 import { useTranslation } from "@/lib/i18n";
 import { createInputDialog } from "@/lib/components/dialogs";
 import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
@@ -13,6 +13,7 @@ import { useWorkspace } from "../../../context";
 import { useRegistry } from "../../../registry";
 import { useFreezeGuard } from "../../../components/ui/freezeGuard";
 import type { PanelComponentProps } from "../../types";
+import { closeStoryEditorTabs, closeStorySceneEditorTabs } from "./closeStoryEditorTabs";
 import { createStorySceneEditorTab } from "../scene-editor/openStorySceneEditorTab";
 import { openSceneFlowTab } from "../../story-flow/openSceneFlowTab";
 import { buildStorySceneTextProjection } from "../projection/storySceneProjection";
@@ -279,7 +280,12 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         if (!confirmed) {
             return;
         }
-        storyService.deleteStory(entry.id);
+        if (await storyService.deleteStory(entry.id)) {
+            // Everything of this story's, by id prefix: its scenes and its flow map. Reading the
+            // document first to find out what to close would be the wrong way round for the one
+            // call whose whole job is to get rid of it.
+            closeStoryEditorTabs(uiService, entry.id);
+        }
         refreshLibrary();
     }, [refreshLibrary, storyService, uiService, t]);
 
@@ -382,6 +388,41 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         storyService.createScene(selectedStoryId, { chapterId, name });
     }, [inputDialog, selectedStoryId, storyService, t]);
 
+    const handleRenameChapter = useCallback(async (chapter: StoryChapter) => {
+        if (!storyService || !inputDialog || !selectedStoryId) {
+            return;
+        }
+        const name = await inputDialog.showRenameDialog(chapter.name, "chapter");
+        if (!name) {
+            return;
+        }
+        storyService.renameChapter(selectedStoryId, chapter.id, name);
+    }, [inputDialog, selectedStoryId, storyService]);
+
+    /**
+     * The confirm names the scene count because that is the part a chapter row does not show:
+     * deleting a chapter deletes every scene in it, and the row itself only says how many there are
+     * once it is expanded.
+     */
+    const handleDeleteChapter = useCallback(async (chapter: StoryChapter) => {
+        if (!storyService || !uiService || !selectedStoryId) {
+            return;
+        }
+        const confirmed = await uiService.showConfirm(
+            t("story.panel.deleteChapterConfirm", { name: chapter.name }),
+            tn("story.panel.deleteChapterDetail", chapter.sceneIds.length),
+        );
+        if (!confirmed) {
+            return;
+        }
+        // Read the membership before the delete: afterwards the chapter is gone and there is nothing
+        // left to ask which scenes it held.
+        const sceneIds = [...chapter.sceneIds];
+        if (storyService.deleteChapter(selectedStoryId, chapter.id)) {
+            closeStorySceneEditorTabs(uiService, selectedStoryId, sceneIds);
+        }
+    }, [selectedStoryId, storyService, t, tn, uiService]);
+
     const handleRenameScene = useCallback(async (scene: StoryScene) => {
         if (!storyService || !inputDialog || !selectedStoryId) {
             return;
@@ -404,7 +445,9 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         if (!confirmed) {
             return;
         }
-        storyService.deleteScene(selectedStoryId, scene.id);
+        if (storyService.deleteScene(selectedStoryId, scene.id)) {
+            closeStorySceneEditorTabs(uiService, selectedStoryId, [scene.id]);
+        }
     }, [selectedStoryId, storyService, uiService, t]);
 
     const handleSetEntryScene = useCallback((scene: StoryScene) => {
@@ -479,6 +522,43 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             },
         ];
     }, [beginScriptExport, beginScriptImport, document?.entrySceneId, freeze, handleDeleteScene, handleOpenScene, handleRenameScene, handleSetEntryScene, selectedStoryId, t]);
+
+    const buildChapterContextMenu = useCallback((chapter: StoryChapter): ContextMenuDef => [
+        {
+            id: "new-scene-in-chapter",
+            label: t("story.panel.newSceneInChapter"),
+            ...freeze.menuRow(),
+            onClick: () => {
+                void handleCreateScene(chapter.id);
+            },
+        },
+        { id: "chapter-actions-separator", separator: true },
+        {
+            id: "rename-chapter",
+            label: t("common.rename"),
+            ...freeze.menuRow(),
+            onClick: () => {
+                void handleRenameChapter(chapter);
+            },
+        },
+        {
+            id: "delete-chapter",
+            label: t("common.delete"),
+            ...freeze.menuRow(),
+            onClick: () => {
+                void handleDeleteChapter(chapter);
+            },
+        },
+    ], [freeze, handleCreateScene, handleDeleteChapter, handleRenameChapter, t]);
+
+    const handleOpenChapterMenu = useCallback((event: React.MouseEvent, chapter: StoryChapter) => {
+        event.preventDefault();
+        // Without this the accordion header treats the click as a toggle, so the menu opens and the
+        // chapter collapses under it.
+        event.stopPropagation();
+        setMenuItems(buildChapterContextMenu(chapter));
+        showMenu(event);
+    }, [buildChapterContextMenu, showMenu]);
 
     const handleOpenSceneMenu = useCallback((event: React.MouseEvent, scene: StoryScene) => {
         event.preventDefault();
@@ -628,15 +708,26 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                             level={1}
                                             title={t("story.panel.chapterTitle", { name: chapter.name, count: chapter.sceneIds.length })}
                                             className="!border-b-0"
+                                            headerProps={{ onContextMenu: event => handleOpenChapterMenu(event, chapter) }}
                                             actions={
-                                                <button
-                                                    type="button"
-                                                    className="p-1 hover:text-primary disabled:text-fg-subtle disabled:hover:text-fg-subtle"
-                                                    {...freeze.writes(false, t("story.panel.newSceneInChapter"))}
-                                                    onClick={() => handleCreateScene(chapter.id)}
-                                                >
-                                                    <Plus className="h-3 w-3" />
-                                                </button>
+                                                <>
+                                                    <button
+                                                        type="button"
+                                                        className="p-1 hover:text-primary disabled:text-fg-subtle disabled:hover:text-fg-subtle"
+                                                        {...freeze.writes(false, t("story.panel.newSceneInChapter"))}
+                                                        onClick={() => handleCreateScene(chapter.id)}
+                                                    >
+                                                        <Plus className="h-3 w-3" />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="p-1 text-fg-muted hover:text-fg"
+                                                        title={t("story.panel.chapterActions")}
+                                                        onClick={event => handleOpenChapterMenu(event, chapter)}
+                                                    >
+                                                        <MoreVertical className="h-3.5 w-3.5" />
+                                                    </button>
+                                                </>
                                             }
                                             headerClassName="bg-fill-subtle"
                                             contentClassName="py-1"

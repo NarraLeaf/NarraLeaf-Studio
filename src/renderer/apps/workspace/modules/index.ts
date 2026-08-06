@@ -23,6 +23,7 @@ export {
     propertiesModule,
     consoleModule,
     welcomeModule,
+    helpModule,
     globalActions,
     globalActionGroups,
 } from "./registry";

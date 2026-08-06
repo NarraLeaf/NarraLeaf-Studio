@@ -73,8 +73,28 @@ preset / NVL），`name` 有四种含义，`mute on` 用 on/off 枚举而 `loop`
 - **B10 复杂指令行内只建块**：`/fx` 等落块后自动打开 inspector
   （`inspectorAfterCommit`）。命令行承载高频子集，inspector 承载全量——继承
   7-16 方案的产品决策。
-- **B11 token 不翻译**、`/` 与 `#` 仅在行首触发、提交后不可反向编辑为命令串
-  ——三条产品决策全部继承。
+- **B11 canonical 拼写永远英文、永远可输入**、`/` 与 `#` 仅在行首触发、提交后
+  不可反向编辑为命令串——三条产品决策全部继承。
+
+  > **2026-08-01 修订，2026-08-02 补完。** 原文为「token 不翻译」。现在指令名、
+  > 参数名、枚举值与单位各有一张**派生的**本地化别名表：指令的取自
+  > `story.command.<id>.label`（`commands/registry.ts`），参数的取自
+  > `story.paramHint.<key>`（`commands/localizedParams.ts`），枚举值取自
+  > `story.enumValue.<canonical>` 以及该选项在属性检查器里的 `labelKey`
+  > （`commands/localizedEnums.ts`），单位取自 `story.unit.<unit>`
+  > （`commands/localizedUnits.ts`）。所以 `/背景` 解析为 `bg`、`位置=left`
+  > 解析为 `at=left`、`转场=淡变` 解析为 `t=fade`、`持续时间=1秒` 解析为 `d=1`。
+  >
+  > 修订的是「译名能不能输入」，不是「canonical 是什么」：英文拼写在任何语言下
+  > 都先于译名匹配，脚本因此跨语言可读。译名为空、回显 key（未翻译）、含空格、
+  > 或已经拼成某个 canonical 拼写时一律不收录，表是派生的、不手写。四张表因此
+  > 只增不覆盖：一个词只有在**也会被接受**的前提下才会被**展示**。
+  >
+  > 单位是**后缀不是倍率**：`d=1s` 与 `d=1` 是同一个数，不做任何换算。
+  >
+  > 显示语言由 `editor.localizedCommands` 单独决定（布尔开关，默认开＝跟随界面
+  > 语言，关＝停在 canonical 的英文），因为「我读什么语言」和「我敲什么语言」是
+  > 两个问题。项目文件里不落任何 locale。
 
 ### 1.2 修饰键词汇表（全局唯一含义）
 

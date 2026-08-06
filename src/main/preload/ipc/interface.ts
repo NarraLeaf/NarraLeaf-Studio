@@ -22,6 +22,7 @@ import type { DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/dev
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import type { PrivilegedActor } from "@shared/types/privileged";
+import type { RemoteAssetValidators } from "@shared/types/remoteAsset";
 import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
@@ -205,6 +206,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.workspaceImportProjectPackage, {}),
         exportConsoleLogs: (defaultFileName: string, content: string) =>
             ipcClient.invoke(IPCEventType.workspaceExportConsoleLogs, { defaultFileName, content }),
+        setRecoveryMode: (enabled: boolean, reason?: string) =>
+            ipcClient.invoke(IPCEventType.workspaceSetRecoveryMode, { enabled, reason }),
+        openProjectFolder: () =>
+            ipcClient.invoke(IPCEventType.workspaceOpenProjectFolder, {}),
         onConfirmClose: (handler: () => Promise<RequestStatus<{ confirmed: boolean }>>) =>
             ipcClient.onRequest(IPCEventType.workspaceConfirmClose, handler),
         onFlushPendingSaves: (handler: () => Promise<RequestStatus<{ flushed: boolean }>>) =>
@@ -244,6 +249,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             setGlobalState: <K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>) => ipcClient.invoke(IPCEventType.appGlobalStateSet, { key, value }) as Promise<RequestStatus<void>>,
             getAllGlobalState: () =>
                 ipcClient.invoke(IPCEventType.appGlobalStateGetAll, {}) as Promise<RequestStatus<{ settings: Record<string, any> }>>,
+            deleteGlobalState: (keys: string[]) =>
+                ipcClient.invoke(IPCEventType.appGlobalStateDelete, { keys }) as Promise<RequestStatus<{ deleted: string[]; refused: string[] }>>,
             onGlobalStateChanged: (handler: (change: { key: GlobalStateKeys; value: any }) => void) =>
                 ipcClient.onMessage(IPCEventType.appGlobalStateChanged, handler),
         },
@@ -257,6 +264,16 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.appSystemPath, { name }) as Promise<RequestStatus<{ path: string }>>,
         exportDiagnostics: (defaultFileName: string, report: string) =>
             ipcClient.invoke(IPCEventType.appExportDiagnostics, { defaultFileName, report }),
+        probeDownloadSource: (url: string) =>
+            ipcClient.invoke(IPCEventType.appProbeDownloadSource, { url }),
+        getCacheInventory: () =>
+            ipcClient.invoke(IPCEventType.appCacheInventory, {}),
+        clearCaches: (ids: string[]) =>
+            ipcClient.invoke(IPCEventType.appCacheClear, { ids }),
+        exportSettings: (defaultFileName: string, content: string) =>
+            ipcClient.invoke(IPCEventType.appExportSettings, { defaultFileName, content }),
+        importSettings: () =>
+            ipcClient.invoke(IPCEventType.appImportSettings, {}),
     },
 
     devMode: {
@@ -548,6 +565,11 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.uiTemplateRegistryFetch, {}),
         fetchBundle: (templateId: string) =>
             ipcClient.invoke(IPCEventType.uiTemplateFetchBundle, { templateId }),
+    },
+
+    assets: {
+        fetchRemote: (url: string, validators?: RemoteAssetValidators) =>
+            ipcClient.invoke(IPCEventType.assetFetchRemote, { url, validators }),
     },
 
     puppetRuntimes: {

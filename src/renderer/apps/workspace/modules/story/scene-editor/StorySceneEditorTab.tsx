@@ -4,7 +4,8 @@ import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type D
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
-import { useTranslation } from "@/lib/i18n";
+import { useCommandTranslation, useTranslation } from "@/lib/i18n";
+import { getDefById, localizedCommandToken } from "./commands/registry";
 import type { EditorComponentProps } from "../../types";
 import { PanelPosition } from "../../../registry/types";
 import { Services } from "@/lib/workspace/services/services";
@@ -32,7 +33,6 @@ import { StorySnapshotPanel, STORY_SNAPSHOT_PANEL_ID, getSelectedSnapshotId, set
 import { InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { publishStoryInspectorState } from "./storyInspectorBridge";
-import { registerStorySceneUndoRecorder } from "./storySceneUndoBridge";
 import {
     isSameStoryBlockSelection,
     isStoryBlockSelectionData,
@@ -40,7 +40,8 @@ import {
     type StoryBlockSelection,
 } from "./storySelection";
 import { stopVoiceAudition } from "./voiceAudition";
-import { STORY_DENSITY_METRICS, STORY_NAME_MIN_PX, StoryEditorTextStyleProvider, StoryNameColumnProbe, storyEditorRootStyle } from "./storyEditorTextStyle";
+import { STORY_DENSITY_METRICS, StoryEditorTextStyleProvider, storyEditorRootStyle } from "./storyEditorTextStyle";
+import { useStoryRowHighlight } from "@/apps/workspace/hooks/useStoryRowHighlight";
 import { StoryRowActionsContext, type StoryRowActions } from "./storyRowActions";
 import { StoryPasteWizardModal } from "./StoryPasteWizardModal";
 import { toReadOnlyStoryKeybindings, toReadOnlyStoryRowActions } from "./storySceneReadOnly";
@@ -48,6 +49,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import type { TranslationKey } from "@shared/i18n";
 import { getCharacterName, getContainerHeaderInfo, getTextSegment } from "./storySceneBlockUtils";
 import { StoryFindBar } from "./StoryFindBar";
+import { StoryCommandLineProvider } from "./StoryCommandLineView";
 import {
     findRangesInText,
     getSegmentSlot,
@@ -88,14 +90,25 @@ import {
 /**
  * What an empty scene offers as a starting point. Deliberately the three things a first scene almost
  * always needs — a backdrop, someone on stage, someone talking — rather than a tour of the vocabulary;
- * the manual is one click away for the rest. The lines are not translated: a command is keywords, and
- * these are meant to be typed as they read.
+ * the manual is one click away for the rest.
+ *
+ * Held as command ids, not as literal text: these lines are meant to be typed as they read, so they
+ * are spelled the way the editor itself spells them (`localizedCommandToken`) and carry the trigger
+ * this author actually uses. A chip that says `/show` under an editor that writes `@显示` is teaching
+ * the wrong word on the first screen a new author ever sees.
  */
-const EMPTY_SCENE_EXAMPLES: readonly { line: string; key: TranslationKey }[] = [
-    { line: "/bg", key: "story.sceneEditor.emptyExampleBg" },
-    { line: "/show", key: "story.sceneEditor.emptyExampleShow" },
-    { line: "/say", key: "story.sceneEditor.emptyExampleSay" },
+const EMPTY_SCENE_EXAMPLES: readonly { commandId: string; key: TranslationKey }[] = [
+    // Spec ids, not tokens - `/bg` is the command whose id is "background" (see `specs/scene.ts`).
+    { commandId: "background", key: "story.sceneEditor.emptyExampleBg" },
+    { commandId: "show", key: "story.sceneEditor.emptyExampleShow" },
+    { commandId: "say", key: "story.sceneEditor.emptyExampleSay" },
 ];
+
+/** The chip's text: the author's trigger plus the command's spelling in the command language. */
+function emptyExampleLine(commandId: string, trigger: string): string {
+    const def = getDefById(commandId);
+    return `${trigger}${def ? localizedCommandToken(def) : commandId}`;
+}
 
 /**
  * The context a row inherits from rows above it: the speaker of the dialogue run it belongs to, or the
@@ -392,6 +405,10 @@ function StorySceneOverviewBlock(props: {
 
 export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentProps<StorySceneEditorTabPayload | undefined>) {
     const { t } = useTranslation();
+    // Subscribed to, not called: the empty scene's example chips spell their commands through the
+    // registry's imperative read, which cannot tell React it went stale. Without this the chips keep
+    // the old vocabulary after a language change until something else re-renders the tab.
+    useCommandTranslation();
     // Adding, duplicating, reordering and deleting rows write the scene. Reading it, playing from a row,
     // opening the inspector, changing the row density and using Find all stay live while frozen -
     // density is editor state, not project data, and Find without Replace only navigates.
@@ -750,19 +767,9 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const editorRef = useRef(editor);
     editorRef.current = editor;
 
-    // Offer this tab's undo stack to whole-scene writes that arrive from elsewhere (a script import,
-    // run from the story panel or the palette). Deliberately NOT gated on `active`: a kept-alive
-    // background tab still holds the history the author would press Ctrl+Z in.
-    useEffect(() => {
-        if (!payload?.storyId || !payload.sceneId) {
-            return;
-        }
-        return registerStorySceneUndoRecorder(tabId, {
-            storyId: payload.storyId,
-            sceneId: payload.sceneId,
-            record: () => editorRef.current.recordHistory(),
-        });
-    }, [payload?.sceneId, payload?.storyId, tabId]);
+    // Whole-scene writes that arrive from elsewhere (a script import, run from the story panel or the
+    // palette) leave their checkpoint by naming this scene's history scope - see
+    // `useStorySceneEditorController`. Nothing to register here any more.
 
     const sortableRowIds = useMemo(() => editor.visibleRows.map(row => row.block.id), [editor.visibleRows]);
 
@@ -782,36 +789,9 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const rowListRef = useRef<HTMLDivElement | null>(null);
     const [rowListMargin, setRowListMargin] = useState(0);
 
-    /**
-     * Every name that can appear in this scene's name column, read from `scene.blocks` rather than from
-     * the rows on screen.
-     *
-     * The distinction matters: `visibleRows` drops the children of a collapsed container and holds only
-     * what the projection kept, so measuring it would make the column — and therefore every line of the
-     * document's left edge — twitch when a container is folded or a filter is toggled. The cast is a
-     * property of the scene; so is the column.
-     */
-    const speakerLabels = useMemo(() => {
-        const labels = new Set<string>();
-        for (const block of Object.values(editor.scene?.blocks ?? {})) {
-            if (block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
-                continue;
-            }
-            const label = block.payload.characterId
-                ? getCharacterName(editor.characters, block.payload.characterId)
-                : block.payload.speakerName;
-            if (label) {
-                labels.add(label);
-            }
-        }
-        return [...labels];
-    }, [editor.scene?.blocks, editor.characters]);
-    const [nameWidth, setNameWidth] = useState(STORY_NAME_MIN_PX);
-    // Updater form, and only on a real change: the probe reports after every layout it is part of, and
-    // setting the same number back would re-render the whole scene on each of them.
-    const handleNameMeasure = useCallback((width: number) => {
-        setNameWidth(previous => (previous === width ? previous : width));
-    }, []);
+    // Read once for the whole list. As a prop it crosses the rows' memo boundary, which is what makes
+    // them all repaint when the author changes it in the (separate) Settings window.
+    const rowHighlight = useStoryRowHighlight();
     const estimatedRowHeight = STORY_DENSITY_METRICS[editor.density].rowBox + ROW_VERTICAL_PADDING_PX;
     const rowVirtualizer = useVirtualizer({
         count: editor.visibleRows.length,
@@ -846,13 +826,10 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
      * The per-element ResizeObserver does not save it either: it re-measures whatever is mounted, and
      * a windowed list has a screenful. Dropping the cache outright is the honest answer — every row
      * re-measures as it comes into view, which is what happens on first open anyway.
-     *
-     * The name column is the same failure with a different trigger: widening it narrows the words, so
-     * lines re-wrap and rows change height — again without one id changing.
      */
     useLayoutEffect(() => {
         rowVirtualizer.measure();
-    }, [editor.density, nameWidth, rowVirtualizer]);
+    }, [editor.density, rowVirtualizer]);
 
     /**
      * The row whose wrapper currently holds the insert slot, or null when no slot is inside one.
@@ -1617,6 +1594,12 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             },
             editRichChange: (blockId, value, rich) => {
                 const { editor: current } = latest();
+                // The trigger typed into an empty dialogue row is not text the row keeps: it is the
+                // author asking for this speaker's own actions, and the scoped insert slot takes over
+                // the line in place. Every other keystroke falls straight through.
+                if (current.startCharacterActionSlot(blockId, value)) {
+                    return;
+                }
                 current.resetGoalColumn();
                 current.setEditorMode(mode => mode.kind === "text" && mode.blockId === blockId
                     ? { ...mode, value, rich }
@@ -1766,12 +1749,17 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
 
     return (
         <StoryEditorTextStyleProvider density={editor.density}>
+        {/* Resolved once for the whole scene: every committed row reads itself back as a command line,
+            and each of these lookups is an IPC round trip or a service subscription per mount. */}
+        <StoryCommandLineProvider slashAtAlias={editor.slashAtAlias} commandContext={editor.commandContext}>
         <StoryRowActionsContext.Provider value={effectiveRowActions}>
         <div
             ref={editor.rootRef}
             tabIndex={0}
+            // F1 anywhere in the scene editor, including with the caret in a row.
+            data-help-topic="storyScene"
             data-story-density={editor.density}
-            style={storyEditorRootStyle(editor.density, editor.visibleRows.length, nameWidth)}
+            style={storyEditorRootStyle(editor.density, editor.visibleRows.length)}
             className="flex h-full min-h-0 flex-col bg-surface text-fg outline-none"
             onFocus={editor.focusWorkspace}
             onFocusCapture={handleEditorFocusCapture}
@@ -1841,7 +1829,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         onClick={togglePreview}
                         title={previewOpen ? t("story.preview.closePreview") : t("story.preview.openPreview")}
                         aria-pressed={previewOpen}
-                        className={["flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors", previewOpen ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
+                        className={["flex min-h-7 cursor-default items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors", previewOpen ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
                     >
                         <MonitorPlay className="h-4 w-4" />
                         {t("story.preview.label")}
@@ -1894,7 +1882,6 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         something different from what the document says. */}
                     <SortableContext items={sortableRowIds} strategy={verticalListSortingStrategy}>
                     <div ref={rowListRef} style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
-                        <StoryNameColumnProbe labels={speakerLabels} onMeasure={handleNameMeasure} />
                         {rowVirtualizer.getVirtualItems().map(virtualRow => {
                             const row = editor.visibleRows[virtualRow.index];
                             if (!row) {
@@ -1973,6 +1960,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     textInputRef={editor.textInputRef}
                                     tempSpeakers={editor.tempSpeakers}
                                     density={editor.density}
+                                    rowHighlight={rowHighlight}
                                 />
                                 )}
                                 {editor.shouldRenderActiveInsertSlot && editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId && editor.editorMode.slot.afterBlockId === row.block.id ? (
@@ -2040,13 +2028,12 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         onClick={() => editor.startInsertAfter(null, true)}
                         {...freeze.writes()}
                     >
-                        {/* Mirrors a row: the "+" takes the plate box, the name column stays empty, and
-                            the words land on the body edge — so the tail of the list does not step out
-                            of the one column the whole document reads down. */}
-                        <span className="flex w-[var(--nl-story-avatar,28px)] shrink-0 items-center">
+                        {/* Mirrors a row: the "+" takes the gutter's mark slot and the words land on
+                            the body edge — so the tail of the list does not step out of the one column
+                            the whole document reads down. */}
+                        <span className="flex w-[var(--nl-story-mark,26px)] shrink-0 items-center justify-center">
                             <Plus className="h-4 w-4 text-primary" />
                         </span>
-                        <span className="w-[var(--nl-story-name,56px)] shrink-0" aria-hidden />
                         {t("story.sceneEditor.addRow")}
                     </button>
                 )}
@@ -2059,9 +2046,9 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         <p>{t("story.sceneEditor.emptyHint", { trigger: editor.slashAtAlias ? "@" : "/" })}</p>
                         <ul className="flex flex-col gap-1">
                             {EMPTY_SCENE_EXAMPLES.map(example => (
-                                <li key={example.line} className="flex flex-wrap items-baseline gap-x-2">
+                                <li key={example.commandId} className="flex flex-wrap items-baseline gap-x-2">
                                     <code className="rounded-md border border-edge-subtle bg-surface-sunken px-1.5 py-0.5 font-mono text-2xs text-fg-muted">
-                                        {example.line}
+                                        {emptyExampleLine(example.commandId, editor.slashAtAlias ? "@" : "/")}
                                     </code>
                                     <span className="text-2xs">{t(example.key)}</span>
                                 </li>
@@ -2097,11 +2084,14 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 visible={rowMenu.menuState.visible}
                 onClose={rowMenu.hideMenu}
             />
+            {/* `iconsEnabled` so every row reserves the tick column: without it only the current density is
+                indented by its tick and the other two sit further left, which reads as a stray outdent. */}
             <ContextMenu
                 items={densityMenuItems}
                 position={densityMenu.menuState.position}
                 visible={densityMenu.menuState.visible}
                 onClose={densityMenu.hideMenu}
+                iconsEnabled
             />
             </div>
             {previewOpen && previewMode === "dock" ? (
@@ -2149,6 +2139,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             ) : null}
         </div>
         </StoryRowActionsContext.Provider>
+        </StoryCommandLineProvider>
         </StoryEditorTextStyleProvider>
     );
 }

@@ -438,16 +438,38 @@ describe("formatLintFinding", () => {
         expect(line).toContain("assets/unused");
     });
 
-    it("keeps the story name a scene message cannot carry, and drops the scene it repeats", () => {
+    it("keeps the story name a message cannot carry, and drops the scene it repeats", () => {
+        // `assets/missing` names its own site inside the sentence, so the scene segment is a repeat
+        // and the story segment is not. Judged segment by segment, not all or nothing.
         const line = formatLintFinding(findingAt(
-            "story/unreachable-scene",
-            "lint.rule.storyUnreachableScene.message",
-            { scene: "At the Station" },
+            "assets/missing",
+            "lint.rule.assetsMissing.message",
+            { location: "At the Station" },
             { kind: "story", storyId: "s1", storyName: "Demo", sceneId: "sc1", sceneName: "At the Station" },
         ));
 
         expect(occurrences(line, "At the Station")).toBe(1);
         expect(occurrences(line, "Demo")).toBe(1);
+    });
+
+    it("names the row the way the scene editor's gutter does", () => {
+        const line = formatLintFinding(findingAt(
+            "text/overlong",
+            "lint.rule.textOverlong.message",
+            { width: 168, max: 120 },
+            {
+                kind: "story",
+                storyId: "s1",
+                storyName: "Demo",
+                sceneId: "sc1",
+                sceneName: "At the Station",
+                blockId: "b1",
+                line: 12,
+            },
+        ));
+
+        // `path:line`, so two findings of one rule in one scene are told apart in a build log.
+        expect(line).toContain("Demo / At the Station:12");
     });
 
     it("prints the whole location when the message names none of it", () => {

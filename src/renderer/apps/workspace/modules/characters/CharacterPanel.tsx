@@ -9,9 +9,9 @@ import { PanelComponentProps } from "../types";
 import { useWorkspace } from "../../context";
 import { freezeContextMenuRows, useFreezeGuard } from "../../components/ui/freezeGuard";
 import { Character } from "@/lib/workspace/services/character/Character";
-import { CharacterAppearanceKind, CharacterGroup } from "@/lib/workspace/services/character/types";
-import { listKnownPuppetRuntimes } from "@shared/utils/puppetRuntimes";
+import { CharacterGroup } from "@/lib/workspace/services/character/types";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
+import { CreateCharacterDialogContent, CreateCharacterDialogValue } from "./dialogs/CreateCharacterDialogContent";
 import { useCharacterAvatarBake } from "./useCharacterAvatarBake";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -27,9 +27,7 @@ const FREEZE_READ_ONLY_CHARACTER_MENU_IDS: ReadonlySet<string> = new Set(["panel
 type MenuTarget =
     | { type: "panel" }
     | { type: "character"; character: Character }
-    | { type: "group"; group: CharacterGroup }
-    /** The kind picker that stands in front of "new character" - see {@link kindItems}. */
-    | { type: "new-character"; groupId?: string };
+    | { type: "group"; group: CharacterGroup };
 
 type CharacterItem = {
     id: string;
@@ -302,23 +300,79 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         setMenuState(prev => ({ ...prev, visible: false }));
     }, []);
 
-    const handleCreateCharacter = useCallback(async (kind: CharacterAppearanceKind, groupId?: string) => {
-        if (!characterService || !inputDialog) return;
-        const name = await inputDialog.show({
-            title: t("characters.panel.newCharacter"),
-            placeholder: t("characters.panel.namePlaceholder"),
-            required: true,
-            maxLength: 100,
-            description: t("characters.panel.newCharacterDescription"),
+    /**
+     * The one dialog that asks everything a new character needs.
+     *
+     * It replaces a submenu of appearance kinds followed by a one-field name prompt: the kind is a
+     * detail the author can read about in the editor, and putting it in front of the name made the
+     * cheap decision block the one they came to make — with nowhere at all to put the colour.
+     */
+    const promptCreateCharacter = useCallback((): Promise<CreateCharacterDialogValue | null> => {
+        const uiService = context?.services.get<UIService>(Services.UI);
+        if (!uiService) return Promise.resolve(null);
+        return new Promise(resolve => {
+            let dialogId: string | null = null;
+            let settled = false;
+            // The content owns validation (an empty name has to be reported next to the field, not as
+            // a toast), so the footer's Create button asks it to submit rather than reading a draft.
+            let submitHandler: (() => void) | null = null;
+
+            const safeResolve = (value: CreateCharacterDialogValue | null) => {
+                if (settled) return;
+                settled = true;
+                resolve(value);
+            };
+            const closeDialog = () => {
+                if (dialogId) {
+                    uiService.dialogs.close(dialogId);
+                    dialogId = null;
+                }
+            };
+            const handleCancel = () => {
+                safeResolve(null);
+                closeDialog();
+            };
+
+            dialogId = uiService.dialogs.show({
+                title: t("characters.panel.newCharacter"),
+                content: (
+                    <CreateCharacterDialogContent
+                        registerHandlers={handlers => { submitHandler = handlers.submit; }}
+                        onSubmit={value => {
+                            safeResolve(value);
+                            closeDialog();
+                        }}
+                    />
+                ),
+                closable: true,
+                width: 480,
+                buttons: [
+                    { label: t("common.cancel"), onClick: handleCancel },
+                    { label: t("common.create"), primary: true, onClick: () => submitHandler?.() },
+                ],
+                onClose: handleCancel,
+            });
         });
-        if (!name) return;
-        const character = characterService.createCharacter(name, kind);
+    }, [context, t]);
+
+    const handleCreateCharacter = useCallback(async (groupId?: string) => {
+        if (!characterService) return;
+        // Closed before the await rather than after it: the menu this may have been launched from has
+        // no business sitting over the dialog.
+        closeMenu();
+        const created = await promptCreateCharacter();
+        if (!created) return;
+        const character = characterService.createCharacter(created.name, created.kind);
+        if (created.color) {
+            // Absent means "no colour", which is not the same as a colour that happens to match the
+            // hash — the story rows fall back to the name for as long as this stays unset.
+            character.profile.setColor(created.color);
+        }
         if (groupId) {
             characterService.assignCharacterToGroup(character.profile.getId(), groupId);
         }
         loadCharacters();
-        closeMenu();
-    }, [characterService, inputDialog, loadCharacters, closeMenu, t]);
+    }, [characterService, closeMenu, loadCharacters, promptCreateCharacter]);
 
     const handleCreateGroup = useCallback(async () => {
         if (!characterService || !inputDialog) return;
@@ -351,7 +405,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         const uiService = context.services.get<UIService>(Services.UI);
         const confirmed = await uiService.showConfirm(t("characters.panel.deleteCharacterConfirm", { name: item.name }), t("characters.panel.deleteCharacterDetail"));
         if (!confirmed) return;
-        const removed = characterService.deleteCharacter(item.id);
+        const removed = await characterService.deleteCharacter(item.id);
         if (removed) {
             const editorId = `narraleaf-studio:character-editor-${item.id}`;
             const store = uiService.getStore();
@@ -409,49 +463,12 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         const uiService = context.services.get<UIService>(Services.UI);
         const confirmed = await uiService.showConfirm(t("characters.panel.deleteGroupConfirm", { name: group.name }), t("characters.panel.deleteGroupDetail"));
         if (!confirmed) return;
-        characterService.deleteGroup(group.id);
+        await characterService.deleteGroup(group.id);
         loadCharacters();
         closeMenu();
     }, [characterService, context, loadCharacters, closeMenu, t]);
 
-    // The appearance kind is fixed when the character is created and the kinds share no data, so it
-    // has to be asked before the name rather than switched afterwards.
-    //
-    // The runtimes Studio knows are named here rather than hidden behind one "external runtime" row.
-    // That row was the whole problem: an author looking for Live2D had no way to tell that this was
-    // where it lived, and picking it left them with an empty free-text field naming a folder they
-    // were expected to have created already. Naming the products costs nothing and ships none of
-    // their code — the row still only creates a character; installing a runtime is a separate,
-    // guided act (see PuppetRuntimeInstaller).
-    const kindItems = useCallback((groupId?: string): ContextMenuItemDef[] => ([
-        {
-            id: "new-character-preset",
-            label: t("characters.editor.kind.preset"),
-            onClick: () => handleCreateCharacter("preset", groupId),
-        },
-        {
-            id: "new-character-layered",
-            label: t("characters.editor.kind.layered"),
-            onClick: () => handleCreateCharacter("layered", groupId),
-        },
-        ...listKnownPuppetRuntimes().map(runtime => ({
-            id: `new-character-${runtime.id}`,
-            label: runtime.productName,
-            onClick: () => handleCreateCharacter(runtime.id, groupId),
-        })),
-        {
-            // Last, and worded as the escape hatch it is: a runtime the author wrote themselves.
-            id: "new-character-puppet",
-            label: t("characters.editor.kind.puppet"),
-            onClick: () => handleCreateCharacter("puppet", groupId),
-        },
-    ]), [handleCreateCharacter, t]);
-
     const buildContextMenu = useCallback((target: MenuTarget): ContextMenuDef => {
-        if (target.type === "new-character") {
-            return kindItems(target.groupId);
-        }
-
         if (target.type === "character") {
             const profile = target.character.profile.getProfile();
             const item = filteredCharacters.find(c => c.id === profile.id);
@@ -495,7 +512,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                 {
                     id: "create-character-in-group",
                     label: t("characters.panel.addCharacter"),
-                    submenu: kindItems(target.group.id),
+                    onClick: () => handleCreateCharacter(target.group.id),
                 },
                 {
                     id: "rename-group",
@@ -515,7 +532,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
             {
                 id: "panel-new-character",
                 label: t("characters.panel.newCharacter"),
-                submenu: kindItems(),
+                onClick: () => handleCreateCharacter(),
             },
             {
                 id: "panel-new-group",
@@ -593,10 +610,13 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                     placeholder={t("characters.panel.searchPlaceholder")}
                     className="w-full"
                 />
+                {/* One row, one height: the two square actions, the filter button and the refresh
+                    button all sit at the shared `md` 36px (design-system §3). They used to be
+                    38/38/38/32 - three numbers in a row four buttons long. */}
                 <div className="flex items-center gap-2">
                     <button
-                        onClick={(event) => { event.stopPropagation(); handleMenuOpen(event, { type: "new-character" }); }}
-                        className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                        onClick={(event) => { event.stopPropagation(); handleCreateCharacter(); }}
+                        className="grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                         aria-label={t("characters.panel.addCharacter")}
                         {...freeze.writes(false, t("characters.panel.addCharacter"))}
                     >
@@ -604,7 +624,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                     </button>
                     <button
                         onClick={(event) => { event.stopPropagation(); handleCreateGroup(); }}
-                        className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border border-edge-strong bg-fill-subtle text-fg hover:bg-fill transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                        className="grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md border border-edge-strong bg-fill-subtle text-fg hover:bg-fill transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                         {...freeze.writes(false, t("characters.panel.addGroup"))}
                     >
                         <FolderPlus className="w-4 h-4" />
@@ -621,7 +641,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                     {/* Count removed per request */}
                     <button
                         onClick={loadCharacters}
-                        className="p-2 rounded-md hover:bg-fill text-fg-muted"
+                        className="grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md hover:bg-fill text-fg-muted"
                         title={t("common.refresh")}
                     >
                         <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -675,7 +695,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                                                     <button
                                                         onClick={(event) => {
                                                             event.stopPropagation();
-                                                            handleMenuOpen(event, { type: "new-character", groupId: group.id });
+                                                            handleCreateCharacter(group.id);
                                                         }}
                                                         className="inline-flex items-center justify-center p-1.5 rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors"
                                                         aria-label={t("characters.panel.addCharacter")}

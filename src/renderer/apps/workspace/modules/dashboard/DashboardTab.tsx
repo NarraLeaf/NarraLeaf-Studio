@@ -23,6 +23,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "../../context";
 import { DashboardSection, StatList, StatRow } from "./DashboardPrimitives";
+import { CastSection } from "./CastSection";
 import { WritingActivityChart } from "./WritingActivityChart";
 import {
     buildActivityTimeline,
@@ -330,7 +331,7 @@ export function DashboardTab({ active }: EditorTabComponentProps) {
     const variableCount = scale ? scale.variables.scene + scale.variables.saved + scale.variables.persistent : 0;
 
     return (
-        <div className="h-full overflow-y-auto overflow-x-hidden bg-surface">
+        <div className="h-full overflow-y-auto overflow-x-hidden bg-surface" data-help-topic="dashboard">
             <div className="mx-auto flex max-w-4xl flex-col gap-8 px-6 py-6">
                 <header className="flex flex-col gap-1">
                     <h1 className="truncate text-xl font-medium text-fg">
@@ -388,6 +389,8 @@ export function DashboardTab({ active }: EditorTabComponentProps) {
                         <p className="text-xs text-fg-subtle">{failed ? t("dashboard.failed") : t("dashboard.loading")}</p>
                     )}
                 </DashboardSection>
+
+                {snapshot && <CastSection cast={snapshot.cast} />}
 
                 <DashboardSection title={t("dashboard.activity.title")} description={t("dashboard.activity.description")}>
                     <StatList>

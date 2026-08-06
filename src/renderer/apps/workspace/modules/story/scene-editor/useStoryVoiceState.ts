@@ -4,6 +4,7 @@ import { useRegistry } from "@/apps/workspace/registry";
 import { Services } from "@/lib/workspace/services/services";
 import { VoiceService } from "@/lib/workspace/services/voice/VoiceService";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { deriveVoiceUnitState, type VoiceUnitState } from "@/lib/workspace/services/voice/voiceModel";
 import { serializeSegmentSourceText } from "@shared/utils/localizationText";
@@ -62,8 +63,14 @@ export function useStoryVoiceState(block: StoryBlock): StoryVoiceState {
         [context, isInitialized],
     );
 
+    const localizationService = useMemo(
+        () => (context && isInitialized ? context.services.get<LocalizationService>(Services.Localization) : null),
+        [context, isInitialized],
+    );
+
     const [primary, setPrimary] = useState<VoiceLocaleEntry | null>(null);
     const [doc, setDoc] = useState<VoiceDocument | null>(null);
+    const [textsTick, setTextsTick] = useState(0);
 
     useEffect(() => {
         if (!voiceService) {
@@ -88,20 +95,38 @@ export function useStoryVoiceState(block: StoryBlock): StoryVoiceState {
                 setDoc(loaded);
             }
         }).catch(() => undefined);
+        // The take is a recording of this language's line, so staleness is judged against the
+        // translation when there is one - which has to be in memory for the synchronous read below.
+        void voiceService.loadLineTexts(locale).then(() => {
+            if (!disposed) {
+                setTextsTick(tick => tick + 1);
+            }
+        }).catch(() => undefined);
         const unsubscribe = voiceService.onDocumentChanged(event => {
             if (event.locale === locale) {
                 setDoc(event.document);
             }
         });
+        const unsubscribeTranslation = localizationService?.onDocumentChanged(event => {
+            if (event.locale === locale) {
+                setTextsTick(tick => tick + 1);
+            }
+        });
         return () => {
             disposed = true;
             unsubscribe();
+            unsubscribeTranslation?.();
         };
-    }, [voiceService, primary]);
+    }, [voiceService, localizationService, primary]);
 
     const segment = voiceableSegment(block);
     const unit = segment ? doc?.units[segment.textId] : undefined;
-    const state = segment ? deriveVoiceUnitState(unit, segment.sourceText) : "missing";
+    // textsTick participates so a translation arriving after first paint re-derives the state.
+    void textsTick;
+    const lineText = segment && primary && voiceService
+        ? voiceService.getLineText(primary.code, segment.textId, segment.sourceText)
+        : segment?.sourceText ?? "";
+    const state = segment ? deriveVoiceUnitState(unit, lineText) : "missing";
     const assetId = unit?.assetId;
 
     // Namespaced by locale + line so the same take auditions as one entry across every surface.

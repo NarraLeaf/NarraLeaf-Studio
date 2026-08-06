@@ -1,3 +1,4 @@
+import type { TranslationKey } from "@shared/i18n";
 import { FsRejectErrorCode } from "@shared/types/os";
 import { RendererError } from "@shared/utils/error";
 import {
@@ -38,6 +39,10 @@ import { UuidService } from "../core/UuidService";
 import { AssetsService } from "../core/AssetsService";
 import { AssetLockReason } from "../assets/AssetLockManager";
 import { EventEmitter } from "../ui/EventEmitter";
+import { HistoryService } from "../history/HistoryService";
+import type { HistoryLabel } from "../history/historyModel";
+import { projectHistoryScope } from "../history/historyScopes";
+import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
 import { findDeclarationBlock } from "@shared/types/story/declarations";
 import { listSceneIdsInDocumentOrder } from "@shared/types/story/order";
 import { assertValidStoryId } from "@shared/utils/storyId";
@@ -73,6 +78,13 @@ type StoryServiceEvents = {
 type BlockTarget = {
     parentId: StoryBlockId | null;
     beforeBlockId?: StoryBlockId | null;
+};
+
+/** See {@link StoryService.captureStoryStructure}. */
+type StoryStructureSnapshot = {
+    chapters: StoryChapter[];
+    scenes: Record<StorySceneId, StoryScene>;
+    entrySceneId?: StorySceneId;
 };
 
 type StoryAssetLockEntry = {
@@ -202,11 +214,63 @@ export class StoryService extends Service<StoryService> implements IStoryService
         return true;
     }
 
-    public deleteStory(storyId: StoryId): boolean {
+    /**
+     * Remove a story: its library entry, its in-memory document, its asset locks, and its directory.
+     *
+     * Asynchronous because undo needs the document, and the document may only be on disk - a story
+     * the author never opened this session is not in {@link documents}. Loading it first is the
+     * whole reason this is not a one-liner: after the directory is gone there is nothing left to
+     * read, and an undo that restored the library entry but not the file would put a story in the
+     * list that cannot be opened.
+     */
+    public async deleteStory(storyId: StoryId): Promise<boolean> {
         const entry = this.getStoryEntry(storyId);
         if (!entry) {
             return false;
         }
+        const document = await this.loadStory(storyId).catch(() => null);
+        const index = this.getLibraryIndex();
+        const position = index.stories.findIndex(story => story.id === storyId);
+        const wasDefault = index.defaultStoryId === storyId;
+        const storedEntry = JSON.parse(JSON.stringify(entry)) as StoryLibraryEntry;
+        const storedDocument = document
+            ? JSON.parse(JSON.stringify(document)) as StoryDocument
+            : null;
+
+        this.removeStory(storyId);
+
+        this.getHistoryService().pushCommand(projectHistoryScope(), {
+            label: { key: "story.history.deleteStory" as TranslationKey, params: { name: storedEntry.name } },
+            undo: async () => {
+                if (storedDocument) {
+                    this.documents.set(storyId, JSON.parse(JSON.stringify(storedDocument)) as StoryDocument);
+                    await this.writeStoryDocument(this.getStoryDocument(storyId));
+                    this.syncDocumentAssetLocks(storyId, this.getStoryDocument(storyId));
+                }
+                this.mutateLibrary(target => {
+                    const restored = JSON.parse(JSON.stringify(storedEntry)) as StoryLibraryEntry;
+                    if (position >= 0 && position <= target.stories.length) {
+                        target.stories.splice(position, 0, restored);
+                    } else {
+                        target.stories.push(restored);
+                    }
+                    if (wasDefault) {
+                        target.defaultStoryId = storyId;
+                    }
+                });
+                if (storedDocument) {
+                    this.events.emit("documentChanged", { storyId, document: this.getStoryDocument(storyId) });
+                }
+            },
+            redo: () => {
+                this.removeStory(storyId);
+            },
+        });
+        return true;
+    }
+
+    /** The deletion itself, so undo's `redo` and the original call cannot drift apart. */
+    private removeStory(storyId: StoryId): void {
         this.releaseStoryAssetLocks(storyId);
         this.documents.delete(storyId);
         this.mutateLibrary(index => {
@@ -219,7 +283,6 @@ export class StoryService extends Service<StoryService> implements IStoryService
         void this.getFileSystem().deleteDir(dir).catch(err => {
             console.warn("[StoryService] failed to delete story directory", err);
         });
-        return true;
     }
 
     public async loadStory(storyId: StoryId): Promise<StoryDocument> {
@@ -237,6 +300,17 @@ export class StoryService extends Service<StoryService> implements IStoryService
         const path = this.getStoryDocumentPath(storyId);
         const result = await fs.readJSON<StoryDocument>(path);
         if (!result.ok) {
+            // Both throws below are re-wrapped as `RendererError`, which keeps the message and drops
+            // the fs error code and the parse position with it. Recorded here while the original is
+            // still in hand - "unexpected token } at 41273" is what says a write was truncated, and
+            // the caller only ever sees "Failed to read story document: Chapter 1".
+            reportWorkspaceAnomaly({
+                source: "story",
+                operationKey: "workspace.recovery.operations.storyDocumentRead",
+                path,
+                error: result.error,
+                severity: "degraded",
+            });
             throw new RendererError(result.error.message || `Failed to read story document: ${entry.name}`);
         }
         try {
@@ -249,6 +323,13 @@ export class StoryService extends Service<StoryService> implements IStoryService
             this.events.emit("documentChanged", { storyId, document });
             return document;
         } catch (error) {
+            reportWorkspaceAnomaly({
+                source: "story",
+                operationKey: "workspace.recovery.operations.storyDocumentParse",
+                path,
+                error,
+                severity: "degraded",
+            });
             throw new RendererError(error instanceof Error ? error.message : String(error));
         }
     }
@@ -360,6 +441,15 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 await this.writeLibraryIndex();
                 return created;
             }
+            // Fatal: this runs in `init`, so the throw takes the whole workspace down to the error
+            // screen. That screen shows a message and no path, and the path is most of the answer.
+            reportWorkspaceAnomaly({
+                source: "story",
+                operationKey: "workspace.recovery.operations.storyIndexRead",
+                path: indexPath,
+                error: result.error,
+                severity: "fatal",
+            });
             throw new RendererError(result.error.message);
         }
 
@@ -371,6 +461,13 @@ export class StoryService extends Service<StoryService> implements IStoryService
             this.events.emit("libraryChanged", this.index);
             return this.index;
         } catch (error) {
+            reportWorkspaceAnomaly({
+                source: "story",
+                operationKey: "workspace.recovery.operations.storyIndexParse",
+                path: indexPath,
+                error,
+                severity: "fatal",
+            });
             throw new RendererError(error instanceof Error ? error.message : String(error));
         }
     }
@@ -520,12 +617,53 @@ export class StoryService extends Service<StoryService> implements IStoryService
         return next;
     }
 
-    public deleteAnimationAsset(animationId: StoryAnimationAssetId): boolean {
+    /**
+     * Remove a motion asset: its index entry, its cached object, and its file.
+     *
+     * Asynchronous for the same reason {@link deleteStory} is - the timeline is on disk and may not
+     * be loaded, and after the file is gone there is nothing to read. Note the motion editor's own
+     * undo stack is keyed by this asset's id and dies with it, so this entry is the only way back.
+     */
+    public async deleteAnimationAsset(animationId: StoryAnimationAssetId): Promise<boolean> {
         const index = this.getAnimationIndex();
-        const existing = index.animations.find(animation => animation.id === animationId);
-        if (!existing) {
+        const position = index.animations.findIndex(animation => animation.id === animationId);
+        if (position === -1) {
             return false;
         }
+        const storedEntry = JSON.parse(JSON.stringify(index.animations[position])) as StoryAnimationIndexEntry;
+        const asset = await this.loadAnimationAsset(animationId).catch(() => null);
+        const storedAsset = asset ? JSON.parse(JSON.stringify(asset)) as StoryAnimationAsset : null;
+
+        this.removeAnimationAsset(animationId);
+
+        this.getHistoryService().pushCommand(projectHistoryScope(), {
+            label: {
+                key: "story.history.deleteAnimation" as TranslationKey,
+                params: { name: storedEntry.name },
+            },
+            undo: async () => {
+                if (storedAsset) {
+                    const restored = JSON.parse(JSON.stringify(storedAsset)) as StoryAnimationAsset;
+                    this.animationAssets.set(animationId, restored);
+                    await this.writeAnimationAsset(restored);
+                }
+                this.mutateAnimationIndex(target => {
+                    const entry = JSON.parse(JSON.stringify(storedEntry)) as StoryAnimationIndexEntry;
+                    if (position <= target.animations.length) {
+                        target.animations.splice(position, 0, entry);
+                    } else {
+                        target.animations.push(entry);
+                    }
+                });
+            },
+            redo: () => {
+                this.removeAnimationAsset(animationId);
+            },
+        });
+        return true;
+    }
+
+    private removeAnimationAsset(animationId: StoryAnimationAssetId): void {
         this.animationAssets.delete(animationId);
         this.mutateAnimationIndex(target => {
             target.animations = target.animations.filter(animation => animation.id !== animationId);
@@ -533,7 +671,6 @@ export class StoryService extends Service<StoryService> implements IStoryService
         void this.getFileSystem().deleteFile(this.getAnimationAssetPath(animationId)).catch(err => {
             console.warn("[StoryService] failed to delete story animation", err);
         });
-        return true;
     }
 
     public onAnimationsChanged(handler: (index: StoryAnimationIndex) => void): () => void {
@@ -623,7 +760,16 @@ export class StoryService extends Service<StoryService> implements IStoryService
         return changed;
     }
 
+    /**
+     * Remove a chapter **and every scene in it**.
+     *
+     * Nothing calls this today - the story panel offers no "delete chapter" - but the cascade is
+     * the widest of the structural deletions, so it is the one most worth being able to take back
+     * if a caller ever appears.
+     */
     public deleteChapter(storyId: StoryId, chapterId: string): boolean {
+        const before = this.captureStoryStructure(storyId);
+        const name = this.getStoryDocument(storyId).chapters.find(c => c.id === chapterId)?.name ?? "";
         let changed = false;
         this.mutateDocument(storyId, document => {
             const index = document.chapters.findIndex(chapter => chapter.id === chapterId);
@@ -639,6 +785,12 @@ export class StoryService extends Service<StoryService> implements IStoryService
             }
             changed = true;
         });
+        if (changed) {
+            this.recordStructuralDeletion(storyId, {
+                key: "story.history.deleteChapter" as TranslationKey,
+                params: { name },
+            }, before);
+        }
         return changed;
     }
 
@@ -991,6 +1143,8 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     public deleteScene(storyId: StoryId, sceneId: StorySceneId): boolean {
+        const before = this.captureStoryStructure(storyId);
+        const name = this.getStoryDocument(storyId).scenes[sceneId]?.name ?? "";
         let changed = false;
         this.mutateDocument(storyId, document => {
             if (!document.scenes[sceneId]) {
@@ -1005,6 +1159,12 @@ export class StoryService extends Service<StoryService> implements IStoryService
             }
             changed = true;
         });
+        if (changed) {
+            this.recordStructuralDeletion(storyId, {
+                key: "story.history.deleteScene" as TranslationKey,
+                params: { name },
+            }, before);
+        }
         return changed;
     }
 
@@ -1266,6 +1426,60 @@ export class StoryService extends Service<StoryService> implements IStoryService
 
     private cloneScene(scene: StoryScene): StoryScene {
         return JSON.parse(JSON.stringify(scene)) as StoryScene;
+    }
+
+    /**
+     * Everything a structural deletion inside one story can destroy.
+     *
+     * Whole-shape rather than a hand-written list of what each deletion touches. Deleting a chapter
+     * removes the chapter, every scene in it, that scene's id from the chapter's list, and re-points
+     * `entrySceneId` if it happened to name one of them - four consequences from one call, and a
+     * restore that enumerates them is a restore that will be wrong the first time a fifth is added.
+     * Deletions are rare enough that the clone costs nothing worth measuring.
+     */
+    private captureStoryStructure(storyId: StoryId): StoryStructureSnapshot {
+        const document = this.getStoryDocument(storyId);
+        return JSON.parse(JSON.stringify({
+            chapters: document.chapters,
+            scenes: document.scenes,
+            entrySceneId: document.entrySceneId,
+        })) as StoryStructureSnapshot;
+    }
+
+    private applyStoryStructure(storyId: StoryId, snapshot: StoryStructureSnapshot): void {
+        this.mutateDocument(storyId, document => {
+            const restored = JSON.parse(JSON.stringify(snapshot)) as StoryStructureSnapshot;
+            document.chapters = restored.chapters;
+            document.scenes = restored.scenes;
+            if (restored.entrySceneId === undefined) {
+                delete document.entrySceneId;
+            } else {
+                document.entrySceneId = restored.entrySceneId;
+            }
+        });
+    }
+
+    /**
+     * Record a structural deletion as one undo step on the project stack.
+     *
+     * `before` is captured by the caller ahead of the mutation; `after` is taken here, so undo and
+     * redo are the same operation in opposite directions and neither has to re-derive what was lost.
+     */
+    private recordStructuralDeletion(
+        storyId: StoryId,
+        label: HistoryLabel,
+        before: StoryStructureSnapshot,
+    ): void {
+        const after = this.captureStoryStructure(storyId);
+        this.getHistoryService().pushCommand(projectHistoryScope(), {
+            label,
+            undo: () => this.applyStoryStructure(storyId, before),
+            redo: () => this.applyStoryStructure(storyId, after),
+        });
+    }
+
+    private getHistoryService(): HistoryService {
+        return this.getContext().services.get<HistoryService>(Services.History);
     }
 
     private cleanName(value: string, fallback: string): string {

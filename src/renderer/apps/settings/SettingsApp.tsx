@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppLayout } from "@/lib/components/layout";
+import { HelpOverlay, HelpTrigger, requestContextHelp } from "@/lib/help";
 import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox";
 import { SettingsExplorer, SettingValue } from "./components/SettingsExplorer";
 import { SettingsNavTree, SettingsNavCategory } from "./components/SettingsNavTree";
@@ -11,6 +12,7 @@ import {
 } from "@/lib/settings/registry";
 import { AppSettingDefinition, AppSettingCategoryKey, SettingCategory, SettingDescriptor } from "@/lib/settings/models";
 import { filterCategoryEntries } from "@/lib/settings/searchSettings";
+import { resetSetting } from "@/lib/settings/resetSettings";
 import { SettingValueType } from "@/lib/settings/types";
 import { getInterface } from "@/lib/app/bridge";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
@@ -190,6 +192,42 @@ export function SettingsApp() {
         [values],
     );
 
+    /**
+     * Whether a row differs from its default, which is what decides if it offers a reset.
+     *
+     * Compared structurally because a few entries hold arrays and maps. A key stored *at* its
+     * default reads as unmodified, which is right: deleting it would change nothing observable.
+     */
+    const isSettingModified = useCallback(
+        (setting: AppSettingDefinition) => {
+            const stored = values[setting.key];
+            if (stored === undefined) {
+                return false;
+            }
+            return JSON.stringify(stored) !== JSON.stringify(setting.defaultValue);
+        },
+        [values],
+    );
+
+    /**
+     * Put one row back by DELETING its key rather than writing the default over it.
+     *
+     * The distinction is load-bearing for the handful of settings whose default is not a constant
+     * (`editor.slashAtAlias` answers per device locale; the `ui.background*` keys are clamped and
+     * whitelisted on read) - only an absent value reaches those fallbacks.
+     */
+    const resetSettingRow = useCallback(
+        async (setting: AppSettingDefinition) => {
+            await resetSetting(setting.key);
+            setValues((prev) => {
+                const next = { ...prev };
+                delete next[setting.key];
+                return next;
+            });
+        },
+        [],
+    );
+
     const commitSetting = useCallback(
         async (setting: AppSettingDefinition, _descriptor: SettingDescriptor, value: SettingValue) => {
             const key = setting.key;
@@ -273,6 +311,25 @@ export function SettingsApp() {
         }
     }, [categories]);
 
+    /**
+     * `F1`, the same key as in the workspace.
+     *
+     * A plain listener rather than a registration: this window has no keybinding service, and the
+     * one key it claims is the one key nothing else here uses. It falls back to the window's own
+     * topic so the key always answers, which is what the workspace does with its browser.
+     */
+    useEffect(() => {
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key !== "F1" || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+                return;
+            }
+            event.preventDefault();
+            requestContextHelp();
+        };
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, []);
+
     // On open, and again whenever an already-open Settings window is asked to show something else
     // (main focuses the existing window rather than stacking a second one).
     useEffect(() => {
@@ -294,9 +351,17 @@ export function SettingsApp() {
 
     return (
         <AppLayout title={t("settings.title")} iconSrc="/favicon.ico">
-            <div className="flex h-full overflow-hidden rounded-md border border-edge bg-surface shadow-xl">
+            <div
+                className="flex h-full overflow-hidden rounded-md border border-edge bg-surface shadow-xl"
+                data-help-topic="studioSettings"
+            >
                 <aside className="flex w-64 shrink-0 flex-col gap-3 border-r border-edge-subtle bg-surface-sunken p-4">
-                    <p className="text-lg font-semibold text-fg">{t("settings.title")}</p>
+                    <div className="group/help flex items-center gap-1">
+                        <p className="min-w-0 flex-1 text-lg font-semibold text-fg">{t("settings.title")}</p>
+                        {/* This window is where an author asks whether a setting belongs to Studio
+                            or to their project, which nothing else here says. */}
+                        <HelpTrigger topic="studioSettings" />
+                    </div>
                     {localizedCategories.length > 0 ? (
                         <>
                             <SearchBox
@@ -321,7 +386,13 @@ export function SettingsApp() {
                         </p>
                     )}
                 </aside>
-                <section className="flex-1 p-4">
+                {/* `min-w-0` is load-bearing. A flex item's default `min-width: auto` floors it at its
+                    content's min-content width, so this column refused to shrink past ~435px however
+                    narrow the window got — and the parent is `overflow-hidden`, so the surplus was
+                    simply cut off with no horizontal scroll to go after it. At 200% UI zoom (600 CSS
+                    px of window, 256 of it the nav) that put every control's right-hand column past
+                    the edge, the zoom field that undoes it included. */}
+                <section className="min-w-0 flex-1 p-4">
                     <SettingsExplorer
                         categories={localizedCategories}
                         getSettingsForCategory={(category) => getSettingsByCategory(category as AppSettingCategoryKey)}
@@ -329,6 +400,8 @@ export function SettingsApp() {
                         getValue={(setting, _descriptor) => getSettingValue(setting)}
                         onCommit={commitSetting}
                         onInvokeAction={invokeSettingAction}
+                        isModified={isSettingModified}
+                        onReset={resetSettingRow}
                         searchQuery={searchQuery}
                         onSearchChange={setSearchQuery}
                         showSearch={false}
@@ -340,6 +413,9 @@ export function SettingsApp() {
                     />
                 </section>
             </div>
+            {/* No browser link in the footer: this window has no editor tabs to open one in, and
+                the popover with its `See also` links is the whole of help here. */}
+            <HelpOverlay />
         </AppLayout>
     );
 }

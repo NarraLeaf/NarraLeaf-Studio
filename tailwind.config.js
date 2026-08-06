@@ -77,6 +77,14 @@ module.exports = {
                     strong: 'var(--nl-fill-strong)',
                 },
 
+                // The story command line's syntax roles. The verb uses `primary`
+                // (it follows the accent) and the scaffold uses `fg-subtle`, so
+                // only these two need tokens of their own. See styles.css.
+                syntax: {
+                    target: 'rgb(var(--nl-syntax-target) / <alpha-value>)',
+                    value: 'rgb(var(--nl-syntax-value) / <alpha-value>)',
+                },
+
                 // Semantic accents — low-saturation, hue-shifted from the anchor.
                 binding: 'rgb(var(--nl-binding) / <alpha-value>)',
                 danger: 'rgb(var(--nl-danger) / <alpha-value>)',

@@ -437,7 +437,7 @@ function createLayoutInspectorSchema(
                             <button
                                 type="button"
                                 onClick={toggleVisibility}
-                                className="grid h-9 w-9 place-items-center rounded-lg border border-edge bg-transparent text-fg-muted transition hover:bg-fill-subtle focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                className={controlButtonClass()}
                                 aria-pressed={visible}
                                 aria-label={t("properties.layout.toggleVisibility")}
                             >
@@ -1098,10 +1098,10 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     };
 
     /**
-     * Nothing anywhere in the app is selected — a Dashboard tab, say. A bare surface, no copy: the
-     * panel being empty is already the whole message, and the two sentences that used to sit here
-     * ("No item selected" / "Select an item to view its properties") said it a second and third time.
-     * Same convention the other docked panels follow.
+     * Nothing anywhere in the app is selected — a Dashboard tab, say. One line, centred: an empty
+     * column reads as "broken" as easily as it reads as "nothing selected", so the panel says which
+     * one it is. One sentence only — the earlier copy stated it twice ("No item selected" over
+     * "Select an item to view its properties").
      */
     const isEmpty = !storyContent
         && !storyMotionSelection
@@ -1110,7 +1110,11 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         && !activeCharacter
         && !activeAsset;
     if (isEmpty) {
-        return <div className="nl-editor-surface h-full min-h-0" />;
+        return (
+            <div className="nl-editor-surface flex h-full min-h-0 items-center justify-center p-6 text-center text-xs text-fg-subtle">
+                {t("properties.panel.empty")}
+            </div>
+        );
     }
 
     /**

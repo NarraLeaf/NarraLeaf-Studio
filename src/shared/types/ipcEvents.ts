@@ -21,9 +21,11 @@ import type {
     RuntimePluginDescriptor,
     WorkspacePluginDescriptor,
 } from "./plugins";
+import type { CacheClearResult, CacheInventoryReport } from "./cacheInventory";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
 import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult } from "./uiTemplateRegistry";
+import type { RemoteAssetFetchResult, RemoteAssetValidators } from "./remoteAsset";
 import type { LocaleContribution } from "@shared/i18n";
 import type {
     PrivilegedBashExecutePayload,
@@ -101,6 +103,12 @@ export enum IPCEventType {
     appCheckRecentProjects = "app.checkRecentProjects",
     appSystemPath = "app.systemPath",
     appExportDiagnostics = "app.exportDiagnostics",
+    appProbeDownloadSource = "app.probeDownloadSource",
+    appCacheInventory = "app.cacheInventory",
+    appCacheClear = "app.cacheClear",
+    appGlobalStateDelete = "app.globalState.delete",
+    appExportSettings = "app.exportSettings",
+    appImportSettings = "app.importSettings",
 
     fsStat = "fs.stat",
     fsList = "fs.list",
@@ -144,6 +152,8 @@ export enum IPCEventType {
     workspaceExportProjectPackage = "workspace.projectPackage.export",
     workspaceImportProjectPackage = "workspace.projectPackage.import",
     workspaceExportConsoleLogs = "workspace.console.exportLogs",
+    workspaceSetRecoveryMode = "workspace.setRecoveryMode",
+    workspaceOpenProjectFolder = "workspace.openProjectFolder",
     workspaceConfirmClose = "workspace.confirmClose",
     workspaceCloseProgress = "workspace.closeProgress",
     workspaceFlushPendingSaves = "workspace.flushPendingSaves",
@@ -224,6 +234,8 @@ export enum IPCEventType {
     uiTemplateRegistryFetch = "uiTemplate.registryFetch",
     uiTemplateFetchBundle = "uiTemplate.fetchBundle",
 
+    assetFetchRemote = "asset.fetchRemote",
+
     puppetRuntimeInstallSdk = "puppetRuntime.installSdk",
 
     privilegedFsCall = "privileged.fs.call",
@@ -293,7 +305,7 @@ export type BlueprintPersistenceProjectRef = {
  * A third kind added to the reason will fail to compile at the reporting call site, which is the
  * right place to be asked what to say about it.
  */
-export type WorkspaceFreezeKind = "revision" | "manual" | "merge";
+export type WorkspaceFreezeKind = "revision" | "manual" | "merge" | "recovery";
 
 /**
  * Which part of the close a workspace is currently waiting on.
@@ -567,7 +579,83 @@ export type IPCEvents = {
             byteLength?: number;
         };
     };
-} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCPrivilegedEvents & IPCVcsEvents;
+    /**
+     * Ask the host whether a mirror answers, for the Network settings panel.
+     *
+     * In main because the renderer never touches the network - not even to check a URL the user
+     * typed. A HEAD that gets any HTTP response proves the host is there, which is the whole
+     * question; the same reasoning `probePluginBuildDependency` gives for not treating a 405 as
+     * an outage applies, so the status is reported rather than judged.
+     */
+    [IPCEventType.appProbeDownloadSource]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            /** The address to probe. Refused unless it parses as https. */
+            url: string;
+        };
+        response: {
+            /** True when the host answered at all, whatever it said. */
+            reachable: boolean;
+            /** HTTP status when there was a response. */
+            status?: number;
+            /** Transport-level failure, or why the URL was refused. */
+            error?: string;
+        };
+    };
+    /** Sizes of the caches Studio can throw away. Measured on demand; see `cacheInventory`. */
+    [IPCEventType.appCacheInventory]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: CacheInventoryReport;
+    };
+    /** Empty the named cache buckets. Ids the host does not know come back under `failed`. */
+    [IPCEventType.appCacheClear]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { ids: string[] };
+        response: CacheClearResult;
+    };
+    /**
+     * Remove stored values, so the next read resolves the default.
+     *
+     * A separate channel from `set` because writing the default over a key is NOT the same
+     * thing: the keys with no entry in GLOBAL_STATE_DEFAULTS resolve a fallback their reader
+     * computes (a device locale, a clamped range), and only absence gets them there. Main
+     * refuses anything on the protected list, so a renderer bug cannot take the project
+     * history or the per-project statistics with it.
+     */
+    [IPCEventType.appGlobalStateDelete]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { keys: string[] };
+        response: {
+            /** Keys that had a stored value and no longer do. */
+            deleted: string[];
+            /** Keys refused because they are not preferences. */
+            refused: string[];
+        };
+    };
+    /** Write a settings document to a file the user picks. See `@shared/utils/settingsDocument`. */
+    [IPCEventType.appExportSettings]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            defaultFileName: string;
+            /** The document, already composed and serialized by the renderer. */
+            content: string;
+        };
+        response: { canceled: boolean; filePath?: string };
+    };
+    /** Read a settings document the user picks. Parsing and validation happen in the renderer. */
+    [IPCEventType.appImportSettings]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: { canceled: boolean; filePath?: string; content?: string };
+    };
+} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCAssetEvents & IPCPrivilegedEvents & IPCVcsEvents;
 
 /**
  * Version control. Every event carries `projectPath`: Studio is
@@ -1236,6 +1324,40 @@ export type IPCWorkspaceEvents = {
             filePath?: string;
             byteLength?: number;
         };
+    };
+    /**
+     * Reopen this window as a recovery shell, or as an ordinary workspace again.
+     *
+     * A reload rather than a state change, and that is the feature rather than an implementation
+     * detail: recovery mode is entered because what the renderer holds cannot be trusted, so the
+     * renderer is what gets discarded. Resolves after the reload has been asked for, not after the
+     * new one has booted - the caller is about to stop existing.
+     *
+     * `reason` is carried into the new window's props so the recovery panel can lead with whatever
+     * sent the author here (usually the workspace init error, which the reload would otherwise
+     * destroy).
+     */
+    [IPCEventType.workspaceSetRecoveryMode]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            enabled: boolean;
+            reason?: string;
+        },
+        response: void;
+    };
+    /**
+     * Show this window's project folder in the OS file manager.
+     *
+     * Only ever the window's own project - the path is not a parameter - because "open a folder for
+     * me" taking a renderer-supplied path is a way out of the sandbox, and every caller wants this
+     * one folder anyway.
+     */
+    [IPCEventType.workspaceOpenProjectFolder]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: void;
     };
     /**
      * Asks the workspace to confirm closing, using its own in-app dialog rather than a native
@@ -2001,6 +2123,30 @@ export type IPCUITemplateEvents = {
             templateId: string;
         },
         response: UITemplateBundle;
+    };
+};
+
+export type IPCAssetEvents = {
+    /**
+     * Fetch the bytes behind a remote asset's URL, in main.
+     *
+     * The renderer supplies the address here, unlike the store events above — it is the one the
+     * author typed into the import dialog, not one read out of untrusted data. What the boundary
+     * buys is that the *request* is main's: the scheme allowlist, the size ceiling, the timeout and
+     * the author's download rewrites all apply, and the renderer receives bytes instead of putting
+     * a remote URL into the DOM.
+     *
+     * `validators` makes the request conditional, so refreshing an unchanged asset transfers
+     * nothing and answers `not-modified`.
+     */
+    [IPCEventType.assetFetchRemote]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            url: string;
+            validators?: RemoteAssetValidators;
+        },
+        response: RemoteAssetFetchResult;
     };
 };
 

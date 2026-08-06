@@ -15,6 +15,14 @@ export interface DiagnosticsReportInput {
     error?: Error | null;
     /** Anything worth stating outright: the project path, the window type, a build id. */
     facts?: Record<string, string | number | boolean | null | undefined>;
+    /**
+     * A block of the caller's own, placed between the facts and the console tail.
+     *
+     * For a report whose substance is not one error: recovery mode's bundle is a list of failures
+     * and a table of which subsystems load, and squeezing that into `facts` would flatten multi-line
+     * stack traces into single-line values.
+     */
+    details?: string;
     /** Console tail. Defaults to this window's buffer. */
     consoleLines?: string[];
 }
@@ -68,6 +76,10 @@ export function buildDiagnosticsReport(input: DiagnosticsReportInput): string {
     }
 
     sections.push(input.error ? `--- Error ---\n${formatError(input.error)}` : "--- Error ---\n<none>");
+
+    if (input.details) {
+        sections.push(`--- Details ---\n${input.details}`);
+    }
 
     const consoleLines = input.consoleLines ?? getConsoleBufferLines();
     sections.push(

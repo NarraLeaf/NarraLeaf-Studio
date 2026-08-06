@@ -1,4 +1,6 @@
 import type { EditorTabDefinition } from "@/apps/workspace/registry/types";
+import { SquareDashed } from "lucide-react";
+import { createElement } from "react";
 import { translate } from "@/lib/i18n";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
@@ -13,6 +15,8 @@ export function createNewTabTab(token: string): EditorTabDefinition {
     return {
         id: getNewTabId(token),
         title: translate("workspace.shell.newTabPage.title"),
+        // A dashed outline reads as "nothing here yet" without borrowing the strip's own "+".
+        icon: createElement(SquareDashed, { className: "w-4 h-4" }),
         component: NewTabEditor,
         closable: true,
     };

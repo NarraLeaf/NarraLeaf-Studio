@@ -379,6 +379,7 @@ export function ModelImportWizard(props: {
             isOpen={props.visible}
             onClose={close}
             title={t("assets.modelImport.title")}
+            helpTopic="puppetRuntimes"
             size="lg"
             footer={
                 <div className="flex justify-end gap-2">

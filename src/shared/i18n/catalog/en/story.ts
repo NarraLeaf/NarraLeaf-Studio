@@ -19,6 +19,7 @@ export const story = {
             other: "{count} lines",
         },
         sceneActions: "Scene actions",
+        chapterActions: "Chapter actions",
         setEntryScene: "Set as Entry Scene",
         documentUnavailable: "Story document unavailable.",
         newStoryPlaceholder: "Enter story name",
@@ -26,9 +27,16 @@ export const story = {
         newSceneTitle: "New Scene",
         newScenePlaceholder: "Enter scene name",
         deleteStoryConfirm: "Delete story \"{name}\"?",
-        deleteStoryDetail: "This removes the story document from the project. This action cannot be undone.",
+        deleteStoryDetail: "This removes the story document from the project.",
+        deleteChapterConfirm: "Delete chapter \"{name}\"?",
+        // Counted, because the row does not say what is inside it until it is expanded — and the
+        // scenes go with the chapter.
+        deleteChapterDetail: {
+            one: "Its {count} scene is deleted with it.",
+            other: "Its {count} scenes are deleted with it.",
+        },
         deleteSceneConfirm: "Delete scene \"{name}\"?",
-        deleteSceneDetail: "This removes the scene and its blocks from the story document. This action cannot be undone.",
+        deleteSceneDetail: "This removes the scene and its blocks. Jumps to it will stop resolving.",
     },
     // Taking a scene out of Studio as a text file and bringing it back. `parseError` and `diag` are
     // keyed by the codec's own codes (see `storyScriptTypes`), so a new code fails the parity test
@@ -327,6 +335,7 @@ export const story = {
         starred: "Starred",
         searchPlaceholder: "Search actions",
         noActions: "No action found.",
+        scopedTo: "Actions for {name}",
         addStarred: "Add to starred",
         removeStarred: "Remove from starred",
     },
@@ -399,6 +408,70 @@ export const story = {
         opacity: "Opacity",
         size: "Font Size",
         z: "Z-Index",
+    },
+
+    /**
+     * The word a command line's enum VALUE is spelled with — the third and last of the three
+     * vocabulary namespaces (`command.*.label`, `paramHint.*`, and this one).
+     *
+     * English deliberately spells each one exactly as its canonical value. That is not filler: it is
+     * what a translator is handed, and it is the fallback a locale gets for any value it has not
+     * translated yet — so a missing entry falls back to a word the parser certainly accepts rather
+     * than to prose that might collide with another option. `localizedEnums.ts` drops any spelling
+     * that merely echoes a canonical value, so these entries change nothing on their own.
+     */
+    enumValue: {
+        // Transitions (`t=`), the unified word list from `commands/transitions.ts`.
+        fade: "fade",
+        slide: "slide",
+        "slide-left": "slide-left",
+        "slide-right": "slide-right",
+        "slide-up": "slide-up",
+        "slide-down": "slide-down",
+        circle: "circle",
+        wipe: "wipe",
+        iris: "iris",
+        blur: "blur",
+        blinds: "blinds",
+        "barn-door": "barn-door",
+        clock: "clock",
+        fan: "fan",
+        dots: "dots",
+        black: "black",
+        darkness: "darkness",
+        none: "none",
+        // The transform presets `t=` reaches on a show/hide that the transition words did not name.
+        scale: "scale",
+        opacity: "opacity",
+        // Placement (`at=`) and the camera's positional amount.
+        left: "left",
+        center: "center",
+        right: "right",
+        // Camera operations.
+        pan: "pan",
+        zoom: "zoom",
+        rotate: "rotate",
+        darken: "darken",
+        motion: "motion",
+        reset: "reset",
+        // Variable types.
+        boolean: "boolean",
+        number: "number",
+        string: "string",
+        json: "json",
+    },
+
+    /**
+     * The unit a numeric value is written with — the fourth vocabulary namespace, built and dropped on
+     * exactly the same rules as the three above (`localizedUnits.ts`).
+     *
+     * Keyed by the canonical unit the grammar declares. English spells it as itself for the same
+     * reason `enumValue` does: it is the translator's anchor and the fallback a locale that has not
+     * translated it gets — a spelling the parser certainly accepts.
+     */
+    unit: {
+        /** Seconds. Every duration, fade and hold in the vocabulary is measured in these. */
+        s: "s",
     },
 
     view: {
@@ -492,6 +565,11 @@ export const story = {
     },
     rows: {
         placeholderDialogue: "Dialogue…",
+        // A row waiting for a speaker's words can go two ways — more words, or something done to
+        // them — so both halves belong in the prompt. The verb tracks which end of the paragraph the
+        // row is at: the one that opens a run starts it, the ones after it carry on.
+        placeholderDialogueStart: "Start writing as {name}, or {trigger} to insert a character action",
+        placeholderDialogueContinue: "Keep writing as {name}, or {trigger} to insert a character action",
         placeholderNarration: "Narration…",
         placeholderChoicePrompt: "Choice prompt…",
         placeholderChoiceText: "Option text…",
@@ -512,6 +590,7 @@ export const story = {
         playFromRow: "Play from this row",
         playBranch: "Play this branch",
         insertPlaceholder: "Type narration, {trigger} for actions, # for characters…",
+        insertPlaceholderCharacter: "Pick an action for {name}…",
         noCategoryActionFound: "No {category} action found.",
         actionTypes: "Action types",
         noCharacterFound: "No character found.",
@@ -580,6 +659,34 @@ export const story = {
         playing: "Playing",
         ended: "Reached the end of the scene",
         endedAtJump: "Stopped at a scene jump",
+        /**
+         * Warnings the stage-snapshot walk raises when it has to approximate. They surface verbatim
+         * under the preview pane, so they are author-facing prose, not log lines.
+         */
+        diagnostics: {
+            targetNotFound: "Preview target block not found; previewing the scene start instead.",
+            targetUnreachable: "Preview target is not reachable from the scene root; previewing the scene end instead.",
+            repeatedGroupOnce: "Preview applies repeated groups once.",
+            sceneJumpIgnored: "Preview ignores scene jumps.",
+            choiceNotTaken: "Preview assumes no branch of this earlier choice was taken.",
+            conditionUnresolved: "Condition `{expression}` did not resolve; it evaluates false in the preview.",
+            blueprintConditionFalse: "Blueprint condition evaluates false in the preview.",
+            persistentConditionDefaults: "Persistent-variable condition evaluates against defaults in the preview.",
+            videoSkipped: "Videos are not previewed.",
+            ambienceSkipped: "Ambience effects are not previewed.",
+            storyActionSkipped: "Story Action Blueprint effects are not simulated in the preview.",
+            displayableNotFound: "Displayable target not found: {target}",
+            displayableUnnamed: "(empty)",
+            persistentAssignmentSkipped: "Persistent-variable assignments are not applied in the preview.",
+            assignmentUnresolved: "Expression `{expression}` did not resolve; the assignment was skipped in the preview.",
+            blueprintCallEmpty: "Blueprint `{name}()` does not run in the preview; it reads as empty.",
+            persistentReadEmpty: "Persistent variables read as empty in the preview.",
+            sceneVisitUntracked: "Scene visits are not tracked in the preview; `visited({name})` reads as false.",
+            choicePickUntracked: "Choice picks are not tracked in the preview; `picked({name})` reads as false.",
+            presetNotFoldable: "{preset} transforms cannot be folded into character show yet.",
+            animationNotFound: "Story animation not found: {animationId}",
+            animationIdMissing: "Animation transform is missing animationId.",
+        },
     },
     blueprintCard: {
         openAria: "Open story action blueprint",
@@ -840,6 +947,13 @@ export const story = {
         playFromHere: "Play from here",
         openInspector: "Open inspector",
         delete: "Delete",
+    },
+    // Names for the undo steps these deletions leave behind ("Undo delete scene At the Station").
+    history: {
+        deleteScene: "delete scene {name}",
+        deleteChapter: "delete chapter {name}",
+        deleteStory: "delete story {name}",
+        deleteAnimation: "delete motion {name}",
     },
     keybindings: {
         find: "Find and replace",

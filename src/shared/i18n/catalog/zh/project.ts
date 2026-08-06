@@ -1,39 +1,41 @@
 import type { LocaleNamespace } from "../types";
 
 export const project = {
+    // 一行只报自己装了什么。原先是一句句「这个页面是干什么的」，读起来像主张而不是陈述，
+    // 合并之后也撑不住：一页装了三块内容，没法用一句主张概括，却可以直接列出它装了什么。
     nav: {
-        details: {
-            title: "详情",
-            description: "名称、标识符与元数据",
+        app: {
+            title: "应用",
+            description: "名称、版本、图标与插件",
         },
         game: {
             title: "游戏",
-            description: "成品游戏对玩家的表现",
+            description: "存档、玩家默认值与音频轨道",
         },
-        audio: {
-            title: "音频",
-            description: "混音台：总线之间如何汇入，各自多大声",
-        },
-        assets: {
-            title: "图标",
-            description: "各平台的应用图标",
-        },
-        dependencies: {
-            title: "依赖",
-            description: "本项目依赖的插件",
+        project: {
+            title: "工程",
+            description: "工程检查的规则，以及什么会拦下构建",
         },
         runtimes: {
             title: "运行时",
-            description: "Live2D 与 Spine 角色的绘制运行时",
-        },
-        linting: {
-            title: "检查",
-            description: "工程检查报告哪些问题",
+            description: "Live2D 与 Spine 的绘制运行时",
         },
         settings: {
             title: "设置",
-            description: "网络与打包行为",
+            description: "安全、优化与移动端方向",
         },
+    },
+    // 区分子页里各块内容的小标题。标题只用名词，不写成句子：底下的行自己会说做什么。
+    group: {
+        details: "详情",
+        icons: "图标",
+        dependencies: "依赖",
+        saving: "存档",
+        playerDefaults: "玩家默认值",
+        audioTracks: "音频轨道",
+        security: "安全",
+        optimization: "优化",
+        mobile: "移动端",
     },
     home: {
         untitledProject: "未命名项目",
@@ -82,12 +84,89 @@ export const project = {
         autoSaveSlotsTitle: "保留数量",
         autoSaveSlotsDescription: "自动存档在这么多个槽位间轮转，最旧的先被覆盖，不会混进玩家自己的存档槽",
     },
+    preferences: {
+        // 挂在小标题上的一句话，不再是页首的一段话。原先那段里其余的内容，要么行本身就写着，
+        // 要么对正在看这些行的作者没有用处。
+        intro: "玩家没有改过时，各项设置从这里的值开始。玩家仍然可以改，改完的值会被保留。",
+        group: {
+            dialogue: "对话",
+            skipping: "跳过",
+            // 不叫「音频」：混音台现在就在同一页上，隔一屏出现两个「音频」小标题，
+            // 正是这次合并要消掉的那种混淆。
+            audio: "声音",
+        },
+        unit: {
+            percent: "%",
+            ms: "毫秒",
+            cps: "字/秒",
+        },
+        cps: {
+            title: "文字速度",
+            description: "每秒打出的字数",
+        },
+        gameSpeed: {
+            title: "游戏速度",
+            description: "同时作用于打字速度和自动前进的等待时间",
+        },
+        autoForward: {
+            title: "自动前进",
+            description: "一句显示完之后自动进入下一句",
+        },
+        showDialog: {
+            title: "显示对话框",
+            description: "关闭后游戏以隐藏对话框的状态开始，与玩家自己按下隐藏界面时一样",
+        },
+        skip: {
+            title: "允许跳过",
+            description: "关闭后跳过键完全不起作用",
+        },
+        skipReadText: {
+            title: "跳过已读文本",
+            description: "开启后，跳过遇到玩家还没读过的文本就会停下",
+        },
+        skipDelay: {
+            title: "跳过延迟",
+            description: "跳过键按住多久之后开始连续跳过",
+        },
+        skipInterval: {
+            title: "跳过间隔",
+            description: "连续跳过时每句之间的间隔，越大越慢",
+        },
+        globalVolume: {
+            title: "总音量",
+            description: "游戏播放的一切声音",
+        },
+        bgmVolume: {
+            title: "音乐音量",
+            description: "音乐音轨",
+        },
+        soundVolume: {
+            title: "音效音量",
+            description: "音效音轨",
+        },
+        voiceVolume: {
+            title: "语音音量",
+            description: "语音音轨",
+        },
+        voiceEndMode: {
+            title: "语音随句子结束时",
+            description: "一句话说完之后，这条语音怎么处理。无论选哪个，都不会有两条语音同时响",
+            option: {
+                stop: "立即停止",
+                fade: "淡出",
+                none: "继续播放",
+            },
+        },
+        voiceFadeDuration: {
+            title: "语音淡出时长",
+            description: "淡出持续多久，只在语音以淡出方式结束时生效",
+        },
+    },
     // 音频子页：一条总线一行，字段收在折叠里。下面这些是「标签」不是「标题」——
     // 原先每个字段各带一段说明，三条轨道就是三遍同样的话，现在只在 intro 里说一次。
     audio: {
-        // 什么是总线、音量如何逐级相乘，在分区顶部说一次。它吸收了原来的
-        // nameDescription / parentDescription / volumeDescription 三段。
-        intro: "轨道就是一条总线：它汇入上级总线，或直接汇入主输出。片段的实际音量等于自身电平乘以其上每一条总线的音量，总线只能衰减。改名是安全的",
+        // 什么是总线、音量如何逐级相乘，已经移进 `audio` 帮助主题，由本区标题上的 `?` 打开。
+        // 它原先是这里的一段话，再往前是每条轨道的每个字段上都写一遍。
         add: "新建轨道",
         newTrackName: "新建轨道",
         nameTitle: "名称",
@@ -129,7 +208,19 @@ export const project = {
         encryptAssetsTitle: "加密资源",
         encryptAssetsDescription: "在打包及预览版本中加密资源、插件代码与剧本数据，不影响开发模式",
         encryptAssetsWebHint: "对 Web 导出不适用：Web 构建始终不加密资源",
-        orientationTitle: "移动端方向",
+        webLosslessImagesTitle: "图像转为 WebP",
+        webLosslessImagesDescription: "在体积更小时，将导出的图像重编码为无损 WebP",
+        webLosslessImagesHint: "每次转换都会与原图逐像素比对，解码结果不一致即丢弃。Android 与 iOS 构建使用同一份导出站点，因此该设置对它们同样生效",
+        webPrecompressTitle: "预压缩文本文件",
+        webPrecompressDescription: "为站点的脚本、样式与剧本数据额外生成 Brotli 与 Gzip 副本",
+        webPrecompressHint: "只有配置了预压缩支持的服务器会用到这些副本，其余主机一律照常提供原文件",
+        webLossyImagesTitle: "重压缩图像",
+        webLossyImagesDescription: "将导出的图像重编码为有损 WebP。体积小得多，但损失的画面细节无法恢复",
+        webLossyQualityTitle: "图像质量",
+        webLossyQualityDescription: "重压缩时使用的 WebP 质量，取值 1 到 100",
+        webSharedWithMobileHint: "Android 与 iOS 构建使用同一份导出站点，因此该设置对它们同样生效",
+        // 不叫「移动端方向」：它就在「移动端」小标题底下，重复那个词还会让标签在 318px 面板里换行。
+        orientationTitle: "屏幕方向",
         orientationDescription: "移动端构建启动时锁定的屏幕方向",
         orientation: {
             landscape: "横屏",

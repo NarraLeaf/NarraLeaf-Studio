@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { Button, Input, Select, Switch } from "@/lib/components/elements";
+import { HelpTrigger, type HelpTopicId } from "@/lib/help";
 import { cn } from "@/lib/utils/cn";
 import { join } from "@shared/utils/path";
 import { translate, useTranslation } from "@/lib/i18n";
@@ -58,6 +59,21 @@ import { PROJECT_ICON_TARGETS } from "@shared/types/projectIcons";
  * author to a section that is not there.
  */
 export const SECTIONS: BuildPreflightSection[] = ["targets", "identity", "content", "signing", "output"];
+
+/**
+ * Which topic answers for each section of the rail.
+ *
+ * Three of the five are about the shipped files rather than about the build: what is inside them,
+ * how big they are, and who they say they came from. Those have topics of their own, and the two
+ * that are genuinely about the run share the build topic.
+ */
+const SECTION_HELP_TOPICS: Record<BuildPreflightSection, HelpTopicId> = {
+    targets: "build",
+    identity: "icons",
+    content: "assetProtection",
+    signing: "signing",
+    output: "build",
+};
 
 /** Everything the dialog reads about the project but does not itself own. */
 export type BuildDialogInfo = {
@@ -229,7 +245,7 @@ export function BuildDialogContent({
                     ))}
                 </nav>
 
-                <div className="min-w-0 flex-1 overflow-y-auto px-4 py-3">
+                <div className="min-w-0 flex-1 overflow-y-auto px-4 py-3" data-help-topic={SECTION_HELP_TOPICS[section]}>
                     {section === "targets" && (
                         <TargetsSection info={info} state={state} findings={findings} onChange={update} />
                     )}
@@ -264,7 +280,11 @@ export function BuildDialogContent({
                 </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 border-t border-edge bg-surface-overlay px-6 py-3">
+            <div className="group/help flex items-center justify-end gap-2 border-t border-edge bg-surface-overlay px-6 py-3">
+                {/* Answers for the section on screen. A dialog is the one place `F1` is easy to
+                    miss, and three of these five sections decide something about the shipped
+                    files that cannot be seen from the switch itself. */}
+                <HelpTrigger topic={SECTION_HELP_TOPICS[section]} className="mr-auto" />
                 <Button variant="secondary" onClick={onCancel}>
                     {t("common.cancel")}
                 </Button>
@@ -815,7 +835,7 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
                     // The draft is already parked, so closing here is safe: the
                     // next open restores exactly this selection.
                     uiService.dialogs.close(dialogId);
-                    openProjectPanel(context, { section: "assets" });
+                    openProjectPanel(context, { section: "app" });
                 }}
                 onCancel={() => {
                     buildService.clearDraft();

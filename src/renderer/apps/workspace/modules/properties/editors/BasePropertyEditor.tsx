@@ -6,6 +6,7 @@ import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import { FIELD_INPUT_CLASS, FIELD_TEXTAREA_CLASS } from "../fieldControlClass";
 
 /**
  * Base property editor with common name, tags, and description editing functionality
@@ -113,7 +114,7 @@ export function BasePropertyEditor<T extends AssetType>({ asset, onChange, child
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     onBlur={handleNameBlur}
-                    className="w-full px-3 py-2 bg-surface-raised border border-edge rounded-md text-sm text-fg-muted focus:outline-none focus:border-primary/50 transition-colors"
+                    className={`w-full ${FIELD_INPUT_CLASS}`}
                     disabled={saving}
                 />
             </div>
@@ -155,7 +156,7 @@ export function BasePropertyEditor<T extends AssetType>({ asset, onChange, child
                             }
                         }}
                         placeholder={t("properties.tags.addPlaceholder")}
-                        className="flex-1 px-3 py-1.5 bg-surface-raised border border-edge rounded-md text-sm text-fg-muted focus:outline-none focus:border-primary/50 transition-colors"
+                        className={`flex-1 ${FIELD_INPUT_CLASS}`}
                         disabled={saving}
                     />
                     <button
@@ -163,7 +164,7 @@ export function BasePropertyEditor<T extends AssetType>({ asset, onChange, child
                         disabled={!newTag.trim() || saving}
                         title={t("properties.tags.add")}
                         aria-label={t("properties.tags.add")}
-                        className="px-2 py-1.5 bg-primary/20 hover:bg-primary/30 text-primary rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-default"
+                        className="grid h-9 w-9 place-items-center bg-primary/20 hover:bg-primary/30 text-primary rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-default"
                     >
                         <Plus className="w-4 h-4" />
                     </button>
@@ -180,7 +181,7 @@ export function BasePropertyEditor<T extends AssetType>({ asset, onChange, child
                     onChange={(e) => setDescription(e.target.value)}
                     onBlur={handleDescriptionBlur}
                     rows={4}
-                    className="w-full px-3 py-2 bg-surface-raised border border-edge rounded-md text-sm text-fg-muted focus:outline-none focus:border-primary/50 transition-colors resize-none"
+                    className={`w-full ${FIELD_TEXTAREA_CLASS} resize-none`}
                     placeholder={t("properties.asset.descriptionPlaceholder")}
                     disabled={saving}
                 />

@@ -15,7 +15,15 @@ import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 
 export type VoiceTableRow = {
     unitId: string;
+    /**
+     * The line as this voice language's actor reads it - the translation when the project has one,
+     * the authored line otherwise. This is the text takes are hashed against, so it is also the text
+     * the table has to show: a director comparing a clip to an English line while the actor recorded
+     * the Japanese one is comparing the wrong things.
+     */
     sourceText: string;
+    /** The authored line, carried only so the row can show it when it differs from what is recorded. */
+    authoredText?: string;
     sceneId: string;
     sceneName: string;
     role: "narration" | "dialogue" | "choicePrompt" | "choiceText" | "note";
@@ -36,6 +44,7 @@ type VoiceRowStrings = {
     statusVoiced: string;
     statusApproved: string;
     statusOutdated: string;
+    notePlaceholder: string;
 };
 
 type VoiceRowProps = {
@@ -44,6 +53,10 @@ type VoiceRowProps = {
     state: VoiceUnitState;
     /** Resolved audio asset for the linked clip, or null when the clip is missing / unlinked. */
     asset: Asset | null;
+    /** Take length in seconds, measured when the clip was linked; empty when unknown. */
+    duration: string;
+    /** Direction note carried with the take. */
+    note: string;
     mode: "assign" | "audition";
     isPlaying: boolean;
     strings: VoiceRowStrings;
@@ -53,6 +66,7 @@ type VoiceRowProps = {
     onApprove: () => void;
     onReturn: () => void;
     onDropAsset: (assetId: string) => void;
+    onNoteChange: (note: string) => void;
 };
 
 const STATUS_DOT: Record<VoiceUnitState, string> = {
@@ -106,7 +120,12 @@ export function VoiceRow(props: VoiceRowProps) {
             <span className="w-24 shrink-0 truncate text-2xs text-fg-subtle" title={speaker}>
                 {speaker}
             </span>
-            <span className="min-w-0 flex-1 truncate text-fg" title={row.sourceText}>
+            <span
+                className="min-w-0 flex-1 truncate text-fg"
+                title={row.authoredText && row.authoredText !== row.sourceText
+                    ? `${row.sourceText}\n${row.authoredText}`
+                    : row.sourceText}
+            >
                 {row.sourceText || "—"}
             </span>
 
@@ -122,11 +141,37 @@ export function VoiceRow(props: VoiceRowProps) {
                         {isPlaying ? <Square className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
                     </button>
                     <span
-                        className={`w-40 shrink-0 truncate text-2xs ${asset ? "text-fg-subtle" : "text-warning"}`}
+                        className={`w-32 shrink-0 truncate text-2xs ${asset ? "text-fg-subtle" : "text-warning"}`}
                         title={state === "stale" ? strings.outdatedHint : (asset?.name ?? strings.clipMissing)}
                     >
                         {asset?.name ?? strings.clipMissing}
                     </span>
+                    <span className="w-10 shrink-0 text-right text-2xs tabular-nums text-fg-subtle">
+                        {props.duration}
+                    </span>
+                    {/* A note is a director's artifact, so it is only writable during the pass where a
+                        director is judging takes. Same borderless-until-hover input as the cast name. */}
+                    {mode === "audition" ? (
+                        <input
+                            className="h-6 w-40 shrink-0 rounded-md border border-transparent bg-transparent px-1 text-2xs text-fg-subtle outline-none hover:border-edge focus:border-primary/50 focus:text-fg"
+                            readOnly={freeze.frozen}
+                            title={freeze.frozen ? freeze.reason : undefined}
+                            placeholder={strings.notePlaceholder}
+                            defaultValue={props.note}
+                            key={props.note}
+                            onBlur={event => {
+                                if (event.target.value.trim() !== props.note) {
+                                    props.onNoteChange(event.target.value);
+                                }
+                            }}
+                            onKeyDown={event => {
+                                if (event.key === "Enter") {
+                                    (event.target as HTMLInputElement).blur();
+                                }
+                            }}
+                            aria-label={strings.notePlaceholder}
+                        />
+                    ) : null}
                     <span className="flex w-16 shrink-0 items-center gap-1 text-2xs text-fg-subtle">
                         <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[state]}`} />
                         {statusLabel}

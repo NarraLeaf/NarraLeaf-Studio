@@ -107,11 +107,14 @@ import {
     createNlrGameWithGameUi,
     fastForwardToNextChoice,
     restoreLiveGameToHistory,
+    STUDIO_SKIP_KEY_BINDING,
 } from "./gameUiSlots";
 import { audioClipRegionToSoundConfig } from "@shared/types/audio";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import { createSoundTransport } from "./soundTransport";
 import { attachAudioBusPersistence, audioTracksToBusDeclarations } from "./audioBusRuntime";
+import { attachPlayerPreferences, type PreferenceStoreLike } from "./preferenceRuntime";
+import { createSkipRunController } from "./skipRunController";
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
@@ -370,6 +373,8 @@ export function GameApp(props: GameAppProps): ReactNode {
     // builds a new mixer, and a listener left on the old one would keep writing a dead game's
     // volumes over the live one's.
     const audioBusPersistenceRef = useRef<(() => void) | null>(null);
+    // Same shape, same reason, for the preference store: the listener belongs to one `Game`.
+    const playerPreferencesRef = useRef<(() => void) | null>(null);
     const startStoryInGameRef = useRef<
         ((request: DevModeStartStoryRequest, options?: { forceReinit?: boolean }) => Promise<void>) | null
     >(null);
@@ -771,6 +776,44 @@ export function GameApp(props: GameAppProps): ReactNode {
         [],
     );
 
+    /** The dub language in force: the player's stored choice when the game ships that language, else the first. */
+    const readVoiceLocale = useCallback((): string => {
+        const voice = bundle.voice;
+        if (!voice || !core) {
+            return "";
+        }
+        const stored = core.scopeBridge.persistenceGet(VOICE_LOCALE_STORAGE_KEY);
+        if (typeof stored === "string" && stored && voice.voicedLocales.some(entry => entry.code === stored)) {
+            return stored;
+        }
+        return voice.voicedLocales[0]?.code ?? "";
+    }, [bundle.voice, core]);
+
+    /**
+     * A dub-language change re-points the takes on the running game.
+     *
+     * The compile carries every language's table and every scene shares one voices object, so this is
+     * a repopulate rather than a recompile: the next spoken line plays the new language, which is the
+     * same rule a text-language switch follows. Before this, `nls.voiceLocale` was read once at
+     * compile time and nothing in a shipped game could change it - a project could author a second
+     * dub, ship its audio, and never play a second of it.
+     */
+    useEffect(() => {
+        if (!core || !bundle.voice) {
+            return;
+        }
+        let applied = readVoiceLocale();
+        return core.scopeBridge.subscribePersistence(() => {
+            const next = readVoiceLocale();
+            if (next === applied) {
+                return;
+            }
+            if (nlrCompiledRef.current?.setVoiceLocale?.(next)) {
+                applied = next;
+            }
+        });
+    }, [core, bundle.voice, readVoiceLocale]);
+
     const {
         getCurrentNametag,
         getNotificationsInGame,
@@ -828,11 +871,36 @@ export function GameApp(props: GameAppProps): ReactNode {
 
     useEffect(() => () => soundTransport.dispose(), [soundTransport]);
 
+    /**
+     * Replay one line's take in the dub language currently in force.
+     *
+     * A fresh `Sound` per replay rather than the scene table's instance: the audio manager keys a
+     * playing token by instance, so reusing it would fight with the line that is still on screen.
+     * The bus comes from the compile, so a per-character voice bus - and the player's fader for it -
+     * applies to a replay exactly as it does to the line itself.
+     */
+    const playVoiceUnit = useCallback(async (unitId: string): Promise<boolean> => {
+        const liveGame = nlrLiveGameRef.current;
+        const playback = unitId ? nlrCompiledRef.current?.getVoicePlayback?.(unitId) : null;
+        if (!liveGame || !playback) {
+            return false;
+        }
+        try {
+            await liveGame.playSound(new Sound({ src: playback.src, type: playback.busId }));
+            return true;
+        } catch (error) {
+            host.log("warning", `Play Voice: ${error instanceof Error ? error.message : String(error)}`);
+            return false;
+        }
+    }, [host]);
+
     // Mount-scoped, not session-scoped: each mount replaces the previous subscription itself, and
     // this is only the last one, on the way out.
     useEffect(() => () => {
         audioBusPersistenceRef.current?.();
         audioBusPersistenceRef.current = null;
+        playerPreferencesRef.current?.();
+        playerPreferencesRef.current = null;
     }, []);
 
     const fastForwardToNextChoiceInGame = useCallback(async (): Promise<void> => {
@@ -1234,17 +1302,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                   }
                 : undefined,
             voice: bundle.voice && core
-                ? {
-                      ...bundle.voice,
-                      getVoiceLocale: () => {
-                          const stored = core.scopeBridge.persistenceGet(VOICE_LOCALE_STORAGE_KEY);
-                          if (typeof stored === "string" && stored
-                              && bundle.voice!.voicedLocales.some(locale => locale.code === stored)) {
-                              return stored;
-                          }
-                          return bundle.voice!.voicedLocales[0]?.code ?? "";
-                      },
-                  }
+                ? { ...bundle.voice, getVoiceLocale: readVoiceLocale }
                 : undefined,
             // The in/out/loop points the author marked and the project's audio tracks. Only the
             // in-editor scene preview used to pass these, so every marked loop point and every
@@ -1260,7 +1318,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             }
         }
         return compiled;
-    }, [bundle, core, host]);
+    }, [bundle, core, host, readVoiceLocale]);
 
     // Mount the NLR environment (Game/LiveGame + Player via NlrStageLayer) for the given compiled
     // story and initialise it: gameReady fires (via onLiveGameReady) and assets preheat, but the
@@ -1356,6 +1414,21 @@ export function GameApp(props: GameAppProps): ReactNode {
             // re-shapes it. A bundle with no track table declares nothing and gets the engine's
             // three seeded buses, which is exactly the pre-bus behaviour.
             audioBuses: audioTracksToBusDeclarations(bundle.audio?.tracks),
+            // The `skipReadText` preference cannot be honoured from outside the engine's own skip
+            // loop, so the game app runs its own; see the effect that builds `skipRunController`.
+            hostOwnsSkipKey: true,
+        });
+        // The author's preference defaults, then whatever the player has chosen on top of them.
+        // Before the audio buses on purpose: the three seeded buses and the volume preferences are
+        // two views of one storage in the engine, so the buses' own restore is the more specific
+        // answer and has to land second.
+        playerPreferencesRef.current?.();
+        playerPreferencesRef.current = await attachPlayerPreferences({
+            preference: (game as { preference?: PreferenceStoreLike }).preference,
+            defaults: bundle.preferences,
+            read: key => core.scopeBridge.persistenceGetAsync(key),
+            write: (key, value) => core.scopeBridge.persistenceSetAsync(key, value),
+            log: (level, message) => host.log(level, message),
         });
         // The player's own volumes, restored on top of the author's declaration and written back on
         // every change. Deliberately here rather than after the Player mounts: setting a volume for
@@ -1632,6 +1705,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             },
             widgetRuntimeStore,
             localizationConfig: bundle.localization ?? null,
+            voiceConfig: bundle.voice ?? null,
+            onPlayVoice: playVoiceUnit,
         });
         hostAdapter = createDevModeBlueprintHostAdapter({
             bundle,
@@ -1888,6 +1963,8 @@ export function GameApp(props: GameAppProps): ReactNode {
                     },
                     widgetRuntimeStore,
                     localizationConfig: bundle.localization ?? null,
+                    voiceConfig: bundle.voice ?? null,
+                    onPlayVoice: playVoiceUnit,
                 });
                 nestedHostAdapter = createDevModeBlueprintHostAdapter({
                     bundle,
@@ -2179,6 +2256,63 @@ export function GameApp(props: GameAppProps): ReactNode {
             window.removeEventListener("keyup", onKeyUp);
         };
     }, [activeSurface, activeSurfaceKeyboardReady, bundle, core, host, hostAdapterBundle]);
+
+    /**
+     * Holding the skip key. Studio's loop, not the engine's - see `skipRunController` for why the
+     * binding had to move, and `createNlrGameWithGameUi` for where it moved to.
+     *
+     * Everything the loop needs is read through refs at the moment it needs it, so the controller
+     * survives a preference change, a story launch and a dialog beat without being rebuilt; it is
+     * rebuilt only when the session or "is the story on screen" answer changes, and rebuilding it
+     * ends any run in flight, which is the right thing when the stage goes away underneath one.
+     */
+    useEffect(() => {
+        const game = nlrSession?.game;
+        if (!game) {
+            return;
+        }
+        // Loosened on purpose: `skipReadText` is Studio's own preference riding in the engine's
+        // store (see `preferenceRuntime`), so it is not in `GamePreference` and the typed accessor
+        // would refuse it.
+        const preference = (game as { preference?: { getPreference?: (key: string) => unknown } }).preference;
+        const readPreference = (key: string): unknown => preference?.getPreference?.(key);
+        const readNumber = (key: string, fallback: number): number => {
+            const value = readPreference(key);
+            return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+        };
+        const controller = createSkipRunController({
+            matchesSkipKey: key => game.keyMap.match(STUDIO_SKIP_KEY_BINDING, key),
+            // `skip` is the author's permission to skip at all, and `isInGame` is what keeps a held
+            // key on a title screen from advancing the story behind it.
+            canSkip: () => isInGame() && readPreference("skip") !== false,
+            isBlocked: () => {
+                // A session that went away mid-hold ends the run rather than ticking into nothing.
+                if (!nlrLiveGameRef.current?.getGameState()) {
+                    return true;
+                }
+                return readPreference("skipReadText") === true
+                    && textReadTrackerRef.current?.isCurrentTextUnread() === true;
+            },
+            getSkipDelay: () => readNumber("skipDelay", 0),
+            getSkipInterval: () => readNumber("skipInterval", 100),
+            skipOnce: () => nlrLiveGameRef.current?.skipDialog(),
+            isTextEntryTarget,
+        });
+        const onKeyDown = (event: KeyboardEvent) => controller.handleKeyDown(event);
+        const onKeyUp = (event: KeyboardEvent) => controller.handleKeyUp(event);
+        // A window that loses focus mid-hold never delivers the keyup, and the run would go on
+        // skipping behind whatever the player switched to.
+        const onBlur = () => controller.stop();
+        window.addEventListener("keydown", onKeyDown);
+        window.addEventListener("keyup", onKeyUp);
+        window.addEventListener("blur", onBlur);
+        return () => {
+            controller.stop();
+            window.removeEventListener("keydown", onKeyDown);
+            window.removeEventListener("keyup", onKeyUp);
+            window.removeEventListener("blur", onBlur);
+        };
+    }, [isInGame, nlrSession]);
 
     // Route game preference changes through a ref-held closure so the subscription
     // created in onLiveGameReady always dispatches with the current surface context.

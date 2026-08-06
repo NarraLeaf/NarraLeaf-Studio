@@ -119,9 +119,14 @@ describe("parseCommandLine - command resolution", () => {
 });
 
 describe("parseCommandLine - a command named in the active locale", () => {
-    // The command TOKEN localizes (its menu label doubles as an inline alias); params and their values
-    // stay English. The label the parser accepts is the same `story.command.<id>.label` the slash menu
-    // shows, so the two can never disagree about what `/背景` means.
+    // The command TOKEN localizes: its menu label doubles as an inline alias, so the label the parser
+    // accepts is the same `story.command.<id>.label` the slash menu shows and the two can never
+    // disagree about what `/背景` means. Param KEYS localize the same way off `story.paramHint.*` —
+    // see `commands/localizedParams.test.ts`. Enum VALUES do not localize at all.
+    //
+    // These drive `i18nStore` rather than the command store: with `editor.localizedCommands` left at its
+    // "auto" default, the interface language is the command language, which is the path every author
+    // who never opens that setting is on.
     afterEach(() => {
         i18nStore.setLocale("en");
     });
@@ -133,7 +138,7 @@ describe("parseCommandLine - a command named in the active locale", () => {
         expect(command("/对话").def?.commandId).toBe("say");
     });
 
-    it("parses a Chinese token's arguments exactly as the English token would - keys stay English", () => {
+    it("parses a Chinese token's arguments exactly as the English token would - English keys keep working", () => {
         i18nStore.setLocale("zh");
         const localized = command("/背景 forest t=fade");
         const english = command("/bg forest t=fade");

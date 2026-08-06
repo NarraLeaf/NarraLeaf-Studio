@@ -6,6 +6,7 @@ export const properties = {
     select: "选择",
     panel: {
         title: "属性",
+        empty: "选择一个元素以调整其属性",
         motionKeyframe: "动效关键帧",
         storyMotion: "故事动效",
         scene: "场景",
@@ -179,6 +180,13 @@ export const properties = {
             mimeType: "MIME 类型",
             extension: "扩展名",
             frameRate: "帧率",
+        },
+        remote: {
+            url: "来源",
+            fetched: "取回时间",
+            neverFetched: "尚未下载",
+            refresh: "检查更新",
+            refreshFailedTitle: "无法检查来源",
         },
         image: {
             title: "图片属性",

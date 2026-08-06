@@ -16,7 +16,8 @@ import type {
     StoryDocument,
 } from "@shared/types/story";
 import { FocusArea, type EditorTabComponentProps } from "@/lib/workspace/services/ui/types";
-import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
+import { useHistoryScope, useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
+import { storyMotionHistoryScope } from "@/lib/workspace/services/history/historyScopes";
 import type { EditorTabDefinition } from "../../registry/types";
 import { useWorkspace } from "../../context";
 import { Services } from "@/lib/workspace/services/services";
@@ -163,10 +164,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
     const timelineFitInitializedRef = useRef<string | null>(null);
     const playheadRef = useRef(0);
     const durationRef = useRef(0);
-    const undoStackRef = useRef<StoryAnimationTimeline[]>([]);
-    const redoStackRef = useRef<StoryAnimationTimeline[]>([]);
     const lastObservedTimelineRef = useRef<{ json: string; timeline: StoryAnimationTimeline } | null>(null);
-    const lastTimelineRecordAtRef = useRef(0);
 
     useEffect(() => {
         if (!storyService || !payload?.animationId) {
@@ -397,38 +395,9 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
     }, [playing]);
 
     useEffect(() => {
-        undoStackRef.current = [];
-        redoStackRef.current = [];
         lastObservedTimelineRef.current = null;
-        lastTimelineRecordAtRef.current = 0;
         timelineFitInitializedRef.current = null;
     }, [payload?.animationId]);
-
-    useEffect(() => {
-        if (!asset) {
-            lastObservedTimelineRef.current = null;
-            return;
-        }
-        const json = JSON.stringify(getStoryMotionTimeline(asset));
-        const previous = lastObservedTimelineRef.current;
-        if (!previous) {
-            lastObservedTimelineRef.current = { json, timeline: JSON.parse(json) as StoryAnimationTimeline };
-            return;
-        }
-        if (previous.json === json) {
-            return;
-        }
-        const now = Date.now();
-        if (now - lastTimelineRecordAtRef.current > TIMELINE_UNDO_COALESCE_MS) {
-            undoStackRef.current.push(previous.timeline);
-            if (undoStackRef.current.length > TIMELINE_UNDO_LIMIT) {
-                undoStackRef.current.shift();
-            }
-        }
-        lastTimelineRecordAtRef.current = now;
-        redoStackRef.current = [];
-        lastObservedTimelineRef.current = { json, timeline: JSON.parse(json) as StoryAnimationTimeline };
-    }, [asset]);
 
     useEffect(() => {
         editorRootRef.current?.focus();
@@ -740,27 +709,56 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
         }));
         const json = JSON.stringify(getStoryMotionTimeline(nextAsset));
         lastObservedTimelineRef.current = { json, timeline: JSON.parse(json) as StoryAnimationTimeline };
-        lastTimelineRecordAtRef.current = 0;
         setAsset(nextAsset);
     }, [asset, storyService]);
 
-    const undoTimelineEdit = useCallback(() => {
-        const snapshot = undoStackRef.current.pop();
-        if (!snapshot || !asset) {
+    /**
+     * This asset's undo stack, in `HistoryService` like every other editor's.
+     *
+     * The timeline is edited through a dozen paths (drag a keyframe, retype a value, apply a preset),
+     * so this editor learns about an edit by *diffing* the asset rather than by being told - see the
+     * observer below. That is why the checkpoint carries its own `before`: by the time the diff runs,
+     * capturing the live state would capture the edit it is meant to undo.
+     */
+    const timelineHistory = useHistoryScope<StoryAnimationTimeline>({
+        scopeId: payload?.animationId ? storyMotionHistoryScope(payload.animationId) : null,
+        label: { key: "workspace.history.scope.storyMotion" },
+        capture: () => (asset ? getStoryMotionTimeline(asset) : null),
+        apply: restoreTimeline,
+        limit: TIMELINE_UNDO_LIMIT,
+        tabId,
+    });
+
+    useEffect(() => {
+        if (!asset) {
+            lastObservedTimelineRef.current = null;
             return;
         }
-        redoStackRef.current.push(lastObservedTimelineRef.current?.timeline ?? getStoryMotionTimeline(asset));
-        restoreTimeline(snapshot);
-    }, [asset, restoreTimeline]);
+        const json = JSON.stringify(getStoryMotionTimeline(asset));
+        const previous = lastObservedTimelineRef.current;
+        if (!previous) {
+            lastObservedTimelineRef.current = { json, timeline: JSON.parse(json) as StoryAnimationTimeline };
+            return;
+        }
+        if (previous.json === json) {
+            return;
+        }
+        // One merge key for the whole timeline: a drag emits an edit per frame, and each of those
+        // becoming its own step would make undoing the drag take fifty presses.
+        timelineHistory.checkpoint(
+            { key: "workspace.history.entry.storyMotionEdit" },
+            { mergeKey: "timeline", mergeWindowMs: TIMELINE_UNDO_COALESCE_MS, before: previous.timeline },
+        );
+        lastObservedTimelineRef.current = { json, timeline: JSON.parse(json) as StoryAnimationTimeline };
+    }, [asset, timelineHistory]);
+
+    const undoTimelineEdit = useCallback(() => {
+        timelineHistory.undo();
+    }, [timelineHistory]);
 
     const redoTimelineEdit = useCallback(() => {
-        const snapshot = redoStackRef.current.pop();
-        if (!snapshot || !asset) {
-            return;
-        }
-        undoStackRef.current.push(lastObservedTimelineRef.current?.timeline ?? getStoryMotionTimeline(asset));
-        restoreTimeline(snapshot);
-    }, [asset, restoreTimeline]);
+        timelineHistory.redo();
+    }, [timelineHistory]);
 
     const stepPlayhead = useCallback((frames: number) => {
         setPlayheadMs(current => Math.min(durationRef.current, stepStoryMotionTimeByFrames(current, frames, STORY_MOTION_FPS)));
@@ -1089,6 +1087,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
         <div
             ref={editorRootRef}
             className="flex h-full min-h-0 flex-col bg-surface text-fg outline-none"
+            data-help-topic="storyMotion"
             tabIndex={-1}
             onKeyDownCapture={handleEditorKeyDown}
             onMouseDownCapture={focusEditor}

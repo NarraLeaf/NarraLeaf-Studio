@@ -92,6 +92,70 @@ Workspace/editor 设置：
 - 只影响当前用户如何使用 Studio，写 `global.json`。
 - 不要把“项目设置”实现成独立 settings store；项目设置就是项目内容文件的一部分。
 
+## `global.json` 里有四类东西，还原和导出都不能按整个文件来
+
+这个文件混装了偏好、最近项目、每个工程的编辑器会话、每个工程的写作统计。实测一份真实
+profile 是 96 个键，其中只有约 30 个是偏好。所以「还原设置」和「导出设置」都不能表述成
+「文件里的全部内容」，必须按声明好的范围来，范围定义在两个地方：
+
+- `src/shared/constants/settingsScopes.ts`：主进程也要用的部分——**受保护键**
+  （`app.recentProjects`、`stats.project.*`，任何删除请求都会被 `AppGlobalStateDeleteHandler`
+  拒绝）、**工作区布局键**（侧栏 / dock / editor session / uiEditor，自成一个还原范围）、
+  以及没有设置行但确实是偏好的键。
+- `src/renderer/lib/settings/settingsScope.ts`：跟 registry 有关的部分。哪些键是偏好只有
+  `appSettings.ts` 知道，而它是渲染层模块，所以范围在渲染层算出来，主进程只负责拒绝。
+
+### 还原 = 删除，不是写回默认值
+
+新的 `app.globalState.delete` 通道（`GlobalStateManager.delete` → 广播 `value: undefined`）。
+之所以不是「把默认值写回去」：有几个键**故意不在 `GLOBAL_STATE_DEFAULTS` 里**，它们的读取方
+要自己算兜底——`editor.slashAtAlias` 按设备语言决定，`ui.background*` 要 clamp 和白名单。
+只有「没有存值」才能走到那个兜底。以前没有删除通道，`clearAllProjectStats` 只能写空记录将就。
+
+三个范围：单行（悬停出现，只在与默认值不同时出现）、`data.resetWorkspaceLayout`、
+`data.resetAllPreferences`。
+
+### 导出 = 带版本的文档，导入前先给出 diff
+
+`src/shared/utils/settingsDocument.ts`。导入会**逐键按 registry 的描述符校验**（枚举成员、
+min/max、值类型）——这个文件是作者能打开编辑的 JSON，手改过的文件是常态不是例外。本 build
+不认识的键会列出来并跳过，不会写进 store。
+
+导出**没有任何选项**，写出来就是一份纯 JSON：一个头部加上偏好键，此外不带任何东西。
+两组键**一律不导出**（`UNEXPORTED_PREFERENCE_KEYS`），各有各的理由：
+
+- **壁纸那五个键**。`ui.backgroundImage` 存的是**文件名不是路径**（`userData/backgrounds/` 里
+  按内容哈希命名），到另一台机器上它指向一个不存在的文件，另外四个键只是在描述这张不存在的图
+  怎么画。要让它有意义就得把图片本身塞进文件里，而那不是设置文件该干的事。
+- **提交身份那两个键**。姓名和邮箱是作者的、不是这个安装的，而导出的文件是那种会被贴进 issue 的东西。
+
+**不要给它加开关。** 为「设置文件里放什么」再建一套配置面板，等于为一个问题多养一套设置系统。
+
+⚠ **`sanitizeBundleFileName` 的扩展名集合是参数，不是默认值**。它原本是给诊断包写的、
+硬编码 `.log`/`.txt`；设置导出复用它时静默继承，于是保存框提示的文件名是
+`narraleaf-studio-settings.json.log`。每个调用点都要自己写清楚允许什么。
+
+## 下载源与镜像
+
+Studio 自己的下载分两类，不要混：
+
+- **source**：下游工具会往上面拼路径的基址。`build.electronMirror`（electron-builder 拼
+  `<mirror><version>/<file>`）、`build.electronBuilderBinariesMirror`（拼
+  `<mirror><name>/<name>.7z`，布局不同所以是两个键）、两个 registry URL。
+- **rewrite**：`network.downloadRewrites`，对**不是 Studio 选的地址**做前缀替换。插件的
+  `.zip`、商店图标、插件构建依赖，这些地址是从目录文件里来的，任何 source 设置都够不着——
+  这就是为什么只配 `plugins.registryUrl` 会得到「商店能浏览、装不上」。
+
+解析器在 `src/shared/utils/downloadSource.ts`（纯函数，构建 worker 也要用），主进程侧的入口是
+`managers/downloadRewrites.ts`。改写只允许 https，命中会往日志写一行 `原地址 -> 新地址`。
+
+## 缓存
+
+`src/main/app/application/managers/storage/cacheInventory.ts` 是**唯一**知道 Studio 在磁盘上留了
+什么的地方。六个桶（electron-builder 缓存、插件构建依赖、Chromium 缓存、插件图标、PSD 导入
+残留、日志），都保证「删掉只损失时间，不损失工作」。`backgrounds/`、`dev-mode-saves/`、
+`plugins/`、`authorization/`、`signing/`、`state/` **不是缓存**，不在里面。
+
 ## 快速验证
 
 - 修改 workspace layout / editor session / UI editor 状态后，确认 `global.json` 更新。

@@ -27,6 +27,7 @@ import { RendererError } from "@shared/utils/error";
 import { translate } from "@/lib/i18n";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { roundUILayoutGeometryFields } from "@/lib/ui-editor/layout/roundLayoutGeometry";
+import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
 import { IUIDocumentService, Services, WorkspaceContext } from "../services";
@@ -539,6 +540,15 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 this.document = created;
                 return created;
             }
+            // Fatal - this is on the startup path - and the message alone does not say which of the
+            // interface documents it was. Recorded with the path before the code is dropped.
+            reportWorkspaceAnomaly({
+                source: "interface",
+                operationKey: "workspace.recovery.operations.interfaceDocumentRead",
+                path: documentPath,
+                error: result.error,
+                severity: "fatal",
+            });
             throw new RendererError(result.error.message);
         }
 

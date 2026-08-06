@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     AlertCircle,
     BetweenVerticalEnd,
@@ -25,7 +25,8 @@ import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
-import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
+import { useHistoryScope, useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
+import { audioLoopHistoryScope } from "@/lib/workspace/services/history/historyScopes";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
 import { WaveformView, type LoopEnd } from "./audio/WaveformView";
 import { useClipPlayback, type PlayRange } from "./audio/useClipPlayback";
@@ -35,12 +36,10 @@ import { resolvePlayStart } from "./audio/transport";
 import {
     clearPoint,
     fromAssetExtras,
-    loopHistoryReducer,
     loopPointAt,
     markPoint,
     sameLoop,
     toAssetLoop,
-    type LoopHistoryState,
     type LoopPoints,
 } from "./audio/loopHistory";
 
@@ -106,18 +105,24 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
     const [volume, setVolume] = useState(1);
     const [muted, setMuted] = useState(false);
 
-    const [loopHistory, dispatchLoop] = useReducer(
-        loopHistoryReducer,
-        payload?.asset.extras,
-        (stored): LoopHistoryState => ({ past: [], present: fromAssetExtras(stored), future: [] }),
-    );
+    // The committed region. Undo for it is a scope in `HistoryService` like every other editor's,
+    // rather than a `{past, present, future}` reducer of its own - the markers are the whole of this
+    // editor's authored state, so its stack is small, but it is not a different kind of stack.
+    const [committedLoop, setCommittedLoop] = useState<LoopPoints>(() => fromAssetExtras(payload?.asset.extras));
+    const loopHistory = useHistoryScope<LoopPoints>({
+        scopeId: payload?.asset.id ? audioLoopHistoryScope(payload.asset.id) : null,
+        label: { key: "workspace.history.scope.audioLoop" },
+        capture: () => committedLoop,
+        apply: setCommittedLoop,
+        tabId,
+    });
     /**
      * The region mid-drag. A drag emits a position on every pointer move; routing those through
      * the history would bury the previous state under a hundred one-pixel steps, so the drag
      * renders from here and commits a single step when the pointer comes up.
      */
     const [draftLoop, setDraftLoop] = useState<LoopPoints | null>(null);
-    const loopPoints = draftLoop ?? loopHistory.present;
+    const loopPoints = draftLoop ?? committedLoop;
 
     const playback = useClipPlayback(clip);
     const { playing, position, setPosition, finished, loop, setLoop, play, stop, setGain } = playback;
@@ -226,11 +231,14 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
         }
         loadedAssetRef.current = asset?.id;
         persistedRef.current = null;
-        dispatchLoop({ type: "load", loop: fromAssetExtras(asset?.extras) });
+        // A different asset is a different stack, and the stored region is its baseline rather than
+        // a step - so clear rather than checkpoint.
+        setCommittedLoop(fromAssetExtras(asset?.extras));
+        loopHistory.clear();
     }, [asset?.id]);
 
     useEffect(() => {
-        const committed = loopHistory.present;
+        const committed = committedLoop;
         if (persistedRef.current === null) {
             // First pass for this asset: adopt what is already stored as the baseline.
             persistedRef.current = committed;
@@ -241,12 +249,18 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
         }
         persistedRef.current = committed;
         persistLoop(committed);
-    }, [loopHistory.present, persistLoop]);
+    }, [committedLoop, persistLoop]);
 
     const commitLoop = useCallback((next: LoopPoints) => {
         setDraftLoop(null);
-        dispatchLoop({ type: "set", loop: next });
-    }, []);
+        // A commit that changes nothing must not push a step, or undo starts needing repeated
+        // presses to get anywhere.
+        if (sameLoop(committedLoop, next)) {
+            return;
+        }
+        loopHistory.checkpoint({ key: "workspace.history.entry.audioMarkers" });
+        setCommittedLoop(next);
+    }, [committedLoop, loopHistory]);
 
     const sampleToMs = useCallback(
         (sample: number) => (clip ? Math.max(0, Math.round((sample / clip.sampleRate) * 1000)) : 0),
@@ -257,10 +271,10 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
     const markLoopPoint = useCallback(
         (end: LoopEnd) => {
             if (clip) {
-                commitLoop(markPoint(loopHistory.present, end, sampleToMs(position)));
+                commitLoop(markPoint(committedLoop, end, sampleToMs(position)));
             }
         },
-        [clip, commitLoop, loopHistory.present, position, sampleToMs],
+        [clip, commitLoop, committedLoop, position, sampleToMs],
     );
 
     /**
@@ -275,9 +289,9 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
             if (freeze.frozen) {
                 return;
             }
-            commitLoop(clearPoint(loopHistory.present, end));
+            commitLoop(clearPoint(committedLoop, end));
         },
-        [commitLoop, freeze.frozen, loopHistory.present],
+        [commitLoop, freeze.frozen, committedLoop],
     );
 
     const dragLoopPoint = useCallback(
@@ -285,10 +299,10 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
             if (clip && !freeze.frozen) {
                 // markPoint, not a raw assignment: dragging one end past the other has to resolve
                 // the same way as marking it there, or the drag could build an inverted region.
-                setDraftLoop(markPoint(draftLoop ?? loopHistory.present, end, sampleToMs(sample)));
+                setDraftLoop(markPoint(draftLoop ?? committedLoop, end, sampleToMs(sample)));
             }
         },
-        [clip, draftLoop, freeze.frozen, loopHistory.present, sampleToMs],
+        [clip, draftLoop, freeze.frozen, committedLoop, sampleToMs],
     );
 
     const endLoopDrag = useCallback(() => {
@@ -489,8 +503,8 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
             { id: "clear-out", key: "mod+shift+o", description: "Clear out point", handler: freeze.run(() => clearLoopPoint("out")) },
             // Undo and redo restore a marker and are saved like any other change, so they reach the
             // record without ever going through `commitLoop` - which is why they need the guard too.
-            { id: "undo", key: "mod+z", description: "Undo marker change", handler: freeze.run(() => dispatchLoop({ type: "undo" })) },
-            { id: "redo", key: "mod+shift+z", description: "Redo marker change", handler: freeze.run(() => dispatchLoop({ type: "redo" })) },
+            { id: "undo", key: "mod+z", description: "Undo marker change", handler: freeze.run(() => void loopHistory.undo()) },
+            { id: "redo", key: "mod+shift+z", description: "Redo marker change", handler: freeze.run(() => void loopHistory.redo()) },
             { id: "select-all", key: "mod+a", description: "Select whole clip", handler: selectAll },
             { id: "clear-selection", key: "escape", description: "Clear selection", handler: () => setSelection(null) },
             { id: "zoom-in", key: "=", description: "Zoom in", handler: () => zoomBy(1.4) },
@@ -546,7 +560,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
     const separator = <span className="mx-1.5 h-4 w-px shrink-0 bg-edge" />;
 
     return (
-        <div className="flex h-full flex-col bg-surface">
+        <div className="flex h-full flex-col bg-surface" data-help-topic="audioClips">
             {/* Transport, view and marker controls. Everything else is a gesture or a shortcut. */}
             <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-edge bg-surface-raised px-2 py-1.5">
                 <button

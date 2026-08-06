@@ -92,8 +92,14 @@ export function createNlrGameWithGameUi(input: {
      * three seeded buses, which is what every game had before buses existed.
      */
     audioBuses?: readonly AudioBusDeclaration[];
+    /**
+     * The caller runs the skip loop itself (see `skipRunController`) and wants the engine's out of
+     * the way. Only the game app does; the story preview keeps the engine's, because it has no
+     * read-text record to guard against and nothing there to run a loop of its own.
+     */
+    hostOwnsSkipKey?: boolean;
 }): Game {
-    const { width, height, contentContainerId, slots, minStageSize, audioBuses } = input;
+    const { width, height, contentContainerId, slots, minStageSize, audioBuses, hostOwnsSkipKey } = input;
     const game = new Game({
         app: { debug: false },
         ...(audioBuses && audioBuses.length > 0 ? { audioBuses: [...audioBuses] } : {}),
@@ -115,8 +121,29 @@ export function createNlrGameWithGameUi(input: {
         ...(slots.nvlDialog ? { nvlDialog: slots.nvlDialog } : {}),
     });
     game.keyMap.setKeyBinding(KeyBindingType.nextAction, null);
+    // Skipping moves to Studio for the same reason advancing did, plus one of its own: the engine's
+    // loop reads the `skip` preference once per press and then paces itself on a timer nothing
+    // outside it can reach, which makes the `skipReadText` preference unimplementable while it owns
+    // the key. The binding is copied to a Studio-owned entry rather than hard-coded here so the
+    // KeyMap stays the single place a skip key is written down - see `skipRunController`.
+    if (hostOwnsSkipKey) {
+        game.keyMap.setKeyBinding(
+            STUDIO_SKIP_KEY_BINDING,
+            game.keyMap.getKeyBinding(KeyBindingType.skipAction),
+        );
+        game.keyMap.setKeyBinding(KeyBindingType.skipAction, null);
+    }
     return game;
 }
+
+/**
+ * The KeyMap entry holding the skip key while Studio drives the run.
+ *
+ * A plain string rather than a `KeyBindingType`: `KeyMap` is keyed by `KeyBindingType | string`
+ * precisely so a host can register bindings of its own, and the engine's `skipAction` has to be
+ * left empty or its announcer would run a second, unguarded loop alongside this one.
+ */
+export const STUDIO_SKIP_KEY_BINDING = "studio.skipAction";
 
 export type LiveGameUiCallbackDeps = {
     /** Returns the active LiveGame or throws a `${operation}: game runtime is not available` error. */
@@ -246,6 +273,9 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
                     text,
                     character: !isMenu && element.character != null ? String(element.character) : null,
                     voice: !isMenu && element.voice != null ? String(element.voice) : null,
+                    // The replayable handle. Present from engine 0.24.0 on; an entry from an older
+                    // save simply has none, and a backlog replay button hides itself for that line.
+                    voiceId: !isMenu && element.voiceId != null ? String(element.voiceId) : null,
                     selected: isMenu && element.selected != null ? String(element.selected) : null,
                     isPending: record.isPending === true,
                 }];

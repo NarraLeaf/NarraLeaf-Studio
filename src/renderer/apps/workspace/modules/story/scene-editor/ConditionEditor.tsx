@@ -253,7 +253,9 @@ export function ConditionEditor(props: {
     const showValueField = variableValue.operator === "equals" || variableValue.operator === "notEquals";
 
     return (
-        <div className="flex flex-col gap-2">
+        // The one place an author writes an expression by hand, wherever it is hosted from - the
+        // inspector, the popover on a row. `F1` in it asks about expressions, not about the row.
+        <div className="flex flex-col gap-2" data-help-topic="storyExpressions">
             <Select
                 options={kindOptions}
                 value={kind}

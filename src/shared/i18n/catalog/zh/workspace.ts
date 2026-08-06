@@ -19,11 +19,34 @@ export const workspace = {
             openTable: "打开翻译表",
             progress: "已翻译 {completed}/{total}",
             staleCount: "{count} 条待校对",
-            exportCsv: "导出 CSV",
-            importCsv: "导入 CSV",
-            exportDone: "已导出到 {path}",
             importSummary: "已导入 {applied} 条翻译（{unchanged} 条未变更，{unknown} 条未知，{skippedEmpty} 条空译文已跳过）",
-            importFailed: "无法读取 CSV 文件",
+        },
+        exchange: {
+            exportMenu: "导出翻译…",
+            importMenu: "导入翻译…",
+            importDialogTitle: "选择翻译文件",
+            exportTitle: "导出{name}的翻译",
+            formatLabel: "格式",
+            formatCsv: "CSV",
+            formatCsvHint: "Excel、Google 表格",
+            formatXliff: "XLIFF 1.2",
+            formatXliffHint: "Trados、memoQ、OmegaT",
+            formatPo: "gettext PO",
+            formatPoHint: "Poedit、Weblate、Crowdin",
+            formatJson: "JSON",
+            formatJsonHint: "脚本与自建流程",
+            scopeLabel: "范围",
+            scopeAll: "全部",
+            scopePending: "未翻译与待校对",
+            exportAction: "导出",
+            exportDone: "已导出 {count} 条到 {path}",
+            exportEmpty: "没有可导出的条目",
+            importFailed: "无法读取该文件",
+            importUnsupported: "可导入的格式为 CSV、XLIFF、PO 与 JSON",
+            importNoRows: "该文件里没有翻译条目",
+            importWarnings: "有 {count} 条被跳过，第一条：{first}",
+            localeMismatch: "该文件标注的语言是 {declared}，仍要导入到{name}吗？",
+            localeMismatchDetail: "翻译会写入你选中的语言，与文件里的标注无关",
         },
         table: {
             storyLabel: "范围",
@@ -92,6 +115,12 @@ export const workspace = {
             pickupEmpty: "没有待更新的行，无需补录。",
             importSummary: "已关联 {linked} 条（{unmatched} 条未匹配，{failed} 条失败）",
             importFailed: "无法导入音频文件",
+            importScript: "导入录音本…",
+            importScriptSummary: "应用了 {applied} 行（{unchanged} 行未变，{unknown} 行没有语音）",
+            importScriptFailed: "无法读取该录音本",
+            namingTitle: "录音文件名规则",
+            namingHint: "可用占位符：{tokens}。批量导入的音频按这个名字回连。",
+            namingReset: "恢复默认",
         },
         table: {
             storyLabel: "故事",
@@ -128,7 +157,120 @@ export const workspace = {
             statusVoiced: "已配音",
             statusApproved: "已审听",
             statusOutdated: "待更新",
+            notePlaceholder: "备注…",
             dropHint: "拖入音频以指派",
+        },
+    },
+    recovery: {
+        enter: "以恢复模式打开",
+        enterFailed: "无法进入恢复模式：{error}",
+        panelTitle: "恢复",
+        banner: {
+            state: "恢复模式：只读，未加载插件。",
+            exit: "退出恢复模式",
+        },
+        intro: "点一项检查就会去加载工程的那一部分，并把结果原样显示出来。能加载起来的部分可以照常浏览。",
+        problems: {
+            title: "发现的问题",
+            count: "{count}",
+            empty: "窗口打开过程中没有报出任何问题。",
+            showRaw: "原始错误",
+            copy: "复制这条错误",
+            copied: "已复制。",
+        },
+        probes: {
+            title: "加载检查",
+            run: "运行",
+            rerun: "重新运行",
+            runAll: "全部运行",
+            project: "工程清单",
+            assets: "资产索引",
+            story: "故事大纲",
+            storyDocuments: "故事脚本",
+            interface: "界面文档",
+            characters: "人物",
+            localization: "本地化",
+            voice: "配音",
+            variables: "持久变量",
+            audioTracks: "音轨",
+        },
+        details: {
+            noStories: "该工程没有故事。",
+            storiesRead: "已读取 {count} 个故事文档。",
+        },
+        tools: {
+            title: "工具",
+            openFolder: "打开工程目录",
+            copyAll: "复制全部信息",
+            copiedAll: "诊断信息已复制。",
+            openFolderFailed: "无法打开工程目录：{error}",
+        },
+        lore: {
+            title: "版本历史",
+            loading: "正在检查版本控制",
+            unavailable: "版本控制不可用：{reason}",
+            notARepository: "该工程从未启用过版本控制",
+            noService: "版本控制服务在这个窗口没有启动",
+            disabledHint: "该工程没有可供恢复的版本历史。",
+            head: "当前位于版本 {version}，分支 {branch}",
+            emptyHistory: "还没有提交过任何版本。",
+            noMessage: "（无说明）",
+            checkpoint: "提交一个恢复点",
+            checkpointDone: "已提交为 {revision}。",
+            checkpointNothing: "无需提交：当前版本和这些文件已经一致。",
+            checkpointFailed: "提交版本失败：{error}",
+            restore: "恢复到该版本",
+            restoreConfirm: "确认恢复 {version}？",
+            restoreExplain: "工程里的每个文件都会被替换成那个版本的内容。历史不会丢任何东西：当前状态会先提交下来，恢复结果再作为一个新版本追加。",
+            cancel: "取消",
+            restoreDone: "已恢复到 {version}，正在重新打开为普通工作区。",
+            restoreUnrecorded: "文件已经恢复，但新版本没能提交成功：{error}",
+            restoreFailed: "恢复失败：{error}",
+        },
+        offer: {
+            message: "这个工程没有正常加载",
+            detailOne: "有一个文件读不出来，所以这个窗口里缺了一部分内容。常见原因是保存被中断、同步或备份工具正在同时写入，或者某个插件。现在继续编辑，可能把这份残缺的状态存回磁盘，盖掉那些还完好的文件。",
+            detailMany: "有 {count} 个文件读不出来，所以这个窗口里缺了一部分内容。常见原因是保存被中断、同步或备份工具正在同时写入，或者某个插件。现在继续编辑，可能把这份残缺的状态存回磁盘，盖掉那些还完好的文件。",
+            enter: "以恢复模式打开",
+        },
+        operations: {
+            enteredBecause: "把你带到这里的那个错误",
+            shellService: "启动恢复模式的服务",
+            preflight: "检查工程目录",
+            assetsShardCreate: "创建资产索引",
+            assetsShardRead: "读取资产索引",
+            storyIndexRead: "读取故事大纲",
+            storyIndexParse: "解析故事大纲",
+            storyDocumentRead: "读取故事脚本",
+            storyDocumentParse: "解析故事脚本",
+            interfaceDocumentRead: "读取界面文档",
+            charactersRead: "读取人物",
+            pluginLoad: "加载插件",
+            pluginHostLoad: "加载插件系统",
+        },
+    },
+    // 撤销 / 重做。`scope` 是某一条撤销栈的名字（"在<这里>撤销"），`entry` 是栈上的一步，
+    // 也就是菜单项或提示要说"将要撤销什么"时用的那句。
+    history: {
+        scope: {
+            storyScene: "场景",
+            storyMotion: "运动",
+            audioLoop: "音频标记",
+            uiSurface: "界面",
+            blueprint: "蓝图",
+            project: "工程",
+        },
+        menu: {
+            undoNamed: "撤销{step}",
+            redoNamed: "重做{step}",
+        },
+        entry: {
+            edit: "编辑",
+            storyEdit: "故事编辑",
+            storyMotionEdit: "运动编辑",
+            audioMarkers: "标记变更",
+            surfaceEdit: "界面编辑",
+            blueprintEdit: "蓝图编辑",
         },
     },
     shell: {
@@ -143,7 +285,6 @@ export const workspace = {
         errorExported: "日志已保存到 {path}",
         errorExportFailed: "导出日志失败：{error}",
         errorOpenFailed: "无法打开该文件夹：{error}",
-        initializing: "正在初始化工作区…",
         notAProjectTitle: "此文件夹不是 NarraLeaf 项目",
         notAProjectDetail: "未找到 .nlproj 文件",
         openLauncher: "打开启动器",
@@ -321,7 +462,7 @@ export const workspace = {
             // 因工作区冻结而被拒绝的写入。这不是失败：没有出错，也不会重试。文案必须说清原因，
             // 否则读起来就是个 bug。
             frozenTitle: "当前不会保存任何改动",
-            frozenDetailRevision: "你正在查看版本 {version}。在回到当前版本之前，项目文件不会被改动。",
+            frozenDetailRevision: "你正在查看版本 {version}，查看期间的改动不会保存。",
             frozenDetailManual: "工作区已冻结，解除冻结后才会重新保存。",
             // 合并没有「解除冻结」这一步：工作树里同时放着两边，只有把合并做完才行。
             frozenDetailMerge: "有一次合并还没做完，到版本面板把合并完成后才会重新保存。",
@@ -366,7 +507,8 @@ export const workspace = {
         // 选版本需要一份列表，那份列表就是轨道本身；而一个人手上够不着的里程碑没法验收。
         revisionView: {
             showPrevious: "查看上一个版本（只读）",
-            leave: "回到当前版本",
+            // 按它「离开的模式」命名，而不是按它「去到的地方」命名，见 docs/help-system.md §4。
+            leave: "退出历史查看",
             loadingTitle: "正在读取上一个版本…",
             loadingDetail: "首次读取某个版本可能需要从远端取回。",
             shownTitle: "正在查看版本 {revision}",
@@ -391,8 +533,12 @@ export const workspace = {
             currentVersion: "当前版本",
             // 逃生口，也是它为什么在轨道的两种状态下都在：让作者卡在一个出不去的冻结工作区里，
             // 是这个功能能造成的最坏结果。
-            returnToCurrent: "回到当前版本",
-            returning: "正在回到当前版本…",
+            //
+            // 按它「离开的模式」命名（docs/help-system.md §4）。原文案「回到当前版本」说的是仓库那边
+            // 发生了什么，而它就摆在一个真的会覆盖工程的按钮旁边、顶着一个逆时针箭头，读起来像
+            // 「把我的工程退回去」。现在这个说法读不出那层意思：它停掉的只有「查看」。
+            returnToCurrent: "退出历史查看",
+            returning: "正在退出历史查看…",
             // 整个界面里唯一会改动作者磁盘文件的动作，下面三句话是它与「工作没了」之间唯一的东西。
             //
             // 动作自己说出自己是什么，而不是写「恢复」：确认框会把这句话放在按钮上，而一句
@@ -578,7 +724,10 @@ export const workspace = {
                 commandPalette: "显示并运行命令",
                 quickOpen: "快速打开",
                 cheatSheet: "显示快捷键速查",
+                contextHelp: "当前位置的帮助",
                 reopenClosedTab: "重新打开关闭的标签",
+                undo: "撤销",
+                redo: "重做",
                 quickSwitchNext: "切换到下一个编辑器标签",
                 quickSwitchPrevious: "切换到上一个编辑器标签",
                 uiEditor: {
@@ -620,6 +769,7 @@ export const workspace = {
             // 顶栏搜索 pill 上的文案（点击后打开搜索模式的命令面板）。`{name}` 为当前项目名。
             titleBarPlaceholder: "在 {name} 里搜索",
             building: "正在建立搜索索引…",
+            idle: "可以搜场景、角色、剧情文本、资源与蓝图。",
             empty: "没有匹配结果",
             more: "还有 {count} 条",
             // 实体分组排在前面：这个框先回答「打开叫 X 的东西」，再回答「找到写着 X 的那句」。
@@ -659,6 +809,14 @@ export const workspace = {
             saving: "正在保存更改…",
             checkpoint: "正在记录项目的检查点…",
             launcher: "正在返回启动器…",
+        },
+        // 打开过程中的同一件事，一个阶段一句（见 `WorkspaceStartupStage`）。
+        // 说的是作者在等什么，而不是内部在构造什么。
+        opening: {
+            title: "正在打开工作区",
+            preparing: "正在打开项目…",
+            services: "正在载入项目内容…",
+            interface: "正在准备编辑器…",
         },
     },
 } satisfies LocaleNamespace<"workspace">;

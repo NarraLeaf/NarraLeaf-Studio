@@ -22,11 +22,34 @@ export const workspace = {
             openTable: "Open translation table",
             progress: "{completed}/{total} translated",
             staleCount: "{count} to review",
-            exportCsv: "Export CSV",
-            importCsv: "Import CSV",
-            exportDone: "Exported to {path}",
             importSummary: "Imported {applied} translations ({unchanged} unchanged, {unknown} unknown, {skippedEmpty} empty skipped)",
-            importFailed: "Could not read the CSV file",
+        },
+        exchange: {
+            exportMenu: "Export translations…",
+            importMenu: "Import translations…",
+            importDialogTitle: "Select a translation file",
+            exportTitle: "Export {name} translations",
+            formatLabel: "Format",
+            formatCsv: "CSV",
+            formatCsvHint: "Excel, Google Sheets",
+            formatXliff: "XLIFF 1.2",
+            formatXliffHint: "Trados, memoQ, OmegaT",
+            formatPo: "gettext PO",
+            formatPoHint: "Poedit, Weblate, Crowdin",
+            formatJson: "JSON",
+            formatJsonHint: "Scripts and custom pipelines",
+            scopeLabel: "Include",
+            scopeAll: "Everything",
+            scopePending: "Untranslated and to review",
+            exportAction: "Export",
+            exportDone: "Exported {count} lines to {path}",
+            exportEmpty: "Nothing to export.",
+            importFailed: "Could not read the file",
+            importUnsupported: "Studio reads CSV, XLIFF, PO and JSON.",
+            importNoRows: "No translation units in this file",
+            importWarnings: "{count} entries were skipped. First: {first}",
+            localeMismatch: "This file is for {declared}. Import it into {name}?",
+            localeMismatchDetail: "Translations land in the language you picked, whatever the file says.",
         },
         table: {
             storyLabel: "Source",
@@ -95,6 +118,12 @@ export const workspace = {
             pickupEmpty: "Nothing outdated, no pickup needed.",
             importSummary: "Linked {linked} takes ({unmatched} unmatched, {failed} failed)",
             importFailed: "Could not import the audio files",
+            importScript: "Import recording script…",
+            importScriptSummary: "Applied {applied} rows ({unchanged} unchanged, {unknown} not voiced)",
+            importScriptFailed: "Could not read that recording script",
+            namingTitle: "Recording filename pattern",
+            namingHint: "Tokens: {tokens}. Imported audio matches back by this name.",
+            namingReset: "Reset to default",
         },
         table: {
             storyLabel: "Story",
@@ -131,7 +160,131 @@ export const workspace = {
             statusVoiced: "Voiced",
             statusApproved: "Approved",
             statusOutdated: "Outdated",
+            notePlaceholder: "Note…",
             dropHint: "Drop audio to assign",
+        },
+    },
+    // Recovery mode: the read-only, plugin-free way to reopen a workspace whose project will not
+    // load, or loads wrong.
+    recovery: {
+        enter: "Open in recovery mode",
+        enterFailed: "Could not open recovery mode: {error}",
+        panelTitle: "Recovery",
+        // The banner across the top of the window. Two facts and the way out; everything else about
+        // the mode is in the panel, where there is room for it.
+        banner: {
+            state: "Recovery mode: read-only, no plugins loaded.",
+            exit: "Leave recovery mode",
+        },
+        intro: "Run a check to load that part of the project and see what it says. Anything that loads can be browsed as usual.",
+        problems: {
+            title: "Problems found",
+            count: "{count}",
+            empty: "Nothing was reported while this window opened.",
+            showRaw: "Original error",
+            copy: "Copy this error",
+            copied: "Copied.",
+        },
+        probes: {
+            title: "Load checks",
+            run: "Run",
+            rerun: "Run again",
+            runAll: "Run all",
+            project: "Project manifest",
+            assets: "Asset index",
+            story: "Story outline",
+            storyDocuments: "Story scripts",
+            interface: "Interface documents",
+            characters: "Characters",
+            localization: "Localization",
+            voice: "Voice-over",
+            variables: "Persistent variables",
+            audioTracks: "Audio tracks",
+        },
+        details: {
+            noStories: "No stories in this project.",
+            storiesRead: "{count} story documents read.",
+        },
+        tools: {
+            title: "Tools",
+            openFolder: "Open project folder",
+            copyAll: "Copy everything",
+            copiedAll: "Diagnostics copied.",
+            openFolderFailed: "Could not open the project folder: {error}",
+        },
+        lore: {
+            title: "Version history",
+            loading: "Checking version control",
+            unavailable: "Version control is unavailable: {reason}",
+            notARepository: "this project has never been put under version control",
+            noService: "version control did not start in this window",
+            disabledHint: "This project has no version history to restore from.",
+            head: "Now on version {version}, branch {branch}",
+            emptyHistory: "No versions recorded yet.",
+            noMessage: "(no message)",
+            checkpoint: "Record a recovery point",
+            checkpointDone: "Recorded as {revision}.",
+            checkpointNothing: "Nothing to record: the current version already matches these files.",
+            checkpointFailed: "Could not record a version: {error}",
+            restore: "Restore this version",
+            restoreConfirm: "Restore {version}?",
+            restoreExplain: "Every file in the project is replaced with that version. Nothing is lost from the history: the current state is recorded first, and the restore is added as a new version.",
+            cancel: "Cancel",
+            restoreDone: "Restored {version}. Reopening as a normal workspace.",
+            restoreUnrecorded: "The files were restored, but the new version could not be recorded: {error}",
+            restoreFailed: "Could not restore: {error}",
+        },
+        // Shown in a normal workspace when a read failed and the workspace carried on without it.
+        // Says what tends to cause this and why editing now is risky; what recovery mode *is* can
+        // wait until the author is in it.
+        offer: {
+            message: "This project did not load correctly",
+            // Two wordings rather than "file(s)". The count is the first thing read and a bracketed
+            // plural in a data-loss warning reads as a placeholder nobody finished.
+            detailOne: "A file could not be read, so part of your project is missing from this window. Usually an interrupted save, a sync or backup tool writing at the same time, or a plugin. Editing now can save this incomplete state over the files that are still intact.",
+            detailMany: "{count} files could not be read, so part of your project is missing from this window. Usually an interrupted save, a sync or backup tool writing at the same time, or a plugin. Editing now can save this incomplete state over the files that are still intact.",
+            enter: "Open in recovery mode",
+        },
+        // Each key names what the workspace was doing, not what went wrong: the error itself is
+        // shown verbatim underneath.
+        operations: {
+            enteredBecause: "The failure that led here",
+            shellService: "Starting a recovery-mode service",
+            preflight: "Checking the project folder",
+            assetsShardCreate: "Creating the asset index",
+            assetsShardRead: "Reading the asset index",
+            storyIndexRead: "Reading the story outline",
+            storyIndexParse: "Parsing the story outline",
+            storyDocumentRead: "Reading a story script",
+            storyDocumentParse: "Parsing a story script",
+            interfaceDocumentRead: "Reading the interface documents",
+            charactersRead: "Reading the characters",
+            pluginLoad: "Loading a plugin",
+            pluginHostLoad: "Loading plugins",
+        },
+    },
+    // Undo/redo. `scope` names a stack ("undo in <this>"); `entry` names one step on it, which is
+    // what a menu item or a toast says it is about to reverse.
+    history: {
+        scope: {
+            storyScene: "scene",
+            storyMotion: "motion",
+            audioLoop: "audio markers",
+            uiSurface: "interface",
+            blueprint: "blueprint",
+            project: "project",
+        },
+        menu: {
+            undoNamed: "Undo {step}",
+            redoNamed: "Redo {step}",
+        },
+        entry: {
+            edit: "edit",
+            storyEdit: "story edit",
+            storyMotionEdit: "motion edit",
+            audioMarkers: "marker change",
+            surfaceEdit: "interface edit",
+            blueprintEdit: "blueprint edit",
         },
     },
     shell: {
@@ -146,7 +299,6 @@ export const workspace = {
         errorExported: "Logs saved to {path}",
         errorExportFailed: "Could not export the logs: {error}",
         errorOpenFailed: "Could not open that folder: {error}",
-        initializing: "Initializing workspace…",
         notAProjectTitle: "This folder is not a NarraLeaf project",
         notAProjectDetail: "No .nlproj file was found.",
         openLauncher: "Open launcher",
@@ -334,7 +486,7 @@ export const workspace = {
             // A write refused because the workspace is frozen. Not a failure: nothing is wrong, and
             // nothing will be retried. The wording has to say why, or it reads as a bug.
             frozenTitle: "Nothing is being saved right now",
-            frozenDetailRevision: "You are looking at version {version}. Your project files stay untouched until you go back to the current version.",
+            frozenDetailRevision: "You are looking at version {version}. Nothing is saved while you look.",
             frozenDetailManual: "The workspace is frozen. Unfreeze it to start saving again.",
             // A merge has no "unfreeze": the working tree holds two sides at once until the
             // merge is finished, so naming that is the only useful thing this can say.
@@ -384,7 +536,8 @@ export const workspace = {
         // whose behaviour cannot be reached by a person cannot be accepted.
         revisionView: {
             showPrevious: "Show the Previous Revision (Read-Only)",
-            leave: "Return to the Current Version",
+            // Named for the mode it leaves, not the place it lands: see docs/help-system.md §4.
+            leave: "Stop Viewing History",
             loadingTitle: "Reading the previous revision…",
             loadingDetail: "The first read of a revision may fetch it from the remote.",
             shownTitle: "Showing revision {revision}",
@@ -411,8 +564,13 @@ export const workspace = {
             currentVersion: "Current version",
             // The escape hatch, and the reason it appears in both rail states: a frozen workspace the
             // author cannot get out of is the worst thing this feature can do to them.
-            returnToCurrent: "Return to the current version",
-            returning: "Returning to the current version…",
+            //
+            // It is named for the mode it LEAVES (docs/help-system.md §4). "Return to the current
+            // version" described what happens to the repository, and read - beside a button that
+            // really does overwrite the project, under a counter-clockwise arrow - as "put my
+            // project back". This one cannot: viewing is the only thing it stops.
+            returnToCurrent: "Stop viewing history",
+            returning: "Leaving the history view…",
             // The one action in this whole surface that changes the author's files, and the three
             // lines below are the only thing standing between them and that happening.
             //
@@ -634,7 +792,10 @@ export const workspace = {
                 commandPalette: "Show and Run Commands",
                 quickOpen: "Quick Open",
                 cheatSheet: "Show Keyboard Shortcuts",
+                contextHelp: "Help for What Is Focused",
                 reopenClosedTab: "Reopen Closed Tab",
+                undo: "Undo",
+                redo: "Redo",
                 quickSwitchNext: "Switch to Next Editor Tab",
                 quickSwitchPrevious: "Switch to Previous Editor Tab",
                 uiEditor: {
@@ -677,6 +838,9 @@ export const workspace = {
             // current project's name.
             titleBarPlaceholder: "Search in {name}",
             building: "Building search index…",
+            // Shown before anything is typed. "Building" and "no results" both had a line; this
+            // state fell through to an empty list and rendered a blank panel.
+            idle: "Search scenes, characters, story text, assets and blueprints.",
             empty: "No results",
             more: "{count} more",
             // Entity groups come first: the box answers "open the thing called X" before
@@ -721,6 +885,16 @@ export const workspace = {
             saving: "Saving your changes…",
             checkpoint: "Recording a version of the project…",
             launcher: "Returning to the launcher…",
+        },
+        // The same, on the way in. One line per stage of the startup the renderer runs (see
+        // `WorkspaceStartupStage`). They name what the window is waiting on rather than what it is
+        // doing internally: "services" and "interface" are the author's editor arriving, not a list
+        // of objects being constructed.
+        opening: {
+            title: "Opening workspace",
+            preparing: "Opening the project…",
+            services: "Loading the project's content…",
+            interface: "Preparing the editor…",
         },
     },
 } as const;

@@ -3,10 +3,11 @@ import { RendererError } from "@shared/utils/error";
 import { FileSystemService } from "../../core/FileSystem";
 import { Services, WorkspaceContext } from "../../services";
 import { AssetType, categoryOfAssetType, isBundleAssetType } from "../assetTypes";
-import { Asset, AssetExtras, AssetSource, AssetsMap } from "../types";
+import { Asset, AssetExtras, AssetResolveMeta, AssetSource, AssetsMap } from "../types";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { AssetsService } from "../../core/AssetsService";
 import { reconcileAssetOrder } from "../assetOrder";
+import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
 
 /**
  * Set an asset's extension, removing the key when there is none.
@@ -231,6 +232,38 @@ export class AssetsMetadataManager {
     }
 
     /**
+     * Record what a refresh learned about a remote asset: always the new provenance, and the new
+     * digest only when the bytes actually moved.
+     *
+     * Splitting those two is the point. A server that answers 304 - or re-serves identical bytes -
+     * has told us the snapshot is current, which is worth writing down (`fetchedAt`, and any
+     * validators the server has since started sending). Touching `hash` on that path would be a
+     * fabricated content change: the version history labels a moved `hash` as "contents replaced",
+     * so every no-op refresh would land in the author's change list as edited artwork.
+     *
+     * Silent, like {@link applyReplacedContent}, and for the same reason.
+     */
+    public applyRemoteRefresh<T extends AssetType>(
+        asset: Asset<T, AssetSource.Remote>,
+        meta: AssetResolveMeta<AssetSource.Remote>,
+        digest?: { hash: string; ext?: string },
+    ): RequestStatus<Asset<T, AssetSource>> {
+        const metadata = this.getAssets();
+        const existingAsset = metadata[asset.type][asset.id] as Asset<T, AssetSource.Remote> | undefined;
+        if (!existingAsset) {
+            return { success: false, error: `Asset not found: ${asset.id}` };
+        }
+
+        existingAsset.meta = meta;
+        if (digest) {
+            return this.applyReplacedContent(existingAsset, digest);
+        }
+
+        this.assetsService.markDirty(asset.type);
+        return { success: true, data: existingAsset };
+    }
+
+    /**
      * Swap the extension on a display name, keeping it unique within the type (names are the handle
      * authors use; two `bg.jpg` rows would be indistinguishable).
      */
@@ -277,6 +310,16 @@ export class AssetsMetadataManager {
             const failed = results[failedIndex];
             const file = files[failedIndex];
             if (!failed.ok) {
+                // Reported before it is thrown, because the throw becomes the workspace's startup
+                // error and that screen shows one message: whichever shard failed first. The record
+                // keeps the per-file detail that the summary is about to flatten.
+                reportWorkspaceAnomaly({
+                    source: "assets",
+                    operationKey: "workspace.recovery.operations.assetsShardCreate",
+                    path: file.path,
+                    error: failed.error,
+                    severity: "fatal",
+                });
                 throw new RendererError(
                     `Failed to initialize assets metadata shard (${file.type}): ${file.path}: ${failed.error.code} ${failed.error.message}`
                 );
@@ -309,17 +352,38 @@ export class AssetsMetadataManager {
                 // readJSON failed (file missing or invalid JSON) – attempt manual recovery
                 const rawResult = await filesystemService.read(shardPath, "utf-8");
                 let parsed: Record<string, Asset> | null = null;
+                // Kept rather than discarded: `readJSON` reports its failure as a flat
+                // "Failed to parse JSON from <path>", while this one carries the position and the
+                // token - the difference between knowing the file is broken and knowing a write was
+                // truncated at byte 41273.
+                let parseError: unknown = null;
                 if (rawResult.ok) {
                     try {
                         parsed = JSON.parse(rawResult.data);
-                    } catch {
+                    } catch (error) {
                         parsed = null;
+                        parseError = error;
                     }
+                } else {
+                    parseError = rawResult.error;
                 }
 
                 if (parsed) {
                     this.assignValidAssets(data[type], parsed, type, shardPath);
                 } else {
+                    // The one that most needed saying and never did. What happens next is that this
+                    // asset type comes back EMPTY and the file behind it is replaced: to the author
+                    // every image in the project has vanished, with nothing on screen connecting
+                    // that to a JSON file that would not parse. The parse failure - the position in
+                    // the file, the unexpected token - is the only thing that says whether this is a
+                    // truncated write, a merge left in the file, or something that was never JSON.
+                    reportWorkspaceAnomaly({
+                        source: "assets",
+                        operationKey: "workspace.recovery.operations.assetsShardRead",
+                        path: shardPath,
+                        error: parseError ?? shardResult.error,
+                        severity: "degraded",
+                    });
                     console.warn(`AssetsService: metadata shard corrupted, backing up and resetting: ${shardPath}`);
                     const recoveryResult = await filesystemService.recoverCorruptedJsonFile(shardPath, JSON.stringify({}), "utf-8");
                     if (!recoveryResult.ok) {

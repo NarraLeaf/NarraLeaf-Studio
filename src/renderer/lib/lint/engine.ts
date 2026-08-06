@@ -1,5 +1,6 @@
 import type { LintContext } from "./context";
 import { LINT_RULES } from "./rules";
+import { annotateStoryLocation, createStoryRowLocator } from "./storyLocator";
 import {
     LINT_CATEGORY_ORDER,
     LINT_SEVERITY_ORDER,
@@ -28,6 +29,9 @@ import {
  *    an `error` finding against the project, so it is visible rather than swallowed.
  *  - **Cancellation keeps what it has.** The partial report is returned with the unrun rules in
  *    `skipped`, so a cancelled run reads as "these rules did not run" instead of as a clean bill.
+ *  - **Row numbers are resolved here, not by the rules.** A rule names a `blockId`; the engine turns
+ *    that into the line number the scene editor's gutter prints (see `storyLocator.ts`). One place
+ *    to count rows means one answer, and a rule written next year is numbered without knowing it.
  */
 
 export type LintProgress = {
@@ -49,6 +53,7 @@ export const LINT_RULE_FAILED_MESSAGE_KEY = "lint.message.ruleFailed" as const;
 export async function runLintRules(ctx: LintContext, options: LintRunOptions = {}): Promise<LintReport> {
     const rules = options.rules ?? LINT_RULES;
     const startedAt = Date.now();
+    const locate = createStoryRowLocator(ctx.stories);
     const entries: LintReportEntry[] = [];
     const rulesRun: LintRuleId[] = [];
     const skipped: LintRuleId[] = [];
@@ -105,7 +110,7 @@ export async function runLintRules(ctx: LintContext, options: LintRunOptions = {
         }
 
         for (const finding of findings) {
-            entries.push({ ...finding, severity });
+            entries.push({ ...annotateStoryLocation(finding, locate), severity });
         }
         done += 1;
         options.onProgress?.({ done, total: scheduled.length, ruleId: rule.id });
@@ -213,6 +218,10 @@ export function locationSortKey(location: LintLocation): string {
                 location.storyId,
                 location.sceneName ?? "",
                 location.sceneId ?? "",
+                // By row, not by block id: a UUID sorts at random, so one rule's findings inside one
+                // scene used to arrive shuffled - unreadable next to a scene the reader walks top
+                // down. Padded so 9 sorts before 10; a scene-wide finding (no row) leads its scene.
+                String(location.line ?? 0).padStart(6, "0"),
                 location.blockId ?? "",
             ].join(" ");
         case "blueprint":

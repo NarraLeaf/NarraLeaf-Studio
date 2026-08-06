@@ -1,5 +1,6 @@
+import { DoorOpen, Hourglass, ScrollText, Wallpaper } from "lucide-react";
 import { createBlockForCommand } from "../../storyActionCommands";
-import { asNumber, defineStoryCommand, secondsParam } from "../spec";
+import { asNumber, defineStoryCommand, SECONDS_TYPE, secondsParam } from "../spec";
 import { withRevealTransform, withTransitionRef } from "../payloadHelpers";
 import { transitionOptions } from "../transitions";
 import { storySecondsToMs } from "@shared/utils/storyTime";
@@ -11,6 +12,7 @@ export const bg = defineStoryCommand({
     token: "bg",
     aliases: ["background"],
     category: "scene",
+    icon: Wallpaper,
     examples: ["/bg forest_day", "/bg forest_day t=fade d=0.5", "/bg #101018"],
     // Inline quick-edit (WI-2): the transition duration. The transition kind (`t`, an enum) stays an
     // inspector choice — a qualitative pick, not a high-frequency micro-adjust.
@@ -48,6 +50,7 @@ export const jump = defineStoryCommand({
     id: "jump",
     token: "jump",
     category: "scene",
+    icon: DoorOpen,
     examples: ["/jump 'Chapter 2'", "/jump 'Chapter 2' t=fade d=0.6"],
     quickParams: ["scene"],
     params: {
@@ -73,11 +76,12 @@ export const wait = defineStoryCommand({
     id: "wait",
     token: "wait",
     category: "flow",
+    icon: Hourglass,
     examples: ["/wait 1.5", "/wait click"],
     quickParams: ["seconds"],
     params: {
         // `/wait 2` pauses two seconds, `/wait click` (or a bare `/wait`) waits for the player.
-        seconds: { hint: "waitFor", type: [{ kind: "keyword", value: "click" }, { kind: "number", min: 0 }], positional: true },
+        seconds: { hint: "waitFor", type: [{ kind: "keyword", value: "click" }, SECONDS_TYPE], positional: true },
     },
     build(args, ctx) {
         const block = createBlockForCommand("waitClick", ctx.generateId);
@@ -97,6 +101,7 @@ export const nvl = defineStoryCommand({
     id: "nvl",
     token: "nvl",
     category: "scene",
+    icon: ScrollText,
     examples: ["/nvl", "/nvl t=fade d=0.4"],
     params: {
         t: { aliases: ["transition"], hint: "transition", type: { kind: "enum", options: transitionOptions("nvl") } },
