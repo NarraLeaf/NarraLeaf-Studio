@@ -154,7 +154,7 @@ export const project = {
         },
         voiceEndMode: {
             title: "When a voiced line ends",
-            description: "What happens to the clip when its sentence is done.",
+            description: "What happens to the clip when its sentence is done. Whatever you pick, two voices never play at once.",
             option: {
                 stop: "Stop the clip",
                 fade: "Fade the clip out",
