@@ -1,4 +1,4 @@
-import type { GameBuildPlatform } from "@shared/types/gameBuild";
+import { GAME_BUILD_FORMATS_BY_PLATFORM, type GameBuildPlatform } from "@shared/types/gameBuild";
 import { AssetType } from "../../workspace/services/assets/assetTypes";
 import type { LintAssetEntry } from "../context";
 import type { LintFinding, LintRule } from "../types";
@@ -86,36 +86,64 @@ export function isUnportableAssetName(fileName: string): boolean {
 }
 
 /**
- * Containers no exposed build target can play, per target.
+ * Every build platform, read off the shared per-platform format table rather than spelled out again
+ * here. That table is a `Record<GameBuildPlatform, ...>`, so the day the union grows the compiler
+ * makes someone extend it and this list follows for free; a second hand-written copy would go stale
+ * in silence, and for this rule stale means a format that quietly stops being reported on the new
+ * platform. The assertion only restores what the `Record` key type already guarantees and
+ * `Object.keys` throws away.
+ */
+const EVERY_BUILD_PLATFORM = Object.keys(GAME_BUILD_FORMATS_BY_PLATFORM) as readonly GameBuildPlatform[];
+
+/**
+ * Containers a *selected* build target cannot play, per target.
  *
  * Conservative by construction, because a false positive here tells an author to re-encode a file
- * that plays fine:
+ * that plays fine. Two things decide what is on the table:
  *
- *  - `windows` / `macos` / `linux` ship Chromium inside Electron, so they play everything Chromium
- *    plays - which is everything in this table. They are absent on purpose, not by omission.
- *  - `web` is a browser the author does not choose; Safari visitors get no Ogg and no WebM audio or
- *    video, so a project that ships a web build ships one that is silent for them.
- *  - `ios` is WKWebView, which is Safari's engine with no way to add a codec.
- *  - `android` is a system WebView on Chromium and plays all of these; it is absent for the same
- *    reason the desktop targets are.
+ *  - **The engine behind each target.** `windows` / `macos` / `linux` are Chromium inside Electron
+ *    and `android` is a system WebView, also Chromium; `web` is a browser the author does not
+ *    choose, and `ios` is WKWebView, which is Safari's engine with no way to add a codec. Chromium
+ *    is *not* a superset of everything here - it ships no Theora decoder either - so the desktop
+ *    targets are no longer omitted wholesale the way they were when this table held only Ogg audio
+ *    and WebM.
+ *  - **A version floor.** This project's floor is iOS 17.4, and its re-encode target is VP9 video
+ *    plus Vorbis audio in WebM. A format Safari gained at or below that floor plays for everyone
+ *    the project can ship to, and listing it would be the false positive described above.
  *
- * Only containers with a definite answer are listed. Formats that depend on the codec inside them
- * (an `.mp4` can hold AV1, which Safari 17 will not play) are not guessable from the extension, and
- * this rule does not open files.
+ * What the floor already removed: `.webm` and `.weba` were on this table until 2026-08 and should
+ * not come back. Safari 17.4 (2024-03-05) made WebM "fully supported everywhere" - VP8 *and* VP9 on
+ * iOS and iPadOS, where before only VP8 in WebRTC worked - and brought Vorbis to iOS 17.4,
+ * iPadOS 17.4 and visionOS 1.1. At a 17.4 floor no selectable target is left that cannot play them.
+ * <https://webkit.org/blog/15063/webkit-features-in-safari-17-4/>
+ *
+ * This table is keyed by **extension, and the extension is not the real criterion**: what plays is
+ * the codec inside the container. The same `.mp4` plays when it carries H.264 and comes out as a
+ * black rectangle with sound when it carries HEVC - measured, not assumed - and this rule cannot
+ * tell those two files apart, because it never opens one. Reading the codecs out of the container
+ * and judging on those is a later milestone; until it lands, only containers whose answer holds for
+ * every codec anyone actually ships inside them belong here.
  */
 const UNPLAYABLE_EXTENSIONS: Readonly<Record<string, readonly GameBuildPlatform[]>> = {
-    // Ogg containers, all four spellings. `.ogm` and `.ogx` are the same container under different
-    // conventional names and fail in exactly the same place: Safari and WKWebView ship no Ogg
-    // demuxer, so the extension is irrelevant to the failure.
+    // Ogg *audio*, all three spellings. Not the codecs: Safari decodes both Vorbis and Opus. The
+    // container is what arrived late - WebKit added "Ogg container support for both Opus and Vorbis
+    // audio" in Safari 18.4 (2025-03), on macOS 15.4, iOS 18.4, iPadOS 18.4 and visionOS 2.4. That
+    // is above this project's iOS 17.4 floor, so a phone sitting at the floor still gets silence,
+    // and these stay flagged for the two Safari-engine targets - only those two, since every
+    // Chromium target demuxes Ogg fine.
+    // <https://webkit.org/blog/16574/webkit-features-in-safari-18-4/>
     ogg: ["web", "ios"],
     oga: ["web", "ios"],
-    ogv: ["web", "ios"],
-    ogm: ["web", "ios"],
-    ogx: ["web", "ios"],
     opus: ["web", "ios"],
-    // WebM, audio-only (`.weba`) included - one container, one missing demuxer.
-    webm: ["web", "ios"],
-    weba: ["web", "ios"],
+    // Ogg *video*: `.ogv`, plus `.ogm` and `.ogx`, three conventional names for one container. These
+    // name every platform because the failure is Theora, which neither WebKit nor Chromium decodes.
+    // Measured on this repo's Electron 38.8.6 / Chromium 140 against a real ffmpeg-produced sample:
+    // the file loads and its Vorbis track plays, while the video track reports 0x0 and never decodes
+    // a frame - a desktop build is a black screen with sound, exactly like the Safari one.
+    // `canPlayType('video/ogg; codecs="theora"')` answers with the empty string there too.
+    ogv: EVERY_BUILD_PLATFORM,
+    ogm: EVERY_BUILD_PLATFORM,
+    ogx: EVERY_BUILD_PLATFORM,
 };
 
 const MEDIA_ASSET_TYPES: ReadonlySet<AssetType> = new Set([AssetType.Audio, AssetType.Video]);
