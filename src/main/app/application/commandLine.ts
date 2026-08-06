@@ -22,6 +22,14 @@ export interface DevReloadCommandLineOptions {
 
 export interface MainCommandLineOptions {
     dev: boolean;
+    /**
+     * Open the launcher in first-run setup, whatever this profile has already been through.
+     *
+     * Meaningful only in development - `BaseApp.wantsOnboardingRerun` is the single reader and it
+     * gates on {@link isMainDevMode}. A packaged build ignores it, because argv reaches Studio from
+     * shortcuts and file associations and those are not a place to redirect the interface from.
+     */
+    onboarding: boolean;
     cdp: CdpCommandLineOptions;
     devReload: DevReloadCommandLineOptions;
 }
@@ -55,7 +63,7 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
     for (let i = 0; i < argv.length; i += 1) {
         const arg = argv[i];
 
-        if (arg === "--dev") {
+        if (arg === "--dev" || arg === "--onboarding") {
             continue;
         }
 
@@ -128,6 +136,7 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
 
     return {
         dev: argv.includes("--dev"),
+        onboarding: argv.includes("--onboarding"),
         cdp: {
             enabled: cdpEnabled,
             port: cdpPort,

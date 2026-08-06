@@ -13,7 +13,7 @@ import {
 } from "@shared/types/menu";
 import { WindowAppType } from "@shared/types/window";
 import { APP_DISPLAY_NAME } from "@shared/constants/app";
-import { getMainTranslator } from "../i18n";
+import { getMainLocale, getMainTranslator } from "../i18n";
 import type { AppWindow } from "./window/appWindow";
 import type { Translator } from "@shared/i18n";
 
@@ -104,7 +104,10 @@ export class MenuManager {
      */
     private computeMenuKey(): string {
         const target = this.getMenuTargetWindow();
-        const locale = String(this.app.globalState.get("app.language"));
+        // The RESOLVED locale, not the raw key: with none stored the key is absent and every
+        // profile would key the same "undefined", so a menu built in the system language would
+        // never be rebuilt when a language is finally chosen that happens to match it.
+        const locale = getMainLocale(this.app);
         if (!target) {
             return `${locale}|<none>`;
         }
