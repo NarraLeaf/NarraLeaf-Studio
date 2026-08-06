@@ -9,6 +9,12 @@
  *    in either catalogue. A rule's variant messages sit beside `message` as `message<Variant>`.
  *  - Titles are short noun phrases; descriptions are one clause and appear only in a hint popover.
  *    Nothing here is a sentence explaining the UI - the interface does not narrate itself.
+ *
+ * **A message never names the place it was found.** Every surface that prints one prints the site
+ * beside it - the report tab in its own column, the build console through
+ * `nonRedundantLintLocation` - so "First Day jumps to the undeclared label ending" said "First Day"
+ * twice, and the half of the sentence that told the two findings apart was the half that got
+ * ellipsed away. The message is the predicate; the locator is the subject.
  */
 export const lint = {
     rule: {
@@ -46,48 +52,48 @@ export const lint = {
         storyInvalidCommand: {
             title: "Invalid command",
             description: "A row the compiler refuses",
-            message: "{scene} has an invalid command",
+            message: "This row does not compile",
         },
         storyGotoMissing: {
             title: "Missing label",
             description: "A goto naming a label the scene does not declare",
-            message: "{scene} jumps to the undeclared label {label}",
+            message: "Jumps to {label}, which this scene never declares",
         },
         storyLabelDuplicate: {
             title: "Duplicate label",
             description: "Two declarations of one label; the first wins",
-            message: "{scene} declares {label} more than once",
+            message: "{label} is already declared above, so this one is never reached",
         },
         storyLabelUnused: {
             title: "Unused label",
             description: "A label nothing jumps to",
-            message: "{label} is never used in {scene}",
+            message: "Nothing jumps to {label}",
         },
         storyJumpMissing: {
             title: "Missing scene",
             description: "A jump naming a scene the project does not have",
-            message: "{scene} jumps to a missing scene",
+            message: "Jumps to a scene the story no longer has",
         },
         storyEmptyChoice: {
             title: "Empty choice",
             description: "A choice with nothing the player can pick",
-            message: "{scene} has a choice with no options",
-            messageEmptyOption: "{scene} has a choice option with no text",
+            message: "This choice has no options",
+            messageEmptyOption: "This option has no text",
         },
         storyDeadEnd: {
             title: "Dead end",
             description: "A scene that leaves on some paths and runs off the end on another",
-            message: "{scene} runs off the end",
+            message: "Play runs off the end of the scene here",
         },
         storyUnreachableScene: {
             title: "Unreachable scene",
             description: "A scene nothing can reach from the start",
-            message: "{scene} cannot be reached",
+            message: "Nothing reaches this scene",
         },
         storyEmptyScene: {
             title: "Empty scene",
             description: "A scene with no content",
-            message: "{scene} is empty",
+            message: "This scene has no rows",
         },
         variablesUndeclared: {
             title: "Undeclared variable",
@@ -119,7 +125,7 @@ export const lint = {
         textEmpty: {
             title: "Empty line",
             description: "A dialogue row with no text",
-            message: "{scene} has a line with no text",
+            message: "This line has no text",
         },
         localizationMissing: {
             title: "Missing translation",
@@ -176,10 +182,19 @@ export const lint = {
         empty: "No problems found",
         running: "Checking…",
         summary: "{errors} errors, {warnings} warnings, {infos} info",
+        filtered: "{shown} of {total}",
         rerun: "Run again",
         filterAll: "All",
         groupByRule: "By rule",
         groupByLocation: "By location",
+        collapse: "Collapse",
+        expand: "Expand",
+        collapseAll: "Collapse all",
+        expandAll: "Expand all",
+        // The gutter number of the row, spoken. Screen readers get "line 12"; the column itself is
+        // bare digits, because that is what the scene editor's own gutter shows and the reader is
+        // matching one against the other.
+        lineAria: "Line {line}",
     },
     command: {
         runProject: "Check project",
@@ -188,7 +203,10 @@ export const lint = {
     console: {
         started: "Check started",
         finished: "{errors} errors, {warnings} warnings in {duration}",
-        finding: "{severity} {rule} {location} {message}",
+        // Site first, then what is wrong, then the rule that says so - a compiler's line, and the
+        // order a reader scans in. No severity slot: the console prints the level in its own column
+        // beside every line, and this used to repeat it inside the sentence.
+        finding: "{location} {message} ({rule})",
     },
     build: {
         blocked: "Build stopped by {count} problems",

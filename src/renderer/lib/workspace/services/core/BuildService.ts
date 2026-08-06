@@ -2,7 +2,6 @@ import { Service } from "../Service";
 import { Services, type WorkspaceContext } from "../services";
 import { getInterface } from "@/lib/app/bridge";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
-import type { TranslationKey } from "@shared/i18n/catalog";
 import type {
     BuildPreflightFinding,
     BuildPreflightSection,
@@ -11,7 +10,10 @@ import type {
     GameBuildStateSnapshot,
     GameBuildStatus,
 } from "@shared/types/gameBuild";
-import type { LintLocation, LintReport, LintReportEntry, LintSeverity } from "@/lib/lint/types";
+import type { LintReport, LintReportEntry, LintSeverity } from "@/lib/lint/types";
+// One spelling of "where is this finding", shared with the report tab - see locationText.ts.
+import { describeLintLocation, nonRedundantLintLocation } from "@/lib/lint/locationText";
+export { nonRedundantLintLocation };
 import { EventEmitter } from "../ui/EventEmitter";
 import { ConsoleService, type ConsoleLogLevel } from "./ConsoleService";
 import { CharacterService } from "./CharacterService";
@@ -550,21 +552,23 @@ function isBlockingLintSeverity(
 }
 
 /**
- * One console line for a finding. `lint.console.finding` is `{severity} {rule} {location} {message}`.
+ * One console line for a finding. `lint.console.finding` is `{location} {message} ({rule})`.
  *
  * `rule` is the rule *id*, not its localized title: the title would only restate the `message` slot
  * beside it, whereas the id is the one thing the sentence cannot carry - which row in Project ->
  * Linting turns this finding off. It also keeps the rule registry out of the build path.
  *
- * The location gets the same treatment, but it has to be earned at runtime rather than decided
- * here: nearly every rule names its own subject ("dialog.png is not used anywhere"), so printing
- * the site beside it stutters - "dialog.png dialog.png is not used anywhere". See
+ * Severity is not in the line at all: every console row already prints its level in a column of its
+ * own, so the word was there twice.
+ *
+ * The location gets the redundancy treatment instead, and it has to be earned at runtime rather
+ * than decided here: a few rules do name their own subject ("dialog.png is not used anywhere"), and
+ * printing the site beside one of those stutters - "dialog.png dialog.png is not used anywhere". See
  * {@link nonRedundantLintLocation}.
  */
 export function formatLintFinding(entry: LintReportEntry): string {
     const message = translate(entry.messageKey, entry.messageParams);
     return translate("lint.console.finding", {
-        severity: translate(`lint.severity.${entry.severity}` as TranslationKey),
         rule: entry.ruleId,
         location: nonRedundantLintLocation(describeLintLocation(entry.location), message),
         message,
@@ -573,52 +577,6 @@ export function formatLintFinding(entry: LintReportEntry): string {
         // does one whose location the message already carried.
         .replace(/\s{2,}/g, " ")
         .trim();
-}
-
-/** Joins a composite location; the same string takes one apart again. */
-const LINT_LOCATION_SEPARATOR = " / ";
-
-/**
- * What is left of a location once the message has had its say - which is usually nothing.
- *
- * Rules name their subject inside the sentence, so the location slot beside it is a repeat far more
- * often than not. Dropping the whole thing would be too blunt for a composite one: `Demo / At the
- * Station` beside "At the Station cannot be reached" still carries the story name, which the
- * sentence has no room for and the reader has no other way to get. So each segment is judged on its
- * own and only the ones the message already said are dropped.
- *
- * Substring matching, deliberately: what makes a segment redundant is that the reader has already
- * read it, not that the message equals it. `{location}` params like "Narra (profile.thumbnail)"
- * carry the site with a suffix, and that is still a repeat of "Narra".
- */
-export function nonRedundantLintLocation(location: string, message: string): string {
-    if (!location || message.includes(location)) {
-        return "";
-    }
-    const segments = location.split(LINT_LOCATION_SEPARATOR);
-    if (segments.length < 2) {
-        // Nothing to take apart, and the whole of it is new: print it.
-        return location;
-    }
-    return segments.filter(segment => !message.includes(segment)).join(LINT_LOCATION_SEPARATOR);
-}
-
-/** The site as a reader would name it; empty for a project-wide finding, which has no site. */
-function describeLintLocation(location: LintLocation): string {
-    switch (location.kind) {
-        case "project":
-            return "";
-        case "asset":
-            return location.assetName;
-        case "story":
-            return location.sceneName
-                ? `${location.storyName}${LINT_LOCATION_SEPARATOR}${location.sceneName}`
-                : location.storyName;
-        case "blueprint":
-            return location.blueprintName ?? location.blueprintId;
-        case "character":
-            return location.characterName;
-    }
 }
 
 /** Compare the snapshot fields the UI renders, ignoring per-poll object identity. */

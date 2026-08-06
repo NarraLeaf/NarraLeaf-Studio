@@ -104,6 +104,24 @@ export type LintLocation =
           sceneId?: string;
           sceneName?: string;
           blockId?: string;
+          /**
+           * The row's number within its scene, 1-based - the very number the scene editor prints in
+           * its gutter, so "line 12" in the report and "12" in the editor are the same row.
+           *
+           * Not written by rules: {@link annotateStoryLocation} resolves it from `blockId` once, for
+           * every rule at once. A rule that names a row therefore cannot forget to number it, and a
+           * rule added later gets the number for free.
+           */
+          line?: number;
+          /**
+           * The row's own words, clipped - the author's text, never a rendered description.
+           *
+           * It is what makes four hundred `localization/missing` findings tellable apart: "No zh
+           * translation" is the same sentence on every one of them, and the line the author wrote is
+           * the only thing that says *which* of them this is. Absent on rows that carry no text
+           * (a jump, a `/show`), which is honest rather than a gap.
+           */
+          excerpt?: string;
       }
     | { kind: "blueprint"; blueprintId: string; blueprintName?: string; graphId?: string; nodeId?: string }
     | { kind: "character"; characterId: string; characterName: string };

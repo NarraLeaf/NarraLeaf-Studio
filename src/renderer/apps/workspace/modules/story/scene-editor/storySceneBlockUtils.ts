@@ -242,9 +242,24 @@ export function annotateNestingBranches(rows: VisibleStoryRow[]): VisibleStoryRo
     return rows.map((row, index) => ({ ...row, nextRowDepth: rows[index + 1]?.depth ?? 0 }));
 }
 
+/**
+ * The rows to draw, each carrying the number the gutter prints beside it.
+ *
+ * **The number counts the scene, not the screen.** Every block in the scene consumes one, including
+ * the ones folded away inside a collapsed container - so a collapsed container leaves a gap in the
+ * sequence, exactly as folding a region in a code editor does, and a row keeps its number whatever
+ * the reader has open. Two things depend on that:
+ *
+ *  - The narrative filter already promised it (`filter then group` in the tests): hiding staging rows
+ *    leaves the survivors on 1 and 3, not renumbered to 1 and 2.
+ *  - The lint report names rows by that number (`lib/lint/storyLocator.ts`), and a report that said
+ *    "line 12" about a row this gutter called 9 because something above it was folded would be
+ *    worse than a report that said nothing at all.
+ */
 export function buildVisibleRows(scene: StoryScene, collapsedIds: Set<StoryBlockId>): VisibleStoryRow[] {
     const rows: VisibleStoryRow[] = [];
-    const visit = (blockId: StoryBlockId, depth: number, disabledAncestor: boolean) => {
+    let lineNumber = 0;
+    const visit = (blockId: StoryBlockId, depth: number, disabledAncestor: boolean, visible: boolean) => {
         const block = scene.blocks[blockId];
         if (!block) {
             return;
@@ -252,12 +267,15 @@ export function buildVisibleRows(scene: StoryScene, collapsedIds: Set<StoryBlock
         // Disabled propagates down: a disabled container's whole subtree renders muted (and compiles
         // out), so a row is effectively disabled when it or any ancestor is (WI-3 / schema v7).
         const disabled = disabledAncestor || Boolean(block.disabled);
-        rows.push(disabled ? { block, depth, lineNumber: rows.length + 1, disabled } : { block, depth, lineNumber: rows.length + 1 });
-        if (!collapsedIds.has(blockId)) {
-            block.childrenIds.forEach(childId => visit(childId, depth + 1, disabled));
+        lineNumber += 1;
+        if (visible) {
+            rows.push(disabled ? { block, depth, lineNumber, disabled } : { block, depth, lineNumber });
         }
+        // Descend even when nothing below will be drawn: those rows still take their numbers.
+        const childrenVisible = visible && !collapsedIds.has(blockId);
+        block.childrenIds.forEach(childId => visit(childId, depth + 1, disabled, childrenVisible));
     };
-    scene.rootBlockIds.forEach(blockId => visit(blockId, 0, false));
+    scene.rootBlockIds.forEach(blockId => visit(blockId, 0, false, true));
     return rows;
 }
 
