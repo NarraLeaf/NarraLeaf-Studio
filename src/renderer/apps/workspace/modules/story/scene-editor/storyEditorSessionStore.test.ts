@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import {
+    getStoryEditorViewPrefs,
     getStoryEditorViewState,
+    patchStoryEditorViewPrefs,
     patchStoryEditorViewState,
     type StoryEditorScrollAnchor,
 } from "./storyEditorSessionStore";
+import { STORY_ROW_NARRATIVE_FACETS } from "./storyRowFilter";
 
 const anchor = (blockId: string | null): StoryEditorScrollAnchor => ({ blockId, offset: 0, scrollTop: 0 });
 
@@ -55,5 +58,39 @@ describe("storyEditorSessionStore view state", () => {
 
         expect(getStoryEditorViewState(panelState, "scene-a")?.activeBlockId).toBe("a");
         expect(getStoryEditorViewState(panelState, "scene-b")?.activeBlockId).toBe("b");
+    });
+});
+
+describe("storyEditorSessionStore view prefs", () => {
+    it("opens an untouched project unfiltered, at the default density", () => {
+        expect(getStoryEditorViewPrefs(fakePanelState())).toEqual({ density: "compact", selectedRowFacets: [], selectedRowSpeakers: [] });
+    });
+
+    it("carries a pre-filter 'narrative only' over as the preset it always meant", () => {
+        const panelState = fakePanelState();
+        panelState.setPanelState("story:editor:view-prefs", { density: "standard", narrativeOnly: true });
+
+        const prefs = getStoryEditorViewPrefs(panelState);
+        expect(prefs.density).toBe("standard");
+        expect(prefs.selectedRowFacets).toEqual([...STORY_ROW_NARRATIVE_FACETS]);
+    });
+
+    it("lets an explicit empty filter win over the old flag — 'show all' must survive a restart", () => {
+        const panelState = fakePanelState();
+        panelState.setPanelState("story:editor:view-prefs", { narrativeOnly: true });
+        patchStoryEditorViewPrefs(panelState, { selectedRowFacets: [], selectedRowSpeakers: [] });
+
+        expect(getStoryEditorViewPrefs(panelState).selectedRowFacets).toEqual([]);
+    });
+
+    it("round-trips both axes and drops a facet this build no longer knows", () => {
+        const panelState = fakePanelState();
+        patchStoryEditorViewPrefs(panelState, { selectedRowFacets: ["sound", "gone"] as never, selectedRowSpeakers: ["id:c1", "oops"] });
+
+        expect(getStoryEditorViewPrefs(panelState)).toEqual({
+            density: "compact",
+            selectedRowFacets: ["sound"],
+            selectedRowSpeakers: ["id:c1"],
+        });
     });
 });

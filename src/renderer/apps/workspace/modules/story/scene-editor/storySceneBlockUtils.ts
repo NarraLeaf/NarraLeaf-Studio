@@ -91,22 +91,6 @@ export function buildDialogueAppearances(scene: StoryScene): Map<StoryBlockId, C
 }
 
 /**
- * Whether a row survives the "narrative only" filter (WI-6): narration, dialogue, choice prompts and
- * options, and studio notes. Everything else — action (including expression), control, jump,
- * declaration, invalid — is staging and hides. A whitelist, so a new staging kind hides by default.
- */
-export function isNarrativeRow(block: StoryBlock): boolean {
-    if (block.kind === "note") {
-        return true;
-    }
-    if (block.kind === "nodeAction") {
-        const action = block.payload.action;
-        return action === "narration" || action === "dialogue" || action === "choice" || action === "choiceOption";
-    }
-    return false;
-}
-
-/**
  * The two layers a row can belong to (gutter 规范 §1) — the first and coarsest thing the eye is asked
  * to decide, and the one the row's BACKGROUND carries.
  *
