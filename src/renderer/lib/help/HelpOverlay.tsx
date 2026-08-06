@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X } from "lucide-react";
+import { ChevronLeft, X } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { HelpContent } from "./HelpContent";
 import { getHelpTopic, helpTitleKey, type HelpTopic, type HelpTopicId } from "./helpTopics";
+import { currentTopic, popTopic, previousTopic, pushTopic, startTrail, type HelpTrail } from "./helpTrail";
 import { registerHelpOpener, startHelpPointerTracking, type HelpRequest } from "./helpController";
 
 /**
@@ -27,22 +28,43 @@ export interface HelpOverlayProps {
     resolveShortcut?: (catalogId: string) => string | undefined;
 }
 
+/** One visit to the popover: where it points, and the trail followed since it opened. */
+interface HelpSession {
+    trail: HelpTrail;
+    anchor: HTMLElement | null;
+}
+
 export function HelpOverlay({ onOpenBrowser, resolveShortcut }: HelpOverlayProps) {
     const { t } = useTranslation();
-    const [request, setRequest] = useState<HelpRequest | null>(null);
+    const [session, setSession] = useState<HelpSession | null>(null);
     const [style, setStyle] = useState<React.CSSProperties | null>(null);
     const panelRef = useRef<HTMLDivElement | null>(null);
 
-    const topic: HelpTopic | undefined = getHelpTopic(request?.topicId);
+    const previousId = session ? previousTopic(session.trail) : undefined;
+    const topic: HelpTopic | undefined = getHelpTopic(session ? currentTopic(session.trail) : undefined);
 
-    useEffect(() => registerHelpOpener(setRequest), []);
+    useEffect(
+        () =>
+            // A request from outside starts a fresh trail: `F1` somewhere else is a new question,
+            // not a continuation of the one on screen.
+            registerHelpOpener((request: HelpRequest) =>
+                setSession({ trail: startTrail(request.topicId), anchor: request.anchor }),
+            ),
+        [],
+    );
     useEffect(() => startHelpPointerTracking(), []);
 
-    const close = useCallback(() => setRequest(null), []);
+    const close = useCallback(() => setSession(null), []);
 
-    // Escape closes, at capture, so an editor that also listens for Escape does not eat it first.
+    const back = useCallback(() => {
+        setSession(current => (current ? { ...current, trail: popTopic(current.trail) } : current));
+    }, []);
+
+    // Escape closes and Alt+Left steps back, both at capture so an editor that listens for the same
+    // keys does not take them first. Alt+Left is only claimed when there is somewhere to go, so it
+    // still reaches whatever else wants it when this is the first topic of a visit.
     useEffect(() => {
-        if (!request) {
+        if (!session) {
             return;
         }
         const onKeyDown = (event: KeyboardEvent) => {
@@ -50,16 +72,22 @@ export function HelpOverlay({ onOpenBrowser, resolveShortcut }: HelpOverlayProps
                 event.preventDefault();
                 event.stopPropagation();
                 close();
+                return;
+            }
+            if (event.key === "ArrowLeft" && event.altKey && previousTopic(session.trail)) {
+                event.preventDefault();
+                event.stopPropagation();
+                back();
             }
         };
         document.addEventListener("keydown", onKeyDown, true);
         return () => document.removeEventListener("keydown", onKeyDown, true);
-    }, [request, close]);
+    }, [session, close, back]);
 
     // Any pointer press outside the panel dismisses. `mousedown` rather than `click` so the press
     // that starts an edit elsewhere is not also spent on closing this.
     useEffect(() => {
-        if (!request) {
+        if (!session) {
             return;
         }
         const onMouseDown = (event: MouseEvent) => {
@@ -69,7 +97,7 @@ export function HelpOverlay({ onOpenBrowser, resolveShortcut }: HelpOverlayProps
         };
         document.addEventListener("mousedown", onMouseDown, true);
         return () => document.removeEventListener("mousedown", onMouseDown, true);
-    }, [request, close]);
+    }, [session, close]);
 
     /**
      * Beside the anchor if it fits, below it otherwise, centred when there is no anchor. Measured
@@ -77,14 +105,14 @@ export function HelpOverlay({ onOpenBrowser, resolveShortcut }: HelpOverlayProps
      * rendered hidden rather than at a wrong position, which would show as a jump.
      */
     useLayoutEffect(() => {
-        if (!request) {
+        if (!session) {
             setStyle(null);
             return;
         }
 
         const place = () => {
             const height = panelRef.current?.getBoundingClientRect().height ?? 0;
-            const anchor = request.anchor?.isConnected ? request.anchor.getBoundingClientRect() : null;
+            const anchor = session.anchor?.isConnected ? session.anchor.getBoundingClientRect() : null;
 
             if (!anchor) {
                 setStyle({
@@ -119,13 +147,20 @@ export function HelpOverlay({ onOpenBrowser, resolveShortcut }: HelpOverlayProps
             cancelAnimationFrame(raf);
             window.removeEventListener("resize", place);
         };
-    }, [request]);
+        // Re-measured on every step of the trail, not just when the popover opens: topics differ in
+        // height, and near the bottom of the window a taller one has to be clamped upward or it
+        // would run off the edge.
+    }, [session]);
 
     const openRelated = useCallback((id: HelpTopicId) => {
-        setRequest(current => (current ? { ...current, topicId: id } : { topicId: id, anchor: null }));
+        setSession(current =>
+            current
+                ? { ...current, trail: pushTopic(current.trail, id) }
+                : { trail: startTrail(id), anchor: null },
+        );
     }, []);
 
-    if (!request || !topic) {
+    if (!session || !topic) {
         return null;
     }
 
@@ -141,6 +176,20 @@ export function HelpOverlay({ onOpenBrowser, resolveShortcut }: HelpOverlayProps
             )}
         >
             <div className="flex items-start gap-2 px-3 pt-3">
+                {/* Absent on the first topic of a visit, rather than present and disabled: a greyed
+                    arrow beside a title is a control asking to be read, and there is nothing to say
+                    about it. The gap it leaves is reclaimed by the title, which is what the row is
+                    for. Named after where it goes, so it answers "back to what" before the click. */}
+                {previousId && (
+                    <button
+                        type="button"
+                        onClick={back}
+                        aria-label={t("help.ui.backTo", { title: t(helpTitleKey(previousId)) })}
+                        className="-ml-1 -mt-0.5 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-fg-subtle transition-colors hover:bg-fill hover:text-fg"
+                    >
+                        <ChevronLeft className="h-4 w-4" />
+                    </button>
+                )}
                 <span className="min-w-0 flex-1 text-sm font-medium text-fg">{t(helpTitleKey(topic.id))}</span>
                 <button
                     type="button"

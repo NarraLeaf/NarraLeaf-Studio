@@ -43,8 +43,17 @@ function builderCacheRoot(): string | null {
     return path.join(localAppData, "electron-builder", "Cache");
 }
 
-function binariesMirror(): string {
+/**
+ * Where the bundle comes from.
+ *
+ * The Studio setting wins over the environment: it is the one a user can actually reach, and a
+ * host with a stale `ELECTRON_BUILDER_BINARIES_MIRROR` exported years ago should not silently
+ * override what the author just typed. The environment variables stay honored below it, because
+ * CI images set them and were working before this setting existed.
+ */
+function binariesMirror(configured?: string): string {
     const mirror =
+        configured?.trim() ||
         process.env.NPM_CONFIG_ELECTRON_BUILDER_BINARIES_MIRROR ||
         process.env.ELECTRON_BUILDER_BINARIES_MIRROR ||
         DEFAULT_BINARIES_MIRROR;
@@ -83,7 +92,7 @@ async function downloadArchive(url: string): Promise<Buffer> {
  * Best-effort: on failure the build proceeds and electron-builder surfaces its
  * own error; the warning logged here tells the user how to fix it by hand.
  */
-export async function ensureWinCodeSignCache(log: Log): Promise<void> {
+export async function ensureWinCodeSignCache(log: Log, binariesMirrorUrl?: string): Promise<void> {
     if (process.platform !== "win32") {
         return;
     }
@@ -107,7 +116,7 @@ export async function ensureWinCodeSignCache(log: Log): Promise<void> {
     const archivePath = `${stagingDir}.7z`;
     try {
         log("info", "preparing winCodeSign cache (host cannot create symlinks)");
-        const url = `${binariesMirror()}${WIN_CODE_SIGN_NAME}/${WIN_CODE_SIGN_NAME}.7z`;
+        const url = `${binariesMirror(binariesMirrorUrl)}${WIN_CODE_SIGN_NAME}/${WIN_CODE_SIGN_NAME}.7z`;
         await fs.mkdir(path.dirname(finalDir), { recursive: true });
         await fs.writeFile(archivePath, await downloadArchive(url));
         await execFileAsync(path7za, ["x", "-bd", "-y", `-o${stagingDir}`, "-xr!darwin", archivePath]);

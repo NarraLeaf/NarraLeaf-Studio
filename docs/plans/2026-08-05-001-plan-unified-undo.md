@@ -1,6 +1,7 @@
 # Unified undo: one stack owner, and what still cannot be undone
 
-Status: **stage 1 landed** (the mechanism). Stage 2 (the gaps below) not started.
+Status: **stage 1 landed** (the mechanism). **Stage 2 in progress**: T2, T3 and D3 are done and
+verified in the running app; the rest of the table below is untouched.
 
 ## Why
 
@@ -78,7 +79,7 @@ undoable"), and now reads it from `HistoryService.hasScope` rather than from a b
 | `audio-loop:<assetId>` | the in / loop / out markers |
 | `ui-surface:<surfaceId>` | the surface's elements and its private blueprints |
 | `blueprint:<blueprintId>` | the graph, element behaviours, **and the persistent-variable registry** |
-| `project` | *reserved* — nothing pushes to it yet; see stage 2 |
+| `project` | deleting a character or a character group (command entries) |
 
 Two stacks are deliberately **not** in `HistoryService`:
 
@@ -106,7 +107,7 @@ Severity:
 | --- | --- | --- | --- | --- |
 | D1 | `deleteAsset` | assets panel | confirm + reference warning | **Hard `fs.deleteFile` / `deleteDir` — no trash.** References are left dangling *by design* (warn, do not block), so putting the record back would restore a working project — but the bytes are gone. |
 | D2 | `deleteGroup(cascade)` | assets panel | confirm | Cascades into nested groups and every asset under them. Same hard delete, times N. |
-| D3 | `deleteCharacter` | character panel | confirm | Drops the record **and** deletes the baked avatar file. Every story line holding the id becomes dangling. This is the case that prompted this work. |
+| ~~D3~~ | ~~`deleteCharacter`~~ | | | **Done.** Undoable as a command entry on the `project` scope: the record, its place in the cast order, its asset locks and the baked avatar's bytes (read before the file is deleted, held in the entry). Group deletion carries its membership too. Story lines keep dangling ids while it is gone, which is the accepted behaviour and is why undo does not have to touch them. |
 | D4 | `deleteScene` | story panel | confirm | Destroys the whole scene and its blocks. Note the scene's own undo stack is scoped *to that scene*, so even a mounted editor cannot bring it back. |
 | D5 | `deleteChapter` | story panel | confirm | **Cascades: deletes every scene in the chapter** (`StoryService.deleteChapter` splices the chapter and then `delete document.scenes[sceneId]` for each). Re-points the entry scene as a side effect. |
 | D6 | `deleteStory` | story panel | confirm | The whole document. |
@@ -150,26 +151,23 @@ says.
 | # | | |
 | --- | --- | --- |
 | **T1** | **An open text-asset editor does not participate in the workspace reload pass.** `TextEditor` only re-reads the file when the *encoding* is changed (`setReload` has exactly one caller); nothing enrols it in `WorkspaceReloadService`, whose only external participants today are plugin stores. So after a VCS restore the tab still holds the pre-restore buffer *and* its Monaco undo stack, and a save writes it back over the restored file. This is the same defect this work fixed for the five snapshot stacks, in the one stack that is not in `HistoryService`. Confidence: read from source, not reproduced in the app. |
-| **T2** | **The Edit menu's Undo / Redo are Electron's `role: "undo"` / `role: "redo"`.** They act on the DOM selection, so in the story editor, the UI editor, the blueprint editor and the motion editor the menu item does nothing. `HistoryService.setActiveScope` now exists and `useHistoryScope` sets it, so wiring the menu is small — the remaining question is only whether the menu should also be labelled with `peekUndo()`. |
-| **T3** | **`setActiveScope` is last-mount-wins.** With two story tabs open in a split, the scope-less undo path points at whichever mounted last. Nothing depends on it today (every keybinding passes an explicit scope), but T2 would make it load-bearing; the fix is for the tab, which knows `active`, to drive activation rather than the controller. |
+| ~~T2~~ | **Done.** Undo/Redo moved off the Electron roles onto the same substitution path Cut/Copy/Paste use (`EditMenuRole` gained `"undo"`/`"redo"`), and are labelled from `peekUndo()` — "Undo delete character Narra". **Correcting this row's original claim: the application menu is macOS-only** (`buildMenuTemplate` returns `[]` off darwin), so the roles were doing nothing only there. But the *in-app* top bar renders `edit`-slot groups on every platform, so Windows and Linux gain an Edit menu with Undo and Redo that did not exist before — verified in the running app on Windows. The menu action carries no `shortcut`: the registry turns one into a keybinding guarded by the action's `when`, and `when` also decides whether the item is shown, so there is no value that keeps Undo in the menu *and* keeps its key out of the editors. |
+| ~~T3~~ | **Done.** The active scope follows editor *focus* rather than mount order (`useHistoryScope` takes the `tabId` and claims the scope while that tab holds focus), so a split view sends Ctrl+Z to the tab being looked at. A shell-level binding (`WorkspaceUndoKeybindings`) owns the case that had no owner at all — outside an editor — and stands down whenever an editor has focus, so each editor's own binding is untouched. It routes to the `project` scope rather than to `getActiveScopeId()` on purpose: undo pressed in the assets panel must not rewrite a scene the author cannot see. |
 
 ---
 
 ## Stage 2, in the order the dependencies fall
 
-1. **`project` scope + a delete-with-inverse pattern.** The scope exists and is empty. The pattern
-   the S1 rows need is a **command** entry: capture what is about to be destroyed, delete, and let
-   `undo` put it back through the same service calls the author would have used.
+1. ~~**`project` scope + a delete-with-inverse pattern.**~~ **Done** — see `CharacterService`
+   for the shape the remaining S1 rows should copy.
 2. **Make deletion recoverable before making it undoable.** D1/D2/D3 hard-delete files. Either the
    delete moves the payload to a per-project trash under `.nlstudio/` (which is already excluded
    from the repository) and the command entry moves it back, or the command entry holds the bytes
    in memory — bounded by the history limit, which for a 200 MB video asset is not acceptable. The
    trash is the answer; picking its retention policy is a product decision, not a technical one.
-3. **D3 (character) before D1 (asset)**, despite the user framing them together: a character is a
-   record plus one small baked avatar file, so it needs the trash mechanism only for the avatar, and
-   its cascade (dangling ids in story lines) is *already* the accepted behaviour for assets — so
-   undo does not have to reason about references at all. It is the cheapest real proof of the
-   pattern.
+3. ~~**D3 (character) before D1 (asset)**~~ **Done**, and it did not need the trash after all: a
+   baked avatar is a 256px PNG, so its bytes ride in the entry and the depth bound caps how many can
+   be held. An asset can be 200 MB, so D1/D2 still need step 2.
 4. **D4/D5/D6 (story structure)** are pure document edits with no files behind them, so they need
    only step 1. D5's cascade is the interesting one: the entry needs to restore the chapter, its
    scenes, and the entry-scene pointer it re-pointed.

@@ -815,7 +815,7 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
                     // The draft is already parked, so closing here is safe: the
                     // next open restores exactly this selection.
                     uiService.dialogs.close(dialogId);
-                    openProjectPanel(context, { section: "assets" });
+                    openProjectPanel(context, { section: "app" });
                 }}
                 onCancel={() => {
                     buildService.clearDraft();

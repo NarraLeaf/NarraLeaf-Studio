@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWorkspace } from "../context";
 import { HistoryService, type HistoryScope } from "@/lib/workspace/services/history/HistoryService";
 import type { HistoryLabel, HistoryScopeId } from "@/lib/workspace/services/history/historyModel";
+import type { UIService } from "@/lib/workspace/services/core/UIService";
+import { FocusArea, type FocusContext } from "@/lib/workspace/services/ui/types";
 import { Services } from "@/lib/workspace/services/services";
 
 /**
@@ -25,8 +27,13 @@ export function useHistoryScope<S>(options: {
     capture: () => S | null;
     apply: (snapshot: S) => void;
     limit?: number;
-    /** Make this the scope a scope-less undo acts on while mounted. Default true. */
-    activate?: boolean;
+    /**
+     * The editor tab this scope belongs to. When given, the scope becomes the one a scope-less undo
+     * acts on **while that tab has focus** - which is what makes a split view behave: two story tabs
+     * are two scopes, and Ctrl+Z has to mean the one the author is looking at, not the one that
+     * happened to mount last.
+     */
+    tabId?: string;
 }) {
     const { context, isInitialized } = useWorkspace();
     const history = useMemo(
@@ -34,7 +41,7 @@ export function useHistoryScope<S>(options: {
         [context, isInitialized],
     );
 
-    const { scopeId, label, capture, apply, limit, activate = true } = options;
+    const { scopeId, label, capture, apply, limit, tabId } = options;
 
     const readersRef = useRef({ capture, apply, label });
     readersRef.current = { capture, apply, label };
@@ -60,17 +67,29 @@ export function useHistoryScope<S>(options: {
         };
     }, [history, scopeId, limit]);
 
+    // Claim the active scope for as long as this tab holds focus. Not on mount: two editors of the
+    // same kind can be mounted at once, and only one of them is the one Ctrl+Z means.
     useEffect(() => {
-        if (!history || !scopeId || !activate) {
+        if (!history || !scopeId || !tabId || !context) {
             return;
         }
-        history.setActiveScope(scopeId);
+        const uiService = context.services.get<UIService>(Services.UI);
+        const claim = (focus: FocusContext) => {
+            if (focus.area === FocusArea.Editor && focus.targetId === tabId) {
+                history.setActiveScope(scopeId);
+            } else if (history.getActiveScopeId() === scopeId) {
+                history.setActiveScope(null);
+            }
+        };
+        claim(uiService.focus.getFocus());
+        const unsubscribe = uiService.focus.onFocusChange(claim);
         return () => {
+            unsubscribe();
             if (history.getActiveScopeId() === scopeId) {
                 history.setActiveScope(null);
             }
         };
-    }, [history, scopeId, activate]);
+    }, [context, history, scopeId, tabId]);
 
     useEffect(() => {
         if (!history || !scopeId) {

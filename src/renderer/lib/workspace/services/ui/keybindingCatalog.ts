@@ -49,6 +49,10 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     // an author asks with the caret in the field.
     entry("workspace-context-help", "f1", "workspace.shell.keybindings.catalog.contextHelp", CATEGORY.general),
     entry("workspace-reopen-closed-tab", "mod+shift+t", "workspace.shell.keybindings.catalog.reopenClosedTab", CATEGORY.general),
+    // Only fires outside an editor; inside one, that editor's own undo wins. See
+    // `WorkspaceUndoKeybindings`.
+    entry("workspace.undo", "mod+z", "workspace.shell.keybindings.catalog.undo", CATEGORY.general),
+    entry("workspace.redo", "mod+shift+z", "workspace.shell.keybindings.catalog.redo", CATEGORY.general),
     entry("workspace-editor-quick-switch-next", "ctrl+tab", "workspace.shell.keybindings.catalog.quickSwitchNext", CATEGORY.general),
     entry("workspace-editor-quick-switch-previous", "ctrl+shift+tab", "workspace.shell.keybindings.catalog.quickSwitchPrevious", CATEGORY.general),
     entry("editor-split-right", "mod+\\", "workspace.shell.commandPalette.editor.splitRight", CATEGORY.general),

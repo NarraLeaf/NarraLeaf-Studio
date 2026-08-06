@@ -38,8 +38,21 @@ import {
 } from "@shared/constants/zoom";
 import { DEFAULT_LOCALE, LOCALE_META, SUPPORTED_LOCALES } from "@shared/i18n";
 import { clearAllProjectStats } from "@/lib/stats/clearAllProjectStats";
+import { resetAllPreferences, resetWorkspaceLayout } from "@/lib/settings/resetSettings";
 import { DASHBOARD_OPEN_DEFAULT_KEY } from "@shared/constants/dashboard";
 import { KEYBINDING_OVERRIDES_SETTINGS_KEY } from "@/lib/workspace/services/ui/KeybindingService";
+import { DOWNLOAD_REWRITES_KEY } from "@shared/types/downloadSource";
+import {
+    EDITOR_LINE_NUMBERS_DEFAULT,
+    EDITOR_LINE_NUMBERS_KEY,
+    EDITOR_SOFT_WRAP_DEFAULT,
+    EDITOR_SOFT_WRAP_KEY,
+} from "@/lib/settings/textEditorOptions";
+import {
+    RECENT_PROJECTS_LIMIT_DEFAULT,
+    RECENT_PROJECTS_LIMIT_MAX,
+    RECENT_PROJECTS_LIMIT_MIN,
+} from "@shared/constants/recentProjects";
 
 /**
  * Category metadata used by the shared settings UI.
@@ -78,27 +91,33 @@ export const AppSettingCategories: SettingCategory[] = [
         order: 3,
     },
     {
-        key: "sync",
-        label: "Sync",
-        labelKey: "settings.categories.sync.label",
-        description: "Local backup cadence and synchronization helpers.",
-        descriptionKey: "settings.categories.sync.description",
+        // Was "Sync", whose description promised a backup cadence that was never implemented; the
+        // keys behind that promise are gone (RETIRED_GLOBAL_STATE_KEYS) and what is left here is
+        // version control, so the category now says so.
+        key: "versionControl",
+        label: "Version control",
+        labelKey: "settings.categories.versionControl.label",
+        description: "Checkpoints and the identity recorded on them.",
+        descriptionKey: "settings.categories.versionControl.description",
         order: 4,
     },
     {
-        key: "plugins",
-        label: "Plugins",
-        labelKey: "settings.categories.plugins.label",
-        description: "Plugin store and registry.",
-        descriptionKey: "settings.categories.plugins.description",
+        // Absorbed the former "Plugins" and "Advanced" categories, which between them held four
+        // mirror URLs kept apart by which feature happened to need them. Where Studio downloads
+        // from is one question, so it is one place.
+        key: "network",
+        label: "Network",
+        labelKey: "settings.categories.network.label",
+        description: "Where Studio downloads plugins, templates and build tooling from.",
+        descriptionKey: "settings.categories.network.description",
         order: 5,
     },
     {
-        key: "advanced",
-        label: "Advanced",
-        labelKey: "settings.categories.advanced.label",
-        description: "Telemetry, developer helpers and experimental toggles.",
-        descriptionKey: "settings.categories.advanced.description",
+        key: "data",
+        label: "Data",
+        labelKey: "settings.categories.data.label",
+        description: "Cached files, resetting preferences, and moving them between machines.",
+        descriptionKey: "settings.categories.data.description",
         order: 6,
     },
 ];
@@ -266,6 +285,34 @@ export const AppSettings: AppSettingDefinition[] = [
         options: [...EDITOR_FONT_FAMILY_OPTIONS],
     },
     {
+        // Applied by the built-in text editor (`TextEditor` -> Monaco `lineNumbers`). The key
+        // shipped a default long before anything read it; it is wired rather than retired
+        // because the editor it describes exists. Live: the editor is never re-created for a
+        // settings change, which would take the undo stack with it.
+        key: EDITOR_LINE_NUMBERS_KEY,
+        category: "editor",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Show line numbers",
+        labelKey: "settings.items.editorLineNumbers.label",
+        description: "In the built-in text editor, for files opened from the asset library.",
+        descriptionKey: "settings.items.editorLineNumbers.description",
+        defaultValue: EDITOR_LINE_NUMBERS_DEFAULT,
+    },
+    {
+        // Applied by the built-in text editor (`TextEditor` -> Monaco `wordWrap`), same story
+        // as the line-number gutter above.
+        key: EDITOR_SOFT_WRAP_KEY,
+        category: "editor",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Wrap long lines",
+        labelKey: "settings.items.editorSoftWrap.label",
+        description: "Wrap instead of scrolling sideways in the built-in text editor.",
+        descriptionKey: "settings.items.editorSoftWrap.description",
+        defaultValue: EDITOR_SOFT_WRAP_DEFAULT,
+    },
+    {
         // Applied by the workspace editor area (`EditorGroup` keep-alive logic).
         key: "editor.maxActiveEditors",
         category: "editor",
@@ -423,6 +470,23 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: true,
     },
     {
+        // Read by the main process (`RecentlyOpened.limit`) every time the history is written, so
+        // shortening it takes effect on the next project opened rather than retroactively. Has
+        // been honored since the history existed and simply had no control anywhere.
+        key: "workspace.recentProjectsLimit",
+        category: "workspace",
+        scope: SettingScope.Global,
+        type: SettingValueType.Integer,
+        label: "Recent projects to remember",
+        labelKey: "settings.items.recentProjectsLimit.label",
+        description: "How many projects the home screen and the Open Recent menu keep.",
+        descriptionKey: "settings.items.recentProjectsLimit.description",
+        defaultValue: RECENT_PROJECTS_LIMIT_DEFAULT,
+        min: RECENT_PROJECTS_LIMIT_MIN,
+        max: RECENT_PROJECTS_LIMIT_MAX,
+        step: 1,
+    },
+    {
         // The fallback half of a per-project preference (see `@shared/constants/dashboard`): read
         // by `useWorkspaceEditorSession` only for projects whose dashboard toggle has never been
         // touched. A project that has decided for itself ignores this.
@@ -437,11 +501,73 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: true,
     },
     {
+        // Rendered by `SETTING_PANELS.cacheInventory`. Nothing is stored under this key; the panel
+        // measures the buckets over IPC and clears them the same way.
+        key: "data.cache",
+        category: "data",
+        scope: SettingScope.Global,
+        type: SettingValueType.Custom,
+        panel: "cacheInventory",
+        label: "Cached files",
+        labelKey: "settings.items.cacheInventory.label",
+        description: "",
+        defaultValue: null,
+    },
+    {
+        // Rendered by `SETTING_PANELS.settingsTransfer`: export with its two opt-ins, and import
+        // with the preview that has to come before anything is written.
+        key: "data.transfer",
+        category: "data",
+        scope: SettingScope.Global,
+        type: SettingValueType.Custom,
+        panel: "settingsTransfer",
+        label: "Move settings between machines",
+        labelKey: "settings.items.settingsTransfer.label",
+        description: "",
+        defaultValue: null,
+    },
+    {
+        // Deletes the workspace's shape keys, read out of the store because the per-project ones
+        // (`ui.editor.session.project.<id>`) exist nowhere else. Separate from the preferences
+        // reset below on purpose - see `resetSettings`.
+        key: "data.resetWorkspaceLayout",
+        category: "data",
+        scope: SettingScope.Global,
+        type: SettingValueType.Action,
+        label: "Reset the workspace layout",
+        labelKey: "settings.items.resetWorkspaceLayout.label",
+        description: "Put the panels, sidebars and open editor tabs back to how they start. Your projects are not touched.",
+        descriptionKey: "settings.items.resetWorkspaceLayout.description",
+        defaultValue: null,
+        actionLabel: "Reset",
+        actionLabelKey: "settings.items.resetWorkspaceLayout.action",
+        confirmLabelKey: "settings.items.resetWorkspaceLayout.confirm",
+        onInvoke: resetWorkspaceLayout,
+    },
+    {
+        // Deletes every preference key this build has. The project history and the per-project
+        // statistics are refused by the main process, so this cannot take them with it.
+        key: "data.resetAllPreferences",
+        category: "data",
+        scope: SettingScope.Global,
+        type: SettingValueType.Action,
+        label: "Reset all settings",
+        labelKey: "settings.items.resetAllPreferences.label",
+        description: "Put every setting back to its default. Your projects, their history and your statistics are not touched.",
+        descriptionKey: "settings.items.resetAllPreferences.description",
+        defaultValue: null,
+        actionLabel: "Reset",
+        actionLabelKey: "settings.items.resetAllPreferences.action",
+        confirmLabelKey: "settings.items.resetAllPreferences.confirm",
+        danger: true,
+        onInvoke: resetAllPreferences,
+    },
+    {
         // Handled entirely by `clearAllProjectStats`; nothing is stored under this key - it is
         // only the identity of the button. Scoped to every project because the Settings window is
         // its own window and has no current project; the per-project reset lives on the dashboard.
         key: "dashboard.clearAllStats",
-        category: "workspace",
+        category: "data",
         scope: SettingScope.Global,
         type: SettingValueType.Action,
         label: "Clear all statistics data",
@@ -533,28 +659,18 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: null,
     },
     {
-        // Read by the main-process GameBuildManager (readElectronMirror) and
-        // passed to electron-builder as electronDownload.mirror for cross-platform
-        // game builds. Empty = official Electron download source.
-        key: "build.electronMirror",
-        category: "advanced",
-        scope: SettingScope.Global,
-        type: SettingValueType.String,
-        label: "Electron download mirror",
-        labelKey: "settings.items.electronMirror.label",
-        description: "Mirror for downloading Electron. Leave empty to use the official source.",
-        descriptionKey: "settings.items.electronMirror.description",
-        defaultValue: "",
-    },
-    {
         // Read by the main process (pluginRegistryClient.resolveRegistryUrl) when the
         // launcher's Plugins store fetches the index or installs a plugin. Empty = the
         // official NarraLeaf/Plugins registry index.
+        //
+        // Note what this does NOT cover, and why the rewrite table below exists: the index
+        // it fetches carries an absolute `release.download` URL per plugin, so pointing
+        // this at a mirror mirrors the catalogue and leaves Install going to github.com.
         key: "plugins.registryUrl",
-        category: "plugins",
+        category: "network",
         scope: SettingScope.Global,
         type: SettingValueType.String,
-        label: "Registry URL",
+        label: "Plugin registry URL",
         labelKey: "settings.items.pluginRegistryUrl.label",
         description: "Where the plugin store looks. Leave empty to use the official NarraLeaf registry.",
         descriptionKey: "settings.items.pluginRegistryUrl.description",
@@ -563,9 +679,11 @@ export const AppSettings: AppSettingDefinition[] = [
     {
         // Read by the main process (uiTemplateRegistryClient.resolveTemplateRegistryUrl)
         // when the UI editor's template store fetches the index or a template bundle.
-        // Empty = the official NarraLeaf/UI-Templates registry index.
+        // Empty = the official NarraLeaf/UI-Templates registry index. Unlike the plugin
+        // registry this one really is enough on its own: template files resolve against
+        // the index's own directory (registryBaseDir), so they follow it to a mirror.
         key: "uiTemplates.registryUrl",
-        category: "plugins",
+        category: "network",
         scope: SettingScope.Global,
         type: SettingValueType.String,
         label: "UI template registry URL",
@@ -575,12 +693,56 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: "",
     },
     {
+        // Read by the main-process GameBuildManager (readElectronMirror) and
+        // passed to electron-builder as electronDownload.mirror for cross-platform
+        // game builds. Empty = official Electron download source.
+        key: "build.electronMirror",
+        category: "network",
+        scope: SettingScope.Global,
+        type: SettingValueType.String,
+        label: "Electron download mirror",
+        labelKey: "settings.items.electronMirror.label",
+        description: "Mirror for downloading Electron. Leave empty to use the official source.",
+        descriptionKey: "settings.items.electronMirror.description",
+        defaultValue: "",
+    },
+    {
+        // Read by the build worker (winCodeSignCache.binariesMirror), ahead of the two
+        // environment variables it already honored. A second field rather than a mode of
+        // the one above because the URL layouts differ - the comment in GameBuildManager
+        // spelled out why one cannot be synthesized from the other, and until now the
+        // answer was that a Studio user simply had no way to set it.
+        key: "build.electronBuilderBinariesMirror",
+        category: "network",
+        scope: SettingScope.Global,
+        type: SettingValueType.String,
+        label: "Build tooling mirror",
+        labelKey: "settings.items.electronBuilderBinariesMirror.label",
+        description: "Mirror for the installer tooling a build downloads (NSIS, AppImage, code-signing helpers). Leave empty to use the official source.",
+        descriptionKey: "settings.items.electronBuilderBinariesMirror.description",
+        defaultValue: "",
+    },
+    {
+        // The rewrite table (see @shared/utils/downloadSource). Rendered by its own panel:
+        // an ordered list of rules is not a value the generic control layer can edit, and
+        // the panel owns reading and writing this key exactly as the keybindings panel does.
+        key: DOWNLOAD_REWRITES_KEY,
+        category: "network",
+        scope: SettingScope.Global,
+        type: SettingValueType.Custom,
+        panel: "downloadSources",
+        label: "Download address rewrites",
+        labelKey: "settings.items.downloadRewrites.label",
+        description: "",
+        defaultValue: null,
+    },
+    {
         // Read by the renderer's CheckpointScheduler (VersionControlService) on every
         // beat, so a change here applies without a restart. 0 turns the timer off.
         // Only ever fires when a versioned file has actually been written - never by
         // asking the backend what changed, which is a scan and not a pure read.
         key: "versionControl.checkpointIntervalMinutes",
-        category: "sync",
+        category: "versionControl",
         scope: SettingScope.Global,
         type: SettingValueType.Integer,
         label: "Automatic checkpoint interval",
@@ -602,7 +764,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // all. Read by the main process (App.checkpointBeforeClose) at close time, so a change
         // here applies to the next window closed without a restart.
         key: "versionControl.checkpointOnClose",
-        category: "sync",
+        category: "versionControl",
         scope: SettingScope.Global,
         type: SettingValueType.Boolean,
         label: "Record a checkpoint when a workspace closes",
@@ -616,7 +778,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // checkpoint. Empty records UNCONFIGURED_IDENTITY; deliberately not the OS
         // account name, which is not Studio's to publish on the author's behalf.
         key: "versionControl.authorName",
-        category: "sync",
+        category: "versionControl",
         scope: SettingScope.Global,
         type: SettingValueType.String,
         label: "Author name",
@@ -632,7 +794,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // that is wrong in a way a regex would catch is still the author's to fix, and refusing
         // to record because of it would block committing rather than help.
         key: "versionControl.authorEmail",
-        category: "sync",
+        category: "versionControl",
         scope: SettingScope.Global,
         type: SettingValueType.String,
         label: "Author email",
