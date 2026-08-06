@@ -1877,6 +1877,58 @@ describe("compileStudioStoryToNlr voice", () => {
         expect((none.scenes["scene-1"] as any).config?.voices ?? null).toBeNull();
     });
 
+    /**
+     * Switching dub language has to reach the table the SCENE reads.
+     *
+     * `Scene` copies the config object it is handed, so the table the compiler built is not the one
+     * `getVoice` consults. Mutating only the compiler's copy made `setVoiceLocale` return true and
+     * change nothing at all - a switch that reports success and plays the old language. Asserted
+     * through `scene.config.voices` for exactly that reason: a test that read the compiler's own
+     * object would have passed against the broken build.
+     */
+    it("re-points the scene's own take table when the dub language changes", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ say: dialogueBlock("say", "text-say", "hi") }, ["say"]),
+            sceneId: "scene-1",
+            characters: [{ id: "char-alice", name: "Alice", appearance: { kind: "preset", poses: [], defaultPoseId: null } }],
+            voice: {
+                voicedLocales: [{ code: "ja", displayName: "日本語" }, { code: "en", displayName: "English" }],
+                tables: { ja: { "text-say": "asset-ja-say" }, en: { "text-say": "asset-en-say" } },
+                getVoiceLocale: () => "ja",
+            },
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        const scene = compiled.scenes["scene-1"] as any;
+        expect(scene.config?.voices?.["text-say"]).toBe("nlr://asset-ja-say");
+
+        expect(compiled.setVoiceLocale?.("en")).toBe(true);
+        expect(scene.config?.voices?.["text-say"]).toBe("nlr://asset-en-say");
+
+        // A language this build does not ship leaves the table exactly where it was.
+        expect(compiled.setVoiceLocale?.("fr")).toBe(false);
+        expect(scene.config?.voices?.["text-say"]).toBe("nlr://asset-en-say");
+    });
+
+    it("carries a voiceId for a line voiced in some other language", async () => {
+        // English-first build, line recorded only in Japanese: without the id on the sentence,
+        // switching to Japanese mid-game would find nothing to play.
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ say: dialogueBlock("say", "text-say", "hi") }, ["say"]),
+            sceneId: "scene-1",
+            characters: [{ id: "char-alice", name: "Alice", appearance: { kind: "preset", poses: [], defaultPoseId: null } }],
+            voice: {
+                voicedLocales: [{ code: "en", displayName: "English" }, { code: "ja", displayName: "日本語" }],
+                tables: { en: {}, ja: { "text-say": "asset-ja-say" } },
+                getVoiceLocale: () => "en",
+            },
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        expect(getSaySentence(compiled, "say").config?.voiceId).toBe("text-say");
+        expect(compiled.getVoicePlayback?.("text-say")).toBeNull();
+        compiled.setVoiceLocale?.("ja");
+        expect(compiled.getVoicePlayback?.("text-say")).toEqual({ src: "nlr://asset-ja-say", busId: "voice" });
+    });
+
     it("keeps the legacy per-line voiceAssetId as an inline fallback", async () => {
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument({ say: dialogueBlock("say", "text-legacy", "hi", { voiceAssetId: "asset-voice" }) }, ["say"]),
