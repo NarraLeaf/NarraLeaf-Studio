@@ -117,12 +117,17 @@ export const uiEditor = {
         retry: "重试",
         empty: "暂无可用模板",
         emptyFiltered: "没有匹配的模板",
-        selectPrompt: "选择一个模板以预览",
-        noDescription: "暂无说明",
-        target: "将添加",
         applied: "已添加「{name}」",
-        slotTaken: "{slot} 槽位已有一个游戏界面，已跳过",
-        assetsSkipped: "有 {count} 个资源暂时无法导入",
+        slotTaken: "{slot} 槽位已有一个游戏界面",
+        slotOccupied: "槽位已占用",
+        assetsSkipped: {
+            one: "有 {count} 个资源导入失败",
+            other: "有 {count} 个资源导入失败",
+        },
+        componentsAdded: {
+            one: "已向组件库添加 {count} 个组件",
+            other: "已向组件库添加 {count} 个组件",
+        },
         placement: {
             page: "一个新页面",
             gameUi: "游戏界面 · {slot}",

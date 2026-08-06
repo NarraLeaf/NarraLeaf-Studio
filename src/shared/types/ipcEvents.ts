@@ -24,7 +24,7 @@ import type {
 import type { CacheClearResult, CacheInventoryReport } from "./cacheInventory";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
 import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
-import type { UITemplateBundle, UITemplateFetchResult } from "./uiTemplateRegistry";
+import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview } from "./uiTemplateRegistry";
 import type { RemoteAssetFetchResult, RemoteAssetValidators } from "./remoteAsset";
 import type { LocaleContribution } from "@shared/i18n";
 import type {
@@ -233,6 +233,7 @@ export enum IPCEventType {
 
     uiTemplateRegistryFetch = "uiTemplate.registryFetch",
     uiTemplateFetchBundle = "uiTemplate.fetchBundle",
+    uiTemplateFetchPreviews = "uiTemplate.fetchPreviews",
 
     assetFetchRemote = "asset.fetchRemote",
 
@@ -2123,6 +2124,16 @@ export type IPCUITemplateEvents = {
             templateId: string;
         },
         response: UITemplateBundle;
+    };
+    // Store: fetch just the `UIDocument` of several templates, to draw their cards.
+    // One call for the whole grid, so the index is fetched once rather than per card.
+    [IPCEventType.uiTemplateFetchPreviews]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            templateIds: string[];
+        },
+        response: UITemplatePreview[];
     };
 };
 

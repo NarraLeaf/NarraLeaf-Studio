@@ -1936,6 +1936,27 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         return { componentIdMap, importedComponents };
     }
 
+    /**
+     * A store card's document: the registry's raw JSON, validated and brought up
+     * to the current schema, ready to hand to `renderDocumentSurface`.
+     *
+     * Nothing here touches the open project — `migrateIfNeeded` is pure and this
+     * never mutates. That is the whole point: the store draws what a template
+     * actually looks like *before* the author decides to import it, so the card is
+     * the template rather than a picture of it that can drift.
+     *
+     * Returns `null` for a document this Studio cannot read, so one bad template
+     * costs its own card and not the grid.
+     */
+    public prepareTemplateDocumentForPreview(raw: unknown): UIDocument | null {
+        try {
+            return this.migrateIfNeeded(this.coerceIncomingUIDocument(raw));
+        } catch (error) {
+            console.warn("[UIDocumentService] template preview document rejected", error);
+            return null;
+        }
+    }
+
     private coerceIncomingUIDocument(raw: unknown): UIDocument {
         if (!raw || typeof raw !== "object") {
             throw new RendererError("Template document is not an object");

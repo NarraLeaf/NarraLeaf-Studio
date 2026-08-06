@@ -26,3 +26,7 @@ export const UI_TEMPLATE_MAX_ASSET_BYTES = 8 * 1024 * 1024;
 
 /** Refuse a template that declares more resources than this. */
 export const UI_TEMPLATE_MAX_ASSETS = 32;
+
+/** How many card previews one request may ask for, so a single message cannot
+ * turn into an unbounded run of requests to the registry host. */
+export const UI_TEMPLATE_MAX_PREVIEWS_PER_REQUEST = 64;
