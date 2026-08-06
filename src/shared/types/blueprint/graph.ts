@@ -903,6 +903,14 @@ export const BLUEPRINT_NODE_TYPE_LOCALIZATION_HAS_TEXT = "blueprint.localization
 export const BLUEPRINT_NODE_TYPE_LOCALIZATION_FORMAT_TEXT = "blueprint.localization.formatText" as const;
 export const BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_AVAILABLE_LANGUAGES = "blueprint.localization.getAvailableLanguages" as const;
 
+// Voice nodes. Dub language is a separate player choice from subtitle language, hence a family of
+// its own rather than more localization nodes. Same rule as above: every getter is latent, so each
+// also has to be listed in `resolveSelfOutput` in `graphParamResolvers.ts`.
+export const BLUEPRINT_NODE_TYPE_VOICE_GET_LANGUAGE = "blueprint.voice.getLanguage" as const;
+export const BLUEPRINT_NODE_TYPE_VOICE_SET_LANGUAGE = "blueprint.voice.setLanguage" as const;
+export const BLUEPRINT_NODE_TYPE_VOICE_GET_AVAILABLE_LANGUAGES = "blueprint.voice.getAvailableLanguages" as const;
+export const BLUEPRINT_NODE_TYPE_VOICE_PLAY = "blueprint.voice.play" as const;
+
 export const BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM = "blueprint.frame.getParam" as const;
 export const BLUEPRINT_NODE_TYPE_FRAME_EMIT = "blueprint.frame.emit" as const;
 export const BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE = "blueprint.frameWidget.setTargetPage" as const;

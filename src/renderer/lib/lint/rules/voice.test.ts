@@ -136,6 +136,65 @@ describe("voice/stale", () => {
         expect(findings[0].target).toMatchObject({ kind: "storyBlock", blockId: "b1" });
     });
 
+    /**
+     * A dub is a recording of the *translated* line, so staleness is judged per language against
+     * that language's text. Judging every dub by the source line was wrong in both directions at
+     * once: rewriting the Japanese translation left the Japanese take looking current, and
+     * rewriting one English source line reported every language as stale.
+     */
+    it("judges a dub against its own language's line, not the source", async () => {
+        const JA_TAKE = "家に帰ろう。";
+        const context = createTestLintContext({
+            stories: singleSceneStories([dialogueBlock("b1", textSegment("t-1", LINE, "dialogue"))]),
+            voice: {
+                voicedLocales: ["ja"],
+                documents: new Map([["ja", documentOf("ja", { "t-1": unit("asset-1", JA_TAKE) })]]),
+            },
+            localization: {
+                sourceLocale: "en",
+                targetLocales: ["ja"],
+                documents: new Map([[
+                    "ja",
+                    {
+                        schemaVersion: 1,
+                        locale: "ja",
+                        units: { "t-1": { target: JA_TAKE, sourceHash: hashSourceText(LINE), status: "translated" } },
+                    },
+                ]]),
+            },
+        } as Parameters<typeof createTestLintContext>[0]);
+
+        // The Japanese line is unchanged, so the Japanese take is current - even though the take was
+        // never hashed against the English source at all.
+        expect(await run("voice/stale", context)).toEqual([]);
+    });
+
+    it("reports a dub as stale when its own translation is rewritten", async () => {
+        const context = createTestLintContext({
+            stories: singleSceneStories([dialogueBlock("b1", textSegment("t-1", LINE, "dialogue"))]),
+            voice: {
+                voicedLocales: ["ja"],
+                documents: new Map([["ja", documentOf("ja", { "t-1": unit("asset-1", "家に帰ろう。") })]]),
+            },
+            localization: {
+                sourceLocale: "en",
+                targetLocales: ["ja"],
+                documents: new Map([[
+                    "ja",
+                    {
+                        schemaVersion: 1,
+                        locale: "ja",
+                        units: {
+                            "t-1": { target: "もう帰りましょう。", sourceHash: hashSourceText(LINE), status: "translated" },
+                        },
+                    },
+                ]]),
+            },
+        } as Parameters<typeof createTestLintContext>[0]);
+
+        expect(await run("voice/stale", context)).toHaveLength(1);
+    });
+
     it("checks a recorded choice line too - the take exists, so it can go out of date", async () => {
         const findings = await run(
             "voice/stale",

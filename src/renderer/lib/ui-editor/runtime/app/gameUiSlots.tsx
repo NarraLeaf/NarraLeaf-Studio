@@ -273,6 +273,9 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
                     text,
                     character: !isMenu && element.character != null ? String(element.character) : null,
                     voice: !isMenu && element.voice != null ? String(element.voice) : null,
+                    // The replayable handle. Present from engine 0.24.0 on; an entry from an older
+                    // save simply has none, and a backlog replay button hides itself for that line.
+                    voiceId: !isMenu && element.voiceId != null ? String(element.voiceId) : null,
                     selected: isMenu && element.selected != null ? String(element.selected) : null,
                     isPending: record.isPending === true,
                 }];

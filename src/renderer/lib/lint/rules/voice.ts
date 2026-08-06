@@ -1,4 +1,4 @@
-import type { VoiceUnit } from "@shared/types/voice";
+import { voiceLineText, type VoiceUnit } from "@shared/types/voice";
 import { isSourceHashStale } from "@shared/utils/localizationText";
 import type { LintContext } from "../context";
 import type { LintFinding, LintRule } from "../types";
@@ -72,7 +72,14 @@ function runMissing(ctx: LintContext): LintFinding[] {
     return findings;
 }
 
-/** A take recorded against text the author has since rewritten - the clip now says the wrong words. */
+/**
+ * A take recorded against text the author has since rewritten - the clip now says the wrong words.
+ *
+ * Measured per language against the text an actor for THAT language reads (`voiceLineText`): a
+ * Japanese take goes stale when the Japanese line changes, not when the English source does. Judging
+ * every dub by the source line got both directions wrong at once - rewriting a translation left its
+ * own take looking current, and rewriting one source line reported every language as stale.
+ */
 function runStale(ctx: LintContext): LintFinding[] {
     const voice = ctx.voice;
     if (!voice || voice.voicedLocales.length === 0) {
@@ -83,7 +90,8 @@ function runStale(ctx: LintContext): LintFinding[] {
         const sourceText = segmentSourceText(ref.segment);
         for (const locale of voice.voicedLocales) {
             const unit = voice.documents.get(locale)?.units[ref.textId];
-            if (!hasClip(unit) || !isSourceHashStale(unit.sourceHash, sourceText)) {
+            const lineText = voiceLineText(ctx.localization?.documents.get(locale), ref.textId, sourceText);
+            if (!hasClip(unit) || !isSourceHashStale(unit.sourceHash, lineText)) {
                 continue;
             }
             findings.push(finding(ref, "lint.rule.voiceStale.message", locale, "voice/stale"));

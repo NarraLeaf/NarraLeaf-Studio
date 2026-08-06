@@ -16,10 +16,32 @@
  * Comments in English per project convention.
  */
 
-import { isValidLocaleCode, type LocaleCode } from "./localization";
+import { isValidLocaleCode, type LocaleCode, type LocalizationDocument } from "./localization";
 
 export { isValidLocaleCode };
 export type { LocaleCode };
+
+/**
+ * The text a take in `locale` is a recording *of*.
+ *
+ * An actor dubbing a line into Japanese reads the Japanese line, not the line the writer authored -
+ * so the recording script, the voice table, and the staleness hash all have to be about that text.
+ * Keying voice to the source text instead meant the booth was handed the wrong language whenever a
+ * project was both translated and dubbed, editing a translation never marked its own take stale, and
+ * editing one source line marked every language's take stale at once.
+ *
+ * Voice languages stay independent of localization languages: a project may dub into a language it
+ * never translated into, and then the source text IS what the actor reads. So this falls back rather
+ * than failing, and a project with no localization behaves exactly as it did before.
+ */
+export function voiceLineText(
+    localization: LocalizationDocument | undefined,
+    unitId: string,
+    sourceText: string,
+): string {
+    const target = localization?.units[unitId]?.target;
+    return target && target.trim() ? target : sourceText;
+}
 
 export const VOICE_DOCUMENT_SCHEMA_VERSION = 1 as const;
 export type VoiceDocumentVersion = typeof VOICE_DOCUMENT_SCHEMA_VERSION;

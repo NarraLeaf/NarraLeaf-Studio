@@ -13,6 +13,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { AudioLines, CheckCircle2, ListMusic, Mic, PenLine } from "lucide-react";
 import type { EditorComponentProps } from "../types";
 import { Select, type SelectOption } from "@/lib/components/elements";
@@ -23,9 +24,11 @@ import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import { VoiceService } from "@/lib/workspace/services/voice/VoiceService";
 import { deriveVoiceUnitState, type VoiceUnitState } from "@/lib/workspace/services/voice/voiceModel";
+import { formatVoiceDuration, readAudioDuration } from "@/lib/workspace/services/voice/audioDuration";
 import type { StoryTranslationRow } from "@/lib/workspace/services/localization/localizationModel";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
+import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
@@ -41,6 +44,10 @@ type RowFilter = "all" | "missing" | "outdated" | "voiced" | "approved";
 type AuditionFilter = "all" | "approved" | "pending";
 
 const NARRATION_GROUP_KEY = "__narration__";
+
+/** Starting estimates for the windowed list; every item re-measures itself once it mounts. */
+const GROUP_ROW_HEIGHT_PX = 26;
+const VOICE_ROW_HEIGHT_PX = 37;
 
 type TableRow = VoiceTableRow & { speaker: string };
 
@@ -72,6 +79,10 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
         () => (context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null),
         [context, isInitialized],
     );
+    const localizationService = useMemo(
+        () => (context && isInitialized ? context.services.get<LocalizationService>(Services.Localization) : null),
+        [context, isInitialized],
+    );
 
     const [stories, setStories] = useState<StoryLibraryEntry[]>([]);
     const [characters, setCharacters] = useState<{ id: string; name: string }[]>([]);
@@ -93,6 +104,7 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
     // Import (asset picker) state, anchored under the row that opened it.
     const [selector, setSelector] = useState<{ unitId: string; sourceText: string; currentAssetId?: string } | null>(null);
     const selectorAnchorRef = useRef<HTMLElement | null>(null);
+    const scrollRef = useRef<HTMLDivElement | null>(null);
 
     const speakerNameFor = useCallback((row: StoryTranslationRow): string => {
         if (row.role === "narration") {
@@ -166,8 +178,11 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
     }, [assetsService]);
 
     // Voiceable rows of the selected story, in narrative order.
+    //
+    // The row's text is what an actor for THIS language reads, so the extraction depends on the
+    // locale's translation table as much as on the story - and re-runs when either moves.
     useEffect(() => {
-        if (!voiceService || !storyService || !storyId) {
+        if (!voiceService || !storyService || !storyId || !locale) {
             setRows([]);
             return;
         }
@@ -175,34 +190,44 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
         const extract = () => {
             try {
                 const document = storyService.getStoryDocument(storyId);
-                setRows(voiceService.extractRows(document).map(row => ({
-                    unitId: row.unitId,
-                    sourceText: row.sourceText,
-                    sceneId: row.sceneId,
-                    sceneName: row.sceneName,
-                    role: row.role,
-                    ...(row.characterId ? { characterId: row.characterId } : {}),
-                    speaker: speakerNameFor(row),
-                })));
+                setRows(voiceService.extractRows(document).map(row => {
+                    const scriptText = voiceService.getLineText(locale, row.unitId, row.sourceText);
+                    return {
+                        unitId: row.unitId,
+                        sourceText: scriptText,
+                        ...(scriptText !== row.sourceText ? { authoredText: row.sourceText } : {}),
+                        sceneId: row.sceneId,
+                        sceneName: row.sceneName,
+                        role: row.role,
+                        ...(row.characterId ? { characterId: row.characterId } : {}),
+                        speaker: speakerNameFor(row),
+                    };
+                }));
             } catch {
                 setRows([]);
             }
         };
-        void storyService.loadStory(storyId).then(() => {
+        void Promise.all([storyService.loadStory(storyId), voiceService.loadLineTexts(locale)]).then(() => {
             if (!disposed) {
                 extract();
             }
         }).catch(() => setRows([]));
-        const unsubscribe = storyService.onDocumentChanged(event => {
+        const unsubscribeStory = storyService.onDocumentChanged(event => {
             if (event.storyId === storyId) {
+                extract();
+            }
+        });
+        const unsubscribeTranslation = localizationService?.onDocumentChanged(event => {
+            if (event.locale === locale) {
                 extract();
             }
         });
         return () => {
             disposed = true;
-            unsubscribe();
+            unsubscribeStory();
+            unsubscribeTranslation?.();
         };
-    }, [voiceService, storyService, storyId, speakerNameFor, characters]);
+    }, [voiceService, storyService, localizationService, storyId, locale, speakerNameFor, characters]);
 
     // Voice document for this language.
     useEffect(() => {
@@ -291,6 +316,27 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
 
     const assignAsset = useCallback((unitId: string, sourceText: string, assetId: string) => {
         voiceService?.updateUnit(locale, unitId, sourceText, { assetId });
+        // Measured after the link lands, not before it: the link is the author's action and must not
+        // wait on decoding a header. A patch carrying only `duration` never re-stamps the source
+        // hash, so this cannot quietly un-stale the line it just measured.
+        void (async () => {
+            const asset = assetsService?.getAssets()[AssetType.Audio]?.[assetId];
+            if (!asset || !assetsService) {
+                return;
+            }
+            const result = await assetsService.fetch(asset);
+            if (!result.success) {
+                return;
+            }
+            const duration = await readAudioDuration(new Uint8Array((result.data as { data: Uint8Array }).data));
+            if (duration !== undefined) {
+                voiceService?.updateUnit(locale, unitId, sourceText, { duration });
+            }
+        })();
+    }, [voiceService, assetsService, locale]);
+
+    const setNote = useCallback((unitId: string, sourceText: string, note: string) => {
+        voiceService?.updateUnit(locale, unitId, sourceText, { note });
     }, [voiceService, locale]);
 
     const rowStates = useMemo(() => {
@@ -374,6 +420,42 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
         return order;
     }, [visibleRows, groupAxis, t]);
 
+    /**
+     * Groups and rows flattened into one windowed list.
+     *
+     * A fully-voiced commercial VN is tens of thousands of lines and this table used to render every
+     * one of them as DOM - a table that is unusable on exactly the projects that need it most. Same
+     * shape as the lint and test reports: fixed-estimate items, absolutely positioned. The group
+     * header gives up `position: sticky` in the trade, because a sticky child of an absolutely
+     * positioned item has nothing to stick to.
+     */
+    const flatItems = useMemo(() => {
+        const items: ({ key: string } & (
+            | { kind: "group"; name: string; characterId?: string }
+            | { kind: "row"; row: TableRow }
+        ))[] = [];
+        for (const group of groups) {
+            items.push({
+                kind: "group",
+                key: `g:${group.key}:${group.rows[0]?.unitId ?? ""}`,
+                name: group.name,
+                ...(group.characterId ? { characterId: group.characterId } : {}),
+            });
+            for (const row of group.rows) {
+                items.push({ kind: "row", key: `r:${row.unitId}`, row });
+            }
+        }
+        return items;
+    }, [groups]);
+
+    const virtualizer = useVirtualizer({
+        count: flatItems.length,
+        getScrollElement: () => scrollRef.current,
+        estimateSize: index => (flatItems[index]?.kind === "group" ? GROUP_ROW_HEIGHT_PX : VOICE_ROW_HEIGHT_PX),
+        overscan: 16,
+        getItemKey: index => flatItems[index]?.key ?? index,
+    });
+
     const rowStrings = useMemo(() => ({
         assign: t("workspace.voice.table.assign"),
         replace: t("workspace.voice.table.replace"),
@@ -388,6 +470,7 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
         statusVoiced: t("workspace.voice.table.statusVoiced"),
         statusApproved: t("workspace.voice.table.statusApproved"),
         statusOutdated: t("workspace.voice.table.statusOutdated"),
+        notePlaceholder: t("workspace.voice.table.notePlaceholder"),
     }), [t]);
 
     const localeDisplayName = useMemo(() => {
@@ -504,7 +587,7 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
                     </div>
                 </div>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
                 {stories.length === 0 ? (
                     <EmptyMessage icon={<Mic className="h-5 w-5" />} text={t("workspace.voice.table.noStories")} />
                 ) : rows.length === 0 ? (
@@ -514,9 +597,24 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
                 ) : visibleRows.length === 0 ? (
                     <EmptyMessage icon={<ListMusic className="h-5 w-5" />} text={t("workspace.voice.table.emptyFilter")} />
                 ) : (
-                    groups.map(group => (
-                        <section key={`${group.key}:${group.rows[0]?.unitId ?? ""}`}>
-                            <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-edge-subtle bg-surface-sunken px-4 py-1.5 text-2xs font-medium text-fg-muted">
+                    <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+                        {virtualizer.getVirtualItems().map(item => {
+                            const entry = flatItems[item.index];
+                            if (!entry) {
+                                return null;
+                            }
+                            const group = entry.kind === "group" ? entry : null;
+                            const row = entry.kind === "row" ? entry.row : null;
+                            return (
+                        <div
+                            key={item.key}
+                            ref={virtualizer.measureElement}
+                            data-index={item.index}
+                            className="absolute left-0 top-0 w-full"
+                            style={{ transform: `translateY(${item.start}px)` }}
+                        >
+                        {group ? (
+                            <div className="flex items-center gap-2 border-b border-edge-subtle bg-surface-sunken px-4 py-1.5 text-2xs font-medium text-fg-muted">
                                 <span>{group.name}</span>
                                 {group.characterId ? (
                                     // Who voices this character is voice-configuration data, so the box
@@ -547,39 +645,43 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
                                     />
                                 ) : null}
                             </div>
-                            <div className="flex flex-col">
-                                {group.rows.map(row => {
-                                    const state = rowStates.get(row.unitId) ?? "missing";
-                                    const asset = resolveAsset(voiceDoc?.units[row.unitId]?.assetId);
-                                    return (
-                                        <VoiceRow
-                                            key={row.unitId}
-                                            row={row}
-                                            speaker={row.speaker}
-                                            state={state}
-                                            asset={asset}
-                                            mode={mode}
-                                            isPlaying={playingUnitId === row.unitId}
-                                            strings={rowStrings}
-                                            onTogglePlay={() => void togglePlay(row.unitId, asset)}
-                                            onAssign={anchor => {
-                                                selectorAnchorRef.current = anchor;
-                                                setSelector({
-                                                    unitId: row.unitId,
-                                                    sourceText: row.sourceText,
-                                                    currentAssetId: voiceDoc?.units[row.unitId]?.assetId,
-                                                });
-                                            }}
-                                            onRemove={() => voiceService?.updateUnit(locale, row.unitId, row.sourceText, { assetId: "" })}
-                                            onApprove={() => voiceService?.updateUnit(locale, row.unitId, row.sourceText, { status: "approved" })}
-                                            onReturn={() => voiceService?.updateUnit(locale, row.unitId, row.sourceText, { status: "linked" })}
-                                            onDropAsset={assetId => assignAsset(row.unitId, row.sourceText, assetId)}
-                                        />
-                                    );
-                                })}
-                            </div>
-                        </section>
-                    ))
+                        ) : null}
+                        {row ? (() => {
+                            const state = rowStates.get(row.unitId) ?? "missing";
+                            const unit = voiceDoc?.units[row.unitId];
+                            const asset = resolveAsset(unit?.assetId);
+                            return (
+                                <VoiceRow
+                                    row={row}
+                                    speaker={row.speaker}
+                                    state={state}
+                                    asset={asset}
+                                    duration={formatVoiceDuration(unit?.duration)}
+                                    note={unit?.note ?? ""}
+                                    onNoteChange={note => setNote(row.unitId, row.sourceText, note)}
+                                    mode={mode}
+                                    isPlaying={playingUnitId === row.unitId}
+                                    strings={rowStrings}
+                                    onTogglePlay={() => void togglePlay(row.unitId, asset)}
+                                    onAssign={anchor => {
+                                        selectorAnchorRef.current = anchor;
+                                        setSelector({
+                                            unitId: row.unitId,
+                                            sourceText: row.sourceText,
+                                            currentAssetId: unit?.assetId,
+                                        });
+                                    }}
+                                    onRemove={() => voiceService?.updateUnit(locale, row.unitId, row.sourceText, { assetId: "" })}
+                                    onApprove={() => voiceService?.updateUnit(locale, row.unitId, row.sourceText, { status: "approved" })}
+                                    onReturn={() => voiceService?.updateUnit(locale, row.unitId, row.sourceText, { status: "linked" })}
+                                    onDropAsset={assetId => assignAsset(row.unitId, row.sourceText, assetId)}
+                                />
+                            );
+                        })() : null}
+                        </div>
+                            );
+                        })}
+                    </div>
                 )}
             </div>
             <AssetSelector
