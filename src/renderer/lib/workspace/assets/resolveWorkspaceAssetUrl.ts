@@ -22,8 +22,14 @@ export type WorkspaceBlobUrlResolver = {
 };
 
 /**
- * Resolves an asset id to a URL loadable inside any renderer window:
- * remote assets resolve to their stored URL, local assets to an `app://fs/{hash}` grant.
+ * Resolves an asset id to a URL loadable inside any renderer window: an `app://fs/{hash}` grant
+ * over the bytes stored in the project.
+ *
+ * Source-blind on purpose. A remote asset used to resolve to its own `https:` URL, which put a
+ * project-authored address straight into an `<img src>` - renderers do not talk to the network, and
+ * a preview that silently reached out to whatever host a record named was the clearest breach of
+ * that rule in the codebase. A remote asset's bytes are a versioned snapshot at the same content
+ * shard as any other asset's, so there is nothing left here to distinguish.
  *
  * Grants are issued one-shot; the Dev Mode request path promotes them in the
  * main process to session-lived repeatable reads bound to the Dev Mode window
@@ -61,14 +67,6 @@ export function createWorkspaceAssetUrlResolver(context: WorkspaceContext): Work
         const asset = findAsset(assetsService, assetId, assetType);
         if (!asset) {
             return { success: false, error: "Asset not found" };
-        }
-
-        if (asset.source === AssetSource.Remote) {
-            const url = (asset.meta as any)?.url;
-            if (typeof url !== "string" || !url.trim()) {
-                return { success: false, error: "Remote asset URL missing" };
-            }
-            return { success: true, url };
         }
 
         if (asset.type === AssetType.Model) {
@@ -154,8 +152,8 @@ function findAsset(assetsService: AssetsService, assetId: string, assetType?: st
 }
 
 /**
- * Resolves asset ids to session-lived URLs safe for REPEATED loads: remote assets keep their
- * stored URL; local assets are fetched once and served as blob object URLs.
+ * Resolves asset ids to session-lived URLs safe for REPEATED loads: the bytes are read once and
+ * served as a blob object URL.
  *
  * Use this (not {@link createWorkspaceAssetUrlResolver}) whenever the consumer may load the same
  * URL more than once - `app://fs/{hash}` grants are single-use (the protocol handler cleans the
@@ -200,10 +198,6 @@ export function createWorkspaceBlobUrlResolver(context: WorkspaceContext): Works
             const asset = findAsset(assetsService, assetId, assetType);
             if (!asset) {
                 return null;
-            }
-            if (asset.source === AssetSource.Remote) {
-                const url = (asset.meta as any)?.url;
-                return typeof url === "string" && url.trim() ? url : null;
             }
             if (asset.type === AssetType.Model) {
                 // A bundle has no single blob to wrap in an object URL, and it does not need one:

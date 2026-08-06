@@ -25,6 +25,7 @@ import type { CacheClearResult, CacheInventoryReport } from "./cacheInventory";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
 import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult } from "./uiTemplateRegistry";
+import type { RemoteAssetFetchResult, RemoteAssetValidators } from "./remoteAsset";
 import type { LocaleContribution } from "@shared/i18n";
 import type {
     PrivilegedBashExecutePayload,
@@ -233,6 +234,8 @@ export enum IPCEventType {
 
     uiTemplateRegistryFetch = "uiTemplate.registryFetch",
     uiTemplateFetchBundle = "uiTemplate.fetchBundle",
+
+    assetFetchRemote = "asset.fetchRemote",
 
     puppetRuntimeInstallSdk = "puppetRuntime.installSdk",
 
@@ -673,7 +676,7 @@ export type IPCEvents = {
         };
         response: { file: string };
     };
-} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCPrivilegedEvents & IPCVcsEvents;
+} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCAssetEvents & IPCPrivilegedEvents & IPCVcsEvents;
 
 /**
  * Version control. Every event carries `projectPath`: Studio is
@@ -2141,6 +2144,30 @@ export type IPCUITemplateEvents = {
             templateId: string;
         },
         response: UITemplateBundle;
+    };
+};
+
+export type IPCAssetEvents = {
+    /**
+     * Fetch the bytes behind a remote asset's URL, in main.
+     *
+     * The renderer supplies the address here, unlike the store events above — it is the one the
+     * author typed into the import dialog, not one read out of untrusted data. What the boundary
+     * buys is that the *request* is main's: the scheme allowlist, the size ceiling, the timeout and
+     * the author's download rewrites all apply, and the renderer receives bytes instead of putting
+     * a remote URL into the DOM.
+     *
+     * `validators` makes the request conditional, so refreshing an unchanged asset transfers
+     * nothing and answers `not-modified`.
+     */
+    [IPCEventType.assetFetchRemote]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            url: string;
+            validators?: RemoteAssetValidators;
+        },
+        response: RemoteAssetFetchResult;
     };
 };
 

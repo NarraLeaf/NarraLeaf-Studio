@@ -212,9 +212,13 @@ function AssetDetail({ entry }: { entry: AssetOverviewEntry }) {
     const previewUrl = useBadgeImageUrl(
         asset.type === AssetType.Image ? { kind: "project", asset: asset as Asset<AssetType.Image> } : null,
     );
-    const storageLocation = asset.source === AssetSource.Remote
+    // A remote asset has both: a shard holding the snapshot, like every other asset, and the address
+    // that snapshot came from. The URL used to *replace* the path here, which read as though remote
+    // assets were stored somewhere else; they are not, and their bytes count towards the very sizes
+    // this view exists to show.
+    const sourceUrl = asset.source === AssetSource.Remote
         ? (asset as Asset<AssetType, AssetSource.Remote>).meta.url
-        : relativePath;
+        : null;
 
     return (
         <div className="mb-2 ml-2 flex flex-col gap-2.5 border-l border-edge pl-3 pt-2">
@@ -244,8 +248,11 @@ function AssetDetail({ entry }: { entry: AssetOverviewEntry }) {
                 {showStorage && (
                     <dl className="mt-1.5 flex flex-col gap-1.5">
                         <CopyRow label={t("properties.asset.info.hash")} value={asset.hash} />
-                        {storageLocation && (
-                            <CopyRow label={t("assets.overview.detail.path")} value={storageLocation} />
+                        {relativePath && (
+                            <CopyRow label={t("assets.overview.detail.path")} value={relativePath} />
+                        )}
+                        {sourceUrl && (
+                            <CopyRow label={t("properties.asset.remote.url")} value={sourceUrl} />
                         )}
                     </dl>
                 )}
