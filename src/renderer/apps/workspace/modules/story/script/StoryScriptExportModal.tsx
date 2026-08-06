@@ -37,6 +37,7 @@ export function StoryScriptExportModal(props: {
             isOpen={props.open}
             onClose={props.onClose}
             title={t("story.script.exportTitle")}
+            helpTopic="storyScript"
             size="sm"
             closeOnOverlayClick={!props.busy}
             footer={

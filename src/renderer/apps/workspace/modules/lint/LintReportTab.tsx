@@ -177,7 +177,7 @@ export function LintReportTab() {
           : "";
 
     return (
-        <div className="flex h-full min-h-0 flex-col bg-surface">
+        <div className="flex h-full min-h-0 flex-col bg-surface" data-help-topic="lint">
             <div className="flex shrink-0 items-center gap-2 border-b border-edge px-3 py-2">
                 <span className="min-w-0 flex-1 truncate text-xs text-fg-subtle">{headline}</span>
                 <Select

@@ -560,7 +560,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
     const separator = <span className="mx-1.5 h-4 w-px shrink-0 bg-edge" />;
 
     return (
-        <div className="flex h-full flex-col bg-surface">
+        <div className="flex h-full flex-col bg-surface" data-help-topic="audioClips">
             {/* Transport, view and marker controls. Everything else is a gesture or a shortcut. */}
             <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-edge bg-surface-raised px-2 py-1.5">
                 <button

@@ -81,6 +81,27 @@ permanently.
 
 There is no permanent help panel, no startup tips dialog, and no callout that appears uninvited.
 
+The popover is hosted per window. The workspace mounts it in `WorkspaceHelp`; the Settings window
+mounts `HelpOverlay` bare, with no browser footer, because it has no editor tabs to open one in.
+
+### Where a `?` is drawn, and where it is not
+
+A surface opts in through the nearest seam that already exists, rather than by knowing about the
+help system:
+
+| Seam | Gives |
+|---|---|
+| `PANEL_HELP_TOPICS` | `F1` over a sidebar panel, no markup in the panel |
+| `SettingsGroup helpTopic` / `trailing={<HelpTrigger/>}` | one part of a project sub-page |
+| `ProjectSubPage helpTopic` | a whole sub-page that is one subject end to end |
+| `Modal helpTopic` | `F1` in a dialog, and a `?` beside its close button |
+| `data-help-topic` on an editor's root | `F1` anywhere in that editor |
+
+Draw a visible `?` only where the surface decides something the author cannot read off the controls
+in front of them: a merge they did not ask for, a build switch that changes the shipped files, a
+mode they arrived in from a failure. A row that already carries a control gets the attribute and no
+glyph, because two adjacent icon buttons are a row of glyphs to skim past.
+
 ## 6. Topic content format
 
 A topic body is one catalog string. The renderer understands three things and nothing else:

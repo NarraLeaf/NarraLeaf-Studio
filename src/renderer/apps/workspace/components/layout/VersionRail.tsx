@@ -962,11 +962,16 @@ function ServerSection({ surface }: { surface: VersionSurface }) {
     const face = serverFace(syncState);
 
     return (
-        <div data-vcs-seam="server" className="border-b border-edge px-3 py-2">
-            <div className="flex items-center justify-between gap-2">
-                <span className="text-2xs tracking-wide text-fg-subtle">
-                    {t("workspace.shell.versionControl.server.title")}
-                </span>
+        <div data-vcs-seam="server" data-help-topic="versionServer" className="border-b border-edge px-3 py-2">
+            <div className="group/help flex items-center justify-between gap-2">
+                <div className="flex shrink-0 items-center gap-0.5">
+                    <span className="text-2xs tracking-wide text-fg-subtle">
+                        {t("workspace.shell.versionControl.server.title")}
+                    </span>
+                    {/* Sending and getting are the two controls in this rail that reach another
+                        machine, and the difference between them is the question this answers. */}
+                    <HelpTrigger topic="versionServer" className="-my-1 h-5 w-5" />
+                </div>
                 {/* Editing the address is reachable from the host line itself rather than from a
                     button of its own: it is a once-per-project act, and a 320px row has no space
                     for a control that is pressed twice a year. */}
@@ -1059,12 +1064,15 @@ function MergeSection({ surface }: { surface: VersionSurface }) {
     }
 
     return (
-        <div data-vcs-seam="merge" className="border-b border-edge bg-danger/5 px-3 py-2">
-            <div className="flex items-center gap-1.5">
+        <div data-vcs-seam="merge" data-help-topic="versionConflicts" className="border-b border-edge bg-danger/5 px-3 py-2">
+            <div className="group/help flex items-center gap-1.5">
                 <GitMerge className="h-3 w-3 shrink-0 text-danger" aria-hidden />
-                <span className="text-2xs tracking-wide text-danger">
+                <span className="min-w-0 flex-1 text-2xs tracking-wide text-danger">
                     {t("workspace.shell.versionControl.mergeOpen")}
                 </span>
+                {/* A state the author did not choose, cannot undo their way out of, and which
+                    freezes the project until it is finished. It is worth a `?` of its own. */}
+                <HelpTrigger topic="versionConflicts" className="-my-1 h-5 w-5" />
             </div>
             <p className="mt-1 text-2xs text-fg-muted">
                 {surface.merge.conflicts.length > 0
