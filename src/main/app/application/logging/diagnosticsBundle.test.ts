@@ -47,6 +47,17 @@ describe("sanitizeBundleFileName", () => {
         expect(sanitizeBundleFileName("report.txt", "fallback.log")).toBe("report.txt");
         expect(sanitizeBundleFileName("report.LOG", "fallback.log")).toBe("report.LOG");
     });
+
+    // The settings export reuses this and does NOT want a log extension. It inherited the
+    // diagnostics pair once and offered to save `…-settings.json.log`.
+    it("honours a caller's own extension set", () => {
+        expect(sanitizeBundleFileName("narraleaf-studio-settings.json", "fallback.json", [".json"]))
+            .toBe("narraleaf-studio-settings.json");
+        expect(sanitizeBundleFileName("my-settings", "fallback.json", [".json"])).toBe("my-settings.json");
+        expect(sanitizeBundleFileName("my-settings.JSON", "fallback.json", [".json"])).toBe("my-settings.JSON");
+        // A name carrying the *other* caller's extension is still corrected to this caller's.
+        expect(sanitizeBundleFileName("settings.log", "fallback.json", [".json"])).toBe("settings.log.json");
+    });
 });
 
 describe("readMainLogTail", () => {

@@ -4,9 +4,9 @@ import type { AppSettingDefinition } from "@/lib/settings/models";
 import {
     isProtectedStateKey,
     isWorkspaceLayoutKey,
-    MACHINE_SPECIFIC_PREFERENCE_KEYS,
     NON_REGISTRY_PREFERENCE_KEYS,
     PERSONAL_PREFERENCE_KEYS,
+    WALLPAPER_PREFERENCE_KEYS,
 } from "@shared/constants/settingsScopes";
 import type { SettingsValueSpec } from "@shared/utils/settingsDocument";
 
@@ -114,4 +114,4 @@ export function settingsValueSpecs(): SettingsValueSpec[] {
     return specs;
 }
 
-export { MACHINE_SPECIFIC_PREFERENCE_KEYS, PERSONAL_PREFERENCE_KEYS };
+export { PERSONAL_PREFERENCE_KEYS, WALLPAPER_PREFERENCE_KEYS };

@@ -108,6 +108,7 @@ export enum IPCEventType {
     appGlobalStateDelete = "app.globalState.delete",
     appExportSettings = "app.exportSettings",
     appImportSettings = "app.importSettings",
+    appWriteBackgroundImage = "app.writeBackgroundImage",
 
     fsStat = "fs.stat",
     fsList = "fs.list",
@@ -651,6 +652,26 @@ export type IPCEvents = {
         consumer: IPCType.Host,
         data: Record<string, never>;
         response: { canceled: boolean; filePath?: string; content?: string };
+    };
+    /**
+     * Put a picture into the background cache and report the name it took.
+     *
+     * The write counterpart of `appReadBackgroundImage`, added for the settings import: a
+     * document can carry the workspace wallpaper, and without this the imported
+     * `ui.backgroundImage` would name a file this machine has never had. Deliberately NOT a
+     * general "write a file" channel - the bytes only ever land in userData/backgrounds under a
+     * content-addressed name this handler derives, so a renderer chooses neither the directory
+     * nor the name.
+     */
+    [IPCEventType.appWriteBackgroundImage]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            data: Uint8Array;
+            /** Extension including the dot; anything unexpected falls back to .png. */
+            extension: string;
+        };
+        response: { file: string };
     };
 } & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCPrivilegedEvents & IPCVcsEvents;
 
