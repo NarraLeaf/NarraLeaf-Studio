@@ -13,6 +13,7 @@ import { useWorkspace } from "../../../context";
 import { useRegistry } from "../../../registry";
 import { useFreezeGuard } from "../../../components/ui/freezeGuard";
 import type { PanelComponentProps } from "../../types";
+import { closeStorySceneEditorTabs } from "../scene-editor/closeStorySceneEditorTabs";
 import { createStorySceneEditorTab } from "../scene-editor/openStorySceneEditorTab";
 import { openSceneFlowTab } from "../../story-flow/openSceneFlowTab";
 import { buildStorySceneTextProjection } from "../projection/storySceneProjection";
@@ -409,7 +410,12 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         if (!confirmed) {
             return;
         }
-        storyService.deleteChapter(selectedStoryId, chapter.id);
+        // Read the membership before the delete: afterwards the chapter is gone and there is nothing
+        // left to ask which scenes it held.
+        const sceneIds = [...chapter.sceneIds];
+        if (storyService.deleteChapter(selectedStoryId, chapter.id)) {
+            closeStorySceneEditorTabs(uiService, selectedStoryId, sceneIds);
+        }
     }, [selectedStoryId, storyService, t, tn, uiService]);
 
     const handleRenameScene = useCallback(async (scene: StoryScene) => {
