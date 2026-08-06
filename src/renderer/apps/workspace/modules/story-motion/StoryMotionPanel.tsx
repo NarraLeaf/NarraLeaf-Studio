@@ -283,7 +283,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
             return;
         }
         const animationId = selectedAsset.id;
-        storyService.deleteAnimationAsset(animationId);
+        await storyService.deleteAnimationAsset(animationId);
         clearStoryMotionSelectionForAnimation(uiService, animationId);
         closeStoryMotionEditorTabs(uiService, animationId);
         setSelectedId(null);
