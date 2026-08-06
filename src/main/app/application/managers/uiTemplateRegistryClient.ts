@@ -15,6 +15,8 @@ import type {
     UITemplateSurfacePlacement,
 } from "@shared/types/uiTemplateRegistry";
 import { isSafeRelativeEntry } from "@shared/utils/pluginManifest";
+import { resolveDownloadSource } from "@shared/utils/downloadSource";
+import { applyDownloadRewrite } from "./downloadRewrites";
 
 /**
  * Read-only client for the UI template store.
@@ -44,15 +46,20 @@ const MIME_BY_EXTENSION: Record<string, string> = {
 
 /** Resolve the effective registry URL: a configured value, else the official default. */
 export function resolveTemplateRegistryUrl(configured: string | undefined | null): string {
-    const trimmed = typeof configured === "string" ? configured.trim() : "";
-    return trimmed.length > 0 ? trimmed : DEFAULT_UI_TEMPLATE_REGISTRY_URL;
+    return resolveDownloadSource(configured, DEFAULT_UI_TEMPLATE_REGISTRY_URL);
 }
 
+/**
+ * As in the plugin client: the single point a URL becomes a request, so the single point the
+ * author's rewrites apply. Template files already follow `uiTemplates.registryUrl` to a mirror
+ * (they resolve against its directory), so here a rewrite mostly matters for an author who
+ * would rather redirect the official host than restate it.
+ */
 async function fetchWithTimeout(url: string): Promise<Response> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), UI_TEMPLATE_REGISTRY_FETCH_TIMEOUT_MS);
     try {
-        return await fetch(url, { redirect: "follow", signal: controller.signal });
+        return await fetch(applyDownloadRewrite(url), { redirect: "follow", signal: controller.signal });
     } finally {
         clearTimeout(timer);
     }

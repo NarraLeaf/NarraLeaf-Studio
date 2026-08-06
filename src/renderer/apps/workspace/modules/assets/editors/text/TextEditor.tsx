@@ -31,6 +31,7 @@ import type {
 // Monaco module init at startup whether or not a text file is ever opened.
 import type * as StudioMonaco from "./studioMonaco";
 import { monacoLanguageForFileName, textFileExtension, type LineEnding } from "./textEditableFiles";
+import { useTextEditorViewOptions } from "./useTextEditorViewOptions";
 import {
     readTextDocumentPreferences,
     resolveLineEnding,
@@ -167,6 +168,14 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
     const monacoRef = useRef<typeof StudioMonaco | null>(null);
     const editorRef = useRef<StudioMonaco.monaco.editor.IStandaloneCodeEditor | null>(null);
     const saveTimerRef = useRef<number | null>(null);
+    /**
+     * Gutter and wrapping, from settings. Mirrored into a ref for the same reason `encoding` is:
+     * the create effect must not list them, or changing a checkbox in the Settings window would
+     * dispose the editor and take the author's undo history with it.
+     */
+    const viewOptions = useTextEditorViewOptions();
+    const viewOptionsRef = useRef(viewOptions);
+    viewOptionsRef.current = viewOptions;
     /** The encoding a save should use, readable from callbacks that must not re-subscribe. */
     const encodingRef = useRef<TextEncodingId>(encoding);
     encodingRef.current = encoding;
@@ -350,6 +359,10 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
                 fontSize: 12,
                 lineHeight: 18,
                 tabSize: 4,
+                // Read once here for the initial instance; the effect below keeps them current
+                // without recreating the editor, which would throw away undo history.
+                lineNumbers: viewOptionsRef.current.lineNumbers ? "on" : "off",
+                wordWrap: viewOptionsRef.current.softWrap ? "on" : "off",
                 renderWhitespace: "selection",
                 renderLineHighlight: "line",
                 padding: EDITOR_PADDING,
@@ -397,6 +410,14 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
         // Created once for the life of the tab: a re-create would drop the undo stack and the
         // caret. `handleContentChanged` is stable for the same reason.
     }, [handleContentChanged]);
+
+    // Settings changes reach a live editor through updateOptions, never through a re-create.
+    useEffect(() => {
+        editorRef.current?.updateOptions({
+            lineNumbers: viewOptions.lineNumbers ? "on" : "off",
+            wordWrap: viewOptions.softWrap ? "on" : "off",
+        });
+    }, [viewOptions, editorReady]);
 
     // ---- loading ------------------------------------------------------------
 

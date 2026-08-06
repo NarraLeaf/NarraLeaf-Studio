@@ -1,6 +1,9 @@
 import type { ComponentType } from "react";
 import type { SettingPanelId } from "@/lib/settings/models";
 import { KeybindingsPanel } from "./KeybindingsPanel";
+import { DownloadSourcesPanel } from "./DownloadSourcesPanel";
+import { CacheInventoryPanel } from "./CacheInventoryPanel";
+import { SettingsTransferPanel } from "./SettingsTransferPanel";
 
 /**
  * Resolves the `panel` id on a `SettingValueType.Custom` entry to the component that renders it.
@@ -8,6 +11,12 @@ import { KeybindingsPanel } from "./KeybindingsPanel";
  */
 export const SETTING_PANELS: Record<SettingPanelId, ComponentType> = {
     keybindings: KeybindingsPanel,
+    downloadSources: DownloadSourcesPanel,
+    cacheInventory: CacheInventoryPanel,
+    settingsTransfer: SettingsTransferPanel,
 };
 
 export { KeybindingsPanel } from "./KeybindingsPanel";
+export { DownloadSourcesPanel } from "./DownloadSourcesPanel";
+export { CacheInventoryPanel } from "./CacheInventoryPanel";
+export { SettingsTransferPanel } from "./SettingsTransferPanel";

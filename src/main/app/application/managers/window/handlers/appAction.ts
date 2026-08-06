@@ -18,6 +18,8 @@ import {
 import type { MissingRecentProject, RecentProjectMissingReason } from "@shared/types/state/appStateTypes";
 import { DirEntry, findProjectConfigFileName } from "@shared/utils/nlproj";
 import { backgroundCacheDirectory, cacheBackgroundImage, pruneBackgroundCache } from "../../storage/backgroundCache";
+import { clearCacheBuckets, measureCacheInventory } from "../../storage/cacheInventory";
+import { isProtectedStateKey } from "@shared/constants/settingsScopes";
 
 export class AppPlatformInfoHandler extends IPCHandler<IPCEventType.getPlatform> {
     readonly name = IPCEventType.getPlatform;
@@ -429,6 +431,186 @@ export class AppExportDiagnosticsHandler extends IPCHandler<IPCEventType.appExpo
                 canceled: false,
                 filePath: selection.filePath,
                 byteLength: Buffer.byteLength(content, "utf8"),
+            });
+        } catch (error) {
+            return this.failed(error);
+        }
+    }
+}
+
+/**
+ * Reachability of one mirror address, for the Network settings panel.
+ *
+ * A HEAD, with the same 5 s budget `probePluginBuildDependency` uses, and the same reading of the
+ * result: any HTTP response proves the host is there. A CDN answering 403 or 405 to a HEAD says
+ * nothing about whether the bytes exist, so the status is handed back rather than judged - the
+ * panel says "answered with 403", which is a thing an author can act on, instead of "unreachable",
+ * which would be a lie.
+ *
+ * Refuses anything that is not https, matching what a rewrite is allowed to produce: a Test button
+ * that succeeds against `http://` for a rule the resolver will refuse is worse than no button.
+ */
+export class AppProbeDownloadSourceHandler extends IPCHandler<IPCEventType.appProbeDownloadSource> {
+    readonly name = IPCEventType.appProbeDownloadSource;
+    readonly type = IPCMessageType.request;
+
+    /** Long enough for a slow mirror, short enough that the panel is not left hanging. */
+    private static readonly TIMEOUT_MS = 5000;
+
+    public async handle(
+        _window: AppWindow,
+        { url }: IPCEvents[IPCEventType.appProbeDownloadSource]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.appProbeDownloadSource]["response"]>> {
+        let parsed: URL;
+        try {
+            parsed = new URL(url.trim());
+        } catch {
+            return this.success({ reachable: false, error: "not a valid URL" });
+        }
+        if (parsed.protocol !== "https:") {
+            return this.success({ reachable: false, error: "not https" });
+        }
+        try {
+            const response = await fetch(parsed.toString(), {
+                method: "HEAD",
+                redirect: "follow",
+                signal: AbortSignal.timeout(AppProbeDownloadSourceHandler.TIMEOUT_MS),
+            });
+            return this.success({ reachable: true, status: response.status });
+        } catch (error) {
+            return this.success({
+                reachable: false,
+                error: error instanceof Error ? error.message : String(error),
+            });
+        }
+    }
+}
+
+export class AppCacheInventoryHandler extends IPCHandler<IPCEventType.appCacheInventory> {
+    readonly name = IPCEventType.appCacheInventory;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow) {
+        try {
+            return this.success(await measureCacheInventory(window.app.getUserDataDir()));
+        } catch (error) {
+            return this.failed(error);
+        }
+    }
+}
+
+export class AppCacheClearHandler extends IPCHandler<IPCEventType.appCacheClear> {
+    readonly name = IPCEventType.appCacheClear;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow, { ids }: IPCEvents[IPCEventType.appCacheClear]["data"]) {
+        try {
+            return this.success(await clearCacheBuckets(window.app.getUserDataDir(), ids));
+        } catch (error) {
+            return this.failed(error);
+        }
+    }
+}
+
+/**
+ * Remove stored settings, so the next read resolves the default.
+ *
+ * The protected list is enforced *here* rather than trusted from the renderer: the same store
+ * holds the project history and the per-project statistics, and "reset my preferences" must not
+ * be one bad key list away from erasing either. A refused key is reported, not silently skipped -
+ * a caller that asked for something impossible should find out.
+ */
+export class AppGlobalStateDeleteHandler extends IPCHandler<IPCEventType.appGlobalStateDelete> {
+    readonly name = IPCEventType.appGlobalStateDelete;
+    readonly type = IPCMessageType.request;
+
+    public handle(window: AppWindow, { keys }: IPCEvents[IPCEventType.appGlobalStateDelete]["data"]) {
+        const deleted: string[] = [];
+        const refused: string[] = [];
+        for (const key of keys) {
+            if (isProtectedStateKey(key)) {
+                refused.push(key);
+                continue;
+            }
+            if (!window.app.globalState.has(key)) {
+                // Nothing stored: already at its default, so the caller's intent is satisfied and
+                // there is no change worth broadcasting.
+                continue;
+            }
+            window.app.deleteGlobalStateAndBroadcast(key);
+            deleted.push(key);
+        }
+        return this.success({ deleted, refused });
+    }
+}
+
+/**
+ * Write a settings document to a file the user picks.
+ *
+ * Shaped exactly like {@link AppExportDiagnosticsHandler}, and for the same reason: the only path
+ * involved is the one the save dialog returned, so there is no grant to check.
+ */
+export class AppExportSettingsHandler extends IPCHandler<IPCEventType.appExportSettings> {
+    readonly name = IPCEventType.appExportSettings;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { defaultFileName, content }: IPCEvents[IPCEventType.appExportSettings]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.appExportSettings]["response"]>> {
+        try {
+            const selection = await dialog.showSaveDialog(window.win, {
+                title: "Export Studio Settings",
+                defaultPath: sanitizeBundleFileName(defaultFileName, "narraleaf-studio-settings.json"),
+                filters: [{ name: "JSON", extensions: ["json"] }],
+            });
+            if (selection.canceled || !selection.filePath) {
+                return this.success({ canceled: true });
+            }
+            await fs.writeFile(selection.filePath, content, { encoding: "utf8" });
+            return this.success({ canceled: false, filePath: selection.filePath });
+        } catch (error) {
+            return this.failed(error);
+        }
+    }
+}
+
+/**
+ * Read a settings document the user picks.
+ *
+ * Only reads and hands back the text: parsing and validating belong with the settings registry,
+ * which lives in the renderer and is the only thing that knows what a key means. Capped because
+ * a settings document is a few kilobytes and this must not become a way to pull an arbitrary
+ * file into the renderer whole.
+ */
+export class AppImportSettingsHandler extends IPCHandler<IPCEventType.appImportSettings> {
+    readonly name = IPCEventType.appImportSettings;
+    readonly type = IPCMessageType.request;
+
+    /** Generous next to a real document (~10 KB), small enough to refuse a mistake. */
+    private static readonly MAX_BYTES = 4 * 1024 * 1024;
+
+    public async handle(
+        window: AppWindow,
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.appImportSettings]["response"]>> {
+        try {
+            const selection = await dialog.showOpenDialog(window.win, {
+                title: "Import Studio Settings",
+                properties: ["openFile"],
+                filters: [{ name: "JSON", extensions: ["json"] }],
+            });
+            if (selection.canceled || selection.filePaths.length === 0) {
+                return this.success({ canceled: true });
+            }
+            const filePath = selection.filePaths[0];
+            const stat = await fs.stat(filePath);
+            if (stat.size > AppImportSettingsHandler.MAX_BYTES) {
+                return this.failed(new Error("That file is too large to be a settings document"));
+            }
+            return this.success({
+                canceled: false,
+                filePath,
+                content: await fs.readFile(filePath, "utf8"),
             });
         } catch (error) {
             return this.failed(error);
