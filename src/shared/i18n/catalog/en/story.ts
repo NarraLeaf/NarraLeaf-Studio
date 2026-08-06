@@ -26,9 +26,9 @@ export const story = {
         newSceneTitle: "New Scene",
         newScenePlaceholder: "Enter scene name",
         deleteStoryConfirm: "Delete story \"{name}\"?",
-        deleteStoryDetail: "This removes the story document from the project. This action cannot be undone.",
+        deleteStoryDetail: "This removes the story document from the project.",
         deleteSceneConfirm: "Delete scene \"{name}\"?",
-        deleteSceneDetail: "This removes the scene and its blocks from the story document. This action cannot be undone.",
+        deleteSceneDetail: "This removes the scene and its blocks. Jumps to it will stop resolving.",
     },
     // Taking a scene out of Studio as a text file and bringing it back. `parseError` and `diag` are
     // keyed by the codec's own codes (see `storyScriptTypes`), so a new code fails the parity test
@@ -939,6 +939,13 @@ export const story = {
         playFromHere: "Play from here",
         openInspector: "Open inspector",
         delete: "Delete",
+    },
+    // Names for the undo steps these deletions leave behind ("Undo delete scene At the Station").
+    history: {
+        deleteScene: "delete scene {name}",
+        deleteChapter: "delete chapter {name}",
+        deleteStory: "delete story {name}",
+        deleteAnimation: "delete motion {name}",
     },
     keybindings: {
         find: "Find and replace",
