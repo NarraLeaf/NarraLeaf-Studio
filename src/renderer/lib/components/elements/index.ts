@@ -71,6 +71,10 @@ export type { SliderProps } from "./Slider";
 export { Badge } from "./Badge";
 export type { BadgeProps, BadgeTone } from "./Badge";
 
+// TabStrip component (docs/design-system.md §7)
+export { TabStrip } from "./Tabs";
+export type { TabItem, TabStripProps } from "./Tabs";
+
 // EmptyState component
 export { EmptyState } from "./EmptyState";
 export type { EmptyStateProps } from "./EmptyState";

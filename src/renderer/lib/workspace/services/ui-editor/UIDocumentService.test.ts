@@ -973,3 +973,281 @@ describe("UIDocumentService component library", () => {
         expect(componentChildren[1].layout).toMatchObject({ x: 150, y: 60 });
     });
 });
+
+describe("UIDocumentService template import: components and naming", () => {
+    /**
+     * A template that ships one library component plus a Page whose element is an
+     * instance of it - the shape a component-set template has.
+     */
+    function createComponentTemplate(): UIDocument {
+        return {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "tpl-doc",
+            name: "Template",
+            surfaces: [
+                {
+                    id: "tpl-surface",
+                    name: "Menu",
+                    host: "app",
+                    kind: "appSurface",
+                    designSize: { width: 1280, height: 720 },
+                    rootElementId: "tpl-root",
+                },
+            ],
+            components: [
+                {
+                    id: "tpl-component",
+                    name: "Primary Button",
+                    rootElementId: "tpl-component-root",
+                    elements: {
+                        "tpl-component-root": {
+                            id: "tpl-component-root",
+                            type: "nl.container",
+                            name: "Button",
+                            parentId: null,
+                            childrenIds: ["tpl-component-label"],
+                            layout: { x: 0, y: 0, width: 200, height: 48 },
+                        },
+                        "tpl-component-label": {
+                            id: "tpl-component-label",
+                            type: "nl.text",
+                            name: "Label",
+                            parentId: "tpl-component-root",
+                            childrenIds: [],
+                            layout: { x: 0, y: 0, width: 200, height: 48 },
+                        },
+                    },
+                },
+            ],
+            elements: {
+                "tpl-root": {
+                    id: "tpl-root",
+                    type: "nl.root",
+                    name: "Root",
+                    parentId: null,
+                    childrenIds: ["tpl-instance"],
+                    layout: { x: 0, y: 0, width: 1280, height: 720 },
+                },
+                "tpl-instance": {
+                    id: "tpl-instance",
+                    type: "nl.container",
+                    name: "Start",
+                    parentId: "tpl-root",
+                    childrenIds: [],
+                    layout: { x: 100, y: 200, width: 200, height: 48 },
+                    extra: { componentLink: { componentId: "tpl-component", linked: true } },
+                },
+            },
+        } as UIDocument;
+    }
+
+    it("copies a template's components into the library under fresh ids", () => {
+        const { service } = createHarness();
+
+        const result = service.importTemplateBundle({
+            document: createComponentTemplate(),
+            graphs: undefined,
+            placement: { kind: "appSurface" },
+        });
+
+        expect(result.importedComponents).toHaveLength(1);
+        const imported = result.importedComponents[0]!;
+        // The library entry exists, is not the template's own id, and kept its elements.
+        expect(service.getDocument().components?.map(component => component.id)).toContain(imported.id);
+        expect(imported.id).not.toBe("tpl-component");
+        expect(Object.keys(imported.elements)).toHaveLength(2);
+        expect(Object.keys(imported.elements)).not.toContain("tpl-component-root");
+        expect(imported.elements[imported.rootElementId]?.parentId).toBeNull();
+    });
+
+    it("repoints an imported surface's component instances at the copied component", () => {
+        const { service } = createHarness();
+
+        const result = service.importTemplateBundle({
+            document: createComponentTemplate(),
+            graphs: undefined,
+            placement: { kind: "appSurface" },
+        });
+
+        const surface = result.importedSurfaces[0]!;
+        const document = service.getDocument();
+        const instance = Object.values(document.elements).find(
+            element => element.parentId === surface.rootElementId,
+        );
+        // Before component import existed this link dangled at "tpl-component",
+        // which is an id no project ever holds.
+        expect(getUIComponentLink(instance)?.componentId).toBe(result.importedComponents[0]!.id);
+    });
+
+    it("keeps template names as authored rather than naming them copies", () => {
+        const { service } = createHarness();
+
+        const result = service.importTemplateBundle({
+            document: createComponentTemplate(),
+            graphs: undefined,
+            placement: { kind: "appSurface" },
+        });
+
+        expect(result.importedSurfaces[0]?.name).toBe("Menu");
+        expect(result.importedComponents[0]?.name).toBe("Primary Button");
+    });
+
+    it("suffixes only on a real collision with something already in the project", () => {
+        const { service } = createHarness();
+
+        service.importTemplateBundle({
+            document: createComponentTemplate(),
+            graphs: undefined,
+            placement: { kind: "appSurface" },
+        });
+        const second = service.importTemplateBundle({
+            document: createComponentTemplate(),
+            graphs: undefined,
+            placement: { kind: "appSurface" },
+        });
+
+        expect(second.importedSurfaces[0]?.name).toBe("Menu 2");
+        expect(second.importedComponents[0]?.name).toBe("Primary Button 2");
+    });
+
+    it("clones a component's own blueprints onto the copied component", () => {
+        const { service, blueprintDocument } = createHarness({ withLocalBlueprint: true });
+        const graphs = {
+            blueprintDocument: {
+                schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+                blueprints: {
+                    "tpl-bp": {
+                        id: "tpl-bp",
+                        name: "On click",
+                        owner: {
+                            kind: "componentWidgetMain",
+                            componentId: "tpl-component",
+                            elementId: "tpl-component-root",
+                        },
+                        frontend: "visual",
+                        programKind: "graph",
+                        program: { kind: "graph", graphs: { events: {}, functions: {} } },
+                        members: { variables: {}, fields: {}, functions: {} },
+                        bindings: {},
+                    },
+                },
+                ownerRecords: {
+                    "componentWidgetMain:tpl-component:tpl-component-root": {
+                        activeBlueprintId: "tpl-bp",
+                        privateBlueprintIds: ["tpl-bp"],
+                        initializedFrontend: "visual",
+                    },
+                },
+                persistentVariables: {},
+                meta: {},
+            },
+        };
+
+        const result = service.importTemplateBundle({
+            document: createComponentTemplate(),
+            graphs,
+            placement: { kind: "appSurface" },
+        });
+
+        const imported = result.importedComponents[0]!;
+        const cloned = Object.values<any>(blueprintDocument.blueprints).find(
+            blueprint => blueprint.owner.kind === "componentWidgetMain"
+                && blueprint.owner.componentId === imported.id,
+        );
+        expect(cloned).toBeDefined();
+        expect(cloned.id).not.toBe("tpl-bp");
+        // The owner must point at the copied element, not the template's element id.
+        expect(Object.keys(imported.elements)).toContain(cloned.owner.elementId);
+    });
+});
+
+describe("UIDocumentService template import: multi-surface templates", () => {
+    /** Two Pages, the first embedding the second through an nl.frame. */
+    function createFramedTemplate(): UIDocument {
+        return {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "tpl-framed",
+            name: "Config",
+            surfaces: [
+                {
+                    id: "tpl-shell",
+                    name: "Config",
+                    host: "app",
+                    kind: "appSurface",
+                    designSize: { width: 1280, height: 720 },
+                    rootElementId: "tpl-shell-root",
+                },
+                {
+                    id: "tpl-pane",
+                    name: "Config Â· Sound",
+                    host: "app",
+                    kind: "appSurface",
+                    designSize: { width: 1280, height: 720 },
+                    rootElementId: "tpl-pane-root",
+                },
+            ],
+            elements: {
+                "tpl-shell-root": {
+                    id: "tpl-shell-root",
+                    type: "nl.root",
+                    name: "Root",
+                    parentId: null,
+                    childrenIds: ["tpl-frame"],
+                    layout: { x: 0, y: 0, width: 1280, height: 720 },
+                },
+                "tpl-frame": {
+                    id: "tpl-frame",
+                    type: "nl.frame",
+                    name: "Pane",
+                    parentId: "tpl-shell-root",
+                    childrenIds: [],
+                    layout: { x: 320, y: 0, width: 960, height: 720 },
+                    props: { targetSurfaceId: "tpl-pane" },
+                },
+                "tpl-pane-root": {
+                    id: "tpl-pane-root",
+                    type: "nl.root",
+                    name: "Root",
+                    parentId: null,
+                    childrenIds: [],
+                    layout: { x: 0, y: 0, width: 1280, height: 720 },
+                },
+            },
+        } as UIDocument;
+    }
+
+    it("repoints a frame at the sibling surface that arrived with it", () => {
+        const { service } = createHarness();
+
+        const result = service.importTemplateBundle({
+            document: createFramedTemplate(),
+            graphs: undefined,
+            placement: { kind: "appSurface" },
+        });
+
+        expect(result.importedSurfaces).toHaveLength(2);
+        const pane = result.importedSurfaces.find(surface => surface.name.startsWith("Config Â·"))!;
+        const frame = Object.values(service.getDocument().elements)
+            .find(element => element.type === "nl.frame")!;
+
+        // Before this was fixed the frame kept "tpl-pane" â€” the template's own id,
+        // which no project holds â€” and the pane rendered as an empty box.
+        expect((frame.props as { targetSurfaceId?: string }).targetSurfaceId).toBe(pane.id);
+        expect((frame.props as { targetSurfaceId?: string }).targetSurfaceId).not.toBe("tpl-pane");
+    });
+
+    it("gives each surface of a multi-surface template its own fresh id", () => {
+        const { service } = createHarness();
+
+        const result = service.importTemplateBundle({
+            document: createFramedTemplate(),
+            graphs: undefined,
+            placement: { kind: "appSurface" },
+        });
+
+        const ids = result.importedSurfaces.map(surface => surface.id);
+        expect(new Set(ids).size).toBe(2);
+        expect(ids).not.toContain("tpl-shell");
+        expect(ids).not.toContain("tpl-pane");
+    });
+});

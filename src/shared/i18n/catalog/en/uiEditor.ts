@@ -116,12 +116,17 @@ export const uiEditor = {
         retry: "Retry",
         empty: "No templates available.",
         emptyFiltered: "No templates match your search.",
-        selectPrompt: "Select a template to preview it.",
-        noDescription: "No description.",
-        target: "Adds",
         applied: "Added “{name}”.",
-        slotTaken: "The {slot} slot already has a Game UI, so it was skipped.",
-        assetsSkipped: "{count} resource(s) could not be imported yet.",
+        slotTaken: "The {slot} slot already has a Game UI.",
+        slotOccupied: "Slot in use",
+        assetsSkipped: {
+            one: "{count} resource could not be imported.",
+            other: "{count} resources could not be imported.",
+        },
+        componentsAdded: {
+            one: "{count} component was added to the library.",
+            other: "{count} components were added to the library.",
+        },
         placement: {
             page: "A new page",
             gameUi: "Game UI · {slot}",

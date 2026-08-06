@@ -6,25 +6,26 @@
  * default never drift.
  */
 
+import { deviceLanguageTags } from "@/lib/i18n/deviceLocale";
+
 /** Global-state key the preference is stored under. */
 export const SLASH_AT_ALIAS_KEY = "editor.slashAtAlias" as const;
 
 /**
  * Whether this device's language is Simplified Chinese.
  *
- * Reads the ordered browser/OS language list (`navigator.languages`, then `navigator.language` — the
- * same device-locale source the game runtime matches against) and classifies the first Chinese tag
- * it finds: Simplified (`zh`, `zh-CN`, `zh-Hans`, `zh-SG`) counts, Traditional (`zh-Hant`, `zh-TW`,
- * `zh-HK`, `zh-MO`) does not. Non-Chinese and unknown environments (no `navigator`, e.g. tests) are
- * treated as not Simplified Chinese.
+ * Reads the same ordered device language list first-run setup preselects a language from
+ * ({@link deviceLanguageTags}) and classifies the first Chinese tag it finds: Simplified (`zh`,
+ * `zh-CN`, `zh-Hans`, `zh-SG`) counts, Traditional (`zh-Hant`, `zh-TW`, `zh-HK`, `zh-MO`) does
+ * not. Non-Chinese and unknown environments (no `navigator`, e.g. tests) are treated as not
+ * Simplified Chinese.
+ *
+ * A different question from "which language is the interface in", which is why it stays its own
+ * function: an author can read a Chinese interface on a device set to English, and it is the
+ * device - where the IME lives - that decides whether the "/" key types "、".
  */
 export function isSimplifiedChineseDevice(): boolean {
-    if (typeof navigator === "undefined") {
-        return false;
-    }
-    const candidates = [...(navigator.languages ?? []), navigator.language];
-    for (const raw of candidates) {
-        const tag = String(raw ?? "").toLowerCase().replace(/_/g, "-");
+    for (const tag of deviceLanguageTags()) {
         if (!tag.startsWith("zh")) {
             continue;
         }

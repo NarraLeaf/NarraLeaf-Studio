@@ -6,7 +6,24 @@ import { RecentlyOpenedProject } from "./appStateTypes";
 
 export interface GlobalStateType extends Record<string, any> {
     "app.recentProjects": RecentlyOpenedProject[];
+    /**
+     * Interface language, as a locale code; absent until someone chooses one.
+     *
+     * Deliberately absent from `GLOBAL_STATE_DEFAULTS` (like `editor.slashAtAlias` and the
+     * `ui.background*` keys): the right answer for an unset value depends on the machine, which a
+     * static default cannot know. Both processes resolve absence through `resolvePreferredLocale`
+     * against their own view of the system languages - the renderer's `deviceDefaultLocale`, the
+     * main process's `getMainLocale`. A stored value always wins.
+     */
     "app.language": string;
+    /**
+     * Which revision of first-run setup this installation has completed; absent until it has.
+     *
+     * Installation state rather than a preference, which is why it has no settings row and no
+     * entry in `GLOBAL_STATE_DEFAULTS` - see `@shared/constants/onboarding` for what both of
+     * those absences buy.
+     */
+    "app.onboardingVersion": number;
     "ui.themeMode": "auto" | "light" | "dark" | string;
     /**
      * Which mode the toolbar's Run split-button launches — Dev Mode or Preview. The button runs the
@@ -230,7 +247,10 @@ export type GlobalState = PersistentState<GlobalStateType>;
  */
 export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "app.recentProjects": [],
-    "app.language": "en",
+    // `app.language` deliberately has no default here; see its declaration above. A static "en"
+    // is what made Studio open in English on a machine that had already said it speaks something
+    // else - while `editor.slashAtAlias`, two keys further down, was reading that same machine's
+    // languages to decide its own default.
     "ui.themeMode": "auto",
     "ui.runMode": "devMode",
     "ui.zoomPercent": ZOOM_PERCENT_DEFAULT,

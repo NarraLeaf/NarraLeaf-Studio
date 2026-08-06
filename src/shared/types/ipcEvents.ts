@@ -26,7 +26,8 @@ import type { MediaConvertRequest, MediaConvertStateSnapshot } from "./mediaConv
 import type { MediaProbeOutcome } from "./mediaProbe";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
 import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
-import type { UITemplateBundle, UITemplateFetchResult } from "./uiTemplateRegistry";
+import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview } from "./uiTemplateRegistry";
+import type { ProjectTemplateDescriptor } from "./projectTemplate";
 import type { RemoteAssetFetchResult, RemoteAssetValidators } from "./remoteAsset";
 import type { LocaleContribution } from "@shared/i18n";
 import type {
@@ -239,6 +240,9 @@ export enum IPCEventType {
 
     uiTemplateRegistryFetch = "uiTemplate.registryFetch",
     uiTemplateFetchBundle = "uiTemplate.fetchBundle",
+    uiTemplateFetchPreviews = "uiTemplate.fetchPreviews",
+    projectTemplateList = "projectTemplate.list",
+    projectTemplateScaffold = "projectTemplate.scaffold",
 
     assetFetchRemote = "asset.fetchRemote",
 
@@ -2181,6 +2185,34 @@ export type IPCUITemplateEvents = {
             templateId: string;
         },
         response: UITemplateBundle;
+    };
+    // Store: fetch just the `UIDocument` of several templates, to draw their cards.
+    // One call for the whole grid, so the index is fetched once rather than per card.
+    [IPCEventType.uiTemplateFetchPreviews]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            templateIds: string[];
+        },
+        response: UITemplatePreview[];
+    };
+
+    // Bundled project templates: what this build ships, read from resources/.
+    [IPCEventType.projectTemplateList]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: ProjectTemplateDescriptor[];
+    };
+    // Copy one bundled template's content over a project the wizard just wrote.
+    [IPCEventType.projectTemplateScaffold]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            templateId: string;
+            projectPath: string;
+        },
+        response: { filesCopied: number };
     };
 };
 
