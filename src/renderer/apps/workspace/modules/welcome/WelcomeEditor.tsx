@@ -1,14 +1,15 @@
 import { useCallback, useMemo } from "react";
-import { BookOpen, FolderOpen, Sparkles, SquarePlus, type LucideIcon } from "lucide-react";
+import { CircleQuestionMark, FolderOpen, SquarePlus, type LucideIcon } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { createInputDialog } from "@/lib/components/dialogs";
 import { cn } from "@/lib/utils/cn";
-import { getInterface } from "@/lib/app/bridge";
+import { helpSectionKey, helpTitleKey, type HelpTopicId } from "@/lib/help";
 import { isMacPlatform } from "@/lib/app/platform";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { createStorySceneEditorTab } from "../story/scene-editor/openStorySceneEditorTab";
+import { openHelpTab } from "../help/openHelpTab";
 import { useWorkspace } from "../../context";
 import { useFreezeGuard } from "../../components/ui/freezeGuard";
 import { EditorComponentProps } from "../types";
@@ -16,18 +17,24 @@ import { EditorComponentProps } from "../types";
 const ASSETS_PANEL_ID = "narraleaf-studio:assets";
 const STORY_PANEL_ID = "narraleaf-studio:story";
 
-/** Where "View tutorials" goes; mirrors the launcher's Learning tab entry point. */
-const TUTORIAL_URL = "https://www.narraleaf.com/docs/studio";
+/**
+ * The four topics a first-time author needs, in the order they need them. Links, not summaries: the
+ * page used to restate all four as prose steps, which is the same words in a place they cannot be
+ * updated from (docs/help-system.md §1).
+ */
+const FIRST_TOPICS: readonly HelpTopicId[] = ["workspaceLayout", "storyScene", "assets", "runModes"];
 
 /**
- * Welcome editor component
- * Displays a welcome screen with quick actions and getting started guide
+ * Welcome editor: the two things a new project needs doing, and the way into the documentation.
+ *
+ * Deliberately quiet. It carried a 4xl title, a sparkle, a tagline and a numbered guide, which is a
+ * lot of surface for a tab whose job is to be left within a minute.
  */
 export function WelcomeEditor({ tabId, payload }: EditorComponentProps) {
     const { t } = useTranslation();
     const { context } = useWorkspace();
-    // Only the first card writes anything. The other two reveal a panel and open a web page, and
-    // both are exactly what a frozen workspace is for.
+    // Only the first card writes anything. The other two reveal a panel and open a tab, and both are
+    // exactly what a frozen workspace is for.
     const freeze = useFreezeGuard();
 
     const uiService = useMemo(() => context?.services.get<UIService>(Services.UI) ?? null, [context]);
@@ -65,26 +72,16 @@ export function WelcomeEditor({ tabId, payload }: EditorComponentProps) {
         uiService?.getStore().setPanelVisibility(ASSETS_PANEL_ID, true);
     }, [uiService]);
 
-    const handleOpenTutorials = useCallback(() => {
-        void getInterface().app.openExternal(TUTORIAL_URL);
-    }, []);
+    const openTopic = useCallback((topicId?: HelpTopicId) => {
+        if (context) {
+            openHelpTab(context, topicId);
+        }
+    }, [context]);
 
     return (
         <div className="h-full overflow-auto bg-surface">
-            <div className="max-w-4xl mx-auto py-12 px-6">
-                {/* Header */}
-                <div className="text-center mb-12">
-                    <div className="flex items-center justify-center gap-3 mb-4">
-                        <Sparkles className="w-12 h-12 text-primary" />
-                        <h1 className="text-4xl font-bold text-fg">{t("common.appName")}</h1>
-                    </div>
-                    <p className="text-lg text-fg-muted">
-                        {t("welcome.tagline")}
-                    </p>
-                </div>
-
-                {/* Quick actions */}
-                <div className="grid gap-3 mb-8 sm:grid-cols-3">
+            <div className="mx-auto max-w-2xl px-6 py-10">
+                <div className="grid gap-3 sm:grid-cols-3">
                     <QuickAction
                         icon={SquarePlus}
                         label={t("welcome.quickActions.newScene.label")}
@@ -102,37 +99,28 @@ export function WelcomeEditor({ tabId, payload }: EditorComponentProps) {
                         disabled={!uiService}
                     />
                     <QuickAction
-                        icon={BookOpen}
-                        label={t("welcome.quickActions.tutorials.label")}
-                        description={t("welcome.quickActions.tutorials.description")}
-                        onClick={handleOpenTutorials}
+                        icon={CircleQuestionMark}
+                        label={t("welcome.quickActions.help.label")}
+                        description={t("welcome.quickActions.help.description")}
+                        onClick={() => openTopic()}
+                        disabled={!context}
                     />
                 </div>
 
-                {/* Getting Started */}
-                <div className="bg-surface-raised rounded-lg p-6 border border-edge">
-                    <h2 className="text-xl font-semibold text-fg mb-4">{t("welcome.gettingStarted.title")}</h2>
-                    <div className="space-y-4">
-                        <GettingStartedStep
-                            number={1}
-                            title={t("welcome.gettingStarted.step1.title")}
-                            description={t("welcome.gettingStarted.step1.description")}
-                        />
-                        <GettingStartedStep
-                            number={2}
-                            title={t("welcome.gettingStarted.step2.title")}
-                            description={t("welcome.gettingStarted.step2.description")}
-                        />
-                        <GettingStartedStep
-                            number={3}
-                            title={t("welcome.gettingStarted.step3.title")}
-                            description={t("welcome.gettingStarted.step3.description")}
-                        />
-                        <GettingStartedStep
-                            number={4}
-                            title={t("welcome.gettingStarted.step4.title")}
-                            description={t("welcome.gettingStarted.step4.description")}
-                        />
+                <div className="mt-8">
+                    <div className="text-2xs text-fg-subtle">{t(helpSectionKey("start"))}</div>
+                    <div className="mt-1">
+                        {FIRST_TOPICS.map(topicId => (
+                            <button
+                                key={topicId}
+                                type="button"
+                                disabled={!context}
+                                onClick={() => openTopic(topicId)}
+                                className="flex h-7 w-full cursor-default items-center rounded-md px-2 text-left text-xs text-fg-muted transition-colors hover:bg-fill hover:text-fg disabled:opacity-50"
+                            >
+                                {t(helpTitleKey(topicId))}
+                            </button>
+                        ))}
                     </div>
                 </div>
 
@@ -142,7 +130,7 @@ export function WelcomeEditor({ tabId, payload }: EditorComponentProps) {
                     so there is no in-app menu standing in for it. Everywhere else the command
                     palette is the only route, so that is what those users are pointed at.
                 */}
-                <p className="mt-6 text-center text-xs text-fg-subtle">
+                <p className="mt-8 text-2xs text-fg-subtle">
                     {isMacPlatform() ? t("welcome.reopenHint.menu") : t("welcome.reopenHint.palette")}
                 </p>
             </div>
@@ -174,43 +162,16 @@ function QuickAction({ icon: Icon, label, description, onClick, disabled = false
             disabled={disabled}
             title={title}
             className={cn(
-                "flex flex-col items-start gap-1 text-left rounded-lg p-4",
-                "bg-surface-raised border border-edge",
+                "flex flex-col items-start gap-1 rounded-md p-3 text-left",
+                "border border-edge bg-fill-subtle",
                 "transition-colors duration-150 ease-out focus:outline-none focus-visible:border-primary",
                 "cursor-default hover:bg-fill hover:border-edge-strong",
-                "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-surface-raised disabled:hover:border-edge",
+                "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-fill-subtle disabled:hover:border-edge",
             )}
         >
-            <Icon className="w-5 h-5 text-primary mb-1" />
+            <Icon className="mb-1 h-4 w-4 text-fg-muted" />
             <span className="text-sm font-medium text-fg">{label}</span>
-            <span className="text-xs text-fg-muted">{description}</span>
+            <span className="text-2xs text-fg-subtle">{description}</span>
         </button>
-    );
-}
-
-interface GettingStartedStepProps {
-    /** Step number */
-    number: number;
-    /** Step title */
-    title: string;
-    /** Step description */
-    description: string;
-}
-
-/**
- * Getting started step component
- * Displays a numbered step in the getting started guide
- */
-function GettingStartedStep({ number, title, description }: GettingStartedStepProps) {
-    return (
-        <div className="flex gap-4">
-            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center font-semibold text-sm">
-                {number}
-            </div>
-            <div>
-                <h3 className="text-base font-medium text-fg mb-1">{title}</h3>
-                <p className="text-sm text-fg-muted">{description}</p>
-            </div>
-        </div>
     );
 }

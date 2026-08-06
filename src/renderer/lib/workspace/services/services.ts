@@ -3,7 +3,13 @@ import type { FsTextEncoding } from "@shared/types/textEncoding";
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { Porject, ProjectConfig, ProjectMetadata } from "../project/project";
 import type { ProjectIconSet, ProjectIconSource } from "@shared/types/projectIcons";
-import type { LintingConfiguration, MobileConfiguration, NetworkConfiguration, SecurityConfiguration } from "../project/configuration";
+import type {
+    LintingConfiguration,
+    MobileConfiguration,
+    NetworkConfiguration,
+    SecurityConfiguration,
+    WebOptimizationConfiguration,
+} from "../project/configuration";
 import type { LintContext } from "@/lib/lint/context";
 import type { LintReport } from "@/lib/lint/types";
 import type { LintRunOptions } from "@/lib/lint/engine";
@@ -150,6 +156,8 @@ enum Services {
     UIDocument = "uiDocument",
     RuntimeBridge = "runtimeBridge",
     UIEditorState = "uiEditorState",
+    /** Every undo stack in the workspace, scoped by document; see `history/HistoryService` */
+    History = "history",
     UIEditorHistory = "uiEditorHistory",
     UIGraph = "uiGraph",
     LocalBlueprint = "localBlueprint",
@@ -221,6 +229,8 @@ interface IProjectService extends IService {
     updateNetworkConfiguration(patch: Partial<NetworkConfiguration>): Promise<ProjectConfig>;
     getSecurityConfiguration(): SecurityConfiguration;
     updateSecurityConfiguration(patch: Partial<SecurityConfiguration>): Promise<ProjectConfig>;
+    getWebOptimizationConfiguration(): WebOptimizationConfiguration;
+    updateWebOptimizationConfiguration(patch: Partial<WebOptimizationConfiguration>): Promise<ProjectConfig>;
     getLintingConfiguration(): LintingConfiguration;
     updateLintingConfiguration(patch: Partial<LintingConfiguration>): Promise<ProjectConfig>;
     updateMobileConfiguration(patch: Partial<MobileConfiguration>): Promise<ProjectConfig>;
@@ -865,6 +875,22 @@ interface IStoryService extends IService {
     canExportStoryPackage(): false;
 }
 
+/**
+ * The workspace's undo stacks. Structural only - the concrete types live with the implementation
+ * (`history/HistoryService`), because a scope's snapshot type is whatever its owner says it is.
+ */
+interface IHistoryService extends IService {
+    canUndo(scopeId?: string): boolean;
+    canRedo(scopeId?: string): boolean;
+    undo(scopeId?: string): boolean;
+    redo(scopeId?: string): boolean;
+    clearScope(scopeId: string): void;
+    clearAll(): void;
+    setActiveScope(scopeId: string | null): void;
+    getActiveScopeId(): string | null;
+    isRestoring(): boolean;
+}
+
 interface IUIEditorHistoryService extends IService {
     getLimit(): number;
     setLimit(limit: number): void;
@@ -1169,7 +1195,7 @@ export {
     IService, IServiceAssetsService, IPanelStateService, IStorageService, IStoryService,
     ITextureService, IUIService, IUuidService, IVersionControlService, IWorkspaceFreezeService,
     IWorkspaceReloadService, IVideoService,
-    ICharacterService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
+    ICharacterService, IHistoryService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, IConsoleService, UIEditorStateEvents,
     IProjectDependencyService, IVoiceService, IVariableRegistryService, IAudioTrackService, IPuppetDescriptionService,
     ITestRunService, IRecoveryService,

@@ -11,19 +11,23 @@ import {
     LocalizationConfiguration,
     MobileConfiguration,
     NetworkConfiguration,
+    PlayerPreferences,
     ProjectAppConfiguration,
     SecurityConfiguration,
     SigningConfiguration,
     VoiceConfiguration,
+    WebOptimizationConfiguration,
     normalizeAutoSaveConfiguration,
     normalizeBuildConfiguration,
     normalizeLintingConfiguration,
     normalizeLocalizationConfiguration,
     normalizeMobileConfiguration,
     normalizeNetworkConfiguration,
+    normalizePlayerPreferences,
     normalizeSecurityConfiguration,
     normalizeSigningConfiguration,
     normalizeVoiceConfiguration,
+    normalizeWebOptimizationConfiguration,
 } from "../../project/configuration";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
@@ -220,6 +224,40 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
     }
 
     /**
+     * Read the effective web export optimization policy, falling back to the
+     * defaults (lossless steps on, lossy off) for projects that predate
+     * `app.webOptimization`.
+     */
+    public getWebOptimizationConfiguration(): WebOptimizationConfiguration {
+        return normalizeWebOptimizationConfiguration(this.getProjectConfig().app?.webOptimization);
+    }
+
+    /**
+     * Merge a partial patch into the web export optimization policy. Written by
+     * the project settings UI and read by the build, which applies it to the
+     * compiled static site.
+     */
+    public async updateWebOptimizationConfiguration(
+        patch: Partial<WebOptimizationConfiguration>,
+    ): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const webOptimization: WebOptimizationConfiguration = {
+                ...normalizeWebOptimizationConfiguration(config.app?.webOptimization),
+                ...patch,
+            };
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                webOptimization,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /**
      * Read the effective project lint policy, falling back to the defaults (lint
      * on, errors block the build) for projects that predate `app.linting`.
      */
@@ -328,6 +366,37 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
                 ...config.app,
                 network: normalizeNetworkConfiguration(config.app?.network),
                 autoSave,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /**
+     * Read the player-preference defaults, falling back to the engine's own for
+     * projects that predate `app.preferences`.
+     */
+    public getPlayerPreferences(): PlayerPreferences {
+        return normalizePlayerPreferences(this.getProjectConfig().app?.preferences);
+    }
+
+    /**
+     * Merge a partial patch into the player-preference defaults. Written by the
+     * project Preferences page and baked into the bundle the game app seeds
+     * `game.preference` from at boot.
+     */
+    public async updatePlayerPreferences(patch: Partial<PlayerPreferences>): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const preferences = normalizePlayerPreferences({
+                ...normalizePlayerPreferences(config.app?.preferences),
+                ...patch,
+            });
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                preferences,
             };
             return {
                 ...config,

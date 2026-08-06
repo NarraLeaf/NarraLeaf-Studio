@@ -185,12 +185,16 @@ export const build = {
             + "a file executable. Build the {targetPlatform} target on a {targetPlatform} machine.",
         "encryption-key-unavailable": "Asset protection is on, but its key could not be resolved.",
         "web-unprotected": "Asset protection does not apply to the web export; its files ship unprotected.",
+        "web-lossy-images": "Lossy image recompression is on, so the exported images are re-encoded at quality {quality} and lose detail permanently.",
         "mobile-template-missing": "The mobile shell templates are unavailable: {reason}",
         "mobile-payload-too-large": "This project's assets ({size}) exceed what a mobile package can hold.",
         "version-uncodable": "Version {version} cannot be encoded as an Android version code (major up to 2099, minor and patch up to 999).",
         "appid-android-adjusted": "The app id {appId} is not a valid Android package name; the build ships {applicationId}.",
         "bundleid-ios-adjusted": "The app id {appId} is not a valid iOS bundle identifier; the build ships {bundleId}.",
-        unsigned: "Not code-signed. Players may see a warning from macOS Gatekeeper or Windows SmartScreen on first launch. Choose a signing credential to avoid it.",
+        // Names the vendors' security prompts no longer: "Gatekeeper" and "SmartScreen" are their
+        // vocabulary, not the author's, and what to expect is the same either way. The `build`
+        // help topic carries the longer version.
+        unsigned: "Not code-signed. Players may see a security prompt the first time they open it.",
         "unsigned-android": "Signed with a local debug identity, which is only good for sideloading. Choose your release keystore to sign it as yourself.",
         // The chain caveat belongs here rather than on a later error: this is
         // what an author reads while they are exporting the .p12, and a leaf-only
@@ -213,7 +217,7 @@ export const build = {
         "output-not-empty": "The output folder already has files in it; this build overwrites matching names.",
     },
     webStaticNotice: "The Web build is a static site for any web server. Asset encryption and the HTTP restriction do not apply to it.",
-    unsignedNotice: "Builds are not code-signed. Players may see a warning from macOS Gatekeeper or Windows SmartScreen on first launch.",
+    unsignedNotice: "Not code-signed. Players may see a security prompt the first time they open it.",
     selectAtLeastOne: "Select at least one platform and format.",
     toast: {
         submitted: "Build task submitted. See the console for progress.",

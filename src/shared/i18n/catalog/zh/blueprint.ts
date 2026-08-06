@@ -520,6 +520,7 @@ export const blueprint = {
         skip: "跳过",
         skipDelay: "跳过延迟",
         skipInterval: "跳过间隔",
+        skipReadText: "跳过已读文本",
         slider: "滑块",
         sound: "声音",
         soundVolume: "音效音量",
