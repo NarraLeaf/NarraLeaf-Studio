@@ -160,7 +160,7 @@ export function TestReportTab({ payload }: EditorTabComponentProps<TestReportPay
             : "";
 
     return (
-        <div className="flex h-full min-h-0 flex-col bg-surface">
+        <div className="flex h-full min-h-0 flex-col bg-surface" data-help-topic="tests">
             <div className="flex shrink-0 items-center gap-2 border-b border-edge px-3 py-2">
                 {record ? (
                     <Badge className="shrink-0" tone={STATUS_TONE[record.status]}>

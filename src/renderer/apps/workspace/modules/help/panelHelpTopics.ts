@@ -16,12 +16,16 @@ export const PANEL_HELP_TOPICS: Readonly<Record<string, HelpTopicId>> = {
     "narraleaf-studio:story": "storyScene",
     "narraleaf-studio:story-variables": "storyVariables",
     "narraleaf-studio:story-action-creator": "storyCommands",
+    "narraleaf-studio:story-snapshots": "sceneSnapshot",
+    "narraleaf-studio:story-motion": "storyMotion",
     "narraleaf-studio:assets": "assets",
     "narraleaf-studio:assets-bottom": "assets",
     "narraleaf-studio:characters": "characters",
     "narraleaf-studio:localization": "localization",
+    "narraleaf-studio:voice": "voice",
     "narraleaf-studio:ui-surfaces": "uiSurfaces",
     "narraleaf-studio:search": "search",
+    "narraleaf-studio:recovery": "recovery",
 };
 
 export function panelHelpTopic(panelId: string): HelpTopicId | undefined {

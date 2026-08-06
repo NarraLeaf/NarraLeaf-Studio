@@ -406,7 +406,7 @@ export function SceneFlowTab({ tabId, payload }: EditorTabComponentProps<SceneFl
     }
 
     return (
-        <div className="flex h-full min-h-0 flex-col bg-surface">
+        <div className="flex h-full min-h-0 flex-col bg-surface" data-help-topic="storyFlow">
             <div className="flex shrink-0 items-center gap-3 border-b border-edge px-3 py-1.5">
                 <span className="truncate text-xs font-medium text-fg">{document.name}</span>
                 <span className="shrink-0 text-2xs text-fg-subtle tabular-nums">
