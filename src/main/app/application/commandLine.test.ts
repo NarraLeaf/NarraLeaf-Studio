@@ -11,6 +11,7 @@ describe("parseMainCommandLine", () => {
     it("keeps CDP disabled by default", () => {
         expect(parseMainCommandLine(["electron", "dist/main/index.js"])).toEqual({
             dev: false,
+            onboarding: false,
             cdp: {
                 enabled: false,
                 port: DEFAULT_CDP_PORT,
@@ -24,6 +25,7 @@ describe("parseMainCommandLine", () => {
     it("enables CDP with the default port", () => {
         expect(parseMainCommandLine(["electron", "dist/main/index.js", "--dev", "--cdp"])).toEqual({
             dev: true,
+            onboarding: false,
             cdp: {
                 enabled: true,
                 port: DEFAULT_CDP_PORT,
@@ -108,6 +110,23 @@ describe("parseMainCommandLine", () => {
 
         expect(options.cdp.port).toBe(9224);
         expect(options.devReload.port).toBe(5628);
+    });
+
+    it("reads the onboarding rerun flag", () => {
+        expect(parseMainCommandLine(["electron", "dist/main/index.js", "--dev"]).onboarding).toBe(false);
+        expect(parseMainCommandLine(["electron", "dist/main/index.js", "--dev", "--onboarding"]).onboarding).toBe(true);
+    });
+
+    it("does not let --onboarding disturb the flags parsed around it", () => {
+        // It sits in the same loop as the port flags and takes no value of its own; a missing
+        // `continue` there would have it swallowed as somebody else's argument.
+        const options = parseMainCommandLine([
+            "electron", "dist/main/index.js", "--dev", "--onboarding", "--cdp", "--cdp-port", "9333",
+        ]);
+
+        expect(options.onboarding).toBe(true);
+        expect(options.cdp.port).toBe(9333);
+        expect(options.cdp.error).toBeNull();
     });
 
     it("allows development mode only for unpackaged --dev launches", () => {
