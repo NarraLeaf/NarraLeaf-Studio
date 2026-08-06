@@ -974,7 +974,7 @@ describe("UIDocumentService component library", () => {
     });
 });
 
-describe("UIDocumentService template import", () => {
+describe("UIDocumentService template import: components and naming", () => {
     /**
      * A template that ships one library component plus a Page whose element is an
      * instance of it - the shape a component-set template has.

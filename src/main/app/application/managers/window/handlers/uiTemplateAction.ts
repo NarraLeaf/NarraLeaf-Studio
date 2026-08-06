@@ -1,9 +1,11 @@
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
-import type { UITemplateBundle, UITemplateFetchResult } from "@shared/types/uiTemplateRegistry";
+import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview } from "@shared/types/uiTemplateRegistry";
+import { UI_TEMPLATE_MAX_PREVIEWS_PER_REQUEST } from "@shared/constants/uiTemplateRegistry";
 import {
     fetchTemplateBundle,
     fetchTemplateIndex,
+    fetchTemplatePreviews,
     resolveTemplateRegistryUrl,
 } from "../../uiTemplateRegistryClient";
 import { AppWindow } from "../appWindow";
@@ -47,6 +49,27 @@ export class UITemplateFetchBundleHandler extends IPCHandler<IPCEventType.uiTemp
                 throw new Error(`Template is not in the registry: ${data.templateId}`);
             }
             return fetchTemplateBundle(entry, registryUrl);
+        });
+    }
+}
+
+export class UITemplateFetchPreviewsHandler extends IPCHandler<IPCEventType.uiTemplateFetchPreviews> {
+    readonly name = IPCEventType.uiTemplateFetchPreviews;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        data: IPCEvents[IPCEventType.uiTemplateFetchPreviews]["data"],
+    ): Promise<RequestStatus<UITemplatePreview[]>> {
+        const registryUrl = resolveTemplateRegistryUrl(window.app.getGlobalState().get("uiTemplates.registryUrl"));
+        return this.tryUse(async () => {
+            const index = await fetchTemplateIndex(registryUrl);
+            // As above: the renderer names templates, the index supplies the paths.
+            // The cap is on how many one call may ask for, so a renderer cannot turn
+            // one message into an unbounded run of requests to the registry host.
+            const requested = new Set(data.templateIds.slice(0, UI_TEMPLATE_MAX_PREVIEWS_PER_REQUEST));
+            const entries = index.templates.filter(template => requested.has(template.id));
+            return fetchTemplatePreviews(entries, registryUrl);
         });
     }
 }

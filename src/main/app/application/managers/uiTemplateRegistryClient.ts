@@ -10,6 +10,7 @@ import type {
     UITemplateAssetRef,
     UITemplateBundle,
     UITemplateFetchedAsset,
+    UITemplatePreview,
     UITemplateRegistryEntry,
     UITemplateRegistryIndex,
     UITemplateSurfacePlacement,
@@ -249,6 +250,32 @@ async function fetchAssetFile(url: string, ref: UITemplateAssetRef): Promise<UIT
         mime: inferMime(fileName),
         dataBase64: buffer.toString("base64"),
     };
+}
+
+/**
+ * Fetch just the `UIDocument` of each requested template, for the store's cards.
+ *
+ * Deliberately not {@link fetchTemplateBundle} per card: a card is only looked at,
+ * and the bundle would pull every template's logic graph and every byte of its
+ * resources to draw a thumbnail. One template failing yields no entry for it
+ * rather than failing the grid — a card that cannot draw is better than a store
+ * that cannot open.
+ */
+export async function fetchTemplatePreviews(
+    entries: UITemplateRegistryEntry[],
+    indexUrl: string,
+): Promise<UITemplatePreview[]> {
+    const baseDir = registryBaseDir(indexUrl);
+    const previews: UITemplatePreview[] = [];
+    for (const entry of entries) {
+        try {
+            const document = await fetchJsonFile(resolveTemplateFileUrl(baseDir, entry.path, entry.document));
+            previews.push({ id: entry.id, document });
+        } catch (error) {
+            console.warn(`[uiTemplates] preview unavailable for ${entry.id}`, error);
+        }
+    }
+    return previews;
 }
 
 /**
