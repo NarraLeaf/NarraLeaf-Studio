@@ -9,6 +9,12 @@
  *
  * The form owns its selection and reports it upward: the dialog's footer buttons
  * are snapshotted when the dialog opens and cannot read React state.
+ *
+ * Both selects take the default `md` height, which is the dialog tier (see
+ * docs/design-system.md §3). They asked for `sm` and came out 28px against the
+ * dialog's own 36px footer buttons - a two-field form reading as an afterthought
+ * inside its own dialog.
+ *
  * Comments in English per project convention.
  */
 
@@ -76,7 +82,6 @@ export function TranslationExportForm({
                     value={format}
                     onChange={value => changeFormat(value as TranslationExchangeFormat)}
                     ariaLabel={t("workspace.localization.exchange.formatLabel")}
-                    size="sm"
                     fullWidth
                     portalMenu
                 />
@@ -88,7 +93,6 @@ export function TranslationExportForm({
                     value={scope}
                     onChange={value => changeScope(value as TranslationExportScope)}
                     ariaLabel={t("workspace.localization.exchange.scopeLabel")}
-                    size="sm"
                     fullWidth
                     portalMenu
                 />

@@ -30,10 +30,15 @@ type RuntimeRow = {
     state: PuppetRuntimeInstallState;
 };
 
-const STATUS_STYLES: Record<PuppetRuntimeInstallState["status"], { dot: string; text: string }> = {
-    installed: { dot: "bg-success", text: "text-success" },
-    incomplete: { dot: "bg-warning", text: "text-warning" },
-    absent: { dot: "bg-fill", text: "text-fg-subtle" },
+/**
+ * Colour for the word, and only for the word. The coloured dot that used to lead every row said the
+ * same thing the label beside it says, and a column of green dots reads as a status board rather
+ * than a list of runtimes. Same removal as the dependency rows next door.
+ */
+const STATUS_TEXT_STYLES: Record<PuppetRuntimeInstallState["status"], string> = {
+    installed: "text-success",
+    incomplete: "text-warning",
+    absent: "text-fg-subtle",
 };
 
 const STATUS_LABEL_KEYS: Record<PuppetRuntimeInstallState["status"], TranslationKey> = {
@@ -146,7 +151,6 @@ export function ProjectRuntimesSection({ uiService }: ProjectSectionProps) {
                         key={row.backend}
                         className="flex items-center gap-2 rounded-md border border-edge bg-fill-subtle px-2.5 py-2"
                     >
-                        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_STYLES[row.state.status].dot}`} />
                         <div className="min-w-0 flex-1">
                             {/* The product's own name when Studio knows it, the folder name otherwise. A
                                 trademark is not translated and does not live in the catalogue. */}
@@ -155,7 +159,7 @@ export function ProjectRuntimesSection({ uiService }: ProjectSectionProps) {
                                 {row.known ? row.backend : t("characters.editor.kind.puppet")}
                             </p>
                         </div>
-                        <span className={`shrink-0 text-2xs ${STATUS_STYLES[row.state.status].text}`}>
+                        <span className={`shrink-0 text-2xs ${STATUS_TEXT_STYLES[row.state.status]}`}>
                             {t(STATUS_LABEL_KEYS[row.state.status])}
                         </span>
                         <button

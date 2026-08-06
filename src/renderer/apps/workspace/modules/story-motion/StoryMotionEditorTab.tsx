@@ -726,6 +726,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
         capture: () => (asset ? getStoryMotionTimeline(asset) : null),
         apply: restoreTimeline,
         limit: TIMELINE_UNDO_LIMIT,
+        tabId,
     });
 
     useEffect(() => {

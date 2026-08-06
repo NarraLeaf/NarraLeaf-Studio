@@ -1,4 +1,5 @@
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
+import { Select } from "@/lib/components/elements";
 import { createInputDialog } from "@/lib/components/dialogs";
 import { useTranslation } from "@/lib/i18n";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
@@ -1016,17 +1017,29 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                 >
                                                     {locked[layer.id] ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
                                                 </button>
-                                                <select
-                                                    className="bg-surface border border-edge rounded-md text-2xs px-1 py-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+                                                {/*
+                                                  * A native `<select>` until this pass, which meant an
+                                                  * OS-drawn option list in the middle of a themed panel
+                                                  * and a control on nobody's height scale. `readOnly`
+                                                  * rather than `disabled` for the freeze: the list of
+                                                  * axes is project data a frozen workspace is there to
+                                                  * be read. The lock is the layer's own reason to be
+                                                  * off, so that one still disables.
+                                                  */}
+                                                <Select
+                                                    size="sm"
+                                                    className="w-28 shrink-0"
+                                                    portalMenu
+                                                    ariaLabel={t("characters.editor.layerAxis")}
+                                                    options={[
+                                                        { value: "", label: t("characters.editor.constantLayer") },
+                                                        ...axes.map(axis => ({ value: axis.id, label: axis.name })),
+                                                    ]}
                                                     value={layer.axisId ?? ""}
-                                                    onChange={event => appearance.setLayerAxis(layer.id, event.target.value || null)}
-                                                    {...freeze.writes(locked[layer.id])}
-                                                >
-                                                    <option value="">{t("characters.editor.constantLayer")}</option>
-                                                    {axes.map(axis => (
-                                                        <option key={axis.id} value={axis.id}>{axis.name}</option>
-                                                    ))}
-                                                </select>
+                                                    onChange={value => appearance.setLayerAxis(layer.id, String(value) || null)}
+                                                    disabled={locked[layer.id]}
+                                                    readOnly={freeze.frozen}
+                                                />
                                                 <button
                                                     className={ICON_BTN}
                                                     onClick={async event => {

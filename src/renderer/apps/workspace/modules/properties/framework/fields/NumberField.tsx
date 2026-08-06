@@ -1,6 +1,7 @@
 import { useState, useCallback, memo } from "react";
 import { NumberFieldDefinition } from "../types";
 import { DeferredNumberInput } from "@/lib/components/inputs/DeferredNumberInput";
+import { FIELD_INPUT_CLASS } from "../../fieldControlClass";
 
 interface NumberFieldProps<TData> {
     field: NumberFieldDefinition<TData>;
@@ -54,10 +55,9 @@ function NumberFieldInner<TData>({ field, data, onSaving }: NumberFieldProps<TDa
                 placeholder={field.placeholder}
                 disabled={isDisabled}
                 readOnly={isReadOnly}
-                inputClassName={`w-full px-3 py-2 bg-surface-raised border border-edge rounded-md text-sm text-fg-muted 
-                    focus:outline-none focus:border-primary/50 transition-colors 
+                inputClassName={`w-full ${FIELD_INPUT_CLASS}
                     [appearance:textfield] [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
-                    disabled:opacity-50 disabled:cursor-not-allowed ${field.className || ""}`}
+                    ${field.className || ""}`}
                 onSaving={handleSaving}
                 formatValue={formatValue}
             />

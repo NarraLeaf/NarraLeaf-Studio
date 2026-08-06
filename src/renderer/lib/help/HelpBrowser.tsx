@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ExternalLink } from "lucide-react";
+import type { TranslationKey } from "@shared/i18n";
 import { SearchInput } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
@@ -28,8 +29,12 @@ import {
 
 export interface HelpBrowserResource {
     id: string;
-    /** The link's whole label. There is no room for a second line, and a link needs no summary. */
-    title: string;
+    /**
+     * The link's whole label, as a catalog key. There is no room for a second line, and a link needs
+     * no summary. A key rather than a string so these follow the interface language like everything
+     * else on the page.
+     */
+    titleKey: TranslationKey;
     url: string;
 }
 
@@ -123,9 +128,13 @@ export function HelpBrowser({ initialTopic, resources = [], resolveShortcut, cla
                                     key={resource.id}
                                     type="button"
                                     onClick={() => void getInterface().app.openExternal(resource.url)}
-                                    className="group flex h-7 w-full cursor-default items-center gap-1.5 px-3 text-left text-xs text-fg-muted transition-colors hover:bg-fill"
+                                    // Pointer cursor, unlike the topic rows above it: this row leaves
+                                    // Studio for a browser, and that is the one thing in this list
+                                    // worth signalling before the click. The arrow says the same on
+                                    // hover; the cursor says it from anywhere in the row.
+                                    className="group flex h-7 w-full cursor-pointer items-center gap-1.5 px-3 text-left text-xs text-fg-muted transition-colors hover:bg-fill hover:text-fg"
                                 >
-                                    <span className="min-w-0 flex-1 truncate">{resource.title}</span>
+                                    <span className="min-w-0 flex-1 truncate">{t(resource.titleKey)}</span>
                                     <ExternalLink className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
                                 </button>
                             ))}
