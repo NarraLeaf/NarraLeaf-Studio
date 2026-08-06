@@ -1,30 +1,27 @@
 import { useCallback, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
-import { Button, Switch } from "@/lib/components/elements";
+import { Button } from "@/lib/components/elements";
 import { cn } from "@/lib/utils/cn";
-import {
-    applyImport,
-    DEFAULT_EXPORT_OPTIONS,
-    exportSettings,
-    planImport,
-    type SettingsExportOptions,
-} from "@/lib/settings/transferSettings";
+import { applyImport, exportSettings, planImport } from "@/lib/settings/transferSettings";
 import type { SettingsImportPlan } from "@shared/utils/settingsDocument";
 
 /**
  * Moving preferences between machines.
  *
- * A panel rather than two Action rows because both halves need something a row cannot hold: the
- * export has two opt-ins, and the import has to show what it would do before it does it. Reading
- * an import back is the whole safety property here - the file is JSON an author can edit, and
- * applying it blind is how a settings transfer becomes a settings loss.
+ * A panel rather than two Action rows because the import has to show what it would do before it
+ * does it, which a row cannot hold. Reading an import back is the whole safety property here: the
+ * file is JSON an author can edit, and applying it blind is how a settings transfer becomes a
+ * settings loss.
+ *
+ * The export takes no options. It writes a plain JSON document of the preferences, minus the two
+ * groups that have no meaning on another machine; a configuration surface for choosing what goes
+ * into a settings file would be a second settings system serving one question.
  *
  * The preview is inline rather than a modal: it is a short list, it is the only thing this panel
  * is doing at that moment, and a dialog over a settings window is a layer nothing here needs.
  */
 export function SettingsTransferPanel() {
     const { t } = useTranslation();
-    const [options, setOptions] = useState<SettingsExportOptions>(DEFAULT_EXPORT_OPTIONS);
     const [busy, setBusy] = useState(false);
     const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
     const [plan, setPlan] = useState<SettingsImportPlan | null>(null);
@@ -33,7 +30,7 @@ export function SettingsTransferPanel() {
         setBusy(true);
         setMessage(null);
         try {
-            const result = await exportSettings(options);
+            const result = await exportSettings();
             if (!result.canceled) {
                 setMessage({ tone: "ok", text: t("settings.transfer.exported", { path: result.filePath ?? "" }) });
             }
@@ -42,7 +39,7 @@ export function SettingsTransferPanel() {
         } finally {
             setBusy(false);
         }
-    }, [options, t]);
+    }, [t]);
 
     const runPlan = useCallback(async () => {
         setBusy(true);
@@ -83,22 +80,6 @@ export function SettingsTransferPanel() {
         <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-2">
                 <p className="text-xs text-fg-muted">{t("settings.transfer.exportHint")}</p>
-                <label className="flex h-7 items-center gap-2 text-xs text-fg-muted">
-                    <Switch
-                        size="sm"
-                        checked={options.includeWallpaper}
-                        onCheckedChange={includeWallpaper => setOptions(prev => ({ ...prev, includeWallpaper }))}
-                    />
-                    {t("settings.transfer.includeWallpaper")}
-                </label>
-                <label className="flex h-7 items-center gap-2 text-xs text-fg-muted">
-                    <Switch
-                        size="sm"
-                        checked={options.includeIdentity}
-                        onCheckedChange={includeIdentity => setOptions(prev => ({ ...prev, includeIdentity }))}
-                    />
-                    {t("settings.transfer.includeIdentity")}
-                </label>
                 <div className="flex items-center gap-2">
                     <Button size="sm" variant="secondary" className="h-7" disabled={busy} onClick={() => void runExport()}>
                         {t("settings.transfer.export")}
