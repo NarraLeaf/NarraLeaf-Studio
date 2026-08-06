@@ -13,6 +13,16 @@ export enum WindowAppType {
 
 export type WindowProps = {
     [WindowAppType.Launcher]: {
+        /**
+         * Open in first-run setup instead of on the home screen.
+         *
+         * A window prop rather than something the renderer works out for itself, for the reason
+         * `recovery` below gives: the decision is available synchronously in the main process
+         * (the marker is one `globalState.get`), and handing it over with the window means the
+         * first frame is already the right one. Read it in the renderer and the home screen paints
+         * first, then gets replaced - which is exactly the flash a first launch should not have.
+         */
+        onboarding?: boolean;
     },
     [WindowAppType.Settings]: {
         /** A setting key (or category key) to select and scroll to on open. */

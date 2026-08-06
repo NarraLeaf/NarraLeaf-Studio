@@ -426,6 +426,18 @@ export class BaseApp {
         return isMainDevMode(this.commandLine, this.electronApp.isPackaged);
     }
 
+    /**
+     * Whether this launch asked for first-run setup regardless of what the profile has been
+     * through - `--onboarding`, which only development honors.
+     *
+     * The dev gate lives here rather than at the call site so there is one place that decides it:
+     * a second reader that forgot the gate would let a packaged build be talked into the setup
+     * flow by an argument on a shortcut.
+     */
+    public wantsOnboardingRerun(): boolean {
+        return this.isDevMode() && this.commandLine.onboarding;
+    }
+
     public getAppEntry(type: WindowAppType): string {
         return path.resolve(this.getDistDir(), "windows", type, "index.html");
     }
