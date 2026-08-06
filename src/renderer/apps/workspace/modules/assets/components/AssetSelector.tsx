@@ -161,6 +161,28 @@ export function AssetSelector({
         // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by value; see above
     }, [selectedIdsKey, visible]);
 
+    /**
+     * Bring a seeded selection into view.
+     *
+     * A caller that opens the picker already pointing at something (the take a line is bound to, or
+     * the clip whose name matches the line) has answered the question the list is asking - but in a
+     * library of a few hundred audio files the answer is somewhere below the fold, so it read as
+     * "nothing is selected". Runs after the rows exist, hence the dependency on the loaded flag.
+     */
+    useEffect(() => {
+        const first = selectedIds[0];
+        if (!visible || !first || !hasLoaded) {
+            return;
+        }
+        const frame = requestAnimationFrame(() => {
+            panelRef.current
+                ?.querySelector(`[data-asset-id="${CSS.escape(first)}"]`)
+                ?.scrollIntoView({ block: "nearest" });
+        });
+        return () => cancelAnimationFrame(frame);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by value, like the effect above
+    }, [selectedIdsKey, visible, hasLoaded]);
+
     // The selector still picks exactly one `AssetType`, but the browser's lists are keyed by the
     // sidebar section that type is filed under, so each one is narrowed back down here. The folder
     // tree is the section's — `shouldRenderGroup` below already drops any folder holding nothing of
@@ -526,6 +548,7 @@ export function AssetSelector({
         return (
             <button
                 key={asset.id}
+                data-asset-id={asset.id}
                 onClick={() => handleItemClick(asset)}
                 onMouseEnter={(e) => handlePreviewEnter(asset, e.currentTarget)}
                 onMouseLeave={hidePreview}
