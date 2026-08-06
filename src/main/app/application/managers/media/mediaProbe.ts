@@ -5,6 +5,7 @@ import {
     classifyMediaSupport,
     isRefusedMediaFileName,
     parseProbeOutput,
+    probeDurationUs,
 } from "@shared/utils/mediaSupport";
 import { resolveFfmpegBinary, type FfmpegResolverApp, type FfmpegResolveOptions } from "./ffmpegTool";
 
@@ -119,7 +120,7 @@ export async function probeMediaFile(
     // author-supplied .m3u8 would let a file the author did not write make the main process fetch
     // something. Deciding by name means that path never exists.
     if (isRefusedMediaFileName(filePath)) {
-        return { status: "probed", verdict: classifyMediaSupport({}, filePath) };
+        return { status: "probed", verdict: classifyMediaSupport({}, filePath), durationUs: null };
     }
 
     const tool = await resolveFfmpegBinary(app, "ffprobe", options);
@@ -172,5 +173,9 @@ export async function probeMediaFile(
     // Parsed JSON, whatever the exit code. ffprobe's failure output is the empty object `{}`, which
     // classifies as `refuse`/`no-streams` — the honest verdict for a file nothing can read, and a
     // better thing to show an author than an exit code.
-    return { status: "probed", verdict: classifyMediaSupport(report, filePath) };
+    return {
+        status: "probed",
+        verdict: classifyMediaSupport(report, filePath),
+        durationUs: probeDurationUs(report),
+    };
 }
