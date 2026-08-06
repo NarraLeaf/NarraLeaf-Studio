@@ -159,7 +159,7 @@ export function ProjectAssetsSection({ projectService, uiService, onConfigChange
         <div className="grid gap-3">
             <button
                 type="button"
-                className="mx-auto grid h-24 w-24 place-items-center overflow-hidden rounded-lg border border-dashed border-edge-strong bg-fill-subtle transition-colors hover:border-primary"
+                className="mx-auto grid h-24 w-24 place-items-center overflow-hidden rounded-md border border-dashed border-edge-strong bg-fill-subtle transition-colors hover:border-primary"
                 onClick={() => void importInto("master")}
                 disabled={frozen.disabled}
                 aria-label={t("project.assets.master")}

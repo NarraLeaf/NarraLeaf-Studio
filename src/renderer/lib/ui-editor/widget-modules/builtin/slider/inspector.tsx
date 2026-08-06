@@ -299,7 +299,7 @@ function SliderPartsField(props: CustomFieldProps<UIInspectorData>) {
                     variant="secondary"
                     size="md"
                     fullWidth
-                    className="h-8 text-xs"
+                    className="text-xs"
                     onClick={repairParts}
                 >
                     {t("widgets.slider.repairParts")}

@@ -548,7 +548,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                             size="md"
                                             type="button"
                                             onClick={bindToAction}
-                                            className="h-9 justify-center"
+                                            className="justify-center"
                                             {...freeze.writes()}
                                         >
                                             <Check className="h-3.5 w-3.5" />

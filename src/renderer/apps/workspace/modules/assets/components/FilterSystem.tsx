@@ -88,7 +88,7 @@ export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilter
                     }
                 }}
                 className={`
-                    flex items-center gap-2 px-3 py-2 rounded-md border transition-colors
+                    flex min-h-9 cursor-default items-center gap-2 px-3 py-1 rounded-md border transition-colors
                     ${hasActiveFilters
                         ? 'border-primary bg-primary/10 text-primary'
                         : 'border-edge-strong bg-fill-subtle hover:bg-fill'

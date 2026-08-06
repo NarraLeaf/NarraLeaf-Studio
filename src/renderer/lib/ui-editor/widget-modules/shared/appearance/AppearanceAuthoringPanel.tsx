@@ -373,7 +373,7 @@ export function AppearanceAuthoringPanel({
                     type="button"
                     title={t("widgetAppearance.variant.addTitle")}
                     onClick={handleAddVariant}
-                    className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-edge bg-fill-subtle text-fg-muted hover:bg-fill"
+                    className="grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:bg-fill"
                 >
                     <Plus className="w-4 h-4" />
                 </button>
@@ -382,7 +382,7 @@ export function AppearanceAuthoringPanel({
                     title={t("widgetAppearance.variant.setDefaultTitle")}
                     onClick={handleSetDefault}
                     disabled={!selectedVariant || model.defaultVariantId === selectedVariant.id}
-                    className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-edge bg-fill-subtle text-fg-muted hover:bg-fill disabled:opacity-40"
+                    className="grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:bg-fill disabled:opacity-40"
                 >
                     <Star className="w-4 h-4" />
                 </button>
@@ -391,7 +391,7 @@ export function AppearanceAuthoringPanel({
                     title={t("widgetAppearance.variant.deleteTitle")}
                     onClick={handleRemoveVariant}
                     disabled={model.variants.length <= 1}
-                    className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-edge bg-fill-subtle text-danger hover:bg-danger/10 disabled:opacity-40"
+                    className="grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md border border-edge bg-fill-subtle text-danger hover:bg-danger/10 disabled:opacity-40"
                 >
                     <Trash2 className="w-4 h-4" />
                 </button>

@@ -76,7 +76,7 @@ export function BuildIconRow({
             type="button"
             onClick={onClick}
             title={t(`build.platform.${target}` as "build.platform.windows")}
-            className="grid h-10 w-10 place-items-center overflow-hidden rounded-lg border border-edge-subtle bg-fill-subtle transition-colors hover:border-edge-strong"
+            className="grid h-10 w-10 place-items-center overflow-hidden rounded-md border border-edge-subtle bg-fill-subtle transition-colors hover:border-edge-strong"
         >
             {url
                 ? <img src={url} alt="" className="h-full w-full object-contain" />

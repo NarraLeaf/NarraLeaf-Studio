@@ -437,7 +437,7 @@ function createLayoutInspectorSchema(
                             <button
                                 type="button"
                                 onClick={toggleVisibility}
-                                className="grid h-9 w-9 place-items-center rounded-lg border border-edge bg-transparent text-fg-muted transition hover:bg-fill-subtle focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                className={controlButtonClass()}
                                 aria-pressed={visible}
                                 aria-label={t("properties.layout.toggleVisibility")}
                             >
