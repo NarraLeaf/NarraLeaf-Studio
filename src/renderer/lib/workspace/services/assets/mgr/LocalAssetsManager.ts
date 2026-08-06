@@ -148,8 +148,15 @@ export class LocalAssetsManager {
         }
     }
 
+    /**
+     * `keepPayload` means the caller has already taken the bytes somewhere it can get them back
+     * from - the undo trash - so this must not unlink them. Without it the deletion would race its
+     * own recovery: the payload would be moved aside and then deleted from where it now is not,
+     * which is silent (the unlink failure below is deliberately swallowed) and unrecoverable.
+     */
     public async deleteAsset<T extends AssetType>(
-        asset: Asset<T, AssetSource.Local>
+        asset: Asset<T, AssetSource.Local>,
+        options?: { keepPayload?: boolean },
     ): Promise<RequestStatus<void>> {
         const metadata = this.assetsService.getAssetsMetadataManager().getAssets();
 
@@ -167,14 +174,16 @@ export class LocalAssetsManager {
         // Delete the payload. A bundle is one asset, so it is one delete: the whole directory goes,
         // never file-by-file - a half-deleted bundle is a model that still lists in the browser and
         // 404s its textures, which is strictly worse than either outcome.
-        const assetPath = this.getLocalAssetPath(asset.id);
-        const deleteResult = isBundleAssetType(asset.type)
-            ? await appPrivilegedFacade.fs.deleteDir(assetPath)
-            : await appPrivilegedFacade.fs.deleteFile(assetPath);
+        if (!options?.keepPayload) {
+            const assetPath = this.getLocalAssetPath(asset.id);
+            const deleteResult = isBundleAssetType(asset.type)
+                ? await appPrivilegedFacade.fs.deleteDir(assetPath)
+                : await appPrivilegedFacade.fs.deleteFile(assetPath);
 
-        if (!deleteResult.success || !deleteResult.data.ok) {
-            // Continue even if file deletion fails (file might not exist)
-            console.warn(`Failed to delete asset file: ${assetPath}`);
+            if (!deleteResult.success || !deleteResult.data.ok) {
+                // Continue even if file deletion fails (file might not exist)
+                console.warn(`Failed to delete asset file: ${assetPath}`);
+            }
         }
 
         // Remove from metadata
@@ -886,7 +895,8 @@ export class LocalAssetsManager {
         return candidate;
     }
 
-    private getLocalAssetPath(name: string): string {
+    /** Where an asset's bytes live. Public so the undo trash can move them aside and back. */
+    public getLocalAssetPath(name: string): string {
         return this.getContext().project.resolve(ProjectNameConvention.AssetsDataShard(name));
     }
 
