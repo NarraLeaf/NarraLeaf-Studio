@@ -352,46 +352,6 @@ export class AppReadBackgroundImageHandler extends IPCHandler<IPCEventType.appRe
 }
 
 /**
- * Store a picture in the background cache; the write half of {@link AppReadBackgroundImageHandler}.
- *
- * Exists for the settings import: a document can carry the workspace wallpaper, and the imported
- * `ui.backgroundImage` would otherwise name a file this machine has never had.
- *
- * The renderer supplies bytes and nothing else. The directory is fixed and the name is derived
- * from the content (`cacheBackgroundImage`), so this cannot be steered at another location or made
- * to overwrite something under a chosen name - the same reasoning that keeps the read half to a
- * basename lookup.
- */
-export class AppWriteBackgroundImageHandler extends IPCHandler<IPCEventType.appWriteBackgroundImage> {
-    readonly name = IPCEventType.appWriteBackgroundImage;
-    readonly type = IPCMessageType.request;
-
-    /** What the picker itself offers; anything else is stored as .png rather than refused. */
-    private static readonly ALLOWED_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif"];
-
-    public async handle(
-        window: AppWindow,
-        { data, extension }: IPCEvents[IPCEventType.appWriteBackgroundImage]["data"],
-    ): Promise<RequestStatus<{ file: string }>> {
-        try {
-            const normalized = extension.trim().toLowerCase();
-            const safeExtension = AppWriteBackgroundImageHandler.ALLOWED_EXTENSIONS.includes(normalized)
-                ? normalized
-                : ".png";
-            const directory = backgroundCacheDirectory(electronApp.getPath("userData"));
-            const file = await cacheBackgroundImage(directory, data, safeExtension);
-            // As in the picker: a cache that failed to shrink is not worth failing the import over.
-            await pruneBackgroundCache(directory, file).catch(error => {
-                window.app.logger.warn(`[Background] Failed to prune the background cache: ${String(error)}`);
-            });
-            return this.success({ file });
-        } catch (error) {
-            return this.failed(error);
-        }
-    }
-}
-
-/**
  * Opens a URL in the system browser. Restricted to http(s): a renderer must never be able to
  * hand arbitrary schemes (file:, app protocols) to the OS.
  */
