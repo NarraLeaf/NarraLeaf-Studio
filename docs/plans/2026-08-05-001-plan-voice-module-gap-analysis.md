@@ -4,6 +4,11 @@
 不含实现；结论按「已成立的事实 / 六个真实缺陷 / 与商业 VN 的功能差距 / 建议顺序」四段组织。
 每条断言都给了代码位置，能实测的都实测过（本文出现的两处 `实测` 是真跑出来的输出）。
 
+> **2026-08-05 后续（分支 `feat/voice-completion`）：下面六个缺陷全部已修，
+> 玩家侧三条「必须有」也全部补齐。** 保留原文是因为它记录的是**为什么**——
+> 尤其 D1「只有单场戏的 demo 会碰巧成功」和 D2「配音只认源语言」这两条的成因。
+> 变更清单见文末 §6。引擎侧改动已随 **narraleaf-react 0.24.0** 发布。
+
 ## 0. 一句话结论
 
 **骨架是对的，管线是通的，但它只在「单语配音 + 拉丁字母命名 + 小体量」这三个条件同时成立时才真正工作。**
@@ -189,6 +194,45 @@
 7. **D6**：配音表接 `@tanstack/react-virtual`；侧栏覆盖率改增量（按 storyId 缓存行集）。
 8. **D5**：命名模式做成设置项，并修 `{unitId}` token。
 9. 多 take / 重录历史、波形、响度 QC、按语言拆包与转码。
+
+## 6. 实际落地（分支 `feat/voice-completion`）
+
+### 引擎（narraleaf-react 0.24.0，已发布）
+
+改动刻意小，只有两处，其余全在 Studio 侧解决：
+
+- **自动模式等语音**：`DialogState.scheduleAutoForward` 先等本行语音的 token `ended`/`stop`，
+  再开始 `autoForwardDelay` 计时。没有语音、或语音已结束的行走原来的路径，
+  未配音的游戏行为一字不变。关自动、手动翻页、离开对话框都会撤掉这个等待。
+- **回想录条目带 `voiceId`**：`GameElementHistory` 的 say 条目新增可选 `voiceId`。
+  原来只有 `voice`（已解析的 URL），而宿主是按 id 寻址音频的，所以「回想录重播按钮」
+  在旧接口下**拼不出来**。旧存档没有该字段，读取不受影响。
+
+`GameConfig.autoForwardDelay` 的 JSDoc 同步改成「从该行结束（文字打完 **且** 语音播完）起算」，
+文档站 `../narraleaf.com` 的三处镜像（GameConfig / GamePreference / GameElementHistory，en+zh）
+一并更新，顺手修掉一处陈年飘移：`GameElementHistory` 的 `menu.text` 一直是 `string | null`
+而文档写的是 `string`。
+
+### Studio
+
+| 缺陷 | 修法 |
+| --- | --- |
+| D1 | `matchKeyForFilename` 改成 `[^\p{L}\p{N}]` + `u` + NFKC 归一化。附 CJK / macOS NFD / 全角数字三条回归测试 |
+| D2 | 新增 `voiceLineText(localization, unitId, sourceText)`：**配音语言有译文就用译文**，没有才回落源文。录音本 `line` 列、配音表正文、staleness 哈希、覆盖率、lint `voice/stale` 全部改用它。配音表行的 `title` 在两者不同时会一并显示原文 |
+| D3 | 编译期解析**全部**语言的 take 表；每个场景共享**同一个可变** `voices` 对象，宿主监听 `nls.voiceLocale` 就地重填 → **换配音语言不重编译、不重挂载、下一句立刻生效**。新增蓝图节点 Get / Set / Get Available Voice Languages |
+| D4 | `parseVoiceCsv` 接上「导入录音本」菜单项（只读回 `note` 与 `status`，不允许行数据凭空造 take）；audition 模式行内可编辑备注；指派与批量导入后**后台**测量时长写入 `duration`，表里显示 `1:04` |
+| D5 | 侧栏新增「录音文件名规则」输入框 + 恢复默认；`{unitId}` 与 `{unit}` 现在等价 |
+| D6 | 配音表接 `@tanstack/react-virtual`（与 lint / 测试报告同一形态，代价是分组头不再 sticky）；侧栏覆盖率改成**按 storyId 缓存**，文档变更只重算那一个故事 |
+
+另外补上玩家侧那条「必须有」：新增 **Play Voice** 蓝图节点（吃 voice unit id），
+配合 `BlueprintGameHistoryEntry.voiceId`，回想录重播与「重听本行」都能拼出来了。
+播放时**新建** `Sound` 而不是复用场景表里的实例——音频管理器按实例记 token，
+复用会和还在屏幕上的那句打架；总线仍取该说话人的角色语音总线，所以玩家的分角色音量滑条照样生效。
+
+### 没做的
+
+按语言拆分语音包 / 按需下载、构建期转码、多 take 与重录历史、逐条增益、波形与响度 QC、
+选项语音、口型同步。这些都不是「修缺陷」，是新特性，留给下一轮。
 
 ## 5. 本轮做过的验证
 

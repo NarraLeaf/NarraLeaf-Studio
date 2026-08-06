@@ -255,46 +255,65 @@ export type StoryVoiceRuntime = GameVoiceBundle & {
 };
 
 /**
- * Resolve the active voice language's clips (unit id → asset id) into a flat
- * unit id → URL map for the engine's `Scene.voices` resolver.
+ * Resolve EVERY voice language's clips (unit id → asset id) into unit id → URL maps.
  *
- * The map (object) form is used deliberately over the function-generator form:
- * the engine's generator path throws on an unresolved id, whereas a plain map
- * returns null for a line with no take - exactly what partial voicing needs. The
- * active locale is read once, at compile time; switching voice language is a
- * recompile (mirrors how a background swap recompiles, not how text re-resolves).
+ * All languages, not just the active one, and that is what makes switching dub language a runtime
+ * act rather than a recompile. URL resolution is an id-to-`nlr://` rewrite, not a load, so carrying
+ * the other languages costs a map; the bytes are still only fetched for whatever actually plays.
+ *
+ * The map (object) form is used deliberately over the function-generator form: the engine's
+ * generator path throws on an unresolved id, whereas a plain map returns null for a line with no
+ * take - exactly what partial voicing needs.
  */
-async function buildSceneVoiceMap(input: {
+async function buildVoiceMapsByLocale(input: {
     voice: StoryVoiceRuntime;
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
     assetUrlCache: Map<string, string | null>;
     diagnostics: NlrStoryCompileDiagnostic[];
-}): Promise<Record<string, string>> {
-    const locale = input.voice.getVoiceLocale();
-    const table = input.voice.tables[locale];
-    const map: Record<string, string> = {};
-    if (!table) {
-        return map;
-    }
-    for (const [unitId, assetId] of Object.entries(table)) {
-        const url = await resolveAssetUrlCached({
-            assetId,
-            assetType: "audio",
-            blockId: `voice:${locale}:${unitId}`,
-            resolveAssetUrl: input.resolveAssetUrl,
-            assetUrlCache: input.assetUrlCache,
-            diagnostics: input.diagnostics,
-        });
-        if (url) {
-            map[unitId] = url;
+}): Promise<Record<string, Record<string, string>>> {
+    const byLocale: Record<string, Record<string, string>> = {};
+    for (const [locale, table] of Object.entries(input.voice.tables)) {
+        const map: Record<string, string> = {};
+        for (const [unitId, assetId] of Object.entries(table)) {
+            const url = await resolveAssetUrlCached({
+                assetId,
+                assetType: "audio",
+                blockId: `voice:${locale}:${unitId}`,
+                resolveAssetUrl: input.resolveAssetUrl,
+                assetUrlCache: input.assetUrlCache,
+                diagnostics: input.diagnostics,
+            });
+            if (url) {
+                map[unitId] = url;
+            }
         }
+        byLocale[locale] = map;
     }
-    return map;
+    return byLocale;
 }
 
-/** Sentence voice config for a line: attach the engine `voiceId` only when a take exists for the active voice language. */
+/**
+ * Every unit id voiced in ANY language.
+ *
+ * This is what decides whether a line carries a `voiceId`, and it has to be the union rather than
+ * the active language's set: a line recorded in Japanese but not in English must still carry its id
+ * in an English-first build, or switching to Japanese mid-game would find nothing to play. A line
+ * whose id resolves to nothing in the active language is exactly the case the map form handles -
+ * `getVoice` returns null and the engine falls back to the inline `config.voice`.
+ */
+function collectVoicedUnitIds(byLocale: Record<string, Record<string, string>>): Set<string> {
+    const ids = new Set<string>();
+    for (const map of Object.values(byLocale)) {
+        for (const unitId of Object.keys(map)) {
+            ids.add(unitId);
+        }
+    }
+    return ids;
+}
+
+/** Sentence voice config for a line: attach the engine `voiceId` when a take exists in any voice language. */
 function voiceConfigForLine(ctx: SceneCompileContext, textId: string): { voiceId: string } | undefined {
-    return ctx.voiceIdMap && ctx.voiceIdMap[textId] ? { voiceId: textId } : undefined;
+    return ctx.voicedUnitIds?.has(textId) ? { voiceId: textId } : undefined;
 }
 
 /** Which character speaks each voice unit, so a take can be routed to that character's bus. */
@@ -327,22 +346,37 @@ function speakerByTextId(document: StoryDocument): Map<string, string> {
  * with no per-character track produces the same table it always did, entry for entry.
  */
 function buildSceneVoices(input: {
-    document: StoryDocument;
     voiceIdMap: Record<string, string>;
-    characters: ReadonlyMap<string, DevModeCharacterSummary>;
+    busIdByUnit: ReadonlyMap<string, string>;
     audioTracks: readonly ProjectAudioTrack[];
 }): Record<string, string | Sound> {
-    const speakers = speakerByTextId(input.document);
     const voices: Record<string, string | Sound> = {};
     for (const [unitId, url] of Object.entries(input.voiceIdMap)) {
-        const characterId = speakers.get(unitId);
-        const requested = characterId ? input.characters.get(characterId)?.voiceTrackId : undefined;
-        const busId = resolveVoiceBusId(input.audioTracks, requested);
+        const busId = input.busIdByUnit.get(unitId) ?? AUDIO_TRACK_ID_VOICE;
         voices[unitId] = busId === AUDIO_TRACK_ID_VOICE
             ? url
             : createBusSound(input.audioTracks, busId, AUDIO_TRACK_ID_VOICE, { src: url });
     }
     return voices;
+}
+
+/**
+ * Which bus each voice unit plays on - its speaker's, or the plain `voice` bus.
+ *
+ * Language-independent (the same character speaks the line in every dub), so it is computed once and
+ * shared by every language's table and by the replay path.
+ */
+function voiceBusIdByUnit(input: {
+    document: StoryDocument;
+    characters: ReadonlyMap<string, DevModeCharacterSummary>;
+    audioTracks: readonly ProjectAudioTrack[];
+}): Map<string, string> {
+    const busIds = new Map<string, string>();
+    for (const [unitId, characterId] of speakerByTextId(input.document)) {
+        const requested = input.characters.get(characterId)?.voiceTrackId;
+        busIds.set(unitId, resolveVoiceBusId(input.audioTracks, requested));
+    }
+    return busIds;
 }
 
 export type NlrStoryCompileDiagnostic = {
@@ -395,6 +429,21 @@ export type CompiledNlrStory = {
     storyId: string;
     sceneId: string;
     actionIdBindings: NlrActionIdBinding[];
+    /**
+     * Swap the dub language of this compile, in place, while the game is running. Returns false for a
+     * language this compile has no take table for (and for a story compiled without voice).
+     *
+     * Every scene shares one voices object and the engine reads it per line, so the next spoken line
+     * plays the new language - the same "applies from the next line" rule a text language switch
+     * follows. Absent on the preview/empty compiles, which build no voice table.
+     */
+    setVoiceLocale?: (locale: string) => boolean;
+    /**
+     * The clip and bus for one voice unit in the CURRENT dub language, for replaying a line on
+     * demand (a backlog replay button, a "listen again" control). Null when the line has no take in
+     * that language. Absent on the preview/empty compiles.
+     */
+    getVoicePlayback?: (unitId: string) => { src: string; busId: string } | null;
     /**
      * Storable namespace holding every "saved" (editor: Var) variable, resolved via
      * {@link DevTools.getNamespaceName} so hosts read live values without depending on the engine's
@@ -535,8 +584,8 @@ type SceneCompileContext = {
     blueprintDocument?: BlueprintDocument;
     /** Game localization resolver; absent when the project has no localization or the host passes none. */
     localization?: SceneLocalizationResolver;
-    /** Active voice language's unit id → clip URL map; absent when the project has no voice or the host passes none. */
-    voiceIdMap?: Record<string, string>;
+    /** Unit ids voiced in any language; absent when the project has no voice or the host passes none. */
+    voicedUnitIds?: ReadonlySet<string>;
     /** Asset id → marked in/out points, folded into every `Sound` this compile builds. */
     audioClips?: Record<string, AudioClipRegion>;
     /** The project's audio tracks; already defaulted to the built-ins by the caller. */
@@ -672,22 +721,25 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     const assetUrlCache = new Map<string, string | null>();
     let actionIndex = 0;
     const resolveAssetUrl = input.resolveAssetUrl ?? ((assetId: string) => assetId);
-    const voiceIdMap = input.voice
-        ? await buildSceneVoiceMap({ voice: input.voice, resolveAssetUrl, assetUrlCache, diagnostics })
+    const voiceUrlsByLocale = input.voice
+        ? await buildVoiceMapsByLocale({ voice: input.voice, resolveAssetUrl, assetUrlCache, diagnostics })
         : undefined;
+    const voicedUnitIds = voiceUrlsByLocale ? collectVoicedUnitIds(voiceUrlsByLocale) : undefined;
     const audioTracks = input.audioTracks ?? BUILTIN_AUDIO_TRACKS;
     const sceneBackgroundMusic = new Map<string, { sound: Sound; trackId: string }>();
-    const allScenes = await createNlrScenes({
+    const scenesBuild = await createNlrScenes({
         document: input.document,
         resolveAssetUrl,
         assetUrlCache,
         diagnostics,
-        voiceIdMap,
+        voiceUrlsByLocale,
+        activeVoiceLocale: input.voice?.getVoiceLocale() ?? "",
         audioClips: input.audioClips,
         audioTracks,
         characters: characterSummaries,
         backgroundMusic: sceneBackgroundMusic,
     });
+    const allScenes = scenesBuild.scenes;
 
     // Single Storable-backed namespace seeded with every saved variable's default.
     const savedVariables = savedVariableDefs(input.document);
@@ -741,7 +793,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             persistence: input.persistence,
             blueprintDocument: input.blueprintDocument,
             localization,
-            voiceIdMap,
+            voicedUnitIds,
             sceneFnCatalog,
             images: new Map(),
             texts: new Map(),
@@ -809,7 +861,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             resolveAssetUrl,
             assetUrlCache,
             localization,
-            voiceIdMap,
+            voicedUnitIds,
             nextActionIndex: () => actionIndex++,
         })
         : allScenes[input.sceneId];
@@ -845,6 +897,8 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         characters,
         avatarAssetIdByUrl,
         sceneElements,
+        setVoiceLocale: scenesBuild.setVoiceLocale,
+        getVoicePlayback: scenesBuild.getVoicePlayback,
     };
 }
 
@@ -876,7 +930,7 @@ async function buildLaunchEntryScene(params: {
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
     assetUrlCache: Map<string, string | null>;
     localization?: SceneLocalizationResolver;
-    voiceIdMap?: Record<string, string>;
+    voicedUnitIds?: ReadonlySet<string>;
     nextActionIndex: () => number;
 }): Promise<Scene> {
     const { input, launch, nlrStory, allScenes, diagnostics, resolveAssetUrl, assetUrlCache } = params;
@@ -938,7 +992,7 @@ async function buildLaunchEntryScene(params: {
         persistence: input.persistence,
         blueprintDocument: input.blueprintDocument,
         localization: params.localization,
-        voiceIdMap: params.voiceIdMap,
+        voicedUnitIds: params.voicedUnitIds,
         sceneFnCatalog: collectSceneStoryActionFns({
             document: input.document,
             blueprintDocument: input.blueprintDocument,
@@ -1425,8 +1479,10 @@ async function createNlrScenes(input: {
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
     assetUrlCache: Map<string, string | null>;
     diagnostics: NlrStoryCompileDiagnostic[];
-    /** Active voice language's unit id → clip URL map, shared by every scene (voice ids are global). */
-    voiceIdMap?: Record<string, string>;
+    /** Every voice language's unit id → clip URL map. Voice ids are global, so one table serves every scene. */
+    voiceUrlsByLocale?: Record<string, Record<string, string>>;
+    /** Which language the scenes open on. */
+    activeVoiceLocale?: string;
     /** Asset id → marked in/out points, so a scene's own track loops where the author marked it. */
     audioClips?: Record<string, AudioClipRegion>;
     /** The project's audio tracks, so a scene's music resolves its bus like every other row. */
@@ -1443,16 +1499,63 @@ async function createNlrScenes(input: {
      * gain the scene's music was built with, not the built-in fallback's.
      */
     backgroundMusic?: Map<string, { sound: Sound; trackId: string }>;
-}): Promise<Record<string, Scene>> {
+}): Promise<{
+    scenes: Record<string, Scene>;
+    setVoiceLocale: (locale: string) => boolean;
+    getVoicePlayback: (unitId: string) => { src: string; busId: string } | null;
+}> {
     const scenes: Record<string, Scene> = {};
-    const voices = input.voiceIdMap && Object.keys(input.voiceIdMap).length > 0
-        ? buildSceneVoices({
-            document: input.document,
-            voiceIdMap: input.voiceIdMap,
-            characters: input.characters,
+
+    /**
+     * One voices object, shared by every scene, and deliberately MUTABLE.
+     *
+     * `Scene.getVoice` reads `config.voices[id]` fresh on every line, so repopulating this object in
+     * place is all it takes to change dub language mid-game - no recompile, no remount, no restart.
+     * Building a new object instead would strand every scene on the table it was constructed with,
+     * which is the reason switching used to be impossible: the language was baked at compile time and
+     * nothing in the shipped game could write it.
+     */
+    const busIdByUnit = voiceBusIdByUnit({
+        document: input.document,
+        characters: input.characters,
+        audioTracks: input.audioTracks,
+    });
+    const voicesByLocale: Record<string, Record<string, string | Sound>> = {};
+    for (const [locale, urls] of Object.entries(input.voiceUrlsByLocale ?? {})) {
+        voicesByLocale[locale] = buildSceneVoices({
+            voiceIdMap: urls,
+            busIdByUnit,
             audioTracks: input.audioTracks,
-        })
-        : undefined;
+        });
+    }
+    const anyVoices = Object.values(voicesByLocale).some(table => Object.keys(table).length > 0);
+    const voices: Record<string, string | Sound> | undefined = anyVoices ? {} : undefined;
+    let activeLocale = "";
+    const applyLocale = (locale: string): boolean => {
+        const table = voicesByLocale[locale];
+        if (!voices || !table) {
+            return false;
+        }
+        for (const key of Object.keys(voices)) {
+            delete voices[key];
+        }
+        Object.assign(voices, table);
+        activeLocale = locale;
+        return true;
+    };
+    applyLocale(input.activeVoiceLocale ?? "");
+
+    /**
+     * What a replay of one line needs: the clip and the bus it belongs on.
+     *
+     * Deliberately NOT the `Sound` the scene table holds - that instance is the one the story itself
+     * plays through, and the audio manager keys a playing token by instance, so replaying a backlog
+     * line would collide with the line still on screen. The caller builds a fresh sound from this.
+     */
+    const getVoicePlayback = (unitId: string): { src: string; busId: string } | null => {
+        const src = input.voiceUrlsByLocale?.[activeLocale]?.[unitId];
+        return src ? { src, busId: busIdByUnit.get(unitId) ?? AUDIO_TRACK_ID_VOICE } : null;
+    };
     // Two scenes with the same runtime name share one `Scene.local` namespace, so their scene-local
     // variables would silently read and write each other's values. The name keys the namespace
     // (`DevTools.getNamespaceName`), so a collision is a real data hazard, not cosmetic (bible §3.3).
@@ -1509,7 +1612,7 @@ async function createNlrScenes(input: {
             Object.keys(config).length > 0 ? config : undefined,
         );
     }
-    return scenes;
+    return { scenes, setVoiceLocale: applyLocale, getVoicePlayback };
 }
 
 async function resolveSceneInitialBackground(input: {

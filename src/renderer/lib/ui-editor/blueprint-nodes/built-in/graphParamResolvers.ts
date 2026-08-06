@@ -163,6 +163,9 @@ import {
     BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_CURRENT_LANGUAGE,
     BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT,
     BLUEPRINT_NODE_TYPE_LOCALIZATION_HAS_TEXT,
+    BLUEPRINT_NODE_TYPE_VOICE_GET_AVAILABLE_LANGUAGES,
+    BLUEPRINT_NODE_TYPE_VOICE_GET_LANGUAGE,
+    BLUEPRINT_NODE_TYPE_VOICE_PLAY,
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
     BLUEPRINT_NODE_TYPE_MATH_ABS,
@@ -2529,7 +2532,11 @@ function resolveSelfOutput(
             selfNode.type === BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT ||
             selfNode.type === BLUEPRINT_NODE_TYPE_LOCALIZATION_HAS_TEXT ||
             selfNode.type === BLUEPRINT_NODE_TYPE_LOCALIZATION_FORMAT_TEXT ||
-            selfNode.type === BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_AVAILABLE_LANGUAGES) &&
+            selfNode.type === BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_AVAILABLE_LANGUAGES ||
+            // Voice getters and Play Voice, all latent, all publishing onto `value`.
+            selfNode.type === BLUEPRINT_NODE_TYPE_VOICE_GET_LANGUAGE ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_VOICE_GET_AVAILABLE_LANGUAGES ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_VOICE_PLAY) &&
         (portId === "index" ||
             portId === "item" ||
             portId === "value" ||

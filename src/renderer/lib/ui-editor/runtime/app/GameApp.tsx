@@ -776,6 +776,44 @@ export function GameApp(props: GameAppProps): ReactNode {
         [],
     );
 
+    /** The dub language in force: the player's stored choice when the game ships that language, else the first. */
+    const readVoiceLocale = useCallback((): string => {
+        const voice = bundle.voice;
+        if (!voice || !core) {
+            return "";
+        }
+        const stored = core.scopeBridge.persistenceGet(VOICE_LOCALE_STORAGE_KEY);
+        if (typeof stored === "string" && stored && voice.voicedLocales.some(entry => entry.code === stored)) {
+            return stored;
+        }
+        return voice.voicedLocales[0]?.code ?? "";
+    }, [bundle.voice, core]);
+
+    /**
+     * A dub-language change re-points the takes on the running game.
+     *
+     * The compile carries every language's table and every scene shares one voices object, so this is
+     * a repopulate rather than a recompile: the next spoken line plays the new language, which is the
+     * same rule a text-language switch follows. Before this, `nls.voiceLocale` was read once at
+     * compile time and nothing in a shipped game could change it - a project could author a second
+     * dub, ship its audio, and never play a second of it.
+     */
+    useEffect(() => {
+        if (!core || !bundle.voice) {
+            return;
+        }
+        let applied = readVoiceLocale();
+        return core.scopeBridge.subscribePersistence(() => {
+            const next = readVoiceLocale();
+            if (next === applied) {
+                return;
+            }
+            if (nlrCompiledRef.current?.setVoiceLocale?.(next)) {
+                applied = next;
+            }
+        });
+    }, [core, bundle.voice, readVoiceLocale]);
+
     const {
         getCurrentNametag,
         getNotificationsInGame,
@@ -832,6 +870,29 @@ export function GameApp(props: GameAppProps): ReactNode {
     }), [bundle, host]);
 
     useEffect(() => () => soundTransport.dispose(), [soundTransport]);
+
+    /**
+     * Replay one line's take in the dub language currently in force.
+     *
+     * A fresh `Sound` per replay rather than the scene table's instance: the audio manager keys a
+     * playing token by instance, so reusing it would fight with the line that is still on screen.
+     * The bus comes from the compile, so a per-character voice bus - and the player's fader for it -
+     * applies to a replay exactly as it does to the line itself.
+     */
+    const playVoiceUnit = useCallback(async (unitId: string): Promise<boolean> => {
+        const liveGame = nlrLiveGameRef.current;
+        const playback = unitId ? nlrCompiledRef.current?.getVoicePlayback?.(unitId) : null;
+        if (!liveGame || !playback) {
+            return false;
+        }
+        try {
+            await liveGame.playSound(new Sound({ src: playback.src, type: playback.busId }));
+            return true;
+        } catch (error) {
+            host.log("warning", `Play Voice: ${error instanceof Error ? error.message : String(error)}`);
+            return false;
+        }
+    }, [host]);
 
     // Mount-scoped, not session-scoped: each mount replaces the previous subscription itself, and
     // this is only the last one, on the way out.
@@ -1241,17 +1302,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                   }
                 : undefined,
             voice: bundle.voice && core
-                ? {
-                      ...bundle.voice,
-                      getVoiceLocale: () => {
-                          const stored = core.scopeBridge.persistenceGet(VOICE_LOCALE_STORAGE_KEY);
-                          if (typeof stored === "string" && stored
-                              && bundle.voice!.voicedLocales.some(locale => locale.code === stored)) {
-                              return stored;
-                          }
-                          return bundle.voice!.voicedLocales[0]?.code ?? "";
-                      },
-                  }
+                ? { ...bundle.voice, getVoiceLocale: readVoiceLocale }
                 : undefined,
             // The in/out/loop points the author marked and the project's audio tracks. Only the
             // in-editor scene preview used to pass these, so every marked loop point and every
@@ -1267,7 +1318,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             }
         }
         return compiled;
-    }, [bundle, core, host]);
+    }, [bundle, core, host, readVoiceLocale]);
 
     // Mount the NLR environment (Game/LiveGame + Player via NlrStageLayer) for the given compiled
     // story and initialise it: gameReady fires (via onLiveGameReady) and assets preheat, but the
@@ -1654,6 +1705,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             },
             widgetRuntimeStore,
             localizationConfig: bundle.localization ?? null,
+            voiceConfig: bundle.voice ?? null,
+            onPlayVoice: playVoiceUnit,
         });
         hostAdapter = createDevModeBlueprintHostAdapter({
             bundle,
@@ -1910,6 +1963,8 @@ export function GameApp(props: GameAppProps): ReactNode {
                     },
                     widgetRuntimeStore,
                     localizationConfig: bundle.localization ?? null,
+                    voiceConfig: bundle.voice ?? null,
+                    onPlayVoice: playVoiceUnit,
                 });
                 nestedHostAdapter = createDevModeBlueprintHostAdapter({
                     bundle,

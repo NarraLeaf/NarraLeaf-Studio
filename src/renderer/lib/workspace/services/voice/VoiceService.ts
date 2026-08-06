@@ -20,8 +20,10 @@ import {
     VoiceUnitStatus,
     createEmptyVoiceDocument,
     isValidLocaleCode,
+    voiceLineText,
 } from "@shared/types/voice";
 import { hashSourceText } from "@shared/utils/localizationText";
+import type { VoiceCsvRow } from "@shared/utils/voiceCsv";
 import type { StoryDocument } from "@shared/types/story";
 import { Service } from "../Service";
 import { IVoiceService, Services, WorkspaceContext } from "../services";
@@ -30,6 +32,7 @@ import { registerAutoSaver, reportUnreadableDocument } from "../autosave/SaveSta
 import { createProjectDocumentStorage } from "../core/DocumentStorage";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
+import { LocalizationService } from "../localization/LocalizationService";
 import { EventEmitter } from "../ui/EventEmitter";
 import type { TranslatableUnitRef, StoryTranslationRow } from "../localization/localizationModel";
 import { VoiceProgress, computeVoiceProgress, extractVoiceableRows } from "./voiceModel";
@@ -37,6 +40,13 @@ import { VoiceProgress, computeVoiceProgress, extractVoiceableRows } from "./voi
 type VoiceServiceEvents = {
     configChanged: VoiceConfiguration;
     documentChanged: { locale: string; document: VoiceDocument };
+};
+
+/** What a recording-script import did, per row. `unknown` = a line with no take to annotate. */
+export type VoiceImportSummary = {
+    applied: number;
+    unchanged: number;
+    unknown: number;
 };
 
 export type VoiceUnitPatch = {
@@ -61,7 +71,10 @@ export class VoiceService extends Service<VoiceService> implements IVoiceService
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
         const projectService = ctx.services.get<ProjectService>(Services.Project);
-        await depend([filesystemService, projectService]);
+        const localizationService = ctx.services.get<LocalizationService>(Services.Localization);
+        // Localization is a dependency because a dub is a recording of the *translated* line - see
+        // `voiceLineText`. One-directional: localization knows nothing about voice.
+        await depend([filesystemService, projectService, localizationService]);
         await registerAutoSaver(ctx, depend, "voice", "workspace.shell.save.stores.voice", this.autoSaver);
     }
 
@@ -142,6 +155,31 @@ export class VoiceService extends Service<VoiceService> implements IVoiceService
         });
     }
 
+    // --- The text a take is a recording of ---
+
+    /**
+     * Make sure {@link getLineText} can answer for this voice language: pull in its translation table
+     * when the project also translates into it. A voice language the project never translated into
+     * needs nothing loaded - the source text is what the actor reads.
+     */
+    public async loadLineTexts(locale: string): Promise<void> {
+        const localization = this.getLocalizationService();
+        if (!localization.getConfiguration().locales.some(entry => entry.code === locale)) {
+            return;
+        }
+        await localization.loadDocument(locale).catch(() => undefined);
+    }
+
+    /**
+     * The line as the actor for this voice language reads it. Every voice surface goes through here so
+     * the table, the recording script, and the staleness hash agree on one text per language.
+     * Synchronous, so callers must have run {@link loadLineTexts} first (it falls back to the source
+     * text, never throws, so a missed preload degrades instead of breaking).
+     */
+    public getLineText(locale: string, unitId: string, sourceText: string): string {
+        return voiceLineText(this.getLocalizationService().getDocumentIfLoaded(locale), unitId, sourceText);
+    }
+
     // --- Voice documents (one per locale) ---
 
     public async loadDocument(locale: string): Promise<VoiceDocument> {
@@ -216,6 +254,59 @@ export class VoiceService extends Service<VoiceService> implements IVoiceService
         return next;
     }
 
+    /**
+     * Fold a recording script the booth filled in back into the voice library.
+     *
+     * The export half has existed since the module shipped and the parser was written alongside it,
+     * but nothing ever called the parser - so every note and every approval a director wrote in the
+     * spreadsheet had no way home. Only the two columns a human edits are read: `note`, and `status`
+     * when it says approved or linked. Everything else in the file is derived state that this project
+     * owns (a clip is linked by importing audio, not by typing a filename), so a row cannot invent a
+     * take or re-point one.
+     */
+    public applyImportedRows(locale: string, rows: readonly VoiceCsvRow[]): VoiceImportSummary {
+        const document = this.requireLoadedDocument(locale);
+        const summary: VoiceImportSummary = { applied: 0, unchanged: 0, unknown: 0 };
+        const units = { ...document.units };
+        for (const row of rows) {
+            const existing = units[row.unitId];
+            if (!existing) {
+                // No take for this line, so there is nothing for a note or an approval to be about.
+                summary.unknown += 1;
+                continue;
+            }
+            const note = row.note.trim();
+            const declared = row.status.trim().toLowerCase();
+            const status: VoiceUnitStatus = declared === "approved"
+                ? "approved"
+                : declared === "linked" || declared === "voiced"
+                    ? "linked"
+                    : existing.status;
+            const next: VoiceUnit = {
+                ...existing,
+                status,
+                ...(note ? { note } : {}),
+            };
+            if (!note) {
+                delete next.note;
+            }
+            if (next.status === existing.status && (next.note ?? "") === (existing.note ?? "")) {
+                summary.unchanged += 1;
+                continue;
+            }
+            units[row.unitId] = next;
+            summary.applied += 1;
+        }
+        if (summary.applied > 0) {
+            const nextDocument: VoiceDocument = { ...document, units };
+            this.documents.set(locale, nextDocument);
+            this.dirtyLocales.add(locale);
+            this.scheduleAutoSave();
+            this.events.emit("documentChanged", { locale, document: nextDocument });
+        }
+        return summary;
+    }
+
     public async flushPendingChanges(): Promise<void> {
         await this.autoSaver.flush();
     }
@@ -273,7 +364,11 @@ export class VoiceService extends Service<VoiceService> implements IVoiceService
     }
 
     public computeProgress(rows: readonly TranslatableUnitRef[], locale: string): VoiceProgress {
-        return computeVoiceProgress(rows, this.documents.get(locale));
+        return computeVoiceProgress(
+            rows,
+            this.documents.get(locale),
+            (unitId, sourceText) => this.getLineText(locale, unitId, sourceText),
+        );
     }
 
     private assertKnownLocale(locale: string): void {
@@ -319,5 +414,9 @@ export class VoiceService extends Service<VoiceService> implements IVoiceService
 
     private getProjectService(): ProjectService {
         return this.getContext().services.get<ProjectService>(Services.Project);
+    }
+
+    private getLocalizationService(): LocalizationService {
+        return this.getContext().services.get<LocalizationService>(Services.Localization);
     }
 }

@@ -34,6 +34,7 @@ import {
     type ProjectAudioTrack,
 } from "@shared/types/audioTrack";
 import { LOCALE_STORAGE_KEY, type GameLocalizationBundle } from "@shared/types/localization";
+import { VOICE_LOCALE_STORAGE_KEY, type VoiceLocaleEntry } from "@shared/types/voice";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
 import { normalizeElementEffectValues, type ElementEffectValues } from "@shared/types/ui-editor/effects";
@@ -286,6 +287,28 @@ export type BlueprintHostApiRuntime = {
         getLocale: () => Promise<string>;
         /** Persist the player's language choice; callers validate against getConfig(). */
         setLocale: (code: string) => Promise<void>;
+    };
+    /**
+     * Voice-over: which dub the player hears, and replaying a take on demand.
+     *
+     * Separate from `localization` because dub language and subtitle language are separate player
+     * choices - a game may be read in English and heard in Japanese.
+     */
+    voice: {
+        /** The dub languages this build ships, in project order. Empty when the game has no voice. */
+        listLocales: () => VoiceLocaleEntry[];
+        /** Effective dub language: the stored player choice when the build ships it, else the first. */
+        getLocale: () => Promise<string>;
+        /** Persist the player's dub choice. Takes effect from the next spoken line - no restart. */
+        setLocale: (code: string) => Promise<void>;
+        /**
+         * Play one line's take in the current dub language, on that speaker's bus.
+         *
+         * The id is a voice unit id - the same id a backlog entry reports as `voiceId` - which is why
+         * a replay button is built from this rather than from the entry's resolved URL. Resolves to
+         * false when the line has no take in the current language.
+         */
+        play: (unitId: string) => Promise<boolean>;
     };
     frame: {
         getParam: (key: string) => unknown;
@@ -589,6 +612,10 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     componentDefinitionMode?: boolean;
     /** Game localization setup (from the bundle); absent when the project has none. */
     localizationConfig?: GameLocalizationConfigSnapshot | null;
+    /** Voice setup of the running game (dub languages), or null when the project has none. */
+    voiceConfig?: { voicedLocales: VoiceLocaleEntry[] } | null;
+    /** Plays one voice unit in the current dub language; absent outside a game runtime. */
+    onPlayVoice?: (unitId: string) => Promise<boolean>;
 };
 
 function readDocumentElement(document: UIDocument, elementId: string): UIElement | undefined {
@@ -1267,8 +1294,14 @@ export type BlueprintGameHistoryEntry = {
     text: string;
     /** Speaker nametag for a say entry; null for menu entries or narration. */
     character: string | null;
-    /** Voice clip id for a say entry; null when absent. */
+    /** Resolved voice clip URL for a say entry; null when absent. Not addressable - see `voiceId`. */
     voice: string | null;
+    /**
+     * The voice unit id this line's take is filed under; null when the line was not voiced through
+     * the voice module. This is the replayable handle: feed it to the Play Voice node. `voice` is a
+     * URL the player already heard and nothing in the runtime accepts a URL.
+     */
+    voiceId: string | null;
     /** Chosen option text for a menu entry; null for say entries or an unresolved menu. */
     selected: string | null;
     /** True while the entry is the line currently being shown (not yet committed). */
@@ -1299,6 +1332,7 @@ function normalizeBlueprintGameHistory(value: unknown): BlueprintGameHistoryEntr
             text: record.text == null ? "" : String(record.text),
             character: normalizeNullableHistoryString(record.character),
             voice: normalizeNullableHistoryString(record.voice),
+            voiceId: normalizeNullableHistoryString(record.voiceId),
             selected: normalizeNullableHistoryString(record.selected),
             isPending: record.isPending === true,
         });
@@ -2664,6 +2698,46 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     emit({ type: "state.write", scope: "persistence", key: LOCALE_STORAGE_KEY });
                 } finally {
                     emitHostCall(emit, "localization.setLocale", "return");
+                }
+            },
+        },
+        voice: {
+            listLocales: () => [...(options.voiceConfig?.voicedLocales ?? [])],
+            getLocale: async () => {
+                emitHostCall(emit, "voice.getLocale", "call");
+                try {
+                    const locales = options.voiceConfig?.voicedLocales ?? [];
+                    const stored = await scope.persistenceGetAsync(VOICE_LOCALE_STORAGE_KEY);
+                    if (typeof stored === "string" && stored && locales.some(entry => entry.code === stored)) {
+                        return stored;
+                    }
+                    return locales[0]?.code ?? "";
+                } finally {
+                    emitHostCall(emit, "voice.getLocale", "return");
+                }
+            },
+            setLocale: async (code: string) => {
+                emitHostCall(emit, "voice.setLocale", "call");
+                try {
+                    // A plain persistence write, exactly like the text language. GameApp watches this
+                    // key and re-points the running compile's take table, so the next line is in the
+                    // new dub without a recompile.
+                    await scope.persistenceSetAsync(VOICE_LOCALE_STORAGE_KEY, code);
+                    emit({ type: "state.write", scope: "persistence", key: VOICE_LOCALE_STORAGE_KEY });
+                } finally {
+                    emitHostCall(emit, "voice.setLocale", "return");
+                }
+            },
+            play: async (unitId: string) => {
+                const cap = "voice.play";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!options.onPlayVoice) {
+                        return false;
+                    }
+                    return await options.onPlayVoice(String(unitId ?? "").trim());
+                } finally {
+                    emitHostCall(emit, cap, "return");
                 }
             },
         },
