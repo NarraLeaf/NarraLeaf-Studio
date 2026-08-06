@@ -1,5 +1,5 @@
 /**
- * Project → Audio: the mixer, as a tree of buses.
+ * Project → Game → Audio tracks: the mixer, as a tree of buses.
  *
  * A track **is** a bus. It feeds into another bus (or straight into the master output), carries its
  * own live gain, and lends its default loop policy to the clips played on it. The three seeded ones
@@ -44,6 +44,7 @@ import {
     type ProjectAudioTrack,
 } from "@shared/types/audioTrack";
 import { useWorkspace } from "../../../context";
+import { SettingsGroup } from "../components/SettingsGroup";
 import type { ProjectSectionProps } from "./types";
 
 /**
@@ -176,26 +177,33 @@ export function ProjectAudioSection({ uiService }: ProjectSectionProps) {
     }, [references, t, tn, trackService, tracks, uiService]);
 
     return (
-        // `[&>*]:min-w-0` on every grid in this subtree; see HEADER_WIDTH_CLAMP.
-        <div className="grid gap-3 [&>*]:min-w-0" data-help-topic="audio">
-            {/*
-              * The explanation used to be a paragraph here (and, before that, three paragraphs per
-              * track). It is the `audio` help topic now: what a bus is and how the mix multiplies is
-              * a topic, not something a settings pane repeats at every author who opens it.
-              */}
-            <div className="group/help flex items-center justify-end gap-1">
-                <HelpTrigger topic="audio" />
-                <Button
-                    size="sm"
-                    onClick={addTrack}
-                    {...freeze.writes(!trackService)}
-                    className="shrink-0"
-                >
-                    <Plus className="h-3.5 w-3.5" />
-                    {t("project.audio.add")}
-                </Button>
-            </div>
-
+        /*
+         * The explanation is the `audio` help topic, reached by the `?` on this heading: what a bus
+         * is and how the mix multiplies is a topic, not something a settings pane repeats at every
+         * author who opens it. It was a paragraph here once, and before that the same paragraph on
+         * every field of every track.
+         */
+        <SettingsGroup
+            title={t("project.group.audioTracks")}
+            helpTopic="audio"
+            trailing={(
+                <>
+                    <HelpTrigger topic="audio" />
+                    <Button
+                        size="sm"
+                        onClick={addTrack}
+                        {...freeze.writes(!trackService)}
+                        className="shrink-0"
+                    >
+                        <Plus className="h-3.5 w-3.5" />
+                        {t("project.audio.add")}
+                    </Button>
+                </>
+            )}
+        >
+            {/* The top rule is the list's own edge: every row carries a bottom hairline, so without
+                it the list is bounded below and open above. `[&>*]:min-w-0` on every grid in this
+                subtree; see HEADER_WIDTH_CLAMP. */}
             <div className="min-w-0 border-t border-edge">
                 <Accordion
                     className="min-w-0"
@@ -217,7 +225,7 @@ export function ProjectAudioSection({ uiService }: ProjectSectionProps) {
                     ))}
                 </Accordion>
             </div>
-        </div>
+        </SettingsGroup>
     );
 }
 
