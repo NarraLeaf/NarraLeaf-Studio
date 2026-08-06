@@ -1507,13 +1507,16 @@ async function createNlrScenes(input: {
     const scenes: Record<string, Scene> = {};
 
     /**
-     * One voices object, shared by every scene, and deliberately MUTABLE.
+     * The take tables, and the live objects the scenes actually read.
      *
-     * `Scene.getVoice` reads `config.voices[id]` fresh on every line, so repopulating this object in
+     * `Scene.getVoice` reads `config.voices[id]` fresh on every line, so repopulating that object in
      * place is all it takes to change dub language mid-game - no recompile, no remount, no restart.
-     * Building a new object instead would strand every scene on the table it was constructed with,
-     * which is the reason switching used to be impossible: the language was baked at compile time and
-     * nothing in the shipped game could write it.
+     *
+     * The catch, and it is only visible in a running game: **`Scene` copies the config it is handed**,
+     * so the object passed to the constructor is NOT the object the scene ends up reading. Mutating
+     * the one we built here changed nothing and the switch silently did nothing - the same shape of
+     * defect ("ships, never works") this whole change exists to remove. So each scene's own table is
+     * collected after construction and they are all rewritten together.
      */
     const busIdByUnit = voiceBusIdByUnit({
         document: input.document,
@@ -1530,16 +1533,20 @@ async function createNlrScenes(input: {
     }
     const anyVoices = Object.values(voicesByLocale).some(table => Object.keys(table).length > 0);
     const voices: Record<string, string | Sound> | undefined = anyVoices ? {} : undefined;
+    /** Every scene's own copy of the table, filled in as the scenes are constructed below. */
+    const liveTables: Record<string, string | Sound>[] = voices ? [voices] : [];
     let activeLocale = "";
     const applyLocale = (locale: string): boolean => {
         const table = voicesByLocale[locale];
         if (!voices || !table) {
             return false;
         }
-        for (const key of Object.keys(voices)) {
-            delete voices[key];
+        for (const live of liveTables) {
+            for (const key of Object.keys(live)) {
+                delete live[key];
+            }
+            Object.assign(live, table);
         }
-        Object.assign(voices, table);
         activeLocale = locale;
         return true;
     };
@@ -1607,10 +1614,16 @@ async function createNlrScenes(input: {
             config.backgroundMusicFade = music.fadeMs;
             input.backgroundMusic?.set(scene.id, { sound: music.sound, trackId: music.trackId });
         }
-        scenes[scene.id] = new Scene(
+        const built = new Scene(
             runtimeName,
             Object.keys(config).length > 0 ? config : undefined,
         );
+        scenes[scene.id] = built;
+        // The scene's OWN table, which is a copy of the one just handed in - see the note above.
+        const live = (built as unknown as { config?: { voices?: unknown } }).config?.voices;
+        if (voices && live && live !== voices && typeof live === "object") {
+            liveTables.push(live as Record<string, string | Sound>);
+        }
     }
     return { scenes, setVoiceLocale: applyLocale, getVoicePlayback };
 }
