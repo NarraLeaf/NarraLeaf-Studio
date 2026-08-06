@@ -12,6 +12,7 @@ import { filterCategoryEntries } from "@/lib/settings/searchSettings";
 import { useTranslation } from "@/lib/i18n";
 import { SETTING_PANELS } from "../panels";
 import { SettingColorPicker } from "./SettingColorPicker";
+import { SettingFontPicker } from "./SettingFontPicker";
 import { ACCENT_COLOR_DEFAULT, ACCENT_SWATCHES, normalizeHexColor } from "@shared/constants/accent";
 
 /** `null` is the Action type's stand-in: it renders a button and stores nothing. */
@@ -66,6 +67,7 @@ function parseSettingInput(type: SettingValueType, rawValue: string): SettingVal
         }
         case SettingValueType.Enum:
         case SettingValueType.Color:
+        case SettingValueType.Font:
             return rawValue;
         case SettingValueType.Boolean:
             return rawValue === "true";
@@ -387,6 +389,22 @@ export function SettingsExplorer<T>({
                         disabled={isSaving || options.length === 0}
                         placeholder={descriptor.optionLabels?.[displayValue] ?? displayValue}
                     />
+                );
+            }
+            case SettingValueType.Font: {
+                // Wider than the other controls get: the trigger renders the chosen face in itself,
+                // and a family name truncated to an ellipsis is no longer a specimen of anything.
+                return (
+                    <div className="w-56 max-w-full">
+                        <SettingFontPicker
+                            value={displayValue}
+                            presets={descriptor.options ?? []}
+                            presetLabels={descriptor.optionLabels}
+                            onChange={(next) => handleEnumChange(entry, next)}
+                            disabled={isSaving}
+                            ariaLabel={descriptor.label}
+                        />
+                    </div>
                 );
             }
             case SettingValueType.Color: {
