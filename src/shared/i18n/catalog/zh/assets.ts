@@ -12,6 +12,11 @@ export const assets = {
     noTags: "无标签",
     preview: "预览",
     unknownError: "未知错误",
+    // 这两个删除留下的撤销步骤叫什么。
+    history: {
+        deleteAsset: "删除 {name}",
+        deleteGroup: "删除文件夹 {name}",
+    },
     delete: {
         inUseTitle: "这些素材仍在被使用",
         inUseMessage: "删除后，以下位置将失去素材来源：",
@@ -22,7 +27,7 @@ export const assets = {
             one: "删除 {count} 项？",
             other: "删除 {count} 项？",
         },
-        confirmMessage: "所选分组内的全部内容也会一并删除，且无法撤销",
+        confirmMessage: "所选分组内的全部内容也会一并删除",
         action: "删除",
         failedTitle: "删除失败",
     },
