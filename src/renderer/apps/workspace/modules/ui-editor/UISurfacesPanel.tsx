@@ -585,6 +585,9 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 isOpen={templateStoreOpen}
                 onClose={() => setTemplateStoreOpen(false)}
                 documentService={documentService}
+                runtimeBridge={runtimeBridge}
+                initialKind={kind}
+                occupiedStageSlotIds={occupiedStageSlotIds}
                 onApplied={handleOpenSurface}
                 onNotify={(message, level) => uiService?.showNotification(message, level)}
             />

@@ -2,6 +2,7 @@ import { useTranslation } from "@/lib/i18n";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/lib/components/elements";
 import { ProjectData } from "../types";
 import { projectTemplates } from "../constants";
+import { useBundledProjectTemplates } from "../bundledProjectTemplates";
 
 interface ReviewStepProps {
     projectData: ProjectData;
@@ -12,7 +13,10 @@ interface ReviewStepProps {
  */
 export function ReviewStep({ projectData }: ReviewStepProps) {
     const { t } = useTranslation();
-    const selectedTemplate = projectTemplates.find(tpl => tpl.id === projectData.template);
+    const bundled = useBundledProjectTemplates();
+    // Both lists: a bundled template is a card the author can be standing on, and
+    // showing "not specified" for the thing they picked reads as having lost it.
+    const selectedTemplate = [...projectTemplates, ...bundled].find(tpl => tpl.id === projectData.template);
 
     return (
         <div className="p-6">

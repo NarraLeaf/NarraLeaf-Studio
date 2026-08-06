@@ -92,8 +92,13 @@ import {
 } from "./handlers/pluginManagerAction";
 import {
     UITemplateFetchBundleHandler,
+    UITemplateFetchPreviewsHandler,
     UITemplateRegistryFetchHandler,
 } from "./handlers/uiTemplateAction";
+import {
+    ProjectTemplateListHandler,
+    ProjectTemplateScaffoldHandler,
+} from "./handlers/projectTemplateAction";
 import { AssetFetchRemoteHandler } from "./handlers/assetAction";
 import { PuppetRuntimeInstallSdkHandler } from "./handlers/puppetRuntimeAction";
 import {
@@ -242,6 +247,9 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new PluginInstallFromRegistryHandler(),
         new UITemplateRegistryFetchHandler(),
         new UITemplateFetchBundleHandler(),
+        new UITemplateFetchPreviewsHandler(),
+        new ProjectTemplateListHandler(),
+        new ProjectTemplateScaffoldHandler(),
         new AssetFetchRemoteHandler(),
         new PuppetRuntimeInstallSdkHandler(),
 
