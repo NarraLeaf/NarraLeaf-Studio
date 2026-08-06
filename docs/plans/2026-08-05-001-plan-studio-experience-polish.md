@@ -239,6 +239,42 @@ A short "Network sources" section belongs in the user-facing docs site, out of t
    M1, M2, M3, M4.
 3. **`versionControl.author*` exports opt-in**, per R10.
 
+## 4b. What shipped, and where it differs from the plan
+
+All of M1–M5 landed. Three deliberate departures:
+
+- **`editor.lineNumbers` and `editor.softWrap` were wired, not retired.** They were on the dead
+  list, but the editor they describe exists and honoring them is one Monaco option each. Their
+  stored defaults already match Monaco's own, so no profile changes behavior. Thirteen keys were
+  identified as dead; eleven plus the legacy `workspace.confirmOnClose` were removed.
+- **`workspace.recentProjectsLimit` turned out not to be dead** — `RecentlyOpened.limit` has read
+  it since the history existed. It gained the settings row it never had.
+- **Two categories were removed rather than added to.** "Plugins" and "Advanced" held four mirror
+  URLs between them and nothing else, so they became "Network"; "Sync" promised a backup cadence
+  that never existed and is now "Version control", which is all it ever actually held.
+
+Real-app verification (orchestrator-driven, dev instance on CDP 9377):
+
+- A rewrite rule pointed `https://raw.githubusercontent.com/` at another host; the plugin store's
+  index fetch followed it (404 from the substitute) and the main log carried
+  `download rewritten: <official> -> <mirror>`. Clearing the rule restored the official fetch
+  (3 plugins). This is the row-2 gap closed, demonstrated.
+- The cache inventory measured a real profile: 376.9 MB of game build tooling, 2.6 MB of interface
+  cache.
+- Delete: `editor.softWrap` removed and resolved back to its default; `app.recentProjects` and
+  `stats.project.*` refused by the host, with the project history intact.
+- Import: a hand-written document applied 3 settings, refused `ui.zoomPercent: 9000` as above the
+  maximum and `some.futureKey` as unknown, and the theme flipped to light live — proving the import
+  goes through the ordinary broadcast rather than a bulk write. "Reset all settings" then put it
+  back.
+
+One defect was found this way and fixed: every new interpolated string used `{{name}}`, but this
+catalog interpolates single braces, so the preview rendered `{3} to change, {0} already the same`.
+Unit tests could not have caught it; only rendering it could.
+
+Not driven: the export half's native save dialog (the import half's open dialog was driven, and
+both handlers are the same shape as the shipping diagnostics export).
+
 ## 5. Acceptance
 
 - `node node_modules/typescript/bin/tsc --project src/{shared,main,renderer,runtime}/tsconfig.json --noEmit`

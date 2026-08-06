@@ -240,7 +240,7 @@ export const settings = {
             clear: "Clear",
             clearAll: "Clear all",
             refresh: "Measure again",
-            freed: "Freed {{size}}.",
+            freed: "Freed {size}.",
             buckets: {
                 electronBuilder: {
                     label: "Game build tooling",
@@ -276,20 +276,20 @@ export const settings = {
         exportHint: "Writes your settings to a file. Recent projects, statistics and workspace layout are not included.",
         includeWallpaper: "Include the workspace background",
         includeIdentity: "Include the name and address recorded on commits",
-        exported: "Saved to {{path}}",
-        imported: "Applied {{count}} settings.",
+        exported: "Saved to {path}",
+        imported: "Applied {count} settings.",
         exportFailed: "The settings could not be saved.",
         importFailed: "The file could not be read.",
-        planSummary: "{{change}} to change, {{same}} already the same, {{skipped}} skipped.",
-        skippedUnknown: "{{key}}: this version of Studio has no such setting",
-        skippedInvalid: "{{key}}: {{reason}}",
+        planSummary: "{change} to change, {same} already the same, {skipped} skipped.",
+        skippedUnknown: "{key}: this version of Studio has no such setting",
+        skippedInvalid: "{key}: {reason}",
     },
     // The Network panel's own chrome, outside the per-setting labels above.
     network: {
         test: "Test",
         probing: "Checking…",
-        probeAnswered: "The address answered with {{status}}.",
-        probeNoAnswer: "No answer: {{error}}",
+        probeAnswered: "The address answered with {status}.",
+        probeNoAnswer: "No answer: {error}",
         probeFailed: "The check could not be run.",
         rewrites: {
             hint: "Some downloads use an address that comes from a catalogue rather than from the settings above, such as a plugin's package file. A rule here replaces the beginning of those addresses.",
