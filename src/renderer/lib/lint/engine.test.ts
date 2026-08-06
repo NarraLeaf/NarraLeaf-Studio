@@ -97,6 +97,55 @@ describe("runLintRules", () => {
         expect(report.entries.map(entry => entry.severity)).toEqual(["error", "warning", "info"]);
     });
 
+    it("numbers a rule's story rows for it, and reads them out in document order", async () => {
+        // The rule reports its two rows back to front, and names neither line: numbering is the
+        // engine's job (so a rule cannot forget it) and so is the ordering, which used to fall out of
+        // block-id comparison - a UUID, i.e. shuffled - and now follows the scene top down.
+        const rows = ["r2", "r1"].map(blockId => ({
+            ruleId: "text/empty" as LintRuleId,
+            messageKey: "lint.rule.textEmpty.message" as LintFinding["messageKey"],
+            location: {
+                kind: "story" as const,
+                storyId: "st1",
+                storyName: "Chapter One",
+                sceneId: "sc1",
+                sceneName: "Opening",
+                blockId,
+            },
+        }));
+        const block = (id: string, value: string) => ({
+            id,
+            kind: "nodeAction",
+            parentId: null,
+            childrenIds: [],
+            payload: { action: "narration", text: { textId: `t-${id}`, role: "narration", value } },
+        });
+        const ctx = createTestLintContext({
+            stories: [
+                {
+                    id: "st1",
+                    name: "Chapter One",
+                    document: {
+                        scenes: {
+                            sc1: {
+                                id: "sc1",
+                                name: "Opening",
+                                rootBlockIds: ["r1", "r2"],
+                                blocks: { r1: block("r1", "first"), r2: block("r2", "second") },
+                            },
+                        },
+                    },
+                } as unknown as (typeof ctx)["stories"][number],
+            ],
+        });
+
+        const report = await runLintRules(ctx, { rules: [makeRule("text/empty", {}, rows)] });
+
+        expect(report.entries.map(entry => entry.location.kind === "story" && entry.location.line)).toEqual([1, 2]);
+        expect(report.entries.map(entry => entry.location.kind === "story" && entry.location.excerpt))
+            .toEqual(["first", "second"]);
+    });
+
     it("stops at a cancellation and reports the unrun rules as skipped", async () => {
         const controller = new AbortController();
         const second = vi.fn(() => []);
