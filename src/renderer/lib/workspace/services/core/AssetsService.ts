@@ -41,6 +41,32 @@ import {
 // service registry at call time instead.
 import type { ReferenceService } from "../references/ReferenceService";
 import { dirname } from "@shared/utils/path";
+import type { TranslationKey } from "@shared/i18n";
+import { AssetTrash } from "../assets/AssetTrash";
+import { HistoryService } from "../history/HistoryService";
+import type { HistoryLabel } from "../history/historyModel";
+import { projectHistoryScope } from "../history/historyScopes";
+
+/**
+ * What one deleted asset needs to come back: its bytes (in the trash, under `trashToken`), its
+ * record, and where it sat in the order file. See `AssetsService.removeAssetForRestore`.
+ */
+type AssetRestorePlan = {
+    record: Asset<AssetType, AssetSource>;
+    /** Null for a remote asset, or when the payload was already missing. */
+    trashToken: string | null;
+    orderIndex: number;
+    category: AssetCategory;
+    result: RequestStatus<void>;
+};
+
+/** The group records of one category as they stood before a cascade, plus their listed order. */
+type AssetGroupsRestorePlan = {
+    category: AssetCategory;
+    groupId: string;
+    groups: Record<string, AssetGroup>;
+    groupOrder: string[];
+};
 
 interface AssetsEvents {
     deleted: Asset<AssetType, AssetSource>;
@@ -87,6 +113,12 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     /** Categories whose `assets.order.<category>.json` is behind the shards it orders. */
     private dirtyOrderCategories = new Set<AssetCategory>();
     private assetsMetadataInitializing = false;
+    private assetTrash: AssetTrash | null = null;
+    /**
+     * Open while a group cascade is running; see `deleteGroupWithHistory`. Non-null means
+     * `deleteAsset` hands its restore plan over instead of recording a step of its own.
+     */
+    private assetDeletionBatch: AssetRestorePlan[] | null = null;
 
     public getFileFormatValidator(): FileFormatValidator {
         if (!this.fileFormatValidator) {
@@ -246,6 +278,11 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         await this.flushPendingWrites();
 
         this.groupAssetsManager = await new GroupAssetsManager(this, ctx).init();
+
+        // Undo history never survives a restart, so every payload still in the trash is from a
+        // session that ended and nothing can reach it. Emptying it here is the whole retention
+        // policy - see AssetTrash.
+        void this.getAssetTrash().sweep();
 
         // Both halves are known now, so the order recovered from key order can be committed. This is
         // the migration for a project that predates the order file, and it has to happen on this
@@ -582,7 +619,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
 
         // Cleared as a set above; the per-asset guard inside the cascade would only re-ask the same
         // question once per file.
-        return groupManager.deleteGroup(category, groupId, recursive, { allowReferenced: true });
+        return this.deleteGroupWithHistory(category, groupId, recursive);
     }
 
     public async renameGroup(
@@ -703,11 +740,60 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
             return { success: false, error: blocked };
         }
 
+        const plan = await this.removeAssetForRestore(asset);
+        if (!plan.result.success) {
+            // The delete did not happen, so anything set aside for it is unreachable.
+            this.purgeAssetRestorePlan(plan);
+            return plan.result;
+        }
+        if (this.assetDeletionBatch) {
+            // Inside a group cascade: the batch becomes one undo step, not one per file.
+            this.assetDeletionBatch.push(plan);
+            return plan.result;
+        }
+        this.recordAssetDeletion([plan], {
+            key: "assets.history.deleteAsset" as TranslationKey,
+            params: { name: asset.name },
+        });
+        return plan.result;
+    }
+
+    /**
+     * Delete one asset and keep everything needed to bring it back.
+     *
+     * Shared by {@link deleteAsset} and the group cascade so the two cannot drift: whatever a
+     * single delete can restore, a cascaded one restores too.
+     *
+     * Three things go into the plan and each is here for a reason the others do not cover:
+     *
+     *  - **the payload**, moved to the trash rather than unlinked (see {@link AssetTrash}). Remote
+     *    assets are the exception: their "payload" is a download cache keyed by the record, so
+     *    putting the record back is enough and the bytes come again on demand.
+     *  - **the record**, verbatim - it carries `groupId`, so restoring it also puts the asset back
+     *    in the group it was in.
+     *  - **its index in the order file**, because the order is reconciled against the records on
+     *    every write: once a flush has dropped the id, a restored record sorts to the end of the
+     *    section rather than back where the author had put it.
+     */
+    private async removeAssetForRestore<T extends AssetType>(
+        asset: Asset<T, AssetSource>,
+    ): Promise<AssetRestorePlan> {
+        const category = categoryOfAssetType(asset.type);
+        // Both of these degrade to "this part will not come back" rather than refusing the delete.
+        // A deletion the author asked for must not fail because undo could not be prepared.
+        const orderIndex = this.readAssetOrderIndex(category, asset.id);
+        const record = JSON.parse(JSON.stringify(asset)) as Asset<AssetType, AssetSource>;
+
+        let trashToken: string | null = null;
         let result: RequestStatus<void>;
         if (asset.source === AssetSource.Remote) {
             result = await this.getRemoteAssetsManager().deleteAsset(asset as Asset<T, AssetSource.Remote>);
         } else {
-            result = await this.getLocalAssetsManager().deleteAsset(asset as Asset<T, AssetSource.Local>);
+            trashToken = await this.trashAssetPayload(asset);
+            result = await this.getLocalAssetsManager().deleteAsset(
+                asset as Asset<T, AssetSource.Local>,
+                { keepPayload: trashToken !== null },
+            );
         }
 
         if (result.success) {
@@ -718,7 +804,183 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
             }
         }
 
+        return { record, trashToken, orderIndex, category, result };
+    }
+
+    /** Put one asset back: its bytes, its record, and its row in the order file. */
+    private async restoreAssetFromPlan(plan: AssetRestorePlan): Promise<void> {
+        if (plan.trashToken) {
+            await this.getAssetTrash().restore(
+                plan.trashToken,
+                plan.record.type,
+                this.getLocalAssetsManager().getLocalAssetPath(plan.record.id),
+            );
+        }
+        const metadata = this.getAssetsMetadataManager().getAssets();
+        metadata[plan.record.type][plan.record.id] = JSON.parse(JSON.stringify(plan.record)) as never;
+        this.markDirty(plan.record.type);
+
+        if (plan.orderIndex >= 0) {
+            try {
+                const orderManager = this.getAssetOrderManager();
+                const current = [...orderManager.getAssetIds(plan.category)];
+                if (!current.includes(plan.record.id)) {
+                    current.splice(Math.min(plan.orderIndex, current.length), 0, plan.record.id);
+                    await orderManager.write(plan.category, current, orderManager.getGroupIds(plan.category));
+                }
+            } catch (error) {
+                console.warn(`[AssetsService] restored ${plan.record.id} but not its row order`, error);
+            }
+        }
+        this.getEvents().emit("updated", plan.record);
+    }
+
+    /** The asset's row in the order file, or -1 when the order is not readable yet. */
+    private readAssetOrderIndex(category: AssetCategory, assetId: string): number {
+        try {
+            return this.getAssetOrderManager().getAssetIds(category).indexOf(assetId);
+        } catch {
+            return -1;
+        }
+    }
+
+    /** Move an asset's bytes to the trash. Null means undo will not be able to bring them back. */
+    private async trashAssetPayload(asset: Asset<AssetType, AssetSource>): Promise<string | null> {
+        try {
+            return await this.getAssetTrash().put(
+                asset.id,
+                asset.type,
+                this.getLocalAssetsManager().getLocalAssetPath(asset.id),
+            );
+        } catch (error) {
+            console.warn(`[AssetsService] could not set aside ${asset.id} for undo`, error);
+            return null;
+        }
+    }
+
+    private purgeAssetRestorePlan(plan: AssetRestorePlan): void {
+        if (plan.trashToken) {
+            this.getAssetTrash().purge(plan.trashToken, plan.record.type);
+        }
+    }
+
+    /**
+     * Record one or more asset deletions as a single undo step.
+     *
+     * Restored in reverse so a group's own record lands after the assets that name it, and so a
+     * nested cascade unwinds from the inside out.
+     */
+    private recordAssetDeletion(
+        plans: AssetRestorePlan[],
+        label: HistoryLabel,
+        groups?: AssetGroupsRestorePlan,
+    ): void {
+        const restorable = plans.filter(plan => plan.result.success);
+        if (restorable.length === 0 && !groups) {
+            return;
+        }
+        const history = this.getContext().services.get<HistoryService>(Services.History);
+        history.pushCommand(projectHistoryScope(), {
+            label,
+            undo: async () => {
+                // Reverse order so a nested cascade unwinds from the inside out.
+                for (const plan of [...restorable].reverse()) {
+                    await this.restoreAssetFromPlan(plan);
+                }
+                if (groups) {
+                    await this.restoreGroupRecords(groups);
+                }
+            },
+            // Re-runs the deletion rather than replaying a snapshot: everything is live again after
+            // an undo, so making the same call the author made is the honest way to remove it.
+            redo: async () => {
+                if (groups) {
+                    await this.deleteGroup(groups.category, groups.groupId, true, { allowReferenced: true });
+                    return;
+                }
+                for (const plan of restorable) {
+                    const live = this.getAssetsMetadataManager().getAssets()[plan.record.type][plan.record.id];
+                    if (live) {
+                        plan.trashToken = (await this.removeAssetForRestore(live)).trashToken;
+                    }
+                }
+            },
+            dispose: () => {
+                restorable.forEach(plan => this.purgeAssetRestorePlan(plan));
+            },
+        });
+    }
+
+    /** Put back every group record the cascade removed, and the order they were listed in. */
+    private async restoreGroupRecords(plan: AssetGroupsRestorePlan): Promise<void> {
+        const groupManager = this.getGroupAssetsManager();
+        if (!groupManager.assetsGroups) {
+            return;
+        }
+        groupManager.assetsGroups[plan.category] = JSON.parse(JSON.stringify(plan.groups));
+        await groupManager.persistGroups(plan.category);
+        try {
+            const orderManager = this.getAssetOrderManager();
+            await orderManager.write(plan.category, orderManager.getAssetIds(plan.category), plan.groupOrder);
+        } catch (error) {
+            console.warn("[AssetsService] restored the groups but not their order", error);
+        }
+        this.getEvents().emit("groupsUpdated", { category: plan.category, groupId: plan.groupId });
+    }
+
+    /**
+     * Delete a group and everything under it as ONE undo step.
+     *
+     * The cascade calls back into {@link deleteAsset} once per file, and each of those would
+     * otherwise record its own step - so deleting a folder of forty images would take forty presses
+     * to take back. Opening a batch tells `deleteAsset` to hand its restore plan over instead.
+     *
+     * The batch is also what makes a *failed* cascade recoverable. It can abort halfway with files
+     * already gone (a per-asset failure stops the loop), and the batch then holds exactly the ones
+     * that went - so the undo step describes the partial state truthfully rather than claiming the
+     * whole group is coming back.
+     */
+    private async deleteGroupWithHistory(
+        category: AssetCategory,
+        groupId: string,
+        recursive: boolean,
+    ): Promise<RequestStatus<void>> {
+        const groupManager = this.getGroupAssetsManager();
+        // Read straight off the record: `getGroups` sorts through the order file, which is more
+        // than a label needs and is not always up.
+        const name = groupManager.assetsGroups?.[category]?.[groupId]?.name ?? "";
+        const groupsBefore = JSON.parse(JSON.stringify(groupManager.assetsGroups?.[category] ?? {}));
+        let groupOrderBefore: string[] = [];
+        try {
+            groupOrderBefore = [...this.getAssetOrderManager().getGroupIds(category)];
+        } catch {
+            // The order file is not up yet; the records still come back, just not their listed order.
+            groupOrderBefore = [];
+        }
+
+        const outer = this.assetDeletionBatch;
+        const batch: AssetRestorePlan[] = [];
+        this.assetDeletionBatch = batch;
+        let result: RequestStatus<void>;
+        try {
+            result = await groupManager.deleteGroup(category, groupId, recursive, { allowReferenced: true });
+        } finally {
+            this.assetDeletionBatch = outer;
+        }
+
+        this.recordAssetDeletion(
+            batch,
+            { key: "assets.history.deleteGroup" as TranslationKey, params: { name } },
+            { category, groupId, groups: groupsBefore, groupOrder: groupOrderBefore },
+        );
         return result;
+    }
+
+    private getAssetTrash(): AssetTrash {
+        if (!this.assetTrash) {
+            this.assetTrash = new AssetTrash(this.getContext().project);
+        }
+        return this.assetTrash;
     }
 
     /**
