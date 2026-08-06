@@ -59,3 +59,15 @@ export function insertChooserType(value: string, aliasEnabled: boolean): InsertC
 export function toCanonicalCommandLine(value: string, aliasEnabled: boolean): string {
     return aliasEnabled && value.startsWith(ALT_ACTION_TRIGGER) ? ACTION_TRIGGER + value.slice(1) : value;
 }
+
+/**
+ * The other direction: a canonical line spelled with the trigger the author actually types.
+ *
+ * The exact inverse of {@link toCanonicalCommandLine}, and it lives beside it for that reason - a
+ * committed row and a declaration's receipt both show a line the projection wrote in canonical form,
+ * and both have to show it wearing the author's own "@". Only the first character changes, so every
+ * span recorded against the canonical string stays valid.
+ */
+export function toDisplayedCommandLine(source: string, trigger: "/" | "@"): string {
+    return source.startsWith(ACTION_TRIGGER) ? trigger + source.slice(1) : source;
+}

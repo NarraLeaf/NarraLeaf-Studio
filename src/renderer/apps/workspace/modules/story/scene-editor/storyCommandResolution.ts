@@ -90,6 +90,12 @@ export function parseLiteral(raw: string): StoryLiteralValue {
     if (trimmed === "false") {
         return false;
     }
+    // `null` for the same reason as the JSON arm below, and it is the value that arm is missing: a
+    // json default of `null` is what the inspector's editor produces the moment it is opened on a
+    // declaration with no default, so the row's own line has to be able to say it back.
+    if (trimmed === "null") {
+        return null;
+    }
     if (trimmed !== "" && Number.isFinite(Number(trimmed))) {
         return Number(trimmed);
     }
@@ -445,7 +451,10 @@ export function resolveCommandLine(line: StoryCommandLine, context: StoryCommand
 
     for (const param of line.def.params) {
         const arg = line.args.find(candidate => candidate.param?.name === param.name);
-        if (!arg || !arg.value) {
+        // An empty value is a slot the author has not filled yet (`d=`, mid-keystroke) and resolves to
+        // nothing - UNLESS they quoted it, which is the only way to WRITE the empty string and the
+        // only thing that tells the two apart.
+        if (!arg || (!arg.value && !arg.quoted)) {
             continue;
         }
         const outcome = resolveParam(param, arg.value, arg.valueSpan, context, resolved);

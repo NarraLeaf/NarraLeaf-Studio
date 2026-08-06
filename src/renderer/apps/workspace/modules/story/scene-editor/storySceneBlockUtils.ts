@@ -17,6 +17,7 @@ import {
 import { storyVerbCommandId } from "@/lib/story/storyVerbVocabulary";
 import { translate } from "@/lib/i18n";
 import { getCommandSpec } from "./commands/registry";
+import { DECLARATION_COMMANDS } from "./commands/specs/variables";
 
 /**
  * The row projection moved to `@/lib/story/storyRowProjection` (U4 WI-1) so the Dev Mode timeline can
@@ -514,13 +515,6 @@ function rowCommandId(block: StoryBlock): string | null {
             return null;
     }
 }
-
-/** The three declaration commands, by the scope their row declares. */
-const DECLARATION_COMMANDS: Record<string, string> = {
-    scene: "declareLocal",
-    saved: "declareVar",
-    persistent: "declarePersis",
-};
 
 /**
  * The row's badge and its left-edge colour bar.

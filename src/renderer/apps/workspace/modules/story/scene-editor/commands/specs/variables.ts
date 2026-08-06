@@ -1,5 +1,5 @@
 import { Equal, Globe, Minus, Plus, RotateCcw, Save, ToggleRight, Variable } from "lucide-react";
-import type { StoryActionPayload, StoryBlock, StoryExpr, StoryExpression, StoryLiteralValue, StoryVariableValueType } from "@shared/types/story";
+import type { StoryActionPayload, StoryBlock, StoryDeclarationPayload, StoryExpr, StoryExpression, StoryLiteralValue, StoryVariableValueType } from "@shared/types/story";
 import { inferStoryExpressionType, storyExprTypeFits } from "@shared/utils/storyExpressionEval";
 import { formatStoryExpressionName } from "@shared/utils/storyExpressionParser";
 import { storyVariableRefKey } from "@shared/types/story";
@@ -355,6 +355,20 @@ function buildDeclaration(scope: "scene" | "saved" | "persistent") {
         };
     };
 }
+
+/**
+ * The command each scope's declaration row belongs to.
+ *
+ * Exported because a declaration row has to be able to name the command that wrote it from the
+ * payload alone - the row's glyph asks (`storySceneBlockUtils`), and so does the line the row reads
+ * back as (`storyCommandLine`). A second copy of a three-row table is how a scope ends up wearing one
+ * command's icon and another command's verb.
+ */
+export const DECLARATION_COMMANDS: Record<StoryDeclarationPayload["scope"], string> = {
+    scene: "declareLocal",
+    saved: "declareVar",
+    persistent: "declarePersis",
+};
 
 export const declareLocal = defineStoryCommand({
     id: "declareLocal",

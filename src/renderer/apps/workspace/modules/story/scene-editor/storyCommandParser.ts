@@ -51,6 +51,14 @@ export type StoryCommandArg = {
     keySpan?: StoryCommandSpan;
     value: string;
     valueSpan: StoryCommandSpan;
+    /**
+     * The value was written inside quotes.
+     *
+     * Carried for one question, which only the tokenizer can answer: an EMPTY value the author wrote
+     * (`''`) versus one they have not typed yet (`desc=`, mid-keystroke). The resolver skips the
+     * second and must not skip the first, or a declaration's `""` default would be unsayable.
+     */
+    quoted?: boolean;
 };
 
 export type StoryCommandIssue =
@@ -309,7 +317,7 @@ function parseCommand(source: string): Extract<StoryCommandLine, { kind: "comman
                     issues.push({ code: "badValue", span: valueSpan, value, expected: paramTypes(param) });
                 }
             }
-            args.push({ param, key, keySpan, value, valueSpan });
+            args.push({ param, key, keySpan, value, valueSpan, quoted: token.quoted });
             continue;
         }
 
@@ -350,7 +358,7 @@ function parseCommand(source: string): Extract<StoryCommandLine, { kind: "comman
         if (isBadValue(param, token.text)) {
             issues.push({ code: "badValue", span: token.span, value: token.text, expected: paramTypes(param) });
         }
-        args.push({ param, key: null, value: token.text, valueSpan: token.span });
+        args.push({ param, key: null, value: token.text, valueSpan: token.span, quoted: token.quoted });
     }
 
     return { kind: "command", token: nameToken.text, tokenSpan: nameToken.span, def, args, issues };
