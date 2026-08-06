@@ -2,6 +2,7 @@ import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintDocument, SharedBlueprintAsset } from "./blueprint/document";
 import type { PersistentVariableRuntimeTable } from "./variables/registry";
 import type { GameLocalizationBundle } from "./localization";
+import type { PlayerPreferences } from "./preference";
 import type { AutoSaveConfiguration } from "./saves";
 import type { GameVoiceBundle } from "./voice";
 import type { GameAudioBundle } from "./audio";
@@ -250,6 +251,14 @@ export type DevModeBundle = {
      * which the game app reads as "the defaults" (autosaving is on by default).
      */
     autoSave?: AutoSaveConfiguration;
+    /**
+     * What the player's settings start at, baked from `.nlproj` `app.preferences`.
+     *
+     * Always present on a freshly assembled bundle; absent only on ones that
+     * predate the feature, which the game app reads as "the engine's own
+     * defaults" - i.e. exactly how those bundles already behaved.
+     */
+    preferences?: PlayerPreferences;
     scripts?: Record<string, unknown>;
     compiled?: Record<string, unknown>;
     meta?: Record<string, unknown>;

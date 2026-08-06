@@ -2,6 +2,8 @@ import { FileText, Image, Music, PanelsTopLeft, User } from "lucide-react";
 import { createElement, type ReactNode } from "react";
 import type { EditorGroup, EditorLayout, EditorTabDefinition } from "@/apps/workspace/registry/types";
 import { createWelcomeTab } from "@/apps/workspace/modules/welcome/openWelcomeTab";
+import { createHelpTab, HELP_TAB_ID } from "@/apps/workspace/modules/help/openHelpTab";
+import { isHelpTopicId } from "@/lib/help";
 import { createNewTabTab } from "@/apps/workspace/modules/new-tab/openNewTab";
 import { NEW_TAB_ID_PREFIX } from "@/apps/workspace/modules/new-tab/newTabId";
 import { BlueprintEntryTab } from "@/apps/workspace/modules/blueprint-lite/editors/BlueprintEntryTab";
@@ -75,6 +77,7 @@ const BLUEPRINT_ENTRY_OWNER_KINDS = new Set<string>(
 
 export type SerializedTab =
     | { kind: "welcome" }
+    | { kind: "help"; topicId?: string }
     | { kind: "dashboard" }
     | { kind: "newTab"; token: string }
     | { kind: "surface"; surfaceId: string }
@@ -218,6 +221,11 @@ function isStoryMotionEditorPayload(value: unknown): value is StoryMotionEditorP
 export function trySerializeTab(tab: EditorTabDefinition): SerializedTab | null {
     if (tab.id === WELCOME_TAB_ID) {
         return { kind: "welcome" };
+    }
+    if (tab.id === HELP_TAB_ID) {
+        // The topic travels so a restart reopens what was being read, not the top of the list.
+        const topicId = (tab.payload as { topicId?: unknown } | undefined)?.topicId;
+        return { kind: "help", topicId: typeof topicId === "string" ? topicId : undefined };
     }
     if (tab.id === DASHBOARD_TAB_ID) {
         return { kind: "dashboard" };
@@ -518,6 +526,11 @@ function textIcon(): ReactNode {
 export function buildTabDefinition(ctx: WorkspaceContext, entry: SerializedTab): EditorTabDefinition | null {
     if (entry.kind === "welcome") {
         return createWelcomeTab();
+    }
+    if (entry.kind === "help") {
+        // A topic that no longer exists reopens the browser at its first topic rather than
+        // dropping the tab: the reader is still valid, only the bookmark is gone.
+        return createHelpTab(entry.topicId && isHelpTopicId(entry.topicId) ? entry.topicId : undefined);
     }
     if (entry.kind === "dashboard") {
         return createDashboardTab();

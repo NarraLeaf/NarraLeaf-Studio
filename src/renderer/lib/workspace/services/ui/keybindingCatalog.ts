@@ -44,6 +44,10 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     entry("workspace-command-palette", "mod+shift+p", "workspace.shell.keybindings.catalog.commandPalette", CATEGORY.general),
     entry("workspace-quick-open", "mod+p", "workspace.shell.keybindings.catalog.quickOpen", CATEGORY.general),
     entry("workspace-keybinding-cheatsheet", "shift+?", "workspace.shell.keybindings.catalog.cheatSheet", CATEGORY.general),
+    // F1 is the conventional contextual-help key on Windows and Linux, and unused on macOS outside
+    // the Help menu. It is `allowInEditable` where it registers: "what is this field" is a question
+    // an author asks with the caret in the field.
+    entry("workspace-context-help", "f1", "workspace.shell.keybindings.catalog.contextHelp", CATEGORY.general),
     entry("workspace-reopen-closed-tab", "mod+shift+t", "workspace.shell.keybindings.catalog.reopenClosedTab", CATEGORY.general),
     entry("workspace-editor-quick-switch-next", "ctrl+tab", "workspace.shell.keybindings.catalog.quickSwitchNext", CATEGORY.general),
     entry("workspace-editor-quick-switch-previous", "ctrl+shift+tab", "workspace.shell.keybindings.catalog.quickSwitchPrevious", CATEGORY.general),

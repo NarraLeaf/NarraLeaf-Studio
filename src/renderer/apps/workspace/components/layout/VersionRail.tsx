@@ -20,12 +20,14 @@ import {
     History,
     Loader2,
     Plus,
-    RotateCcw,
+    RefreshCw,
     TriangleAlert,
+    X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { VcsChangeKind, VcsFileChange, VcsSyncState } from "@shared/types/vcs";
 import { cn } from "@/lib/utils/cn";
+import { HelpTrigger } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
 import { Input, TextArea } from "@/lib/components/elements/Input";
@@ -195,7 +197,11 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
                         aria-label={escapeLabel}
                         className="flex h-10 w-10 items-center justify-center rounded-md text-primary transition-colors cursor-default hover:bg-fill disabled:opacity-50"
                     >
-                        <RotateCcw className="h-4 w-4" />
+                        {/* Not a revert glyph. This control leaves a mode; the one that rewrites
+                            files is two lines down and wears `ArchiveRestore`. A counter-clockwise
+                            arrow here said "undo my project" on the one surface where that would be
+                            the most expensive thing to get wrong. */}
+                        <X className="h-4 w-4" />
                     </button>
                 )}
 
@@ -236,16 +242,21 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
         // solver is told about is still the width this column takes.
         <div
             data-workspace-version-rail="panel"
+            // What F1 answers with anywhere in this column. The topic follows the state, because
+            // "what is this" has a different answer while a past version is on screen - which is
+            // also the state the author is most likely to be asking from.
+            data-help-topic={onRevision ? "versionViewing" : "versionControl"}
             className="flex shrink-0 flex-col border-r border-edge bg-surface-sunken"
             style={{ width: VERSION_RAIL_EXPANDED_WIDTH }}
         >
-            <div className="flex h-12 shrink-0 items-center justify-between border-b border-edge px-3">
-                <div className="flex min-w-0 items-center gap-2">
+            <div className="group/help flex h-12 shrink-0 items-center border-b border-edge px-3">
+                <div className="flex min-w-0 flex-1 items-center gap-2">
                     <GitBranch className={cn("h-4 w-4 shrink-0", onRevision ? "text-primary" : "text-fg-muted")} />
                     <h2 className="truncate text-sm font-medium text-fg">
                         {t("workspace.shell.versionControl.title")}
                     </h2>
                 </div>
+                <HelpTrigger topic={onRevision ? "versionViewing" : "versionControl"} className="mr-1" />
                 <button
                     type="button"
                     onClick={() => onExpandedChange(false)}
@@ -408,7 +419,7 @@ function FocusedVersion({ surface }: { surface: VersionSurface }) {
                         disabled={surface.busy === "restore"}
                         className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md bg-primary px-2 text-2xs text-on-primary transition-opacity cursor-default hover:opacity-90 disabled:opacity-50"
                     >
-                        <RotateCcw className="h-3 w-3" />
+                        <X className="h-3 w-3" />
                         {t("workspace.shell.versionControl.returnToCurrent")}
                     </button>
 
@@ -522,7 +533,7 @@ function ChangesSection({ surface }: { surface: VersionSurface }) {
                     aria-label={t("workspace.shell.versionControl.refreshChanges")}
                     className="flex h-5 w-5 items-center justify-center rounded-md text-fg-subtle transition-colors cursor-default hover:bg-fill hover:text-fg"
                 >
-                    <RotateCcw className="h-3 w-3" />
+                    <RefreshCw className="h-3 w-3" />
                 </button>
             </div>
             <p className="mt-1 text-2xs text-fg-muted">
@@ -982,7 +993,7 @@ function ServerSection({ surface }: { surface: VersionSurface }) {
                 >
                     {busy === "remote"
                         ? <Loader2 className="h-3 w-3 animate-spin" />
-                        : <RotateCcw className="h-3 w-3" />}
+                        : <RefreshCw className="h-3 w-3" />}
                 </button>
             </div>
 

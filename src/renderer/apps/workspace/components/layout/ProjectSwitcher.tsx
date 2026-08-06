@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, FolderOpen, History, Loader2, Plus, RotateCcw } from "lucide-react";
+import { ChevronDown, FolderOpen, History, Loader2, Plus, X } from "lucide-react";
 import { getInterface } from "@/lib/app/bridge";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
@@ -240,7 +240,8 @@ function VersionSection({ surface, onAct }: { surface: VersionSurface; onAct: ()
                    This surface is the one the rail uses, handed down by `WorkspaceLayout`, so its
                    `busy` is the same answer the rail's own copy of this button reads. */
                 <SwitcherAction
-                    icon={<RotateCcw className="w-4 h-4" />}
+                    // Not a revert glyph; this leaves the history view and touches nothing.
+                    icon={<X className="w-4 h-4" />}
                     label={t("workspace.shell.versionControl.returnToCurrent")}
                     onClick={run(surface.returnToCurrent)}
                     disabled={busy === "restore"}

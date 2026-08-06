@@ -5,6 +5,7 @@ import { hashSourceText } from "@shared/utils/localizationText";
 import type { LocalizationDocument } from "@shared/types/localization";
 import { LOCALIZATION_DOCUMENT_SCHEMA_VERSION } from "@shared/types/localization";
 import {
+    buildTranslationExchangeRows,
     computeLocalizationProgress,
     deriveUnitState,
     extractCharacterTranslationRows,
@@ -163,5 +164,43 @@ describe("computeLocalizationProgress", () => {
             stale: 1,
             untranslated: 1,
         });
+    });
+});
+
+describe("buildTranslationExchangeRows", () => {
+    const units = [
+        { unitId: "t-1", sourceText: "The rain kept falling.", context: "Chapter 1" },
+        { unitId: "t-2", sourceText: "We should go home.", context: "Chapter 1" },
+        { unitId: "t-3", sourceText: "Stay", context: "Chapter 1" },
+        { unitId: "key:menu.start", sourceText: "Start", context: "Named keys" },
+    ];
+    const document: LocalizationDocument = {
+        schemaVersion: LOCALIZATION_DOCUMENT_SCHEMA_VERSION,
+        locale: "ja",
+        units: {
+            "t-1": { target: "雨は降り続けた。", sourceHash: hashSourceText("The rain kept falling."), status: "translated" },
+            // Translated against a line that has since been rewritten.
+            "t-2": { target: "早く帰ろう。", sourceHash: hashSourceText("Let us go home."), status: "reviewed" },
+            "key:menu.start": { target: "はじめる", sourceHash: hashSourceText("Start"), status: "reviewed", note: "keep it short" },
+        },
+    };
+
+    it("carries the derived state, not the stored one", () => {
+        expect(buildTranslationExchangeRows(units, document)).toEqual([
+            { unitId: "t-1", context: "Chapter 1", source: "The rain kept falling.", target: "雨は降り続けた。", status: "translated", note: "" },
+            { unitId: "t-2", context: "Chapter 1", source: "We should go home.", target: "早く帰ろう。", status: "stale", note: "" },
+            { unitId: "t-3", context: "Chapter 1", source: "Stay", target: "", status: "", note: "" },
+            { unitId: "key:menu.start", context: "Named keys", source: "Start", target: "はじめる", status: "reviewed", note: "keep it short" },
+        ]);
+    });
+
+    it("narrows to the work left when the scope says so", () => {
+        expect(buildTranslationExchangeRows(units, document, "pending").map(row => row.unitId)).toEqual(["t-2", "t-3"]);
+    });
+
+    it("exports every line as untranslated when the language has no file yet", () => {
+        const rows = buildTranslationExchangeRows(units, undefined, "pending");
+        expect(rows).toHaveLength(units.length);
+        expect(rows.every(row => row.target === "" && row.status === "")).toBe(true);
     });
 });
