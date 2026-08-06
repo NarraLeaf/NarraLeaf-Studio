@@ -56,6 +56,7 @@ export const dialogs = {
         group: "分组",
         story: "故事",
         scene: "场景",
+        chapter: "章节",
         component: "组件",
         asset: "资源",
         image: "图片",

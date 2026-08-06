@@ -18,6 +18,7 @@ export const story = {
             other: "{count} 行",
         },
         sceneActions: "场景操作",
+        chapterActions: "章节操作",
         setEntryScene: "设为入口场景",
         documentUnavailable: "故事文档不可用",
         newStoryPlaceholder: "输入故事名称",
@@ -25,9 +26,14 @@ export const story = {
         newSceneTitle: "新建场景",
         newScenePlaceholder: "输入场景名称",
         deleteStoryConfirm: "删除故事“{name}”？",
-        deleteStoryDetail: "此操作将从项目中移除该故事文档，且无法撤销",
+        deleteStoryDetail: "此操作将从工程中移除该故事文档",
+        deleteChapterConfirm: "删除章节“{name}”？",
+        deleteChapterDetail: {
+            one: "章节里的 {count} 个场景会一并删除",
+            other: "章节里的 {count} 个场景会一并删除",
+        },
         deleteSceneConfirm: "删除场景“{name}”？",
-        deleteSceneDetail: "此操作将从故事文档中移除该场景及其所有区块，且无法撤销",
+        deleteSceneDetail: "此操作将移除该场景及其所有区块，跳转到它的行会失去指向",
     },
     script: {
         exportScene: "导出为脚本…",
@@ -864,6 +870,13 @@ export const story = {
         playFromHere: "从此行播放",
         openInspector: "打开检查器",
         delete: "删除",
+    },
+    // 这几个删除留下的撤销步骤叫什么（"撤销 删除场景 At the Station"）。
+    history: {
+        deleteScene: "删除场景 {name}",
+        deleteChapter: "删除章节 {name}",
+        deleteStory: "删除故事 {name}",
+        deleteAnimation: "删除运动 {name}",
     },
     keybindings: {
         find: "查找和替换",

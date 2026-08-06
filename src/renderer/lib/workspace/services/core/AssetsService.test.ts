@@ -1,10 +1,52 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AssetsService } from "./AssetsService";
 import { AssetsMetadataManager } from "../assets/mgr/AssetsMetadataManager";
 import { GroupAssetsManager } from "../assets/mgr/GroupAssetsManager";
 import { AssetCategory, AssetType } from "../assets/assetTypes";
 import { AssetSource, type Asset, type AssetGroup, type AssetGroupMap, type AssetsMap } from "../assets/types";
+import { HistoryService } from "../history/HistoryService";
+import { projectHistoryScope } from "../history/historyScopes";
 import { Services } from "../services";
+
+vi.mock("@/lib/app/writeFreeze", () => ({ getProjectWriteFreeze: () => null }));
+
+/**
+ * A filesystem just real enough for the undo trash: files are keys, directories are prefixes.
+ *
+ * Deleting an asset now *moves* its payload rather than unlinking it, so "did the bytes survive"
+ * is a question these tests have to be able to ask.
+ */
+const fakeDisk = new Map<string, string>();
+const ok = <T>(data: T) => ({ success: true as const, data: { ok: true as const, data } });
+
+vi.mock("@/lib/app/privilegedFacade", () => ({
+    appPrivilegedFacade: {
+        fs: {
+            isFileExists: async (path: string) => ok(fakeDisk.has(path)),
+            isDirExists: async (path: string) => ok([...fakeDisk.keys()].some(key => key.startsWith(path))),
+            createDir: async () => ok(undefined),
+            deleteFile: async (path: string) => { fakeDisk.delete(path); return ok(undefined); },
+            deleteDir: async (path: string) => {
+                [...fakeDisk.keys()].filter(key => key.startsWith(path)).forEach(key => fakeDisk.delete(key));
+                return ok(undefined);
+            },
+            moveFile: async (src: string, dest: string) => {
+                const value = fakeDisk.get(src);
+                if (value === undefined) return { success: true as const, data: { ok: false as const } };
+                fakeDisk.delete(src);
+                fakeDisk.set(dest, value);
+                return ok(undefined);
+            },
+            moveDir: async (src: string, dest: string) => {
+                for (const key of [...fakeDisk.keys()].filter(k => k.startsWith(src))) {
+                    fakeDisk.set(dest + key.slice(src.length), fakeDisk.get(key)!);
+                    fakeDisk.delete(key);
+                }
+                return ok(undefined);
+            },
+        },
+    },
+}));
 
 /**
  * The asset write path had no coverage at all before this file, which is how the two defects this
@@ -97,8 +139,15 @@ function createHarness(assets: Asset<AssetType.Image, AssetSource.Local>[], opti
         },
     };
 
+    const historyService = new HistoryService();
     const context = {
-        project: { resolve: (segment: string) => segment },
+        // Mirrors Porject.resolve, which flattens the convention arrays and joins every segment.
+        // A stub that returned only the first argument collapsed every trash slot onto one path,
+        // so two files deleted together overwrote each other.
+        project: {
+            resolve: (...parts: (string | string[])[]) =>
+                parts.flatMap(part => (Array.isArray(part) ? part : [part])).join("/").replace(/\/+/g, "/"),
+        },
         services: {
             get(serviceId: Services) {
                 if (serviceId === Services.FileSystem) {
@@ -113,12 +162,18 @@ function createHarness(assets: Asset<AssetType.Image, AssetSource.Local>[], opti
                     }
                     return referenceService;
                 }
+                if (serviceId === Services.History) {
+                    // Deleting an asset records an undo step; the guard tests only care that the
+                    // delete happened, so a real stack with nothing reading it is enough.
+                    return historyService;
+                }
                 throw new Error(`Unexpected service ${serviceId}`);
             },
         },
     };
 
     const service = new AssetsService();
+    historyService.setContext(context as any);
     service.setContext(context as any);
 
     const metadataManager = new AssetsMetadataManager(service, context as any);
@@ -135,8 +190,14 @@ function createHarness(assets: Asset<AssetType.Image, AssetSource.Local>[], opti
                 },
             };
         },
-        async deleteAsset(asset: Asset) {
+        getLocalAssetPath(assetId: string) {
+            return `assets/content/${assetId}`;
+        },
+        async deleteAsset(asset: Asset, deleteOptions?: { keepPayload?: boolean }) {
             calls.push(`delete-asset:${asset.id}`);
+            if (!deleteOptions?.keepPayload) {
+                fakeDisk.delete(`assets/content/${asset.id}`);
+            }
             delete metadata[asset.type][asset.id];
             service.getEvents().emit("deleted", asset);
             return { success: true as const, data: undefined };
@@ -158,7 +219,12 @@ function createHarness(assets: Asset<AssetType.Image, AssetSource.Local>[], opti
 
     service.getEvents().on("updated", asset => calls.push(`updated:${asset.id}`));
 
-    return { service, metadata, groupMap, calls };
+    return { service, metadata, groupMap, calls, history: historyService };
+}
+
+/** Put an asset's bytes on the fake disk where the trash expects to find them. */
+function seedPayload(assetId: string, bytes = `bytes-of-${assetId}`) {
+    fakeDisk.set(`assets/content/${assetId}`, bytes);
 }
 
 describe("AssetsService.replaceAssetContent", () => {
@@ -309,5 +375,125 @@ describe("AssetsService delete guard", () => {
         expect(metadata[AssetType.Image]["asset-2"]).toBeUndefined();
         expect(groupMap[AssetCategory.Image]["group-a"]).toBeUndefined();
         expect(groupMap[AssetCategory.Image]["group-b"]).toBeUndefined();
+    });
+});
+
+describe("AssetsService deletion undo", () => {
+    beforeEach(() => {
+        fakeDisk.clear();
+    });
+
+    it("brings back the record and the bytes", async () => {
+        const asset = imageAsset("asset-1");
+        seedPayload("asset-1");
+        const { service, metadata, history } = createHarness([asset]);
+
+        await service.deleteAsset(asset, { allowReferenced: true });
+        expect(metadata[AssetType.Image]["asset-1"]).toBeUndefined();
+        // Moved, not unlinked - that is the whole point of the trash.
+        expect(fakeDisk.get("assets/content/asset-1")).toBeUndefined();
+        expect([...fakeDisk.values()]).toContain("bytes-of-asset-1");
+
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        await history.settled();
+        expect(metadata[AssetType.Image]["asset-1"]?.name).toBe("asset-1.png");
+        expect(fakeDisk.get("assets/content/asset-1")).toBe("bytes-of-asset-1");
+    });
+
+    it("restores the record verbatim, so the asset returns to the folder it was in", async () => {
+        const asset = imageAsset("asset-1", { groupId: "group-a" });
+        seedPayload("asset-1");
+        const { service, metadata, history } = createHarness([asset], { groups: [imageGroup("group-a")] });
+
+        await service.deleteAsset(asset, { allowReferenced: true });
+        history.undo(projectHistoryScope());
+        await history.settled();
+
+        expect(metadata[AssetType.Image]["asset-1"]?.groupId).toBe("group-a");
+    });
+
+    it("takes a whole folder back in one step, not one per file", async () => {
+        const a = imageAsset("asset-1", { groupId: "group-a" });
+        const b = imageAsset("asset-2", { groupId: "group-a" });
+        seedPayload("asset-1");
+        seedPayload("asset-2");
+        const { service, metadata, groupMap, history } = createHarness([a, b], { groups: [imageGroup("group-a")] });
+
+        await service.deleteGroup(AssetCategory.Image, "group-a", true, { allowReferenced: true });
+        expect(metadata[AssetType.Image]["asset-1"]).toBeUndefined();
+        expect(metadata[AssetType.Image]["asset-2"]).toBeUndefined();
+        expect(groupMap[AssetCategory.Image]["group-a"]).toBeUndefined();
+
+        // One press, not three: the cascade is one thing the author did.
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        await history.settled();
+        expect(history.canUndo(projectHistoryScope())).toBe(false);
+
+        expect(metadata[AssetType.Image]["asset-1"]).toBeDefined();
+        expect(metadata[AssetType.Image]["asset-2"]).toBeDefined();
+        expect(groupMap[AssetCategory.Image]["group-a"]?.name).toBe("group-a");
+        expect(fakeDisk.get("assets/content/asset-1")).toBe("bytes-of-asset-1");
+        expect(fakeDisk.get("assets/content/asset-2")).toBe("bytes-of-asset-2");
+    });
+
+    it("restores a nested folder tree from the inside out", async () => {
+        const inner = imageAsset("asset-1", { groupId: "group-child" });
+        seedPayload("asset-1");
+        const { service, metadata, groupMap, history } = createHarness([inner], {
+            groups: [imageGroup("group-root"), imageGroup("group-child", "group-root")],
+        });
+
+        await service.deleteGroup(AssetCategory.Image, "group-root", true, { allowReferenced: true });
+        expect(groupMap[AssetCategory.Image]["group-child"]).toBeUndefined();
+
+        history.undo(projectHistoryScope());
+        await history.settled();
+        expect(groupMap[AssetCategory.Image]["group-root"]).toBeDefined();
+        expect(groupMap[AssetCategory.Image]["group-child"]?.parentGroupId).toBe("group-root");
+        expect(metadata[AssetType.Image]["asset-1"]).toBeDefined();
+    });
+
+    it("lets the bytes go once the entry can never run again", async () => {
+        const asset = imageAsset("asset-1");
+        seedPayload("asset-1");
+        const { service, history } = createHarness([asset]);
+
+        await service.deleteAsset(asset, { allowReferenced: true });
+        expect([...fakeDisk.values()]).toContain("bytes-of-asset-1");
+
+        // A reload from disk throws every stack away; nothing can reach the payload after that.
+        history.clearAll();
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect([...fakeDisk.values()]).not.toContain("bytes-of-asset-1");
+    });
+
+    it("redoes a deletion, setting the bytes aside again", async () => {
+        const asset = imageAsset("asset-1");
+        seedPayload("asset-1");
+        const { service, metadata, history } = createHarness([asset]);
+
+        await service.deleteAsset(asset, { allowReferenced: true });
+        history.undo(projectHistoryScope());
+        await history.settled();
+        expect(fakeDisk.get("assets/content/asset-1")).toBe("bytes-of-asset-1");
+
+        expect(history.redo(projectHistoryScope())).toBe(true);
+        await history.settled();
+        expect(metadata[AssetType.Image]["asset-1"]).toBeUndefined();
+        // Still recoverable after a redo - not unlinked.
+        expect([...fakeDisk.values()]).toContain("bytes-of-asset-1");
+    });
+
+    it("still deletes when the payload was already missing", async () => {
+        const asset = imageAsset("asset-1");
+        const { service, metadata, history } = createHarness([asset]);
+
+        const result = await service.deleteAsset(asset, { allowReferenced: true });
+        expect(result.success).toBe(true);
+        expect(metadata[AssetType.Image]["asset-1"]).toBeUndefined();
+        // The record still comes back; there were simply no bytes to bring with it.
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        await history.settled();
+        expect(metadata[AssetType.Image]["asset-1"]).toBeDefined();
     });
 });
