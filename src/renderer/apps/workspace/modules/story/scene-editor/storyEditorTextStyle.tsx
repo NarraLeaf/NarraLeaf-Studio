@@ -8,6 +8,7 @@ import {
     EDITOR_FONT_SIZE_DEFAULT,
     EDITOR_FONT_SIZE_MAX,
     EDITOR_FONT_SIZE_MIN,
+    editorFontCssFamily,
 } from "@/lib/settings/editorFontOptions";
 
 /**
@@ -18,28 +19,12 @@ import {
  * runtime — content marks stay absolute and continue to override this base per run.
  */
 
-// Font-family option key -> CSS font-family stack. "Default" inherits the surrounding Studio UI font
-// (the app does not bundle a dedicated editor typeface, so "Default" is the honest baseline).
-const FONT_FAMILY_STACKS: Record<string, string> = {
-    "Default": "inherit",
-    "Sans Serif": "ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif",
-    "Serif": "ui-serif, Georgia, \"Times New Roman\", serif",
-    "Monospace": "ui-monospace, \"SF Mono\", \"Cascadia Code\", \"Fira Code\", Menlo, monospace",
-};
-
 function clampFontSize(value: unknown): number {
     const numeric = typeof value === "number" ? value : Number(value);
     if (!Number.isFinite(numeric)) {
         return EDITOR_FONT_SIZE_DEFAULT;
     }
     return Math.min(EDITOR_FONT_SIZE_MAX, Math.max(EDITOR_FONT_SIZE_MIN, Math.round(numeric)));
-}
-
-function resolveFontFamily(value: unknown): string {
-    if (typeof value === "string" && value in FONT_FAMILY_STACKS) {
-        return FONT_FAMILY_STACKS[value];
-    }
-    return FONT_FAMILY_STACKS[EDITOR_FONT_FAMILY_DEFAULT];
 }
 
 /**
@@ -148,7 +133,7 @@ function toStyle(fontSize: number, fontFamily: string, density: StoryEditorDensi
         : { fontSize: scaled, fontFamily, lineHeight: metrics.lineHeight };
 }
 
-const DEFAULT_STYLE = toStyle(EDITOR_FONT_SIZE_DEFAULT, resolveFontFamily(EDITOR_FONT_FAMILY_DEFAULT), undefined);
+const DEFAULT_STYLE = toStyle(EDITOR_FONT_SIZE_DEFAULT, editorFontCssFamily(EDITOR_FONT_FAMILY_DEFAULT), undefined);
 
 const StoryEditorTextStyleContext = createContext<CSSProperties>(DEFAULT_STYLE);
 
@@ -167,7 +152,7 @@ export function useStoryEditorTextStyle(): CSSProperties {
  */
 export function StoryEditorTextStyleProvider({ children, density }: { children: ReactNode; density?: StoryEditorDensity }) {
     const [fontSize, setFontSize] = useState(EDITOR_FONT_SIZE_DEFAULT);
-    const [fontFamily, setFontFamily] = useState(() => resolveFontFamily(EDITOR_FONT_FAMILY_DEFAULT));
+    const [fontFamily, setFontFamily] = useState(() => editorFontCssFamily(EDITOR_FONT_FAMILY_DEFAULT));
 
     useEffect(() => {
         let cancelled = false;
@@ -181,7 +166,7 @@ export function StoryEditorTextStyleProvider({ children, density }: { children: 
                     return;
                 }
                 setFontSize(clampFontSize(sizeResult.success ? sizeResult.data.value : undefined));
-                setFontFamily(resolveFontFamily(familyResult.success ? familyResult.data.value : undefined));
+                setFontFamily(editorFontCssFamily(familyResult.success ? familyResult.data.value : undefined));
             } catch {
                 // Keep the last known-good values on transient IPC failures.
             }
