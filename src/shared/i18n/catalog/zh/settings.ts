@@ -11,6 +11,18 @@ export const settings = {
     persistFailed: "保存设置失败",
     resetToDefault: "恢复默认值",
     customColor: "自定义颜色…",
+    fontPicker: {
+        searchPlaceholder: "搜索字体…",
+        presets: "预设",
+        installed: "本机字体",
+        sample: "AaBb 字体",
+        noMatches: "没有匹配的字体",
+        loading: "正在读取本机已安装的字体…",
+        unavailable: "当前版本无法列出本机字体，上面的预设仍然可用",
+        denied: "Studio 没有获得读取本机字体的许可，请把此窗口切到最前再重新展开列表",
+        failed: "读取本机字体失败：{message}",
+        notInstalled: "未安装",
+    },
     categories: {
         general: {
             label: "常规",
@@ -80,7 +92,13 @@ export const settings = {
         },
         editorFontFamily: {
             label: "故事编辑器字体",
-            description: "场景编辑器中故事文本所用的字体",
+            description: "场景编辑器中故事文本所用的字体，可从本机已安装的字体中挑选",
+            options: {
+                default: "默认",
+                sansSerif: "无衬线",
+                serif: "衬线",
+                monospace: "等宽",
+            },
         },
         editorSurfaceOpacity: {
             label: "编辑面不透明度",

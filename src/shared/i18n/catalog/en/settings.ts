@@ -10,6 +10,21 @@ export const settings = {
     persistFailed: "Failed to persist setting",
     resetToDefault: "Reset to default",
     customColor: "Custom color…",
+    // The font chooser (SettingFontPicker): presets plus whatever is installed on this computer.
+    fontPicker: {
+        searchPlaceholder: "Search fonts…",
+        presets: "Presets",
+        installed: "Fonts on this computer",
+        // Each row is set in its own face, so this is the specimen for a family whose NAME says
+        // nothing about it — most CJK families are named in Latin.
+        sample: "AaBb 字体",
+        noMatches: "No fonts match your search.",
+        loading: "Reading the fonts installed on this computer…",
+        unavailable: "This build cannot list installed fonts. The presets above still work.",
+        denied: "Studio was not allowed to read your installed fonts. Bring this window to the front and reopen the list.",
+        failed: "Could not read installed fonts: {message}",
+        notInstalled: "not installed",
+    },
     // Category chrome - keys mirror the category `key` in appSettings.ts.
     categories: {
         general: {
@@ -81,7 +96,15 @@ export const settings = {
         },
         editorFontFamily: {
             label: "Story editor font",
-            description: "Typeface used for story text in the scene editor.",
+            description: "Typeface used for story text in the scene editor. Any font installed on this computer can be chosen.",
+            // Keys are camelCase; the stored ids they map to are the display strings in
+            // editorFontOptions.ts, which older global.json files already hold.
+            options: {
+                default: "Default",
+                sansSerif: "Sans serif",
+                serif: "Serif",
+                monospace: "Monospace",
+            },
         },
         editorSurfaceOpacity: {
             label: "Editor surface opacity",

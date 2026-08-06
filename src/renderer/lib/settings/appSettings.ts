@@ -2,7 +2,7 @@ import { AppSettingDefinition, SettingCategory, SettingScope } from "@/lib/setti
 import { SettingValueType } from "@/lib/settings/types";
 import {
     EDITOR_FONT_FAMILY_DEFAULT,
-    EDITOR_FONT_FAMILY_OPTIONS,
+    EDITOR_FONT_FAMILY_PRESETS,
     EDITOR_FONT_SIZE_DEFAULT,
     EDITOR_FONT_SIZE_MAX,
     EDITOR_FONT_SIZE_MIN,
@@ -273,16 +273,27 @@ export const AppSettings: AppSettingDefinition[] = [
     },
     {
         // Applied by the Story scene editor via `storyEditorTextStyle.tsx`.
+        //
+        // `Font`, not `Enum`: the list is the presets below PLUS every family installed on this
+        // computer, which the picker discovers at open time. `options` therefore carries only the
+        // presets - what the stored value may be is any family name, so nothing validates against
+        // this list (see `editorFontCssFamily`, which is what actually has to accept it).
         key: "editor.fontFamily",
         category: "editor",
         scope: SettingScope.Global,
-        type: SettingValueType.Enum,
+        type: SettingValueType.Font,
         label: "Story editor font",
         labelKey: "settings.items.editorFontFamily.label",
-        description: "Typeface used for story text in the scene editor.",
+        description: "Typeface used for story text in the scene editor. Any font installed on this computer can be chosen.",
         descriptionKey: "settings.items.editorFontFamily.description",
         defaultValue: EDITOR_FONT_FAMILY_DEFAULT,
-        options: [...EDITOR_FONT_FAMILY_OPTIONS],
+        options: [...EDITOR_FONT_FAMILY_PRESETS],
+        optionLabelKeys: {
+            "Default": "settings.items.editorFontFamily.options.default",
+            "Sans Serif": "settings.items.editorFontFamily.options.sansSerif",
+            "Serif": "settings.items.editorFontFamily.options.serif",
+            "Monospace": "settings.items.editorFontFamily.options.monospace",
+        },
     },
     {
         // Applied by the built-in text editor (`TextEditor` -> Monaco `lineNumbers`). The key
