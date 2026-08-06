@@ -12,6 +12,11 @@ export const assets = {
     noTags: "No tags",
     preview: "Preview",
     unknownError: "Unknown error",
+    // Names for the undo steps these deletions leave behind ("Undo delete bg_room.png").
+    history: {
+        deleteAsset: "delete {name}",
+        deleteGroup: "delete folder {name}",
+    },
     delete: {
         inUseTitle: "These assets are still in use",
         inUseMessage: "Deleting them will leave the following places without a source:",
@@ -23,7 +28,7 @@ export const assets = {
             one: "Delete {count} item?",
             other: "Delete {count} items?",
         },
-        confirmMessage: "Everything inside a selected group is deleted too. This cannot be undone.",
+        confirmMessage: "Everything inside a selected group is deleted too.",
         /** The delete button in the reference warning — danger-coloured, never the keyboard default. */
         action: "Delete",
         /** A delete the service refused after the author had already confirmed it. */

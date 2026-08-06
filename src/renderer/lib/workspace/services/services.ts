@@ -814,7 +814,8 @@ interface IStoryService extends IService {
     setDefaultStory(storyId: StoryId | undefined): void;
     createStory(name: string): StoryLibraryEntry;
     renameStory(storyId: StoryId, name: string): boolean;
-    deleteStory(storyId: StoryId): boolean;
+    /** Asynchronous: undo needs the document, which may only be on disk. */
+    deleteStory(storyId: StoryId): Promise<boolean>;
     loadLibrary(): Promise<StoryLibraryIndex>;
     getLibraryIndex(): StoryLibraryIndex;
     onLibraryChanged(handler: (index: StoryLibraryIndex) => void): () => void;
@@ -830,7 +831,7 @@ interface IStoryService extends IService {
         sequences?: StoryAnimationSequence[];
     }): Promise<StoryAnimationAsset>;
     updateAnimationAsset(animationId: StoryAnimationAssetId, updater: (asset: StoryAnimationAsset) => StoryAnimationAsset): StoryAnimationAsset;
-    deleteAnimationAsset(animationId: StoryAnimationAssetId): boolean;
+    deleteAnimationAsset(animationId: StoryAnimationAssetId): Promise<boolean>;
     onAnimationsChanged(handler: (index: StoryAnimationIndex) => void): () => void;
     registerPluginAction(registration: StoryPluginActionRegistration): () => void;
     unregisterPluginAction(actionId: string): boolean;

@@ -59,6 +59,7 @@ export const dialogs = {
         group: "group",
         story: "story",
         scene: "scene",
+        chapter: "chapter",
         component: "component",
         asset: "asset",
         image: "Image",
