@@ -153,6 +153,7 @@ export const characters = {
         layers: "Layers",
         removeLayer: "Remove layer",
         constantLayer: "Always drawn",
+        layerAxis: "Layer varies with this axis",
         hasImage: "image set",
         noImage: "no image",
         drawsNothing: "draws nothing",

@@ -610,10 +610,13 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                     placeholder={t("characters.panel.searchPlaceholder")}
                     className="w-full"
                 />
+                {/* One row, one height: the two square actions, the filter button and the refresh
+                    button all sit at the shared `md` 36px (design-system §3). They used to be
+                    38/38/38/32 - three numbers in a row four buttons long. */}
                 <div className="flex items-center gap-2">
                     <button
                         onClick={(event) => { event.stopPropagation(); handleCreateCharacter(); }}
-                        className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                        className="grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                         aria-label={t("characters.panel.addCharacter")}
                         {...freeze.writes(false, t("characters.panel.addCharacter"))}
                     >
@@ -621,7 +624,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                     </button>
                     <button
                         onClick={(event) => { event.stopPropagation(); handleCreateGroup(); }}
-                        className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border border-edge-strong bg-fill-subtle text-fg hover:bg-fill transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                        className="grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md border border-edge-strong bg-fill-subtle text-fg hover:bg-fill transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                         {...freeze.writes(false, t("characters.panel.addGroup"))}
                     >
                         <FolderPlus className="w-4 h-4" />
@@ -638,7 +641,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                     {/* Count removed per request */}
                     <button
                         onClick={loadCharacters}
-                        className="p-2 rounded-md hover:bg-fill text-fg-muted"
+                        className="grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md hover:bg-fill text-fg-muted"
                         title={t("common.refresh")}
                     >
                         <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />

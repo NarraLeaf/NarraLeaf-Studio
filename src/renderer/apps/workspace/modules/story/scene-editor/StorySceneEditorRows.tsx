@@ -1081,7 +1081,7 @@ function RowPlayAction(props: { block: StoryBlock; active: boolean; onPlay: () =
             title={label}
             aria-label={label}
             className={[
-                "flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-2xs text-fg-muted transition-opacity hover:bg-fill hover:text-primary group-hover:pointer-events-auto group-hover:opacity-100",
+                "flex h-6 shrink-0 cursor-default items-center gap-1 rounded-md px-1.5 text-2xs text-fg-muted transition-opacity hover:bg-fill hover:text-primary group-hover:pointer-events-auto group-hover:opacity-100",
                 props.active ? "opacity-100" : "pointer-events-none opacity-0",
             ].join(" ")}
             onClick={event => {

@@ -72,7 +72,7 @@ export const SearchBox = forwardRef<HTMLElement, SearchBoxProps>(
         return (
             <div ref={ref as React.Ref<HTMLDivElement>} className={`relative ${className}`}>
                 <div className={`
-                    flex items-center gap-2 px-3 py-2 rounded-md border transition-colors
+                    flex min-h-9 items-center gap-2 px-3 py-1 rounded-md border transition-colors
                     ${isFocused
                         ? 'border-primary bg-primary/5'
                         : 'border-edge-strong bg-fill-subtle hover:bg-fill'

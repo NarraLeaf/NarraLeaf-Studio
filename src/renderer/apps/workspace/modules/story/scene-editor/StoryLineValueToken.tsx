@@ -172,7 +172,6 @@ function NumberControl(props: {
                     autoFocus
                     popoverWhenNarrow={false}
                     className="w-24"
-                    inputClassName="h-8 rounded-md border border-edge bg-surface-raised px-2 text-sm text-fg outline-none focus:border-primary/50"
                 />
                 {control.unit ? <span className="text-xs text-fg-muted">{control.unit}</span> : null}
             </div>

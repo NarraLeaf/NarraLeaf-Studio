@@ -189,7 +189,6 @@ function SceneBackgroundMusicField({ data }: CustomFieldProps<StorySceneEditorCo
                     <Select
                         fullWidth
                         portalMenu
-                        className="[&>button]:h-9 [&>button]:min-h-[34px] [&>button]:py-0"
                         options={trackOptions}
                         value={bgm.audioTrackId ?? ""}
                         onChange={value => patch({ audioTrackId: String(value) || undefined })}

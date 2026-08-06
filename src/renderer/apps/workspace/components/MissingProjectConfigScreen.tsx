@@ -34,7 +34,7 @@ export function MissingProjectConfigScreen({ projectPath }: MissingProjectConfig
                         variant="secondary"
                         size="md"
                         onClick={handleOpenLauncher}
-                        className="mt-6 h-9"
+                        className="mt-6"
                     >
                         <LogOut className="h-4 w-4" />
                         <span>{t("workspace.shell.openLauncher")}</span>
