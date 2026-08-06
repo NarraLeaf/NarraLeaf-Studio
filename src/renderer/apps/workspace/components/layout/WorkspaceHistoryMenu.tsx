@@ -21,10 +21,10 @@ import type { FocusContext } from "@/lib/workspace/services/ui/types";
  * the workspace's history, while `useMenuActionHandler` still hands the command back to the DOM
  * role when the caret is in a text field.
  *
- * **macOS only in effect.** `buildMenuTemplate` returns an empty template off darwin, so there is
- * no application menu to substitute into on Windows or Linux. The registration is harmless there
- * (the action bar filters by `when`, and nothing renders an `edit` slot in-app); the keyboard path
- * on those platforms is `WorkspaceUndoKeybindings` plus each editor's own binding.
+ * It reaches two menus, not one. `buildMenuTemplate` returns an empty template off darwin, so the
+ * *application* menu exists only on macOS - but the in-app top bar renders `edit`-slot groups on
+ * every platform, and this group is the only one with no `when`, so Windows and Linux gain an Edit
+ * menu with Undo and Redo in it (verified in the running app on Windows).
  *
  * The label is the point. `peekUndo()` names the step, so the item reads "Undo delete character
  * Hiyori" rather than a bare "Undo" that may or may not do anything.
@@ -81,7 +81,14 @@ export function WorkspaceHistoryMenu() {
                         ? t("workspace.history.menu.undoNamed", { step: undoStep })
                         : t("menu.edit.undo"),
                     icon: <Undo2 className="w-4 h-4" />,
-                    shortcut: "mod+z",
+                    // No `shortcut`, deliberately. The registry turns an action's shortcut into a
+                    // real keybinding guarded by that action's `when` - and `when` also decides
+                    // whether the item is *shown*, so there is no value that both keeps Undo in the
+                    // menu and keeps its key from firing inside an editor. Giving it one registered
+                    // an unguarded second `mod+z` that competed with every editor's own binding.
+                    // The keystroke belongs to `WorkspaceUndoKeybindings` and the editors; this is a
+                    // second door onto the same behaviour, and the chord is documented in the
+                    // keybinding catalog (`workspace.undo`).
                     menuRole: "undo",
                     onClick: freeze.run(() => {
                         history.undo(scopeId);
@@ -95,7 +102,6 @@ export function WorkspaceHistoryMenu() {
                         ? t("workspace.history.menu.redoNamed", { step: redoStep })
                         : t("menu.edit.redo"),
                     icon: <Redo2 className="w-4 h-4" />,
-                    shortcut: "mod+shift+z",
                     menuRole: "redo",
                     onClick: freeze.run(() => {
                         history.redo(scopeId);
