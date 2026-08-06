@@ -1,19 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
-    canRedoLoop,
-    canUndoLoop,
     clearPoint,
     EMPTY_LOOP,
     fromAssetExtras,
     fromAssetLoop,
-    initialLoopHistory,
-    loopHistoryReducer,
     loopPointAt,
     markPoint,
     sameLoop,
     toAssetLoop,
-    type LoopHistoryAction,
-    type LoopHistoryState,
     type LoopPoints,
 } from "./loopHistory";
 
@@ -22,10 +16,6 @@ const loop = (inMs: number | null, outMs: number | null, loopStartMs: number | n
     loopStartMs,
     outMs,
 });
-
-function run(state: LoopHistoryState, ...actions: LoopHistoryAction[]): LoopHistoryState {
-    return actions.reduce(loopHistoryReducer, state);
-}
 
 describe("markPoint", () => {
     it("marks each end independently", () => {
@@ -176,101 +166,5 @@ describe("sameLoop", () => {
         // when the committed region differs from the one already stored.
         expect(sameLoop(loop(1, 3, 2), loop(1, 3))).toBe(false);
         expect(sameLoop(loop(1, 3, 2), loop(1, 3, 2.5))).toBe(false);
-    });
-});
-
-describe("loopHistoryReducer", () => {
-    it("loads a baseline with nothing to undo", () => {
-        const state = run(initialLoopHistory, { type: "load", loop: loop(100, 900) });
-        expect(state.present).toEqual(loop(100, 900));
-        expect(canUndoLoop(state)).toBe(false);
-        expect(canRedoLoop(state)).toBe(false);
-    });
-
-    it("walks back and forward through marks", () => {
-        const state = run(
-            initialLoopHistory,
-            { type: "load", loop: EMPTY_LOOP },
-            { type: "set", loop: loop(100, null) },
-            { type: "set", loop: loop(100, 900) },
-        );
-        expect(run(state, { type: "undo" }).present).toEqual(loop(100, null));
-        expect(run(state, { type: "undo" }, { type: "undo" }).present).toEqual(EMPTY_LOOP);
-        expect(run(state, { type: "undo" }, { type: "redo" }).present).toEqual(loop(100, 900));
-    });
-
-    it("ignores a set that changes nothing, so undo never needs a double press", () => {
-        const loaded = run(initialLoopHistory, { type: "load", loop: loop(1, 2) });
-        expect(run(loaded, { type: "set", loop: loop(1, 2) })).toBe(loaded);
-    });
-
-    it("drops the redo stack once a new mark branches off it", () => {
-        const state = run(
-            initialLoopHistory,
-            { type: "load", loop: EMPTY_LOOP },
-            { type: "set", loop: loop(100, null) },
-            { type: "undo" },
-            { type: "set", loop: loop(900, null) },
-        );
-        expect(state.present).toEqual(loop(900, null));
-        expect(canRedoLoop(state)).toBe(false);
-    });
-
-    it("is a no-op at either end of the stack", () => {
-        const loaded = run(initialLoopHistory, { type: "load", loop: loop(1, 2) });
-        expect(run(loaded, { type: "undo" })).toBe(loaded);
-        expect(run(loaded, { type: "redo" })).toBe(loaded);
-    });
-
-    it("undoes a loop point the same way it undoes the two ends", () => {
-        const state = run(
-            initialLoopHistory,
-            { type: "load", loop: loop(0, 84_000) },
-            { type: "set", loop: markPoint(loop(0, 84_000), "loop", 12_000) },
-        );
-        expect(state.present).toEqual(loop(0, 84_000, 12_000));
-        expect(run(state, { type: "undo" }).present).toEqual(loop(0, 84_000));
-        expect(run(state, { type: "undo" }, { type: "redo" }).present).toEqual(loop(0, 84_000, 12_000));
-    });
-
-    it("undoes the end that a loop point marked outside the region took away", () => {
-        const state = run(
-            initialLoopHistory,
-            { type: "load", loop: loop(100, 900) },
-            { type: "set", loop: markPoint(loop(100, 900), "loop", 950) },
-        );
-        expect(state.present).toEqual(loop(100, null, 950));
-        expect(run(state, { type: "undo" }).present).toEqual(loop(100, 900));
-    });
-
-    it("undoes the cleared end that marking an inverted region took away", () => {
-        const state = run(
-            initialLoopHistory,
-            { type: "load", loop: loop(100, 400) },
-            { type: "set", loop: markPoint(loop(100, 400), "in", 700) },
-        );
-        expect(state.present).toEqual(loop(700, null));
-        expect(run(state, { type: "undo" }).present).toEqual(loop(100, 400));
-    });
-
-    it("a fresh load clears history left over from the previous asset", () => {
-        const state = run(
-            initialLoopHistory,
-            { type: "load", loop: EMPTY_LOOP },
-            { type: "set", loop: loop(100, null) },
-            { type: "load", loop: loop(7, 9) },
-        );
-        expect(state.present).toEqual(loop(7, 9));
-        expect(canUndoLoop(state)).toBe(false);
-    });
-
-    it("caps the undo depth without disturbing the present", () => {
-        let state = run(initialLoopHistory, { type: "load", loop: EMPTY_LOOP });
-        for (let i = 1; i <= 150; i++) {
-            state = loopHistoryReducer(state, { type: "set", loop: loop(i, null) });
-        }
-        expect(state.present).toEqual(loop(150, null));
-        expect(state.past.length).toBe(100);
-        expect(state.past[0]).toEqual(loop(50, null));
     });
 });

@@ -19,6 +19,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_INTERVAL,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_READ_TEXT,
     BLUEPRINT_NODE_TYPE_GAME_GET_SOUND_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR,
     BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR,
@@ -44,6 +45,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_DELAY,
     BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_ENABLED,
     BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_INTERVAL,
+    BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_READ_TEXT,
     BLUEPRINT_NODE_TYPE_GAME_SET_SOUND_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_END_MODE,
     BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_FADE_DURATION,
@@ -172,6 +174,21 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         valueType: "boolean",
         defaultValue: true,
         keywords: ["game", "preference", "skip", "dialog", "nlr"],
+    },
+    {
+        // Studio's own preference, in the same family as the engine's twelve because that is what
+        // it is to an author: one more row on the settings screen. What acts on it is the host's
+        // skip loop (`skipRunController`), which stops the run at a line the player has not read.
+        key: "skipReadText",
+        getterType: BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_READ_TEXT,
+        setterType: BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_READ_TEXT,
+        getterDisplayName: "Get Skip Read Text",
+        setterDisplayName: "Set Skip Read Text",
+        pinId: "skipReadText",
+        pinLabel: "Skip Read Text",
+        valueType: "boolean",
+        defaultValue: false,
+        keywords: ["game", "preference", "skip", "read", "text", "unread", "dialog"],
     },
     {
         key: "gameSpeed",

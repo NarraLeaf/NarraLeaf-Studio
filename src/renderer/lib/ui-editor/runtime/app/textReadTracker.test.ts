@@ -97,6 +97,45 @@ describe("createTextReadTracker", () => {
         expect(harness.tracker.isCurrentTextRead()).toBe(false);
     });
 
+    /**
+     * The skip guard's question, and it is not the negation of the node's.
+     *
+     * "Skip until you reach something unread" has to cross the gaps between lines - a transition, a
+     * sound, an image action, all of which are "no dialog on screen" - and stop only on a line the
+     * player has genuinely not seen. `!isCurrentTextRead()` is true for both, which would strand a
+     * held skip key on the first non-dialogue action of the scene.
+     */
+    it("separates 'unread line on screen' from 'no line on screen'", async () => {
+        const harness = createHarness();
+        await harness.tracker.whenLoaded;
+
+        harness.setDialog({ actionId: "uuid-1", ended: false });
+        harness.notify();
+        expect(harness.tracker.isCurrentTextUnread()).toBe(true);
+        expect(harness.tracker.isCurrentTextRead()).toBe(false);
+
+        harness.setDialog({ actionId: "uuid-1", ended: true });
+        harness.notify();
+        expect(harness.tracker.isCurrentTextUnread()).toBe(false);
+
+        harness.setDialog(null);
+        harness.notify();
+        // Nothing on screen is not unread text, and both answers are false at once.
+        expect(harness.tracker.isCurrentTextUnread()).toBe(false);
+        expect(harness.tracker.isCurrentTextRead()).toBe(false);
+    });
+
+    // A line with no identity to remember can never become read, so calling it unread would stop
+    // every skip run on it, forever.
+    it("does not call a line with no read key unread", async () => {
+        const harness = createHarness({ resolveReadKey: () => null });
+        await harness.tracker.whenLoaded;
+
+        harness.setDialog({ actionId: "uuid-1", ended: false });
+        harness.notify();
+        expect(harness.tracker.isCurrentTextUnread()).toBe(false);
+    });
+
     it("merges the persisted read set and reports previously seen lines", async () => {
         const harness = createHarness({}, ["uuid-old", 42, ""]);
         await harness.tracker.whenLoaded;

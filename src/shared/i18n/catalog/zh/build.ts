@@ -178,12 +178,15 @@ export const build = {
             + "请在 {targetPlatform} 机器上构建该目标",
         "encryption-key-unavailable": "资源保护已开启，但无法取得密钥",
         "web-unprotected": "资源保护对 Web 导出不生效，其文件以明文发布",
+        "web-lossy-images": "有损图像重压缩已开启，导出的图像将以质量 {quality} 重新编码，细节不可恢复",
         "mobile-template-missing": "移动端外壳模板不可用：{reason}",
         "mobile-payload-too-large": "项目素材体积（{size}）超出移动端安装包能容纳的上限",
         "version-uncodable": "版本号 {version} 无法编码为 Android 版本号（主版本最大 2099，次版本与修订号最大 999）",
         "appid-android-adjusted": "应用 ID {appId} 不是合法的 Android 包名，构建将使用 {applicationId}",
         "bundleid-ios-adjusted": "应用 ID {appId} 不是合法的 iOS Bundle ID，构建将使用 {bundleId}",
-        unsigned: "未做代码签名。玩家首次打开游戏时，macOS Gatekeeper 或 Windows SmartScreen 可能弹出安全提示。选择一份签名凭据即可消除",
+        // 不再点名 Gatekeeper / SmartScreen：那是厂商的词，不是作者的，而且两边的预期一样。
+        // 更长的说法在 `build` 帮助主题里。
+        unsigned: "未做代码签名。玩家首次打开时可能看到安全提示",
         "unsigned-android": "使用本地调试签名，仅供旁加载安装。选择你自己的 release keystore 即可用你的身份签名",
         "unsigned-ios": "这份 .ipa 未签名，而 iOS 不允许安装任何未签名应用。请选择一份 Apple 签名凭据。从钥匙串导出 .p12 时要连同签发链一起导出，否则签名会失败",
         "signing-credential-missing": "本机没有本工程为 {platform} 指定的签名凭据，密钥材料不会随工程流转。请在此导入，或清除该选择以未签名方式构建 {platform}",
@@ -203,7 +206,7 @@ export const build = {
         "output-not-empty": "输出目录已有文件，同名产物会被覆盖",
     },
     webStaticNotice: "Web 构建是可部署到任意网页服务器的静态站点；资源加密与 HTTP 限制对它不生效",
-    unsignedNotice: "构建产物未做代码签名。玩家首次打开游戏时，macOS Gatekeeper 或 Windows SmartScreen 可能弹出安全提示",
+    unsignedNotice: "未做代码签名。玩家首次打开时可能看到安全提示",
     selectAtLeastOne: "请至少选择一个平台和格式",
     toast: {
         submitted: "构建任务已提交，请查看控制台",

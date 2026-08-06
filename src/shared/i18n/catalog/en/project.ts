@@ -9,6 +9,10 @@ export const project = {
             title: "Game",
             description: "How the finished game behaves for players",
         },
+        preferences: {
+            title: "Preferences",
+            description: "What a new player's settings start at",
+        },
         audio: {
             title: "Audio",
             description: "The mixer: which bus feeds which, and how loud each one is",
@@ -81,14 +85,91 @@ export const project = {
         autoSaveSlotsTitle: "Autosaves kept",
         autoSaveSlotsDescription: "Autosaves rotate through this many slots, oldest first. They stay out of the player's own save slots.",
     },
+    // The Preferences sub-page: the value each player setting starts at. Every one of these is
+    // still the player's to change while they play, and what they change is kept, so the wording
+    // stays on "starts at" rather than promising anything the settings screen will not honour.
+    preferences: {
+        intro: "The value each setting starts at for a player who has not changed it. All of them stay editable while the game runs, and whatever the player settles on is kept between sessions.",
+        group: {
+            dialogue: "Dialogue",
+            skipping: "Skipping",
+            audio: "Audio",
+        },
+        unit: {
+            percent: "%",
+            ms: "ms",
+            cps: "cps",
+        },
+        cps: {
+            title: "Text speed",
+            description: "Characters typed per second.",
+        },
+        gameSpeed: {
+            title: "Game speed",
+            description: "Scales both the typing speed and the auto-forward wait.",
+        },
+        autoForward: {
+            title: "Auto forward",
+            description: "Move on by itself once a line has finished displaying.",
+        },
+        showDialog: {
+            title: "Show the dialogue box",
+            description: "Off starts the game with the box hidden, as the player's hide-UI toggle leaves it.",
+        },
+        skip: {
+            title: "Allow skipping",
+            description: "Off disables the skip key outright.",
+        },
+        skipReadText: {
+            title: "Skip read text only",
+            description: "Skipping stops when it reaches a line the player has not read yet.",
+        },
+        skipDelay: {
+            title: "Skip delay",
+            description: "How long the skip key is held before continuous skipping starts.",
+        },
+        skipInterval: {
+            title: "Skip interval",
+            description: "Time between lines while skipping. Higher is slower.",
+        },
+        globalVolume: {
+            title: "Master volume",
+            description: "Everything the game plays.",
+        },
+        bgmVolume: {
+            title: "Music volume",
+            description: "The Music bus.",
+        },
+        soundVolume: {
+            title: "SFX volume",
+            description: "The SFX bus.",
+        },
+        voiceVolume: {
+            title: "Voice volume",
+            description: "The Voice bus.",
+        },
+        voiceEndMode: {
+            title: "When a voiced line ends",
+            description: "What happens to the clip when its sentence is done.",
+            option: {
+                stop: "Stop the clip",
+                fade: "Fade the clip out",
+                none: "Let it play on",
+            },
+        },
+        voiceFadeDuration: {
+            title: "Voice fade",
+            description: "How long the fade lasts. Only used when the clip fades out.",
+        },
+    },
     // The Audio sub-page: the project's mixer, as a tree of buses. One collapsed row per bus with
     // its fields behind a disclosure, so the labels below are labels rather than headings - the
     // explanation they used to each carry is stated once, in `intro`. A paragraph repeated on every
     // track is noise; the same paragraph once is documentation.
     audio: {
-        // What a bus is and how the mix multiplies, said once at the top of the section. This
-        // absorbed the former per-field `nameDescription` / `parentDescription` / `volumeDescription`.
-        intro: "A track is a bus: it feeds another bus, or the master output. A clip plays at its own level times every bus above it, and a bus can only quieten. Renaming is safe.",
+        // What a bus is and how the mix multiplies now lives in the `audio` help topic, reached by
+        // the `?` in this section's header. It was a paragraph here, and before that the same
+        // paragraph on every field of every track.
         add: "Add track",
         newTrackName: "New Track",
         nameTitle: "Name",
@@ -135,6 +216,17 @@ export const project = {
         encryptAssetsTitle: "Encrypt assets",
         encryptAssetsDescription: "Encrypt assets, plugin code and the story bundle in packaged and previewed builds. Does not affect Dev Mode.",
         encryptAssetsWebHint: "Not applicable to the Web export: Web builds always ship without asset protection.",
+        webLosslessImagesTitle: "Convert images to WebP",
+        webLosslessImagesDescription: "Re-encode exported images as lossless WebP where that is smaller.",
+        webLosslessImagesHint: "Each conversion is compared with the original pixel by pixel and discarded unless it decodes identically. Android and iOS builds serve the same exported site, so this applies to them too.",
+        webPrecompressTitle: "Precompress text files",
+        webPrecompressDescription: "Write Brotli and Gzip copies of the site's scripts, styles and story data.",
+        webPrecompressHint: "Only a server set up to serve precompressed files uses them. Every other host serves the originals and ignores these.",
+        webLossyImagesTitle: "Recompress images",
+        webLossyImagesDescription: "Re-encode exported images as lossy WebP. Much smaller, and the lost detail cannot be recovered.",
+        webLossyQualityTitle: "Image quality",
+        webLossyQualityDescription: "WebP quality used when recompressing, from 1 to 100.",
+        webSharedWithMobileHint: "Android and iOS builds serve the same exported site, so this applies to them too.",
         orientationTitle: "Mobile orientation",
         orientationDescription: "The orientation mobile builds lock the game to when it starts.",
         orientation: {
