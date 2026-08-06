@@ -1,8 +1,9 @@
 import React from "react";
 import { cn } from "../../utils/cn";
+import { CONTROL_SIZE_CLASS, type ControlSize } from "./controlSize";
 
 export type InputVariant = "default" | "error" | "success";
-export type InputSize = "sm" | "md" | "lg";
+export type InputSize = ControlSize;
 
 export interface BaseInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "size"> {
     variant?: InputVariant;
@@ -25,7 +26,14 @@ const variantStyles: Record<InputVariant, string> = {
     success: "border-success/50 focus:border-success",
 };
 
-const sizeStyles: Record<InputSize, string> = {
+const sizeStyles = CONTROL_SIZE_CLASS;
+
+/**
+ * A textarea is the one control that must NOT take the shared height floor: its
+ * height comes from `rows`, and the padding is what a multi-line box needs to
+ * read, not a leftover from centring one line.
+ */
+const textAreaSizeStyles: Record<InputSize, string> = {
     sm: "px-2 py-1 text-xs",
     md: "px-3 py-2 text-sm",
     lg: "px-4 py-2 text-base",
@@ -145,7 +153,7 @@ export function TextArea({
                 inputBase,
                 "resize-vertical",
                 variantStyles[variant],
-                sizeStyles[size],
+                textAreaSizeStyles[size],
                 fullWidth && "w-full",
                 className,
             )}

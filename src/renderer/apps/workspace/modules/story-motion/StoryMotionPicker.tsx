@@ -21,7 +21,7 @@ import { createStoryMotionName } from "./storyMotionTimeline";
 import { STORY_MOTION_PRESETS, getStoryMotionPreset, storyMotionPresetsForTargetKind } from "./storyMotionPresets";
 
 const ICON_BUTTON_CLASS = controlButtonClass();
-const TOOL_BUTTON_CLASS = "inline-flex h-8 items-center gap-1.5 rounded-md border border-edge bg-fill-subtle px-2 text-xs text-fg hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40";
+const TOOL_BUTTON_CLASS = "inline-flex h-9 cursor-default items-center gap-1.5 rounded-md border border-edge bg-fill-subtle px-2 text-xs text-fg hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40";
 
 export function StoryMotionPicker(props: {
     value: StoryTransformRef | undefined;

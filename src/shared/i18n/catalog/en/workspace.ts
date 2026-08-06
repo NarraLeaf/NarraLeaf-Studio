@@ -274,6 +274,10 @@ export const workspace = {
             blueprint: "blueprint",
             project: "project",
         },
+        menu: {
+            undoNamed: "Undo {step}",
+            redoNamed: "Redo {step}",
+        },
         entry: {
             edit: "edit",
             storyEdit: "story edit",
@@ -790,6 +794,8 @@ export const workspace = {
                 cheatSheet: "Show Keyboard Shortcuts",
                 contextHelp: "Help for What Is Focused",
                 reopenClosedTab: "Reopen Closed Tab",
+                undo: "Undo",
+                redo: "Redo",
                 quickSwitchNext: "Switch to Next Editor Tab",
                 quickSwitchPrevious: "Switch to Previous Editor Tab",
                 uiEditor: {

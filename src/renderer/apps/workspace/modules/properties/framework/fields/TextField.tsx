@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, memo, useRef, useId } from "react";
 import { TextFieldDefinition, TextareaFieldDefinition } from "../types";
+import { FIELD_INPUT_CLASS, FIELD_TEXTAREA_CLASS } from "../../fieldControlClass";
 
 interface TextFieldProps<TData> {
     field: TextFieldDefinition<TData> | TextareaFieldDefinition<TData>;
@@ -45,9 +46,8 @@ function TextFieldInner<TData>({ field, data, onSaving }: TextFieldProps<TData>)
     const isDisabled = field.disabled || isSaving;
     const isReadOnly = field.readOnly;
 
-    const inputClassName = `w-full px-3 py-2 bg-surface-raised border border-edge rounded-md text-sm text-fg-muted 
-        focus:outline-none focus:border-primary/50 transition-colors 
-        disabled:opacity-50 disabled:cursor-not-allowed ${field.className || ""}`;
+    const inputClassName = `w-full ${FIELD_INPUT_CLASS} ${field.className || ""}`;
+    const textAreaClassName = `w-full ${FIELD_TEXTAREA_CLASS} ${field.className || ""}`;
 
     if (field.type === "textarea") {
         const textareaField = field as TextareaFieldDefinition<TData>;
@@ -68,7 +68,7 @@ function TextFieldInner<TData>({ field, data, onSaving }: TextFieldProps<TData>)
                     placeholder={field.placeholder}
                     disabled={isDisabled}
                     readOnly={isReadOnly}
-                    className={`${inputClassName} resize-none`}
+                    className={`${textAreaClassName} resize-none`}
                 />
                 {field.helpText && (
                     <p className="mt-1 text-xs text-fg-subtle">{field.helpText}</p>

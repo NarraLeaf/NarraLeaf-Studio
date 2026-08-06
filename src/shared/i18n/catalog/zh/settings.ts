@@ -9,6 +9,7 @@ export const settings = {
     noneExposed: "当前没有已实装的设置可供配置",
     invalidValue: "请输入有效的值",
     persistFailed: "保存设置失败",
+    resetToDefault: "恢复默认值",
     customColor: "自定义颜色…",
     categories: {
         general: {
@@ -27,17 +28,17 @@ export const settings = {
             label: "工作区",
             description: "启动行为、工作区历史与自动保存",
         },
-        sync: {
-            label: "同步",
-            description: "本地备份频率与同步辅助项",
+        versionControl: {
+            label: "版本控制",
+            description: "提交版本的记录频率，以及记在上面的身份",
         },
-        plugins: {
-            label: "插件",
-            description: "插件商店与注册表",
+        network: {
+            label: "网络",
+            description: "Studio 从哪里下载插件、模板与构建工具",
         },
-        advanced: {
-            label: "高级",
-            description: "遥测、开发者辅助与实验性开关",
+        data: {
+            label: "数据",
+            description: "缓存文件、还原偏好设置，以及在设备之间搬运它们",
         },
     },
     items: {
@@ -122,12 +123,31 @@ export const settings = {
                 command: "高亮指令行",
             },
         },
+        editorLineNumbers: {
+            label: "显示行号",
+            description: "用于从资产库打开文件的内建文本编辑器",
+        },
+        editorSoftWrap: {
+            label: "长行自动换行",
+            description: "内建文本编辑器不再横向滚动，而是把长行折下来",
+        },
+        recentProjectsLimit: {
+            label: "保留的最近项目数",
+            description: "主页和「打开最近的项目」菜单各保留多少个",
+        },
         electronMirror: {
             label: "Electron 下载镜像",
             description: "下载 Electron 所用的镜像地址，留空则使用官方源",
         },
+        electronBuilderBinariesMirror: {
+            label: "构建工具下载镜像",
+            description: "构建时下载安装器工具（NSIS、AppImage、代码签名辅助程序）所用的镜像地址，留空则使用官方源",
+        },
+        downloadRewrites: {
+            label: "下载地址替换",
+        },
         pluginRegistryUrl: {
-            label: "注册表地址",
+            label: "插件注册表地址",
             description: "插件商店从哪里取索引，留空则使用 NarraLeaf 官方注册表",
         },
         uiTemplateRegistryUrl: {
@@ -184,6 +204,91 @@ export const settings = {
         },
         keybindings: {
             label: "快捷键",
+        },
+        cacheInventory: {
+            label: "缓存文件",
+        },
+        settingsTransfer: {
+            label: "在设备之间搬运设置",
+        },
+        resetWorkspaceLayout: {
+            label: "还原工作区布局",
+            description: "把面板、侧栏和打开的编辑器标签恢复成初始状态，不会动到你的工程",
+            action: "还原",
+            confirm: "还原布局",
+        },
+        resetAllPreferences: {
+            label: "还原所有设置",
+            description: "把每一项设置都恢复成默认值。工程、工程历史和统计数据都不会被动到",
+            action: "还原",
+            confirm: "全部还原",
+        },
+    },
+    data: {
+        cache: {
+            measuring: "正在统计…",
+            unavailable: "无法读取",
+            clear: "清理",
+            clearAll: "全部清理",
+            refresh: "重新统计",
+            freed: "已释放 {size}",
+            buckets: {
+                electronBuilder: {
+                    label: "游戏构建工具",
+                    description: "构建游戏时下载的 Electron 与安装器工具",
+                },
+                buildDependencies: {
+                    label: "插件构建文件",
+                    description: "插件为了打进游戏而下载的压缩包",
+                },
+                browser: {
+                    label: "界面缓存",
+                    description: "界面为了下次启动更快而留下的东西",
+                },
+                pluginIcons: {
+                    label: "插件商店缩略图",
+                    description: "下次打开商店会重新下载",
+                },
+                psdImports: {
+                    label: "PSD 导入残留",
+                    description: "导入 PSD 时写下的分层图片",
+                },
+                logs: {
+                    label: "日志",
+                    description: "导出诊断文件时用的就是这些",
+                },
+            },
+        },
+    },
+    transfer: {
+        export: "导出…",
+        import: "导入…",
+        apply: "应用",
+        exportHint: "把设置写进一个文件。最近项目、统计数据和工作区布局不会包含在内",
+        includeWallpaper: "包含工作区背景图",
+        includeIdentity: "包含记在提交版本上的姓名和邮箱",
+        exported: "已保存到 {path}",
+        imported: "已应用 {count} 项设置",
+        exportFailed: "设置没能保存",
+        importFailed: "这个文件读不出来",
+        planSummary: "{change} 项会变化，{same} 项本来就一样，{skipped} 项跳过",
+        skippedUnknown: "{key}：这个版本的 Studio 没有这项设置",
+        skippedInvalid: "{key}：{reason}",
+    },
+    network: {
+        test: "测试",
+        probing: "正在检查…",
+        probeAnswered: "该地址返回了 {status}",
+        probeNoAnswer: "没有响应：{error}",
+        probeFailed: "检查没能执行",
+        rewrites: {
+            hint: "有些下载的地址来自目录文件而不是上面的设置，例如插件的安装包。这里的规则会替换掉那类地址的开头部分。",
+            empty: "没有替换规则，下载会使用它们自带的地址",
+            add: "添加规则",
+            remove: "删除这条规则",
+            enabled: "启用这条规则",
+            fromPlaceholder: "https://github.com/",
+            toPlaceholder: "https://your-mirror.example/gh/",
         },
     },
 } satisfies LocaleNamespace<"settings">;

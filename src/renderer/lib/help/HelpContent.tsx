@@ -34,6 +34,18 @@ function defaultShortcut(catalogId: string): string | undefined {
     return getKeybindingCatalogEntry(catalogId)?.key;
 }
 
+/**
+ * How a link inside a topic behaves on hover: the pointer cursor and an underline.
+ *
+ * Studio's controls are `cursor-default` throughout (a tool, not a web page), and these are the
+ * exception on purpose - they are the only things in a topic that go somewhere, they sit inline in
+ * running text where nothing else marks them as targets, and colour alone was doing all the work.
+ * A disabled one (no navigation handler) keeps neither, so it cannot promise a jump it will not make.
+ */
+const HELP_LINK_CLASS =
+    "cursor-pointer text-primary underline-offset-2 transition-opacity hover:underline hover:opacity-80 "
+    + "disabled:cursor-default disabled:text-fg-muted disabled:no-underline disabled:opacity-100";
+
 export function HelpContent({ topic, resolveShortcut = defaultShortcut, onOpenTopic, className }: HelpContentProps) {
     const { t } = useTranslation();
     const blocks = useMemo(() => parseHelpBody(t(helpBodyKey(topic.id))), [t, topic.id]);
@@ -92,7 +104,7 @@ export function HelpContent({ topic, resolveShortcut = defaultShortcut, onOpenTo
                             type="button"
                             disabled={!onOpenTopic}
                             onClick={() => onOpenTopic?.(entry.id)}
-                            className="cursor-default text-primary transition-opacity hover:opacity-80 disabled:cursor-default disabled:text-fg-muted disabled:opacity-100"
+                            className={HELP_LINK_CLASS}
                         >
                             {t(helpTitleKey(entry.id))}
                         </button>
@@ -101,7 +113,7 @@ export function HelpContent({ topic, resolveShortcut = defaultShortcut, onOpenTo
                         <button
                             type="button"
                             onClick={() => void getInterface().app.openExternal(topic.learnMore!)}
-                            className="flex cursor-default items-center gap-1 text-primary transition-opacity hover:opacity-80"
+                            className={cn("flex items-center gap-1", HELP_LINK_CLASS)}
                         >
                             {t("help.ui.learnMore")}
                             <ExternalLink className="h-3 w-3" />

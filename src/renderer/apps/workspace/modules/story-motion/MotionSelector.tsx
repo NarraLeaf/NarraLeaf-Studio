@@ -34,7 +34,7 @@ const PREVIEW_BOX = { width: 300, height: 176 };
 const PREVIEW_GAP = 12;
 
 const ICON_BUTTON_CLASS = controlButtonClass();
-const TOOL_BUTTON_CLASS = "inline-flex h-8 items-center gap-1.5 rounded-md border border-edge bg-fill-subtle px-2 text-xs text-fg hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40";
+const TOOL_BUTTON_CLASS = "inline-flex h-9 cursor-default items-center gap-1.5 rounded-md border border-edge bg-fill-subtle px-2 text-xs text-fg hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40";
 
 /** Which half of the picker is showing: the project's own motions, or the preset library. */
 type MotionSelectorTab = "project" | "presets";

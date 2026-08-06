@@ -23,6 +23,8 @@ import { ProtocolManager } from "./managers/protocolManager";
 import { StorageManager } from "./managers/storageManager";
 import { WindowManager } from "./managers/windowManager";
 import { GlobalStateManager } from "./managers/storage/globalState";
+import { DOWNLOAD_REWRITES_KEY, setDownloadRewriteSource } from "./managers/downloadRewrites";
+import { sweepPsdTempDirectories } from "./managers/storage/cacheInventory";
 import { PluginPermissionManager } from "./managers/pluginPermissionManager";
 import { PluginManager } from "./managers/pluginManager";
 import { PluginIconCache } from "./managers/pluginIconCache";
@@ -94,6 +96,15 @@ export class BaseApp {
         this.setupLogging();
 
         this.globalState = new GlobalStateManager(this.getUserDataDir());
+        // Before any window exists, so nothing has read a retired value and there is nothing to
+        // broadcast to. Silent on a profile that never carried them.
+        const sweptKeys = this.globalState.sweepRetiredKeys();
+        if (sweptKeys.length > 0) {
+            this.logger.info(`[App] Removed ${sweptKeys.length} retired setting(s): ${sweptKeys.join(", ")}`);
+        }
+        // Read through on every download rather than snapshotted: a mirror typed in the Settings
+        // window has to apply to the next fetch, not the next launch.
+        setDownloadRewriteSource(() => this.globalState.get(DOWNLOAD_REWRITES_KEY));
         this.pluginPermissionManager = new PluginPermissionManager(this.getUserDataDir());
         this.pluginManager = new PluginManager(this.getUserDataDir(), this.pluginPermissionManager, {
             builtInPluginsDir: this.getBuiltInPluginsDir(),
@@ -106,6 +117,18 @@ export class BaseApp {
         this.storageManager = new StorageManager(this);
 
         this.setupCrashObservability();
+
+        // Every PSD import used to leave a directory of full-canvas PNGs in the system temp folder
+        // forever. The handler now clears its own as it goes; this collects what earlier versions
+        // left, and anything a killed session abandoned. Best-effort by design - a temp directory
+        // that will not delete is not a reason to fail startup.
+        void sweepPsdTempDirectories()
+            .then(removed => {
+                if (removed > 0) {
+                    this.logger.info(`[App] Removed ${removed} leftover PSD import folder(s)`);
+                }
+            })
+            .catch(() => undefined);
 
         void this.prepare().catch((error) => this.failBootstrap(error));
     }
@@ -132,6 +155,44 @@ export class BaseApp {
             }
         }
 
+        this.runGlobalStateSideEffects(key, value);
+    }
+
+    /**
+     * Remove a stored value and tell every window it is gone.
+     *
+     * The broadcast carries `undefined`, which every renderer-side reader already has to handle:
+     * it is what `getGlobalState` returns for a key that was never written. That is the whole
+     * point of deleting rather than writing a default - `ui.background*` and
+     * `editor.slashAtAlias` only reach their real fallback when nothing is stored.
+     *
+     * The per-key side effects run afterwards exactly as they do for a write, so resetting the
+     * theme or the zoom applies rather than waiting for a restart.
+     */
+    public deleteGlobalStateAndBroadcast<K extends GlobalStateKeys>(key: K): void {
+        this.globalState.delete(key);
+
+        for (const window of this.windowManager.getWindows()) {
+            if (window.isClosed()) {
+                continue;
+            }
+            try {
+                window.sendIpcEvent(IPCEventType.appGlobalStateChanged, { key, value: undefined });
+            } catch (error) {
+                this.logger.debug(`Failed to broadcast global state delete to a window: ${String(error)}`);
+            }
+        }
+
+        this.runGlobalStateSideEffects(key, this.globalState.get(key));
+    }
+
+    /**
+     * What the main process itself has to do when a key changes, for the keys it owns.
+     *
+     * Extracted so a delete runs them with the resolved default in hand; before there was a
+     * delete channel, a write was the only way a value could ever change.
+     */
+    private runGlobalStateSideEffects<K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>): void {
         // The language also drives the native application menu, which is owned by
         // the main process and must be rebuilt here.
         if (key === "app.language") {

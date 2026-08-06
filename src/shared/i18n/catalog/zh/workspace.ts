@@ -260,6 +260,10 @@ export const workspace = {
             blueprint: "蓝图",
             project: "工程",
         },
+        menu: {
+            undoNamed: "撤销{step}",
+            redoNamed: "重做{step}",
+        },
         entry: {
             edit: "编辑",
             storyEdit: "故事编辑",
@@ -722,6 +726,8 @@ export const workspace = {
                 cheatSheet: "显示快捷键速查",
                 contextHelp: "当前位置的帮助",
                 reopenClosedTab: "重新打开关闭的标签",
+                undo: "撤销",
+                redo: "重做",
                 quickSwitchNext: "切换到下一个编辑器标签",
                 quickSwitchPrevious: "切换到上一个编辑器标签",
                 uiEditor: {

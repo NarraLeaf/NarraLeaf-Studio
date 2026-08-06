@@ -17,6 +17,8 @@ export {
 } from "./helpController";
 export { parseHelpBody } from "./helpBody";
 export type { HelpBlock } from "./helpBody";
+export { currentTopic, popTopic, previousTopic, pushTopic, startTrail } from "./helpTrail";
+export type { HelpTrail } from "./helpTrail";
 export {
     filterHelpTopics,
     getHelpTopic,
