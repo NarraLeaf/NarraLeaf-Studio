@@ -331,12 +331,6 @@ export interface RendererPreloadedInterface {
             filePath?: string;
             content?: string;
         }>>;
-        /**
-         * Store a picture in the background cache and return the name it took. The write half of
-         * `readBackgroundImage`; the host derives the name from the bytes, so this is not a way to
-         * write an arbitrary file.
-         */
-        writeBackgroundImage(data: Uint8Array, extension: string): Promise<RequestStatus<{ file: string }>>;
     };
 
     devMode: {
