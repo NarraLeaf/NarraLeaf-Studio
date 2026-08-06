@@ -1,3 +1,4 @@
+import { GAME_BUILD_FORMATS_BY_PLATFORM, type GameBuildPlatform } from "@shared/types/gameBuild";
 import { describe, expect, it } from "vitest";
 import { AssetType } from "../../workspace/services/assets/assetTypes";
 import type { LintAssetEntry, LintContext } from "../context";
@@ -115,6 +116,13 @@ describe("portability/case-collision", () => {
 describe("portability/media-format", () => {
     const oggAssets = [asset("bgm", "theme.ogg", { type: AssetType.Audio, ext: "ogg" })];
 
+    /**
+     * Taken from the shared table for the same reason the rule takes it from there: "every platform"
+     * has to keep meaning every platform after the union grows, or the exhaustiveness these tests
+     * claim to check quietly becomes a check of six hard-coded names.
+     */
+    const EVERY_PLATFORM = Object.keys(GAME_BUILD_FORMATS_BY_PLATFORM) as GameBuildPlatform[];
+
     it("says nothing when the project has never declared a build target", async () => {
         const ctx = createTestLintContext({ assets: oggAssets, buildPlatforms: [] });
 
@@ -140,39 +148,86 @@ describe("portability/media-format", () => {
 
     it("lists only the selected platforms that cannot play it", async () => {
         const ctx = createTestLintContext({
-            assets: [asset("clip", "intro.webm", { type: AssetType.Video, ext: "webm" })],
+            assets: [asset("bgm", "theme.ogg", { type: AssetType.Audio, ext: "ogg" })],
             buildPlatforms: ["windows", "web", "ios", "android"],
         });
 
         const findings = await runRule("portability/media-format", ctx);
 
         expect(findings).toHaveLength(1);
-        expect(findings[0].messageParams).toEqual({ asset: "intro.webm", platform: "web, ios" });
+        expect(findings[0].messageParams).toEqual({ asset: "theme.ogg", platform: "web, ios" });
     });
 
-    it("covers every Ogg and WebM spelling, audio-only ones included", async () => {
+    it("covers every Ogg audio spelling, on the Safari-engine targets and nowhere else", async () => {
+        const oggAudio = [
+            asset("a1", "theme.ogg", { type: AssetType.Audio, ext: "ogg" }),
+            asset("a2", "voice.oga", { type: AssetType.Audio, ext: "oga" }),
+            asset("a3", "sting.opus", { type: AssetType.Audio, ext: "opus" }),
+        ];
+
+        const safari = await runRule(
+            "portability/media-format",
+            createTestLintContext({ assets: oggAudio, buildPlatforms: ["web", "ios"] }),
+        );
+
+        expect(safari.map(entry => entry.messageParams)).toEqual([
+            { asset: "theme.ogg", platform: "web, ios" },
+            { asset: "voice.oga", platform: "web, ios" },
+            { asset: "sting.opus", platform: "web, ios" },
+        ]);
+
+        // Every Chromium target demuxes Ogg; only the 18.4 container gap is being reported.
+        const chromium = await runRule(
+            "portability/media-format",
+            createTestLintContext({ assets: oggAudio, buildPlatforms: ["windows", "macos", "linux", "android"] }),
+        );
+
+        expect(chromium).toEqual([]);
+    });
+
+    it("flags Ogg video on every build target, Chromium ones included", async () => {
+        const reported: Record<string, string | undefined> = {};
+        for (const platform of EVERY_PLATFORM) {
+            const findings = await runRule(
+                "portability/media-format",
+                createTestLintContext({
+                    assets: [asset("v1", "cut.ogv", { type: AssetType.Video, ext: "ogv" })],
+                    buildPlatforms: [platform],
+                }),
+            );
+            reported[platform] = findings[0]?.messageParams?.platform as string | undefined;
+        }
+
+        expect(reported).toEqual(Object.fromEntries(EVERY_PLATFORM.map(platform => [platform, platform])));
+    });
+
+    it("treats .ogm and .ogx as the same container as .ogv", async () => {
         const ctx = createTestLintContext({
             assets: [
-                asset("a1", "voice.oga", { type: AssetType.Audio, ext: "oga" }),
-                asset("a2", "sting.opus", { type: AssetType.Audio, ext: "opus" }),
-                asset("a3", "loop.weba", { type: AssetType.Audio, ext: "weba" }),
-                asset("v1", "cut.ogv", { type: AssetType.Video, ext: "ogv" }),
                 asset("v2", "cut2.ogm", { type: AssetType.Video, ext: "ogm" }),
                 asset("v3", "cut3.ogx", { type: AssetType.Video, ext: "ogx" }),
             ],
-            buildPlatforms: ["web", "ios"],
+            buildPlatforms: EVERY_PLATFORM,
         });
 
         const findings = await runRule("portability/media-format", ctx);
 
         expect(findings.map(entry => entry.messageParams)).toEqual([
-            { asset: "voice.oga", platform: "web, ios" },
-            { asset: "sting.opus", platform: "web, ios" },
-            { asset: "loop.weba", platform: "web, ios" },
-            { asset: "cut.ogv", platform: "web, ios" },
-            { asset: "cut2.ogm", platform: "web, ios" },
-            { asset: "cut3.ogx", platform: "web, ios" },
+            { asset: "cut2.ogm", platform: EVERY_PLATFORM.join(", ") },
+            { asset: "cut3.ogx", platform: EVERY_PLATFORM.join(", ") },
         ]);
+    });
+
+    it("says nothing about WebM: Safari 17.4 plays it everywhere, and 17.4 is the floor", async () => {
+        const ctx = createTestLintContext({
+            assets: [
+                asset("clip", "intro.webm", { type: AssetType.Video, ext: "webm" }),
+                asset("loop", "loop.weba", { type: AssetType.Audio, ext: "weba" }),
+            ],
+            buildPlatforms: EVERY_PLATFORM,
+        });
+
+        expect(await runRule("portability/media-format", ctx)).toEqual([]);
     });
 
     it("stays silent for a container every target plays", async () => {
