@@ -20,6 +20,7 @@ import { DirEntry, findProjectConfigFileName } from "@shared/utils/nlproj";
 import { backgroundCacheDirectory, cacheBackgroundImage, pruneBackgroundCache } from "../../storage/backgroundCache";
 import { clearCacheBuckets, measureCacheInventory } from "../../storage/cacheInventory";
 import { isProtectedStateKey } from "@shared/constants/settingsScopes";
+import { getMainLocale } from "../../../i18n";
 
 export class AppPlatformInfoHandler extends IPCHandler<IPCEventType.getPlatform> {
     readonly name = IPCEventType.getPlatform;
@@ -407,7 +408,10 @@ export class AppExportDiagnosticsHandler extends IPCHandler<IPCEventType.appExpo
                 osRelease: os.release(),
                 arch: process.arch,
                 packaged: window.app.isPackaged(),
-                locale: String(window.app.globalState.get("app.language") ?? "unknown"),
+                // The locale in force, not the raw key: with none stored the key is absent, and a
+                // report that said "unknown" about a Studio the author is plainly reading in
+                // Chinese would answer the wrong question.
+                locale: getMainLocale(window.app),
                 userDataDir: window.app.getUserDataDir(),
                 logsDir,
                 generatedAt: new Date().toISOString(),
