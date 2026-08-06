@@ -160,6 +160,11 @@ package-lock.json
 # script.
 /resources/codesign/
 
+# Vendored FFmpeg tools (fetched at Studio build time by
+# project/build/prepare-ffmpeg.js). Same reasoning as above, with more weight
+# behind it: the staged pair is roughly 217 MB per platform.
+/resources/ffmpeg/
+
 # Generated plugin API declarations (regenerate with: yarn build:plugin-types)
 packages/plugin-types/dist/
 packages/plugin-types/.gen/

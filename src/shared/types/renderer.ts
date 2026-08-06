@@ -2,6 +2,7 @@ import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/u
 import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
 import { BlueprintPersistenceProjectRef, RequestStatus, WorkspaceCloseStage, WorkspaceFreezeKind } from "./ipcEvents";
+import type { MediaProbeOutcome } from "./mediaProbe";
 import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "./menu";
 import { FsRequestResult, PlatformInfo } from "./os";
@@ -170,6 +171,13 @@ export interface RendererPreloadedInterface {
     openPsd(): Promise<RequestStatus<{ filePath: string | null; document: PsdDocument | null }>>;
     /** Bake the chosen layers to full-canvas PNGs. */
     bakePsd(request: PsdBakeRequest): Promise<RequestStatus<{ layers: PsdBakedLayer[] }>>;
+    /**
+     * What is inside a media file, and whether the engine can play it as it stands.
+     *
+     * Read-only: it runs ffprobe and returns a verdict. Converting anything is a separate,
+     * explicit step.
+     */
+    probeMedia(path: string): Promise<RequestStatus<{ outcome: MediaProbeOutcome }>>;
     workspace: {
         launch(props: WindowProps[WindowAppType.Workspace], closeCurrentWindow?: boolean): Promise<RequestStatus<void>>;
         /**
