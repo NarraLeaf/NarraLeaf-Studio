@@ -22,6 +22,7 @@ import { type GameRuntimeArtifactCompileResult } from "./compiler/gameRuntimeArt
 import { compileGameRuntimeArtifactInWorker } from "./compiler/compileGameRuntimeArtifactInWorker";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
 import { selectRuntimePluginsForPack, type RuntimePluginPackSelection } from "./selectRuntimePlugins";
+import { currentDownloadRewrites } from "../downloadRewrites";
 
 type PreviewSession = {
     id: string;
@@ -300,6 +301,7 @@ export class PreviewManager {
                 // `dep:` sidecar includes resolve through the build dependency
                 // cache, so the compile needs its root even in preview.
                 hostUserDataDir: this.app.getUserDataDir(),
+                downloadRewrites: currentDownloadRewrites(),
             }, {
                 // Tracked so `cancelLaunches` can kill the compile mid-flight; without this a stop
                 // could only ever be honoured once the compile had run to completion.

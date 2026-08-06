@@ -134,7 +134,7 @@ async function packageDesktopTargets(config: GameBuildWorkerConfig, log: GameBui
         throw new Error("Desktop packaging requires a compiled app dir");
     }
     if (config.targets.some(target => target.platform === "windows")) {
-        await ensureWinCodeSignCache(log);
+        await ensureWinCodeSignCache(log, config.electronBuilderBinariesMirror);
     }
     const artifacts: string[] = [];
     // Both wrappers below set process-wide environment, which electron-builder
