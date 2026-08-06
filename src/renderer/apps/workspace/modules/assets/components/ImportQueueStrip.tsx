@@ -6,7 +6,8 @@ import type { ImportQueueState } from "../state/useImportQueue";
 
 /**
  * The import strip: how far a multi-file import has got while it runs, and which files it could not
- * read once it stops.
+ * read once it stops — each with the reason it was turned away, since a per-file refusal is reported
+ * nowhere else (only a whole bucket falling over raises an alert).
  *
  * It is a row inside the panel, not a floating layer — a drop of twenty files is part of working in
  * the panel, and an overlay would cover the tree the author is dropping onto. It shows nothing at
@@ -49,14 +50,29 @@ export function ImportQueueStrip({
                 <span className="text-xs text-danger">
                     {tn("assets.import.failedCount", state.failures.length)}
                 </span>
-                <ul className="mt-1 max-h-24 overflow-y-auto space-y-0.5">
+                {/*
+                  * Two lines per failure, name over reason, with the gap between entries carrying
+                  * the grouping. The reason used to live only in `title=`, which for a refusal the
+                  * author can act on ("convert this to .mp4 first") is the same as not saying it:
+                  * the list scrolls, so hovering is not a reading strategy. `title=` is kept for the
+                  * full path, which is the part that does not fit.
+                  */}
+                <ul className="mt-1 max-h-32 overflow-y-auto space-y-1">
                     {state.failures.map(failure => (
                         <li
                             key={failure.path}
-                            className="text-xs text-fg-subtle truncate"
                             title={failure.error ? `${failure.path}\n${failure.error}` : failure.path}
                         >
-                            {basename(failure.path)}
+                            <div className="text-xs text-fg-subtle truncate">
+                                {basename(failure.path)}
+                            </div>
+                            {failure.error ? (
+                                // Wraps rather than truncating — a reason cut off at the panel edge
+                                // loses exactly the instruction at its end.
+                                <div className="text-2xs text-fg-muted break-words">
+                                    {failure.error}
+                                </div>
+                            ) : null}
                         </li>
                     ))}
                 </ul>
