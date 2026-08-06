@@ -5,6 +5,7 @@ import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
 import { Button } from "./Button";
 import { InspectOnlyButton } from "./InspectOnlyButton";
+import { CONTROL_SIZE_CLASS, type ControlSize } from "./controlSize";
 import { cn } from "../../utils/cn";
 
 export interface SelectOption {
@@ -26,7 +27,7 @@ export interface SelectProps {
     onChange?: (value: string | number) => void;
     placeholder?: string;
     disabled?: boolean;
-    size?: "sm" | "md" | "lg";
+    size?: ControlSize;
     variant?: "default" | "error" | "success";
     fullWidth?: boolean;
     className?: string;
@@ -74,11 +75,7 @@ export interface SelectProps {
     readOnly?: boolean;
 }
 
-const sizeStyles = {
-    sm: "px-2 py-1 text-xs",
-    md: "px-3 py-2 text-sm",
-    lg: "px-4 py-2 text-base",
-};
+const sizeStyles = CONTROL_SIZE_CLASS;
 
 const variantStyles = {
     default: "border-edge-strong hover:border-edge-strong focus:border-primary",
@@ -464,7 +461,11 @@ export function Select({
     ) : null;
 
     const triggerClass = cn(
-        "min-w-0 justify-between bg-fill-subtle hover:bg-fill",
+        // `border` is load-bearing and was missing: `variantStyles` only ever set a border
+        // *colour*, and preflight zeroes every border width, so the trigger drew no border at
+        // all - leaving it a flat fill 2px shorter than the `Input` it sits beside, with no
+        // outline to read as a field. Every `border-*` line below has been dead until now.
+        "min-w-0 justify-between border bg-fill-subtle hover:bg-fill",
         variantStyles[variant],
         sizeStyles[size],
         isOpen && "border-primary ring-2 ring-primary/20",
@@ -646,9 +647,14 @@ export function Combobox({
     return (
         <div ref={selectRef} className={cn("relative", fullWidth && "w-full min-w-0", className)}>
             <div className={cn(
-                "relative bg-fill-subtle border rounded-md",
+                // The box owns the size; the input inside owns none of it. Applying the size
+                // classes to both stacked their paddings, so a `md` combobox stood 54px tall
+                // against a 36px select - the widest miss of the whole scale.
+                "relative flex items-center bg-fill-subtle border rounded-md",
                 variantStyles[variant],
                 sizeStyles[size],
+                // Room for the chevron parked in the right inset.
+                "pr-8",
                 isOpen && "border-primary ring-1 ring-primary/30 shadow-lg shadow-primary/10",
             )}>
                 <input
@@ -660,13 +666,12 @@ export function Combobox({
                     placeholder={resolvedPlaceholder}
                     disabled={disabled}
                     className={cn(
-                        "w-full bg-transparent text-fg placeholder-fg-subtle",
+                        "w-full min-w-0 bg-transparent p-0 text-inherit placeholder-fg-subtle",
                         "focus:outline-none",
-                        sizeStyles[size],
                         displayValue ? "text-fg" : "text-fg-muted",
                     )}
                 />
-                <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                <div className="pointer-events-none absolute inset-y-0 right-0 pr-3 flex items-center">
                     <ChevronDown
                         className={cn(
                             "w-4 h-4 text-fg-muted transition-transform duration-150",

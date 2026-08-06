@@ -852,7 +852,7 @@ export function ColorPickerTrigger({
                     <button
                         key={mode}
                         type="button"
-                        className={`flex-1 rounded-lg border px-2 py-1 text-xs font-semibold transition ${
+                        className={`flex-1 rounded-md border px-2 py-1 text-xs font-semibold transition ${
                             activeMode === mode
                                 ? "border-primary text-fg"
                                 : "border-edge text-fg-muted hover:border-edge-strong"

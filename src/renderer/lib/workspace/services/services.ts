@@ -918,12 +918,13 @@ interface ICharacterService extends IService {
     listCharacter(): Character[];
     createCharacter(name: string, kind?: CharacterAppearanceKind): Character;
     renameCharacter(id: string, name: string): boolean;
-    deleteCharacter(id: string): boolean;
+    /** Asynchronous because the baked avatar has to be read before it is deleted, for undo. */
+    deleteCharacter(id: string): Promise<boolean>;
     listGroups(): CharacterGroup[];
     getGroup(id: string): CharacterGroup | undefined;
     createGroup(name: string): CharacterGroup;
     renameGroup(id: string, name: string): boolean;
-    deleteGroup(id: string): boolean;
+    deleteGroup(id: string): Promise<boolean>;
     assignCharacterToGroup(characterId: string, groupId?: string): boolean;
     listCharactersByGroup(groupId?: string): Character[];
     isDirty(): boolean;

@@ -245,7 +245,10 @@ export function EnhancedInput({
         ? "[appearance:textfield] [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
         : "";
     const rootClassName = cn(
-        "relative flex min-w-0 max-w-full items-center bg-surface-raised border border-edge rounded-md text-sm h-9 min-h-[34px] overflow-hidden",
+        // `h-9` + `min-h-9` is the shared `md` control height, held against a flex parent that
+        // would otherwise squeeze it. It used to read `min-h-[34px]`, a number off the scale that
+        // callers then copied into their own class lists.
+        "relative flex min-w-0 max-w-full items-center bg-surface-raised border border-edge rounded-md text-sm h-9 min-h-9 overflow-hidden",
         "focus-within:border-primary/70 transition focus-within:ring-1 focus-within:ring-primary/30",
         className,
     );

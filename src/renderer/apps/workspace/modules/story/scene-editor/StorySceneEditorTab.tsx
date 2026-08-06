@@ -1829,7 +1829,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         onClick={togglePreview}
                         title={previewOpen ? t("story.preview.closePreview") : t("story.preview.openPreview")}
                         aria-pressed={previewOpen}
-                        className={["flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors", previewOpen ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
+                        className={["flex min-h-7 cursor-default items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors", previewOpen ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
                     >
                         <MonitorPlay className="h-4 w-4" />
                         {t("story.preview.label")}

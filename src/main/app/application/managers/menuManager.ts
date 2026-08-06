@@ -535,15 +535,29 @@ export class MenuManager {
             copy: "CmdOrCtrl+C",
             paste: "CmdOrCtrl+V",
             delete: undefined,
+            undo: "CmdOrCtrl+Z",
+            redo: "Shift+CmdOrCtrl+Z",
         };
 
-        const standardItem = (role: EditMenuRole, electronRole: MenuItemConstructorOptions["role"], label: string): MenuItemConstructorOptions => {
+        /**
+         * `namesItsStep` items take the renderer's label instead of the fixed one.
+         *
+         * Only Undo and Redo want this: "Undo delete character Hiyori" is the whole reason the item
+         * is worth wiring, whereas Cut/Copy/Paste are named after the command and must not inherit
+         * whatever a surface happens to call its own copy action.
+         */
+        const standardItem = (
+            role: EditMenuRole,
+            electronRole: MenuItemConstructorOptions["role"],
+            label: string,
+            namesItsStep = false,
+        ): MenuItemConstructorOptions => {
             const override = roleOverrides.get(role);
             if (!override) {
                 return { role: electronRole, label };
             }
             return {
-                label,
+                label: namesItsStep ? override.label : label,
                 accelerator: EDIT_ROLE_ACCELERATORS[role],
                 // Not override.enabled: this item is now also the window's only Cmd+C/X/V
                 // binding, and text editing must keep working when the surface action happens
@@ -558,8 +572,13 @@ export class MenuManager {
             role: "editMenu",
             label: t("menu.edit.title"),
             submenu: [
-                { role: "undo", label: t("menu.edit.undo") },
-                { role: "redo", label: t("menu.edit.redo") },
+                // The DOM-level roles are the fallback, not the behaviour: they undo inside a text
+                // field and do nothing at all in the story, interface, blueprint and motion
+                // editors. A focused workspace overrides them with its own history (see
+                // `WorkspaceHistoryMenu`), and the renderer still hands a keystroke back to the
+                // role when the caret is in a text field.
+                standardItem("undo", "undo", t("menu.edit.undo"), true),
+                standardItem("redo", "redo", t("menu.edit.redo"), true),
                 { type: "separator" },
                 standardItem("cut", "cut", t("menu.edit.cut")),
                 standardItem("copy", "copy", t("menu.edit.copy")),

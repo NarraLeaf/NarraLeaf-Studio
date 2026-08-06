@@ -63,7 +63,7 @@ export type SyncedMenuSlot = Exclude<NativeMenuSlot, "none">;
  * provides an action tagged with one of these, the native Edit menu routes that command to the
  * action instead of the built-in webContents role - one Copy in the menu, not two.
  */
-export type EditMenuRole = "copy" | "cut" | "paste" | "delete";
+export type EditMenuRole = "copy" | "cut" | "paste" | "delete" | "undo" | "redo";
 
 /**
  * Serializable mirror of one renderer action-registry menu item. Only what a native menu needs:

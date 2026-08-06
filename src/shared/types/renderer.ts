@@ -36,6 +36,7 @@ import type {
     RuntimePluginDescriptor,
     WorkspacePluginDescriptor,
 } from "./plugins";
+import type { CacheClearResult, CacheInventoryReport } from "./cacheInventory";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
 import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult } from "./uiTemplateRegistry";
@@ -276,7 +277,18 @@ export interface RendererPreloadedInterface {
             getGlobalState<K extends GlobalStateKeys>(key: K): Promise<RequestStatus<{ value: GlobalStateValue<K> }>>;
             setGlobalState<K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>): Promise<RequestStatus<void>>;
             getAllGlobalState(): Promise<RequestStatus<{ settings: Record<string, any> }>>;
-            /** Subscribe to global-state changes broadcast by the main process. */
+            /**
+             * Remove stored values so the next read resolves the default. Not the same as writing
+             * the default: several keys resolve a fallback only when nothing is stored at all.
+             * Keys that are not preferences (the project history, per-project statistics) are
+             * refused by the host and come back under `refused`.
+             */
+            deleteGlobalState(keys: string[]): Promise<RequestStatus<{ deleted: string[]; refused: string[] }>>;
+            /**
+             * Subscribe to global-state changes broadcast by the main process. A delete arrives
+             * as a change whose `value` is undefined - resolve it through the setting's default
+             * rather than storing it.
+             */
             onGlobalStateChanged(handler: (change: { key: GlobalStateKeys; value: any }) => void): AppEventToken;
         };
         addRecentProject(name: string, path: string): Promise<RequestStatus<void>>;
@@ -294,6 +306,30 @@ export interface RendererPreloadedInterface {
             canceled: boolean;
             filePath?: string;
             byteLength?: number;
+        }>>;
+        /**
+         * Whether a download mirror answers. In the host because the renderer never opens a
+         * network connection of its own, a URL the user just typed included.
+         */
+        probeDownloadSource(url: string): Promise<RequestStatus<{
+            reachable: boolean;
+            status?: number;
+            error?: string;
+        }>>;
+        /** Sizes of the caches Studio can throw away. Measured on demand, so this is not instant. */
+        getCacheInventory(): Promise<RequestStatus<CacheInventoryReport>>;
+        /** Empty the named buckets; ids this build does not know come back under `failed`. */
+        clearCaches(ids: string[]): Promise<RequestStatus<CacheClearResult>>;
+        /** Write a settings document to a file the user picks. */
+        exportSettings(defaultFileName: string, content: string): Promise<RequestStatus<{
+            canceled: boolean;
+            filePath?: string;
+        }>>;
+        /** Read a settings document the user picks; parsing happens in the renderer. */
+        importSettings(): Promise<RequestStatus<{
+            canceled: boolean;
+            filePath?: string;
+            content?: string;
         }>>;
     };
 

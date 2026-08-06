@@ -417,7 +417,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                         type="button"
                         variant="ghost"
                         size="sm"
-                        className="h-7 border border-edge px-2 py-0 text-2xs"
+                        className="border border-edge text-2xs"
                         onClick={handleClear}
                     >
                         <Trash2 className="h-3.5 w-3.5" />

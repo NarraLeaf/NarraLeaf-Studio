@@ -248,6 +248,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             setGlobalState: <K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>) => ipcClient.invoke(IPCEventType.appGlobalStateSet, { key, value }) as Promise<RequestStatus<void>>,
             getAllGlobalState: () =>
                 ipcClient.invoke(IPCEventType.appGlobalStateGetAll, {}) as Promise<RequestStatus<{ settings: Record<string, any> }>>,
+            deleteGlobalState: (keys: string[]) =>
+                ipcClient.invoke(IPCEventType.appGlobalStateDelete, { keys }) as Promise<RequestStatus<{ deleted: string[]; refused: string[] }>>,
             onGlobalStateChanged: (handler: (change: { key: GlobalStateKeys; value: any }) => void) =>
                 ipcClient.onMessage(IPCEventType.appGlobalStateChanged, handler),
         },
@@ -261,6 +263,16 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.appSystemPath, { name }) as Promise<RequestStatus<{ path: string }>>,
         exportDiagnostics: (defaultFileName: string, report: string) =>
             ipcClient.invoke(IPCEventType.appExportDiagnostics, { defaultFileName, report }),
+        probeDownloadSource: (url: string) =>
+            ipcClient.invoke(IPCEventType.appProbeDownloadSource, { url }),
+        getCacheInventory: () =>
+            ipcClient.invoke(IPCEventType.appCacheInventory, {}),
+        clearCaches: (ids: string[]) =>
+            ipcClient.invoke(IPCEventType.appCacheClear, { ids }),
+        exportSettings: (defaultFileName: string, content: string) =>
+            ipcClient.invoke(IPCEventType.appExportSettings, { defaultFileName, content }),
+        importSettings: () =>
+            ipcClient.invoke(IPCEventType.appImportSettings, {}),
     },
 
     devMode: {

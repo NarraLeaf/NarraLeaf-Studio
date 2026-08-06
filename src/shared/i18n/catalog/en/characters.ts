@@ -23,9 +23,17 @@ export const characters = {
         namePlaceholder: "Enter character name",
         groupNamePlaceholder: "Enter group name",
         deleteCharacterConfirm: "Delete character \"{name}\"?",
-        deleteCharacterDetail: "This action cannot be undone.",
+        // Was "This action cannot be undone." until deletion became undoable. What is worth
+        // weighing now is the consequence, not the finality: lines naming this character keep the
+        // reference and stop resolving.
+        deleteCharacterDetail: "Lines that name this character will stop resolving until it is back.",
         deleteGroupConfirm: "Delete group \"{name}\"?",
         deleteGroupDetail: "Characters in this group will be unassigned.",
+    },
+    // Names for the undo steps these deletions leave behind ("Undo delete character Hiyori").
+    history: {
+        deleteCharacter: "delete character {name}",
+        deleteGroup: "delete group {name}",
     },
     // The one dialog "New character" opens. Everything a character is created with is asked here,
     // including the accent — it is what every surface identifies them by from their first line.
@@ -153,6 +161,7 @@ export const characters = {
         layers: "Layers",
         removeLayer: "Remove layer",
         constantLayer: "Always drawn",
+        layerAxis: "Layer varies with this axis",
         hasImage: "image set",
         noImage: "no image",
         drawsNothing: "draws nothing",

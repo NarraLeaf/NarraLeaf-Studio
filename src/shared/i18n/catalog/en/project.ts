@@ -1,42 +1,42 @@
-/** `project` - the Project settings sidebar: overview hub plus slide-in sub-pages (details, assets, dependencies, settings). */
+/** `project` - the Project settings sidebar: overview hub plus five slide-in sub-pages. */
 export const project = {
+    // A row names what is inside it. These were sentences about what each page was for, which read
+    // as claims rather than contents and did not survive the merge: a page holding three parts
+    // cannot be summed up in a claim, but it can list what it holds.
     nav: {
-        details: {
-            title: "Details",
-            description: "Name, identifier, and metadata",
+        app: {
+            title: "App",
+            description: "Name, version, icons, and plugins",
         },
         game: {
             title: "Game",
-            description: "How the finished game behaves for players",
+            description: "Saving, player defaults, and audio tracks",
         },
-        preferences: {
-            title: "Preferences",
-            description: "What a new player's settings start at",
-        },
-        audio: {
-            title: "Audio",
-            description: "The mixer: which bus feeds which, and how loud each one is",
-        },
-        assets: {
-            title: "Assets",
-            description: "Application icons for each platform",
-        },
-        dependencies: {
-            title: "Dependencies",
-            description: "Plugins this project relies on",
+        project: {
+            title: "Project",
+            description: "Project check rules and what stops a build",
         },
         runtimes: {
             title: "Runtimes",
-            description: "Drawing runtimes for Live2D and Spine characters",
-        },
-        linting: {
-            title: "Linting",
-            description: "Which problems the project check reports",
+            description: "Live2D and Spine drawing runtimes",
         },
         settings: {
             title: "Settings",
-            description: "Networking and packaging behavior",
+            description: "Security, optimization, and mobile orientation",
         },
+    },
+    // The headings that tell one part of a sub-page from the next. A heading is a noun, never a
+    // sentence: the rows under it say what they do.
+    group: {
+        details: "Details",
+        icons: "Icons",
+        dependencies: "Dependencies",
+        saving: "Saving",
+        playerDefaults: "Player defaults",
+        audioTracks: "Audio tracks",
+        security: "Security",
+        optimization: "Optimization",
+        mobile: "Mobile",
     },
     home: {
         untitledProject: "Untitled project",
@@ -85,15 +85,19 @@ export const project = {
         autoSaveSlotsTitle: "Autosaves kept",
         autoSaveSlotsDescription: "Autosaves rotate through this many slots, oldest first. They stay out of the player's own save slots.",
     },
-    // The Preferences sub-page: the value each player setting starts at. Every one of these is
+    // The Player defaults group: the value each player setting starts at. Every one of these is
     // still the player's to change while they play, and what they change is kept, so the wording
     // stays on "starts at" rather than promising anything the settings screen will not honour.
     preferences: {
-        intro: "The value each setting starts at for a player who has not changed it. All of them stay editable while the game runs, and whatever the player settles on is kept between sessions.",
+        // One line on the group heading, not a paragraph in the page. Everything else it used to
+        // say is either visible in the rows or of no use to the author reading them.
+        intro: "Where each setting starts for a player who has not changed it. Players can change all of them, and what they choose is kept.",
         group: {
             dialogue: "Dialogue",
             skipping: "Skipping",
-            audio: "Audio",
+            // Not "Audio": the mixer sits on the same page now, and two headings called Audio one
+            // scroll apart is exactly the confusion the merge was meant to remove.
+            audio: "Sound",
         },
         unit: {
             percent: "%",
@@ -227,7 +231,9 @@ export const project = {
         webLossyQualityTitle: "Image quality",
         webLossyQualityDescription: "WebP quality used when recompressing, from 1 to 100.",
         webSharedWithMobileHint: "Android and iOS builds serve the same exported site, so this applies to them too.",
-        orientationTitle: "Mobile orientation",
+        // Not "Mobile orientation": it sits under the Mobile heading, and the repeated word cost the
+        // label a second line in a 318px panel.
+        orientationTitle: "Orientation",
         orientationDescription: "The orientation mobile builds lock the game to when it starts.",
         orientation: {
             landscape: "Landscape",

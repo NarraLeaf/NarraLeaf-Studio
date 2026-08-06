@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, memo } from "react";
 import { X, Plus } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { TagsFieldDefinition } from "../types";
+import { FIELD_INPUT_CLASS } from "../../fieldControlClass";
 
 interface TagsFieldProps<TData> {
     field: TagsFieldDefinition<TData>;
@@ -128,14 +129,12 @@ function TagsFieldInner<TData>({ field, data, onSaving }: TagsFieldProps<TData>)
                         }}
                         placeholder={field.addPlaceholder ?? t("properties.tags.addPlaceholder")}
                         disabled={isDisabled}
-                        className="flex-1 px-3 py-1.5 bg-surface-raised border border-edge rounded-md text-sm text-fg-muted 
-                            focus:outline-none focus:border-primary/50 transition-colors
-                            disabled:opacity-50 disabled:cursor-not-allowed"
+                        className={`flex-1 ${FIELD_INPUT_CLASS}`}
                     />
                     <button
                         onClick={handleAddTag}
                         disabled={!newTag.trim() || isDisabled}
-                        className="px-2 py-1.5 bg-primary/20 hover:bg-primary/30 text-primary rounded-md transition-colors 
+                        className="grid h-9 w-9 place-items-center bg-primary/20 hover:bg-primary/30 text-primary rounded-md transition-colors
                             disabled:opacity-50 disabled:cursor-not-allowed cursor-default"
                         title={t("properties.tags.add")}
                         aria-label={t("properties.tags.add")}
