@@ -114,6 +114,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
         label: { key: "workspace.history.scope.audioLoop" },
         capture: () => committedLoop,
         apply: setCommittedLoop,
+        tabId,
     });
     /**
      * The region mid-drag. A drag emits a position on every pointer move; routing those through

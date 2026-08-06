@@ -405,7 +405,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         const uiService = context.services.get<UIService>(Services.UI);
         const confirmed = await uiService.showConfirm(t("characters.panel.deleteCharacterConfirm", { name: item.name }), t("characters.panel.deleteCharacterDetail"));
         if (!confirmed) return;
-        const removed = characterService.deleteCharacter(item.id);
+        const removed = await characterService.deleteCharacter(item.id);
         if (removed) {
             const editorId = `narraleaf-studio:character-editor-${item.id}`;
             const store = uiService.getStore();
@@ -463,7 +463,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         const uiService = context.services.get<UIService>(Services.UI);
         const confirmed = await uiService.showConfirm(t("characters.panel.deleteGroupConfirm", { name: group.name }), t("characters.panel.deleteGroupDetail"));
         if (!confirmed) return;
-        characterService.deleteGroup(group.id);
+        await characterService.deleteGroup(group.id);
         loadCharacters();
         closeMenu();
     }, [characterService, context, loadCharacters, closeMenu, t]);
