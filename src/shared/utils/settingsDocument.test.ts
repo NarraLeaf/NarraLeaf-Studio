@@ -38,56 +38,15 @@ describe("composeSettingsDocument", () => {
         expect(parseSettingsDocument(serializeSettingsDocument(composed))).toEqual(composed);
     });
 
-    it("carries the wallpaper through a round trip", () => {
-        const composed = composeSettingsDocument({
-            settings: { "ui.backgroundImage": "abc123.png" },
-            studioVersion: "0.4.0",
-            platform: "win32",
-            exportedAt: "2026-08-05T00:00:00.000Z",
-            wallpaper: { fileName: "abc123.png", extension: ".png", dataBase64: "aGVsbG8=" },
-        });
-        expect(parseSettingsDocument(serializeSettingsDocument(composed)).wallpaper).toEqual({
-            fileName: "abc123.png",
-            extension: ".png",
-            dataBase64: "aGVsbG8=",
-        });
-    });
-
-    it("omits the wallpaper block entirely when there is none", () => {
-        expect(doc({}).wallpaper).toBeUndefined();
-    });
-});
-
-describe("parseSettingsDocument wallpaper handling", () => {
-    const withWallpaper = (wallpaper: unknown) =>
-        JSON.stringify({ formatVersion: 1, settings: { a: 1 }, wallpaper });
-
-    // A picture is the least important thing in the document: anything wrong with it is dropped,
-    // and the settings still import.
-    it("drops a malformed block rather than failing the document", () => {
-        for (const bad of [null, "nope", {}, { fileName: "a.png" }, { dataBase64: "aGk=" }]) {
-            const parsed = parseSettingsDocument(withWallpaper(bad));
-            expect(parsed.wallpaper).toBeUndefined();
-            expect(parsed.settings).toEqual({ a: 1 });
-        }
-    });
-
-    // The name reaches a filesystem, so a separator in it is an attempt to escape the cache.
-    it.each(["../evil.png", "sub/dir.png", "sub\\dir.png", "..\\evil.png"])(
-        "refuses the path-shaped name %s",
-        (fileName) => {
-            expect(parseSettingsDocument(withWallpaper({ fileName, dataBase64: "aGk=" })).wallpaper)
-                .toBeUndefined();
-        },
-    );
-
-    it("defaults a missing or dotless extension to .png", () => {
-        expect(parseSettingsDocument(withWallpaper({ fileName: "a.png", dataBase64: "aGk=" })).wallpaper?.extension)
-            .toBe(".png");
-        expect(
-            parseSettingsDocument(withWallpaper({ fileName: "a.png", extension: "jpg", dataBase64: "aGk=" }))
-                .wallpaper?.extension,
-        ).toBe(".png");
+    // A settings file is a settings file: a header and the keys, and nothing else ever rides along.
+    it("carries nothing but the header and the settings", () => {
+        expect(Object.keys(doc({ a: 1 })).sort()).toEqual([
+            "exportedAt",
+            "formatVersion",
+            "platform",
+            "settings",
+            "studioVersion",
+        ]);
     });
 });
 
