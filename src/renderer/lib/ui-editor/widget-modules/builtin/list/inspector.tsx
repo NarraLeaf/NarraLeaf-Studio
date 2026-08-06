@@ -472,7 +472,7 @@ function ScrollbarCustomizeField(props: CustomFieldProps<UIInspectorData>) {
                 variant="secondary"
                 size="md"
                 fullWidth
-                className="h-9 min-h-[34px] px-3 text-xs"
+                className="text-xs"
                 disabled={hasAuthoredParts}
                 onClick={createParts}
             >
@@ -515,7 +515,7 @@ function ListToggleControl({
     return (
         <button
             type="button"
-            className="flex h-9 w-full items-center justify-between gap-3 rounded-lg border border-edge bg-transparent px-2.5 text-left text-xs font-medium text-fg transition hover:bg-fill-subtle focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+            className="flex h-9 w-full items-center justify-between gap-3 rounded-md border border-edge bg-transparent px-2.5 text-left text-xs font-medium text-fg transition hover:bg-fill-subtle focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
             aria-pressed={checked}
             onClick={() => onChange(!checked)}
         >

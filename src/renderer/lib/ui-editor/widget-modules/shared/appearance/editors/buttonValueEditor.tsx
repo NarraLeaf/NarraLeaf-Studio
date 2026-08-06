@@ -98,7 +98,7 @@ export function ButtonAppearanceValueEditor({
             return (
                 <input
                     type="text"
-                    className="w-full min-w-0 rounded-lg border border-edge bg-transparent px-2 py-1.5 text-xs text-fg"
+                    className="w-full min-w-0 rounded-md border border-edge bg-transparent px-2 py-1.5 text-xs text-fg"
                     value={v}
                     onChange={e => onChange(e.target.value)}
                     placeholder={t("widgetAppearance.fields.imageUrlPlaceholderLegacy")}

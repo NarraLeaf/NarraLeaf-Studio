@@ -1,14 +1,21 @@
 import React, { useEffect } from "react";
 import { X } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import { CONTROL_HEIGHT_CLASS } from "./controlSize";
 import { cn } from "../../utils/cn";
 
-/** Footer action buttons — same classes as DialogContainer (workspace input / info dialogs). */
+/**
+ * Footer action buttons — same classes as DialogContainer (workspace input / info dialogs).
+ *
+ * On the shared `md` height, so a footer button matches the fields in the dialog
+ * body rather than happening to come out the same because of its padding.
+ */
 export function dialogFooterButtonClass(options: {
     variant: "secondary" | "primary" | "danger";
     disabled?: boolean;
 }): string {
-    const base = "px-4 py-2 text-sm rounded-md transition-colors";
+    const base = `inline-flex items-center justify-center ${CONTROL_HEIGHT_CLASS.md} `
+        + "px-4 py-1 text-sm rounded-md transition-colors cursor-default";
     if (options.disabled) {
         return `${base} bg-fill-strong text-fg-subtle cursor-not-allowed`;
     }

@@ -12,8 +12,18 @@ import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
 
+/**
+ * The card header's two actions, on the same `sm` height (design-system §3).
+ *
+ * "Clear" used to be bare text - 16px tall beside a 34px "Select" - so a pair of
+ * actions that do the same kind of thing read as a caption and a button.
+ */
+const HEADER_ACTION_BASE =
+    "inline-flex min-h-7 cursor-default items-center rounded-md px-2 text-xs transition-colors "
+    + "disabled:opacity-50 disabled:cursor-not-allowed";
 const secondaryGhostButtonClass =
-    "px-3 py-1.5 rounded-md border border-primary/30 bg-primary/5 text-sm text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
+    `${HEADER_ACTION_BASE} border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/50`;
+const clearButtonClass = `${HEADER_ACTION_BASE} text-danger hover:bg-danger/10`;
 
 type CropRect = {
     x: number;
@@ -365,7 +375,7 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
                     <div className="flex items-center gap-2">
                         {thumbnailId && (
                             <button
-                                className="text-xs text-danger hover:text-danger/80 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className={clearButtonClass}
                                 onClick={handleClearThumbnail}
                                 {...freeze.writes(isSaving)}
                             >

@@ -1,8 +1,9 @@
 import React from "react";
 import { cn } from "../../utils/cn";
+import { CONTROL_SIZE_CLASS, CONTROL_SQUARE_CLASS, type ControlSize } from "./controlSize";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
-export type ButtonSize = "sm" | "md" | "lg";
+export type ButtonSize = ControlSize;
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
     variant?: ButtonVariant;
@@ -18,11 +19,7 @@ const variantStyles: Record<ButtonVariant, string> = {
     danger: "bg-danger text-white hover:brightness-110",
 };
 
-const sizeStyles: Record<ButtonSize, string> = {
-    sm: "px-2 py-1 text-xs",
-    md: "px-3 py-2 text-sm",
-    lg: "px-4 py-2 text-base",
-};
+const sizeStyles = CONTROL_SIZE_CLASS;
 
 /**
  * Universal button component with consistent styling
@@ -74,12 +71,6 @@ export function IconButton({
      */
     children?: React.ReactNode;
 }) {
-    const iconSizeStyles: Record<ButtonSize, string> = {
-        sm: "w-8 h-8",
-        md: "w-10 h-10",
-        lg: "w-12 h-12",
-    };
-
     return (
         <button
             className={cn(
@@ -87,7 +78,9 @@ export function IconButton({
                 "transition-all duration-150 ease-out focus:outline-none",
                 "disabled:opacity-50 disabled:cursor-not-allowed cursor-default",
                 variantStyles[variant],
-                iconSizeStyles[size],
+                // Square, on the same scale as `Button` - an icon button in a row of
+                // controls is exactly as tall as they are.
+                CONTROL_SQUARE_CLASS[size],
                 className,
             )}
             aria-label={ariaLabel}

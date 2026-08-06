@@ -62,8 +62,12 @@ function CornerIcon({ position }: { position: CornerPosition }) {
 // `cursor-default` belongs in the base, not at the call sites: Tailwind's preflight gives every
 // <button> a pointer cursor, and Studio is arrow-everywhere (the shared `Button` writes the same
 // class into its own list). Leaving it out made all fifty-odd users of this helper the exceptions.
+// `rounded-md`, not `rounded-lg`: design-system §2 keeps `lg` for floating overlays and gives every
+// control `md`. This one helper paints ~50 buttons, so it was the single largest source of controls
+// rounded a step too far - including ones sitting in a row with `Button`s that were rounded right.
+// `h-9` is the shared `md` control height (see lib/components/elements/controlSize.ts).
 const CONTROL_BUTTON_BASE =
-  "grid h-9 w-9 cursor-default place-items-center rounded-lg border border-edge bg-transparent text-fg-muted transition hover:bg-fill-subtle focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50";
+  "grid h-9 w-9 cursor-default place-items-center rounded-md border border-edge bg-transparent text-fg-muted transition hover:bg-fill-subtle focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50";
 const CONTROL_BUTTON_ACTIVE = "bg-fill border-edge-strong text-fg";
 
 export function controlButtonClass(active?: boolean) {

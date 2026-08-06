@@ -136,6 +136,7 @@ export const characters = {
         layers: "图层",
         removeLayer: "删除图层",
         constantLayer: "恒定绘制",
+        layerAxis: "图层随该轴变化",
         hasImage: "已设图",
         noImage: "未设图",
         drawsNothing: "不绘制",
