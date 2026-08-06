@@ -13,8 +13,14 @@ import type { ReactNode } from "react";
  * reorders its parts cannot forget to move the flag - which also means every part must be a direct
  * child of the page's grid (a component rendering two parts returns a fragment, not a wrapper).
  *
- * `group/help` on the header row so a `HelpTrigger` passed as `trailing` reveals on hover, the same
+ * `group/help` on the header block so a `HelpTrigger` passed as `trailing` reveals on hover, the same
  * way a panel header carries one.
+ *
+ * The heading and its `trailing` controls are their own row, centred against each other, and the
+ * description sits *under* both. A control is taller than a `text-xs` line, so aligning the two on
+ * the block would hang the heading off the top of the button beside it - which is what a row of
+ * `items-start` did. Centring on the row holds for any control height, and it is the heading the
+ * button belongs to, not the paragraph below it.
  */
 export function SettingsGroup({
     title,
@@ -37,14 +43,14 @@ export function SettingsGroup({
             className="grid gap-2.5 border-t border-edge pt-3 first:border-t-0 first:pt-0 [&>*]:min-w-0"
             data-help-topic={helpTopic}
         >
-            <div className="group/help flex min-w-0 items-start justify-between gap-2">
-                <div className="min-w-0">
-                    <h3 className="truncate text-xs font-medium text-fg">{title}</h3>
-                    {description ? (
-                        <p className="mt-1 text-2xs leading-relaxed text-fg-subtle">{description}</p>
-                    ) : null}
+            <div className="group/help min-w-0">
+                <div className="flex min-w-0 items-center justify-between gap-2">
+                    <h3 className="min-w-0 truncate text-xs font-medium text-fg">{title}</h3>
+                    {trailing ? <div className="flex shrink-0 items-center gap-1">{trailing}</div> : null}
                 </div>
-                {trailing ? <div className="flex shrink-0 items-center gap-1">{trailing}</div> : null}
+                {description ? (
+                    <p className="mt-1 text-2xs leading-relaxed text-fg-subtle">{description}</p>
+                ) : null}
             </div>
             {children}
         </section>
