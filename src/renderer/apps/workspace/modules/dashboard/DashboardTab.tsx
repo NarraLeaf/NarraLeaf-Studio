@@ -330,7 +330,7 @@ export function DashboardTab({ active }: EditorTabComponentProps) {
     const variableCount = scale ? scale.variables.scene + scale.variables.saved + scale.variables.persistent : 0;
 
     return (
-        <div className="h-full overflow-y-auto overflow-x-hidden bg-surface">
+        <div className="h-full overflow-y-auto overflow-x-hidden bg-surface" data-help-topic="dashboard">
             <div className="mx-auto flex max-w-4xl flex-col gap-8 px-6 py-6">
                 <header className="flex flex-col gap-1">
                     <h1 className="truncate text-xl font-medium text-fg">

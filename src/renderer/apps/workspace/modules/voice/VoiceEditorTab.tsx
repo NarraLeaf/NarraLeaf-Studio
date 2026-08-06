@@ -514,7 +514,7 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
     const auditionQueueEmpty = mode === "audition" && auditionFilter === "pending" && counts.clips > 0 && visibleRows.length === 0;
 
     return (
-        <div className="flex h-full min-h-0 flex-col bg-surface">
+        <div className="flex h-full min-h-0 flex-col bg-surface" data-help-topic="voice">
             <div className="flex items-center gap-3 border-b border-edge px-4 py-2">
                 <div className="flex min-w-0 items-center gap-2">
                     <Mic className="h-4 w-4 shrink-0 text-fg-muted" />

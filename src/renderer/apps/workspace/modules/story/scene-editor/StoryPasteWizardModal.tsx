@@ -184,6 +184,7 @@ export function StoryPasteWizardModal(props: {
             isOpen={props.open}
             onClose={props.onCancel}
             title={t("story.paste.title")}
+            helpTopic="storyScript"
             size="xl"
             footer={
                 <div className="flex w-full items-center gap-2">
