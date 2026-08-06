@@ -134,7 +134,6 @@ describe("text/empty", () => {
         );
         expect(findings).toHaveLength(2);
         expect(findings[0].messageKey).toBe("lint.rule.textEmpty.message");
-        expect(findings[0].messageParams).toEqual({ scene: "Scene One" });
         expect(findings.map(entry => entry.location)).toMatchObject([{ blockId: "b1" }, { blockId: "b2" }]);
     });
 

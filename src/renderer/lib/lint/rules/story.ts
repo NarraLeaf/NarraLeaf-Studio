@@ -298,7 +298,6 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                     findings.push({
                         ruleId: "story/invalid-command",
                         messageKey: "lint.rule.storyInvalidCommand.message",
-                        messageParams: { scene: ref.sceneName },
                         location: {
                             kind: "story",
                             storyId: entry.id,
@@ -340,7 +339,7 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                     findings.push({
                         ruleId: "story/goto-missing",
                         messageKey: "lint.rule.storyGotoMissing.message",
-                        messageParams: { scene: scene.name, label: target },
+                        messageParams: { label: target },
                         location: storyLocation(entry, scene, block.id),
                         target: blockTarget(entry, scene, block.id),
                     });
@@ -362,7 +361,7 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                     findings.push({
                         ruleId: "story/label-duplicate",
                         messageKey: "lint.rule.storyLabelDuplicate.message",
-                        messageParams: { scene: scene.name, label: duplicate.name },
+                        messageParams: { label: duplicate.name },
                         location: storyLocation(entry, scene, duplicate.blockId),
                         target: blockTarget(entry, scene, duplicate.blockId),
                     });
@@ -397,7 +396,7 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                     findings.push({
                         ruleId: "story/label-unused",
                         messageKey: "lint.rule.storyLabelUnused.message",
-                        messageParams: { label: label.name, scene: scene.name },
+                        messageParams: { label: label.name },
                         location: storyLocation(entry, scene, label.blockId),
                         target: blockTarget(entry, scene, label.blockId),
                     });
@@ -428,7 +427,6 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                     findings.push({
                         ruleId: "story/jump-missing",
                         messageKey: "lint.rule.storyJumpMissing.message",
-                        messageParams: { scene: scene.name },
                         location: storyLocation(entry, scene, block.id),
                         target: blockTarget(entry, scene, block.id),
                     });
@@ -456,7 +454,6 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                         findings.push({
                             ruleId: "story/empty-choice",
                             messageKey: "lint.rule.storyEmptyChoice.message",
-                            messageParams: { scene: scene.name },
                             location: storyLocation(entry, scene, block.id),
                             target: blockTarget(entry, scene, block.id),
                         });
@@ -478,7 +475,6 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                         findings.push({
                             ruleId: "story/empty-choice",
                             messageKey: "lint.rule.storyEmptyChoice.messageEmptyOption",
-                            messageParams: { scene: scene.name },
                             location: storyLocation(entry, scene, option.id),
                             target: blockTarget(entry, scene, option.id),
                         });
@@ -533,7 +529,6 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                 findings.push({
                     ruleId: "story/dead-end",
                     messageKey: "lint.rule.storyDeadEnd.message",
-                    messageParams: { scene: scene.name },
                     location: storyLocation(entry, scene, last.id),
                     target: blockTarget(entry, scene, last.id),
                 });
@@ -569,7 +564,6 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                     findings.push({
                         ruleId: "story/unreachable-scene",
                         messageKey: "lint.rule.storyUnreachableScene.message",
-                        messageParams: { scene: scene.name },
                         location: storyLocation(entry, scene),
                         target: sceneTarget(entry, scene),
                     });
@@ -592,7 +586,6 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                 findings.push({
                     ruleId: "story/empty-scene",
                     messageKey: "lint.rule.storyEmptyScene.message",
-                    messageParams: { scene: scene.name },
                     location: storyLocation(entry, scene),
                     target: sceneTarget(entry, scene),
                 });
