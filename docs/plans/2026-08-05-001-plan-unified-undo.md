@@ -1,7 +1,8 @@
 # Unified undo: one stack owner, and what still cannot be undone
 
-Status: **stage 1 landed** (the mechanism). **Stage 2 in progress**: T2, T3 and D3 are done and
-verified in the running app; the rest of the table below is untouched.
+Status: **every S1 row is done**, plus T2 and T3, all verified in the running app. What remains is
+the S2/S3 tail below and one S1-adjacent gap (`replaceAssetContent`, D8) that is called out where it
+sits.
 
 ## Why
 
@@ -79,7 +80,7 @@ undoable"), and now reads it from `HistoryService.hasScope` rather than from a b
 | `audio-loop:<assetId>` | the in / loop / out markers |
 | `ui-surface:<surfaceId>` | the surface's elements and its private blueprints |
 | `blueprint:<blueprintId>` | the graph, element behaviours, **and the persistent-variable registry** |
-| `project` | deleting a character or a character group (command entries) |
+| `project` | every deletion outside an editor: characters, character groups, scenes, chapters, stories, motion assets, assets, asset folders |
 
 Two stacks are deliberately **not** in `HistoryService`:
 
@@ -103,16 +104,19 @@ Severity:
 
 ### S1 — destroys authored work, no undo
 
+All but one are done. They are kept here rather than deleted because the *shape* of each restore is
+the useful record - what had to be captured, and what deliberately was not.
+
 | # | Operation | Where | Guard | Note |
 | --- | --- | --- | --- | --- |
-| D1 | `deleteAsset` | assets panel | confirm + reference warning | **Hard `fs.deleteFile` / `deleteDir` — no trash.** References are left dangling *by design* (warn, do not block), so putting the record back would restore a working project — but the bytes are gone. |
-| D2 | `deleteGroup(cascade)` | assets panel | confirm | Cascades into nested groups and every asset under them. Same hard delete, times N. |
+| ~~D1~~ | ~~`deleteAsset`~~ | | | **Done.** The payload moves to `.nlstudio/trash/` instead of being unlinked; the entry restores the bytes, the record verbatim (it carries `groupId`), and the asset's index in the order file — the order is reconciled against the records on every write, so a restored record with no row sorts to the end of the section instead of back where the author put it. Remote assets need no trash: their payload is a download cache. |
+| ~~D2~~ | ~~`deleteGroup(cascade)`~~ | | | **Done, as ONE step.** The cascade calls `deleteAsset` per file, so without batching a folder of forty images would take forty presses to take back. The batch also makes a *failed* cascade recoverable: it can abort halfway with files already gone, and the batch then holds exactly the ones that went. |
 | ~~D3~~ | ~~`deleteCharacter`~~ | | | **Done.** Undoable as a command entry on the `project` scope: the record, its place in the cast order, its asset locks and the baked avatar's bytes (read before the file is deleted, held in the entry). Group deletion carries its membership too. Story lines keep dangling ids while it is gone, which is the accepted behaviour and is why undo does not have to touch them. |
-| D4 | `deleteScene` | story panel | confirm | Destroys the whole scene and its blocks. Note the scene's own undo stack is scoped *to that scene*, so even a mounted editor cannot bring it back. |
-| D5 | `deleteChapter` | story panel | confirm | **Cascades: deletes every scene in the chapter** (`StoryService.deleteChapter` splices the chapter and then `delete document.scenes[sceneId]` for each). Re-points the entry scene as a side effect. |
-| D6 | `deleteStory` | story panel | confirm | The whole document. |
-| D7 | `deleteAnimationAsset` | story motion panel | confirm | Destroys the timeline. Its editor's stack is keyed by the asset id, so it dies with it. |
-| D8 | `replaceAssetContent` | asset context menu, properties pane | destructive confirm | Overwrites bytes in place, keeping the id. Nothing anywhere keeps the previous bytes. |
+| ~~D4~~ | ~~`deleteScene`~~ | | | **Done** — whole-shape snapshot of the story's chapters, scenes and entry pointer. |
+| ~~D5~~ | ~~`deleteChapter`~~ | | | **Done** — same snapshot, and it covers the cascade (every scene in the chapter) plus the entry-scene re-point. **Found while doing it: nothing calls `deleteChapter`.** The story panel offers no "delete chapter", so this cascade was never reachable by an author. |
+| ~~D6~~ | ~~`deleteStory`~~ | | | **Done**, and it had to become async: undo needs the document, which may only be on disk (a story the author never opened this session is not in memory), and after the directory is gone there is nothing to read. Restoring the library entry without the file would list a story that cannot be opened. |
+| ~~D7~~ | ~~`deleteAnimationAsset`~~ | | | **Done**, async for the same reason as D6. Note the motion editor's own stack is keyed by this asset's id and dies with it, so this entry is the only way back. |
+| **D8** | `replaceAssetContent` | asset context menu, properties pane | destructive confirm | **Still open — the one S1 row left.** The trash primitive it needs now exists, but the old bytes have to be moved aside *inside* `LocalAssetsManager.writeAssetContentFromPath`, which has its own bundle/non-bundle branches (the bundle path `deleteDir`s the destination before copying), and the entry must also restore `hash`, `ext` and `name`, all three of which `applyReplacedContent` rewrites. Left deliberately rather than half-done. |
 
 ### S2 — loses real work, no undo
 
@@ -160,17 +164,21 @@ says.
 
 1. ~~**`project` scope + a delete-with-inverse pattern.**~~ **Done** — see `CharacterService`
    for the shape the remaining S1 rows should copy.
-2. **Make deletion recoverable before making it undoable.** D1/D2/D3 hard-delete files. Either the
-   delete moves the payload to a per-project trash under `.nlstudio/` (which is already excluded
-   from the repository) and the command entry moves it back, or the command entry holds the bytes
-   in memory — bounded by the history limit, which for a 200 MB video asset is not acceptable. The
-   trash is the answer; picking its retention policy is a product decision, not a technical one.
+2. ~~**Make deletion recoverable before making it undoable.**~~ **Done**, and the retention policy
+   turned out not to need a decision: the trash's lifetime is *exactly the undo entry's*.
+   `HistoryEntry` gained a `dispose` hook, called when an entry leaves the stack for good (trimmed,
+   cleared, or dropped with an invalidated redo branch), and that is when the bytes go. History
+   never survives a restart, so the trash is swept at workspace startup. No timer, no size budget:
+   an author can undo as far back as the stack goes and never further.
 3. ~~**D3 (character) before D1 (asset)**~~ **Done**, and it did not need the trash after all: a
    baked avatar is a 256px PNG, so its bytes ride in the entry and the depth bound caps how many can
    be held. An asset can be 200 MB, so D1/D2 still need step 2.
-4. **D4/D5/D6 (story structure)** are pure document edits with no files behind them, so they need
-   only step 1. D5's cascade is the interesting one: the entry needs to restore the chapter, its
-   scenes, and the entry-scene pointer it re-pointed.
-5. **C1–C4 (character editor)** wants a scope of its own (`character:<id>`), not the project scope —
-   these are edits *within* a document the author has open, which is what a scope is for.
-6. **T1** is independent of all of the above and should not wait for them.
+4. ~~**D4/D5/D6 (story structure)**~~ **Done.** D6 was not a pure document edit after all — it
+   deletes a directory — which is what made it async.
+5. **C1–C4 (character editor)** is the largest remaining block and wants a scope of its own
+   (`character:<id>`), not the project scope — these are edits *within* a document the author has
+   open, which is what a scope is for. `CharacterService.deleteCharacter` shows the entry shape;
+   what the character editor still needs is a scope so its own edits coalesce and undo in place.
+6. **T1** (an open text-asset editor does not take part in the workspace reload pass) is
+   independent of all of the above and should not wait for them.
+7. **D8** — see the row above. The trash makes it tractable now.

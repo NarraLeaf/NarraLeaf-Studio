@@ -246,9 +246,17 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
      */
     public pushCommand(
         scopeId: HistoryScopeId,
-        request: HistoryPushRequest & { undo: () => void | Promise<void>; redo: () => void | Promise<void> },
+        request: HistoryPushRequest & {
+            undo: () => void | Promise<void>;
+            redo: () => void | Promise<void>;
+            /** Reclaim anything the entry held once it can never run again; see `HistoryEntry.dispose`. */
+            dispose?: () => void;
+        },
     ): boolean {
         if (this.suppressionDepth > 0) {
+            // The caller's work is already done and this entry will never exist, so anything it was
+            // holding for a later undo is unreachable from this moment.
+            request.dispose?.();
             return false;
         }
         return this.pushEntry(
@@ -259,6 +267,7 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
                 redo: request.redo,
                 mergeKey: request.mergeKey,
                 now: Date.now(),
+                dispose: request.dispose,
             }),
             request,
         );
