@@ -11,6 +11,7 @@ import {
 } from "@/lib/settings/registry";
 import { AppSettingDefinition, AppSettingCategoryKey, SettingCategory, SettingDescriptor } from "@/lib/settings/models";
 import { filterCategoryEntries } from "@/lib/settings/searchSettings";
+import { resetSetting } from "@/lib/settings/resetSettings";
 import { SettingValueType } from "@/lib/settings/types";
 import { getInterface } from "@/lib/app/bridge";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
@@ -190,6 +191,42 @@ export function SettingsApp() {
         [values],
     );
 
+    /**
+     * Whether a row differs from its default, which is what decides if it offers a reset.
+     *
+     * Compared structurally because a few entries hold arrays and maps. A key stored *at* its
+     * default reads as unmodified, which is right: deleting it would change nothing observable.
+     */
+    const isSettingModified = useCallback(
+        (setting: AppSettingDefinition) => {
+            const stored = values[setting.key];
+            if (stored === undefined) {
+                return false;
+            }
+            return JSON.stringify(stored) !== JSON.stringify(setting.defaultValue);
+        },
+        [values],
+    );
+
+    /**
+     * Put one row back by DELETING its key rather than writing the default over it.
+     *
+     * The distinction is load-bearing for the handful of settings whose default is not a constant
+     * (`editor.slashAtAlias` answers per device locale; the `ui.background*` keys are clamped and
+     * whitelisted on read) - only an absent value reaches those fallbacks.
+     */
+    const resetSettingRow = useCallback(
+        async (setting: AppSettingDefinition) => {
+            await resetSetting(setting.key);
+            setValues((prev) => {
+                const next = { ...prev };
+                delete next[setting.key];
+                return next;
+            });
+        },
+        [],
+    );
+
     const commitSetting = useCallback(
         async (setting: AppSettingDefinition, _descriptor: SettingDescriptor, value: SettingValue) => {
             const key = setting.key;
@@ -335,6 +372,8 @@ export function SettingsApp() {
                         getValue={(setting, _descriptor) => getSettingValue(setting)}
                         onCommit={commitSetting}
                         onInvokeAction={invokeSettingAction}
+                        isModified={isSettingModified}
+                        onReset={resetSettingRow}
                         searchQuery={searchQuery}
                         onSearchChange={setSearchQuery}
                         showSearch={false}
