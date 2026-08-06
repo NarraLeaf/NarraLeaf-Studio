@@ -1160,3 +1160,94 @@ describe("UIDocumentService template import: components and naming", () => {
         expect(Object.keys(imported.elements)).toContain(cloned.owner.elementId);
     });
 });
+
+describe("UIDocumentService template import: multi-surface templates", () => {
+    /** Two Pages, the first embedding the second through an nl.frame. */
+    function createFramedTemplate(): UIDocument {
+        return {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "tpl-framed",
+            name: "Config",
+            surfaces: [
+                {
+                    id: "tpl-shell",
+                    name: "Config",
+                    host: "app",
+                    kind: "appSurface",
+                    designSize: { width: 1280, height: 720 },
+                    rootElementId: "tpl-shell-root",
+                },
+                {
+                    id: "tpl-pane",
+                    name: "Config Â· Sound",
+                    host: "app",
+                    kind: "appSurface",
+                    designSize: { width: 1280, height: 720 },
+                    rootElementId: "tpl-pane-root",
+                },
+            ],
+            elements: {
+                "tpl-shell-root": {
+                    id: "tpl-shell-root",
+                    type: "nl.root",
+                    name: "Root",
+                    parentId: null,
+                    childrenIds: ["tpl-frame"],
+                    layout: { x: 0, y: 0, width: 1280, height: 720 },
+                },
+                "tpl-frame": {
+                    id: "tpl-frame",
+                    type: "nl.frame",
+                    name: "Pane",
+                    parentId: "tpl-shell-root",
+                    childrenIds: [],
+                    layout: { x: 320, y: 0, width: 960, height: 720 },
+                    props: { targetSurfaceId: "tpl-pane" },
+                },
+                "tpl-pane-root": {
+                    id: "tpl-pane-root",
+                    type: "nl.root",
+                    name: "Root",
+                    parentId: null,
+                    childrenIds: [],
+                    layout: { x: 0, y: 0, width: 1280, height: 720 },
+                },
+            },
+        } as UIDocument;
+    }
+
+    it("repoints a frame at the sibling surface that arrived with it", () => {
+        const { service } = createHarness();
+
+        const result = service.importTemplateBundle({
+            document: createFramedTemplate(),
+            graphs: undefined,
+            placement: { kind: "appSurface" },
+        });
+
+        expect(result.importedSurfaces).toHaveLength(2);
+        const pane = result.importedSurfaces.find(surface => surface.name.startsWith("Config Â·"))!;
+        const frame = Object.values(service.getDocument().elements)
+            .find(element => element.type === "nl.frame")!;
+
+        // Before this was fixed the frame kept "tpl-pane" â€” the template's own id,
+        // which no project holds â€” and the pane rendered as an empty box.
+        expect((frame.props as { targetSurfaceId?: string }).targetSurfaceId).toBe(pane.id);
+        expect((frame.props as { targetSurfaceId?: string }).targetSurfaceId).not.toBe("tpl-pane");
+    });
+
+    it("gives each surface of a multi-surface template its own fresh id", () => {
+        const { service } = createHarness();
+
+        const result = service.importTemplateBundle({
+            document: createFramedTemplate(),
+            graphs: undefined,
+            placement: { kind: "appSurface" },
+        });
+
+        const ids = result.importedSurfaces.map(surface => surface.id);
+        expect(new Set(ids).size).toBe(2);
+        expect(ids).not.toContain("tpl-shell");
+        expect(ids).not.toContain("tpl-pane");
+    });
+});

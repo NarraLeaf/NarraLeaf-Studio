@@ -288,12 +288,28 @@ type SurfaceDuplicateRemapContext = {
      * a template that ships components. A duplicate within one document keeps pointing
      * at the same library entry, so it leaves this absent. */
     componentIdMap?: Record<string, string>;
+    /**
+     * Optional source-surfaceId -> project-surfaceId map covering *every* surface of a
+     * multi-surface template, set only on import.
+     *
+     * `oldSurfaceId`/`newSurfaceId` above describe the one surface currently being
+     * copied, which is all a duplicate needs. An import needs more: an `nl.frame`
+     * on one of a template's surfaces points at a *sibling* surface, and that
+     * reference is not the surface being copied — so without this it survived
+     * untouched and named an id no project holds.
+     */
+    surfaceIdMap?: Record<string, string>;
 };
 
 function remapSurfaceDuplicateReferenceValue<T>(value: T, ctx: SurfaceDuplicateRemapContext, key?: string): T {
     if (typeof value === "string") {
         if (key && isReferenceKey(key, "surfaceId") && value === ctx.oldSurfaceId) {
             return ctx.newSurfaceId as T;
+        }
+        // A reference to another surface of the same template (nl.frame's
+        // targetSurfaceId is the one that matters today).
+        if (key && ctx.surfaceIdMap && isReferenceKey(key, "surfaceId") && ctx.surfaceIdMap[value]) {
+            return ctx.surfaceIdMap[value] as T;
         }
         if (key && isReferenceKey(key, "elementId") && ctx.elementIdMap[value]) {
             return ctx.elementIdMap[value] as T;
@@ -1748,6 +1764,16 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             input.assetIdMap,
         );
 
+        // Then every surface's new id, before any of them is copied. A template's
+        // surfaces reference each other (an nl.frame embeds a sibling), and the
+        // surface holding the reference is copied before the one it points at, so
+        // the target's id has to already exist when the first one is walked.
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const surfaceIdMap: Record<string, string> = {};
+        for (const sourceSurface of importable) {
+            surfaceIdMap[sourceSurface.id] = uuidService.generate();
+        }
+
         for (const sourceSurface of importable) {
             let placement = input.placement;
             if (placement.kind === "stageSurface") {
@@ -1766,6 +1792,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 placement,
                 input.assetIdMap,
                 componentIdMap,
+                surfaceIdMap,
             );
             if (imported) {
                 importedSurfaces.push(imported);
@@ -1980,6 +2007,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         placement: UITemplateSurfacePlacement,
         assetIdMap?: Record<string, string>,
         componentIdMap?: Record<string, string>,
+        surfaceIdMap?: Record<string, string>,
     ): UISurface | null {
         const sourceRootId = sourceSurface.rootElementId;
         if (!sourceDocument.elements[sourceRootId]) {
@@ -1987,7 +2015,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
 
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
-        const newSurfaceId = uuidService.generate();
+        // Reserved by the caller when this is one of several surfaces arriving
+        // together, so siblings pointing at it already carry the right id.
+        const newSurfaceId = surfaceIdMap?.[sourceSurface.id] ?? uuidService.generate();
         const sourceElementIds = Array.from(collectSubtreeElementIds(sourceDocument, sourceRootId))
             .filter(elementId => Boolean(sourceDocument.elements[elementId]));
         const elementIdMap: Record<string, string> = {};
@@ -2040,6 +2070,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             blueprintIdMap,
             assetIdMap,
             componentIdMap,
+            surfaceIdMap,
         };
 
         const existingNames = new Set(this.getDocument().surfaces.map(surface => surface.name));
