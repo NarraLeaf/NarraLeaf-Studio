@@ -17,6 +17,7 @@ import {
 } from "@shared/types/projectIcons";
 import type { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { bakeProjectIcons } from "../iconBake";
+import { SettingsGroup } from "../components/SettingsGroup";
 import type { ProjectSectionProps } from "./types";
 
 /**
@@ -50,7 +51,7 @@ const TARGET_CHROME: Record<ProjectIconTarget, TargetChrome> = {
 const ICON_BUTTON_CLASS = controlButtonClass();
 const TILE_SIZE = 60;
 
-export function ProjectAssetsSection({ projectService, uiService, onConfigChange }: ProjectSectionProps) {
+export function ProjectIconsSection({ projectService, uiService, onConfigChange }: ProjectSectionProps) {
     const { t } = useTranslation();
     const freeze = useFreezeGuard();
     const [set, setSet] = useState<ProjectIconSet | null>(null);
@@ -156,7 +157,7 @@ export function ProjectAssetsSection({ projectService, uiService, onConfigChange
     const spec = selected ? set.specs[selected] : null;
 
     return (
-        <div className="grid gap-3">
+        <SettingsGroup title={t("project.group.icons")}>
             <button
                 type="button"
                 className="mx-auto grid h-24 w-24 place-items-center overflow-hidden rounded-lg border border-dashed border-edge-strong bg-fill-subtle transition-colors hover:border-primary"
@@ -277,7 +278,7 @@ export function ProjectAssetsSection({ projectService, uiService, onConfigChange
                     </div>
                 </div>
             ) : null}
-        </div>
+        </SettingsGroup>
     );
 }
 

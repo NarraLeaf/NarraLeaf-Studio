@@ -1,5 +1,5 @@
 /**
- * Project -> Preferences: what a new player's settings start at.
+ * Project -> Game -> Player defaults: what a new player's settings start at.
  *
  * Until this page existed the answer was "whatever the engine happens to default to, unless the
  * author built a blueprint that says otherwise" - one `Set ...` node per preference, wired behind
@@ -30,6 +30,7 @@ import {
 } from "@/lib/workspace/project/configuration";
 import { SettingRow, SettingShell, SettingStack } from "./settingRows";
 import { NumberField } from "./NumberField";
+import { SettingsGroup } from "../components/SettingsGroup";
 import type { ProjectSectionProps } from "./types";
 
 /**
@@ -82,28 +83,36 @@ export function ProjectPreferencesSection({ projectService, uiService, config, o
     }, [onConfigChange, preferences, projectService, saving, uiService]);
 
     return (
-        <div className="grid gap-4 [&>*]:min-w-0">
-            <p className="text-2xs leading-relaxed text-fg-subtle">{t("project.preferences.intro")}</p>
-
-            {PLAYER_PREFERENCE_GROUPS.map(group => (
-                <section key={group.id} className="grid gap-2 [&>*]:min-w-0">
-                    <FieldLabel as="div" className="mb-0">
-                        {t(`project.preferences.group.${group.id}`)}
-                    </FieldLabel>
-                    <div className="grid gap-3 [&>*]:min-w-0">
-                        {group.keys.map(key => (
-                            <PreferenceRow
-                                key={key}
-                                spec={PLAYER_PREFERENCE_SPECS[key]}
-                                preferences={preferences}
-                                saving={saving === key}
-                                onCommit={value => void commit(key, value)}
-                            />
-                        ))}
-                    </div>
-                </section>
-            ))}
-        </div>
+        // The one line that used to be a paragraph at the top of a page of its own. It is the
+        // group's expectation now, on the heading, because "starts at" is the whole reason these
+        // rows are not the player's settings screen.
+        <SettingsGroup
+            title={t("project.group.playerDefaults")}
+            description={t("project.preferences.intro")}
+        >
+            {/* Wider than the gap between the rows inside a group, or the eyebrow that starts a
+                group would read as belonging to the row above it. */}
+            <div className="grid gap-4 [&>*]:min-w-0">
+                {PLAYER_PREFERENCE_GROUPS.map(group => (
+                    <section key={group.id} className="grid gap-2 [&>*]:min-w-0">
+                        <FieldLabel as="div" className="mb-0">
+                            {t(`project.preferences.group.${group.id}`)}
+                        </FieldLabel>
+                        <div className="grid gap-3 [&>*]:min-w-0">
+                            {group.keys.map(key => (
+                                <PreferenceRow
+                                    key={key}
+                                    spec={PLAYER_PREFERENCE_SPECS[key]}
+                                    preferences={preferences}
+                                    saving={saving === key}
+                                    onCommit={value => void commit(key, value)}
+                                />
+                            ))}
+                        </div>
+                    </section>
+                ))}
+            </div>
+        </SettingsGroup>
     );
 }
 
