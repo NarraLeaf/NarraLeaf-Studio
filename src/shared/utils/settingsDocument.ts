@@ -13,6 +13,25 @@
 
 export const SETTINGS_DOCUMENT_FORMAT_VERSION = 1;
 
+/** A picture is the one thing in an export that can be megabytes; past this it is left out. */
+export const SETTINGS_DOCUMENT_MAX_WALLPAPER_BYTES = 8 * 1024 * 1024;
+
+/**
+ * The workspace wallpaper, carried whole.
+ *
+ * A sibling of `settings` rather than a key inside it, because it is not a setting: it is the
+ * bytes `ui.backgroundImage` names. Without it that key would arrive on the other machine
+ * pointing at a file in a cache that machine has never seen.
+ */
+export type SettingsDocumentWallpaper = {
+    /** The name it had in the source profile. Content-addressed, so the target derives the same one. */
+    fileName: string;
+    /** Extension including the dot, used to name it in the target's cache. */
+    extension: string;
+    /** The picture, base64. */
+    dataBase64: string;
+};
+
 export type SettingsDocument = {
     formatVersion: number;
     /** ISO timestamp, for the author's benefit; nothing reads it back. */
@@ -22,6 +41,8 @@ export type SettingsDocument = {
     /** Which machine wrote it - a path-shaped value that looks odd on import usually explains itself here. */
     platform: string;
     settings: Record<string, unknown>;
+    /** Present when the export carried the wallpaper; see {@link SettingsDocumentWallpaper}. */
+    wallpaper?: SettingsDocumentWallpaper;
 };
 
 /**
@@ -66,6 +87,7 @@ export function composeSettingsDocument(input: {
     studioVersion: string;
     platform: string;
     exportedAt: string;
+    wallpaper?: SettingsDocumentWallpaper;
 }): SettingsDocument {
     return {
         formatVersion: SETTINGS_DOCUMENT_FORMAT_VERSION,
@@ -75,7 +97,33 @@ export function composeSettingsDocument(input: {
         // Sorted so two exports of the same profile are the same bytes, which makes the file
         // diffable and a support answer reproducible.
         settings: Object.fromEntries(Object.entries(input.settings).sort(([a], [b]) => a.localeCompare(b))),
+        ...(input.wallpaper ? { wallpaper: input.wallpaper } : {}),
     };
+}
+
+/**
+ * Read the wallpaper block back, or nothing.
+ *
+ * Anything malformed is simply absent rather than an error: the settings in the document are still
+ * worth importing, and a picture that will not decode is not a reason to refuse them.
+ */
+function parseWallpaper(raw: unknown): SettingsDocumentWallpaper | undefined {
+    if (!raw || typeof raw !== "object") {
+        return undefined;
+    }
+    const record = raw as Record<string, unknown>;
+    const fileName = typeof record.fileName === "string" ? record.fileName.trim() : "";
+    const extension = typeof record.extension === "string" ? record.extension.trim() : "";
+    const dataBase64 = typeof record.dataBase64 === "string" ? record.dataBase64 : "";
+    if (!fileName || !dataBase64) {
+        return undefined;
+    }
+    // The name reaches a filesystem, so it must be a bare name; a separator here would be an
+    // attempt to steer the write out of the cache directory.
+    if (fileName.includes("/") || fileName.includes("\\") || fileName.includes("..")) {
+        return undefined;
+    }
+    return { fileName, extension: extension.startsWith(".") ? extension : ".png", dataBase64 };
 }
 
 export function serializeSettingsDocument(document: SettingsDocument): string {
@@ -111,12 +159,14 @@ export function parseSettingsDocument(text: string): SettingsDocument {
     if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
         throw new SettingsDocumentError("That document has no settings in it");
     }
+    const wallpaper = parseWallpaper(record.wallpaper);
     return {
         formatVersion: SETTINGS_DOCUMENT_FORMAT_VERSION,
         exportedAt: typeof record.exportedAt === "string" ? record.exportedAt : "",
         studioVersion: typeof record.studioVersion === "string" ? record.studioVersion : "",
         platform: typeof record.platform === "string" ? record.platform : "",
         settings: settings as Record<string, unknown>,
+        ...(wallpaper ? { wallpaper } : {}),
     };
 }
 
