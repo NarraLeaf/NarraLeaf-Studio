@@ -1,14 +1,12 @@
 import { ACCENT_COLOR_DEFAULT } from "@shared/constants/accent";
 import { ZOOM_PERCENT_DEFAULT } from "@shared/constants/zoom";
+import { DownloadRewriteRule } from "@shared/types/downloadSource";
 import { PersistentState } from "@shared/utils/persistentState";
 import { RecentlyOpenedProject } from "./appStateTypes";
 
 export interface GlobalStateType extends Record<string, any> {
-    "app.showHint": boolean;
     "app.recentProjects": RecentlyOpenedProject[];
     "app.language": string;
-    "app.notificationsEnabled": boolean;
-    "app.autoCheckUpdates": boolean;
     "ui.themeMode": "auto" | "light" | "dark" | string;
     /**
      * Which mode the toolbar's Run split-button launches — Dev Mode or Preview. The button runs the
@@ -64,6 +62,10 @@ export interface GlobalStateType extends Record<string, any> {
     "keybindings.overrides": Record<string, string>;
     "editor.fontSize": number;
     "editor.fontFamily": string;
+    /** Show the line-number gutter in the built-in text editor (assets, scripts, plain files). */
+    "editor.lineNumbers": boolean;
+    /** Wrap long lines in the built-in text editor instead of scrolling horizontally. */
+    "editor.softWrap": boolean;
     /**
      * Opacity (0-100) of the editor's reading surfaces — story prose area, inspector field area,
      * Dev Mode debug panel. Published as `--nl-editor-surface-opacity` by lib/appearance; see
@@ -71,8 +73,6 @@ export interface GlobalStateType extends Record<string, any> {
      * workspace wallpaper, which is the only thing an opaque plate can cut a seam into.
      */
     "editor.surfaceOpacity": number;
-    "editor.lineNumbers": boolean;
-    "editor.softWrap": boolean;
     "editor.maxActiveEditors": number;
     /**
      * Let "@" stand in for "/" as the trigger that opens the story editor's action creator.
@@ -116,7 +116,6 @@ export interface GlobalStateType extends Record<string, any> {
      * lib/settings/storyRowHighlightOptions.
      */
     "editor.storyRowHighlight": "none" | "script" | "command";
-    "workspace.restoreLastWorkspace": boolean;
     /**
      * Ask for confirmation before a workspace window closes.
      *
@@ -127,8 +126,8 @@ export interface GlobalStateType extends Record<string, any> {
     "workspace.confirmBeforeClose": boolean;
     /** Closing the last workspace reopens the launcher; when false, the app quits instead. */
     "workspace.returnToLauncherOnClose": boolean;
+    /** How many projects the home screen and the native Open Recent submenu keep. */
     "workspace.recentProjectsLimit": number;
-    "workspace.autoSave": boolean;
     /**
      * Open the project dashboard as a tab every time a workspace opens.
      *
@@ -137,14 +136,34 @@ export interface GlobalStateType extends Record<string, any> {
      * silently override everyone else's.
      */
     "dashboard.openOnWorkspaceOpen": boolean;
-    "sync.autoBackup": boolean;
-    "sync.backupIntervalMinutes": number;
-    "sync.backupPath": string;
-    "advanced.enableTelemetry": boolean;
-    "advanced.enableDevTools": boolean;
-    "advanced.experimentalFeatures": boolean;
-    /** Electron download mirror for cross-platform game builds; "" = official source. */
+    /**
+     * Base URL electron-builder downloads the Electron dist from during a game build;
+     * "" = official source. A *source*, not a rewrite: electron-builder composes
+     * `<mirror><version>/<file>` onto it, so it cannot be expressed as a prefix
+     * substitution (see `network.downloadRewrites`).
+     */
     "build.electronMirror": string;
+    /**
+     * Base URL for electron-builder's toolchain binaries - winCodeSign, NSIS, AppImage,
+     * 7za; "" = official source. A SECOND source rather than a mode of the one above
+     * because its URL layout differs (`<mirror><name>/<name>.7z`), which is exactly why
+     * `GameBuildManager` refused to synthesize one from the other. Takes precedence over
+     * the `ELECTRON_BUILDER_BINARIES_MIRROR` / `NPM_CONFIG_...` environment variables,
+     * which stay honored for hosts already configured that way.
+     */
+    "build.electronBuilderBinariesMirror": string;
+    /**
+     * Ordered prefix substitutions applied to download URLs Studio did not choose - the
+     * plugin `.zip` and icon a registry index names, and the archive a plugin's
+     * `contributes.buildDependencies` names. Those arrive inside a document, so no
+     * "source" setting can reach them: mirroring `plugins.registryUrl` mirrors the
+     * catalogue and leaves Install following an absolute github.com URL.
+     *
+     * One key rather than one per rule for the reason `keybindings.overrides` gives: a
+     * rule identity would contain dots. First enabled match wins; the result must be
+     * `https:` or the rewrite is refused. See `@shared/utils/downloadSource`.
+     */
+    "network.downloadRewrites": DownloadRewriteRule[];
     /**
      * Plugin store registry index URL; "" = the official NarraLeaf/Plugins index
      * (see @shared/constants/pluginRegistry). Read by the main process when the
@@ -210,11 +229,8 @@ export type GlobalState = PersistentState<GlobalStateType>;
  * Default values for global state
  */
 export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
-    "app.showHint": true,
     "app.recentProjects": [],
     "app.language": "en",
-    "app.notificationsEnabled": true,
-    "app.autoCheckUpdates": true,
     "ui.themeMode": "auto",
     "ui.runMode": "devMode",
     "ui.zoomPercent": ZOOM_PERCENT_DEFAULT,
@@ -237,19 +253,13 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "editor.localizedCommands": true,
     "editor.hideParamNames": false,
     "editor.storyRowHighlight": "none",
-    "workspace.restoreLastWorkspace": true,
     "workspace.confirmBeforeClose": false,
     "workspace.returnToLauncherOnClose": true,
     "workspace.recentProjectsLimit": 10,
-    "workspace.autoSave": true,
     "dashboard.openOnWorkspaceOpen": true,
-    "sync.autoBackup": true,
-    "sync.backupIntervalMinutes": 30,
-    "sync.backupPath": "",
-    "advanced.enableTelemetry": false,
-    "advanced.enableDevTools": false,
-    "advanced.experimentalFeatures": false,
     "build.electronMirror": "",
+    "build.electronBuilderBinariesMirror": "",
+    "network.downloadRewrites": [],
     "plugins.registryUrl": "",
     "uiTemplates.registryUrl": "",
     "versionControl.checkpointIntervalMinutes": 15,
@@ -257,3 +267,32 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "versionControl.authorName": "",
     "versionControl.authorEmail": "",
 };
+
+/**
+ * Keys that once shipped a default and were read by nothing.
+ *
+ * Removed from {@link GlobalStateType} rather than implemented: a default nothing
+ * honors makes the store lie about what Studio does, and an exported settings
+ * document (see `@shared/utils/settingsDocument`) would carry the lie to the next
+ * machine forever. When one of these features actually ships it declares its own
+ * key rather than inheriting a value some profile has been carrying since 2026.
+ *
+ * `workspace.confirmOnClose` is the legacy spelling of `workspace.confirmBeforeClose`
+ * and is on every profile that predates the rename.
+ *
+ * Swept off disk once, at startup, by `GlobalStateManager.sweepRetiredKeys`.
+ */
+export const RETIRED_GLOBAL_STATE_KEYS: readonly string[] = [
+    "app.showHint",
+    "app.notificationsEnabled",
+    "app.autoCheckUpdates",
+    "workspace.restoreLastWorkspace",
+    "workspace.autoSave",
+    "workspace.confirmOnClose",
+    "sync.autoBackup",
+    "sync.backupIntervalMinutes",
+    "sync.backupPath",
+    "advanced.enableTelemetry",
+    "advanced.enableDevTools",
+    "advanced.experimentalFeatures",
+];
