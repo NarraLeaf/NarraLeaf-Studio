@@ -8,6 +8,7 @@ export const settings = {
     noneExposed: "No implemented settings are currently exposed.",
     invalidValue: "Please provide a valid value",
     persistFailed: "Failed to persist setting",
+    resetToDefault: "Reset to default",
     customColor: "Custom color…",
     // Category chrome - keys mirror the category `key` in appSettings.ts.
     categories: {
@@ -27,17 +28,17 @@ export const settings = {
             label: "Workspace",
             description: "Startup behavior, workspace history, and auto-save helpers.",
         },
-        sync: {
-            label: "Sync",
-            description: "Local backup cadence and synchronization helpers.",
+        versionControl: {
+            label: "Version control",
+            description: "Checkpoints and the identity recorded on them.",
         },
-        plugins: {
-            label: "Plugins",
-            description: "Plugin store and registry.",
+        network: {
+            label: "Network",
+            description: "Where Studio downloads plugins, templates and build tooling from.",
         },
-        advanced: {
-            label: "Advanced",
-            description: "Telemetry, developer helpers and experimental toggles.",
+        data: {
+            label: "Data",
+            description: "Cached files, resetting preferences, and moving them between machines.",
         },
     },
     // Individual settings - keyed by the setting they localize.
@@ -125,12 +126,32 @@ export const settings = {
                 command: "Highlight commands",
             },
         },
+        editorLineNumbers: {
+            label: "Show line numbers",
+            description: "In the built-in text editor, for files opened from the asset library.",
+        },
+        editorSoftWrap: {
+            label: "Wrap long lines",
+            description: "Wrap instead of scrolling sideways in the built-in text editor.",
+        },
+        recentProjectsLimit: {
+            label: "Recent projects to remember",
+            description: "How many projects the home screen and the Open Recent menu keep.",
+        },
         electronMirror: {
             label: "Electron download mirror",
             description: "Mirror for downloading Electron. Leave empty to use the official source.",
         },
+        electronBuilderBinariesMirror: {
+            label: "Build tooling mirror",
+            description:
+                "Mirror for the installer tooling a build downloads (NSIS, AppImage, code-signing helpers). Leave empty to use the official source.",
+        },
+        downloadRewrites: {
+            label: "Download address rewrites",
+        },
         pluginRegistryUrl: {
-            label: "Registry URL",
+            label: "Plugin registry URL",
             description: "Where the plugin store looks. Leave empty to use the official NarraLeaf registry.",
         },
         uiTemplateRegistryUrl: {
@@ -189,6 +210,95 @@ export const settings = {
         },
         keybindings: {
             label: "Keyboard shortcuts",
+        },
+        cacheInventory: {
+            label: "Cached files",
+        },
+        settingsTransfer: {
+            label: "Move settings between machines",
+        },
+        resetWorkspaceLayout: {
+            label: "Reset the workspace layout",
+            description:
+                "Put the panels, sidebars and open editor tabs back to how they start. Your projects are not touched.",
+            action: "Reset",
+            confirm: "Reset the layout",
+        },
+        resetAllPreferences: {
+            label: "Reset all settings",
+            description:
+                "Put every setting back to its default. Your projects, their history and your statistics are not touched.",
+            action: "Reset",
+            confirm: "Reset everything",
+        },
+    },
+    // The Data panel's own chrome.
+    data: {
+        cache: {
+            measuring: "Measuring…",
+            unavailable: "Not available",
+            clear: "Clear",
+            clearAll: "Clear all",
+            refresh: "Measure again",
+            freed: "Freed {size}.",
+            buckets: {
+                electronBuilder: {
+                    label: "Game build tooling",
+                    description: "Electron and the installer tools downloaded when you build your game.",
+                },
+                buildDependencies: {
+                    label: "Plugin build files",
+                    description: "Archives that plugins download to include in a built game.",
+                },
+                browser: {
+                    label: "Interface cache",
+                    description: "What the interface keeps between runs so it starts faster.",
+                },
+                pluginIcons: {
+                    label: "Plugin store thumbnails",
+                    description: "Downloaded again the next time you open the store.",
+                },
+                psdImports: {
+                    label: "PSD import leftovers",
+                    description: "Layer images written while importing a PSD.",
+                },
+                logs: {
+                    label: "Logs",
+                    description: "What an exported diagnostics file is built from.",
+                },
+            },
+        },
+    },
+    transfer: {
+        export: "Export…",
+        import: "Import…",
+        apply: "Apply",
+        exportHint: "Writes your settings to a file. Recent projects, statistics and workspace layout are not included.",
+        includeWallpaper: "Include the workspace background",
+        includeIdentity: "Include the name and address recorded on commits",
+        exported: "Saved to {path}",
+        imported: "Applied {count} settings.",
+        exportFailed: "The settings could not be saved.",
+        importFailed: "The file could not be read.",
+        planSummary: "{change} to change, {same} already the same, {skipped} skipped.",
+        skippedUnknown: "{key}: this version of Studio has no such setting",
+        skippedInvalid: "{key}: {reason}",
+    },
+    // The Network panel's own chrome, outside the per-setting labels above.
+    network: {
+        test: "Test",
+        probing: "Checking…",
+        probeAnswered: "The address answered with {status}.",
+        probeNoAnswer: "No answer: {error}",
+        probeFailed: "The check could not be run.",
+        rewrites: {
+            hint: "Some downloads use an address that comes from a catalogue rather than from the settings above, such as a plugin's package file. A rule here replaces the beginning of those addresses.",
+            empty: "No rewrites. Downloads use the addresses they come with.",
+            add: "Add a rule",
+            remove: "Remove this rule",
+            enabled: "Use this rule",
+            fromPlaceholder: "https://github.com/",
+            toPlaceholder: "https://your-mirror.example/gh/",
         },
     },
 } as const;

@@ -735,6 +735,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         capture: captureHistoryState,
         apply: restoreHistoryState,
         limit: STORY_EDITOR_HISTORY_LIMIT,
+        tabId,
     });
 
     const recordHistory = useCallback(

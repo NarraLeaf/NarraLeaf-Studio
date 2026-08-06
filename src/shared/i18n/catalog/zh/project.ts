@@ -1,43 +1,41 @@
 import type { LocaleNamespace } from "../types";
 
 export const project = {
+    // 一行只报自己装了什么。原先是一句句「这个页面是干什么的」，读起来像主张而不是陈述，
+    // 合并之后也撑不住：一页装了三块内容，没法用一句主张概括，却可以直接列出它装了什么。
     nav: {
-        details: {
-            title: "详情",
-            description: "名称、标识符与元数据",
+        app: {
+            title: "应用",
+            description: "名称、版本、图标与插件",
         },
         game: {
             title: "游戏",
-            description: "成品游戏对玩家的表现",
+            description: "存档、玩家默认值与音频轨道",
         },
-        preferences: {
-            title: "偏好设置",
-            description: "新玩家的各项设置从什么值开始",
-        },
-        audio: {
-            title: "音频",
-            description: "混音台：总线之间如何汇入，各自多大声",
-        },
-        assets: {
-            title: "图标",
-            description: "各平台的应用图标",
-        },
-        dependencies: {
-            title: "依赖",
-            description: "本项目依赖的插件",
+        project: {
+            title: "工程",
+            description: "工程检查的规则，以及什么会拦下构建",
         },
         runtimes: {
             title: "运行时",
-            description: "Live2D 与 Spine 角色的绘制运行时",
-        },
-        linting: {
-            title: "检查",
-            description: "工程检查报告哪些问题",
+            description: "Live2D 与 Spine 的绘制运行时",
         },
         settings: {
             title: "设置",
-            description: "网络与打包行为",
+            description: "安全、优化与移动端方向",
         },
+    },
+    // 区分子页里各块内容的小标题。标题只用名词，不写成句子：底下的行自己会说做什么。
+    group: {
+        details: "详情",
+        icons: "图标",
+        dependencies: "依赖",
+        saving: "存档",
+        playerDefaults: "玩家默认值",
+        audioTracks: "音频轨道",
+        security: "安全",
+        optimization: "优化",
+        mobile: "移动端",
     },
     home: {
         untitledProject: "未命名项目",
@@ -87,11 +85,15 @@ export const project = {
         autoSaveSlotsDescription: "自动存档在这么多个槽位间轮转，最旧的先被覆盖，不会混进玩家自己的存档槽",
     },
     preferences: {
-        intro: "玩家没有改动过时，各项设置从这里的值开始。游戏运行时它们仍然可以被玩家改，改完的值会随应用保存下来。",
+        // 挂在小标题上的一句话，不再是页首的一段话。原先那段里其余的内容，要么行本身就写着，
+        // 要么对正在看这些行的作者没有用处。
+        intro: "玩家没有改过时，各项设置从这里的值开始。玩家仍然可以改，改完的值会被保留。",
         group: {
             dialogue: "对话",
             skipping: "跳过",
-            audio: "音频",
+            // 不叫「音频」：混音台现在就在同一页上，隔一屏出现两个「音频」小标题，
+            // 正是这次合并要消掉的那种混淆。
+            audio: "声音",
         },
         unit: {
             percent: "%",
@@ -217,7 +219,8 @@ export const project = {
         webLossyQualityTitle: "图像质量",
         webLossyQualityDescription: "重压缩时使用的 WebP 质量，取值 1 到 100",
         webSharedWithMobileHint: "Android 与 iOS 构建使用同一份导出站点，因此该设置对它们同样生效",
-        orientationTitle: "移动端方向",
+        // 不叫「移动端方向」：它就在「移动端」小标题底下，重复那个词还会让标签在 318px 面板里换行。
+        orientationTitle: "屏幕方向",
         orientationDescription: "移动端构建启动时锁定的屏幕方向",
         orientation: {
             landscape: "横屏",

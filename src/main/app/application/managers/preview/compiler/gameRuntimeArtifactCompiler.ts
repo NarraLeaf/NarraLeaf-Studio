@@ -38,6 +38,7 @@ import {
     ensurePluginBuildDependency,
     resolveBuildDependencyFile,
 } from "../../../../../buildWorker/pluginBuildDependencies";
+import type { DownloadRewriteRule } from "@shared/types/downloadSource";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 import { getMimeType } from "@shared/utils/fs";
 import { detectModelBundleEntry, normalizeBundlePath, sortBundlePaths } from "@shared/utils/modelBundle";
@@ -131,6 +132,8 @@ export type GameRuntimeArtifactCompileInput = {
      * unavailable.
      */
     hostUserDataDir?: string;
+    /** The author's download rewrites, for the same reason `hostUserDataDir` travels. */
+    downloadRewrites?: readonly DownloadRewriteRule[];
     /**
      * Studio's own icon, shipped when the project configures none. Passed in
      * rather than resolved here because this module also runs off the main
@@ -300,6 +303,7 @@ export async function compileGameRuntimeArtifact(
             target,
             ...(input.sidecarPlatformKey ? { sidecarPlatformKey: input.sidecarPlatformKey } : {}),
             ...(input.hostUserDataDir ? { hostUserDataDir: input.hostUserDataDir } : {}),
+            ...(input.downloadRewrites ? { downloadRewrites: input.downloadRewrites } : {}),
         });
         const packPuppetRuntimes = await copyPuppetRuntimes({
             appDir,
@@ -803,6 +807,8 @@ async function copyRuntimePlugins(input: {
      */
     sidecarPlatformKey?: string;
     hostUserDataDir?: string;
+    /** The author's download rewrites, for the same reason `hostUserDataDir` travels. */
+    downloadRewrites?: readonly DownloadRewriteRule[];
 }): Promise<GameRuntimePackPluginEntry[]> {
     const entries: GameRuntimePackPluginEntry[] = [];
     for (const plugin of input.runtimePlugins) {
@@ -832,6 +838,7 @@ async function copyRuntimePlugins(input: {
                 plugin,
                 platformKey: input.sidecarPlatformKey,
                 ...(input.hostUserDataDir ? { hostUserDataDir: input.hostUserDataDir } : {}),
+                ...(input.downloadRewrites ? { downloadRewrites: input.downloadRewrites } : {}),
             })
             : [];
         entries.push({
@@ -864,6 +871,8 @@ async function copyPluginSidecars(input: {
     plugin: GameRuntimePluginSource;
     platformKey: string;
     hostUserDataDir?: string;
+    /** The author's download rewrites, for the same reason `hostUserDataDir` travels. */
+    downloadRewrites?: readonly DownloadRewriteRule[];
 }): Promise<GameRuntimePackSidecarEntry[]> {
     const { plugin, platformKey } = input;
     const entries: GameRuntimePackSidecarEntry[] = [];
@@ -888,6 +897,7 @@ async function copyPluginSidecars(input: {
                 target,
                 where,
                 ...(input.hostUserDataDir ? { hostUserDataDir: input.hostUserDataDir } : {}),
+                ...(input.downloadRewrites ? { downloadRewrites: input.downloadRewrites } : {}),
             });
             // The include path is also the path inside the sidecar directory
             // (minus any `dep:<id>/` prefix), so an author who needs a shared
@@ -936,6 +946,8 @@ async function resolveSidecarInclude(input: {
     target: { sha256: Record<string, string> };
     where: string;
     hostUserDataDir?: string;
+    /** The author's download rewrites, for the same reason `hostUserDataDir` travels. */
+    downloadRewrites?: readonly DownloadRewriteRule[];
 }): Promise<{ sourcePath: string; relativePath: string }> {
     const { include, plugin, platformKey, where } = input;
     if (include.startsWith(SIDECAR_DEP_INCLUDE_PREFIX)) {
@@ -969,6 +981,7 @@ async function resolveSidecarInclude(input: {
             dependencyId,
             platformKey,
             target: dependencyTarget,
+            ...(input.downloadRewrites ? { rewrites: input.downloadRewrites } : {}),
             log: (level, message) => console.info(`[gameRuntimeArtifactCompiler] ${level}:`, message),
         });
         return { sourcePath: resolveBuildDependencyFile(dependencyDir, relativePath), relativePath };
