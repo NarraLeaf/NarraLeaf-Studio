@@ -5,10 +5,13 @@ import { VOICE_DOCUMENT_SCHEMA_VERSION } from "@shared/types/voice";
 import {
     buildRecordingScriptRows,
     buildVoiceNameKeyMap,
+    buildAssetNameKeyMap,
     matchImportedFiles,
+    voiceMatchKeyForEntry,
     withSceneIndices,
     type VoiceScriptEntry,
 } from "./voiceScript";
+import { matchKeyForFilename } from "@shared/utils/voiceNaming";
 
 const PATTERN = "{scene}_{index}_{character}";
 
@@ -69,5 +72,55 @@ describe("buildVoiceNameKeyMap + matchImportedFiles", () => {
         ];
         const keyMap = buildVoiceNameKeyMap(collide, PATTERN, "ja");
         expect(matchImportedFiles(["S_001_X.wav"], keyMap).matched).toEqual([]);
+    });
+});
+
+describe("assign-time name matching", () => {
+    const entry = {
+        unitId: "t-1",
+        sceneName: "First Day",
+        indexInScene: 2,
+        speaker: "Nattou",
+        sourceText: "hi",
+    };
+
+    it("keys a line by the name its take is expected to carry", () => {
+        expect(voiceMatchKeyForEntry(entry, "{scene}_{index}_{character}", "ja")).toBe("firstday002nattou");
+    });
+
+    /**
+     * The library name, not the imported filename. That name is the one an author sees and can
+     * rename, and renaming is the only repair available for a clip that arrived badly named.
+     */
+    it("finds the asset whose library name matches, however it was punctuated", () => {
+        const assets = buildAssetNameKeyMap([
+            { id: "a1", name: "FirstDay_002_Nattou" },
+            { id: "a2", name: "first day - 003 - youki.wav" },
+        ]);
+
+        expect(assets.get(voiceMatchKeyForEntry(entry, "{scene}_{index}_{character}", "ja"))).toBe("a1");
+        expect(assets.get(matchKeyForFilename("FirstDay 003 YouKi"))).toBe("a2");
+    });
+
+    it("matches a CJK cast the same way", () => {
+        const key = voiceMatchKeyForEntry(
+            { ...entry, sceneName: "序章", speaker: "優希" },
+            "{scene}_{index}_{character}",
+            "ja",
+        );
+        expect(buildAssetNameKeyMap([{ id: "a1", name: "序章_002_優希" }]).get(key)).toBe("a1");
+    });
+
+    it("drops a key two assets share rather than guessing between them", () => {
+        const assets = buildAssetNameKeyMap([
+            { id: "a1", name: "FirstDay_002_Nattou" },
+            { id: "a2", name: "firstday 002 nattou" },
+        ]);
+
+        expect(assets.size).toBe(0);
+    });
+
+    it("ignores an asset whose name reduces to nothing", () => {
+        expect(buildAssetNameKeyMap([{ id: "a1", name: "---" }]).size).toBe(0);
     });
 });
