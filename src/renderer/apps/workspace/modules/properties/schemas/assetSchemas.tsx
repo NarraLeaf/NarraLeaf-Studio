@@ -21,6 +21,7 @@ import {
 import type { Translator } from "@shared/i18n";
 import { AssetReferencesSection } from "../components/AssetReferencesSection";
 import { AssetReplaceAction } from "../components/AssetReplaceAction";
+import { AssetSourceSection } from "../components/AssetSourceSection";
 
 /** Translator function, threaded into schema builders since they run outside React. */
 type TranslateFn = Translator["t"];
@@ -52,6 +53,15 @@ function createCommonAssetFields<T extends AssetType>(t: TranslateFn): FieldDefi
             // author-owned fields, which a replacement leaves alone.
             component: ({ data }) => <AssetReplaceAction asset={data.asset} />,
             order: 50,
+        },
+        {
+            id: "remoteSource",
+            type: "custom",
+            // Beside `replaceContent` because they are the same kind of thing — "where do this
+            // record's bytes come from" — and exactly one of them ever renders: replacing points a
+            // local record at another file, refreshing re-takes a remote record's snapshot.
+            component: ({ data }) => <AssetSourceSection asset={data.asset} />,
+            order: 60,
         },
         {
             id: "name",

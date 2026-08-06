@@ -9,22 +9,29 @@ function localAsset(id: string): Asset {
     return { ...base, id, source: AssetSource.Local, meta: {} } as Asset;
 }
 
+function remoteAsset(id: string): Asset {
+    return {
+        ...base,
+        id,
+        source: AssetSource.Remote,
+        meta: { url: "https://example.test/a.png", fetchedAt: "2026-08-05T00:00:00.000Z" },
+    } as unknown as Asset;
+}
+
 describe("assetContentRelativePath", () => {
     it("shards a local asset id the way the project stores it", () => {
         expect(assetContentRelativePath(localAsset("abcdef01-2345-6789-abcd-ef0123456789")))
             .toBe("content/ab/cd/ef0123456789abcdef0123456789");
     });
 
-    it("has no local path for a remote asset or an id that is not a storage id", () => {
-        const remote = {
-            ...base,
-            id: "abcdef01-2345-6789-abcd-ef0123456789",
-            source: AssetSource.Remote,
-            meta: { url: "https://example.test/a.png" },
-        } as unknown as Asset;
+    it("shards a remote asset the same way: its snapshot is stored like any other asset's bytes", () => {
+        expect(assetContentRelativePath(remoteAsset("abcdef01-2345-6789-abcd-ef0123456789")))
+            .toBe("content/ab/cd/ef0123456789abcdef0123456789");
+    });
+
+    it("has no local path for an id that is not a storage id", () => {
         const bogus = { ...base, id: "not-a-uuid", source: AssetSource.Local, meta: {} } as Asset;
 
-        expect(assetContentRelativePath(remote)).toBeNull();
         expect(assetContentRelativePath(bogus)).toBeNull();
     });
 });
@@ -50,13 +57,17 @@ describe("assetBytesFromWalk", () => {
     });
 
     it("skips assets with no local content path", () => {
-        const remote = {
-            ...base,
-            id: "abcdef01-2345-6789-abcd-ef0123456789",
-            source: AssetSource.Remote,
-            meta: { url: "https://example.test/a.png" },
-        } as unknown as Asset;
+        const bogus = { ...base, id: "not-a-uuid", source: AssetSource.Local, meta: {} } as Asset;
 
-        expect(assetBytesFromWalk([remote], {}).size).toBe(0);
+        expect(assetBytesFromWalk([bogus], {}).size).toBe(0);
+    });
+
+    it("counts a remote asset's snapshot, which takes up room like any other file", () => {
+        const remote = remoteAsset("abcdef01-2345-6789-abcd-ef0123456789");
+        const bytes = assetBytesFromWalk([remote], {
+            "content/ab/cd/ef0123456789abcdef0123456789": 4096,
+        });
+
+        expect(bytes.get(remote.id)).toBe(4096);
     });
 });

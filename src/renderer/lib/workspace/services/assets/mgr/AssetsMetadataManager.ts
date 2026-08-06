@@ -3,7 +3,7 @@ import { RendererError } from "@shared/utils/error";
 import { FileSystemService } from "../../core/FileSystem";
 import { Services, WorkspaceContext } from "../../services";
 import { AssetType, categoryOfAssetType, isBundleAssetType } from "../assetTypes";
-import { Asset, AssetExtras, AssetSource, AssetsMap } from "../types";
+import { Asset, AssetExtras, AssetResolveMeta, AssetSource, AssetsMap } from "../types";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { AssetsService } from "../../core/AssetsService";
 import { reconcileAssetOrder } from "../assetOrder";
@@ -229,6 +229,38 @@ export class AssetsMetadataManager {
             success: true,
             data: existingAsset,
         };
+    }
+
+    /**
+     * Record what a refresh learned about a remote asset: always the new provenance, and the new
+     * digest only when the bytes actually moved.
+     *
+     * Splitting those two is the point. A server that answers 304 - or re-serves identical bytes -
+     * has told us the snapshot is current, which is worth writing down (`fetchedAt`, and any
+     * validators the server has since started sending). Touching `hash` on that path would be a
+     * fabricated content change: the version history labels a moved `hash` as "contents replaced",
+     * so every no-op refresh would land in the author's change list as edited artwork.
+     *
+     * Silent, like {@link applyReplacedContent}, and for the same reason.
+     */
+    public applyRemoteRefresh<T extends AssetType>(
+        asset: Asset<T, AssetSource.Remote>,
+        meta: AssetResolveMeta<AssetSource.Remote>,
+        digest?: { hash: string; ext?: string },
+    ): RequestStatus<Asset<T, AssetSource>> {
+        const metadata = this.getAssets();
+        const existingAsset = metadata[asset.type][asset.id] as Asset<T, AssetSource.Remote> | undefined;
+        if (!existingAsset) {
+            return { success: false, error: `Asset not found: ${asset.id}` };
+        }
+
+        existingAsset.meta = meta;
+        if (digest) {
+            return this.applyReplacedContent(existingAsset, digest);
+        }
+
+        this.assetsService.markDirty(asset.type);
+        return { success: true, data: existingAsset };
     }
 
     /**

@@ -77,7 +77,6 @@ function runEmpty(ctx: LintContext): LintFinding[] {
         findings.push({
             ruleId: "text/empty",
             messageKey: "lint.rule.textEmpty.message",
-            messageParams: { scene: ref.scene.name },
             location: storyLocation(ref),
             target: storyBlockTarget(ref),
         });

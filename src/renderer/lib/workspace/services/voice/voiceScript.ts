@@ -98,6 +98,52 @@ export function buildVoiceNameKeyMap(
     return map;
 }
 
+/**
+ * The name a line's take is expected to have, reduced to a match key.
+ *
+ * The one place the naming pattern is turned into a key, so the batch import and the per-line
+ * assign picker agree on what "this clip belongs to this line" means.
+ */
+export function voiceMatchKeyForEntry(entry: VoiceScriptEntry, pattern: string, locale: string): string {
+    return matchKeyForFilename(formatVoiceFilename(pattern, {
+        scene: entry.sceneName,
+        index: entry.indexInScene,
+        character: entry.speaker,
+        locale,
+        unitId: entry.unitId,
+    }));
+}
+
+/**
+ * Match key -> asset id, over assets addressed by the name they carry **in the library**.
+ *
+ * The library name is the one an author sees and renames; the filename the clip arrived under is
+ * gone by the time it is an asset. So a take renamed after import still matches, and a take whose
+ * file was named badly matches once it is renamed - which is the only repair an author has.
+ *
+ * Ambiguous keys are dropped for the same reason `buildVoiceNameKeyMap` drops them: silently
+ * pointing a line at the wrong one of two identically-named clips is worse than pointing at none.
+ */
+export function buildAssetNameKeyMap(assets: readonly { id: string; name: string }[]): Map<string, string> {
+    const map = new Map<string, string>();
+    const ambiguous = new Set<string>();
+    for (const asset of assets) {
+        const key = matchKeyForFilename(asset.name);
+        if (!key) {
+            continue;
+        }
+        if (map.has(key)) {
+            ambiguous.add(key);
+            continue;
+        }
+        map.set(key, asset.id);
+    }
+    for (const key of ambiguous) {
+        map.delete(key);
+    }
+    return map;
+}
+
 export type ImportedFileMatch = { path: string; unitId: string; sourceText: string };
 export type ImportedFileMatches = { matched: ImportedFileMatch[]; unmatched: string[] };
 
