@@ -119,6 +119,21 @@ export const ProjectNameConvention = {
     EditorPuppetDescriptionCache: ["editor", "cache", "puppet/"],
     EditorPuppetDescriptionCacheShard: (key: string) =>
         ["editor", "cache", "puppet", `${encodePathSegmentId(key)}.json` as const],
+    /**
+     * What a probe said about each media asset's bytes: whether the engine can play them, and what
+     * to convert them into if not.
+     *
+     * Derived, like its neighbours here, and belongs under `editor/cache/` for the reason that
+     * directory exists: `@shared/vcs/workingSet` excludes it from version control, so this file is
+     * never committed, never in a change list, and never a merge conflict about a fact nobody
+     * decided. Every entry is reproducible by running ffprobe over the file again.
+     *
+     * One document rather than a shard per asset. The only reader is a sweep of the whole library,
+     * so N reads would buy nothing, and the entries are keyed by content hash - a few hundred short
+     * records at most.
+     */
+    EditorMediaSupportCache: ["editor", "cache", "media/"],
+    EditorMediaSupportCacheFile: ["editor", "cache", "media", "support.json"],
     EditorUI: ["editor", "ui/"],
     EditorUIDocument: ["editor", "ui", "uidoc.json"],
     EditorUIGraphs: ["editor", "ui", "uigraphs.json"],

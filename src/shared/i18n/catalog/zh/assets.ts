@@ -173,6 +173,17 @@ export const assets = {
         stopAction: "停止转换",
         failedError: "这个文件无法转换。",
     },
+    support: {
+        needsConverting: "需要转换",
+        needsConvertingHint: "这个文件在游戏里放不出来，转换之后就可以了。",
+        notPlayable: "放不出来",
+        notPlayableHint: "这个文件里没有声音，也没有画面，没有东西可以转换。",
+        menuConvert: "转换文件…",
+        convertTitle: "转换文件",
+        convertIntro: "转换后的文件会顶替现在这个，用到它的地方都会跟着变。",
+        convertAction: "转换",
+        replacing: "正在放入文件",
+    },
     modelImport: {
         title: "导入模型",
         familyStep: "这是哪一种模型？",
