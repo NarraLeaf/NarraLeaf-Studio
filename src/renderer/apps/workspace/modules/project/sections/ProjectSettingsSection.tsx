@@ -10,6 +10,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { Select, type SelectOption } from "@/lib/components/elements";
+import { HelpTrigger } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { SettingRow, SettingShell } from "./settingRows";
@@ -136,7 +137,11 @@ export function ProjectSettingsSection({ projectService, uiService, config, onCo
 
     return (
         <div className="grid gap-3 [&>*]:min-w-0">
-            <SettingsGroup title={t("project.group.security")}>
+            <SettingsGroup
+                title={t("project.group.security")}
+                helpTopic="assetProtection"
+                trailing={<HelpTrigger topic="assetProtection" />}
+            >
                 <SettingRow
                     title={t("project.settings.allowHttpTitle")}
                     description={t("project.settings.allowHttpDescription")}
@@ -155,7 +160,11 @@ export function ProjectSettingsSection({ projectService, uiService, config, onCo
                 />
             </SettingsGroup>
 
-            <SettingsGroup title={t("project.group.optimization")}>
+            <SettingsGroup
+                title={t("project.group.optimization")}
+                helpTopic="webOptimization"
+                trailing={<HelpTrigger topic="webOptimization" />}
+            >
                 <SettingRow
                     title={t("project.settings.webLosslessImagesTitle")}
                     description={t("project.settings.webLosslessImagesDescription")}

@@ -1087,6 +1087,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
         <div
             ref={editorRootRef}
             className="flex h-full min-h-0 flex-col bg-surface text-fg outline-none"
+            data-help-topic="storyMotion"
             tabIndex={-1}
             onKeyDownCapture={handleEditorKeyDown}
             onMouseDownCapture={focusEditor}

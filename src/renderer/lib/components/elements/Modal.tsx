@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import { X } from "lucide-react";
+import { HelpTrigger, type HelpTopicId } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
 import { CONTROL_HEIGHT_CLASS } from "./controlSize";
 import { cn } from "../../utils/cn";
@@ -67,6 +68,14 @@ export interface ModalProps {
     showCloseButton?: boolean;
     footer?: React.ReactNode;
     className?: string;
+    /**
+     * Tags the dialog for `F1` and puts a `?` beside its close button.
+     *
+     * Opt-in per dialog and left off by default: most dialogs ask one question that their own
+     * words answer, and a `?` on every one of them is a glyph the author learns to ignore. Set it
+     * where the dialog decides something the author cannot see from the controls in it.
+     */
+    helpTopic?: HelpTopicId;
 }
 
 const sizeStyles = {
@@ -91,6 +100,7 @@ export function Modal({
     showCloseButton = true,
     footer,
     className = "",
+    helpTopic,
 }: ModalProps) {
     const { t } = useTranslation();
     useEscapeToClose(isOpen && closeOnEscape, onClose);
@@ -133,11 +143,15 @@ export function Modal({
                     sizeStyles[size], "w-full max-h-[90vh] overflow-hidden",
                     className,
                 )}
+                data-help-topic={helpTopic}
             >
                 {/* Header */}
                 {(title || showCloseButton) && (
-                    <div className="flex items-center justify-between px-6 py-4 border-b border-edge">
-                        {title && <h2 className="text-lg font-semibold text-fg">{title}</h2>}
+                    <div className="group/help flex items-center justify-between gap-1 px-6 py-4 border-b border-edge">
+                        {/* `flex-1` so the two trailing controls sit together on the right rather
+                            than being spread apart by the close button's own `ml-auto`. */}
+                        {title && <h2 className="min-w-0 flex-1 text-lg font-semibold text-fg">{title}</h2>}
+                        {helpTopic && <HelpTrigger topic={helpTopic} />}
                         {showCloseButton && (
                             <button
                                 type="button"

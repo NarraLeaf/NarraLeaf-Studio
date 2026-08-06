@@ -101,6 +101,10 @@ export function ProjectDependenciesSection(_props: ProjectSectionProps) {
 
     return (
         <SettingsGroup
+            // No `?` beside the Rescan button: the row already carries a control, and a second
+            // glyph next to it is the row of identical question marks the popover exists to avoid.
+            // `F1` over the part still answers.
+            helpTopic="plugins"
             title={t("project.group.dependencies")}
             trailing={(
                 <Button

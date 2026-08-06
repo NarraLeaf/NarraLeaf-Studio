@@ -12,7 +12,15 @@ import type { TranslationKey } from "@shared/i18n";
  * surface with no topic simply has no help, which is the honest state and not a placeholder.
  */
 
-export const HELP_SECTIONS = ["start", "story", "content", "quality", "version", "ship"] as const;
+export const HELP_SECTIONS = [
+    "start",
+    "story",
+    "content",
+    "interface",
+    "quality",
+    "version",
+    "ship",
+] as const;
 
 export type HelpSectionId = (typeof HELP_SECTIONS)[number];
 
@@ -24,25 +32,48 @@ export type HelpSectionId = (typeof HELP_SECTIONS)[number];
  */
 export const HELP_TOPIC_IDS = [
     "workspaceLayout",
+    "newProject",
     "runModes",
     "keyboard",
     "search",
+    "undo",
+    "studioSettings",
     "storyScene",
     "storyCommands",
     "storyVariables",
+    "storyExpressions",
     "storyFlow",
+    "storyScript",
+    "sceneSnapshot",
+    "storyMotion",
     "assets",
     "characters",
+    "appearances",
+    "puppetRuntimes",
     "audio",
+    "audioClips",
+    "voice",
     "localization",
     "uiSurfaces",
+    "uiComponents",
+    "blueprints",
+    "uiBindings",
     "lint",
     "tests",
+    "dashboard",
+    "recovery",
     "versionControl",
+    "versionChanges",
     "versionViewing",
     "versionRestore",
+    "versionConflicts",
+    "versionServer",
     "freeze",
     "build",
+    "icons",
+    "signing",
+    "assetProtection",
+    "webOptimization",
     "plugins",
 ] as const;
 
@@ -70,24 +101,40 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         id: "workspaceLayout",
         section: "start",
         shortcuts: ["editor-split-right", "editor-split-down", "workspace-editor-quick-switch-next"],
-        related: ["keyboard", "search"],
+        related: ["keyboard", "search", "undo"],
+    },
+    {
+        id: "newProject",
+        section: "start",
+        related: ["workspaceLayout", "versionServer"],
     },
     {
         id: "runModes",
         section: "start",
-        related: ["tests", "build", "freeze"],
+        related: ["tests", "build", "freeze", "sceneSnapshot"],
     },
     {
         id: "keyboard",
         section: "start",
         shortcuts: ["workspace-keybinding-cheatsheet", "workspace-command-palette"],
-        related: ["workspaceLayout"],
+        related: ["workspaceLayout", "studioSettings"],
     },
     {
         id: "search",
         section: "start",
         shortcuts: ["workspace-command-palette", "workspace-quick-open", "story.find"],
         related: ["storyScene"],
+    },
+    {
+        id: "undo",
+        section: "start",
+        shortcuts: ["workspace.undo", "workspace.redo", "workspace-reopen-closed-tab"],
+        related: ["workspaceLayout", "versionControl"],
+    },
+    {
+        id: "studioSettings",
+        section: "start",
+        related: ["keyboard", "plugins"],
     },
 
     // --- Story ----------------------------------------------------------------
@@ -100,17 +147,38 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "storyCommands",
         section: "story",
-        related: ["storyScene", "storyVariables"],
+        related: ["storyScene", "storyVariables", "storyExpressions"],
     },
     {
         id: "storyVariables",
         section: "story",
-        related: ["storyCommands", "storyFlow"],
+        related: ["storyCommands", "storyExpressions", "sceneSnapshot"],
+    },
+    {
+        id: "storyExpressions",
+        section: "story",
+        related: ["storyVariables", "storyCommands"],
     },
     {
         id: "storyFlow",
         section: "story",
         related: ["storyScene", "lint"],
+    },
+    {
+        id: "storyScript",
+        section: "story",
+        related: ["storyScene", "localization"],
+    },
+    {
+        id: "sceneSnapshot",
+        section: "story",
+        related: ["storyVariables", "runModes"],
+    },
+    {
+        id: "storyMotion",
+        section: "story",
+        shortcuts: ["story-motion.prev-frame", "story-motion.next-frame", "story-motion.delete"],
+        related: ["storyCommands", "characters"],
     },
 
     // --- Content --------------------------------------------------------------
@@ -123,22 +191,67 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "characters",
         section: "content",
-        related: ["assets", "storyScene"],
+        related: ["appearances", "assets", "storyScene"],
+    },
+    {
+        id: "appearances",
+        section: "content",
+        related: ["characters", "puppetRuntimes", "assets"],
+    },
+    {
+        id: "puppetRuntimes",
+        section: "content",
+        related: ["appearances", "assets"],
     },
     {
         id: "audio",
         section: "content",
-        related: ["assets"],
+        related: ["assets", "audioClips"],
+    },
+    {
+        id: "audioClips",
+        section: "content",
+        shortcuts: [
+            "assets.audio.play-pause",
+            "assets.audio.mark-in",
+            "assets.audio.mark-loop",
+            "assets.audio.mark-out",
+        ],
+        related: ["audio", "assets"],
+    },
+    {
+        id: "voice",
+        section: "content",
+        related: ["localization", "audio", "characters"],
     },
     {
         id: "localization",
         section: "content",
-        related: ["storyScene", "build"],
+        related: ["storyScene", "voice", "build"],
     },
+
+    // --- Game interface -------------------------------------------------------
     {
         id: "uiSurfaces",
-        section: "content",
-        related: ["assets", "plugins"],
+        section: "interface",
+        related: ["uiComponents", "blueprints", "uiBindings"],
+    },
+    {
+        id: "uiComponents",
+        section: "interface",
+        shortcuts: ["ui-editor.group", "ui-editor.dup"],
+        related: ["uiSurfaces", "uiBindings"],
+    },
+    {
+        id: "blueprints",
+        section: "interface",
+        shortcuts: ["blueprint.copy", "blueprint.paste", "blueprint.undo"],
+        related: ["uiBindings", "uiSurfaces", "storyVariables"],
+    },
+    {
+        id: "uiBindings",
+        section: "interface",
+        related: ["blueprints", "uiSurfaces", "storyVariables"],
     },
 
     // --- Checks ---------------------------------------------------------------
@@ -152,12 +265,27 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         section: "quality",
         related: ["lint", "runModes"],
     },
+    {
+        id: "dashboard",
+        section: "quality",
+        related: ["storyScene", "localization"],
+    },
+    {
+        id: "recovery",
+        section: "quality",
+        related: ["versionRestore", "freeze", "lint"],
+    },
 
     // --- Versions -------------------------------------------------------------
     {
         id: "versionControl",
         section: "version",
-        related: ["versionViewing", "versionRestore", "freeze"],
+        related: ["versionChanges", "versionViewing", "versionRestore", "versionServer"],
+    },
+    {
+        id: "versionChanges",
+        section: "version",
+        related: ["versionControl", "versionConflicts"],
     },
     {
         id: "versionViewing",
@@ -170,6 +298,16 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         related: ["versionControl", "versionViewing"],
     },
     {
+        id: "versionConflicts",
+        section: "version",
+        related: ["versionServer", "versionChanges", "freeze"],
+    },
+    {
+        id: "versionServer",
+        section: "version",
+        related: ["versionControl", "versionConflicts", "newProject"],
+    },
+    {
         id: "freeze",
         section: "version",
         related: ["versionViewing", "runModes"],
@@ -179,13 +317,34 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "build",
         section: "ship",
-        related: ["lint", "localization", "runModes"],
+        related: ["icons", "signing", "assetProtection", "lint"],
         learnMore: DOCS_URL,
+    },
+    {
+        id: "icons",
+        section: "ship",
+        related: ["build", "assets"],
+    },
+    {
+        id: "signing",
+        section: "ship",
+        related: ["build", "assetProtection"],
+        learnMore: DOCS_URL,
+    },
+    {
+        id: "assetProtection",
+        section: "ship",
+        related: ["build", "webOptimization", "plugins"],
+    },
+    {
+        id: "webOptimization",
+        section: "ship",
+        related: ["build", "assets"],
     },
     {
         id: "plugins",
         section: "ship",
-        related: ["uiSurfaces", "storyCommands"],
+        related: ["uiSurfaces", "storyCommands", "studioSettings"],
         learnMore: DOCS_URL,
     },
 ];
