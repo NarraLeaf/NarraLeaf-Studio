@@ -273,6 +273,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.appExportSettings, { defaultFileName, content }),
         importSettings: () =>
             ipcClient.invoke(IPCEventType.appImportSettings, {}),
+        writeBackgroundImage: (data: Uint8Array, extension: string) =>
+            ipcClient.invoke(IPCEventType.appWriteBackgroundImage, { data, extension }),
     },
 
     devMode: {

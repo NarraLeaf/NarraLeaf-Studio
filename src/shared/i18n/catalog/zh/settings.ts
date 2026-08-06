@@ -265,7 +265,7 @@ export const settings = {
         import: "导入…",
         apply: "应用",
         exportHint: "把设置写进一个文件。最近项目、统计数据和工作区布局不会包含在内",
-        includeWallpaper: "包含工作区背景图",
+        includeWallpaper: "包含工作区背景图，连图片一起",
         includeIdentity: "包含记在提交版本上的姓名和邮箱",
         exported: "已保存到 {path}",
         imported: "已应用 {count} 项设置",
