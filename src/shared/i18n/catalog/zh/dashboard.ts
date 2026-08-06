@@ -54,6 +54,18 @@ export const dashboard = {
         variables: "变量",
     },
 
+    cast: {
+        title: "角色台词",
+        speaker: "角色",
+        lines: "台词",
+        words: "字数",
+        others: {
+            other: "其他 {count} 位角色",
+        },
+        showAll: "显示全部",
+        showFewer: "收起",
+    },
+
     activity: {
         title: "写作活动",
         description: "最近 30 天每天新增的字数",
