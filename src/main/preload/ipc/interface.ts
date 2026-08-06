@@ -569,6 +569,13 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.uiTemplateFetchPreviews, { templateIds }),
     },
 
+    projectTemplates: {
+        list: () =>
+            ipcClient.invoke(IPCEventType.projectTemplateList, {}),
+        scaffold: (templateId: string, projectPath: string) =>
+            ipcClient.invoke(IPCEventType.projectTemplateScaffold, { templateId, projectPath }),
+    },
+
     assets: {
         fetchRemote: (url: string, validators?: RemoteAssetValidators) =>
             ipcClient.invoke(IPCEventType.assetFetchRemote, { url, validators }),

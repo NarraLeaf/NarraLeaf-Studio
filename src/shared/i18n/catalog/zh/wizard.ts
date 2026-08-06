@@ -200,6 +200,7 @@ export const wizard = {
         custom: "自定义",
     },
     validation: {
+        templateFailed: "无法将模板内容复制到工程中",
         nameRequired: "项目名称为必填项",
         locationRequired: "项目位置为必填项",
         templateRequired: "项目模板为必填项",
