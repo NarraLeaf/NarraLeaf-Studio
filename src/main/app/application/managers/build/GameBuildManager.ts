@@ -100,6 +100,7 @@ import type {
     GameBuildWorkerOutboundMessage,
     GameBuildWorkerWindowsSigning,
 } from "@/buildWorker/protocol";
+import { currentDownloadRewrites } from "../downloadRewrites";
 
 type BuildSession = {
     id: string;
@@ -556,6 +557,7 @@ export class GameBuildManager {
                 pluginSelection.selected.map(source => source.manifest),
                 binaryPlatformKeys,
             ),
+            currentDownloadRewrites(),
         );
         for (const gap of dependencyGaps) {
             findings.push({
@@ -867,6 +869,7 @@ export class GameBuildManager {
                 // cache root travels with the input rather than being read from
                 // Electron on the far side.
                 hostUserDataDir: this.app.getUserDataDir(),
+                downloadRewrites: currentDownloadRewrites(),
             }, {
                 onStart: worker => { session.worker = worker; },
                 cancelled: () => session.cancelled,
@@ -913,6 +916,14 @@ export class GameBuildManager {
             ? path.resolve(request.outputDir.trim())
             : path.join(projectPath, DEFAULT_OUTPUT_DIR_NAME);
         const electronMirror = this.readElectronMirror();
+        const binariesMirror = this.readStringSetting("build.electronBuilderBinariesMirror");
+        if (binariesMirror) {
+            this.emit(session, {
+                level: "info",
+                source: "Build",
+                message: `installer tooling will be downloaded from ${binariesMirror}`,
+            });
+        }
         const crossTargets = desktopTargets.filter(target => target.platform !== hostPlatform);
         if (electronMirror && crossTargets.length > 0) {
             this.emit(session, {
@@ -937,6 +948,7 @@ export class GameBuildManager {
             ...(identity.copyright ? { copyright: identity.copyright } : {}),
             ...(request.compression ? { compression: request.compression } : {}),
             ...(electronMirror ? { electronMirror } : {}),
+            ...(binariesMirror ? { electronBuilderBinariesMirror: binariesMirror } : {}),
             asarUnpack: buildAsarUnpackPatterns(Boolean(encryptionKey)),
             ...(gpgSigning ? { gpg: gpgSigning } : {}),
             targets: await Promise.all(desktopTargets.map(async target => ({
@@ -1842,8 +1854,18 @@ export class GameBuildManager {
 
     /** Optional Electron download mirror for cross builds; "" / unset = official source. */
     private readElectronMirror(): string | undefined {
+        return this.readStringSetting("build.electronMirror");
+    }
+
+    /**
+     * A configured, non-empty string setting, or undefined.
+     *
+     * Guarded because a build must not fail over a store read: an unreadable setting means the
+     * official source, which is the same thing an unconfigured one means.
+     */
+    private readStringSetting(key: string): string | undefined {
         try {
-            const value = this.app.getGlobalState().get("build.electronMirror");
+            const value = this.app.getGlobalState().get(key);
             return typeof value === "string" && value.trim() ? value.trim() : undefined;
         } catch {
             return undefined;
