@@ -95,12 +95,12 @@ describe("classifyMediaSupport / remux", () => {
         expect(verdict.tier).toBe("remux");
         expect(verdict.reason).toBe("container-unsupported");
         // WebM cannot legally carry H.264 - proposing it would produce a command that fails.
-        expect(verdict.target).toEqual({ kind: "remux", container: "mp4" });
+        expect(verdict.target).toEqual({ kind: "remux", container: "mp4", audioOnly: false });
     });
 
     it("sends VP8 + Vorbis in AVI to WebM", () => {
         expect(classifyMediaSupport(report("avi", [video("vp8"), audio("vorbis", 1)])).target)
-            .toEqual({ kind: "remux", container: "webm" });
+            .toEqual({ kind: "remux", container: "webm", audioOnly: false });
     });
 
     it("sends H.264 in ASF, FLV, MPEG-PS and MPEG-TS to a container swap", () => {
@@ -113,7 +113,7 @@ describe("classifyMediaSupport / remux", () => {
 
     it("sends PCM in AIFF to WAV rather than wrapping it in WebM", () => {
         expect(classifyMediaSupport(report("aiff", [audio("pcm_s16le")])).target)
-            .toEqual({ kind: "remux", container: "wav" });
+            .toEqual({ kind: "remux", container: "wav", audioOnly: true });
     });
 
     it("re-encodes when every codec decodes but nothing will carry the combination", () => {

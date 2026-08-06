@@ -35,6 +35,17 @@ export interface UseAssetsContextMenuParams {
     handlePaste: () => Promise<void>;
     handleRename: () => Promise<void>;
     handleReplaceContent: () => Promise<void>;
+    /** Opens the conversion for the right-clicked asset. */
+    handleConvertMedia: () => Promise<void>;
+    /**
+     * Whether the right-clicked asset has a conversion waiting for it.
+     *
+     * Passed in rather than looked up here so the row and the mark on the row can never disagree:
+     * they read the same scan. `false` for an asset that plays, for one there is no conversion for,
+     * and for a remote asset, whose bytes are a snapshot of what a server served and must not be
+     * swapped underneath their provenance.
+     */
+    canConvertMedia: boolean;
     handleDelete: () => Promise<void>;
     handleCreateGroup: (category: AssetCategory, parentGroupId?: string) => Promise<void>;
     /** Other only. `groupId` is the group the menu was opened on, absent from the category header. */
@@ -56,6 +67,8 @@ export function useAssetsContextMenu({
     handlePaste,
     handleRename,
     handleReplaceContent,
+    handleConvertMedia,
+    canConvertMedia,
     handleDelete,
     handleCreateGroup,
     handleCreateTextFile,
@@ -204,6 +217,19 @@ export function useAssetsContextMenu({
                         closeContextMenu();
                     },
                 });
+                // Only where there is a conversion to run. Offered here as well as on the mark in
+                // the row because the mark is a mouse target and this is the one a keyboard and a
+                // right-click reach.
+                if (canConvertMedia) {
+                    items.push({
+                        id: "convert-media",
+                        label: t("assets.support.menuConvert"),
+                        onClick: async () => {
+                            await handleConvertMedia();
+                            closeContextMenu();
+                        },
+                    });
+                }
             }
             items.push({
                 id: "delete",
@@ -265,7 +291,7 @@ export function useAssetsContextMenu({
         });
 
         return freezeContextMenuRows(items, freeze.frozen, FREEZE_READ_ONLY_ASSET_MENU_IDS, freeze.reason);
-    }, [clipboard, closeContextMenu, contextMenuTarget, freeze, handleCopy, handleCut, handleDelete, handleImportToGroup, handlePaste, handleRename, handleReplaceContent, handleCreateGroup, handleCreateTextFile, isMultiSelectMode, selectedItems, t, tn]);
+    }, [canConvertMedia, clipboard, closeContextMenu, contextMenuTarget, freeze, handleCopy, handleConvertMedia, handleCut, handleDelete, handleImportToGroup, handlePaste, handleRename, handleReplaceContent, handleCreateGroup, handleCreateTextFile, isMultiSelectMode, selectedItems, t, tn]);
 
     return {
         menuState,

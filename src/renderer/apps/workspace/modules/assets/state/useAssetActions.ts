@@ -42,6 +42,8 @@ import {
     planMediaImport,
     type MediaImportPlan,
 } from './mediaImportTriage';
+import type { MediaSupportService } from '@/lib/workspace/services/media/MediaSupportService';
+import type { MediaAssetSupportRecord } from '@/lib/workspace/services/media/mediaAssetSupport';
 import { platformDefaultLineEnding } from '../editors/text/textEditableFiles';
 import { toPersistedEol } from '../editors/text/textDocumentPreferences';
 
@@ -221,6 +223,18 @@ export function useAssetActions({
         category: AssetCategory;
         groupId?: string;
         plan: MediaImportPlan;
+    } | null>(null);
+
+    /**
+     * The asset already in the library whose conversion is being asked about.
+     *
+     * The record travels with the asset rather than being looked up again by the dialog: the answer
+     * was taken from a scan, and re-deriving it inside the dialog would be a second place that can
+     * disagree about what a file needs.
+     */
+    const [mediaConvertRequest, setMediaConvertRequest] = useState<{
+        asset: Asset;
+        record: MediaAssetSupportRecord;
     } | null>(null);
 
     /**
@@ -895,6 +909,34 @@ export function useAssetActions({
         }
     }, [notifyLoading, onActionComplete, resolveSingleAsset, t]);
 
+    /**
+     * Open the conversion for an asset the scan marked as unplayable.
+     *
+     * Local assets only. A remote asset is a *pinned reference* whose bytes are a snapshot of what
+     * a server served, and replacing them in place would leave a record claiming provenance for
+     * bytes that never came from that URL. Nothing is offered rather than something dishonest; the
+     * way out for those is to import the converted file as a new asset.
+     */
+    const handleConvertMedia = useCallback(async (target?: Asset) => {
+        const ctx = contextRef.current;
+        if (!ctx || freeze.frozen) return;
+
+        const asset = target ?? resolveSingleAsset();
+        if (!asset || asset.source !== AssetSource.Local) return;
+
+        const record = ctx.services.get<MediaSupportService>(Services.MediaSupport).peek(asset.id);
+        if (!record || record.state !== "convertible" || !record.target) return;
+
+        setMediaConvertRequest({ asset, record });
+    }, [freeze.frozen, resolveSingleAsset]);
+
+    const finishMediaConvert = useCallback(() => {
+        setMediaConvertRequest(null);
+        onActionComplete();
+    }, [onActionComplete]);
+
+    const cancelMediaConvert = useCallback(() => setMediaConvertRequest(null), []);
+
     const handleDelete = useCallback(async () => {
         notifyLoading(true);
         try {
@@ -1092,5 +1134,10 @@ export function useAssetActions({
         mediaImportRequest,
         completeMediaImport,
         cancelMediaImport,
+        /** Non-null while the conversion for one library asset is on screen. */
+        mediaConvertRequest,
+        handleConvertMedia,
+        finishMediaConvert,
+        cancelMediaConvert,
     };
 }

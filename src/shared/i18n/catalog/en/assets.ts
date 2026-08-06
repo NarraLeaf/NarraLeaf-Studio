@@ -215,6 +215,31 @@ export const assets = {
         failedError: "This file could not be converted.",
     },
     /**
+     * The mark on an asset **already in the library** that will not play, and its conversion.
+     *
+     * Separate from `mediaConvert` above, which is the import conversation. The difference is not
+     * cosmetic: an import can offer to leave a file out, and this cannot - the file is already in
+     * the project and something may already point at it, so every sentence here is about changing
+     * what is there rather than about deciding what to bring in.
+     *
+     * The two states never share wording. `needsConverting` has something to do about it and reads
+     * as an instruction; `notPlayable` has nothing, and telling that author to convert would be
+     * advice they cannot follow.
+     */
+    support: {
+        needsConverting: "Needs converting",
+        needsConvertingHint: "This file does not play in the game. Convert it and it will.",
+        notPlayable: "Will not play",
+        notPlayableHint: "This file holds no sound and no picture, so there is nothing to convert.",
+        menuConvert: "Convert File…",
+        convertTitle: "Convert File",
+        /** Says what changes, because the swap keeps the asset and everything pointing at it. */
+        convertIntro: "The converted file takes the place of this one. Everything that uses it follows.",
+        convertAction: "Convert",
+        /** The moment between a finished conversion and the library holding the new bytes. */
+        replacing: "Putting the file in place",
+    },
+    /**
      * The guided import for model bundles — the one asset type an author has a *folder* of rather
      * than files, and the one whose contents Studio can check before it copies them.
      *

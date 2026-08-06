@@ -19,7 +19,7 @@ import { ConsoleService, type ConsoleLogLevel } from "./ConsoleService";
 import { CharacterService } from "./CharacterService";
 import { StoryService } from "../story/StoryService";
 import { collectInvalidBlocks, type InvalidStoryBlockRef } from "../story/storyModel";
-import { translate } from "@/lib/i18n";
+import { translate, translateN } from "@/lib/i18n";
 import { UIDocumentService } from "../ui-editor/UIDocumentService";
 import { UIGraphService } from "../ui-editor/UIGraphService";
 import type { LintingConfiguration } from "../../project/configuration";
@@ -27,6 +27,9 @@ import type { LintingConfiguration } from "../../project/configuration";
 // whole rule registry (and every rule's dependencies) into the build path and its tests.
 import type { LintService } from "./LintService";
 import type { ProjectService } from "./ProjectService";
+// Type-only for the same reason as LintService above: the gate needs `scan()` and `listUnplayable()`,
+// and a value import would drag the probe bridge into the build path and its tests.
+import type { MediaSupportService } from "../media/MediaSupportService";
 
 type BuildServiceEvents = {
     stateChanged: GameBuildStateSnapshot;
@@ -223,6 +226,23 @@ export class BuildService extends Service<BuildService> {
             });
             return this.state;
         }
+        // Second of the two unconditional correctness gates, and placed *between* them on purpose.
+        //
+        // Behind the invalid-command gate because that one is free - it reads documents already in
+        // memory - while this one may spawn a probe per media file whose bytes it has not seen
+        // before; a build that was going to be refused anyway should not pay for that first.
+        //
+        // Ahead of the lint gate because it belongs to the other class of check entirely. Lint is a
+        // sweep of opinions: its severities are configurable, `runOnBuild` can switch it off, and
+        // its findings are warnings by default. A video the shipped engine cannot decode is not an
+        // opinion - it is a black rectangle in the packaged game, decided by measurement, and no
+        // setting an author has may turn that into a pass. Putting it behind `runOnBuild` would
+        // mean a project that switched lint off ships broken media silently, which is exactly the
+        // reasoning ruling R4 already applied to unresolved command lines.
+        const mediaRefusal = await this.runMediaGate(startedAt, platforms);
+        if (mediaRefusal) {
+            return mediaRefusal;
+        }
         // The project check (ruling R3), behind the gate above and never instead of it: that one is
         // unconditional (ruling R4), and a sweep an author can switch off in settings must not be
         // what decides whether a story the compiler refuses gets to ship.
@@ -272,6 +292,101 @@ export class BuildService extends Service<BuildService> {
             }
         }
         return found;
+    }
+
+    /**
+     * The media gate: no build ships an asset the engine cannot decode.
+     *
+     * Returns the refusal snapshot when the build must stop and `null` when it may go on, the same
+     * shape as the lint gate below.
+     *
+     * ## What it refuses
+     *
+     * Any media asset whose verdict is not `accept`, judged on `(container, codec of every stream)`
+     * by `@shared/utils/mediaSupport` - never on the extension, because the same `.mp4` plays when
+     * it holds H.264 and is a black rectangle with sound when it holds HEVC. Both the fixable case
+     * (there is a conversion) and the hopeless one (nothing playable inside) stop the build: the
+     * author is shipping a game with a dead asset in it either way, and the two differ only in what
+     * the console tells them to do next.
+     *
+     * ## What it must never refuse
+     *
+     * Anything it could not check. ffprobe is absent on some hosts, a probe can time out, and the
+     * service reports both by leaving the asset without a record rather than by inventing one. A
+     * host with no probe therefore builds exactly as it did before this gate existed, with one line
+     * on the console saying the files went unchecked. Refusing on the strength of a question that
+     * was never answered would make a machine without the tool unable to build a project it builds
+     * fine today - and would do it about files that are very probably correct.
+     *
+     * The same reasoning covers a scan that throws, which is why this one failure is let through
+     * where the lint gate fails closed on its own crash. The difference is the escape hatch: an
+     * author whose lint sweep crashes can switch `runOnBuild` off and build anyway, and there is no
+     * equivalent switch here by design. A gate with no way past it that fails closed on its own
+     * defects can leave a project unbuildable with nothing the author can do, which is a worse
+     * outcome than the one the gate exists to prevent.
+     */
+    private async runMediaGate(
+        startedAt: number,
+        platforms: GameBuildPlatform[],
+    ): Promise<GameBuildStateSnapshot | null> {
+        const consoleService = this.tryGetConsole();
+        let unplayable: ReturnType<MediaSupportService["listUnplayable"]>;
+        let uncheckedCount: number;
+        try {
+            const media = this.getContext().services.get<MediaSupportService>(Services.MediaSupport);
+            const scan = await media.scan();
+            unplayable = media.listUnplayable();
+            uncheckedCount = scan.unanswered.length;
+        } catch (error) {
+            // Untranslated, like the flush failure above: this reports Studio malfunctioning, not
+            // something the project did.
+            console.error("[Build] the media check failed to run", error);
+            consoleService?.log(BUILD_CONSOLE_CHANNEL, "warning", "The media check failed to run", {
+                source: BUILD_CONSOLE_SOURCE,
+            });
+            return null;
+        }
+
+        if (uncheckedCount > 0) {
+            // Said at `info` rather than `verbose` because the console hides verbose by default, and
+            // an author on a host with no converter is entitled to know the check did not happen -
+            // otherwise a silent pass reads as a clean bill of health.
+            consoleService?.log(
+                BUILD_CONSOLE_CHANNEL,
+                "info",
+                translateN("build.mediaUnchecked", uncheckedCount, { count: uncheckedCount }),
+                { source: BUILD_CONSOLE_SOURCE },
+            );
+        }
+
+        if (unplayable.length === 0) {
+            return null;
+        }
+
+        for (const { asset, record } of unplayable) {
+            consoleService?.log(
+                BUILD_CONSOLE_CHANNEL,
+                "error",
+                translate(
+                    record.state === "convertible" ? "build.mediaNeedsConverting" : "build.mediaNotPlayable",
+                    { asset: asset.name },
+                ),
+                { source: BUILD_CONSOLE_SOURCE },
+            );
+        }
+
+        const refusal = translateN("build.mediaSummary", unplayable.length, { count: unplayable.length });
+        consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", refusal, { source: BUILD_CONSOLE_SOURCE });
+        // `startedAt` and `platforms` carried through for the reason the gates either side carry
+        // them: the dashboard archives a refused run as a finished build.
+        this.updateState({
+            status: "error",
+            startedAt,
+            finishedAt: Date.now(),
+            platforms,
+            error: refusal,
+        });
+        return this.state;
     }
 
     /**

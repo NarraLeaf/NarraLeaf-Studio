@@ -476,6 +476,16 @@ export type MediaSupportTarget =
          * subtitle and data tracks may not be legal in the destination and are not played anyway.
          */
         container: TranscodeContainer;
+        /**
+         * No video streams, so the result is a sound file however its container is spelled.
+         *
+         * This exists to pick the file's extension, which on iOS decides its media type and
+         * therefore whether it plays at all: the shell's scheme handler maps `.mp4` to
+         * `video/mp4`, and a sound file announced as video is not a thing WebKit will play. An
+         * audio-only MP4 has to be written `.m4a`. The re-encode branch knows this from `video`
+         * being null; a remux target carries no stream list, so it has to be told.
+         */
+        audioOnly: boolean;
     }
     | {
         kind: "reencode";
@@ -644,7 +654,11 @@ export function classifyMediaSupport(report: ProbeReport, fileName?: string): Me
         container,
         streams,
         unsupportedCodecs: [],
-        target: { kind: "remux", container: remuxTo },
+        target: {
+            kind: "remux",
+            container: remuxTo,
+            audioOnly: streams.every(stream => stream.kind !== "video"),
+        },
     };
 }
 

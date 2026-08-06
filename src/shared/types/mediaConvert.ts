@@ -82,12 +82,25 @@ export function imageConvertTargetFor(fileName: string): MediaImageTarget | null
  * associations and the iOS shell's extension table all expect, and a `.mp4` that turns out to be
  * music is a small lie that surfaces as a broken-looking video element later.
  */
+/**
+ * The extension the converted file is written with.
+ *
+ * Not cosmetic on iOS. The shell serves the site through a `WKURLSchemeHandler` that derives the
+ * media type from this extension, and WebKit - unlike Chromium - does not sniff the container when
+ * the declared type is wrong. `.mp4` is typed `video/mp4` there, so a sound file written `.mp4` is
+ * announced as a video and does not play. Audio-only MP4 is therefore `.m4a`, which the shell's
+ * table types `audio/mp4`, and both routes into an MP4 have to say so: `reencode` knows it from
+ * `video` being null, `remux` from its `audioOnly` flag.
+ */
 export function mediaConvertTargetExtension(target: MediaConvertTarget): string {
     if (target.kind === "image") {
         return target.container;
     }
-    if (target.kind === "reencode" && target.container === "mp4" && target.video === null) {
-        return "m4a";
+    if (target.container === "mp4") {
+        const audioOnly = target.kind === "reencode" ? target.video === null : target.audioOnly;
+        if (audioOnly) {
+            return "m4a";
+        }
     }
     return target.container;
 }
