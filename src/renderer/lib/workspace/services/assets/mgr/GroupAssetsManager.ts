@@ -33,6 +33,18 @@ export class GroupAssetsManager {
         return this;
     }
 
+    /**
+     * Write one category's group records as they currently stand.
+     *
+     * For undo, which puts the whole map back at once rather than re-creating groups one by one -
+     * a cascade can remove a group and its children, and re-creating those would mint new ids that
+     * nothing points at.
+     */
+    public async persistGroups(category: AssetCategory): Promise<void> {
+        await this.writeAssetsGroupsMetadata(category);
+        this.assetsService.markOrderDirty(category);
+    }
+
     public getGroups(category: AssetCategory): AssetGroup[] {
         this.assertGroups();
         const record = this.assetsGroups[category];
