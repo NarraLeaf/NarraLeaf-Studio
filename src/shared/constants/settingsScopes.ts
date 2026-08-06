@@ -84,15 +84,18 @@ export const NON_REGISTRY_PREFERENCE_KEYS: readonly string[] = [
 ];
 
 /**
- * Preferences that describe *this machine* and are wrong on another one.
+ * The workspace wallpaper: which picture, and how it is painted.
  *
- * `ui.backgroundImage` is a file name inside this profile's background cache, so it names a
- * picture the other machine does not have; the rest of the `ui.background*` keys are how it is
- * displayed, and carrying them without the picture would leave settings describing nothing.
- * Excluded from an export by default rather than dropped, because an author moving to a machine
- * they will re-pick the wallpaper on may still want the rest.
+ * `ui.backgroundImage` is a file NAME inside this profile's background cache, never a path, so
+ * these keys are only meaningful next to the picture itself. An export that carries them
+ * therefore carries the bytes too (`SettingsDocument.wallpaper`) - without that, importing them
+ * on another machine produces a wallpaper setting pointing at a file that does not exist, which
+ * is worse than not carrying them at all.
+ *
+ * They stay a named group, and a toggle, because a picture is the one thing in an export that can
+ * be megabytes rather than bytes.
  */
-export const MACHINE_SPECIFIC_PREFERENCE_KEYS: readonly string[] = [
+export const WALLPAPER_PREFERENCE_KEYS: readonly string[] = [
     "ui.backgroundImage",
     "ui.backgroundOpacity",
     "ui.backgroundFill",
@@ -103,8 +106,9 @@ export const MACHINE_SPECIFIC_PREFERENCE_KEYS: readonly string[] = [
 /**
  * Preferences that identify a person rather than configure a program.
  *
- * Wanted on a second machine, and exactly the thing not to hand over when the exported file is
- * going to a colleague - so they are an opt-in at export time instead of a silent inclusion.
+ * Included by default, because the feature is "move my Studio to my other machine" and on that
+ * machine you want your own name on your own commits. Still a toggle, for the other case: an
+ * export handed to a colleague should not have to carry your address.
  */
 export const PERSONAL_PREFERENCE_KEYS: readonly string[] = [
     "versionControl.authorName",

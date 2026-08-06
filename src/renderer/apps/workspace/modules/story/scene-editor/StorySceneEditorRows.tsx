@@ -499,8 +499,10 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
 
                         The nodes it costs are bounded now in a way they were not when this was written:
                         the list is windowed, so "every row" is one screenful. */}
-                    {/* The lint mark and the voice indicator are NOT part of the hover cluster: they are
-                        there to be noticed while reading, so they keep their own always-visible slot. */}
+                    {/* The lint mark and the voice MARK are NOT part of the hover cluster: they are
+                        there to be noticed while reading, so they keep their own always-visible slot.
+                        The audition button inside the voice indicator is the exception — it is an
+                        action rather than a signal, so it hover-reveals like the cluster below. */}
                     {containerInfo ? null : (
                         <div className="ml-auto flex shrink-0 items-center gap-1">
                             {diagnostic ? <RowDiagnosticMark code={diagnostic.code} /> : null}

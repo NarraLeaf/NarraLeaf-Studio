@@ -275,6 +275,34 @@ Unit tests could not have caught it; only rendering it could.
 Not driven: the export half's native save dialog (the import half's open dialog was driven, and
 both handlers are the same shape as the shipping diagnostics export).
 
+## 4c. Follow-up (branch `fix/settings-export-followups`)
+
+The undriven save dialog was hiding a bug, reported immediately: the export offered to save
+`narraleaf-studio-settings.json.log`. `sanitizeBundleFileName` hard-coded a `.log`/`.txt`
+allowlist and appended `.log` to anything outside it — correct for the diagnostics bundle it was
+written for, silently wrong for the second caller. The allowed set is now a parameter, stated at
+both call sites.
+
+Two defaults changed, and one of them needed the feature to grow first:
+
+- **The identity now exports by default.** The feature is "move my Studio to my other machine",
+  and on that machine you want your own name on your own commits. Still a toggle, for the case
+  where the file goes to someone else.
+- **The wallpaper now exports by default *and carries the picture*.** Defaulting it on without
+  that would have been worse than leaving it off: `ui.backgroundImage` is a file NAME in this
+  profile's cache, so the other machine would get a wallpaper setting pointing at nothing. The
+  document gained a `wallpaper` sibling block (`fileName` / `extension` / base64, capped at 8 MB),
+  and import writes the bytes into the local cache **before** applying the keys, through a new
+  `app.writeBackgroundImage` — the write half of the existing read handler, with the directory
+  fixed and the name derived from the content, so it is not a general file-write channel.
+
+Verified on a simulated second machine: exported with both toggles on, deleted the setting and the
+cached picture, imported — the file came back into the cache byte for byte, the setting pointed at
+it, opacity and identity restored. The save dialog proposed `…-settings.json`.
+
+Worth remembering for the next acceptance: the **save** dialog's file-name edit is a direct child
+at id **1001**, while the **open** dialog's is nested `ComboBoxEx32 → ComboBox → Edit`, all at 1148.
+
 ## 5. Acceptance
 
 - `node node_modules/typescript/bin/tsc --project src/{shared,main,renderer,runtime}/tsconfig.json --noEmit`
